@@ -6,6 +6,7 @@ export interface PortableTemplateSelection {
   page_ids: string[];
   application_ids: string[];
   data_model_ids: string[];
+  mcp_instance_ids: string[];
 }
 export interface PortableCatalogItem {
   id: string;
@@ -17,12 +18,25 @@ export interface PortableTemplateCatalog {
   pages: PortableCatalogItem[];
   applications: PortableCatalogItem[];
   data_models: PortableCatalogItem[];
+  mcp_instances: { id: string; name: string }[];
 }
 export interface PortableTemplatePreview {
   valid: boolean;
-  counts: { pages: number; applications: number; data_models: number };
+  counts: {
+    pages: number;
+    applications: number;
+    data_models: number;
+    mcp_instances: number;
+  };
   failures: string[];
   warnings: string[];
+  effects: {
+    kind: string;
+    source_id: string;
+    target_id: string | null;
+    action: string;
+  }[];
+  mcp_shared_tool_impacts: { tool_id: string; instance_ids: string[] }[];
   dependencies: {
     plugin_id: string;
     plugin_version: string;
@@ -33,6 +47,7 @@ export interface PortableTemplatePreview {
 export interface PortableTemplateInstallResult {
   complete: boolean;
   created: { kind: string; source_id: string; target_id: string }[];
+  updated: { kind: string; source_id: string; target_id: string }[];
   id_map: Record<string, string>;
   failures: string[];
 }

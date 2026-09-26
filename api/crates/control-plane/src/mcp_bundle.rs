@@ -119,6 +119,61 @@ impl<R> McpManagementService<R>
 where
     R: McpManagementRepository,
 {
+    /// Application templates update selected instances without removing entries that
+    /// only exist on the target instance.
+    pub async fn preserve_unmentioned_instance_entries(
+        &self,
+        actor_user_id: Uuid,
+        mut package: domain::McpBundlePackage,
+    ) -> Result<domain::McpBundlePackage> {
+        let actor = self.authorize_manage(actor_user_id).await?;
+        let snapshot = self
+            .load_mcp_bundle_workspace_snapshot(actor.current_workspace_id)
+            .await?;
+        for instance in &mut package.instances {
+            let Some(existing) = snapshot.instances.get(&instance.instance_id) else {
+                continue;
+            };
+            for group in snapshot
+                .groups
+                .iter()
+                .filter(|group| group.instance_record_id == existing.id)
+            {
+                if !instance
+                    .groups
+                    .iter()
+                    .any(|candidate| candidate.path == group.path)
+                {
+                    instance.groups.push(domain::McpBundleGroup {
+                        path: group.path.clone(),
+                        display_name: group.display_name.clone(),
+                        description_short: group.description_short.clone(),
+                        enabled: group.enabled,
+                        sort_order: group.sort_order,
+                    });
+                }
+            }
+            for binding in snapshot
+                .bindings
+                .iter()
+                .filter(|binding| binding.instance_record_id == existing.id)
+            {
+                if !instance.bindings.iter().any(|candidate| {
+                    candidate.group_path == binding.group_path
+                        && candidate.tool_id == binding.tool_id
+                }) {
+                    instance.bindings.push(domain::McpBundleToolBinding {
+                        group_path: binding.group_path.clone(),
+                        tool_id: binding.tool_id.clone(),
+                        display_alias: binding.display_alias.clone(),
+                        visible: binding.visible,
+                        sort_order: binding.sort_order,
+                    });
+                }
+            }
+        }
+        Ok(package)
+    }
     pub async fn record_extension_bundle_import(
         &self,
         actor_user_id: Uuid,

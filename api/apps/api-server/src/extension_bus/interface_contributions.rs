@@ -336,7 +336,7 @@ pub(crate) fn production_interface_contributions(
     let mcp_tool_call_port = crate::routes::mcp_protocol::mcp_tool_call_port(
         crate::routes::mcp_protocol::McpToolCallDependencies {
             runtime_dependencies: runtime_tool_invoker_dependencies,
-            interface_catalog: mcp_interface_catalog_dependencies,
+            interface_catalog: mcp_interface_catalog_dependencies.clone(),
             interface_registry: Arc::new(
                 crate::routes::mcp_management::interface_catalog::DynamicMcpInterfaceRegistrySnapshotPort::new(
                     native_interface_registry,
@@ -1610,6 +1610,7 @@ pub(crate) fn production_interface_contributions(
                     official_catalog_source: state.official_extension_catalog_source.clone(),
                     cache_store: state.infrastructure.cache_store(),
                     provider_install_root: state.provider_install_root.clone(), api_node_id: state.api_node_id.clone(),
+                    mcp_interface_catalog: mcp_interface_catalog_dependencies.clone(),
                 }
             )?,
         ),

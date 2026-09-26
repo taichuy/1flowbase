@@ -1,9 +1,12 @@
 use super::*;
 use crate::{
-    application::{ApplicationService, CreateApplicationCommand},
+    application::{ApplicationService, CreateApplicationCommand, UpdateApplicationCommand},
     application_public_api::{
         mapping::{ApplicationApiMappingService, ReplaceApplicationApiMappingCommand},
         publications::{ApplicationPublicationService, PublishApplicationCommand},
+        workflow_schedule::{
+            ReplaceWorkflowScheduleTriggerCommand, WorkflowScheduleTriggerService,
+        },
     },
     flow::{FlowService, SaveFlowDraftCommand},
 };
@@ -12,9 +15,51 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         &self,
         actor: &domain::ActorContext,
         package: &PortableTemplatePackage,
+        target: &PortableTemplatePackage,
         result: &mut PortableTemplateInstallResult,
     ) -> Result<()> {
         for app in &package.applications {
+            let target_id: Uuid = result
+                .id_map
+                .get(&app.id.to_string())
+                .and_then(|id| id.parse().ok())
+                .unwrap_or(app.id);
+            if target.applications.iter().any(|item| item.id == target_id) {
+                let previous = self
+                    .repository
+                    .get_application(actor.current_workspace_id, target_id)
+                    .await?
+                    .context("existing application missing")?;
+                ApplicationService::new(self.repository.clone())
+                    .update_application(UpdateApplicationCommand {
+                        actor_user_id: actor.user_id,
+                        application_id: target_id,
+                        name: app.name.clone(),
+                        description: app.description.clone(),
+                        tag_ids: previous.tags.iter().map(|tag| tag.id).collect(),
+                        icon: app.icon.clone(),
+                        icon_type: app.icon_type.clone(),
+                        icon_background: app.icon_background.clone(),
+                    })
+                    .await?;
+                result.updated("application", app.id, target_id);
+                let state = FlowService::new(self.repository.clone())
+                    .get_or_create_editor_state(actor.user_id, target_id)
+                    .await?;
+                for document in std::iter::once(&app.flow_document)
+                    .chain(app.published.iter().map(|p| &p.flow_document))
+                {
+                    if let Some(source) = document
+                        .pointer("/meta/flowId")
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        result
+                            .id_map
+                            .insert(source.to_owned(), state.flow.id.to_string());
+                    }
+                }
+                continue;
+            }
             let extension = app
                 .published
                 .as_ref()
@@ -47,7 +92,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                     icon_background: app.icon_background.clone(),
                 })
                 .await?;
-            result.created("application", app.id, created.id);
+            self.record_created(actor, result, "application", app.id, created.id)
+                .await?;
             let state = FlowService::new(self.repository.clone())
                 .get_or_create_editor_state(actor.user_id, created.id)
                 .await?;
@@ -117,6 +163,18 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         mapping: serde_json::from_value(
                             result.value(serde_json::to_value(mapping)?),
                         )?,
+                    })
+                    .await?;
+            }
+            if let Some(schedule) = &app.schedule {
+                WorkflowScheduleTriggerService::new(self.repository.clone())
+                    .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+                        actor_user_id: actor.user_id,
+                        application_id,
+                        enabled: schedule.enabled,
+                        cron: schedule.cron.clone(),
+                        timezone: schedule.timezone.clone(),
+                        input_payload: result.value(schedule.input_payload.clone()),
                     })
                     .await?;
             }

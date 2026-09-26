@@ -151,7 +151,8 @@ describe('SystemBackupsPanel', () => {
     api.getSystemTemplateCatalog.mockResolvedValue({
       pages: [],
       applications: [],
-      data_models: []
+      data_models: [],
+      mcp_instances: []
     });
     renderPanel();
     await screen.findByText(backup.exact_backup_name);
@@ -162,7 +163,7 @@ describe('SystemBackupsPanel', () => {
       screen.queryByRole('button', { name: 'Export template' })
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
-    fireEvent.click(await screen.findByText('Structure template'));
+    fireEvent.click(await screen.findByText('Application template'));
     expect(
       within(await screen.findByRole('dialog')).getByText('Export template')
     ).toBeInTheDocument();
@@ -174,10 +175,12 @@ describe('SystemBackupsPanel', () => {
   test('routes template JSON from Import backup to server preview without uploading a backup archive', async () => {
     api.previewSystemTemplate.mockResolvedValue({
       valid: true,
-      counts: { pages: 1, applications: 0, data_models: 0 },
+      counts: { pages: 1, applications: 0, data_models: 0, mcp_instances: 0 },
       failures: [],
       warnings: [],
-      dependencies: []
+      dependencies: [],
+      effects: [],
+      mcp_shared_tool_impacts: []
     });
     const { container } = renderPanel();
     const body = {

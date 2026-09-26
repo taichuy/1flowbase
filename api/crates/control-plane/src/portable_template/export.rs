@@ -1,6 +1,9 @@
 use super::references::{contains_identity, route_references, string_values};
 use super::*;
+use crate::mcp_bundle::ExportMcpBundleCommand;
+use crate::mcp_management::McpManagementService;
 use crate::ports::ApplicationRepository;
+use crate::ports::McpManagementRepository;
 use anyhow::{bail, Result};
 use std::collections::BTreeSet;
 use uuid::Uuid;
@@ -8,7 +11,14 @@ use uuid::Uuid;
 pub struct PortableTemplateService<R> {
     repository: R,
 }
-impl<R: PortableTemplateReadRepository + ApplicationRepository> PortableTemplateService<R> {
+impl<
+        R: PortableTemplateReadRepository
+            + PortableTemplateIdentityRepository
+            + ApplicationRepository
+            + McpManagementRepository
+            + Clone,
+    > PortableTemplateService<R>
+{
     pub fn new(repository: R) -> Self {
         Self { repository }
     }
@@ -22,7 +32,36 @@ impl<R: PortableTemplateReadRepository + ApplicationRepository> PortableTemplate
     }
     pub async fn catalog(&self, actor_user_id: Uuid) -> Result<PortableTemplateCatalog> {
         let all = self.snapshot(actor_user_id).await?;
+        let actor =
+            ApplicationRepository::load_actor_context_for_user(&self.repository, actor_user_id)
+                .await?;
+        let mcp_instances = match McpManagementService::new(self.repository.clone())
+            .authorize_bundle_management(actor_user_id)
+            .await
+        {
+            Ok(()) => {
+                self.repository
+                    .list_mcp_instances(actor.current_workspace_id)
+                    .await?
+            }
+            Err(error)
+                if matches!(
+                    error.downcast_ref::<crate::errors::ControlPlaneError>(),
+                    Some(crate::errors::ControlPlaneError::PermissionDenied(_))
+                ) =>
+            {
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        };
         Ok(PortableTemplateCatalog {
+            mcp_instances: mcp_instances
+                .into_iter()
+                .map(|instance| PortableMcpCatalogItem {
+                    id: instance.instance_id,
+                    name: instance.name,
+                })
+                .collect(),
             pages: all
                 .pages
                 .iter()
@@ -65,16 +104,80 @@ impl<R: PortableTemplateReadRepository + ApplicationRepository> PortableTemplate
         actor_user_id: Uuid,
         selection: PortableTemplateSelection,
     ) -> Result<PortableTemplatePackage> {
-        export_selected_template(self.snapshot(actor_user_id).await?, selection)
+        let mcp_ids = selection.mcp_instance_ids.clone();
+        let mut package = export_selected_template(self.snapshot(actor_user_id).await?, selection)?;
+        if !mcp_ids.is_empty() {
+            let mut bundle = McpManagementService::new(self.repository.clone())
+                .export_bundle(ExportMcpBundleCommand {
+                    actor_user_id,
+                    organization: "1flowbase".into(),
+                    bundle_id: "application-template".into(),
+                    bundle_version: "1.0.0".into(),
+                    locale: "zh_Hans".into(),
+                    current_system_version: env!("CARGO_PKG_VERSION").into(),
+                })
+                .await?;
+            let selected: BTreeSet<_> = mcp_ids.into_iter().collect();
+            anyhow::ensure!(
+                selected.iter().all(|id| bundle
+                    .instances
+                    .iter()
+                    .any(|instance| &instance.instance_id == id)),
+                "portable_template_selection_missing_mcp_instance"
+            );
+            bundle
+                .instances
+                .retain(|instance| selected.contains(&instance.instance_id));
+            let tools: BTreeSet<_> = bundle
+                .instances
+                .iter()
+                .flat_map(|instance| {
+                    instance
+                        .bindings
+                        .iter()
+                        .map(|binding| binding.tool_id.as_str())
+                })
+                .collect();
+            bundle
+                .tools
+                .retain(|tool| tools.contains(tool.tool_id.as_str()));
+            let connections: BTreeSet<_> = bundle
+                .tools
+                .iter()
+                .filter_map(|tool| match &tool.execution_target {
+                    domain::McpToolExecutionTarget::McpProxy {
+                        upstream_connection_id,
+                        ..
+                    } => Some(*upstream_connection_id),
+                    _ => None,
+                })
+                .collect();
+            bundle
+                .connections
+                .retain(|connection| connections.contains(&connection.connection_id));
+            bundle.manifest.files.clear();
+            package.mcp_bundle = Some(bundle);
+        }
+        let failures = validate_portable_template(&package);
+        anyhow::ensure!(failures.is_empty(), "{}", failures.join("; "));
+        Ok(package)
     }
     pub async fn preview(
         &self,
         actor_user_id: Uuid,
         package: &PortableTemplatePackage,
     ) -> Result<PortableTemplatePreview> {
-        Ok(preview_portable_template(
+        let actor =
+            ApplicationRepository::load_actor_context_for_user(&self.repository, actor_user_id)
+                .await?;
+        let identities = self
+            .repository
+            .load_portable_template_identity_map(actor.current_workspace_id)
+            .await?;
+        Ok(preview_portable_template_with_map(
             package,
             &self.snapshot(actor_user_id).await?,
+            &identities,
         ))
     }
 }
@@ -84,10 +187,15 @@ pub fn export_selected_template(
     mut all: PortableTemplatePackage,
     selection: PortableTemplateSelection,
 ) -> Result<PortableTemplatePackage> {
+    let mcp_selected = !selection.mcp_instance_ids.is_empty();
     let mut pages: BTreeSet<Uuid> = selection.page_ids.into_iter().collect();
     let mut apps: BTreeSet<Uuid> = selection.application_ids.into_iter().collect();
     let mut models: BTreeSet<Uuid> = selection.data_model_ids.into_iter().collect();
-    if pages.is_empty() && apps.is_empty() && models.is_empty() {
+    if pages.is_empty()
+        && apps.is_empty()
+        && models.is_empty()
+        && selection.mcp_instance_ids.is_empty()
+    {
         bail!("portable_template_empty_selection");
     }
     if pages
@@ -231,7 +339,10 @@ pub fn export_selected_template(
     all.applications.retain(|a| apps.contains(&a.id));
     all.data_models.retain(|m| models.contains(&m.id));
     all.plugins = collect_portable_plugin_dependencies(&all, &all.plugins);
-    let failures = validate_portable_template(&all);
+    let failures = validate_portable_template(&all)
+        .into_iter()
+        .filter(|failure| !mcp_selected || failure != "portable_template_empty")
+        .collect::<Vec<_>>();
     if !failures.is_empty() {
         bail!("{}", failures.join("; "));
     }

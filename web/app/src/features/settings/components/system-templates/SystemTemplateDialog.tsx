@@ -21,7 +21,8 @@ import { useSystemTemplates } from '../../api/system-templates/useSystemTemplate
 const emptySelection = (): PortableTemplateSelection => ({
   page_ids: [],
   application_ids: [],
-  data_model_ids: []
+  data_model_ids: [],
+  mcp_instance_ids: []
 });
 
 export function SystemTemplateDialog({
@@ -118,7 +119,7 @@ export function SystemTemplateDialog({
               <>
                 <Descriptions
                   title={t('preview')}
-                  column={{ xs: 1, sm: 3 }}
+                  column={{ xs: 1, sm: 4 }}
                   items={[
                     {
                       key: 'pages',
@@ -134,6 +135,11 @@ export function SystemTemplateDialog({
                       key: 'data_models',
                       label: t('data_models'),
                       children: preview.counts.data_models
+                    },
+                    {
+                      key: 'mcp_instances',
+                      label: t('mcp_instances'),
+                      children: preview.counts.mcp_instances
                     }
                   ]}
                 />
@@ -153,6 +159,42 @@ export function SystemTemplateDialog({
                     title={warning}
                   />
                 ))}
+                {preview.effects.length > 0 && (
+                  <Table
+                    size="small"
+                    pagination={{ pageSize: 8 }}
+                    dataSource={preview.effects}
+                    rowKey={(item) => `${item.kind}:${item.source_id}`}
+                    columns={[
+                      { title: t('kind'), dataIndex: 'kind' },
+                      { title: t('source_id'), dataIndex: 'source_id' },
+                      {
+                        title: t('action'),
+                        dataIndex: 'action',
+                        render: (action: string) =>
+                          action === 'unchanged'
+                            ? t('effect_unchanged')
+                            : action === 'update'
+                              ? t('effect_update')
+                              : t('effect_create')
+                      }
+                    ]}
+                  />
+                )}
+                {preview.mcp_shared_tool_impacts.length > 0 && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    title={t('shared_tool_impact')}
+                    description={preview.mcp_shared_tool_impacts.map(
+                      (impact) => (
+                        <div key={impact.tool_id}>
+                          {impact.tool_id}: {impact.instance_ids.join(', ')}
+                        </div>
+                      )
+                    )}
+                  />
+                )}
                 {preview.dependencies.length > 0 && (
                   <Table
                     size="small"
@@ -194,12 +236,29 @@ export function SystemTemplateDialog({
                   size="small"
                   pagination={{ pageSize: 10 }}
                   scroll={{ x: 640 }}
-                  dataSource={result.created}
+                  dataSource={[
+                    ...result.created.map((item) => ({
+                      ...item,
+                      action: 'create'
+                    })),
+                    ...result.updated.map((item) => ({
+                      ...item,
+                      action: 'update'
+                    }))
+                  ]}
                   rowKey={(item) => `${item.kind}:${item.source_id}`}
                   columns={[
                     { title: t('kind'), dataIndex: 'kind' },
                     { title: t('source_id'), dataIndex: 'source_id' },
-                    { title: t('target_id'), dataIndex: 'target_id' }
+                    { title: t('target_id'), dataIndex: 'target_id' },
+                    {
+                      title: t('action'),
+                      dataIndex: 'action',
+                      render: (action: string) =>
+                        action === 'update'
+                          ? t('effect_update')
+                          : t('effect_create')
+                    }
                   ]}
                 />
                 <Descriptions
@@ -325,6 +384,22 @@ export function SystemTemplateDialog({
               value={selection.data_model_ids}
               onChange={(data_model_ids: string[]) =>
                 setSelection((current) => ({ ...current, data_model_ids }))
+              }
+            />
+          </Form.Item>
+          <Form.Item label={t('mcp_instances')}>
+            <Select
+              aria-label={t('mcp_instances')}
+              mode="multiple"
+              optionFilterProp="label"
+              loading={catalog.isLoading}
+              options={catalog.data?.mcp_instances.map((item) => ({
+                value: item.id,
+                label: item.name
+              }))}
+              value={selection.mcp_instance_ids}
+              onChange={(mcp_instance_ids: string[]) =>
+                setSelection((current) => ({ ...current, mcp_instance_ids }))
               }
             />
           </Form.Item>

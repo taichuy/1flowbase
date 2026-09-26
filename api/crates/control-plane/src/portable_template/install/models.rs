@@ -1,7 +1,7 @@
 use super::*;
 use crate::model_definition::{
     AddModelFieldCommand, CreateModelDefinitionCommand, ModelDefinitionService,
-    UpdateModelFieldCommand,
+    UpdateModelDefinitionCommand, UpdateModelDefinitionStatusCommand, UpdateModelFieldCommand,
 };
 impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
     pub(super) async fn install_models(
@@ -33,6 +33,46 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         .insert(field.id.to_string(), mapped_field.id.to_string());
                 }
             } else {
+                let existing = target.data_models.iter().find(|item| {
+                    item.id.to_string()
+                        == result
+                            .id_map
+                            .get(&model.id.to_string())
+                            .cloned()
+                            .unwrap_or_else(|| model.id.to_string())
+                });
+                if let Some(existing) = existing {
+                    result.updated("data_model", model.id, existing.id);
+                    owner
+                        .update_model(UpdateModelDefinitionCommand {
+                            actor_user_id: actor.user_id,
+                            model_id: existing.id,
+                            title: model.title.clone(),
+                            description: model.description.clone(),
+                            external_table_id: None,
+                        })
+                        .await?;
+                    if existing.status != model.status {
+                        owner
+                            .update_model_status(UpdateModelDefinitionStatusCommand {
+                                actor_user_id: actor.user_id,
+                                model_id: existing.id,
+                                status: model.status,
+                            })
+                            .await?;
+                    }
+                    for field in model.fields.iter().filter(|field| field.is_system) {
+                        let target_field = existing
+                            .fields
+                            .iter()
+                            .find(|item| item.code == field.code)
+                            .context("existing platform field missing")?;
+                        result
+                            .id_map
+                            .insert(field.id.to_string(), target_field.id.to_string());
+                    }
+                    continue;
+                }
                 let created = owner
                     .create_model(CreateModelDefinitionCommand {
                         actor_user_id: actor.user_id,
@@ -50,7 +90,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         status: Some(model.status),
                     })
                     .await?;
-                result.created("data_model", model.id, created.id);
+                self.record_created(actor, result, "data_model", model.id, created.id)
+                    .await?;
                 for field in model.fields.iter().filter(|f| f.is_system) {
                     let mapped = created
                         .fields
@@ -65,7 +106,25 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         }
         // All model identities exist before any relation field is created.
         for model in package.data_models.iter().filter(|m| !m.builtin) {
+            let target_model = target
+                .data_models
+                .iter()
+                .find(|item| item.id == result.mapped(model.id).unwrap_or_default());
             for field in model.fields.iter().filter(|f| !f.is_system) {
+                if let Some(existing) = target_model.and_then(|item| {
+                    item.fields.iter().find(|candidate| {
+                        candidate.id.to_string()
+                            == result
+                                .id_map
+                                .get(&field.id.to_string())
+                                .cloned()
+                                .unwrap_or_else(|| field.id.to_string())
+                            || candidate.code == field.code
+                    })
+                }) {
+                    result.updated("model_field", field.id, existing.id);
+                    continue;
+                }
                 let created = owner
                     .add_field(AddModelFieldCommand {
                         actor_user_id: actor.user_id,
@@ -88,7 +147,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         relation_options: result.value(field.relation_options.clone()),
                     })
                     .await?;
-                result.created("model_field", field.id, created.id);
+                self.record_created(actor, result, "model_field", field.id, created.id)
+                    .await?;
             }
         }
         Ok(())

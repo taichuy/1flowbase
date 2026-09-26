@@ -1,5 +1,24 @@
 use super::PortableTemplatePackage;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+
+pub(super) fn installed_source_keys(package: &PortableTemplatePackage) -> BTreeSet<String> {
+    package
+        .data_models
+        .iter()
+        .flat_map(|model| {
+            std::iter::once(model.id.to_string())
+                .chain(model.fields.iter().map(|field| field.id.to_string()))
+        })
+        .chain(package.applications.iter().map(|app| app.id.to_string()))
+        .chain(package.pages.iter().flat_map(|page| {
+            std::iter::once(page.id.to_string()).chain(page.tabs.iter().flat_map(|tab| {
+                std::iter::once(tab.id.to_string())
+                    .chain(tab.blocks.iter().map(|block| block.block_id.clone()))
+            }))
+        }))
+        .collect()
+}
 
 /// Every source key in the installer map has exactly one logical owner. Shared flow
 /// snapshots and plugin installations may repeat the same key only for that owner.

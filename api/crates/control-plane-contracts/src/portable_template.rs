@@ -15,6 +15,8 @@ pub struct PortableTemplateSelection {
     pub application_ids: Vec<Uuid>,
     #[serde(default)]
     pub data_model_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub mcp_instance_ids: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -23,6 +25,8 @@ pub struct PortableTemplatePackage {
     pub pages: Vec<PortablePage>,
     pub applications: Vec<PortableApplication>,
     pub data_models: Vec<PortableDataModel>,
+    #[serde(default)]
+    pub mcp_bundle: Option<domain::McpBundlePackage>,
     #[serde(default)]
     pub plugins: Vec<PortablePluginDependency>,
 }
@@ -88,9 +92,14 @@ pub struct PortablePublication {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PortableSchedule {
+    #[serde(default = "portable_schedule_default_enabled")]
+    pub enabled: bool,
     pub cron: String,
     pub timezone: String,
     pub input_payload: Value,
+}
+fn portable_schedule_default_enabled() -> bool {
+    true
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -158,6 +167,12 @@ pub struct PortableTemplateCatalog {
     pub pages: Vec<PortableCatalogItem>,
     pub applications: Vec<PortableCatalogItem>,
     pub data_models: Vec<PortableCatalogItem>,
+    pub mcp_instances: Vec<PortableMcpCatalogItem>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableMcpCatalogItem {
+    pub id: String,
+    pub name: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortableCatalogItem {
@@ -171,6 +186,7 @@ pub struct PortableTemplateCounts {
     pub pages: usize,
     pub applications: usize,
     pub data_models: usize,
+    pub mcp_instances: usize,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PortableTemplatePreview {
@@ -179,4 +195,16 @@ pub struct PortableTemplatePreview {
     pub failures: Vec<String>,
     pub warnings: Vec<String>,
     pub dependencies: Vec<PortablePluginDependency>,
+    #[serde(default)]
+    pub effects: Vec<PortableTemplateEffect>,
+    #[serde(default)]
+    pub mcp_shared_tool_impacts: Vec<domain::McpBundleSharedToolImpact>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableTemplateEffect {
+    pub kind: String,
+    pub source_id: String,
+    pub target_id: Option<String>,
+    pub action: String,
 }

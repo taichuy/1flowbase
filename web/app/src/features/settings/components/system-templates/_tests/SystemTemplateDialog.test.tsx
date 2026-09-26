@@ -91,14 +91,17 @@ describe('portable template flow', () => {
     api.getSystemTemplateCatalog.mockResolvedValue({
       pages: [],
       applications: [],
-      data_models: []
+      data_models: [],
+      mcp_instances: []
     });
     api.previewSystemTemplate.mockResolvedValue({
       valid: true,
-      counts: { pages: 1, applications: 1, data_models: 2 },
+      counts: { pages: 1, applications: 1, data_models: 2, mcp_instances: 0 },
       failures: [],
       warnings: [],
-      dependencies: []
+      dependencies: [],
+      effects: [],
+      mcp_shared_tool_impacts: []
     });
   });
   test('export starts with no selected objects', async () => {
@@ -109,13 +112,31 @@ describe('portable template flow', () => {
     ).toBeDisabled();
     expect(api.exportSystemTemplate).not.toHaveBeenCalled();
   });
+  test('MCP instance alone can be selected for export', async () => {
+    api.getSystemTemplateCatalog.mockResolvedValue({
+      pages: [],
+      applications: [],
+      data_models: [],
+      mcp_instances: [{ id: 'agent-tools', name: 'Agent tools' }]
+    });
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Export template' }));
+    const selector = await screen.findByRole('combobox', {
+      name: 'MCP instances'
+    });
+    fireEvent.mouseDown(selector);
+    fireEvent.click(await screen.findByText('Agent tools'));
+    expect(screen.getByRole('button', { name: 'Download JSON' })).toBeEnabled();
+  });
   test('server rejection prevents installation and replacing the file clears stale preview', async () => {
     api.previewSystemTemplate.mockResolvedValue({
       valid: false,
-      counts: { pages: 0, applications: 0, data_models: 0 },
+      counts: { pages: 0, applications: 0, data_models: 0, mcp_instances: 0 },
       failures: ['Route already exists'],
       warnings: [],
-      dependencies: []
+      dependencies: [],
+      effects: [],
+      mcp_shared_tool_impacts: []
     });
     const { container } = setup();
     upload(container);
@@ -135,6 +156,7 @@ describe('portable template flow', () => {
   test('installs the complete previewed package and preserves honest partial outcome', async () => {
     api.installSystemTemplate.mockResolvedValue({
       complete: false,
+      updated: [],
       created: [
         {
           kind: 'data_model',

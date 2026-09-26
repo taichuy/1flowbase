@@ -61,6 +61,7 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         &self,
         actor: &domain::ActorContext,
         package: &PortableTemplatePackage,
+        target: &PortableTemplatePackage,
         result: &mut PortableTemplateInstallResult,
     ) -> Result<()> {
         let owner = self.page_owner(actor);
@@ -75,6 +76,87 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 .context("unresolved page parent/cycle")?;
             let page = pending.remove(index);
             let parent_id = page.parent_id.map(|id| result.mapped(id)).transpose()?;
+            let target_id: Uuid = result
+                .id_map
+                .get(&page.id.to_string())
+                .and_then(|id| id.parse().ok())
+                .unwrap_or(page.id);
+            if let Some(existing) = target.pages.iter().find(|item| item.id == target_id) {
+                owner
+                    .move_page(MoveFrontstagePageCommand {
+                        actor_user_id: actor.user_id,
+                        workspace_id: actor.current_workspace_id,
+                        page_id: existing.id,
+                        parent_id,
+                        rank: Some(page.rank.clone()),
+                    })
+                    .await?;
+                owner
+                    .update_metadata(UpdateFrontstagePageMetadataCommand {
+                        actor_user_id: actor.user_id,
+                        workspace_id: actor.current_workspace_id,
+                        page_id: existing.id,
+                        title: Some(page.title.clone()),
+                        icon: Some(page.icon.clone()),
+                        tooltip: Some(page.tooltip.clone()),
+                        is_hidden: Some(page.is_hidden),
+                        placement: Some(page.placement),
+                        content_presentation: (page.kind == domain::FrontstagePageKind::Page)
+                            .then_some(page.content_presentation),
+                        slug: Some(page.slug.clone()),
+                    })
+                    .await?;
+                result.updated("page", page.id, existing.id);
+                for tab in &page.tabs {
+                    let mapped_id = result
+                        .id_map
+                        .get(&tab.id.to_string())
+                        .and_then(|id| id.parse::<Uuid>().ok());
+                    let existing_tab = existing
+                        .tabs
+                        .iter()
+                        .find(|item| Some(item.id) == mapped_id || item.id == tab.id)
+                        .or_else(|| {
+                            tab.is_default
+                                .then(|| existing.tabs.iter().find(|item| item.is_default))
+                                .flatten()
+                        });
+                    if let Some(existing_tab) = existing_tab {
+                        owner
+                            .update_page_tab(UpdateFrontstagePageTabCommand {
+                                actor_user_id: actor.user_id,
+                                workspace_id: actor.current_workspace_id,
+                                page_id: existing.id,
+                                tab_id: existing_tab.id,
+                                title: Some(tab.title.clone()),
+                                rank: Some(tab.rank.clone()),
+                            })
+                            .await?;
+                        result.updated("tab", tab.id, existing_tab.id);
+                        result.id_map.insert(
+                            tab.document_root_uid.clone(),
+                            existing_tab.document_root_uid.clone(),
+                        );
+                    } else {
+                        let created = owner
+                            .create_page_tab(CreateFrontstagePageTabCommand {
+                                actor_user_id: actor.user_id,
+                                workspace_id: actor.current_workspace_id,
+                                page_id: existing.id,
+                                title: tab.title.clone(),
+                                route_segment: tab.route_segment.clone(),
+                                rank: Some(tab.rank.clone()),
+                            })
+                            .await?;
+                        self.record_created(actor, result, "tab", tab.id, created.id)
+                            .await?;
+                        result
+                            .id_map
+                            .insert(tab.document_root_uid.clone(), created.document_root_uid);
+                    }
+                }
+                continue;
+            }
             let created = match page.kind {
                 domain::FrontstagePageKind::Group => domain::frontstage::FrontstagePageCreation {
                     page: owner
@@ -109,7 +191,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 }
             };
             let page_id = created.page.id;
-            result.created("page", page.id, page_id);
+            self.record_created(actor, result, "page", page.id, page_id)
+                .await?;
             owner
                 .update_metadata(UpdateFrontstagePageMetadataCommand {
                     actor_user_id: actor.user_id,
@@ -150,7 +233,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         })
                         .await?
                 };
-                result.created("tab", tab.id, created_tab.id);
+                self.record_created(actor, result, "tab", tab.id, created_tab.id)
+                    .await?;
                 result
                     .id_map
                     .insert(tab.document_root_uid.clone(), created_tab.document_root_uid);
@@ -174,6 +258,28 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         })
                         .context("unresolved block parent/cycle")?;
                     let block = pending.remove(index);
+                    let target_block = target
+                        .pages
+                        .iter()
+                        .find(|item| item.id == page_id)
+                        .and_then(|item| item.tabs.iter().find(|item| item.id == tab_id))
+                        .and_then(|item| {
+                            item.blocks.iter().find(|item| {
+                                item.block_id
+                                    == result
+                                        .id_map
+                                        .get(&block.block_id)
+                                        .cloned()
+                                        .unwrap_or_else(|| block.block_id.clone())
+                            })
+                        });
+                    if let Some(existing) = target_block {
+                        result.updated("block", &block.block_id, &existing.block_id);
+                        result
+                            .id_map
+                            .insert(block.code_ref.clone(), existing.code_ref.clone());
+                        continue;
+                    }
                     let parent_block_id = block
                         .parent_block_id
                         .as_ref()
@@ -208,7 +314,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         })
                         .await?;
                     last_sibling.insert(parent_block_id, created.block_id.clone());
-                    result.created("block", &block.block_id, &created.block_id);
+                    self.record_created(actor, result, "block", &block.block_id, &created.block_id)
+                        .await?;
                     result
                         .id_map
                         .insert(block.code_ref.clone(), created.code_ref);
@@ -227,7 +334,10 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         for page in &package.pages {
             let page_id = result.mapped(page.id)?;
             for tab in &page.tabs {
-                for block in &tab.blocks {
+                let mut blocks: Vec<_> = tab.blocks.iter().collect();
+                blocks.sort_by(|left, right| left.rank.cmp(&right.rank));
+                let mut last_sibling: BTreeMap<Option<String>, String> = BTreeMap::new();
+                for block in blocks {
                     let block_id = result
                         .id_map
                         .get(&block.block_id)
@@ -239,6 +349,28 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         page_id,
                         block_id: block_id.clone(),
                     };
+                    let parent_block_id = block
+                        .parent_block_id
+                        .as_ref()
+                        .map(|id| {
+                            result
+                                .id_map
+                                .get(id)
+                                .cloned()
+                                .context("block parent mapping missing")
+                        })
+                        .transpose()?;
+                    owner
+                        .move_block_node(MoveFrontstageBlockNodeCommand {
+                            scope: scope(),
+                            position: FrontstageBlockPosition {
+                                parent_block_id: parent_block_id.clone(),
+                                before_block_id: None,
+                                after_block_id: last_sibling.get(&parent_block_id).cloned(),
+                            },
+                        })
+                        .await?;
+                    last_sibling.insert(parent_block_id, block_id.clone());
                     owner
                         .update_block_node(UpdateFrontstageBlockNodeCommand {
                             scope: scope(),

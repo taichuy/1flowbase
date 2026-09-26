@@ -14,6 +14,7 @@ mod visibility;
 pub struct PortableTemplateInstallResult {
     pub complete: bool,
     pub created: Vec<PortableTemplateCreatedResource>,
+    pub updated: Vec<PortableTemplateCreatedResource>,
     pub id_map: BTreeMap<String, String>,
     pub failures: Vec<String>,
 }
@@ -40,6 +41,15 @@ impl PortableTemplateInstallResult {
             .parse()
             .map_err(Into::into)
     }
+    fn updated(&mut self, kind: &str, source: impl ToString, target: impl ToString) {
+        let (source_id, target_id) = (source.to_string(), target.to_string());
+        self.id_map.insert(source_id.clone(), target_id.clone());
+        self.updated.push(PortableTemplateCreatedResource {
+            kind: kind.into(),
+            source_id,
+            target_id,
+        });
+    }
     fn value(&self, mut value: serde_json::Value) -> serde_json::Value {
         rewrite_template_value(&mut value, &self.id_map);
         value
@@ -49,6 +59,8 @@ impl PortableTemplateInstallResult {
 pub trait PortableTemplateInstallRepository:
     ApplicationRepository
     + PortableTemplateReadRepository
+    + PortableTemplateIdentityRepository
+    + McpManagementRepository
     + ModelDefinitionRepository
     + FlowRepository
     + ApplicationApiMappingRepository
@@ -56,6 +68,7 @@ pub trait PortableTemplateInstallRepository:
     + ApplicationCompiledPlanRepository
     + ApplicationCompileContextRepository
     + ApplicationJsDependencySelectionRepository
+    + WorkflowScheduleTriggerRepository
     + FrontstagePageRepository
     + FrontstageBlockTreeRepository
     + FrontendBlockCatalogRepository
@@ -67,6 +80,8 @@ pub trait PortableTemplateInstallRepository:
 impl<T> PortableTemplateInstallRepository for T where
     T: ApplicationRepository
         + PortableTemplateReadRepository
+        + PortableTemplateIdentityRepository
+        + McpManagementRepository
         + ModelDefinitionRepository
         + FlowRepository
         + ApplicationApiMappingRepository
@@ -74,6 +89,7 @@ impl<T> PortableTemplateInstallRepository for T where
         + ApplicationCompiledPlanRepository
         + ApplicationCompileContextRepository
         + ApplicationJsDependencySelectionRepository
+        + WorkflowScheduleTriggerRepository
         + FrontstagePageRepository
         + FrontstageBlockTreeRepository
         + FrontendBlockCatalogRepository
@@ -88,6 +104,22 @@ pub struct PortableTemplateInstallService<R> {
     node_id: Option<String>,
 }
 impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
+    async fn record_created(
+        &self,
+        actor: &domain::ActorContext,
+        result: &mut PortableTemplateInstallResult,
+        kind: &str,
+        source: impl ToString,
+        target: impl ToString,
+    ) -> Result<()> {
+        let source = source.to_string();
+        let target = target.to_string();
+        self.repository
+            .record_portable_template_identity(actor.current_workspace_id, kind, &source, &target)
+            .await?;
+        result.created(kind, source, target);
+        Ok(())
+    }
     pub fn new(repository: R) -> Self {
         Self {
             repository,
@@ -134,6 +166,14 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
             .await?;
         self.preflight_visibility(&actor, &package).await?;
         let mut result = PortableTemplateInstallResult::default();
+        let source_keys = super::identity::installed_source_keys(&package);
+        result.id_map = self
+            .repository
+            .load_portable_template_identity_map(actor.current_workspace_id)
+            .await?
+            .into_iter()
+            .filter(|(source, _)| source_keys.contains(source))
+            .collect();
         self.map_frontend_installations(&actor, &package, &mut result)
             .await?;
         // Acknowledged owner calls may commit before a later audit/cache operation fails.
@@ -142,10 +182,10 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
             self.install_models(&actor, &package, &target, &mut result)
                 .await
                 .context("data models")?;
-            self.create_applications(&actor, &package, &mut result)
+            self.create_applications(&actor, &package, &target, &mut result)
                 .await
                 .context("application creation")?;
-            self.create_pages(&actor, &package, &mut result)
+            self.create_pages(&actor, &package, &target, &mut result)
                 .await
                 .context("page creation")?;
             self.fill_model_fields(&actor, &package, &result)

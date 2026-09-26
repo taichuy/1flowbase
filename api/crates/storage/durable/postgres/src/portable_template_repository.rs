@@ -4,7 +4,40 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{portable_template::*, ports::*};
 use sqlx::Row;
+use std::collections::BTreeMap;
 use uuid::Uuid;
+
+#[async_trait]
+impl PortableTemplateIdentityRepository for PgControlPlaneStore {
+    async fn load_portable_template_identity_map(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<BTreeMap<String, String>> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "select source_id, target_id from portable_template_identities where workspace_id = $1",
+        )
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().collect())
+    }
+
+    async fn record_portable_template_identity(
+        &self,
+        workspace_id: Uuid,
+        kind: &str,
+        source_id: &str,
+        target_id: &str,
+    ) -> Result<()> {
+        let written = sqlx::query("insert into portable_template_identities (workspace_id, kind, source_id, target_id) values ($1, $2, $3, $4) on conflict (workspace_id, source_id) do update set target_id = excluded.target_id where portable_template_identities.kind = excluded.kind")
+            .bind(workspace_id).bind(kind).bind(source_id).bind(target_id).execute(self.pool()).await?;
+        anyhow::ensure!(
+            written.rows_affected() == 1,
+            "portable_template_identity_kind_conflict:{source_id}"
+        );
+        Ok(())
+    }
+}
 
 #[async_trait]
 impl PortableTemplateReadRepository for PgControlPlaneStore {
@@ -26,6 +59,7 @@ impl PortableTemplateReadRepository for PgControlPlaneStore {
             applications: Vec::new(),
             data_models: Vec::new(),
             plugins: Vec::new(),
+            mcp_bundle: None,
         };
         for model in ModelDefinitionRepository::list_model_definitions(self, workspace_id).await? {
             if model.source_kind != domain::DataModelSourceKind::MainSource {
@@ -94,6 +128,7 @@ impl PortableTemplateReadRepository for PgControlPlaneStore {
                 WorkflowScheduleTriggerRepository::get_workflow_schedule_trigger(self, app.id)
                     .await?
                     .map(|s| PortableSchedule {
+                        enabled: s.enabled,
                         cron: s.cron,
                         timezone: s.timezone,
                         input_payload: s.input_payload,

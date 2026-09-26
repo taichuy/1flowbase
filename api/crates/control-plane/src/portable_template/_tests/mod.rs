@@ -42,6 +42,7 @@ fn snapshot() -> PortableTemplatePackage {
         applications: vec![],
         data_models: vec![],
         plugins: vec![],
+        mcp_bundle: None,
     }
 }
 #[test]
@@ -155,6 +156,31 @@ fn preview_reports_collision_without_mutating_target() {
         .iter()
         .any(|f| f.contains("model_code_conflict:orders")));
     assert_eq!(target.data_models[0].id, Uuid::from_u128(2));
+}
+#[test]
+fn preview_updates_matching_id_and_uses_recorded_identity_for_repeated_import() {
+    let mut package = snapshot();
+    package.data_models.push(model(1, "orders"));
+    let mut target = snapshot();
+    target.data_models.push(model(1, "orders"));
+    let direct = preview_portable_template(&package, &target);
+    assert!(direct.valid, "{:?}", direct.failures);
+    assert_eq!(direct.effects[0].action, "update");
+
+    target.data_models[0].id = Uuid::from_u128(2);
+    let mapped = preview_portable_template_with_map(
+        &package,
+        &target,
+        &BTreeMap::from([(
+            Uuid::from_u128(1).to_string(),
+            Uuid::from_u128(2).to_string(),
+        )]),
+    );
+    assert!(mapped.valid, "{:?}", mapped.failures);
+    assert_eq!(
+        mapped.effects[0].target_id.as_deref(),
+        Some(Uuid::from_u128(2).to_string().as_str())
+    );
 }
 #[test]
 fn package_shape_rejects_ownership_external_source_and_payload_data() {

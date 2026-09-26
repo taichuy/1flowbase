@@ -12,7 +12,7 @@ fn fixture() -> PortableTemplatePackage {
     let page_id = Uuid::new_v4();
     let tab_id = Uuid::new_v4();
     let block_id = Uuid::new_v4().to_string();
-    PortableTemplatePackage {schema_version:PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),plugins:vec![],applications:vec![],
+    PortableTemplatePackage {schema_version:PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),plugins:vec![],mcp_bundle:None,applications:vec![],
         data_models:vec![PortableDataModel {id:model_id,code:"portable_orders".into(),title:"Portable orders".into(),description:None,scope_kind:domain::DataModelScopeKind::Workspace,template_provider:"core".into(),template_code:"general".into(),template_version:"v1".into(),status:domain::DataModelStatus::Published,builtin:false,fields:vec![PortableModelField {id:Uuid::new_v4(),code:"label".into(),title:"Label".into(),description:None,field_kind:domain::ModelFieldKind::String,is_system:false,is_required:false,api_required:false,is_unique:false,default_value:None,display_interface:None,display_options:json!({"page_id":page_id}),relation_target_model_id:None,relation_options:json!({})}]}],
         pages:vec![PortablePage {id:page_id,parent_id:None,kind:domain::FrontstagePageKind::Page,title:Some("Portable".into()),icon:None,tooltip:None,is_hidden:false,placement:domain::frontstage::FrontstageNavigationPlacement::Topbar,content_presentation:domain::frontstage::FrontstagePageContentPresentation::Single,slug:Some("portable".into()),rank:"a".into(),visibility_rules:vec![],tabs:vec![PortableTab {id:tab_id,title:Some("Default".into()),rank:"a".into(),is_default:true,route_segment:None,document_root_uid:format!("source-tab-{tab_id}"),document_payload:json!({"root":format!("source-tab-{tab_id}"),"model":model_id,"page":page_id,"tab":tab_id}),blocks:vec![PortableBlock {block_id:block_id.clone(),parent_block_id:None,rank:"a".into(),presentation:domain::frontstage::FrontstageBlockPresentation::Inline,title:Some("Orders".into()),description:None,code_ref:format!("frontstage.block.{block_id}"),schema_version:1,input_mapping:BTreeMap::new(),output_mapping:BTreeMap::new(),runtime_descriptor:json!({"props":{"model_id":model_id}}),source_code:format!("export default function Component() {{ return '{model_id}:{page_id}:{tab_id}:{block_id}'; }}")}]}]}]}
 }
@@ -145,11 +145,12 @@ async fn installs_main_source_table_and_rewrites_page_without_duplicate_default_
         .fields
         .iter()
         .any(|field| field.code == "created_by" && field.is_system));
-    let collision = PortableTemplateInstallService::new(store.clone())
+    let repeated = PortableTemplateInstallService::new(store.clone())
         .install(actor.id, package)
         .await
-        .unwrap_err();
-    assert!(collision.to_string().contains("conflict"));
+        .unwrap();
+    assert!(repeated.complete, "{:?}", repeated.failures);
+    assert!(repeated.created.is_empty());
     assert_eq!(
         FrontstagePageRepository::list_frontstage_page_tabs(&store, workspace.id, page_id)
             .await
@@ -217,7 +218,8 @@ async fn published_workflow_is_compiled_and_draft_remains_independent() {
         method: WorkflowExtensionHttpMethod::Get,
         response_mode: WorkflowExtensionResponseMode::Sync,
     });
-    let package = PortableTemplatePackage {
+    let mut package = PortableTemplatePackage {
+        mcp_bundle: None,
         schema_version: PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),
         pages: vec![],
         data_models: vec![],
@@ -243,7 +245,7 @@ async fn published_workflow_is_compiled_and_draft_remains_independent() {
         }],
     };
     let result = PortableTemplateInstallService::new(store.clone())
-        .install(actor.id, package)
+        .install(actor.id, package.clone())
         .await
         .unwrap();
     assert!(result.complete, "{:?}", result.failures);
@@ -301,6 +303,38 @@ async fn published_workflow_is_compiled_and_draft_remains_independent() {
     assert_eq!(
         app.published.as_ref().unwrap().flow_document["meta"]["name"],
         "published definition"
+    );
+    package.applications[0].name = "Updated Workflow".into();
+    package.applications[0].flow_document = workflow_document(source_flow, "updated draft");
+    package.applications[0]
+        .published
+        .as_mut()
+        .unwrap()
+        .flow_document = workflow_document(source_flow, "updated publication");
+    let repeated = PortableTemplateInstallService::new(store.clone())
+        .install(actor.id, package)
+        .await
+        .unwrap();
+    assert!(repeated.complete, "{:?}", repeated.failures);
+    assert!(repeated.created.is_empty());
+    assert!(repeated
+        .updated
+        .iter()
+        .any(|item| item.kind == "application" && item.target_id == application_id.to_string()));
+    let updated = store
+        .portable_template_snapshot(actor.id, workspace.id)
+        .await
+        .unwrap();
+    let updated = updated
+        .applications
+        .iter()
+        .find(|item| item.id == application_id)
+        .unwrap();
+    assert_eq!(updated.name, "Updated Workflow");
+    assert_eq!(updated.flow_document["meta"]["name"], "updated draft");
+    assert_eq!(
+        updated.published.as_ref().unwrap().flow_document["meta"]["name"],
+        "updated publication"
     );
 }
 
@@ -369,4 +403,133 @@ async fn visibility_merges_existing_target_grants_and_missing_role_blocks_all_wr
         .iter()
         .any(|r| r.page_id == Some(existing.page.id)));
     assert!(view.rules.iter().any(|r| r.page_id == Some(page_id)));
+}
+
+#[tokio::test]
+async fn repeat_install_updates_mapped_resources_and_preserves_target_only_model() {
+    use control_plane::model_definition::{CreateModelDefinitionCommand, ModelDefinitionService};
+    let (store, workspace, actor) = support::seed_store().await;
+    let mut package = fixture();
+    let first = PortableTemplateInstallService::new(store.clone())
+        .install(actor.id, package.clone())
+        .await
+        .unwrap();
+    assert!(first.complete, "{:?}", first.failures);
+    let model_id: Uuid = first.id_map[&package.data_models[0].id.to_string()]
+        .parse()
+        .unwrap();
+    let page_id: Uuid = first.id_map[&package.pages[0].id.to_string()]
+        .parse()
+        .unwrap();
+    let field_id: Uuid = first.id_map[&package.data_models[0].fields[0].id.to_string()]
+        .parse()
+        .unwrap();
+    let block_id = first.id_map[&package.pages[0].tabs[0].blocks[0].block_id].clone();
+    let target_only = ModelDefinitionService::new(store.clone())
+        .create_model(CreateModelDefinitionCommand {
+            actor_user_id: actor.id,
+            scope_kind: domain::DataModelScopeKind::Workspace,
+            data_source_instance_id: None,
+            external_resource_key: None,
+            external_table_id: None,
+            external_capabilities: None,
+            template_provider: "core".into(),
+            template_code: "general".into(),
+            template_version: "v1".into(),
+            code: "target_only_orders".into(),
+            title: "Target only".into(),
+            description: None,
+            status: Some(domain::DataModelStatus::Draft),
+        })
+        .await
+        .unwrap();
+
+    package.data_models[0].title = "Updated orders".into();
+    package.data_models[0].fields[0].title = "Updated label".into();
+    package.pages[0].title = Some("Updated page".into());
+    package.pages[0].tabs[0].blocks[0].title = Some("Updated block".into());
+    let preview = PortableTemplateService::new(store.clone())
+        .preview(actor.id, &package)
+        .await
+        .unwrap();
+    assert!(preview.valid, "{:?}", preview.failures);
+    assert!(preview
+        .effects
+        .iter()
+        .any(|effect| effect.kind == "data_model"
+            && effect.action == "update"
+            && effect.target_id.as_deref() == Some(model_id.to_string().as_str())));
+    assert!(preview.effects.iter().any(|effect| effect.kind == "page"
+        && effect.action == "update"
+        && effect.target_id.as_deref() == Some(page_id.to_string().as_str())));
+
+    let second = PortableTemplateInstallService::new(store.clone())
+        .install(actor.id, package.clone())
+        .await
+        .unwrap();
+    assert!(second.complete, "{:?}", second.failures);
+    assert!(second.created.is_empty(), "{:?}", second.created);
+    assert!(second
+        .updated
+        .iter()
+        .any(|item| item.kind == "model_field" && item.target_id == field_id.to_string()));
+    assert!(second
+        .updated
+        .iter()
+        .any(|item| item.kind == "block" && item.target_id == block_id));
+    let snapshot = store
+        .portable_template_snapshot(actor.id, workspace.id)
+        .await
+        .unwrap();
+    assert!(snapshot
+        .data_models
+        .iter()
+        .any(|item| item.id == target_only.id));
+    assert_eq!(
+        snapshot
+            .data_models
+            .iter()
+            .find(|item| item.id == model_id)
+            .unwrap()
+            .title,
+        "Updated orders"
+    );
+    assert_eq!(
+        snapshot
+            .data_models
+            .iter()
+            .find(|item| item.id == model_id)
+            .unwrap()
+            .fields
+            .iter()
+            .find(|item| item.id == field_id)
+            .unwrap()
+            .title,
+        "Updated label"
+    );
+    assert_eq!(
+        snapshot
+            .pages
+            .iter()
+            .find(|item| item.id == page_id)
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Updated page")
+    );
+    assert_eq!(
+        snapshot
+            .pages
+            .iter()
+            .find(|item| item.id == page_id)
+            .unwrap()
+            .tabs[0]
+            .blocks
+            .iter()
+            .find(|item| item.block_id == block_id)
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Updated block")
+    );
 }

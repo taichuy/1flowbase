@@ -4,9 +4,12 @@ use crate::routes::console_interface::{
     self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
     ConsoleInterfaceTargetError,
 };
+use crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with;
+use control_plane::mcp_bundle::{ImportMcpBundleCommand, PreviewMcpBundleCommand};
+use control_plane::mcp_management::McpManagementService;
 use control_plane::portable_template::{
-    PortableTemplateInstallService, PortableTemplatePackage, PortableTemplateSelection,
-    PortableTemplateService,
+    PortableTemplateEffect, PortableTemplateInstallService, PortableTemplatePackage,
+    PortableTemplateSelection, PortableTemplateService,
 };
 use control_plane::ports::RuntimeRegistrySync;
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -65,6 +68,78 @@ impl TemplateAdapter {
             }
             TemplateInput::Preview(package) => {
                 let mut preview = service.preview(actor.user_id, &package).await?;
+                if let Some(bundle) = &package.mcp_bundle {
+                    let mcp_preview = McpManagementService::new(self.0.store.clone())
+                        .preserve_unmentioned_instance_entries(actor.user_id, bundle.clone())
+                        .await?;
+                    let mcp_preview = McpManagementService::new(self.0.store.clone())
+                        .preview_bundle(PreviewMcpBundleCommand {
+                            actor_user_id: actor.user_id,
+                            package: mcp_preview,
+                            interface_catalog: mcp_interface_catalog_entries_with(
+                                &self.0.mcp_interface_catalog,
+                                actor,
+                            )
+                            .await?,
+                            current_system_version: env!("CARGO_PKG_VERSION").into(),
+                        })
+                        .await?;
+                    if mcp_preview.effect_summary.conflicts > 0
+                        || mcp_preview.effect_summary.failed > 0
+                    {
+                        preview
+                            .failures
+                            .push("portable_template_mcp_conflict".into());
+                        preview.valid = false;
+                    }
+                    preview
+                        .effects
+                        .extend(mcp_preview.instances.iter().map(|item| {
+                            PortableTemplateEffect {
+                                kind: "mcp_instance".into(),
+                                source_id: item.id.clone(),
+                                target_id: matches!(
+                                    item.effect,
+                                    domain::McpBundleItemEffect::Update
+                                        | domain::McpBundleItemEffect::AlreadyPresent
+                                )
+                                .then(|| item.id.clone()),
+                                action: match item.effect {
+                                    domain::McpBundleItemEffect::Create => "create",
+                                    domain::McpBundleItemEffect::AlreadyPresent => "unchanged",
+                                    _ => "update",
+                                }
+                                .into(),
+                            }
+                        }));
+                    for (kind, items) in [
+                        ("mcp_tool", &mcp_preview.tools),
+                        ("mcp_connection", &mcp_preview.connections),
+                    ] {
+                        preview.effects.extend(items.iter().map(|item| {
+                            PortableTemplateEffect {
+                                kind: kind.into(),
+                                source_id: item.id.clone(),
+                                target_id: (item.effect != domain::McpBundleItemEffect::Create)
+                                    .then(|| item.id.clone()),
+                                action: match item.effect {
+                                    domain::McpBundleItemEffect::Create => "create",
+                                    domain::McpBundleItemEffect::AlreadyPresent => "unchanged",
+                                    _ => "update",
+                                }
+                                .into(),
+                            }
+                        }));
+                    }
+                    for item in mcp_preview.tools.iter().chain(&mcp_preview.connections) {
+                        if let Some(reason) = &item.reason {
+                            preview
+                                .warnings
+                                .push(format!("MCP {}: {}", item.id, reason));
+                        }
+                    }
+                    preview.mcp_shared_tool_impacts = mcp_preview.shared_tool_impacts;
+                }
                 if let Err(error) = PortableTemplateInstallService::new(repository.clone())
                     .preflight_visibility(actor, &package)
                     .await
@@ -74,7 +149,22 @@ impl TemplateAdapter {
                 }
                 serde_json::to_value(preview)?
             }
-            TemplateInput::Install(package) => {
+            TemplateInput::Install(mut package) => {
+                if let Some(bundle) = package.mcp_bundle.take() {
+                    package.mcp_bundle = Some(
+                        McpManagementService::new(self.0.store.clone())
+                            .preserve_unmentioned_instance_entries(actor.user_id, bundle)
+                            .await?,
+                    );
+                }
+                let mcp_catalog = if package.mcp_bundle.is_some() {
+                    Some(
+                        mcp_interface_catalog_entries_with(&self.0.mcp_interface_catalog, actor)
+                            .await?,
+                    )
+                } else {
+                    None
+                };
                 let preview = service.preview(actor.user_id, &package).await?;
                 if !preview.valid {
                     return Err(control_plane::errors::ControlPlaneError::InvalidInput(
@@ -85,11 +175,75 @@ impl TemplateAdapter {
                 PortableTemplateInstallService::new(repository.clone())
                     .preflight_visibility(actor, &package)
                     .await?;
+                if let Some(bundle) = &package.mcp_bundle {
+                    let mcp_preview = McpManagementService::new(self.0.store.clone())
+                        .preview_bundle(PreviewMcpBundleCommand {
+                            actor_user_id: actor.user_id,
+                            package: bundle.clone(),
+                            interface_catalog: mcp_catalog.clone().unwrap_or_default(),
+                            current_system_version: env!("CARGO_PKG_VERSION").into(),
+                        })
+                        .await?;
+                    if mcp_preview.effect_summary.conflicts > 0
+                        || mcp_preview.effect_summary.failed > 0
+                    {
+                        return Err(control_plane::errors::ControlPlaneError::Conflict(
+                            "portable_template_mcp_conflict",
+                        )
+                        .into());
+                    }
+                }
                 self.0.resolve_plugins(actor, &package.plugins).await?;
+                let mcp_bundle = package.mcp_bundle.clone();
                 let mut installed = PortableTemplateInstallService::new(repository)
                     .with_node_id(self.0.api_node_id.clone())
                     .install(actor.user_id, package)
                     .await?;
+                if installed.complete {
+                    if let Some(bundle) = mcp_bundle {
+                        let report = McpManagementService::new(self.0.store.clone())
+                            .import_bundle(ImportMcpBundleCommand {
+                                actor_user_id: actor.user_id,
+                                package: bundle,
+                                interface_catalog: mcp_catalog.unwrap_or_default(),
+                                current_system_version: env!("CARGO_PKG_VERSION").into(),
+                            })
+                            .await;
+                        match report {
+                            Ok(report) => {
+                                if report.effect_summary.conflicts > 0
+                                    || report.effect_summary.failed > 0
+                                {
+                                    installed.complete = false;
+                                    installed
+                                        .failures
+                                        .push("portable_template_mcp_import_incomplete".into());
+                                }
+                                for (kind, items) in [
+                                    ("mcp_instance", report.instances),
+                                    ("mcp_tool", report.tools),
+                                    ("mcp_connection", report.connections),
+                                ] {
+                                    for item in items {
+                                        let resource = control_plane::portable_template::PortableTemplateCreatedResource {
+                                            kind: kind.into(), source_id: item.id.clone(), target_id: item.id,
+                                        };
+                                        if item.effect == domain::McpBundleItemEffect::Create {
+                                            installed.created.push(resource);
+                                        } else if item.effect == domain::McpBundleItemEffect::Update
+                                        {
+                                            installed.updated.push(resource);
+                                        }
+                                    }
+                                }
+                            }
+                            Err(error) => {
+                                installed.complete = false;
+                                installed.failures.push(format!("MCP instance import: {error:#}; earlier definitions may already be committed"));
+                            }
+                        }
+                    }
+                }
                 // Owner writes may partially commit. Synchronize those definitions too.
                 if let Err(error) = self.0.runtime_registry_sync.rebuild().await {
                     installed.complete = false;

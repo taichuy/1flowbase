@@ -24,6 +24,8 @@ pub(crate) struct TemplateDependencies {
     pub cache_store: Arc<dyn CacheStore>,
     pub provider_install_root: String,
     pub api_node_id: String,
+    pub mcp_interface_catalog:
+        crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
 }
 impl TemplateDependencies {
     pub async fn resolve_plugins(

@@ -1002,6 +1002,16 @@ async fn bundle_preview_and_import_preserve_shared_tool_impact_and_atomic_replac
     });
     let service = McpManagementService::new(repository.clone());
 
+    let mut sparse_template = package.clone();
+    sparse_template.instances[0].groups.clear();
+    sparse_template.instances[0].bindings.clear();
+    let merged_template = service
+        .preserve_unmentioned_instance_entries(actor_user_id, sparse_template)
+        .await
+        .unwrap();
+    assert_eq!(merged_template.instances[0].groups.len(), 1);
+    assert_eq!(merged_template.instances[0].bindings.len(), 2);
+
     let preview = service
         .preview_bundle(crate::mcp_bundle::PreviewMcpBundleCommand {
             actor_user_id,

@@ -1,13 +1,20 @@
 use super::references::{route_references, string_values};
 use super::*;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use uuid::Uuid;
 
 pub fn validate_portable_template(package: &PortableTemplatePackage) -> Vec<String> {
     let mut failures = super::identity::validate_identity_namespace(package);
     if package.schema_version != PORTABLE_TEMPLATE_SCHEMA_VERSION {
         failures.push("portable_template_schema_version".into());
     }
-    if package.pages.len() + package.applications.len() + package.data_models.len() == 0 {
+    if package.pages.len() + package.applications.len() + package.data_models.len() == 0
+        && package
+            .mcp_bundle
+            .as_ref()
+            .is_none_or(|bundle| bundle.instances.is_empty())
+    {
         failures.push("portable_template_empty".into());
     }
     if package.pages.len() > 1000
@@ -356,9 +363,39 @@ pub fn preview_portable_template(
     package: &PortableTemplatePackage,
     target: &PortableTemplatePackage,
 ) -> PortableTemplatePreview {
+    preview_portable_template_with_map(package, target, &BTreeMap::new())
+}
+
+pub fn preview_portable_template_with_map(
+    package: &PortableTemplatePackage,
+    target: &PortableTemplatePackage,
+    identities: &BTreeMap<String, String>,
+) -> PortableTemplatePreview {
     let mut failures = validate_portable_template(package);
     let mut warnings = Vec::new();
+    let mut effects = Vec::new();
+    let mapped = |source: Uuid| {
+        identities
+            .get(&source.to_string())
+            .and_then(|id| Uuid::parse_str(id).ok())
+            .unwrap_or(source)
+    };
     for m in &package.data_models {
+        let target_id = mapped(m.id);
+        let matched = target.data_models.iter().find(|item| item.id == target_id);
+        if !m.builtin {
+            effects.push(PortableTemplateEffect {
+                kind: "data_model".into(),
+                source_id: m.id.to_string(),
+                target_id: matched.map(|item| item.id.to_string()),
+                action: if matched.is_some() {
+                    "update"
+                } else {
+                    "create"
+                }
+                .into(),
+            });
+        }
         let existing = target.data_models.iter().find(|t| t.code == m.code);
         if m.builtin {
             match existing {
@@ -382,18 +419,148 @@ pub fn preview_portable_template(
                     }
                 }
             }
-        } else if existing.is_some() {
+        } else if matched.is_some_and(|item| item.code != m.code || item.builtin) {
+            failures.push(format!(
+                "portable_template_model_identity_conflict:{}",
+                m.id
+            ));
+        } else if existing.is_some_and(|item| item.id != target_id) {
             failures.push(format!("portable_template_model_code_conflict:{}", m.code));
+        }
+        if let Some(matched) = matched {
+            if !m.builtin
+                && (matched.scope_kind != m.scope_kind
+                    || matched.template_provider != m.template_provider
+                    || matched.template_code != m.template_code
+                    || matched.template_version != m.template_version)
+            {
+                failures.push(format!(
+                    "portable_template_model_definition_conflict:{}",
+                    m.id
+                ));
+            }
+            for field in &m.fields {
+                let target_field_id = mapped(field.id);
+                if let Some(existing_field) = matched
+                    .fields
+                    .iter()
+                    .find(|item| item.id == target_field_id || item.code == field.code)
+                {
+                    if existing_field.code != field.code
+                        || existing_field.field_kind != field.field_kind
+                    {
+                        failures.push(format!(
+                            "portable_template_field_identity_conflict:{}:{}",
+                            m.code, field.code
+                        ));
+                    }
+                } else if target
+                    .data_models
+                    .iter()
+                    .any(|other| other.fields.iter().any(|item| item.id == target_field_id))
+                {
+                    failures.push(format!(
+                        "portable_template_field_owner_conflict:{}",
+                        field.id
+                    ));
+                }
+            }
         }
     }
     for page in &package.pages {
+        let target_id = mapped(page.id);
+        let matched = target.pages.iter().find(|item| item.id == target_id);
+        effects.push(PortableTemplateEffect {
+            kind: "page".into(),
+            source_id: page.id.to_string(),
+            target_id: matched.map(|item| item.id.to_string()),
+            action: if matched.is_some() {
+                "update"
+            } else {
+                "create"
+            }
+            .into(),
+        });
+        if matched.is_some_and(|item| item.kind != page.kind) {
+            failures.push(format!("portable_template_page_kind_conflict:{}", page.id));
+        }
+        if let Some(matched) = matched {
+            for tab in &page.tabs {
+                let target_tab_id = mapped(tab.id);
+                if let Some(existing_tab) =
+                    matched.tabs.iter().find(|item| item.id == target_tab_id)
+                {
+                    if existing_tab.route_segment != tab.route_segment
+                        || existing_tab.is_default != tab.is_default
+                    {
+                        failures.push(format!("portable_template_tab_route_conflict:{}", tab.id));
+                    }
+                }
+                if !matched.tabs.iter().any(|item| item.id == target_tab_id)
+                    && target
+                        .pages
+                        .iter()
+                        .any(|other| other.tabs.iter().any(|item| item.id == target_tab_id))
+                {
+                    failures.push(format!("portable_template_tab_owner_conflict:{}", tab.id));
+                }
+                for block in &tab.blocks {
+                    let target_block_id = identities
+                        .get(&block.block_id)
+                        .map(String::as_str)
+                        .unwrap_or(&block.block_id);
+                    if !matched.tabs.iter().any(|item| {
+                        item.blocks
+                            .iter()
+                            .any(|candidate| candidate.block_id == target_block_id)
+                    }) && target.pages.iter().any(|other| {
+                        other.tabs.iter().any(|item| {
+                            item.blocks
+                                .iter()
+                                .any(|candidate| candidate.block_id == target_block_id)
+                        })
+                    }) {
+                        failures.push(format!(
+                            "portable_template_block_owner_conflict:{}",
+                            block.block_id
+                        ));
+                    }
+                }
+            }
+        }
         if let Some(slug) = &page.slug {
-            if target.pages.iter().any(|p| p.slug.as_ref() == Some(slug)) {
+            if target
+                .pages
+                .iter()
+                .any(|p| p.slug.as_ref() == Some(slug) && p.id != target_id)
+            {
                 failures.push(format!("portable_template_page_slug_conflict:{slug}"));
             }
         }
     }
     for app in &package.applications {
+        let target_id = mapped(app.id);
+        let matched = target.applications.iter().find(|item| item.id == target_id);
+        effects.push(PortableTemplateEffect {
+            kind: "application".into(),
+            source_id: app.id.to_string(),
+            target_id: matched.map(|item| item.id.to_string()),
+            action: if matched.is_some() {
+                "update"
+            } else {
+                "create"
+            }
+            .into(),
+        });
+        if matched.is_some_and(|item| {
+            item.application_type != app.application_type
+                || item.workflow_trigger_type != app.workflow_trigger_type
+        }) {
+            failures.push(format!(
+                "portable_template_application_type_conflict:{}",
+                app.id
+            ));
+        }
         for slug in app
             .mapping
             .as_ref()
@@ -406,11 +573,13 @@ pub fn preview_portable_template(
             )
         {
             if target.applications.iter().any(|a| {
-                a.mapping.as_ref().and_then(|m| m.extension_slug()) == Some(slug)
-                    || a.published
-                        .as_ref()
-                        .and_then(|p| p.mapping.extension_slug())
-                        == Some(slug)
+                a.id != target_id && {
+                    a.mapping.as_ref().and_then(|m| m.extension_slug()) == Some(slug)
+                        || a.published
+                            .as_ref()
+                            .and_then(|p| p.mapping.extension_slug())
+                            == Some(slug)
+                }
             }) {
                 failures.push(format!("portable_template_extension_slug_conflict:{slug}"));
             }
@@ -435,6 +604,7 @@ pub fn preview_portable_template(
         }
     }
     for app in &package.applications {
+        let target_id = mapped(app.id);
         for extension in app
             .mapping
             .as_ref()
@@ -449,6 +619,7 @@ pub fn preview_portable_template(
             for other in target
                 .applications
                 .iter()
+                .filter(|other| other.id != target_id)
                 .chain(package.applications.iter().filter(|a| a.id != app.id))
             {
                 for other_extension in other
@@ -478,9 +649,15 @@ pub fn preview_portable_template(
             pages: package.pages.len(),
             applications: package.applications.len(),
             data_models: package.data_models.len(),
+            mcp_instances: package
+                .mcp_bundle
+                .as_ref()
+                .map_or(0, |bundle| bundle.instances.len()),
         },
         failures,
         warnings,
         dependencies: package.plugins.clone(),
+        effects,
+        mcp_shared_tool_impacts: Vec::new(),
     }
 }

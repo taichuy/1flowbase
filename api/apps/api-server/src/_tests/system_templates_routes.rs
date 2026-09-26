@@ -100,6 +100,7 @@ async fn portable_template_routes_enforce_independent_grants_and_reject_invalid_
             assert!(payload["data"]["pages"].is_array());
             assert!(payload["data"]["applications"].is_array());
             assert!(payload["data"]["data_models"].is_array());
+            assert!(payload["data"]["mcp_instances"].is_array());
         }
     }
     let package = json!({"schema_version":format!("invalid{}", "x".repeat(2 * 1024 * 1024)),"pages":[],"applications":[],"data_models":[],"plugins":[]});
@@ -218,4 +219,115 @@ async fn portable_template_install_registers_models_without_restart() {
             assert_eq!(body["code"], "model_not_published");
         }
     }
+}
+
+#[tokio::test]
+async fn mcp_only_application_template_creates_then_updates_the_selected_instance() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let send = |method: &str, path: &str, body: Value| {
+        let app = app.clone();
+        let cookie = cookie.clone();
+        let csrf = csrf.clone();
+        let method = method.to_owned();
+        let path = path.to_owned();
+        async move {
+            app.oneshot(
+                Request::builder()
+                    .method(method.as_str())
+                    .uri(path)
+                    .header("cookie", cookie)
+                    .header("x-csrf-token", csrf)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+        }
+    };
+    let created = send(
+        "POST",
+        "/api/console/mcp/instances",
+        json!({
+            "instance_id": "template_instance", "name": "Initial instance",
+            "description_short": null, "status": "draft", "default_entry_path": "/"
+        }),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+
+    let exported = send(
+        "POST",
+        "/api/console/settings/system-templates/export",
+        json!({
+            "page_ids": [], "application_ids": [], "data_model_ids": [],
+            "mcp_instance_ids": ["template_instance"]
+        }),
+    )
+    .await;
+    assert_eq!(exported.status(), StatusCode::OK);
+    let exported: Value =
+        serde_json::from_slice(&to_bytes(exported.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let mut package = exported["data"].clone();
+    assert_eq!(
+        package["mcp_bundle"]["instances"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        package["mcp_bundle"]["instances"][0]["instance_id"],
+        "template_instance"
+    );
+
+    let deleted = send(
+        "DELETE",
+        "/api/console/mcp/instances/template_instance",
+        json!({}),
+    )
+    .await;
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+    let preview = send(
+        "POST",
+        "/api/console/settings/system-templates/preview",
+        package.clone(),
+    )
+    .await;
+    assert_eq!(preview.status(), StatusCode::OK);
+    let preview: Value =
+        serde_json::from_slice(&to_bytes(preview.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(preview["data"]["valid"], true);
+    assert!(preview["data"]["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["kind"] == "mcp_instance" && item["action"] == "create"));
+    let installed = send(
+        "POST",
+        "/api/console/settings/system-templates/install",
+        package.clone(),
+    )
+    .await;
+    assert_eq!(installed.status(), StatusCode::OK);
+    let installed: Value =
+        serde_json::from_slice(&to_bytes(installed.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert_eq!(installed["data"]["complete"], true);
+
+    package["mcp_bundle"]["instances"][0]["name"] = json!("Updated instance");
+    let repeated = send(
+        "POST",
+        "/api/console/settings/system-templates/install",
+        package,
+    )
+    .await;
+    assert_eq!(repeated.status(), StatusCode::OK);
+    let repeated: Value =
+        serde_json::from_slice(&to_bytes(repeated.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(repeated["data"]["complete"], true);
+    assert!(repeated["data"]["updated"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["kind"] == "mcp_instance" && item["target_id"] == "template_instance"));
 }
