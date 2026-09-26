@@ -1463,7 +1463,16 @@ fn every_stateful_runtime_dispatch_uses_the_supervisor_admission_gate() {
         "unary, streaming selection/dispatch, and transport control are explicit boundaries"
     );
     assert!(source.contains("worker.call(&request).await"));
-    assert!(source.contains("worker\n                    .call_streaming_with_limits"));
+    assert_eq!(
+        source
+            .matches("session_workers::acquire_shared_invocation")
+            .count(),
+        2,
+        "multiplex unary and streaming dispatch both acquire supervisor admission"
+    );
+    assert!(source.contains("worker.call_admitted(&request, Box::new(permit)).await"));
+    assert!(source.contains("worker.call_streaming_admitted(&request, &invocation_limits, context, Box::new(permit)).await"));
+    assert!(source.contains("worker.call_streaming_with_limits_and_host_calls"));
     assert!(!source.contains("let mut worker = worker.lock().await"));
     assert!(source.contains("call_executable("));
     assert!(source.contains("call_executable_streaming("));

@@ -79,26 +79,51 @@ impl SharedWorkerCapacity {
         request_bytes: usize,
         deadline: tokio::time::Instant,
     ) -> FrameworkResult<SharedInvocationPermit> {
+        self.acquire_sampled(
+            pid,
+            request_bytes,
+            deadline,
+            || Ok(system_memory_snapshot()?.available),
+            rss_bytes,
+            std::time::Duration::from_secs(1),
+        )
+        .await
+    }
+
+    // The sampler is internal so tests can drive the real wait/reservation path
+    // without depending on the machine's current memory pressure or a live PID.
+    async fn acquire_sampled<A, R>(
+        &self,
+        pid: u32,
+        request_bytes: usize,
+        deadline: tokio::time::Instant,
+        available_bytes: A,
+        rss: R,
+        recheck: std::time::Duration,
+    ) -> FrameworkResult<SharedInvocationPermit>
+    where
+        A: Fn() -> FrameworkResult<u64>,
+        R: Fn(u32) -> Option<u64>,
+    {
         let started = std::time::Instant::now();
         loop {
             let changed = self.changed.notified();
             tokio::pin!(changed);
             changed.as_mut().enable();
-            let available = system_memory_snapshot()?.available;
-            let rss = rss_bytes(pid)
+            let available = available_bytes()?;
+            let measured_rss = rss(pid)
                 .ok_or_else(|| transport_binding_error("shared worker RSS is unavailable"))?;
             {
                 let mut workers = self.workers.lock().map_err(|_| {
                     transport_binding_error("shared worker admission state is unavailable")
                 })?;
-                workers
-                    .retain(|pid, worker| !worker.active.is_empty() || rss_bytes(*pid).is_some());
+                workers.retain(|pid, worker| !worker.active.is_empty() || rss(*pid).is_some());
                 let mut outstanding = 0_u64;
                 for (observed_pid, worker) in workers.iter() {
                     // Keep reservations when measurement disappears until all
                     // owners have finished cancellation/exit cleanup.
                     outstanding = outstanding
-                        .saturating_add(unobserved(worker, rss_bytes(*observed_pid).unwrap_or(0)));
+                        .saturating_add(unobserved(worker, rss(*observed_pid).unwrap_or(0)));
                 }
                 let worker = workers.entry(pid).or_default();
                 let reservation = (request_bytes as u64)
@@ -123,12 +148,12 @@ impl SharedWorkerCapacity {
                         ticket,
                         Reservation {
                             bytes: reservation,
-                            rss_at_admission: rss,
+                            rss_at_admission: measured_rss,
                         },
                     );
                     tracing::debug!(
                         pid,
-                        measured_rss_bytes = rss,
+                        measured_rss_bytes = measured_rss,
                         available_bytes = available,
                         unobserved_bytes = outstanding,
                         incremental_reservation_bytes = reservation,
@@ -145,7 +170,7 @@ impl SharedWorkerCapacity {
             tokio::time::timeout_at(deadline, async {
                 tokio::select! {
                     _ = &mut changed => {},
-                    _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {},
+                    _ = tokio::time::sleep(recheck) => {},
                 }
             })
             .await
@@ -175,6 +200,19 @@ impl Drop for SharedInvocationPermit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+    const TEST_PID: u32 = u32::MAX;
+
+    fn one_call_bytes(request_bytes: usize) -> u64 {
+        (request_bytes as u64)
+            .saturating_mul(2)
+            .saturating_add(MULTIPLEX_CALL_EVENT_BUDGET_BYTES as u64)
+    }
+
+    fn fixed_worker_bytes() -> u64 {
+        (MULTIPLEX_OUTPUT_BUDGET_BYTES as u64) * 2
+    }
 
     #[test]
     fn observed_growth_is_not_reserved_again_or_credited_to_every_call() {
@@ -225,5 +263,108 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(unobserved(&worker, 1100), 150);
+    }
+
+    #[tokio::test]
+    async fn ten_tiny_calls_share_fixed_buffers_under_low_pressure() {
+        let capacity = SharedWorkerCapacity::default();
+        let request_bytes = 16;
+        let available = fixed_worker_bytes() + 10 * one_call_bytes(request_bytes);
+        assert!(available < 10 * 256 * 1024 * 1024);
+        let mut permits = Vec::new();
+        for _ in 0..10 {
+            permits.push(
+                capacity
+                    .acquire_sampled(
+                        TEST_PID,
+                        request_bytes,
+                        tokio::time::Instant::now() + std::time::Duration::from_secs(1),
+                        || Ok(available),
+                        |_| Some(1024),
+                        std::time::Duration::from_secs(1),
+                    )
+                    .await
+                    .unwrap(),
+            );
+        }
+        assert_eq!(capacity.workers.lock().unwrap()[&TEST_PID].active.len(), 10);
+        drop(permits);
+    }
+
+    #[tokio::test]
+    async fn pressure_waits_until_permit_cleanup_then_admits_next_call() {
+        let capacity = SharedWorkerCapacity::default();
+        let request_bytes = 16;
+        let available = fixed_worker_bytes() + one_call_bytes(request_bytes);
+        let first = capacity
+            .acquire_sampled(
+                TEST_PID,
+                request_bytes,
+                tokio::time::Instant::now() + std::time::Duration::from_secs(1),
+                || Ok(available),
+                |_| Some(1024),
+                std::time::Duration::from_secs(1),
+            )
+            .await
+            .unwrap();
+        let samples = Arc::new(AtomicUsize::new(0));
+        let waiting_capacity = capacity.clone();
+        let waiting_samples = samples.clone();
+        let waiter = tokio::spawn(async move {
+            waiting_capacity
+                .acquire_sampled(
+                    TEST_PID,
+                    request_bytes,
+                    tokio::time::Instant::now() + std::time::Duration::from_secs(1),
+                    move || {
+                        waiting_samples.fetch_add(1, Ordering::SeqCst);
+                        Ok(available)
+                    },
+                    |_| Some(1024),
+                    std::time::Duration::from_secs(1),
+                )
+                .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while samples.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            !waiter.is_finished(),
+            "second call must wait under pressure"
+        );
+        drop(first);
+        let second = tokio::time::timeout(std::time::Duration::from_secs(1), waiter)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(capacity.workers.lock().unwrap()[&TEST_PID].active.len(), 1);
+        drop(second);
+    }
+
+    #[tokio::test]
+    async fn pressure_wait_ends_at_deadline() {
+        let capacity = SharedWorkerCapacity::default();
+        let available = Arc::new(AtomicU64::new(fixed_worker_bytes()));
+        let sampled = available.clone();
+        let error = capacity
+            .acquire_sampled(
+                TEST_PID,
+                16,
+                tokio::time::Instant::now() + std::time::Duration::from_millis(25),
+                move || Ok(sampled.load(Ordering::SeqCst)),
+                |_| Some(1024),
+                std::time::Duration::from_secs(1),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("deadline"));
+        assert!(capacity.workers.lock().unwrap()[&TEST_PID]
+            .active
+            .is_empty());
     }
 }

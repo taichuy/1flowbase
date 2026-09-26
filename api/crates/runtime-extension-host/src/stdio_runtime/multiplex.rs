@@ -380,7 +380,9 @@ async fn read_frame(
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |i| i + 1);
-        if bytes.len() + count > MULTIPLEX_MAX_FRAME_BYTES + 1 {
+        // The extra byte is reserved for a newline, not undelimited payload.
+        let terminated = available.get(count - 1) == Some(&b'\n');
+        if bytes.len() + count > MULTIPLEX_MAX_FRAME_BYTES + usize::from(terminated) {
             return Err("multiplex frame too large".into());
         }
         bytes.extend_from_slice(&available[..count]);

@@ -75,7 +75,7 @@ async fn multiplex_runs_calls_concurrently_and_correlates_out_of_order_responses
                     response: json!("slow")
                 }
             );
-            drop(host_write);
+            host_write.shutdown().await.unwrap();
             assert!(runner.await.unwrap().is_ok());
         })
         .await;
@@ -139,7 +139,7 @@ async fn multiplex_cancel_waits_for_task_exit_and_emits_only_cancelled() {
                 }
             );
             assert!(*observed.borrow());
-            drop(host_write);
+            host_write.shutdown().await.unwrap();
             assert!(runner.await.unwrap().is_ok());
         })
         .await;
@@ -296,7 +296,7 @@ async fn late_cancel_after_response_keeps_neighbor_alive() {
                     response: json!(2)
                 }
             );
-            drop(host_write);
+            host_write.shutdown().await.unwrap();
             assert!(runner.await.unwrap().is_ok());
         })
         .await;
@@ -349,7 +349,7 @@ async fn multiplex_accepts_response_larger_than_one_mib() {
         BufReader::new(host_read).read_line(&mut response).await.unwrap();
         let frame: MultiplexEnvelope<MultiplexWorkerMessage> = serde_json::from_str(&response).unwrap();
         assert!(matches!(frame.message, MultiplexWorkerMessage::Response { call_id, response } if call_id == "1" && response.as_str().is_some_and(|value| value.len() == 2 * 1024 * 1024)));
-        drop(host_write);
+        host_write.shutdown().await.unwrap();
         assert!(runner.await.unwrap().is_ok());
     }).await;
 }
@@ -371,4 +371,25 @@ fn encoded_frame_holds_shared_byte_budget_until_dropped() {
     assert!(budget.available_permits() < 1024);
     drop(frame);
     assert_eq!(budget.available_permits(), 1024);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn partial_frame_at_eof_is_protocol_error() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let (host, worker) = tokio::io::duplex(128);
+            let (worker_read, worker_write) = tokio::io::split(worker);
+            let (_, mut host_write) = tokio::io::split(host);
+            let runner =
+                tokio::task::spawn_local(serve_io(worker_read, worker_write, |_, _| async {
+                    Value::Null
+                }));
+            host_write.write_all(b"{\"protocol\":").await.unwrap();
+            host_write.shutdown().await.unwrap();
+            assert!(matches!(
+                runner.await.unwrap(),
+                Err(MultiplexError::Protocol)
+            ));
+        })
+        .await;
 }

@@ -210,7 +210,10 @@ async fn read_frame<R: AsyncBufRead + Unpin>(
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |index| index + 1);
-        if bytes.len() + count > MULTIPLEX_MAX_FRAME_BYTES + 1 {
+        // Only a terminating newline gets the extra byte. An unterminated
+        // MAX+1 frame must fail now, without waiting for another byte or EOF.
+        let terminated = available.get(count - 1) == Some(&b'\n');
+        if bytes.len() + count > MULTIPLEX_MAX_FRAME_BYTES + usize::from(terminated) {
             return Err(MultiplexError::FrameTooLarge);
         }
         bytes.extend_from_slice(&available[..count]);
