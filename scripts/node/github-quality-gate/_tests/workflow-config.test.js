@@ -800,6 +800,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
     workflow,
     /repo-frontend-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
   );
+  assert.match(workflow, /repo-frontend-gate:[\s\S]*?timeout-minutes: 70/u);
   assert.match(
     workflow,
     /repo-frontend-react-doctor-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
@@ -829,6 +830,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
     workflow,
     /coverage-frontend-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
   );
+  assert.match(workflow, /coverage-frontend-gate:[\s\S]*?timeout-minutes: 70/u);
   assert.match(
     workflow,
     /coverage-backend-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}/u,
