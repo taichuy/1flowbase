@@ -78,3 +78,18 @@ test('AC-007: report labels timings as observations without an absolute budget',
   assert.match(report, /blocking-correctness \| multi-pool \| batch-001 \| responses-sse \| normal \| 1/u);
   assert.match(report, /application-1\/instance-1:1 \| both/u);
 });
+
+test('advisory report exposes process-tree PSS beside concurrency without imposing a memory ceiling', () => {
+  const summary = fixtureSummary();
+  summary.batches[0].metrics.processTreeMemory = {
+    sample_count: 3,
+    baseline: { pss_kib: 100 },
+    peak: { pss_kib: 150, process_count: 2 },
+    final: { pss_kib: 110 },
+    peak_pss_delta_kib: 50,
+  };
+  const report = markdownReport(summary);
+  assert.match(report, /Gateway process tree memory/u);
+  assert.match(report, /batch-001 \| responses-sse \| 1 \| 3 \| 100 \| 150 \| 50 \| 110 \| 2/u);
+  assert.match(report, /does not set a machine-specific memory limit/u);
+});

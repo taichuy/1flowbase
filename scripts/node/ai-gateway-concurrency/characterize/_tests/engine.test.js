@@ -81,6 +81,48 @@ test('AC-003/004/005: finite characterize fixture classifies transports, failure
   });
 });
 
+test('advisory mock concurrency records Gateway memory alongside completed request evidence', async () => {
+  await withMock(async ({ mock, endpointSet }) => {
+    let probeCount = 0;
+    const result = await executeCharacterizePlan({
+      endpointSet,
+      plan: [
+        { transport: TRANSPORT.RESPONSES_WEBSOCKET, scenario: SCENARIO.NORMAL, concurrency: 1 },
+        { transport: TRANSPORT.RESPONSES_WEBSOCKET, scenario: SCENARIO.NORMAL, concurrency: 4, gateRole: GATE_ROLE.ADVISORY },
+      ],
+      mockSnapshot: mock.snapshot,
+      memoryProbeFactory: () => {
+        probeCount += 1;
+        return {
+          begin() {},
+          end() { return { baseline: { pss_kib: 100 }, peak: { pss_kib: 150 }, final: { pss_kib: 110 }, peak_pss_delta_kib: 50, sample_count: 3 }; },
+        };
+      },
+    });
+    assert.equal(result.summary.verdict, 'PASS');
+    assert.equal(probeCount, 1);
+    assert.equal(result.summary.batches[0].metrics.processTreeMemory, undefined);
+    assert.equal(result.summary.batches[1].metrics.processTreeMemory.peak_pss_delta_kib, 50);
+    assert.equal(result.summary.batches[1].outcomes.completed, 4);
+    assert.equal(result.summary.batches[1].metrics.mockArrivalPeak >= 1, true);
+  });
+});
+
+test('unavailable process memory remains visible as an advisory while mock protocol requests complete', async () => {
+  await withMock(async ({ mock, endpointSet }) => {
+    const result = await executeCharacterizePlan({
+      endpointSet,
+      plan: [{ transport: TRANSPORT.RESPONSES_WEBSOCKET, scenario: SCENARIO.NORMAL, concurrency: 2, gateRole: GATE_ROLE.ADVISORY }],
+      mockSnapshot: mock.snapshot,
+      memoryProbeFactory: () => ({ begin() { throw Object.assign(new Error('proc denied'), { code: 'EACCES' }); } }),
+    });
+    assert.equal(result.summary.verdict, 'PASS');
+    assert.equal(result.summary.batches[0].outcomes.completed, 2);
+    assert.equal(result.summary.batches[0].metrics.processTreeMemoryError, 'EACCES');
+    assert.match(result.summary.advisories[0].message, /memory unavailable: EACCES/u);
+  });
+});
+
 test('AC-003 controlled negative: mixed upstream nonces fail chunk authenticity', () => {
   const failures = validateRequestResult({
     scenario: SCENARIO.NORMAL,

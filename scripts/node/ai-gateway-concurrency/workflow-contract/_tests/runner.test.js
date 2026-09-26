@@ -141,6 +141,7 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
       calls.push(['fixture:create', options.upstreamBaseUrl, options.artifactRoot]);
       return {
         result: fixtureManifest(),
+        gatewayPid: 1234,
         async close() {
           assert.equal(
             fs.existsSync(path.join(inputs.repoRoot, 'tmp/test-governance/ai-gateway-concurrency/gateway-ready.json')),
@@ -218,6 +219,7 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
     [TRANSPORT.ANTHROPIC_SSE]: 'published-anthropic-model',
   });
   assert.equal(characterize.endpointSet[TRANSPORT.RESPONSES_WEBSOCKET], 'ws://127.0.0.1:4000/v1/responses');
+  assert.equal(characterize.gatewayPid, 1234);
   assert.equal(characterize.endpointSet[TRANSPORT.CHAT_COMPLETIONS_SSE], 'http://127.0.0.1:4100/v1/chat/completions');
   assert.deepEqual(
     characterize.durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],

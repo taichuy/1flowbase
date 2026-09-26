@@ -24,6 +24,7 @@ const {
   protocolRunId,
 } = require('./stream-parsers');
 const { writeCharacterizeArtifacts } = require('./report');
+const { createProcessTreeMemoryProbe } = require('./process-memory');
 
 const EXPECTED_OUTCOME = Object.freeze({
   [SCENARIO.NORMAL]: 'completed',
@@ -642,6 +643,7 @@ async function executeCharacterizePlan({
   targetPoolsByTransport = {},
   durableGraceMs,
   durablePollIntervalMs,
+  memoryProbeFactory,
 }) {
   if (!Array.isArray(plan) || plan.length === 0) throw new Error('characterize plan must not be empty');
   if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is unavailable');
@@ -725,9 +727,27 @@ async function executeCharacterizePlan({
       fetchImpl,
       isSettled: () => batchSettled,
     }) : null;
+    const memoryProbe = gateRole === GATE_ROLE.ADVISORY ? memoryProbeFactory?.() : null;
+    let memoryProbeStarted = false;
+    let memoryError = null;
+    try {
+      memoryProbe?.begin();
+      memoryProbeStarted = Boolean(memoryProbe);
+    } catch (error) {
+      memoryError = error;
+    }
     releaseBarrier();
-    const results = await Promise.all(requests);
-    batchSettled = true;
+    let results;
+    let memory;
+    try {
+      results = await Promise.all(requests);
+    } finally {
+      batchSettled = true;
+      if (memoryProbeStarted) {
+        try { memory = memoryProbe.end(); }
+        catch (error) { memoryError = error; }
+      }
+    }
     const overlapEvidence = overlapPending ? await overlapPending : null;
     const durationMs = performance.now() - batchStartedAt;
     const after = await waitForMockBatch(before, mockSnapshot, row.concurrency, timeoutMs);
@@ -766,6 +786,10 @@ async function executeCharacterizePlan({
       overlapEvidence,
       durableFailures,
     });
+    if (memory) summary.metrics.processTreeMemory = memory;
+    if (memoryError) {
+      summary.metrics.processTreeMemoryError = memoryError.code || memoryError.message;
+    }
     batches.push(summary);
     events.push(...results.map((result) => ({
       kind: 'request',
@@ -796,6 +820,11 @@ async function executeCharacterizePlan({
       batch: `${batch.topology}/${batch.transport}/${batch.scenario}/c${batch.concurrency}`,
       ...failure,
     })));
+  advisories.push(...batches.filter((batch) => batch.metrics.processTreeMemoryError).map((batch) => ({
+    batch: `${batch.topology}/${batch.transport}/${batch.scenario}/c${batch.concurrency}`,
+    clientNonce: null,
+    message: `Gateway process tree memory unavailable: ${batch.metrics.processTreeMemoryError}`,
+  })));
   try {
     assertDistinctRequestNonces(events
       .filter((event) => event.kind === 'request')
@@ -876,6 +905,7 @@ async function runGatewayCharacterize({
   durableGraceMs,
   durablePollIntervalMs,
   anthropicTargetPool,
+  gatewayPid,
   fetchImpl = globalThis.fetch,
 }) {
   const headersByTransport = authorizationHeadersByTransport(authorizationTokenByTransport);
@@ -915,6 +945,9 @@ async function runGatewayCharacterize({
     targetPoolsByTransport,
     durableGraceMs,
     durablePollIntervalMs,
+    memoryProbeFactory: gatewayPid
+      ? () => createProcessTreeMemoryProbe(gatewayPid)
+      : undefined,
   });
   const durableLedger = result.durableLedger;
   result.summary.durableConvergence = {

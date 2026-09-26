@@ -30,6 +30,14 @@ function markdownReport(summary) {
     const overlap = batch.overlapEvidence ? (batch.overlapEvidence.observed ? 'both' : 'missing') : '-';
     lines.push(`| ${batch.gateRole ?? 'blocking-correctness'} | ${batch.topology ?? 'same-pool'} | ${batch.batchBarrierId ?? '-'} | ${batch.transport} | ${batch.scenario} | ${batch.concurrency} | ${targets || '-'} | ${overlap} | ${batch.pass ? 'yes' : 'no'} | ${outcomes} | ${batch.metrics.ttftP50Ms ?? '-'} | ${batch.metrics.totalLatencyP50Ms ?? '-'} | ${batch.metrics.throughputRps} | ${batch.metrics.mockArrivalPeak ?? '-'} | ${batch.metrics.derivedQueueMaxMs ?? '-'} |`);
   }
+  lines.push('', '## Gateway process tree memory', '');
+  lines.push('Linux smaps_rollup for the Gateway process and its provider descendants; KiB. The peak is the sample with the largest summed PSS. Sampling is advisory and does not set a machine-specific memory limit.', '');
+  lines.push('| Barrier | Transport | Concurrency | Samples | Baseline PSS KiB | Peak PSS KiB | Peak delta KiB | Final PSS KiB | Peak processes |');
+  lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  for (const batch of summary.batches.filter((item) => item.metrics.processTreeMemory)) {
+    const memory = batch.metrics.processTreeMemory;
+    lines.push(`| ${batch.batchBarrierId} | ${batch.transport} | ${batch.concurrency} | ${memory.sample_count} | ${memory.baseline.pss_kib} | ${memory.peak.pss_kib} | ${memory.peak_pss_delta_kib} | ${memory.final.pss_kib} | ${memory.peak.process_count} |`);
+  }
   lines.push('', '## Contract failures', '');
   if (summary.failures.length === 0) lines.push('- None');
   else for (const failure of summary.failures) lines.push(`- ${failure.batch}: ${failure.message}`);

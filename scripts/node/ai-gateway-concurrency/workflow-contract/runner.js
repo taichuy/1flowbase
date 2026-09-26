@@ -205,9 +205,10 @@ function wireAuditManifest(ready) {
   };
 }
 
-function characterizeOptions({ repoRoot, ready, websocketBaseUrl, mockSnapshot }) {
+function characterizeOptions({ repoRoot, ready, websocketBaseUrl, mockSnapshot, gatewayPid }) {
   return {
     repoRoot,
+    gatewayPid,
     endpointSet: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.gateway.responses_url,
       [TRANSPORT.RESPONSES_WEBSOCKET]: `${websocketBaseUrl}/v1/responses`,
@@ -350,6 +351,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
           ready,
           websocketBaseUrl: mockEndpoints.websocketBaseUrl,
           mockSnapshot: mock.snapshot,
+          gatewayPid: fixture.gatewayPid,
         }));
         if (characterizeResult.summary.verdict !== 'PASS') {
           throw new Error(`gateway characterize verdict was ${characterizeResult.summary.verdict}`);

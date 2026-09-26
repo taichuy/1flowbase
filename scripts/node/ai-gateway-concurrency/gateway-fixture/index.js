@@ -225,6 +225,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
 
     return {
       result,
+      gatewayPid: apiProcess.child.pid,
       async close() {
         if (closed) return;
         closed = true;
