@@ -114,10 +114,9 @@ impl ResponsesConnectionActor {
             return Err(ConnectionTransitionError::ConnectionClosing);
         }
 
-        let response = response
-            .as_object()
-            .cloned()
-            .ok_or(ConnectionTransitionError::InvalidResponse)?;
+        let Value::Object(response) = response else {
+            return Err(ConnectionTransitionError::InvalidResponse);
+        };
         match response.get("generate") {
             None | Some(Value::Bool(_)) => {}
             Some(_) => return Err(ConnectionTransitionError::InvalidGenerate),

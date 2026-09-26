@@ -1,7 +1,7 @@
 use control_plane::client_trajectory::ClientTrajectoryRecorder;
 use std::sync::Arc;
 
-use axum::{body::Bytes, response::IntoResponse};
+use axum::response::IntoResponse;
 use interface_runtime::InterfaceStreamCompletion;
 use serde_json::Value;
 use thiserror::Error;
@@ -60,14 +60,11 @@ impl ResponsesTurnBridge {
     ) -> Result<(), ResponsesTurnBridgeError> {
         // The authenticated actor is retained for the entire socket lifetime.
         // Do not reinterpret any client frame as authentication context.
-        let body = serde_json::to_vec(&response)
-            .map(Bytes::from)
-            .map_err(|_| ResponsesTurnBridgeError::IngressRejected)?;
         let prepared = match openai::prepare_typed_response_turn(
             self.state.clone(),
             self.authorization.principal.clone(),
             self.authorization.handshake_headers.clone(),
-            body,
+            response,
             self.authorization.transport_scope.id().to_string(),
             recorder.clone(),
         )

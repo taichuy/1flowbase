@@ -443,7 +443,7 @@ async fn create_response_for_endpoint(
         OpenAiResponseDispatchRequest {
             route_path,
             raw_query,
-            body,
+            body: OpenAiResponseBody::Raw(body),
             endpoint,
             delivery: OpenAiResponseDelivery::Http,
             transport_connection_scope: None,
@@ -471,7 +471,7 @@ pub(crate) async fn prepare_typed_response_turn(
     state: Arc<ApiState>,
     principal: interface_runtime::ApplicationPrincipal,
     headers: HeaderMap,
-    body: Bytes,
+    body: Value,
     transport_connection_scope: String,
     recorder: Option<ClientTrajectoryRecorder>,
 ) -> Result<PreparedOpenAiResponseTurn, OpenAiRouteError> {
@@ -481,7 +481,7 @@ pub(crate) async fn prepare_typed_response_turn(
         OpenAiResponseDispatchRequest {
             route_path: "/v1/responses".to_string(),
             raw_query: None,
-            body,
+            body: OpenAiResponseBody::Parsed(body),
             endpoint: OpenAiResponsesEndpoint::Responses,
             delivery: OpenAiResponseDelivery::TypedEvents,
             transport_connection_scope: Some(transport_connection_scope),
@@ -502,10 +502,16 @@ pub(crate) async fn prepare_typed_response_turn(
     }
 }
 
+enum OpenAiResponseBody {
+    Raw(Bytes),
+    // The WebSocket frame was parsed and size-checked before this common ingress.
+    Parsed(Value),
+}
+
 struct OpenAiResponseDispatchRequest {
     route_path: String,
     raw_query: Option<String>,
-    body: Bytes,
+    body: OpenAiResponseBody,
     endpoint: OpenAiResponsesEndpoint,
     delivery: OpenAiResponseDelivery,
     transport_connection_scope: Option<String>,
@@ -551,7 +557,13 @@ async fn dispatch_response_for_endpoint(
         .as_ref()
         .map(|credential| credential.source)
         .unwrap_or("frozen_websocket_principal");
-    let mut value = match parse_openai_json_body(body, TranslationProtocol::OpenAiResponses) {
+    let parsed = match body {
+        OpenAiResponseBody::Raw(body) => {
+            parse_openai_json_body(body, TranslationProtocol::OpenAiResponses)
+        }
+        OpenAiResponseBody::Parsed(value) => Ok(value),
+    };
+    let mut value = match parsed {
         Ok(value) => value,
         Err(error) => {
             warn_openai_route_error(

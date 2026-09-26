@@ -69,10 +69,9 @@ fn decode_text_message(
         return Err(ResponsesWebSocketClientMessageError::UnknownRequestType);
     }
 
-    let mut response = value
-        .as_object()
-        .cloned()
-        .ok_or(ResponsesWebSocketClientMessageError::InvalidEnvelope)?;
+    let Value::Object(mut response) = value else {
+        return Err(ResponsesWebSocketClientMessageError::InvalidEnvelope);
+    };
     response.remove("type");
     if response.is_empty() || response.contains_key("response") {
         return Err(ResponsesWebSocketClientMessageError::InvalidEnvelope);
