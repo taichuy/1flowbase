@@ -188,6 +188,153 @@ async fn callback_attach_replays_exact_output_and_disconnect_leaves_round_open()
     assert_eq!(survivor.replay[0].payload["text"], "still running");
 }
 
+struct RejectAttachExecutor;
+
+impl crate::routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory
+    for RejectAttachExecutor
+{
+    fn for_actor<'a>(
+        &'a self,
+        _actor: &'a control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    ) -> crate::routes::application_public_api::native_read_interface::RuntimeInvokerFuture<'a>
+    {
+        Box::pin(async { panic!("an attached callback must not create an executor") })
+    }
+}
+
+#[tokio::test]
+async fn terminal_callback_attach_replays_ordered_durable_round_without_executor() {
+    use control_plane::application_public_api::{
+        api_keys::ApplicationApiKeyActor,
+        callback_resume::{
+            PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+            ResumePublishedCallbackCommand,
+        },
+    };
+    let mut run = native_run();
+    let callback_task_id = Uuid::now_v7();
+    run.metadata["response_round_id"] = json!(callback_task_id);
+    run.metadata["active_callback_attach"] = json!(true);
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    append_compat_sse_runtime_event(
+        &state,
+        run.id,
+        "waiting_callback",
+        json!({"callback_task_id": callback_task_id}),
+    )
+    .await;
+    let first_item =
+        json!({"type": "message", "content": [{"type": "output_text", "text": "first"}]});
+    let second_item =
+        json!({"type": "message", "content": [{"type": "output_text", "text": "second"}]});
+    for (index, item) in [(1, second_item.clone()), (0, first_item.clone())] {
+        append_compat_sse_runtime_event(
+            &state,
+            run.id,
+            "provider_output_item_done",
+            json!({"output_index": index, "item": item}),
+        )
+        .await;
+    }
+    append_compat_sse_runtime_event(
+        &state,
+        run.id,
+        "flow_finished",
+        json!({"type": "flow_finished", "run_id": run.id, "status": "succeeded"}),
+    )
+    .await;
+    state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: domain::FlowRunStatus::Succeeded,
+            output_payload: json!({}),
+            error_payload: None,
+            finished_at: Some(time::OffsetDateTime::now_utc()),
+        })
+        .await
+        .unwrap();
+
+    let stream = Arc::new(LocalRuntimeEventStream::new());
+    let native = crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
+        store: state.store.clone(),
+        cache_store: state.infrastructure.cache_store(),
+        published_plan_cache: state.infrastructure.published_plan_cache(),
+        published_publication_cache: state.infrastructure.published_publication_cache(),
+        runtime_engine: state.runtime_engine.clone(),
+        provider_runtime: state.provider_runtime.clone(),
+        network_egress: Arc::new(state.network_egress_http_clients()),
+        provider_secret_master_key: state.provider_secret_master_key.clone(),
+        model_billing_require_provider_usage: state.model_billing_require_provider_usage,
+        api_node_id: state.api_node_id.clone(),
+        provider_install_root: state.provider_install_root.clone(),
+        file_storage_registry: state.file_storage_registry.clone(),
+        task_queue: state.infrastructure.task_queue(),
+        provider_transport_store: state.infrastructure.provider_transport_store(),
+        runtime_event_stream: stream.clone(),
+        runtime_activity: state.runtime_activity.clone(),
+        runtime_invoker_factory: Arc::new(RejectAttachExecutor),
+    };
+    let dependencies = crate::routes::application_public_api::compatibility_interface::CompatibilityExecutionDependencies {
+        provider_transport_store: state.infrastructure.provider_transport_store(),
+        native,
+    };
+    let actor = ApplicationApiKeyActor {
+        api_key_id: run.api_key_id,
+        application_id: run.application_id,
+        creator_user_id: Uuid::nil(),
+        tenant_id: Uuid::nil(),
+        workspace_id: Uuid::nil(),
+        actor: domain::ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
+    };
+    let command = ResumePublishedCallbackCommand {
+        bearer_token: String::new(),
+        target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
+        source: PublishedCallbackResumeSource::OpenAiResponses,
+        response_payload: json!({"tool_results": []}),
+        response_mode: Some("streaming".into()),
+        native_transport: None,
+        responses_continuation: None,
+        transport_connection_scope: None,
+        observation_context: None,
+        reserved_attempt_id: None,
+    };
+    let mut attached =
+        start_compatible_typed_resume_stream_for_actor(dependencies, run, command, actor)
+            .await
+            .unwrap();
+    let mut events = Vec::new();
+    while let Some(input) = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
+        .await
+        .expect("terminal replay must finish")
+    {
+        events.push(input.envelope);
+    }
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "flow_started",
+            "provider_output_item_done",
+            "provider_output_item_done",
+            "flow_finished"
+        ]
+    );
+    assert_eq!(events[1].payload["item"], first_item);
+    assert_eq!(events[2].payload["item"], second_item);
+    let attempt_count: i64 = sqlx::query_scalar(
+        "select count(*) from flow_run_callback_resume_attempts where flow_run_id = $1",
+    )
+    .bind(attached.initial_run.id)
+    .fetch_one(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(attempt_count, 0, "attach must not reserve another attempt");
+}
+
 fn spawn_typed_stream(
     state: &Arc<ApiState>,
     run: &NativeRunResult,
