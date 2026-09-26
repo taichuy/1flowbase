@@ -1,4 +1,13 @@
-use super::super::{RuntimeProcessSampler, RuntimeProcessTerminationOutcome};
+use super::super::{
+    processes::process_cpu_usage_percentages, RuntimeProcessSampler,
+    RuntimeProcessTerminationOutcome,
+};
+
+#[test]
+fn process_cpu_reports_whole_machine_and_single_core_percentages() {
+    assert_eq!(process_cpu_usage_percentages(160.0, 8.0), (20.0, 160.0));
+    assert_eq!(process_cpu_usage_percentages(100.0, 1.0), (100.0, 100.0));
+}
 
 #[test]
 fn collect_reports_the_current_process_with_bounded_snapshot() {

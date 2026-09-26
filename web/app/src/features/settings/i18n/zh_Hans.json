@@ -898,6 +898,8 @@
     "process_tree": "进程树",
     "process_tree_empty": "当前没有 1flowbase 后端进程",
     "process_detail_parent_pid": "父进程 ID",
+    "process_detail_cpu_whole_machine": "CPU(整机)",
+    "process_detail_cpu_single_core": "CPU",
     "process_detail_empty": "请选择一个进程查看详情",
     "process_detail_not_terminable": "该进程不可终止",
     "process_status_sleeping": "休眠",

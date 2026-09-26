@@ -28,6 +28,9 @@ pub struct RuntimeProcessSample {
     /// CPU usage as a percentage of the whole machine (all logical CPUs):
     /// `100%` means every logical CPU is fully busy with this process.
     pub cpu_usage_percent: f32,
+    /// CPU usage relative to one logical core; may exceed `100%` when the
+    /// process runs on multiple cores.
+    pub cpu_usage_single_core_percent: f32,
     pub memory_bytes: u64,
     pub memory_usage_percent: f32,
     pub start_time_unix_seconds: u64,
@@ -129,37 +132,41 @@ impl RuntimeProcessSampler {
 
         let total_memory = inner.system.total_memory().max(1);
         // sysinfo reports process CPU per logical core (one busy core == 100%).
-        // Divide by the logical CPU count so 100% means the whole machine.
         let logical_cpu_count = inner.system.cpus().len().max(1) as f32;
         let mut processes = inner
             .system
             .processes()
             .values()
             .filter(|process| process.thread_kind().is_none())
-            .map(|process| RuntimeProcessSample {
-                pid: process.pid().as_u32(),
-                parent_pid: process.parent().map(|pid| pid.as_u32()),
-                name: process.name().to_string_lossy().into_owned(),
-                command: (!process.cmd().is_empty()).then(|| {
-                    process
-                        .cmd()
-                        .iter()
-                        .map(|argument| argument.to_string_lossy())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                }),
-                user: process
-                    .user_id()
-                    .and_then(|user_id| inner.users.get_user_by_id(user_id))
-                    .map(|user| user.name().to_string()),
-                status: process_status_label(process.status()).to_string(),
-                cpu_usage_percent: (process.cpu_usage() / logical_cpu_count).clamp(0.0, 100.0),
-                memory_bytes: process.memory(),
-                memory_usage_percent: (process.memory() as f64 / total_memory as f64 * 100.0)
-                    as f32,
-                start_time_unix_seconds: process.start_time(),
-                terminable: is_terminable(process, &protected_pids, current_uid.as_ref()),
-                backend_process: backend_pids.contains(&process.pid()),
+            .map(|process| {
+                let (cpu_usage_percent, cpu_usage_single_core_percent) =
+                    process_cpu_usage_percentages(process.cpu_usage(), logical_cpu_count);
+                RuntimeProcessSample {
+                    pid: process.pid().as_u32(),
+                    parent_pid: process.parent().map(|pid| pid.as_u32()),
+                    name: process.name().to_string_lossy().into_owned(),
+                    command: (!process.cmd().is_empty()).then(|| {
+                        process
+                            .cmd()
+                            .iter()
+                            .map(|argument| argument.to_string_lossy())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    }),
+                    user: process
+                        .user_id()
+                        .and_then(|user_id| inner.users.get_user_by_id(user_id))
+                        .map(|user| user.name().to_string()),
+                    status: process_status_label(process.status()).to_string(),
+                    cpu_usage_percent,
+                    cpu_usage_single_core_percent,
+                    memory_bytes: process.memory(),
+                    memory_usage_percent: (process.memory() as f64 / total_memory as f64 * 100.0)
+                        as f32,
+                    start_time_unix_seconds: process.start_time(),
+                    terminable: is_terminable(process, &protected_pids, current_uid.as_ref()),
+                    backend_process: backend_pids.contains(&process.pid()),
+                }
             })
             .collect::<Vec<_>>();
         processes.sort_by(|left, right| {
@@ -210,6 +217,17 @@ impl RuntimeProcessSampler {
             Some(false) | None => RuntimeProcessTerminationOutcome::Failed,
         }
     }
+}
+
+pub(crate) fn process_cpu_usage_percentages(
+    usage_per_core: f32,
+    logical_cpu_count: f32,
+) -> (f32, f32) {
+    let single_core = usage_per_core.max(0.0);
+    (
+        (single_core / logical_cpu_count).clamp(0.0, 100.0),
+        single_core,
+    )
 }
 
 /// The current process, its ancestors, and PID 1 must never be signalled: they

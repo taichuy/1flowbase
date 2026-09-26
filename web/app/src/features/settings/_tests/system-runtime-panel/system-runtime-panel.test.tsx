@@ -207,6 +207,7 @@ function runtimeProcessList() {
         user: 'taichuy',
         status: 'sleeping',
         cpu_usage_percent: 0.85,
+        cpu_usage_single_core_percent: 6.8,
         memory_bytes: 33_554_432,
         memory_usage_percent: 3.2,
         start_time_unix_seconds: 1_758_160_251,
@@ -221,6 +222,7 @@ function runtimeProcessList() {
         user: 'taichuy',
         status: 'running',
         cpu_usage_percent: 0.57,
+        cpu_usage_single_core_percent: 4.56,
         memory_bytes: 25_165_824,
         memory_usage_percent: 2.84,
         start_time_unix_seconds: 1_758_217_368,
@@ -235,6 +237,7 @@ function runtimeProcessList() {
         user: 'root',
         status: 'sleeping',
         cpu_usage_percent: 0.03,
+        cpu_usage_single_core_percent: 0.24,
         memory_bytes: 14_155_776,
         memory_usage_percent: 1.35,
         start_time_unix_seconds: 1_756_994_875,
@@ -426,15 +429,21 @@ describe('SystemRuntimePanel', () => {
     expect(screen.queryByText('37.5%')).not.toBeInTheDocument();
   });
 
-  test('shows zero during CPU warm-up and replaces it with the first sampled value', async () => {
+  test('shows an indicator during CPU warm-up and replaces it with the first sampled value', async () => {
     systemRuntimeApi.fetchSettingsSystemRuntimeProfile
       .mockResolvedValueOnce(warmingRuntimeProfile())
       .mockResolvedValue(runtimeProfile());
     const { queryClient } = renderPanel();
 
     await screen.findByText('资源监控');
-    expect(screen.getByText('0%')).toBeInTheDocument();
-    expect(screen.queryByText('采样中')).not.toBeInTheDocument();
+    const cpuGauge = screen
+      .getByText('CPU 使用率')
+      .closest('.system-runtime-panel__metric-gauge');
+    expect(cpuGauge).not.toBeNull();
+    const cpu = within(cpuGauge as HTMLElement);
+    expect(cpu.getByRole('status', { name: '等待新样本' })).toBeInTheDocument();
+    expect(cpu.queryByText('等待新样本')).not.toBeInTheDocument();
+    expect(cpu.queryByText('0%')).not.toBeInTheDocument();
 
     await act(async () => {
       await queryClient.invalidateQueries({
@@ -442,6 +451,45 @@ describe('SystemRuntimePanel', () => {
       });
     });
     expect(screen.getByText('12.5%')).toBeInTheDocument();
+    expect(
+      cpu.queryByRole('status', { name: '等待新样本' })
+    ).not.toBeInTheDocument();
+  });
+
+  test('keeps waiting and unavailable states out of the circular value', async () => {
+    const stale = warmingRuntimeProfile();
+    stale.runtime_targets[0]!.metrics.cpu.availability = 'stale';
+    systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockResolvedValue(stale);
+    const { queryClient } = renderPanel();
+
+    const cpuGauge = await waitFor(() => {
+      const gauge = screen
+        .getByText('CPU 使用率')
+        .closest('.system-runtime-panel__metric-gauge');
+      expect(gauge).not.toBeNull();
+      expect(
+        within(gauge as HTMLElement).getByRole('status', { name: '等待新样本' })
+      ).toBeInTheDocument();
+      return gauge as HTMLElement;
+    });
+    expect(within(cpuGauge).queryByText('等待新样本')).not.toBeInTheDocument();
+
+    const unavailable = warmingRuntimeProfile();
+    unavailable.runtime_targets[0]!.metrics.cpu.availability = 'unavailable';
+    act(() => {
+      queryClient.setQueryData(
+        systemRuntimeApi.settingsSystemRuntimeQueryKey,
+        unavailable
+      );
+    });
+    await waitFor(() => {
+      expect(within(cpuGauge).getByText('—')).toBeInTheDocument();
+      expect(
+        within(cpuGauge)
+          .getByText('不可用')
+          .closest('.system-runtime-panel__metric-detail')
+      ).not.toBeNull();
+    });
   });
 
   test('stops polling after three consecutive collection failures', async () => {
@@ -511,7 +559,7 @@ describe('SystemRuntimePanel', () => {
       expect(option?.series?.[1]?.data).toEqual([1]);
     });
 
-    fireEvent.click(screen.getByText('CPU'));
+    fireEvent.click(within(screen.getByLabelText('监控指标')).getByText('CPU'));
     await waitFor(() => {
       const option = echartsMock.chart.setOption.mock.calls
         .map((call) => call[0])
@@ -652,12 +700,17 @@ describe('SystemRuntimePanel', () => {
     expect(detail.getByText('1442117')).toBeInTheDocument();
     expect(detail.getByText('./target/debug/api-server')).toBeInTheDocument();
     expect(detail.getByText('32.0 MB')).toBeInTheDocument();
+    expect(detail.getByText('CPU(整机)')).toBeInTheDocument();
+    expect(detail.getByText('CPU')).toBeInTheDocument();
+    expect(detail.getByText('0.85%')).toBeInTheDocument();
+    expect(detail.getByText('6.80%')).toBeInTheDocument();
     expect(
       detail.getByRole('button', { name: /结\s*束/u })
     ).toBeInTheDocument();
 
     const updated = runtimeProcessList();
     updated.processes[0]!.cpu_usage_percent = 2.95;
+    updated.processes[0]!.cpu_usage_single_core_percent = 23.6;
     updated.processes[0]!.memory_bytes = 67_108_864;
     act(() => {
       queryClient.setQueryData(
@@ -667,6 +720,7 @@ describe('SystemRuntimePanel', () => {
     });
     await waitFor(() => {
       expect(treePanel).toHaveTextContent('c:2.95% · m:64.0 MB');
+      expect(detail.getByText('23.60%')).toBeInTheDocument();
     });
   });
 

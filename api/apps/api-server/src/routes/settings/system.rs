@@ -323,7 +323,7 @@ impl InterfaceContract for SystemInterfaceOutput {
                         ("process_total", serde_json::json!({"type":"integer"})),
                         (
                             "processes",
-                            serde_json::json!({"type":"array","maxItems":256,"items":mp::object_schema(&[("pid",serde_json::json!({"type":"integer"})), ("parent_pid",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("name",mp::text_schema()), ("command",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("user",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("status",mp::text_schema()), ("cpu_usage_percent",serde_json::json!({"type":"number"})), ("memory_bytes",serde_json::json!({"type":"integer"})), ("memory_usage_percent",serde_json::json!({"type":"number"})), ("start_time_unix_seconds",serde_json::json!({"type":"integer"})), ("terminable",serde_json::json!({"type":"boolean"})), ("backend_process",serde_json::json!({"type":"boolean"}))])}),
+                            serde_json::json!({"type":"array","maxItems":256,"items":mp::object_schema(&[("pid",serde_json::json!({"type":"integer"})), ("parent_pid",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("name",mp::text_schema()), ("command",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("user",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("status",mp::text_schema()), ("cpu_usage_percent",serde_json::json!({"type":"number"})), ("cpu_usage_single_core_percent",serde_json::json!({"type":"number"})), ("memory_bytes",serde_json::json!({"type":"integer"})), ("memory_usage_percent",serde_json::json!({"type":"number"})), ("start_time_unix_seconds",serde_json::json!({"type":"integer"})), ("terminable",serde_json::json!({"type":"boolean"})), ("backend_process",serde_json::json!({"type":"boolean"}))])}),
                         ),
                     ]),
                 ),
@@ -875,6 +875,12 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                 serde_json::json!((item).cpu_usage_percent),
                                             ),
                                             (
+                                                "cpu_usage_single_core_percent",
+                                                serde_json::json!(
+                                                    (item).cpu_usage_single_core_percent
+                                                ),
+                                            ),
+                                            (
                                                 "memory_bytes",
                                                 serde_json::json!((item).memory_bytes),
                                             ),
@@ -1331,6 +1337,7 @@ pub struct SystemProcessResponse {
     pub user: Option<String>,
     pub status: String,
     pub cpu_usage_percent: f32,
+    pub cpu_usage_single_core_percent: f32,
     pub memory_bytes: u64,
     pub memory_usage_percent: f32,
     pub start_time_unix_seconds: u64,
@@ -1348,6 +1355,7 @@ impl From<runtime_profile::RuntimeProcessSample> for SystemProcessResponse {
             user: value.user,
             status: value.status,
             cpu_usage_percent: value.cpu_usage_percent,
+            cpu_usage_single_core_percent: value.cpu_usage_single_core_percent,
             memory_bytes: value.memory_bytes,
             memory_usage_percent: value.memory_usage_percent,
             start_time_unix_seconds: value.start_time_unix_seconds,

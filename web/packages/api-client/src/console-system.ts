@@ -166,6 +166,8 @@ export interface ConsoleSystemProcess {
   status: string;
   /** CPU usage as a percentage of the whole machine (all logical CPUs). */
   cpu_usage_percent: number;
+  /** CPU usage relative to one logical core; may exceed 100%. */
+  cpu_usage_single_core_percent: number;
   memory_bytes: number;
   memory_usage_percent: number;
   start_time_unix_seconds: number;

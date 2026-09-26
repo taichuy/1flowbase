@@ -9,6 +9,7 @@ import {
 
 import DashboardOutlined from '@ant-design/icons/es/icons/DashboardOutlined';
 import ExclamationCircleOutlined from '@ant-design/icons/es/icons/ExclamationCircleOutlined';
+import LoadingOutlined from '@ant-design/icons/es/icons/LoadingOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -178,17 +179,6 @@ function usagePercent(
   return Math.min(100, Math.max(0, (used / total) * 100));
 }
 
-function availabilityText(availability: RuntimeMetrics['cpu']['availability']) {
-  switch (availability) {
-    case 'stale':
-      return i18nText('settings', 'auto.runtime_sample_stale');
-    case 'unavailable':
-      return i18nText('settings', 'auto.unavailable');
-    default:
-      return null;
-  }
-}
-
 function scopeLabel(scope: RuntimeMetrics['cpu']['scope_kind']) {
   switch (scope) {
     case 'cgroup':
@@ -229,12 +219,23 @@ function MetricGauge({
   availability: RuntimeMetrics['cpu']['availability'];
   detail: ReactNode;
 }) {
-  const display =
-    percent === null
-      ? availability === 'warming_up'
-        ? '0%'
-        : (availabilityText(availability) ?? '—')
-      : `${percent.toFixed(1)}%`;
+  const waitingForSample =
+    percent === null &&
+    (availability === 'warming_up' || availability === 'stale');
+  const unavailable = percent === null && availability === 'unavailable';
+  const display = waitingForSample ? (
+    <span
+      role="status"
+      aria-label={i18nText('settings', 'auto.runtime_sample_stale')}
+      className="system-runtime-panel__metric-loading"
+    >
+      <LoadingOutlined spin aria-hidden="true" />
+    </span>
+  ) : percent === null ? (
+    '—'
+  ) : (
+    `${percent.toFixed(1)}%`
+  );
   return (
     <div className="system-runtime-panel__metric-gauge">
       <Typography.Text className="system-runtime-panel__metric-label">
@@ -253,6 +254,9 @@ function MetricGauge({
         type="secondary"
         className="system-runtime-panel__metric-detail"
       >
+        {unavailable ? (
+          <span>{i18nText('settings', 'auto.unavailable')}</span>
+        ) : null}
         {detail}
       </Typography.Text>
     </div>
@@ -736,9 +740,22 @@ export function SystemRuntimePanel() {
                       )
                     },
                     {
-                      key: 'cpu',
-                      label: i18nText('settings', 'auto.process_column_cpu'),
+                      key: 'cpu_whole_machine',
+                      label: i18nText(
+                        'settings',
+                        'auto.process_detail_cpu_whole_machine'
+                      ),
                       children: formatPercent(selectedProcess.cpu_usage_percent)
+                    },
+                    {
+                      key: 'cpu_single_core',
+                      label: i18nText(
+                        'settings',
+                        'auto.process_detail_cpu_single_core'
+                      ),
+                      children: formatPercent(
+                        selectedProcess.cpu_usage_single_core_percent
+                      )
                     },
                     {
                       key: 'memory',

@@ -898,6 +898,8 @@
     "process_tree": "Process tree",
     "process_tree_empty": "No 1flowbase backend processes",
     "process_detail_parent_pid": "Parent PID",
+    "process_detail_cpu_whole_machine": "CPU (whole machine)",
+    "process_detail_cpu_single_core": "CPU",
     "process_detail_empty": "Select a process to inspect",
     "process_detail_not_terminable": "This process cannot be terminated",
     "process_status_sleeping": "Sleeping",

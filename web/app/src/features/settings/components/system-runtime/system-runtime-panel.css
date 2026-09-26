@@ -114,6 +114,11 @@
   font-weight: 600;
 }
 
+.system-runtime-panel__metric-loading {
+  color: #1677ff;
+  font-size: 24px;
+}
+
 .system-runtime-panel__metric-detail {
   display: grid;
   gap: 4px;
