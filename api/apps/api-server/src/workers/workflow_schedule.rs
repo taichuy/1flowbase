@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
+use axum::http::HeaderMap;
 use control_plane::{
     application_public_api::workflow_schedule::{
         WorkflowScheduleTriggerService, WORKFLOW_SCHEDULE_RUN_QUEUE,
     },
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
-    ports::TaskQueue,
+    ports::{AuthRepository, OrchestrationRuntimeRepository, TaskQueue},
     system_recovery::SystemWriteOwner,
 };
 use serde::Deserialize;
@@ -19,7 +20,10 @@ use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
-    routes::application_public_api::native::api_provider_runtime,
+    routes::{
+        application_public_api::native::api_provider_runtime,
+        mcp_protocol::virtual_ui::ApiMcpRuntimeToolInvoker,
+    },
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
@@ -90,6 +94,25 @@ pub async fn consume_one_workflow_schedule_run(
         task_payload.application_id,
         ApplicationActivityKind::ApplicationExecution,
     );
+    let flow_run = state
+        .store
+        .get_flow_run(task_payload.application_id, task_payload.flow_run_id)
+        .await?
+        .ok_or_else(|| anyhow!("scheduled workflow run not found"))?;
+    let actor =
+        AuthRepository::load_actor_context_for_user(&state.store, flow_run.created_by).await?;
+    let mcp_invoker = Arc::new(
+        ApiMcpRuntimeToolInvoker::new(
+            crate::runtime_internal_tool_invoker_factory(&state, &actor)
+                .await
+                .map_err(|error| error.0)?,
+            HeaderMap::new(),
+            actor,
+            Vec::new(),
+        )
+        .await
+        .map_err(|error| error.0)?,
+    );
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
         api_provider_runtime(&state),
@@ -103,6 +126,7 @@ pub async fn consume_one_workflow_schedule_run(
         state.provider_install_root.clone(),
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_invoker)
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_runtime_event_stream(state.runtime_event_stream.clone());

@@ -435,16 +435,27 @@
 }
 
 .app-shell-settings-popup.ant-menu,
-.app-shell-settings-popup .ant-menu,
 .app-shell-help-popup.ant-menu,
 .app-shell-help-popup .ant-menu {
   width: 216px;
-  max-height: 60vh;
   overflow-y: auto;
   overflow-x: hidden;
   border-radius: 8px;
   padding-block: 12px;
   box-shadow: var(--shadow-float);
+}
+
+.app-shell-settings-popup.ant-menu {
+  max-height: 60vh;
+}
+
+.app-shell-settings-popup.ant-menu > .ant-menu {
+  max-height: none;
+}
+
+.app-shell-help-popup.ant-menu,
+.app-shell-help-popup .ant-menu {
+  max-height: 60vh;
 }
 
 .app-shell-help-popup.ant-menu,

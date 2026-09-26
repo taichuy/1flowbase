@@ -182,9 +182,9 @@ describe('createSettingsChromeMenuItems', () => {
       'utf8'
     );
 
-    expect(appShellCss).toContain('.app-shell-settings-popup.ant-menu');
-    expect(appShellCss).toContain('.app-shell-settings-popup .ant-menu');
-    expect(appShellCss).toContain('max-height: 60vh;');
+    expect(appShellCss).toMatch(
+      /\.app-shell-settings-popup\.ant-menu \{\s*max-height: 60vh;/
+    );
     expect(appShellCss).toContain('overflow-y: auto;');
   });
 
