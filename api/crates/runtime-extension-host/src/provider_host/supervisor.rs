@@ -11,8 +11,9 @@ use serde_json::Value;
 use tokio::sync::{Mutex, Notify};
 
 use crate::stdio_runtime::{
-    ProviderWorker, ProviderWorkerCleanupReason, ProviderWorkerCleanupReceipt,
-    ProviderWorkerLifecycleState, ProviderWorkerProcessControl, StreamingProviderOutput,
+    MultiplexProviderWorker, ProviderWorker, ProviderWorkerCleanupReason,
+    ProviderWorkerCleanupReceipt, ProviderWorkerLifecycleState, ProviderWorkerProcessControl,
+    StreamingProviderOutput,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +103,7 @@ pub(crate) struct ProviderWorkerSupervisor {
     quiesce_owner: Mutex<()>,
     capacity_slot: StdMutex<Option<super::session_workers::SessionWorkerPermit>>,
     worker: Mutex<ProviderWorker>,
+    multiplex: Option<MultiplexProviderWorker>,
     process_control: ProviderWorkerProcessControl,
     last_cleanup: StdMutex<Option<ProviderWorkerCleanupReceipt>>,
 }
@@ -153,9 +155,39 @@ impl ProviderWorkerSupervisor {
             quiesce_owner: Mutex::new(()),
             capacity_slot: StdMutex::new(None),
             worker: Mutex::new(worker),
+            multiplex: None,
             process_control,
             last_cleanup: StdMutex::new(None),
         }))
+    }
+
+    pub(crate) fn activate_multiplex(
+        executable_path: std::path::PathBuf,
+        limits: PluginRuntimeLimits,
+        generation: u64,
+    ) -> FrameworkResult<Arc<Self>> {
+        let multiplex =
+            MultiplexProviderWorker::activate(executable_path.clone(), limits.clone(), generation)?;
+        let process_control = multiplex.process_control();
+        let mut lifecycle = ProviderWorkerLifecycle::activating(generation);
+        lifecycle.transition(ProviderWorkerLifecycleEvent::Activated)?;
+        Ok(Arc::new(Self {
+            admission: StdMutex::new(AdmissionState {
+                lifecycle,
+                in_flight: 0,
+            }),
+            drained: Notify::new(),
+            quiesce_owner: Mutex::new(()),
+            capacity_slot: StdMutex::new(None),
+            worker: Mutex::new(ProviderWorker::new(executable_path, limits)),
+            multiplex: Some(multiplex),
+            process_control,
+            last_cleanup: StdMutex::new(None),
+        }))
+    }
+
+    pub(crate) fn is_multiplex(&self) -> bool {
+        self.multiplex.is_some()
     }
 
     pub(super) fn retain_capacity(&self, slot: super::session_workers::SessionWorkerPermit) {
@@ -169,7 +201,16 @@ impl ProviderWorkerSupervisor {
     pub(crate) fn snapshot(&self) -> FrameworkResult<ProviderWorkerSupervisorSnapshot> {
         let admission = self.lock_admission()?;
         Ok(ProviderWorkerSupervisorSnapshot {
-            state: admission.lifecycle.state(),
+            state: if self
+                .multiplex
+                .as_ref()
+                .is_some_and(|worker| worker.is_failed())
+                && admission.lifecycle.state() == ProviderWorkerLifecycleState::Active
+            {
+                ProviderWorkerLifecycleState::Failed
+            } else {
+                admission.lifecycle.state()
+            },
             generation: admission.lifecycle.generation(),
             pid: self.process_control.pid(),
             in_flight: admission.in_flight,
@@ -202,7 +243,40 @@ impl ProviderWorkerSupervisor {
         self: &Arc<Self>,
         request: &ProviderStdioRequest,
     ) -> FrameworkResult<Value> {
+        self.call_inner(request, None).await
+    }
+
+    pub(crate) async fn call_admitted(
+        self: &Arc<Self>,
+        request: &ProviderStdioRequest,
+        resource: Box<dyn Send + Sync>,
+    ) -> FrameworkResult<Value> {
+        self.call_inner(request, Some(resource)).await
+    }
+
+    async fn call_inner(
+        self: &Arc<Self>,
+        request: &ProviderStdioRequest,
+        resource: Option<Box<dyn Send + Sync>>,
+    ) -> FrameworkResult<Value> {
         let lease = self.admit()?;
+        if let Some(multiplex) = &self.multiplex {
+            if multiplex.is_failed() {
+                self.fail_multiplex().await?;
+            }
+            self.ensure_multiplex_can_dispatch(multiplex)?;
+            let result = multiplex
+                .call(request, multiplex.limits(), None, resource)
+                .await
+                .and_then(|(response, _)| self.multiplex_response(response));
+            if multiplex.is_failed() {
+                if let Err(error) = self.fail_multiplex().await {
+                    tracing::warn!(%error, "secondary multiplex cleanup failure");
+                }
+            }
+            drop(lease);
+            return result;
+        }
         let mut worker = self.worker.lock().await;
         self.ensure_lease_can_dispatch(&worker)?;
         let result = worker.call(request).await;
@@ -227,6 +301,26 @@ impl ProviderWorkerSupervisor {
         deadline_unix_ms: i64,
     ) -> FrameworkResult<Value> {
         let lease = self.admit()?;
+        if let Some(multiplex) = &self.multiplex {
+            if multiplex.is_failed() {
+                self.fail_multiplex().await?;
+            }
+            self.ensure_multiplex_can_dispatch(multiplex)?;
+            let remaining = control_remaining(deadline_unix_ms)?;
+            let mut limits = limits.clone();
+            limits.timeout_ms = Some(remaining.as_millis().min(u64::MAX as u128) as u64);
+            let result = multiplex
+                .call(request, &limits, None, None)
+                .await
+                .and_then(|(response, _)| self.multiplex_response(response));
+            if multiplex.is_failed() {
+                if let Err(error) = self.fail_multiplex().await {
+                    tracing::warn!(%error, "secondary multiplex cleanup failure");
+                }
+            }
+            drop(lease);
+            return result;
+        }
         let mut worker =
             tokio::time::timeout(control_remaining(deadline_unix_ms)?, self.worker.lock())
                 .await
@@ -252,7 +346,51 @@ impl ProviderWorkerSupervisor {
         timeout_limits: &PluginRuntimeLimits,
         context: crate::stdio_runtime::StreamingCallContext,
     ) -> FrameworkResult<StreamingProviderOutput> {
+        self.call_streaming_inner(request, timeout_limits, context, None)
+            .await
+    }
+
+    pub(crate) async fn call_streaming_admitted(
+        self: &Arc<Self>,
+        request: &ProviderStdioRequest,
+        timeout_limits: &PluginRuntimeLimits,
+        context: crate::stdio_runtime::StreamingCallContext,
+        resource: Box<dyn Send + Sync>,
+    ) -> FrameworkResult<StreamingProviderOutput> {
+        self.call_streaming_inner(request, timeout_limits, context, Some(resource))
+            .await
+    }
+
+    async fn call_streaming_inner(
+        self: &Arc<Self>,
+        request: &ProviderStdioRequest,
+        timeout_limits: &PluginRuntimeLimits,
+        context: crate::stdio_runtime::StreamingCallContext,
+        resource: Option<Box<dyn Send + Sync>>,
+    ) -> FrameworkResult<StreamingProviderOutput> {
         let lease = self.admit()?;
+        if let Some(multiplex) = &self.multiplex {
+            if multiplex.is_failed() {
+                self.fail_multiplex().await?;
+            }
+            self.ensure_multiplex_can_dispatch(multiplex)?;
+            let result = multiplex
+                .call(request, timeout_limits, Some(context), resource)
+                .await
+                .and_then(|(response, events)| {
+                    let result = serde_json::from_value(response).map_err(|error| {
+                        PluginFrameworkError::serialization(None, error.to_string())
+                    })?;
+                    Ok(StreamingProviderOutput { events, result })
+                });
+            if multiplex.is_failed() {
+                if let Err(error) = self.fail_multiplex().await {
+                    tracing::warn!(%error, "secondary multiplex cleanup failure");
+                }
+            }
+            drop(lease);
+            return result;
+        }
         let mut worker = self.worker.lock().await;
         self.ensure_lease_can_dispatch(&worker)?;
         let result = worker
@@ -296,6 +434,33 @@ impl ProviderWorkerSupervisor {
         } else {
             ProviderWorkerCleanupReason::DeadlineExceeded
         };
+        if let Some(multiplex) = &self.multiplex {
+            let receipt = multiplex
+                .stop(
+                    generation,
+                    reason,
+                    ProviderWorkerLifecycleState::Inactive,
+                    evidence,
+                )
+                .await;
+            {
+                let mut admission = self.lock_admission()?;
+                admission
+                    .lifecycle
+                    .transition(ProviderWorkerLifecycleEvent::Quiesced)?;
+            }
+            *self
+                .last_cleanup
+                .lock()
+                .map_err(|_| lifecycle_lock_error())? = Some(receipt.clone());
+            if receipt.exited {
+                self.capacity_slot
+                    .lock()
+                    .map_err(|_| lifecycle_lock_error())?
+                    .take();
+            }
+            return Ok(receipt);
+        }
         let mut worker = self.worker.lock().await;
         let prior_cleanup = self.last_cleanup_receipt()?;
         let receipt = if evidence.is_none() && worker.process_control().is_none() {
@@ -405,6 +570,59 @@ impl ProviderWorkerSupervisor {
             .lock()
             .map_err(|_| lifecycle_lock_error())? = Some(receipt);
         Ok(())
+    }
+
+    async fn fail_multiplex(&self) -> FrameworkResult<()> {
+        let Some(multiplex) = &self.multiplex else {
+            return Ok(());
+        };
+        let generation = {
+            let mut admission = self.lock_admission()?;
+            if admission.lifecycle.state() != ProviderWorkerLifecycleState::Active {
+                return Ok(());
+            }
+            admission
+                .lifecycle
+                .transition(ProviderWorkerLifecycleEvent::RuntimeFailed)?;
+            admission.lifecycle.generation()
+        };
+        let receipt = multiplex
+            .stop(
+                generation,
+                ProviderWorkerCleanupReason::RuntimeFailure,
+                ProviderWorkerLifecycleState::Failed,
+                None,
+            )
+            .await;
+        *self
+            .last_cleanup
+            .lock()
+            .map_err(|_| lifecycle_lock_error())? = Some(receipt);
+        Ok(())
+    }
+
+    fn ensure_multiplex_can_dispatch(
+        &self,
+        multiplex: &MultiplexProviderWorker,
+    ) -> FrameworkResult<()> {
+        let admission = self.lock_admission()?;
+        if multiplex.is_failed()
+            || !matches!(
+                admission.lifecycle.state(),
+                ProviderWorkerLifecycleState::Active | ProviderWorkerLifecycleState::Quiescing
+            )
+        {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "multiplex provider worker cannot dispatch",
+            ));
+        }
+        Ok(())
+    }
+
+    fn multiplex_response(&self, response: Value) -> FrameworkResult<Value> {
+        let response = serde_json::from_value(response)
+            .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+        crate::stdio_runtime::multiplex_response_value(response)
     }
 
     fn ensure_lease_can_dispatch(&self, worker: &ProviderWorker) -> FrameworkResult<()> {
@@ -691,6 +909,206 @@ exit 7
             ProviderWorkerLifecycleState::Failed
         );
         assert!(supervisor.last_cleanup_receipt().unwrap().unwrap().exited);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn multiplex_interleaves_calls_and_cancels_only_the_abandoned_call() {
+        let path = multiplex_script();
+        let supervisor =
+            ProviderWorkerSupervisor::activate_multiplex(path.clone(), limits(), 12).unwrap();
+        assert!(supervisor.is_multiplex());
+        let slow_owner = Arc::clone(&supervisor);
+        let slow = tokio::spawn(async move { slow_owner.call(&request("slow")).await });
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let fast = supervisor.call(&request("fast")).await.unwrap();
+        assert_eq!(fast["value"], "fast");
+        slow.abort();
+        let _ = slow.await;
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(
+            supervisor.call(&request("fast-again")).await.unwrap()["value"],
+            "fast-again"
+        );
+        assert_eq!(
+            supervisor.snapshot().unwrap().state,
+            ProviderWorkerLifecycleState::Active
+        );
+        supervisor.begin_quiesce().unwrap();
+        assert!(
+            supervisor
+                .finish_quiesce(Duration::from_secs(1), ProviderWorkerCleanupReason::Drained)
+                .await
+                .unwrap()
+                .exited
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn multiplex_resource_lease_waits_for_cancel_ack() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Resource(Arc<AtomicUsize>);
+        impl Drop for Resource {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let path = multiplex_script();
+        let supervisor =
+            ProviderWorkerSupervisor::activate_multiplex(path.clone(), limits(), 16).unwrap();
+        let released = Arc::new(AtomicUsize::new(0));
+        let owner = Arc::clone(&supervisor);
+        let resource = Arc::clone(&released);
+        let call = tokio::spawn(async move {
+            owner
+                .call_admitted(&request("slow"), Box::new(Resource(resource)))
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        call.abort();
+        let _ = call.await;
+        for _ in 0..30 {
+            if released.load(Ordering::SeqCst) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(released.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            supervisor.call(&request("neighbor")).await.unwrap()["value"],
+            "neighbor"
+        );
+        supervisor.begin_quiesce().unwrap();
+        assert!(
+            supervisor
+                .finish_quiesce(Duration::from_secs(1), ProviderWorkerCleanupReason::Drained)
+                .await
+                .unwrap()
+                .exited
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn multiplex_crash_fails_all_in_flight_without_replay() {
+        let path = multiplex_script();
+        let supervisor =
+            ProviderWorkerSupervisor::activate_multiplex(path.clone(), limits(), 13).unwrap();
+        let first_owner = Arc::clone(&supervisor);
+        let first = tokio::spawn(async move { first_owner.call(&request("slow")).await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(supervisor.call(&request("crash")).await.is_err());
+        assert!(first.await.unwrap().is_err());
+        assert_eq!(
+            supervisor.snapshot().unwrap().state,
+            ProviderWorkerLifecycleState::Failed
+        );
+        assert!(supervisor.last_cleanup_receipt().unwrap().unwrap().exited);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn multiplex_slow_event_consumer_does_not_block_neighbor() {
+        let path = multiplex_script();
+        let supervisor =
+            ProviderWorkerSupervisor::activate_multiplex(path.clone(), limits(), 15).unwrap();
+        let (required, _unread) = tokio::sync::mpsc::channel(1);
+        let slow_owner = Arc::clone(&supervisor);
+        let slow = tokio::spawn(async move {
+            slow_owner
+                .call_streaming_with_limits_and_host_calls(
+                    &request("flood"),
+                    &limits(),
+                    crate::stdio_runtime::StreamingCallContext {
+                        required_live_events: Some(required),
+                        diagnostic_live_events: None,
+                        protocol_observation: None,
+                        event_observer: None,
+                        host_calls: None,
+                    },
+                )
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(
+            supervisor.call(&request("neighbor")).await.unwrap()["value"],
+            "neighbor"
+        );
+        slow.abort();
+        let _ = slow.await;
+        supervisor.begin_quiesce().unwrap();
+        assert!(
+            supervisor
+                .finish_quiesce(Duration::from_secs(1), ProviderWorkerCleanupReason::Drained)
+                .await
+                .unwrap()
+                .exited
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn multiplex_duplicate_terminal_fails_closed() {
+        let path = multiplex_script();
+        let supervisor =
+            ProviderWorkerSupervisor::activate_multiplex(path.clone(), limits(), 14).unwrap();
+        assert!(supervisor.call(&request("duplicate")).await.is_ok());
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(supervisor.call(&request("after-duplicate")).await.is_err());
+        supervisor.begin_quiesce().unwrap();
+        let _ = supervisor
+            .finish_quiesce(Duration::from_secs(1), ProviderWorkerCleanupReason::Drained)
+            .await;
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn multiplex_script() -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("provider-multiplex-{nonce}.py"));
+        std::fs::write(&path, r#"#!/usr/bin/env python3
+import json, os, sys, threading, time
+lock = threading.Lock()
+cancelled = set()
+def send(frame):
+    with lock:
+        sys.stdout.write(json.dumps(dict(protocol='stdio_json_multiplex_v1', **frame)) + '\n')
+        sys.stdout.flush()
+def work(call_id, mode):
+    if mode == 'crash':
+        time.sleep(0.04)
+        os._exit(7)
+    if mode == 'slow':
+        time.sleep(0.5)
+    if mode == 'flood':
+        for _ in range(16):
+            send(dict(kind='event', call_id=call_id, event=dict(type='text_delta', delta='x')))
+        time.sleep(0.5)
+    if call_id in cancelled:
+        return
+    response = dict(kind='response', call_id=call_id, response=dict(ok=True, result=dict(value=mode)))
+    send(response)
+    if mode == 'duplicate':
+        send(response)
+for line in sys.stdin:
+    frame = json.loads(line)
+    if frame['kind'] == 'call':
+        threading.Thread(target=work, args=(frame['call_id'], frame['request']['input']['mode']), daemon=True).start()
+    elif frame['kind'] == 'cancel':
+        cancelled.add(frame['call_id'])
+        send(dict(kind='cancelled', call_id=frame['call_id']))
+"#).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
     }
 
     fn supervisor(generation: u64) -> Arc<ProviderWorkerSupervisor> {

@@ -8,6 +8,7 @@ license.workspace = true
 extension-contracts = { path = "../extension-contracts" }
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 
 [[example]]
 name = "managed_hook_worker"

@@ -1480,3 +1480,6 @@ mod transport_bindings;
 #[cfg(unix)]
 #[path = "provider_host/session_workers.rs"]
 mod session_workers;
+
+#[path = "provider_host/shared_workers.rs"]
+mod shared_workers;

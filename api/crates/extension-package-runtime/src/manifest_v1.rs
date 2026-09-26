@@ -442,7 +442,12 @@ fn validate_plugin_manifest(
     validate_allowed(
         &manifest.runtime.protocol,
         "runtime.protocol",
-        &["stdio_json", "stdio_json_worker", "native_host"],
+        &[
+            "stdio_json",
+            "stdio_json_worker",
+            extension_contracts::STDIO_JSON_MULTIPLEX_V1,
+            "native_host",
+        ],
     )?;
     validate_execution_runtime_pair(manifest)?;
     validate_permission_values(&manifest.permissions)?;
@@ -599,9 +604,10 @@ fn validate_keywords(keywords: &[String]) -> FrameworkResult<()> {
 fn validate_execution_runtime_pair(manifest: &PluginManifestV1) -> FrameworkResult<()> {
     if manifest.execution_mode == PluginExecutionMode::StatefulProviderWorker
         && manifest.runtime.protocol != "stdio_json_worker"
+        && manifest.runtime.protocol != extension_contracts::STDIO_JSON_MULTIPLEX_V1
     {
         return Err(PluginFrameworkError::invalid_provider_package(
-            "stateful_provider_worker execution_mode requires runtime.protocol=stdio_json_worker",
+            "stateful_provider_worker requires stdio_json_worker or stdio_json_multiplex_v1",
         ));
     }
     if manifest.execution_mode == PluginExecutionMode::StatefulRuntimeWorker
@@ -621,6 +627,14 @@ fn validate_execution_runtime_pair(manifest: &PluginManifestV1) -> FrameworkResu
     {
         return Err(PluginFrameworkError::invalid_provider_package(
             "stdio_json_worker runtime.protocol requires execution_mode=stateful_provider_worker",
+        ));
+    }
+
+    if manifest.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1
+        && manifest.execution_mode != PluginExecutionMode::StatefulProviderWorker
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "stdio_json_multiplex_v1 currently requires execution_mode=stateful_provider_worker",
         ));
     }
 

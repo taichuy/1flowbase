@@ -305,10 +305,11 @@ fn validate_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {
         crate::PluginExecutionMode::ProcessPerCall if manifest.runtime.protocol == "stdio_json" => {
         }
         crate::PluginExecutionMode::StatefulProviderWorker
-            if manifest.runtime.protocol == "stdio_json_worker" => {}
+            if manifest.runtime.protocol == "stdio_json_worker"
+                || manifest.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 => {}
         _ => {
             return Err(PluginFrameworkError::invalid_provider_package(
-                "model provider package must declare execution_mode=process_per_call with runtime.protocol=stdio_json or execution_mode=stateful_provider_worker with runtime.protocol=stdio_json_worker",
+                "model provider package requires process_per_call/stdio_json or stateful_provider_worker with stdio_json_worker or stdio_json_multiplex_v1",
             ));
         }
     }

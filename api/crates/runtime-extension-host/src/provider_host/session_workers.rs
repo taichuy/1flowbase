@@ -8,7 +8,9 @@ use super::operations::{
 use super::*;
 
 mod capacity;
+mod shared_capacity;
 pub(super) use capacity::{SessionWorkerCapacity, SessionWorkerPermit};
+pub(super) use shared_capacity::{SharedInvocationPermit, SharedWorkerCapacity};
 
 #[derive(Debug)]
 pub(super) struct LogicalSessionWorker {
@@ -17,6 +19,7 @@ pub(super) struct LogicalSessionWorker {
     dormant_since: Option<std::time::Instant>,
     dormant_until: Option<std::time::Instant>,
     expiry_task: Option<tokio::task::AbortHandle>,
+    shared: bool,
 }
 impl LogicalSessionWorker {
     fn cancel_expiry(&mut self) {
@@ -46,6 +49,25 @@ pub(super) fn admission_timeout() -> PluginFrameworkError {
     ))
 }
 
+pub(super) async fn acquire_shared_invocation(
+    workers: &ProviderWorkerRegistry,
+    worker: &ProviderWorkerHandle,
+    request: &ProviderStdioRequest,
+    deadline: tokio::time::Instant,
+) -> FrameworkResult<SharedInvocationPermit> {
+    let capacity = lock_provider_worker_registry(workers)?
+        .shared_capacity
+        .clone();
+    let pid = worker
+        .snapshot()?
+        .pid
+        .ok_or_else(|| transport_binding_error("shared worker has no process"))?;
+    let bytes = serde_json::to_vec(request)
+        .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))?
+        .len();
+    capacity.acquire(pid, bytes, deadline).await
+}
+
 pub(super) fn epoch(workers: &ProviderWorkerRegistry, plugin: &str) -> FrameworkResult<u64> {
     Ok(*lock_provider_worker_registry(workers)?
         .epochs
@@ -61,6 +83,9 @@ pub(super) async fn select_worker(
     deadline: tokio::time::Instant,
     expected_epoch: u64,
 ) -> FrameworkResult<ProviderWorkerHandle> {
+    if loaded.package.manifest.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
+        return select_shared_worker(workers, plugin, loaded, input, expected_epoch);
+    }
     let directive = input
         .transport_session_directive()
         .map_err(PluginFrameworkError::invalid_provider_contract)?;
@@ -182,6 +207,7 @@ pub(super) async fn select_worker(
                             dormant_since: None,
                             dormant_until: None,
                             expiry_task: None,
+                            shared: false,
                         },
                     );
                     if let Err(error) =
@@ -252,6 +278,62 @@ fn check_epoch(
     Ok(())
 }
 
+/// Logical sessions share the loaded artifact's worker. A binding still points to
+/// its original incarnation: replacing the worker never migrates an old cursor.
+fn select_shared_worker(
+    workers: &ProviderWorkerRegistry,
+    plugin: &str,
+    loaded: &LoadedProviderPackage,
+    input: &mut ProviderInvocationInput,
+    expected_epoch: u64,
+) -> FrameworkResult<ProviderWorkerHandle> {
+    let directive = input
+        .transport_session_directive()
+        .map_err(PluginFrameworkError::invalid_provider_contract)?;
+    let mut registry = lock_provider_worker_registry(workers)?;
+    check_epoch(&registry, plugin, expected_epoch)?;
+    super::operations::prune_transport_bindings(&mut registry);
+    if let Some(directive) = &directive {
+        let key = (plugin.to_owned(), directive.logical_session_id.clone());
+        if let Some(worker) = existing(
+            &registry,
+            &(key.0.clone(), key.1.clone(), directive.generation),
+        )? {
+            bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
+            return Ok(worker);
+        }
+        if let Some(session) = registry.session_workers.get(&key) {
+            if directive.generation <= session.generation {
+                return Err(transport_binding_error(
+                    "transport generation is already closed",
+                ));
+            }
+            if session.dormant_since.is_none() {
+                return Err(transport_binding_error(
+                    "previous transport generation is still active",
+                ));
+            }
+        }
+    }
+    let worker =
+        super::operations::provider_worker_handle_locked(&mut registry, plugin.to_owned(), loaded)?;
+    bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
+    if let Some(directive) = directive {
+        registry.session_workers.insert(
+            (plugin.to_owned(), directive.logical_session_id),
+            LogicalSessionWorker {
+                worker: worker.clone(),
+                generation: directive.generation,
+                dormant_since: None,
+                dormant_until: None,
+                expiry_task: None,
+                shared: true,
+            },
+        );
+    }
+    Ok(worker)
+}
+
 fn existing(
     registry: &ProviderWorkerRegistryState,
     key: &(String, String, u64),
@@ -305,6 +387,10 @@ pub(super) fn release_worker(
     }
     let state = session.worker.snapshot()?.state;
     if state != ProviderWorkerLifecycleState::Active {
+        if session.shared {
+            registry.session_workers.remove(&key);
+            return Ok(());
+        }
         if state != ProviderWorkerLifecycleState::Quiescing {
             let worker = session.retire()?;
             tokio::spawn(cleanup_batch(
@@ -343,6 +429,12 @@ pub(super) fn release_worker(
             {
                 return;
             }
+            if session.shared {
+                // Expiring one logical owner must never terminate its neighbours.
+                session.expiry_task.take();
+                registry.session_workers.remove(&key);
+                return;
+            }
             // Do not abort this timer after it becomes the cleanup owner.
             session.expiry_task.take();
             let Ok(worker) = session.retire() else {
@@ -375,14 +467,15 @@ fn take_all(
         .cloned()
         .collect();
     for key in keys {
-        all.push(
-            registry
-                .session_workers
-                .get(&key)
-                .expect("collected worker")
-                .worker
-                .clone(),
-        );
+        let worker = registry
+            .session_workers
+            .get(&key)
+            .expect("collected worker")
+            .worker
+            .clone();
+        if !all.iter().any(|existing| Arc::ptr_eq(existing, &worker)) {
+            all.push(worker);
+        }
     }
     for (key, session) in &mut registry.session_workers {
         if key.0 == plugin {
@@ -490,7 +583,8 @@ impl ProviderHost {
         active_invocation_leases: &Arc<Mutex<HashMap<String, std::sync::Weak<Semaphore>>>>,
         plugin_id: &str,
         input: &ProviderInvocationInput,
-    ) -> FrameworkResult<ActiveProviderInvocationLease> {
+        multiplex: bool,
+    ) -> FrameworkResult<Option<ActiveProviderInvocationLease>> {
         let provider_pool_key = match input
             .transport_session_directive()
             .map_err(PluginFrameworkError::invalid_provider_contract)?
@@ -499,6 +593,7 @@ impl ProviderHost {
                 serde_json::to_string(&("logical", plugin_id, directive.logical_session_id))
                     .expect("string tuple")
             }
+            None if multiplex => return Ok(None),
             None => provider_pool_key(input),
         };
         let semaphore = {
@@ -533,10 +628,10 @@ impl ProviderHost {
             provider_pool_key = %provider_pool_key,
             "active provider invocation lease acquired"
         );
-        Ok(ActiveProviderInvocationLease {
+        Ok(Some(ActiveProviderInvocationLease {
             provider_pool_key,
             _permit: permit,
-        })
+        }))
     }
 }
 

@@ -29,7 +29,9 @@ use tokio::{
     sync::Mutex,
 };
 
+mod multiplex;
 mod streaming;
+pub(crate) use multiplex::MultiplexProviderWorker;
 pub use streaming::call_executable_streaming;
 use streaming::ProviderStreamOutcome;
 
@@ -977,6 +979,15 @@ fn stdio_response_result(envelope: ProviderStdioResponse) -> FrameworkResult<Val
             provider_details: error.provider_details,
         })),
     }
+}
+
+pub(crate) fn multiplex_response_value(envelope: ProviderStdioResponse) -> FrameworkResult<Value> {
+    if envelope.ok == envelope.error.is_some() {
+        return Err(PluginFrameworkError::invalid_provider_contract(
+            "provider multiplex response has inconsistent ok/error fields",
+        ));
+    }
+    stdio_response_result(envelope)
 }
 
 struct ProviderStreamTimeoutState {

@@ -17,9 +17,9 @@ const DEFAULT_WORKER_BUDGET: u64 = 512 * MIB;
 const MIN_WORKER_BUDGET: u64 = 256 * MIB;
 
 #[derive(Debug, Clone, Copy)]
-struct MemorySnapshot {
-    total: u64,
-    available: u64,
+pub(super) struct MemorySnapshot {
+    pub(super) total: u64,
+    pub(super) available: u64,
 }
 
 #[derive(Debug)]
@@ -194,6 +194,10 @@ fn memory_snapshot(_budget: &MemoryBudget) -> FrameworkResult<MemorySnapshot> {
     if let Some(snapshot) = &_budget.fixed_snapshot {
         return Ok(*snapshot.lock().expect("fixed memory snapshot"));
     }
+    system_memory_snapshot()
+}
+
+pub(super) fn system_memory_snapshot() -> FrameworkResult<MemorySnapshot> {
     #[cfg(target_os = "linux")]
     return linux_memory_snapshot();
     #[cfg(not(target_os = "linux"))]

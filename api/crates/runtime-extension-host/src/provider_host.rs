@@ -68,6 +68,7 @@ struct ProviderWorkerRegistryState {
     workers: HashMap<String, ProviderWorkerHandle>,
     session_workers: HashMap<(String, String), session_workers::LogicalSessionWorker>,
     session_capacity: SessionWorkerCapacity,
+    shared_capacity: session_workers::SharedWorkerCapacity,
     epochs: HashMap<String, u64>,
     next_generation: HashMap<String, u64>,
     cleanup_receipts: HashMap<String, ProviderWorkerCleanupReceipt>,
@@ -1178,6 +1179,12 @@ impl ProviderHost {
             PluginExecutionMode::StatefulProviderWorker => {
                 let plugin_id = loaded.package.identifier();
                 let worker = provider_worker_handle(&provider_workers, plugin_id, &loaded)?;
+                if worker.is_multiplex() {
+                    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(
+                        loaded.package.manifest.runtime.limits.timeout_ms.unwrap_or(DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS));
+                    let permit = session_workers::acquire_shared_invocation(&provider_workers, &worker, &request, deadline).await?;
+                    return worker.call_admitted(&request, Box::new(permit)).await;
+                }
                 worker.call(&request).await
             }
             _ => Err(PluginFrameworkError::invalid_provider_package(
@@ -1219,7 +1226,8 @@ impl ProviderHost {
             );
         let _lease = tokio::time::timeout_at(
             deadline,
-            Self::acquire_active_invocation_lease(&active_invocation_leases, &plugin_id, &input),
+            Self::acquire_active_invocation_lease(&active_invocation_leases, &plugin_id, &input,
+                loaded.package.manifest.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1),
         )
         .await
         .map_err(|_| session_workers::admission_timeout())??;
@@ -1284,19 +1292,21 @@ impl ProviderHost {
             }
             PluginExecutionMode::StatefulProviderWorker => {
                 let worker = selected_worker.expect("stateful invocation selected its worker");
-                worker
-                    .call_streaming_with_limits_and_host_calls(
-                        &request,
-                        &invocation_limits,
-                        StreamingCallContext {
+                let context = StreamingCallContext {
                             required_live_events,
                             diagnostic_live_events,
                             protocol_observation,
                             event_observer,
                             host_calls,
-                        },
-                    )
-                    .await
+                        };
+                if worker.is_multiplex() {
+                    match session_workers::acquire_shared_invocation(&provider_workers, &worker, &request, deadline).await {
+                        Ok(permit) => worker.call_streaming_admitted(&request, &invocation_limits, context, Box::new(permit)).await,
+                        Err(error) => Err(error),
+                    }
+                } else {
+                    worker.call_streaming_with_limits_and_host_calls(&request, &invocation_limits, context).await
+                }
             }
             _ => Err(PluginFrameworkError::invalid_provider_package(
                 "model provider package declares unsupported execution_mode",

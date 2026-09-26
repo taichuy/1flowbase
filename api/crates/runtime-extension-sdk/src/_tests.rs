@@ -78,3 +78,5 @@ fn public_fixture_does_not_require_untyped_maps() {
 mod managed_hook_tests;
 
 mod managed_event_tests;
+
+mod multiplex_tests;

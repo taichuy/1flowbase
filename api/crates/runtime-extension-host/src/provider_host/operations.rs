@@ -23,7 +23,7 @@ pub(super) fn provider_worker_handle_locked(
     loaded: &LoadedProviderPackage,
 ) -> FrameworkResult<ProviderWorkerHandle> {
     if let Some(worker) = registry.workers.get(&plugin_id).cloned() {
-        if worker.snapshot()?.state != ProviderWorkerLifecycleState::Failed {
+        if worker.snapshot()?.state == ProviderWorkerLifecycleState::Active {
             return Ok(worker);
         }
         if let Some(receipt) = worker.last_cleanup_receipt()? {
@@ -35,11 +35,21 @@ pub(super) fn provider_worker_handle_locked(
         .next_generation
         .entry(plugin_id.clone())
         .or_insert(1);
-    let supervisor = ProviderWorkerSupervisor::activate(
-        loaded.runtime_executable.clone(),
-        loaded.package.manifest.runtime.limits.clone(),
-        generation,
-    )?;
+    let supervisor = if loaded.package.manifest.runtime.protocol
+        == extension_contracts::STDIO_JSON_MULTIPLEX_V1
+    {
+        ProviderWorkerSupervisor::activate_multiplex(
+            loaded.runtime_executable.clone(),
+            loaded.package.manifest.runtime.limits.clone(),
+            generation,
+        )?
+    } else {
+        ProviderWorkerSupervisor::activate(
+            loaded.runtime_executable.clone(),
+            loaded.package.manifest.runtime.limits.clone(),
+            generation,
+        )?
+    };
     registry
         .next_generation
         .insert(plugin_id.clone(), generation.saturating_add(1));

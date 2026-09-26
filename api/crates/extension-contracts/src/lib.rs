@@ -23,6 +23,7 @@ pub mod provider_contract;
 pub mod provider_distribution_contract;
 pub mod runtime_target;
 pub mod semantic_terminal;
+pub mod stdio_multiplex;
 
 pub use data_model_template_contract::*;
 pub use data_source_contract::*;
@@ -42,6 +43,7 @@ pub use provider_contract::*;
 pub use provider_distribution_contract::*;
 pub use runtime_target::*;
 pub use semantic_terminal::*;
+pub use stdio_multiplex::*;
 
 pub fn crate_name() -> &'static str {
     "extension-contracts"
