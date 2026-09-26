@@ -464,7 +464,7 @@ fn waiting_tool(run: &NativeRunResult, sequence: i64) -> RuntimeEventEnvelope {
 }
 
 #[test]
-fn preserves_repeated_spaces_unicode_empty_deltas_usage_and_strict_order() {
+fn responses_usage_details_websocket_preserves_text_and_strict_order() {
     let mut run = native_run(0x11111111111111111111111111111111);
     let mut projector = ResponsesWebSocketProjector::new("published-model".to_string(), None);
     let mut frames = projector
@@ -488,6 +488,8 @@ fn preserves_repeated_spaces_unicode_empty_deltas_usage_and_strict_order() {
         prompt_tokens: Some(7),
         completion_tokens: Some(11),
         total_tokens: Some(18),
+        cache_read_tokens: Some(5),
+        reasoning_tokens: Some(3),
         ..NativeUsage::default()
     });
     frames.extend(
@@ -518,6 +520,14 @@ fn preserves_repeated_spaces_unicode_empty_deltas_usage_and_strict_order() {
     assert_eq!(terminal["response"]["usage"]["input_tokens"], 7);
     assert_eq!(terminal["response"]["usage"]["output_tokens"], 11);
     assert_eq!(terminal["response"]["usage"]["total_tokens"], 18);
+    assert_eq!(
+        terminal["response"]["usage"]["input_tokens_details"]["cached_tokens"],
+        5
+    );
+    assert_eq!(
+        terminal["response"]["usage"]["output_tokens_details"]["reasoning_tokens"],
+        3
+    );
     assert_eq!(
         terminal["response"]["output"][0]["content"][0]["text"],
         "two  spaces世界🙂two  spaces"

@@ -72,6 +72,50 @@ fn decode_responses_sse(body: &str) -> DecodedResponsesStream {
     decoded
 }
 
+#[tokio::test]
+async fn responses_usage_details_terminal_sse_projects_cached_and_reasoning_tokens() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Succeeded;
+    run.usage = Some(NativeUsage {
+        prompt_tokens: Some(33024),
+        completion_tokens: Some(120),
+        total_tokens: Some(33144),
+        cache_read_tokens: Some(3328),
+        reasoning_tokens: Some(80),
+        ..NativeUsage::default()
+    });
+    let mut mapper = OpenAiResponseStreamMapper::new("provider/model".into(), None);
+    let events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            debug_stream_events::flow_finished(run.id, json!({ "answer": "done" })),
+        ),
+    );
+    let response = test_projected_events_response(events);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("Responses SSE body should be readable");
+    let body = String::from_utf8(body.to_vec()).expect("Responses SSE should be UTF-8");
+    let terminal = body
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .map(|data| serde_json::from_str::<Value>(data).expect("valid SSE JSON"))
+        .find(|event| event["type"] == "response.completed")
+        .expect("terminal event");
+    assert_eq!(
+        terminal["response"]["usage"],
+        json!({
+            "input_tokens": 33024,
+            "input_tokens_details": { "cached_tokens": 3328 },
+            "output_tokens": 120,
+            "output_tokens_details": { "reasoning_tokens": 80 },
+            "total_tokens": 33144
+        })
+    );
+}
+
 #[test]
 fn responses_tool_done_projects_only_after_committed_delivery() {
     let run = native_run();

@@ -6,7 +6,9 @@ use control_plane::application_public_api::callback_tool_ids::decode_openai_call
 use control_plane::application_public_api::compat::openai::{
     translate_response_request_with_context_and_previous, OpenAiResponsesRequestContext,
 };
-use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
+use control_plane::application_public_api::native::{
+    NativeRequiredAction, NativeRunStatus, NativeUsage,
+};
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
 };
@@ -35,6 +37,61 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
         operation_terminal: None,
         created_at: OffsetDateTime::UNIX_EPOCH,
     }
+}
+
+#[test]
+fn responses_usage_details_unary_preserves_totals_and_default() {
+    let mut run = blocking_run(NativeRunStatus::Succeeded);
+    run.usage = Some(NativeUsage {
+        prompt_tokens: Some(33024),
+        completion_tokens: Some(120),
+        total_tokens: Some(33144),
+        input_cache_hit_tokens: Some(3000),
+        cache_read_tokens: Some(3328),
+        reasoning_tokens: Some(80),
+        ..NativeUsage::default()
+    });
+    let response = serde_json::to_value(
+        to_openai_responses_response(run, "provider/model".into(), None)
+            .expect("completed response should project"),
+    )
+    .expect("Responses JSON should serialize");
+    assert_eq!(
+        response["usage"],
+        json!({
+            "input_tokens": 33024,
+            "input_tokens_details": { "cached_tokens": 3328 },
+            "output_tokens": 120,
+            "output_tokens_details": { "reasoning_tokens": 80 },
+            "total_tokens": 33144
+        })
+    );
+
+    let absent = serde_json::to_value(
+        to_openai_responses_response(
+            blocking_run(NativeRunStatus::Succeeded),
+            "provider/model".into(),
+            None,
+        )
+        .expect("completed response without usage should project"),
+    )
+    .expect("default Responses JSON should serialize");
+    assert_eq!(
+        absent["usage"],
+        json!({
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0
+        })
+    );
+
+    let hit_only = NativeUsage {
+        input_cache_hit_tokens: Some(17),
+        ..NativeUsage::default()
+    };
+    let projected = serde_json::to_value(openai_responses_usage(Some(&hit_only)))
+        .expect("fallback usage should serialize");
+    assert_eq!(projected["input_tokens_details"]["cached_tokens"], 17);
 }
 
 #[test]

@@ -72,8 +72,9 @@ use model_list::{
 pub use types::{
     OpenAiChatCompletionChoice, OpenAiChatCompletionResponse, OpenAiChatMessage, OpenAiErrorBody,
     OpenAiErrorObject, OpenAiModelListQuery, OpenAiModelListResponse, OpenAiModelObject,
-    OpenAiResponsesIncompleteDetails, OpenAiResponsesObject, OpenAiResponsesUsage,
-    OpenAiRouteError, OpenAiToolCall, OpenAiToolCallFunction, OpenAiUsage,
+    OpenAiResponsesIncompleteDetails, OpenAiResponsesInputTokensDetails, OpenAiResponsesObject,
+    OpenAiResponsesOutputTokensDetails, OpenAiResponsesUsage, OpenAiRouteError, OpenAiToolCall,
+    OpenAiToolCallFunction, OpenAiUsage,
 };
 
 pub(super) struct OpenAiCredential {
@@ -1755,7 +1756,7 @@ fn to_openai_responses_response_with_native_items(
         model,
         output,
         output_text,
-        usage: openai_responses_usage(run.usage),
+        usage: openai_responses_usage(run.usage.as_ref()),
         incomplete_details,
         previous_response_id,
     })
@@ -1851,15 +1852,24 @@ fn openai_usage(
     }
 }
 
-fn openai_responses_usage(
-    usage: Option<control_plane::application_public_api::native::NativeUsage>,
+pub(super) fn openai_responses_usage(
+    usage: Option<&control_plane::application_public_api::native::NativeUsage>,
 ) -> OpenAiResponsesUsage {
     let Some(usage) = usage else {
         return OpenAiResponsesUsage::default();
     };
     OpenAiResponsesUsage {
         input_tokens: usage.prompt_tokens.unwrap_or_default(),
+        input_tokens_details: Some(OpenAiResponsesInputTokensDetails {
+            cached_tokens: usage
+                .cache_read_tokens
+                .or(usage.input_cache_hit_tokens)
+                .unwrap_or_default(),
+        }),
         output_tokens: usage.completion_tokens.unwrap_or_default(),
+        output_tokens_details: Some(OpenAiResponsesOutputTokensDetails {
+            reasoning_tokens: usage.reasoning_tokens.unwrap_or_default(),
+        }),
         total_tokens: usage.total_tokens.unwrap_or_default(),
     }
 }

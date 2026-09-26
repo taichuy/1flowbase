@@ -260,19 +260,7 @@ fn openai_response_incomplete_snapshot(
 }
 
 fn openai_responses_usage_payload(usage: Option<&NativeUsage>) -> Value {
-    let Some(usage) = usage else {
-        return json!({
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0
-        });
-    };
-
-    json!({
-        "input_tokens": usage.prompt_tokens.unwrap_or_default(),
-        "output_tokens": usage.completion_tokens.unwrap_or_default(),
-        "total_tokens": usage.total_tokens.unwrap_or_default()
-    })
+    json!(crate::routes::application_public_api::openai::openai_responses_usage(usage))
 }
 
 fn openai_response_output_text_delta_payload(initial_run: &NativeRunResult, text: String) -> Value {
