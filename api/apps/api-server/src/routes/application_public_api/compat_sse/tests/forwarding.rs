@@ -204,6 +204,15 @@ impl crate::routes::application_public_api::native_read_interface::NativeRuntime
 
 #[tokio::test]
 async fn terminal_callback_attach_replays_ordered_durable_round_without_executor() {
+    assert_terminal_callback_attach(false).await;
+}
+
+#[tokio::test]
+async fn missing_local_round_follows_later_durable_terminal_without_executor() {
+    assert_terminal_callback_attach(true).await;
+}
+
+async fn assert_terminal_callback_attach(terminal_after_subscribe: bool) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
         callback_resume::{
@@ -228,33 +237,9 @@ async fn terminal_callback_attach_replays_ordered_durable_round_without_executor
         json!({"type": "message", "content": [{"type": "output_text", "text": "first"}]});
     let second_item =
         json!({"type": "message", "content": [{"type": "output_text", "text": "second"}]});
-    for (index, item) in [(1, second_item.clone()), (0, first_item.clone())] {
-        append_compat_sse_runtime_event(
-            &state,
-            run.id,
-            "provider_output_item_done",
-            json!({"output_index": index, "item": item}),
-        )
-        .await;
+    if !terminal_after_subscribe {
+        complete_attached_callback_round(&state, run.id, &first_item, &second_item).await;
     }
-    append_compat_sse_runtime_event(
-        &state,
-        run.id,
-        "flow_finished",
-        json!({"type": "flow_finished", "run_id": run.id, "status": "succeeded"}),
-    )
-    .await;
-    state
-        .store
-        .update_flow_run(&UpdateFlowRunInput {
-            flow_run_id: run.id,
-            status: domain::FlowRunStatus::Succeeded,
-            output_payload: json!({}),
-            error_payload: None,
-            finished_at: Some(time::OffsetDateTime::now_utc()),
-        })
-        .await
-        .unwrap();
 
     let stream = Arc::new(LocalRuntimeEventStream::new());
     let native = crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
@@ -304,6 +289,21 @@ async fn terminal_callback_attach_replays_ordered_durable_round_without_executor
         start_compatible_typed_resume_stream_for_actor(dependencies, run, command, actor)
             .await
             .unwrap();
+    if terminal_after_subscribe {
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), attached.events.recv())
+                .await
+                .is_err(),
+            "a missing local marker must wait for durable completion"
+        );
+        complete_attached_callback_round(
+            &state,
+            attached.initial_run.id,
+            &first_item,
+            &second_item,
+        )
+        .await;
+    }
     let mut events = Vec::new();
     while let Some(input) = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
         .await
@@ -333,6 +333,48 @@ async fn terminal_callback_attach_replays_ordered_durable_round_without_executor
     .await
     .unwrap();
     assert_eq!(attempt_count, 0, "attach must not reserve another attempt");
+    assert!(
+        stream
+            .replay(attached.initial_run.id, None, 1)
+            .await
+            .is_err(),
+        "durable terminal replay must not create an empty local stream"
+    );
+}
+
+async fn complete_attached_callback_round(
+    state: &ApiState,
+    run_id: Uuid,
+    first_item: &serde_json::Value,
+    second_item: &serde_json::Value,
+) {
+    for (index, item) in [(1, second_item), (0, first_item)] {
+        append_compat_sse_runtime_event(
+            state,
+            run_id,
+            "provider_output_item_done",
+            json!({"output_index": index, "item": item}),
+        )
+        .await;
+    }
+    append_compat_sse_runtime_event(
+        state,
+        run_id,
+        "flow_finished",
+        json!({"type": "flow_finished", "run_id": run_id, "status": "succeeded"}),
+    )
+    .await;
+    state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run_id,
+            status: domain::FlowRunStatus::Succeeded,
+            output_payload: json!({}),
+            error_payload: None,
+            finished_at: Some(time::OffsetDateTime::now_utc()),
+        })
+        .await
+        .unwrap();
 }
 
 fn spawn_typed_stream(

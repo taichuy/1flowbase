@@ -30,9 +30,22 @@ pub(in crate::orchestration_runtime) struct PersistedNodeLifecycle<'a, R, H> {
     service: &'a OrchestrationRuntimeService<R, H>,
     flow_run_id: uuid::Uuid,
     resumed_node_run: Option<(String, crate::ports::CallbackResumeWaitingNode)>,
+    resume_claim_owner: Option<crate::ports::RenewResumeClaimInput>,
     prepared_node_runs: Arc<std::sync::Mutex<PreparedNodeRuns>>,
     flow_execution_context: Arc<RuntimeFlowExecutionContext>,
 }
+
+fn recovered_running_node_requires_owner_renewal(
+    status: domain::NodeRunStatus,
+    owner: Option<&crate::ports::RenewResumeClaimInput>,
+) -> bool {
+    status == domain::NodeRunStatus::Running
+        && owner.is_some_and(|owner| owner.expected_generation > 0)
+}
+
+#[cfg(test)]
+#[path = "../../_tests/orchestration_runtime/recovery_transition.rs"]
+mod recovery_transition_tests;
 
 impl<'a, R, H> PersistedNodeLifecycle<'a, R, H> {
     pub(in crate::orchestration_runtime) fn new(
@@ -44,6 +57,7 @@ impl<'a, R, H> PersistedNodeLifecycle<'a, R, H> {
             service,
             flow_run_id,
             resumed_node_run: None,
+            resume_claim_owner: None,
             prepared_node_runs: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
             flow_execution_context,
         }
@@ -54,6 +68,14 @@ impl<'a, R, H> PersistedNodeLifecycle<'a, R, H> {
         node_run: Option<(String, crate::ports::CallbackResumeWaitingNode)>,
     ) -> Self {
         self.resumed_node_run = node_run;
+        self
+    }
+
+    pub(in crate::orchestration_runtime) fn with_resume_claim_owner(
+        mut self,
+        owner: crate::ports::RenewResumeClaimInput,
+    ) -> Self {
+        self.resume_claim_owner = Some(owner);
         self
     }
 
@@ -95,11 +117,24 @@ where
             .as_ref()
             .filter(|(node_id, _)| *node_id == node.node_id)
         {
-            super::ensure_node_run_transition(
+            if recovered_running_node_requires_owner_renewal(
                 previous.status,
-                domain::NodeRunStatus::Running,
-                "resume_native_llm_node",
-            )?;
+                self.resume_claim_owner.as_ref(),
+            ) {
+                let owner = self.resume_claim_owner.as_ref().expect("checked above");
+                if !self.service.repository.renew_resume_claim(owner).await? {
+                    return Err(crate::errors::ControlPlaneError::Conflict(
+                        "resume_claim_not_owned",
+                    )
+                    .into());
+                }
+            } else {
+                super::ensure_node_run_transition(
+                    previous.status,
+                    domain::NodeRunStatus::Running,
+                    "resume_native_llm_node",
+                )?;
+            }
             self.service
                 .repository
                 .update_node_run(&crate::ports::UpdateNodeRunInput {
