@@ -12,10 +12,21 @@ const {
   canRunWorkflowContract,
   conversationTestInvocations,
   dockerDatabaseContract,
+  gatewayBuildInvocation,
   officialProviderTestInvocations,
   parseArgs,
   testFiles,
 } = require("../cli");
+
+test("Gateway runtime build shares the Rust test profile and binary path", () => {
+  assert.deepEqual(gatewayBuildInvocation("/repo"), {
+    args: [
+      "build", "--manifest-path", "/repo/api/Cargo.toml",
+      "--profile", "test", "-p", "api-server", "--bin", "api-server",
+    ],
+    binary: "/repo/api/target/debug/api-server",
+  });
+});
 
 test("quality gate measures the exact bounded artifact inventory", () => {
   const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "gate-artifact-"));

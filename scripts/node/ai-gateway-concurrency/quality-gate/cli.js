@@ -384,6 +384,23 @@ function officialProviderTestInvocations(officialSourceRoot) {
   }));
 }
 
+function gatewayBuildInvocation(repoRoot) {
+  return {
+    args: [
+      "build",
+      "--manifest-path",
+      path.join(repoRoot, "api/Cargo.toml"),
+      "--profile",
+      "test",
+      "-p",
+      "api-server",
+      "--bin",
+      "api-server",
+    ],
+    binary: path.join(repoRoot, "api/target/debug/api-server"),
+  };
+}
+
 function canRunWorkflowContract({
   database,
   gatewayBuilt,
@@ -417,12 +434,20 @@ async function runQualityGate(rawOptions) {
   fs.mkdirSync(packageRoot, { recursive: true });
 
   const failures = [];
+  const timings = [];
   const attempt = (name, executable, args, options) => {
+    const startedAt = Date.now();
+    let status = "pass";
     try {
       return command(repoRoot, artifactRoot, name, executable, args, options);
     } catch (error) {
+      status = "fail";
       failures.push({ name, message: error.message });
       return null;
+    } finally {
+      const durationMs = Date.now() - startedAt;
+      timings.push({ name, status, duration_ms: durationMs });
+      process.stdout.write(`[ai-gateway-quality-gate] ${name}: ${status} (${(durationMs / 1000).toFixed(1)}s)\n`);
     }
   };
   const mainSourceSha = attempt("main-source-sha", "git", [
@@ -497,7 +522,7 @@ async function runQualityGate(rawOptions) {
     }
 
     const packagedProviders = new Set();
-    for (const providerCode of OFFICIAL_PROVIDER_CODES) {
+    for (const providerCode of WORKFLOW_PROVIDER_CODES) {
       const pluginRoot = path.join(
         officialSourceRoot,
         "runtime-extensions/@taichuy",
@@ -533,16 +558,8 @@ async function runQualityGate(rawOptions) {
         if (packaged !== null) packagedProviders.add(providerCode);
       }
     }
-    const gatewayBuilt = attempt("gateway-api-build", "cargo", [
-      "build",
-      "--manifest-path",
-      path.join(repoRoot, "api/Cargo.toml"),
-      "--release",
-      "-p",
-      "api-server",
-      "--bin",
-      "api-server",
-    ]);
+    const gatewayBuild = gatewayBuildInvocation(repoRoot);
+    const gatewayBuilt = attempt("gateway-api-build", "cargo", gatewayBuild.args);
     // Independent unit failures remain blocking, but must not hide Gateway
     // protocol and memory evidence when its actual runtime inputs built.
     if (canRunWorkflowContract({
@@ -554,6 +571,7 @@ async function runQualityGate(rawOptions) {
       pairedRevision: paired.official_plugins.revision,
       hostTarget,
     })) {
+      const workflowStartedAt = Date.now();
       try {
         result = await runWorkflowContract({
           mainSourceSha,
@@ -561,7 +579,7 @@ async function runQualityGate(rawOptions) {
           profile: "characterize",
           repoRoot,
           databaseUrl: database.url,
-          apiServerBin: path.join(repoRoot, "api/target/release/api-server"),
+          apiServerBin: gatewayBuild.binary,
           openaiPackageDir: path.join(packageRoot, "openai"),
           anthropicPackageDir: path.join(packageRoot, "anthropic"),
           openaiCompatiblePackageDir: path.join(
@@ -577,6 +595,11 @@ async function runQualityGate(rawOptions) {
           });
       } catch (error) {
         failures.push({ name: "workflow-contract", message: error.message });
+      } finally {
+        const durationMs = Date.now() - workflowStartedAt;
+        const status = result?.status === "pass" ? "pass" : "fail";
+        timings.push({ name: "workflow-contract", status, duration_ms: durationMs });
+        process.stdout.write(`[ai-gateway-quality-gate] workflow-contract: ${status} (${(durationMs / 1000).toFixed(1)}s)\n`);
       }
     }
   } finally {
@@ -630,6 +653,7 @@ async function runQualityGate(rawOptions) {
         official_provider_codes: OFFICIAL_PROVIDER_CODES,
         artifact_bytes: evidenceBytes,
         artifact_budget_bytes: MAX_GATE_ARTIFACT_BYTES,
+        timings,
         failures: publicFailures,
         protocol_result: result,
         client_diagnostics: "non-blocking-local-only",
@@ -667,6 +691,7 @@ module.exports = {
   artifactBytes,
   boundedCommandLog,
   dockerDatabaseContract,
+  gatewayBuildInvocation,
   main,
   officialProviderTestInvocations,
   parseArgs,
