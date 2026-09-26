@@ -25,8 +25,8 @@ use control_plane::{
     },
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
     ports::{
-        ProviderProtocolContextSlotId, ProviderProtocolContextValue, ProviderTransportStore,
-        RuntimeEventStream,
+        OrchestrationRuntimeRepository, ProviderProtocolContextSlotId,
+        ProviderProtocolContextValue, ProviderTransportStore, RuntimeEventStream,
     },
 };
 use plugin_framework::provider_contract::ProtocolContextEnvelope;
@@ -70,6 +70,10 @@ use crate::{
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
+#[cfg(test)]
+#[path = "native/_tests/catalog_admission.rs"]
+mod catalog_admission_tests;
+
 pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
     ApiProviderRuntime::new_with_activity(
         state.provider_runtime.clone(),
@@ -107,6 +111,98 @@ pub(crate) struct NativeRuntimeInvokerFactoryDependencies {
 
 struct NativeRuntimeInvokerFactoryAdapter(NativeRuntimeInvokerFactoryDependencies);
 
+struct NoMcpRuntimeInternalTools;
+
+#[async_trait::async_trait]
+impl orchestration_runtime::execution_engine::RuntimeInternalToolInvoker
+    for NoMcpRuntimeInternalTools
+{
+    fn registrations_for_node(
+        &self,
+        _node: &orchestration_runtime::compiled_plan::CompiledNode,
+    ) -> Vec<orchestration_runtime::execution_engine::RuntimeInternalToolRegistration> {
+        Vec::new()
+    }
+
+    async fn invoke_runtime_internal_tool(
+        &self,
+        _node: &orchestration_runtime::compiled_plan::CompiledNode,
+        _registration: &orchestration_runtime::execution_engine::RuntimeInternalToolRegistration,
+        _arguments: Value,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::RuntimeInternalToolOutput> {
+        anyhow::bail!("published plan has no MCP runtime registrations")
+    }
+}
+
+// None means the compiled representation could not be inspected safely. In that
+// case the existing catalog path remains authoritative.
+fn compiled_plan_has_mcp_bindings(plan: &Value) -> Option<bool> {
+    let nodes = plan.get("nodes")?.as_object()?;
+    let mut found = false;
+    for node in nodes.values() {
+        let config = node.get("config")?.as_object()?;
+        match config.get("mcp_instance_ids") {
+            None | Some(Value::Null) => {}
+            Some(Value::Array(ids)) if ids.iter().all(Value::is_string) => {
+                found |= !ids.is_empty();
+            }
+            _ => return None,
+        }
+    }
+    Some(found)
+}
+
+async fn plan_has_mcp_bindings_for_run(
+    dependencies: &ApplicationNativeRunDependencies,
+    run: &NativeRunResult,
+) -> anyhow::Result<Option<bool>> {
+    let Some(flow_run) = dependencies
+        .store
+        .get_flow_run(run.application_id, run.id)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let Some(compiled_plan_id) = flow_run.compiled_plan_id else {
+        return Ok(None);
+    };
+    let store = dependencies.store.clone();
+    let Some(plan) = dependencies
+        .published_plan_cache
+        .get_or_load(
+            compiled_plan_id,
+            Box::new(move || {
+                Box::pin(async move { store.get_compiled_plan(compiled_plan_id).await })
+            }),
+        )
+        .await?
+    else {
+        return Ok(None);
+    };
+    Ok(compiled_plan_has_mcp_bindings(&plan.plan))
+}
+
+pub(crate) async fn runtime_internal_tool_invoker_for_run(
+    dependencies: &ApplicationNativeRunDependencies,
+    actor: &control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    run: &NativeRunResult,
+) -> Result<
+    Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+    NativeApiError,
+> {
+    match plan_has_mcp_bindings_for_run(dependencies, run).await {
+        Ok(Some(false)) => {
+            debug!(flow_run_id = %run.id, "published plan has no MCP bindings; skipping runtime MCP catalog");
+            Ok(Arc::new(NoMcpRuntimeInternalTools))
+        }
+        Ok(Some(true) | None) => dependencies.runtime_invoker_factory.for_actor(actor).await,
+        Err(error) => {
+            debug!(flow_run_id = %run.id, error = %error, "MCP plan inspection failed; building runtime MCP catalog");
+            dependencies.runtime_invoker_factory.for_actor(actor).await
+        }
+    }
+}
+
 impl NativeRuntimeInvokerFactory for NativeRuntimeInvokerFactoryAdapter {
     fn for_actor<'a>(
         &'a self,
@@ -135,6 +231,7 @@ impl NativeRuntimeInvokerFactory for NativeRuntimeInvokerFactoryAdapter {
                 ),
                 HeaderMap::new(),
                 actor.actor.clone(),
+                // Public application runs select MCP only through compiled node bindings.
                 Vec::new(),
             )
             .await
@@ -848,10 +945,8 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
         run.application_id,
         ApplicationActivityKind::ApplicationExecution,
     );
-    let runtime_internal_tool_invoker = dependencies
-        .runtime_invoker_factory
-        .for_actor(&actor)
-        .await?;
+    let runtime_internal_tool_invoker =
+        runtime_internal_tool_invoker_for_run(&dependencies, &actor, &run).await?;
     let execution_result = scope_application_activity(
         run.application_id,
         native_runtime_service(&dependencies, runtime_internal_tool_invoker)
@@ -1181,10 +1276,8 @@ async fn start_native_run_event_channel_for_actor_with_dependencies(
     mpsc::Receiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
     NativeApiError,
 > {
-    let runtime_internal_tool_invoker = dependencies
-        .runtime_invoker_factory
-        .for_actor(&actor)
-        .await?;
+    let runtime_internal_tool_invoker =
+        runtime_internal_tool_invoker_for_run(&dependencies, &actor, &run).await?;
     start_native_run_event_channel_with_dependencies(
         dependencies,
         runtime_internal_tool_invoker,

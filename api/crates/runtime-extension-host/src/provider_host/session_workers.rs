@@ -78,6 +78,8 @@ pub(super) async fn select_worker(
     let capacity = lock_provider_worker_registry(workers)?
         .session_capacity
         .clone();
+    let admission_started = std::time::Instant::now();
+    let mut waiting_for_memory = false;
     loop {
         // Register before checking registry state: a concurrent Close must wake
         // admissions already waiting behind the all-active capacity boundary.
@@ -152,6 +154,13 @@ pub(super) async fn select_worker(
                 if let Some(slot) =
                     capacity.try_acquire(loaded.package.manifest.runtime.limits.memory_bytes)?
                 {
+                    if waiting_for_memory {
+                        tracing::info!(
+                            plugin,
+                            wait_ms = admission_started.elapsed().as_millis() as u64,
+                            "session worker memory admission resumed"
+                        );
+                    }
                     let incarnation = *registry
                         .next_generation
                         .entry(plugin.to_owned())
@@ -188,6 +197,7 @@ pub(super) async fn select_worker(
                     }
                     return Ok(worker);
                 }
+                waiting_for_memory = true;
                 // Never evict an active physical generation. A retirement stays
                 // in the registry and keeps its permit until confirmed child exit.
                 let oldest = registry
@@ -216,9 +226,16 @@ pub(super) async fn select_worker(
                 _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {},
             }
         };
-        tokio::time::timeout_at(deadline, wait)
-            .await
-            .map_err(|_| admission_timeout())?;
+        tokio::time::timeout_at(deadline, wait).await.map_err(|_| {
+            if waiting_for_memory {
+                tracing::warn!(
+                    plugin,
+                    wait_ms = admission_started.elapsed().as_millis() as u64,
+                    "session worker memory admission deadline exceeded"
+                );
+            }
+            admission_timeout()
+        })?;
     }
 }
 

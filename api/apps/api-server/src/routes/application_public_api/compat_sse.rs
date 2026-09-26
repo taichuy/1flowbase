@@ -585,11 +585,9 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
     observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    let mcp_runtime_invoker = dependencies
-        .native
-        .runtime_invoker_factory
-        .for_actor(&actor)
-        .await?;
+    let mcp_runtime_invoker =
+        native::runtime_internal_tool_invoker_for_run(&dependencies.native, &actor, &initial_run)
+            .await?;
     let opened = open_compatible_turn_with_invoker(
         dependencies.clone(),
         initial_run,
@@ -619,11 +617,9 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
         )
         .await;
     }
-    let mcp_runtime_invoker = dependencies
-        .native
-        .runtime_invoker_factory
-        .for_actor(&actor)
-        .await?;
+    let mcp_runtime_invoker =
+        native::runtime_internal_tool_invoker_for_run(&dependencies.native, &actor, &initial_run)
+            .await?;
     let opened = open_compatible_turn_with_invoker(
         dependencies.clone(),
         initial_run,

@@ -291,7 +291,7 @@ impl ResponsesWebSocketProjector {
                     run,
                     &self.model,
                     self.previous_response_id.as_deref(),
-                    self.completed_output_items.clone()
+                    std::mem::take(&mut self.completed_output_items)
                 )
             })],
             "flow_incomplete" => vec![json!({
@@ -300,7 +300,7 @@ impl ResponsesWebSocketProjector {
                     run,
                     &self.model,
                     self.previous_response_id.as_deref(),
-                    self.completed_output_items.clone()
+                    std::mem::take(&mut self.completed_output_items)
                 )
             })],
             "flow_failed" => {
@@ -318,7 +318,8 @@ impl ResponsesWebSocketProjector {
                         .map(|error| error.code.as_str())
                         .unwrap_or("runtime_error"),
                 );
-                event["response"]["output"] = Value::Array(self.completed_output_items.clone());
+                event["response"]["output"] =
+                    Value::Array(std::mem::take(&mut self.completed_output_items));
                 vec![event]
             },
             "flow_cancelled" => vec![json!({
@@ -351,7 +352,7 @@ impl ResponsesWebSocketProjector {
                     run,
                     &self.model,
                     self.previous_response_id.as_deref(),
-                    self.completed_output_items.clone()
+                    std::mem::take(&mut self.completed_output_items)
                 )
             })];
         }
@@ -388,7 +389,7 @@ impl ResponsesWebSocketProjector {
                 run,
                 &self.model,
                 self.previous_response_id.as_deref(),
-                self.completed_output_items.clone()
+                std::mem::take(&mut self.completed_output_items)
             )
         }));
         events
