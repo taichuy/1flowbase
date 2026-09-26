@@ -9,6 +9,7 @@ const {
   assertExecutedCargoTests,
   artifactBytes,
   boundedCommandLog,
+  canRunWorkflowContract,
   conversationTestInvocations,
   dockerDatabaseContract,
   officialProviderTestInvocations,
@@ -78,6 +79,23 @@ test("quality gate runs all six blocking official provider suites from the paire
       ],
     ]),
   );
+});
+
+test("Gateway mock workflow proceeds when its built inputs are ready despite an independent provider test failure", () => {
+  const ready = {
+    database: { url: "postgres://fixture@localhost/gate" },
+    gatewayBuilt: true,
+    packagedProviders: new Set(["openai", "anthropic", "openai_compatible"]),
+    mainSourceSha: "gateway-candidate",
+    officialSourceSha: "paired-provider-revision",
+    pairedRevision: "paired-provider-revision",
+    hostTarget: "x86_64-unknown-linux-gnu",
+  };
+  assert.equal(canRunWorkflowContract(ready), true);
+  assert.equal(canRunWorkflowContract({ ...ready, packagedProviders: new Set(["openai", "anthropic"]) }), false);
+  assert.equal(canRunWorkflowContract({ ...ready, gatewayBuilt: false }), false);
+  assert.equal(canRunWorkflowContract({ ...ready, officialSourceSha: null }), false);
+  assert.equal(canRunWorkflowContract({ ...ready, officialSourceSha: "different-revision" }), false);
 });
 
 test("quality gate inventory contains protocol and local-client contract suites", () => {

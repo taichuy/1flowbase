@@ -19,6 +19,11 @@ const OFFICIAL_PROVIDER_CODES = Object.freeze([
   "gemini",
   "openai_compatible",
 ]);
+const WORKFLOW_PROVIDER_CODES = Object.freeze([
+  "openai",
+  "anthropic",
+  "openai_compatible",
+]);
 const MAX_COMMAND_LOG_BYTES = 2 * 1024 * 1024;
 const MAX_GATE_ARTIFACT_BYTES = 64 * 1024 * 1024;
 
@@ -379,6 +384,22 @@ function officialProviderTestInvocations(officialSourceRoot) {
   }));
 }
 
+function canRunWorkflowContract({
+  database,
+  gatewayBuilt,
+  packagedProviders,
+  mainSourceSha,
+  officialSourceSha,
+  pairedRevision,
+  hostTarget,
+}) {
+  return Boolean(
+    database && gatewayBuilt && mainSourceSha && officialSourceSha && hostTarget &&
+    officialSourceSha === pairedRevision &&
+    WORKFLOW_PROVIDER_CODES.every((code) => packagedProviders.has(code))
+  );
+}
+
 async function runQualityGate(rawOptions) {
   const repoRoot = path.resolve(rawOptions.repoRoot || process.cwd());
   const officialSourceRoot = path.resolve(rawOptions.officialSourceRoot);
@@ -475,6 +496,7 @@ async function runQualityGate(rawOptions) {
       attempt(invocation.name, "cargo", invocation.args);
     }
 
+    const packagedProviders = new Set();
     for (const providerCode of OFFICIAL_PROVIDER_CODES) {
       const pluginRoot = path.join(
         officialSourceRoot,
@@ -490,8 +512,8 @@ async function runQualityGate(rawOptions) {
         "--target",
         hostTarget || "unavailable",
       ]);
-      if (built !== null)
-        attempt(`${providerCode}-provider-package`, "node", [
+      if (built !== null) {
+        const packaged = attempt(`${providerCode}-provider-package`, "node", [
           path.join(repoRoot, "scripts/node/plugin/cli.js"),
           "package",
           pluginRoot,
@@ -508,8 +530,10 @@ async function runQualityGate(rawOptions) {
           "--target",
           hostTarget,
         ]);
+        if (packaged !== null) packagedProviders.add(providerCode);
+      }
     }
-    attempt("gateway-api-build", "cargo", [
+    const gatewayBuilt = attempt("gateway-api-build", "cargo", [
       "build",
       "--manifest-path",
       path.join(repoRoot, "api/Cargo.toml"),
@@ -519,7 +543,17 @@ async function runQualityGate(rawOptions) {
       "--bin",
       "api-server",
     ]);
-    if (failures.length === 0 && database) {
+    // Independent unit failures remain blocking, but must not hide Gateway
+    // protocol and memory evidence when its actual runtime inputs built.
+    if (canRunWorkflowContract({
+      database,
+      gatewayBuilt: gatewayBuilt !== null,
+      packagedProviders,
+      mainSourceSha,
+      officialSourceSha,
+      pairedRevision: paired.official_plugins.revision,
+      hostTarget,
+    })) {
       try {
         result = await runWorkflowContract({
           mainSourceSha,
@@ -628,6 +662,7 @@ if (require.main === module) {
 
 module.exports = {
   assertExecutedCargoTests,
+  canRunWorkflowContract,
   conversationTestInvocations,
   artifactBytes,
   boundedCommandLog,
