@@ -334,7 +334,7 @@ struct ResumeExecutionSegmentInput<'a> {
     native_transport: Option<crate::ports::ProviderTransportPayload>,
     response_round_id: Option<Uuid>,
     resume_claim_id: Uuid,
-    resume_claim_owner: RenewResumeClaimInput,
+    resume_claim_owner: Option<RenewResumeClaimInput>,
     actor: &'a domain::ActorContext,
     application: &'a domain::ApplicationRecord,
     flow_run: &'a domain::FlowRunRecord,
@@ -592,8 +592,12 @@ where
             input
                 .resumed_node_run
                 .map(|record| (input.waiting_node_id.to_string(), record)),
-        )
-        .with_resume_claim_owner(input.resume_claim_owner.clone());
+        );
+        let lifecycle = if let Some(owner) = input.resume_claim_owner.clone() {
+            lifecycle.with_resume_claim_owner(owner)
+        } else {
+            lifecycle
+        };
         let invoker = self
             .runtime_invoker(input.application.workspace_id)
             .for_flow_run(input.flow_run.id)
@@ -1321,6 +1325,7 @@ where
                     native_transport: None,
                     response_round_id: None,
                     resume_claim_id: claim.claim.id,
+                    resume_claim_owner: None,
                     actor: &actor,
                     application: &application,
                     flow_run: &flow_run,

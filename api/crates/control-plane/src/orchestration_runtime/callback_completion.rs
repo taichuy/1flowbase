@@ -284,7 +284,7 @@ where
                                 native_transport: command.native_transport.clone(),
                                 response_round_id: Some(callback_task.id),
                                 resume_claim_id: claim.id,
-                                resume_claim_owner: renew_input.clone(),
+                                resume_claim_owner: Some(renew_input.clone()),
                                 actor: &actor,
                                 application: &application,
                                 flow_run: &flow_run,
@@ -493,11 +493,11 @@ where
                 native_transport: command.native_transport.clone(),
                 response_round_id: Some(callback_task.id),
                 resume_claim_id: resume_claim.id,
-                resume_claim_owner: RenewResumeClaimInput {
+                resume_claim_owner: Some(RenewResumeClaimInput {
                     claim_id: resume_claim.id,
                     claim_token: resume_claim.claim_token,
                     expected_generation: resume_claim.generation,
-                },
+                }),
                 actor,
                 application,
                 flow_run,
