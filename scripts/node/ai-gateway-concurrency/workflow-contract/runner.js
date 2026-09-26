@@ -259,7 +259,9 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   const cleanupErrors = [];
 
   try {
-    mock = createMock();
+    // Slow mock streams span at least one process-memory sample even when
+    // Gateway requests overlap; this is a fixture duration, not a service limit.
+    mock = createMock({ slowChunkDelayMs: 40 });
     const mockEndpoints = await mock.start();
     fixture = await createFixture({
       databaseUrl: inputs.databaseUrl,

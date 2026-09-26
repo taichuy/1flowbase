@@ -26,7 +26,9 @@ test('process tree memory sums Gateway and provider descendants without includin
     ['/proc/103/task/103/children', '\n'],
   ]);
   const readFile = (name) => {
-    if (!files.has(name)) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    if (!files.has(name)) throw Object.assign(new Error('missing'), {
+      code: name.includes('/proc/102/') ? 'ESRCH' : 'ENOENT',
+    });
     return files.get(name);
   };
   const readDirectory = (name) => name === '/proc/100/task'

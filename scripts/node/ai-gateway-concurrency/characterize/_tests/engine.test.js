@@ -123,6 +123,30 @@ test('unavailable process memory remains visible as an advisory while mock proto
   });
 });
 
+test('slow Responses WebSocket fixture remains active across a memory sampling interval', async () => {
+  const mock = createMockUpstream({ slowChunkDelayMs: 40 });
+  const endpoints = await mock.start();
+  try {
+    const result = await executeCharacterizePlan({
+      endpointSet: { [TRANSPORT.RESPONSES_WEBSOCKET]: `${endpoints.websocketBaseUrl}${MOCK_ROUTE.RESPONSES}` },
+      plan: [{ transport: TRANSPORT.RESPONSES_WEBSOCKET, scenario: SCENARIO.SLOW, concurrency: 1, gateRole: GATE_ROLE.ADVISORY }],
+      mockSnapshot: mock.snapshot,
+      memoryProbeFactory: () => {
+        let ticks = 0;
+        let timer;
+        return {
+          begin() { timer = setInterval(() => { ticks += 1; }, 50); },
+          end() { clearInterval(timer); return { sample_count: ticks + 2 }; },
+        };
+      },
+    });
+    assert.equal(result.summary.batches[0].outcomes.completed, 1);
+    assert.equal(result.summary.batches[0].metrics.processTreeMemory.sample_count >= 3, true);
+  } finally {
+    await mock.stop();
+  }
+});
+
 test('AC-003 controlled negative: mixed upstream nonces fail chunk authenticity', () => {
   const failures = validateRequestResult({
     scenario: SCENARIO.NORMAL,
@@ -448,6 +472,12 @@ test('AC-003/004: characterize matrix separates blocking correctness from perfor
     [TRANSPORT.ANTHROPIC_SSE, SCENARIO.SLOW, 4, GATE_ROLE.ADVISORY],
   ];
   assert.deepEqual(multiRows.map((row) => [row.transport, row.scenario, row.concurrency, row.gateRole]), expectedMultiRows);
+  assert.deepEqual(
+    CHARACTERIZE_PLAN.filter((row) => row.transport === TRANSPORT.RESPONSES_WEBSOCKET
+      && row.scenario === SCENARIO.SLOW && row.gateRole === GATE_ROLE.ADVISORY)
+      .map((row) => row.concurrency),
+    PERFORMANCE_CONCURRENCY,
+  );
   const requestCount = (rows) => rows.reduce((total, row) => total + row.concurrency, 0);
   const multiRequestCount = (gateRole) => expectedMultiRows
     .filter((row) => row[3] === gateRole)
@@ -458,7 +488,8 @@ test('AC-003/004: characterize matrix separates blocking correctness from perfor
   ) + multiRequestCount(GATE_ROLE.BLOCKING);
   const expectedAdvisoryRequests = Object.values(TRANSPORT).length
     * PERFORMANCE_CONCURRENCY.reduce((total, value) => total + value, 0)
-    + multiRequestCount(GATE_ROLE.ADVISORY);
+    + multiRequestCount(GATE_ROLE.ADVISORY)
+    + PERFORMANCE_CONCURRENCY.reduce((total, value) => total + value, 0);
   assert.equal(requestCount(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.BLOCKING)), expectedBlockingRequests);
   assert.equal(requestCount(CHARACTERIZE_PLAN.filter((row) => row.gateRole === GATE_ROLE.ADVISORY)), expectedAdvisoryRequests);
   assert.equal(requestCount(CHARACTERIZE_PLAN), expectedBlockingRequests + expectedAdvisoryRequests);

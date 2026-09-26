@@ -35,7 +35,7 @@ function readProcessTreeMemory(rootPid, readFile = fs.readFileSync, readDirector
       threadIds = readDirectory(`/proc/${pid}/task`);
     } catch (error) {
       // A provider can exit between the parent children snapshot and its own read.
-      if (pid !== rootPid && error.code === 'ENOENT') continue;
+      if (pid !== rootPid && ['ENOENT', 'ESRCH'].includes(error.code)) continue;
       throw error;
     }
     total.rss_kib += memory.rss_kib;
@@ -47,7 +47,7 @@ function readProcessTreeMemory(rootPid, readFile = fs.readFileSync, readDirector
       try {
         children = readFile(`/proc/${pid}/task/${threadId}/children`, 'utf8');
       } catch (error) {
-        if (error.code === 'ENOENT') continue;
+        if (['ENOENT', 'ESRCH'].includes(error.code)) continue;
         throw error;
       }
       for (const child of children.trim().split(/\s+/u).filter(Boolean)) {

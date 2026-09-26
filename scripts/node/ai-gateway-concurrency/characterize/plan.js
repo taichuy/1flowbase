@@ -28,6 +28,11 @@ const CHARACTERIZE_PLAN = Object.freeze([
     TRANSPORT.ANTHROPIC_SSE, SCENARIO.NORMAL, concurrency, TOPOLOGY.MULTI_POOL, GATE_ROLE.ADVISORY
   )),
   row(TRANSPORT.ANTHROPIC_SSE, SCENARIO.SLOW, 4, TOPOLOGY.MULTI_POOL, GATE_ROLE.ADVISORY),
+  // The normal Responses WebSocket rows can finish between 50 ms memory samples.
+  // Slow mock streams keep execution active long enough to observe the process tree.
+  ...PERFORMANCE_CONCURRENCY.map((concurrency) => row(
+    TRANSPORT.RESPONSES_WEBSOCKET, SCENARIO.SLOW, concurrency, TOPOLOGY.SAME_POOL, GATE_ROLE.ADVISORY
+  )),
 ]);
 
 module.exports = {

@@ -128,7 +128,8 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   const result = await runWorkflowContract(inputs, {
     async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(9).fill({ verdict: 'PASS' }) }; },
     async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: Array(20).fill({ verdict: 'PASS' }) }; },
-    createMockUpstream() {
+    createMockUpstream(options) {
+      assert.equal(options.slowChunkDelayMs, 40);
       calls.push('mock:create');
       return {
         async start() { calls.push('mock:start'); return { httpBaseUrl: 'http://127.0.0.1:4000', websocketBaseUrl: 'ws://127.0.0.1:4000' }; },
