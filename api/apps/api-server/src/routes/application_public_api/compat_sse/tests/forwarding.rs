@@ -20,9 +20,9 @@ use axum::response::IntoResponse;
 use control_plane::{
     application_public_api::native::{AnswerProjectionSegment, NativeError, NativeRequiredAction},
     ports::{
-        OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventDurability,
-        RuntimeEventPayload, RuntimeEventSource, RuntimeEventStream, RuntimeEventStreamPolicy,
-        UpdateFlowRunInput,
+        CreateNodeRunInput, OrchestrationRuntimeRepository, RuntimeEventCloseReason,
+        RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource, RuntimeEventStream,
+        RuntimeEventStreamPolicy, UpdateFlowRunInput,
     },
 };
 use serde_json::json;
@@ -238,7 +238,8 @@ async fn durable_round_replay_keeps_exact_native_item_and_does_not_replay_acked_
         "summary": [{"type":"summary_text","text":"exact summary"}],
         "encrypted_content": "opaque-provider-bytes"
     });
-    let tool = committed_delivery_payload("call-replay-once");
+    let mut tool = committed_delivery_payload("call-replay-once");
+    tool["output_index"] = json!(1);
     let record = seed_pending_committed_delivery(&state, &run, tool.clone()).await;
     let durable_replay = vec![
         RuntimeEventEnvelope::new(run.id, 100, debug_stream_events::flow_started(run.id)),
@@ -300,6 +301,20 @@ async fn durable_callback_boundary_excludes_the_next_response_round() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let run = native_run();
     seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let node_run = state
+        .store
+        .create_node_run(&CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "llm".into(),
+            node_type: "llm".into(),
+            node_alias: "LLM".into(),
+            status: domain::NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: time::OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
     let first_callback = Uuid::now_v7();
     let next_callback = Uuid::now_v7();
     let waiting = |callback_task_id| RuntimeEventPayload {
@@ -324,11 +339,11 @@ async fn durable_callback_boundary_excludes_the_next_response_round() {
     for (sequence, payload) in [
         waiting(first_callback),
         debug_stream_events::flow_started(run.id),
-        debug_stream_events::provider_output_item_done("llm", Uuid::now_v7(), 1, original.clone()),
-        debug_stream_events::provider_output_item_done("llm", Uuid::now_v7(), 0, tool.clone()),
+        debug_stream_events::provider_output_item_done("llm", node_run.id, 1, original.clone()),
+        debug_stream_events::provider_output_item_done("llm", node_run.id, 0, tool.clone()),
         waiting(next_callback),
         debug_stream_events::flow_started(run.id),
-        debug_stream_events::provider_output_item_done("llm", Uuid::now_v7(), 0, later),
+        debug_stream_events::provider_output_item_done("llm", node_run.id, 0, later),
     ]
     .into_iter()
     .enumerate()
