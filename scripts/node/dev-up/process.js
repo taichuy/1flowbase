@@ -59,6 +59,7 @@ function writePidRecord(service, pid) {
     JSON.stringify(
       {
         pid,
+        ownerPid: service.startedPid || pid,
         command: service.command,
         args: service.args,
         port: service.port,
@@ -451,20 +452,67 @@ function listPortOccupantPids(
   return [];
 }
 
-function getProcessGroupId(pid) {
+function readProcessGroupId(pid) {
   if (!Number.isInteger(pid) || pid <= 0 || !commandExists('ps')) {
-    return pid;
+    return null;
   }
 
   const result = runCommand('ps', ['-o', 'pgid=', '-p', String(pid)], {
     captureOutput: true,
   });
   if (result.error || result.status !== 0) {
-    return pid;
+    return null;
   }
 
   const groupId = Number.parseInt(String(result.stdout || '').trim(), 10);
-  return Number.isInteger(groupId) && groupId > 0 ? groupId : pid;
+  return Number.isInteger(groupId) && groupId > 0 ? groupId : null;
+}
+
+function getProcessGroupId(pid) {
+  return readProcessGroupId(pid) || pid;
+}
+
+function signalPid(pid, signal) {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if (error.code !== 'ESRCH') throw error;
+  }
+}
+
+function isProcessGroupAlive(groupId) {
+  try {
+    process.kill(-groupId, 0);
+  } catch (error) {
+    if (error.code === 'ESRCH') return false;
+    throw error;
+  }
+  // Orphaned children can remain as zombies until their new parent reaps them.
+  const result = runCommand('ps', ['-e', '-o', 'pgid=,stat='], { captureOutput: true });
+  if (result.error || result.status !== 0) return true;
+  return String(result.stdout || '').split(/\r?\n/u).some((line) => {
+    const [pgid, state] = line.trim().split(/\s+/u);
+    return Number(pgid) === groupId && state && !state.startsWith('Z');
+  });
+}
+
+async function waitForProcessGroupExit(groupId, timeoutMs) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isProcessGroupAlive(groupId)) return true;
+    await sleep(200);
+  }
+  return !isProcessGroupAlive(groupId);
+}
+
+async function clearOwnedProcessGroup(groupId) {
+  if (!groupId || !isProcessGroupAlive(groupId)) return;
+  signalPid(-groupId, 'SIGTERM');
+  if (await waitForProcessGroupExit(groupId, 2000)) return;
+  signalPid(-groupId, 'SIGKILL');
+  if (!(await waitForProcessGroupExit(groupId, 2000))) {
+    throw new Error(`owned process group ${groupId} remained alive after SIGKILL`);
+  }
 }
 
 function signalProcess(pid, signal) {
@@ -697,6 +745,10 @@ async function stopService(
     waitForPortToCloseImpl = waitForPortToClose,
     clearPortConflictsImpl = clearPortConflicts,
     logImpl = log,
+    readProcessGroupIdImpl = readProcessGroupId,
+    signalPidImpl = signalPid,
+    clearOwnedProcessGroupImpl = clearOwnedProcessGroup,
+    platform = process.platform,
   } = {}
 ) {
   const pidRecord = readPidRecordImpl(service.pidFile);
@@ -716,7 +768,15 @@ async function stopService(
     return;
   }
 
-  if (!isProcessAliveImpl(pidRecord.pid)) {
+  const ownerPid = platform === 'win32' ? pidRecord.pid : (pidRecord.ownerPid || pidRecord.pid);
+  if (!isProcessAliveImpl(ownerPid)) {
+    if (platform !== 'win32' && ownerPid !== pidRecord.pid && isProcessAliveImpl(pidRecord.pid)) {
+      const childGroupId = readProcessGroupIdImpl(pidRecord.pid);
+      const callerGroupId = childGroupId ? readProcessGroupIdImpl(process.pid) : null;
+      if (childGroupId === ownerPid && callerGroupId && childGroupId !== callerGroupId) {
+        await clearOwnedProcessGroupImpl(childGroupId);
+      }
+    }
     removePidRecordImpl(service.pidFile);
     if (await isPortOpenImpl(getProbeHost(service), service.port)) {
       logImpl(`${service.label} has a stale process record; clearing port occupants`);
@@ -733,11 +793,23 @@ async function stopService(
     return;
   }
 
-  signalProcessImpl(pidRecord.pid, 'SIGTERM');
-  const exited = await waitForProcessExitImpl(pidRecord.pid);
+  // Detached service leaders own their group. Snapshot it while the leader still exists.
+  const groupId = platform === 'win32' ? null : readProcessGroupIdImpl(ownerPid);
+  const callerGroupId = groupId ? readProcessGroupIdImpl(process.pid) : null;
+  const ownedGroupId = groupId === ownerPid && callerGroupId && groupId !== callerGroupId
+    ? groupId : null;
+  const signalParent = platform === 'win32' ? signalProcessImpl : signalPidImpl;
+  signalParent(ownerPid, 'SIGTERM');
+  let exited = await waitForProcessExitImpl(ownerPid);
   if (!exited) {
-    signalProcessImpl(pidRecord.pid, 'SIGKILL');
-    await waitForProcessExitImpl(pidRecord.pid, 2000);
+    signalParent(ownerPid, 'SIGKILL');
+    exited = await waitForProcessExitImpl(ownerPid, 2000);
+  }
+  if (!exited) {
+    throw new Error(`${service.label} process ${ownerPid} remained alive after SIGKILL`);
+  }
+  if (ownedGroupId) {
+    await clearOwnedProcessGroupImpl(ownedGroupId);
   }
 
   removePidRecordImpl(service.pidFile);
