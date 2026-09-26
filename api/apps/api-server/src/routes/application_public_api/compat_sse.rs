@@ -1,7 +1,6 @@
 use super::openai::native_response_id;
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
-#[cfg(test)]
 use control_plane::ports::OrchestrationRuntimeRepository;
 #[cfg(test)]
 use std::collections::HashSet;
@@ -147,6 +146,7 @@ impl CompatibleTypedTurnStream {
 struct OpenedCompatibleTurn {
     initial_run: NativeRunResult,
     from_sequence: Option<i64>,
+    durable_round_replay: Vec<RuntimeEventEnvelope>,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     subscription: control_plane::ports::RuntimeEventSubscription,
     execution: tokio::task::JoinHandle<()>,
@@ -638,6 +638,7 @@ fn opened_compatible_typed_stream(
     let OpenedCompatibleTurn {
         initial_run,
         from_sequence,
+        durable_round_replay,
         ignored_waiting_callback_task_id,
         subscription,
         execution,
@@ -655,6 +656,7 @@ fn opened_compatible_typed_stream(
             terminal_dependencies: native::native_run_terminal_dependencies(&dependencies.native),
             initial_run: initial_run.clone(),
             from_sequence,
+            durable_round_replay,
             ignored_waiting_callback_task_id,
             subscription,
             sender,
@@ -704,6 +706,7 @@ async fn attach_compatible_typed_stream(
             terminal_dependencies,
             initial_run: initial_run.clone(),
             from_sequence,
+            durable_round_replay: Vec::new(),
             ignored_waiting_callback_task_id: None,
             subscription,
             sender,
@@ -725,6 +728,66 @@ async fn open_compatible_turn_with_invoker(
     >,
 ) -> Result<OpenedCompatibleTurn, NativeApiError> {
     let turn_action = action.name();
+    let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
+    let live_round_start = if let Some(round_id) = ignored_waiting_callback_task_id {
+        dependencies
+            .native
+            .runtime_event_stream
+            .replay(initial_run.id, None, usize::MAX)
+            .await
+            .ok()
+            .and_then(|events| {
+                events
+                    .iter()
+                    .rposition(|event| {
+                        event.event_type == "flow_started"
+                            && event.payload["response_round_id"] == json!(round_id)
+                    })
+                    .filter(|index| {
+                        !events[*index + 1..].iter().any(|event| {
+                            event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+                        })
+                    })
+                    .map(|index| events[index].sequence.saturating_sub(1))
+            })
+    } else {
+        None
+    };
+    let durable_round_replay = if let Some(round_id) = ignored_waiting_callback_task_id {
+        if live_round_start.is_some() {
+            Vec::new()
+        } else {
+            let boundary = dependencies
+                .native
+                .store
+                .get_runtime_event_sequence_for_callback_task(initial_run.id, round_id)
+                .await
+                .map_err(service_error)?
+                .ok_or_else(|| service_error(anyhow::anyhow!("callback round boundary missing")))?;
+            let records = dependencies
+                .native
+                .store
+                .list_runtime_events(initial_run.id, boundary)
+                .await
+                .map_err(service_error)?;
+            let mut replay = event_forwarding::durable_round_prefix(records);
+            if !replay.is_empty() && replay[0].event_type != "flow_started" {
+                // The round marker is persisted by the stream writer and may
+                // commit after a synchronously persisted provider item.
+                replay.insert(
+                    0,
+                    RuntimeEventEnvelope::new(
+                        initial_run.id,
+                        0,
+                        debug_stream_events::flow_started(initial_run.id),
+                    ),
+                );
+            }
+            replay
+        }
+    } else {
+        Vec::new()
+    };
     if let Err(error) = dependencies
         .native
         .runtime_event_stream
@@ -743,18 +806,22 @@ async fn open_compatible_turn_with_invoker(
         return Err(service_error(error));
     }
 
-    let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
-    let from_sequence = if ignored_waiting_callback_task_id.is_some() {
-        let resume_started = dependencies
-            .native
-            .runtime_event_stream
-            .append(
-                initial_run.id,
-                debug_stream_events::flow_started(initial_run.id),
-            )
-            .await
-            .map_err(service_error)?;
-        Some(resume_started.sequence.saturating_sub(1))
+    let from_sequence = if let Some(sequence) = live_round_start {
+        Some(sequence)
+    } else if let Some(round_id) = ignored_waiting_callback_task_id {
+        if durable_round_replay.is_empty() {
+            let mut started = debug_stream_events::flow_started(initial_run.id);
+            started.payload["response_round_id"] = json!(round_id);
+            let started = dependencies
+                .native
+                .runtime_event_stream
+                .append(initial_run.id, started)
+                .await
+                .map_err(service_error)?;
+            Some(started.sequence.saturating_sub(1))
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -859,6 +926,7 @@ async fn open_compatible_turn_with_invoker(
     Ok(OpenedCompatibleTurn {
         initial_run,
         from_sequence,
+        durable_round_replay,
         ignored_waiting_callback_task_id,
         subscription,
         execution,

@@ -708,8 +708,10 @@ where
                 mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
             let diagnostic_node_id = node_id.clone();
             let flow_execution_context_for_task = self.flow_execution_context.clone();
+            let repository_for_events = self.repository.clone();
             let native_output_items_for_task = native_output_items.clone();
             let capture_native_history = self.provider_transport_payload.is_some();
+            let response_round_id_for_task = self.response_round_id.or(self.flow_run_id);
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
                 let mut ingress_sequence = 0_u64;
@@ -763,6 +765,28 @@ where
                             .lock()
                             .map_err(|_| anyhow!("tool delivery buffer lock is poisoned"))?
                             .push(delivery.clone());
+                    }
+                    if capture_native_history && tool_delivery.is_none() {
+                        if let ProviderStreamEvent::OutputItem {
+                            phase: ProviderOutputItemPhase::Done,
+                            output_index,
+                            item,
+                        } = &event
+                        {
+                            let mut fact = debug_stream_events::provider_output_item_done(
+                                &node_id,
+                                node_run_id,
+                                *output_index,
+                                item.clone(),
+                            );
+                            fact.payload["response_round_id"] = json!(response_round_id_for_task);
+                            runtime_event_persister::persist_runtime_event_payload(
+                                &repository_for_events,
+                                flow_run_id,
+                                &fact,
+                            )
+                            .await?;
+                        }
                     }
                     project_canonical_provider_deltas(
                         runtime_event_stream.as_ref(),
@@ -830,6 +854,12 @@ where
                             let event_type = runtime_event.event_type.clone();
                             let source = runtime_event.source;
                             let mut stream_event = runtime_event;
+                            if capture_native_history
+                                && stream_event.event_type == "provider_output_item_done"
+                            {
+                                stream_event.payload["response_round_id"] =
+                                    json!(response_round_id_for_task);
+                            }
                             if debug_stream_events::is_answer_presentation_delta_payload(
                                 &stream_event.payload,
                             ) {
@@ -838,6 +868,8 @@ where
                             let durable_log_fact =
                                 stream_event.event_type == "provider_output_item_done";
                             if durable_log_fact {
+                                // Non-tool native items were committed above; executable
+                                // items are committed with the callback waiting state.
                                 stream_event.persist_required = false;
                             }
                             match stream.append(flow_run_id, stream_event).await {

@@ -7,6 +7,7 @@ pub(super) struct SubscribedCompatibleTypedEventStream {
     pub(super) terminal_dependencies: NativeRunTerminalDependencies,
     pub(super) initial_run: NativeRunResult,
     pub(super) from_sequence: Option<i64>,
+    pub(super) durable_round_replay: Vec<RuntimeEventEnvelope>,
     pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     pub(super) subscription: control_plane::ports::RuntimeEventSubscription,
     pub(super) sender: mpsc::Sender<CompatibleProjectionInput>,
@@ -43,6 +44,7 @@ async fn forward_subscribed_typed_events(
         terminal_dependencies,
         initial_run,
         from_sequence,
+        durable_round_replay,
         ignored_waiting_callback_task_id,
         mut subscription,
         sender,
@@ -71,6 +73,44 @@ async fn forward_subscribed_typed_events(
         }
     };
     let mut delivered_claim_events = Vec::new();
+    if !durable_round_replay.is_empty() {
+        forwarding.last_forwarded_sequence = -1;
+    }
+    for event in durable_round_replay {
+        if is_public_terminal_runtime_event(&event.event_type)
+            && !delivery_claims.is_empty()
+            && forward_pending_delivery_claims(
+                &mut forwarding,
+                &mut delivery_claims,
+                &mut delivered_claim_events,
+            )
+            .await
+        {
+            release_delivery_claims(settler, delivery_claims);
+            return;
+        }
+        let matching_claim = delivery_claims
+            .iter()
+            .position(|delivery| runtime_delivery_matches_envelope(delivery, &event));
+        if is_committed_tool_delivery(&event) && matching_claim.is_none() {
+            forwarding.last_forwarded_sequence = event.sequence;
+            continue;
+        }
+        let receipt = matching_claim.map(|index| {
+            let delivery = delivery_claims.remove(index);
+            delivered_claim_events.push((
+                delivery.event.event_type.clone(),
+                delivery.event.payload.clone(),
+            ));
+            settler.receipt(delivery)
+        });
+        if forward_ordered_typed_events(&mut forwarding, vec![(event, receipt)]).await {
+            release_delivery_claims(settler, delivery_claims);
+            return;
+        }
+    }
+    // Database and local stream generations have independent sequence spaces.
+    forwarding.last_forwarded_sequence = from_sequence.unwrap_or(0);
     for event in subscription.replay {
         if is_public_terminal_runtime_event(&event.event_type)
             && !delivery_claims.is_empty()
@@ -636,6 +676,45 @@ fn log_compatible_sse_closed(
         client_disconnected = client_disconnected,
         "compatible public API SSE stream closed"
     );
+}
+
+pub(super) fn durable_round_prefix(
+    records: Vec<domain::RuntimeEventRecord>,
+) -> Vec<RuntimeEventEnvelope> {
+    let mut prefix = Vec::new();
+    for record in records {
+        let event = durable_record_to_runtime_event_envelope(record);
+        let terminal = is_public_terminal_runtime_event(&event.event_type);
+        prefix.push(event);
+        if terminal {
+            break;
+        }
+    }
+    let first_item = prefix
+        .iter()
+        .position(|event| event.event_type == "provider_output_item_done");
+    if let Some(first_item) = first_item {
+        let mut output_items = prefix
+            .iter()
+            .filter(|event| event.event_type == "provider_output_item_done")
+            .cloned()
+            .collect::<Vec<_>>();
+        output_items.sort_by_key(|event| {
+            (
+                event.payload["output_index"].as_u64().unwrap_or(u64::MAX),
+                event.sequence,
+            )
+        });
+        prefix.retain(|event| event.event_type != "provider_output_item_done");
+        prefix.splice(first_item..first_item, output_items);
+    }
+    // The projector cursor orders this one replay batch. Database sequence
+    // reflects separate provider and callback writers, while output_index is
+    // the provider's exact order for completed items.
+    for (index, event) in prefix.iter_mut().enumerate() {
+        event.sequence = index as i64 + 1;
+    }
+    prefix
 }
 
 fn durable_record_to_runtime_event_envelope(

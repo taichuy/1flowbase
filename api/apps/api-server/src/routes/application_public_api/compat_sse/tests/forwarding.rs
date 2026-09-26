@@ -111,6 +111,17 @@ fn spawn_typed_stream(
     live_events: tokio::sync::mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
     sender: mpsc::Sender<CompatibleProjectionInput>,
 ) -> tokio::task::JoinHandle<()> {
+    spawn_typed_stream_with_durable(state, run, Vec::new(), replay, live_events, sender)
+}
+
+fn spawn_typed_stream_with_durable(
+    state: &Arc<ApiState>,
+    run: &NativeRunResult,
+    durable_round_replay: Vec<RuntimeEventEnvelope>,
+    replay: Vec<RuntimeEventEnvelope>,
+    live_events: tokio::sync::mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
+    sender: mpsc::Sender<CompatibleProjectionInput>,
+) -> tokio::task::JoinHandle<()> {
     use control_plane::ports::RuntimeEventSubscription;
     let (closure_sender, closure) = tokio::sync::watch::channel(None);
     let state = Arc::clone(state);
@@ -129,6 +140,7 @@ fn spawn_typed_stream(
             ),
             initial_run: run.clone(),
             from_sequence: None,
+            durable_round_replay,
             ignored_waiting_callback_task_id: None,
             subscription: RuntimeEventSubscription {
                 terminal_writer: Arc::new(UnusedTerminalWriter),
@@ -211,6 +223,149 @@ async fn typed_responses_stream_claims_orders_deduplicates_and_acks_projected_to
         claimable_delivery_count(&state, run.id).await,
         0,
         "acked deliveries must not replay"
+    );
+}
+
+#[tokio::test]
+async fn durable_round_replay_keeps_exact_native_item_and_does_not_replay_acked_tool() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut run = native_run();
+    run.metadata["response_round_id"] = json!(Uuid::now_v7());
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let reasoning = json!({
+        "id": "rs_provider_original",
+        "type": "reasoning",
+        "summary": [{"type":"summary_text","text":"exact summary"}],
+        "encrypted_content": "opaque-provider-bytes"
+    });
+    let tool = committed_delivery_payload("call-replay-once");
+    let record = seed_pending_committed_delivery(&state, &run, tool.clone()).await;
+    let durable_replay = vec![
+        RuntimeEventEnvelope::new(run.id, 100, debug_stream_events::flow_started(run.id)),
+        RuntimeEventEnvelope::new(
+            run.id,
+            101,
+            debug_stream_events::provider_output_item_done(
+                "llm",
+                Uuid::now_v7(),
+                0,
+                reasoning.clone(),
+            ),
+        ),
+        committed_delivery_envelope(run.id, 102, tool),
+    ];
+    for expected_tool_count in [1, 0] {
+        let (live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+        drop(live_sender);
+        let (sender, mut receiver) = mpsc::channel(8);
+        let forwarding = spawn_typed_stream_with_durable(
+            &state,
+            &run,
+            durable_replay.clone(),
+            Vec::new(),
+            live_events,
+            sender,
+        );
+        let mut mapper = OpenAiResponseStreamMapper::with_mode(
+            "fixture".into(),
+            None,
+            ResponsesProjectionMode::TransparentProviderResponses,
+        );
+        let mut projected = Vec::new();
+        let mut tool_count = 0;
+        while let Some(input) = receiver.recv().await {
+            let (snapshot, envelope, receipt) = input.into_parts();
+            if let Some(receipt) = receipt {
+                tool_count += 1;
+                receipt.projected();
+            }
+            projected.extend(mapper.runtime_event_to_sse(&snapshot, envelope));
+        }
+        forwarding.await.unwrap();
+        assert_eq!(tool_count, expected_tool_count);
+        let response = axum::response::sse::Sse::new(tokio_stream::iter(projected)).into_response();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("rs_provider_original"), "{body}");
+        assert!(body.contains("opaque-provider-bytes"), "{body}");
+        assert_eq!(body.contains("call-replay-once"), expected_tool_count == 1);
+    }
+    assert_eq!(delivery_statuses(&state, &[record.id]).await, vec!["acked"]);
+}
+
+#[tokio::test]
+async fn durable_callback_boundary_excludes_the_next_response_round() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let first_callback = Uuid::now_v7();
+    let next_callback = Uuid::now_v7();
+    let waiting = |callback_task_id| RuntimeEventPayload {
+        event_type: "waiting_callback".into(),
+        source: RuntimeEventSource::Runtime,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
+        trace_visible: true,
+        payload: json!({"callback_task_id":callback_task_id}),
+    };
+    let original = json!({
+        "id":"rs_original",
+        "type":"reasoning",
+        "encrypted_content":"opaque-original"
+    });
+    let tool = json!({
+        "id":"call_original",
+        "type":"custom_tool_call",
+        "call_id":"call_original"
+    });
+    let later = json!({"id":"rs_later","type":"reasoning"});
+    for (sequence, payload) in [
+        waiting(first_callback),
+        debug_stream_events::flow_started(run.id),
+        debug_stream_events::provider_output_item_done("llm", Uuid::now_v7(), 1, original.clone()),
+        debug_stream_events::provider_output_item_done("llm", Uuid::now_v7(), 0, tool.clone()),
+        waiting(next_callback),
+        debug_stream_events::flow_started(run.id),
+        debug_stream_events::provider_output_item_done("llm", Uuid::now_v7(), 0, later),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        control_plane::orchestration_runtime::persist_runtime_debug_stream_events(
+            &state.store,
+            vec![RuntimeEventEnvelope::new(
+                run.id,
+                sequence as i64 + 1,
+                payload,
+            )],
+        )
+        .await
+        .unwrap();
+    }
+    let boundary = state
+        .store
+        .get_runtime_event_sequence_for_callback_task(run.id, first_callback)
+        .await
+        .unwrap()
+        .unwrap();
+    let prefix = event_forwarding::durable_round_prefix(
+        state
+            .store
+            .list_runtime_events(run.id, boundary)
+            .await
+            .unwrap(),
+    );
+    let items = prefix
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .map(|event| event.payload["item"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(items, vec![tool, original]);
+    assert_eq!(
+        prefix.last().unwrap().payload["callback_task_id"],
+        json!(next_callback)
     );
 }
 
