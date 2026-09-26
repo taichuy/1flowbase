@@ -723,7 +723,7 @@ async fn follow_missing_compatible_round(
         )
         .await
         {
-            warn!(error = %error, "durable callback round follower failed");
+            warn!(error = ?error, "durable callback round follower failed");
         }
     });
     Ok(result)
