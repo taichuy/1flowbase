@@ -62,6 +62,10 @@ test('AC-012: cold Rust compilation is accelerated without treating cache as gat
   assert.match(source, /CARGO_INCREMENTAL: '0'/u);
   assert.match(source, /uses: Swatinem\/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32/u);
   assert.match(source, /shared-key: ai-gateway-protocol-conformance/u);
+  assert.match(source, /key: \$\{\{ github\.ref_name \}\}/u);
+  assert.match(source, /save-if: true/u);
+  assert.match(source, /cache-on-failure: true/u);
+  assert.match(source, /cache-workspace-crates: true/u);
 
   const cacheWorkspaces = source.slice(
     source.indexOf('      - name: Restore Rust dependency cache'),

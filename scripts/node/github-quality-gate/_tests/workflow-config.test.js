@@ -286,7 +286,7 @@ test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/
   assert.match(docs, /not\s+configured as required checks/u);
 });
 
-test("Rust workflow caches are dependency-keyed and bounded across branches", () => {
+test("Rust workflow caches include branch-owned AI Gateway results", () => {
   const workflow = readQualityGateWorkflow();
   const containerWorkflow = readContainerImagesWorkflow();
   const aiGatewayWorkflow = readAiGatewayConcurrencyWorkflow();
@@ -315,7 +315,7 @@ test("Rust workflow caches are dependency-keyed and bounded across branches", ()
   );
   assert.match(
     aiGatewayWorkflow,
-    /save-if: \$\{\{ github\.ref_name == github\.event\.repository\.default_branch \}\}/u,
+    /save-if: true/u,
   );
 
   assert.match(containerWorkflow, /cargo build --release -p api-server --bin api-server/u);

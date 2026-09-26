@@ -497,7 +497,7 @@ async function runQualityGate(rawOptions) {
     }
 
     const packagedProviders = new Set();
-    for (const providerCode of OFFICIAL_PROVIDER_CODES) {
+    for (const providerCode of WORKFLOW_PROVIDER_CODES) {
       const pluginRoot = path.join(
         officialSourceRoot,
         "runtime-extensions/@taichuy",
