@@ -212,10 +212,10 @@ pub(super) mod tests {
             >,
         >,
         continuation: Mutex<
-            Option<(
+            std::collections::HashMap<
                 crate::ports::ProviderContinuationSlotId,
                 crate::ports::ProviderContinuation,
-            )>,
+            >,
         >,
     }
 
@@ -286,7 +286,7 @@ pub(super) mod tests {
             slot_id: crate::ports::ProviderContinuationSlotId,
             continuation: crate::ports::ProviderContinuation,
         ) -> anyhow::Result<()> {
-            *self.continuation.lock().await = Some((slot_id, continuation));
+            self.continuation.lock().await.insert(slot_id, continuation);
             Ok(())
         }
 
@@ -294,28 +294,35 @@ pub(super) mod tests {
             &self,
             slot_id: crate::ports::ProviderContinuationSlotId,
         ) -> anyhow::Result<Option<crate::ports::ProviderContinuation>> {
-            Ok(self
-                .continuation
-                .lock()
-                .await
-                .as_ref()
-                .filter(|(stored_slot, _)| *stored_slot == slot_id)
-                .map(|(_, continuation)| continuation.clone()))
+            Ok(self.continuation.lock().await.get(&slot_id).cloned())
+        }
+
+        async fn claim_continuation(
+            &self,
+            flow_run_id: Uuid,
+            resume_claim_id: Uuid,
+        ) -> anyhow::Result<crate::ports::ProviderContinuation> {
+            let current = crate::ports::ProviderContinuationSlotId::for_flow_run(flow_run_id);
+            let claimed = crate::ports::ProviderContinuationSlotId::for_resume_claim(
+                flow_run_id,
+                resume_claim_id,
+            );
+            let mut continuations = self.continuation.lock().await;
+            if let Some(continuation) = continuations.get(&claimed) {
+                return Ok(continuation.clone());
+            }
+            let continuation = continuations
+                .remove(&current)
+                .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
+            continuations.insert(claimed, continuation.clone());
+            Ok(continuation)
         }
 
         async fn delete_continuation(
             &self,
             slot_id: crate::ports::ProviderContinuationSlotId,
         ) -> anyhow::Result<bool> {
-            let mut continuation = self.continuation.lock().await;
-            if continuation
-                .as_ref()
-                .is_some_and(|(stored_slot, _)| *stored_slot == slot_id)
-            {
-                continuation.take();
-                return Ok(true);
-            }
-            Ok(false)
+            Ok(self.continuation.lock().await.remove(&slot_id).is_some())
         }
     }
 

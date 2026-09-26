@@ -849,22 +849,14 @@ pub trait ProviderTransportStore: Send + Sync {
         Ok(continuation)
     }
 
-    /// Production adapters must override this with one atomic storage action.
+    /// Atomically transfers current into an immutable claim-owned snapshot before invocation.
+    /// A repeated call for the same claim returns that snapshot without reading or deleting a
+    /// newly staged current continuation. Implementations must not expose a consume/put gap.
     async fn claim_continuation(
         &self,
         flow_run_id: Uuid,
         resume_claim_id: Uuid,
-    ) -> anyhow::Result<ProviderContinuation> {
-        let claimed = ProviderContinuationSlotId::for_resume_claim(flow_run_id, resume_claim_id);
-        if let Some(continuation) = self.get_continuation(claimed).await? {
-            return Ok(continuation);
-        }
-        let continuation = self
-            .consume_continuation(ProviderContinuationSlotId::for_flow_run(flow_run_id))
-            .await?;
-        self.put_continuation(claimed, continuation.clone()).await?;
-        Ok(continuation)
-    }
+    ) -> anyhow::Result<ProviderContinuation>;
 
     async fn delete_continuation(
         &self,
