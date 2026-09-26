@@ -34,6 +34,94 @@ fn responses_continuation() -> ProviderContinuation {
     .expect("fixture continuation must be valid")
 }
 
+#[tokio::test]
+async fn continuation_claim_snapshot_survives_reclaim_and_current_replacement() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let flow = Uuid::now_v7();
+    let claim = Uuid::now_v7();
+    let current = ProviderContinuationSlotId::for_flow_run(flow);
+    let owned = ProviderContinuationSlotId::for_resume_claim(flow, claim);
+    store
+        .put_continuation(current, responses_continuation())
+        .await
+        .unwrap();
+
+    let original = store.claim_continuation(flow, claim).await.unwrap();
+    assert_eq!(original.response_id(), "provider-response-secret");
+    assert_eq!(
+        store.get_continuation(owned).await.unwrap(),
+        Some(original.clone())
+    );
+    assert!(store.get_continuation(current).await.unwrap().is_none());
+
+    let next = ProviderContinuation::new("next-response", original.affinity().clone()).unwrap();
+    store.put_continuation(current, next.clone()).await.unwrap();
+    assert_eq!(
+        store.claim_continuation(flow, claim).await.unwrap(),
+        original
+    );
+    assert_eq!(
+        store.get_continuation(current).await.unwrap(),
+        Some(next.clone())
+    );
+    assert!(store.delete_continuation(owned).await.unwrap());
+    assert_eq!(store.get_continuation(current).await.unwrap(), Some(next));
+}
+
+#[tokio::test]
+async fn continuation_claim_snapshot_concurrent_claims_capture_current_once() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let flow = Uuid::now_v7();
+    store
+        .put_continuation(
+            ProviderContinuationSlotId::for_flow_run(flow),
+            responses_continuation(),
+        )
+        .await
+        .unwrap();
+    let first_claim = Uuid::now_v7();
+    let second_claim = Uuid::now_v7();
+    let (first, second) = tokio::join!(
+        store.claim_continuation(flow, first_claim),
+        store.claim_continuation(flow, second_claim)
+    );
+    assert_ne!(first.is_ok(), second.is_ok());
+    let first_owned = store
+        .get_continuation(ProviderContinuationSlotId::for_resume_claim(
+            flow,
+            first_claim,
+        ))
+        .await
+        .unwrap();
+    let second_owned = store
+        .get_continuation(ProviderContinuationSlotId::for_resume_claim(
+            flow,
+            second_claim,
+        ))
+        .await
+        .unwrap();
+    assert_ne!(first_owned.is_some(), second_owned.is_some());
+}
+
+#[tokio::test]
+async fn continuation_claim_snapshot_concurrent_same_claim_reuses_original() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let flow = Uuid::now_v7();
+    let claim = Uuid::now_v7();
+    store
+        .put_continuation(
+            ProviderContinuationSlotId::for_flow_run(flow),
+            responses_continuation(),
+        )
+        .await
+        .unwrap();
+    let (first, second) = tokio::join!(
+        store.claim_continuation(flow, claim),
+        store.claim_continuation(flow, claim)
+    );
+    assert_eq!(first.unwrap(), second.unwrap());
+}
+
 fn protocol_context_value(canary: &str) -> ProviderProtocolContextValue {
     ProviderProtocolContextValue::new(json!({
         "source_protocol": "anthropic_messages",

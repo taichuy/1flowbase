@@ -34,6 +34,7 @@ impl ProviderTransportSlotId {
 pub struct ProviderContinuationSlotId {
     flow_run_id: Uuid,
     response_round_id: Option<Uuid>,
+    resume_claim_id: Option<Uuid>,
 }
 
 impl ProviderContinuationSlotId {
@@ -41,6 +42,7 @@ impl ProviderContinuationSlotId {
         Self {
             flow_run_id,
             response_round_id: None,
+            resume_claim_id: None,
         }
     }
 
@@ -49,6 +51,16 @@ impl ProviderContinuationSlotId {
         Self {
             flow_run_id,
             response_round_id: Some(response_round_id),
+            resume_claim_id: None,
+        }
+    }
+
+    /// Immutable input captured for one durable resume claim, across lease generations.
+    pub const fn for_resume_claim(flow_run_id: Uuid, resume_claim_id: Uuid) -> Self {
+        Self {
+            flow_run_id,
+            response_round_id: None,
+            resume_claim_id: Some(resume_claim_id),
         }
     }
 
@@ -61,8 +73,12 @@ impl ProviderContinuationSlotId {
     }
 
     pub fn storage_key(self) -> String {
-        self.response_round_id
-            .map_or_else(|| "current".to_string(), |id| id.to_string())
+        if let Some(id) = self.resume_claim_id {
+            format!("claim:{id}")
+        } else {
+            self.response_round_id
+                .map_or_else(|| "current".to_string(), |id| id.to_string())
+        }
     }
 }
 
@@ -478,6 +494,14 @@ pub trait ProviderProtocolCapsuleStore: Send + Sync {
         slot_id: ProviderContinuationSlotId,
     ) -> anyhow::Result<ProviderContinuation>;
 
+    /// Atomically moves the mutable current continuation into an immutable claim-owned slot.
+    /// Reacquiring the same claim returns its original value without touching a newer current.
+    async fn claim_continuation(
+        &self,
+        flow_run_id: Uuid,
+        resume_claim_id: Uuid,
+    ) -> anyhow::Result<ProviderContinuation>;
+
     async fn delete_continuation(
         &self,
         slot_id: ProviderContinuationSlotId,
@@ -822,6 +846,23 @@ pub trait ProviderTransportStore: Send + Sync {
             self.delete_continuation(slot_id).await?,
             "ephemeral_continuation_missing"
         );
+        Ok(continuation)
+    }
+
+    /// Production adapters must override this with one atomic storage action.
+    async fn claim_continuation(
+        &self,
+        flow_run_id: Uuid,
+        resume_claim_id: Uuid,
+    ) -> anyhow::Result<ProviderContinuation> {
+        let claimed = ProviderContinuationSlotId::for_resume_claim(flow_run_id, resume_claim_id);
+        if let Some(continuation) = self.get_continuation(claimed).await? {
+            return Ok(continuation);
+        }
+        let continuation = self
+            .consume_continuation(ProviderContinuationSlotId::for_flow_run(flow_run_id))
+            .await?;
+        self.put_continuation(claimed, continuation.clone()).await?;
         Ok(continuation)
     }
 

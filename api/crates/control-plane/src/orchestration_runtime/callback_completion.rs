@@ -283,6 +283,7 @@ where
                                     .map(|_| waiting_node.clone()),
                                 native_transport: command.native_transport.clone(),
                                 response_round_id: Some(callback_task.id),
+                                resume_claim_id: claim.id,
                                 actor: &actor,
                                 application: &application,
                                 flow_run: &flow_run,
@@ -359,6 +360,18 @@ where
                         completed_at: OffsetDateTime::now_utc(),
                     })
                     .await?;
+                if result.is_ok() {
+                    if let Err(error) = self
+                        .provider_transport_store
+                        .delete_continuation(crate::ports::ProviderContinuationSlotId::for_resume_claim(
+                            flow_run.id,
+                            claim.id,
+                        ))
+                        .await
+                    {
+                        tracing::warn!(flow_run_id = %flow_run.id, error = %error, "resume claim continuation cleanup failed");
+                    }
+                }
                 result
             },
             || self.repository.renew_resume_claim(&renew_input),
@@ -478,6 +491,7 @@ where
                     .map(|_| waiting_node.clone()),
                 native_transport: command.native_transport.clone(),
                 response_round_id: Some(callback_task.id),
+                resume_claim_id: resume_claim.id,
                 actor,
                 application,
                 flow_run,

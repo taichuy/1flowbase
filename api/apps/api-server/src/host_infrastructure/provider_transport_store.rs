@@ -99,6 +99,16 @@ impl ProviderTransportStore for LayeredProviderTransportStore {
         self.capsules.consume_continuation(slot_id).await
     }
 
+    async fn claim_continuation(
+        &self,
+        flow_run_id: uuid::Uuid,
+        resume_claim_id: uuid::Uuid,
+    ) -> anyhow::Result<ProviderContinuation> {
+        self.capsules
+            .claim_continuation(flow_run_id, resume_claim_id)
+            .await
+    }
+
     async fn delete_continuation(
         &self,
         slot_id: ProviderContinuationSlotId,

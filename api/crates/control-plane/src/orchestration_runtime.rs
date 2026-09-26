@@ -333,6 +333,7 @@ struct ResumeExecutionSegmentInput<'a> {
     resumed_node_run: Option<crate::ports::CallbackResumeWaitingNode>,
     native_transport: Option<crate::ports::ProviderTransportPayload>,
     response_round_id: Option<Uuid>,
+    resume_claim_id: Uuid,
     actor: &'a domain::ActorContext,
     application: &'a domain::ApplicationRecord,
     flow_run: &'a domain::FlowRunRecord,
@@ -602,9 +603,7 @@ where
             let store = &self.provider_transport_store;
             Some(
                 store
-                    .consume_continuation(crate::ports::ProviderContinuationSlotId::for_flow_run(
-                        input.flow_run.id,
-                    ))
+                    .claim_continuation(input.flow_run.id, input.resume_claim_id)
                     .await?,
             )
         } else {
@@ -1319,6 +1318,7 @@ where
                     resumed_node_run: None,
                     native_transport: None,
                     response_round_id: None,
+                    resume_claim_id: claim.claim.id,
                     actor: &actor,
                     application: &application,
                     flow_run: &flow_run,
@@ -1371,6 +1371,18 @@ where
             completed_at: OffsetDateTime::now_utc(),
         };
         self.repository.finish_resume_claim(&finish).await?;
+        if result.is_ok() {
+            if let Err(error) = self
+                .provider_transport_store
+                .delete_continuation(crate::ports::ProviderContinuationSlotId::for_resume_claim(
+                    flow_run.id,
+                    claim.claim.id,
+                ))
+                .await
+            {
+                tracing::warn!(flow_run_id = %flow_run.id, error = %error, "resume claim continuation cleanup failed");
+            }
+        }
         result
     }
 

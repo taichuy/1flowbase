@@ -218,6 +218,27 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         Ok(entry.continuation)
     }
 
+    async fn claim_continuation(
+        &self,
+        flow_run_id: uuid::Uuid,
+        resume_claim_id: uuid::Uuid,
+    ) -> anyhow::Result<ProviderContinuation> {
+        let current = ProviderContinuationSlotId::for_flow_run(flow_run_id);
+        let claimed = ProviderContinuationSlotId::for_resume_claim(flow_run_id, resume_claim_id);
+        let mut continuations = self.continuations.write().await;
+        if let Some(entry) = continuations.get(&claimed).cloned() {
+            if entry.expires_at > OffsetDateTime::now_utc() {
+                return Ok(entry.continuation);
+            }
+            continuations.remove(&claimed);
+        }
+        let entry = Self::take_unexpired(&mut continuations, &current, |entry| entry.expires_at)
+            .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
+        let continuation = entry.continuation.clone();
+        continuations.insert(claimed, entry);
+        Ok(continuation)
+    }
+
     async fn delete_continuation(
         &self,
         slot_id: ProviderContinuationSlotId,

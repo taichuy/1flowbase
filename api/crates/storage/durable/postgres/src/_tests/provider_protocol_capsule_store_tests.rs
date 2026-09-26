@@ -116,6 +116,118 @@ fn capsule_store(pool: sqlx::PgPool) -> PgProviderProtocolCapsuleStore {
 }
 
 #[tokio::test]
+async fn continuation_claim_snapshot_survives_restart_and_current_replacement() {
+    let (pool, flow) = seeded_flow_run().await;
+    let store = capsule_store(pool.clone());
+    let claim = Uuid::now_v7();
+    let current = ProviderContinuationSlotId::for_flow_run(flow);
+    let owned = ProviderContinuationSlotId::for_resume_claim(flow, claim);
+    let affinity =
+        ProviderTransportAffinity::new("instance", "openai", "openai_responses", "model");
+    let original = ProviderContinuation::new("original", affinity.clone()).unwrap();
+    store
+        .put_continuation(current, original.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        store.claim_continuation(flow, claim).await.unwrap(),
+        original
+    );
+    assert!(store.get_continuation(current).await.unwrap().is_none());
+
+    let restarted = capsule_store(pool);
+    let next = ProviderContinuation::new("next", affinity).unwrap();
+    restarted
+        .put_continuation(current, next.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        restarted.claim_continuation(flow, claim).await.unwrap(),
+        original
+    );
+    assert_eq!(
+        restarted.get_continuation(owned).await.unwrap(),
+        Some(original)
+    );
+    assert_eq!(
+        restarted.get_continuation(current).await.unwrap(),
+        Some(next.clone())
+    );
+    assert!(restarted.delete_continuation(owned).await.unwrap());
+    assert_eq!(
+        restarted.get_continuation(current).await.unwrap(),
+        Some(next)
+    );
+}
+
+#[tokio::test]
+async fn continuation_claim_snapshot_concurrent_claims_transfer_current_once() {
+    let (pool, flow) = seeded_flow_run().await;
+    let first_store = capsule_store(pool.clone());
+    let second_store = capsule_store(pool);
+    let current = ProviderContinuationSlotId::for_flow_run(flow);
+    let affinity =
+        ProviderTransportAffinity::new("instance", "openai", "openai_responses", "model");
+    first_store
+        .put_continuation(
+            current,
+            ProviderContinuation::new("original", affinity).unwrap(),
+        )
+        .await
+        .unwrap();
+    let first_claim = Uuid::now_v7();
+    let second_claim = Uuid::now_v7();
+    let (first, second) = tokio::join!(
+        first_store.claim_continuation(flow, first_claim),
+        second_store.claim_continuation(flow, second_claim)
+    );
+    assert_ne!(first.is_ok(), second.is_ok());
+    let first_owned = first_store
+        .get_continuation(ProviderContinuationSlotId::for_resume_claim(
+            flow,
+            first_claim,
+        ))
+        .await
+        .unwrap();
+    let second_owned = second_store
+        .get_continuation(ProviderContinuationSlotId::for_resume_claim(
+            flow,
+            second_claim,
+        ))
+        .await
+        .unwrap();
+    assert_ne!(first_owned.is_some(), second_owned.is_some());
+}
+
+#[tokio::test]
+async fn continuation_claim_snapshot_concurrent_same_claim_reuses_original() {
+    let (pool, flow) = seeded_flow_run().await;
+    let first_store = capsule_store(pool.clone());
+    let second_store = capsule_store(pool);
+    let claim = Uuid::now_v7();
+    let current = ProviderContinuationSlotId::for_flow_run(flow);
+    let affinity =
+        ProviderTransportAffinity::new("instance", "openai", "openai_responses", "model");
+    first_store
+        .put_continuation(
+            current,
+            ProviderContinuation::new("original", affinity).unwrap(),
+        )
+        .await
+        .unwrap();
+    let (first, second) = tokio::join!(
+        first_store.claim_continuation(flow, claim),
+        second_store.claim_continuation(flow, claim)
+    );
+    assert_eq!(first.unwrap(), second.unwrap());
+    assert!(first_store
+        .get_continuation(current)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
 async fn issue_2048_bulk_deletes_all_response_round_continuations_for_one_flow() {
     let (pool, flow_run_id) = seeded_flow_run().await;
     let store = capsule_store(pool);

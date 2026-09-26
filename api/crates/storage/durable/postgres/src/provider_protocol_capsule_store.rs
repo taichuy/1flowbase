@@ -323,6 +323,101 @@ impl ProviderProtocolCapsuleStore for PgProviderProtocolCapsuleStore {
         Self::continuation_from_value(&value)
     }
 
+    async fn claim_continuation(
+        &self,
+        flow_run_id: Uuid,
+        resume_claim_id: Uuid,
+    ) -> anyhow::Result<ProviderContinuation> {
+        let claimed = ProviderContinuationSlotId::for_resume_claim(flow_run_id, resume_claim_id);
+        if let Some(continuation) = self.get_continuation(claimed).await? {
+            return Ok(continuation);
+        }
+
+        let current_key = ProviderContinuationSlotId::for_flow_run(flow_run_id).storage_key();
+        let claim_key = claimed.storage_key();
+        let mut transaction = self.pool.begin().await?;
+        let row = sqlx::query(
+            r#"
+            select encrypted_payload, plaintext_digest, plaintext_size_bytes,
+                   key_version, hard_expires_at
+            from provider_protocol_capsules
+            where flow_run_id = $1 and capsule_kind = 'continuation'
+              and slot_key = $2 and hard_expires_at > now()
+            for update
+            "#,
+        )
+        .bind(flow_run_id)
+        .bind(&current_key)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let Some(row) = row else {
+            transaction.rollback().await?;
+            return self
+                .get_continuation(claimed)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("provider_continuation_missing"));
+        };
+        anyhow::ensure!(
+            row.try_get::<String, _>("key_version")? == KEY_VERSION,
+            "provider_protocol_capsule_key_version_unsupported"
+        );
+        let value = decrypt_secret_json_with_aad(
+            &row.try_get::<Value, _>("encrypted_payload")?,
+            &self.master_key,
+            &Self::associated_data(flow_run_id, "continuation", &current_key),
+        )?;
+        let plaintext = serde_json::to_vec(&value)?;
+        anyhow::ensure!(
+            i64::try_from(plaintext.len())? == row.try_get::<i64, _>("plaintext_size_bytes")?
+                && format!("sha256:{:x}", Sha256::digest(&plaintext))
+                    == row.try_get::<String, _>("plaintext_digest")?,
+            "provider_protocol_capsule_integrity_mismatch"
+        );
+        let continuation = Self::continuation_from_value(&value)?;
+        let encrypted = encrypt_secret_json_with_aad(
+            &value,
+            &self.master_key,
+            &Self::associated_data(flow_run_id, "continuation", &claim_key),
+        )?;
+        let inserted = sqlx::query(
+            r#"
+            insert into provider_protocol_capsules (
+                flow_run_id, capsule_kind, slot_key, encrypted_payload,
+                plaintext_digest, plaintext_size_bytes, key_version, hard_expires_at
+            ) values ($1, 'continuation', $2, $3, $4, $5, $6, $7)
+            on conflict (flow_run_id, capsule_kind, slot_key) do nothing
+            "#,
+        )
+        .bind(flow_run_id)
+        .bind(&claim_key)
+        .bind(encrypted)
+        .bind(row.try_get::<String, _>("plaintext_digest")?)
+        .bind(row.try_get::<i64, _>("plaintext_size_bytes")?)
+        .bind(KEY_VERSION)
+        .bind(row.try_get::<OffsetDateTime, _>("hard_expires_at")?)
+        .execute(&mut *transaction)
+        .await?
+        .rows_affected()
+            == 1;
+        if inserted {
+            sqlx::query(
+                "delete from provider_protocol_capsules where flow_run_id = $1 and capsule_kind = 'continuation' and slot_key = $2",
+            )
+            .bind(flow_run_id)
+            .bind(&current_key)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        transaction.commit().await?;
+        if inserted {
+            Ok(continuation)
+        } else {
+            self.get_continuation(claimed)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("provider_continuation_missing"))
+        }
+    }
+
     async fn delete_continuation(
         &self,
         slot_id: ProviderContinuationSlotId,
