@@ -766,27 +766,34 @@ where
                             .map_err(|_| anyhow!("tool delivery buffer lock is poisoned"))?
                             .push(delivery.clone());
                     }
-                    if capture_native_history && tool_delivery.is_none() {
-                        if let ProviderStreamEvent::OutputItem {
+                    if let (
+                        true,
+                        None,
+                        Some(flow_run_id),
+                        ProviderStreamEvent::OutputItem {
                             phase: ProviderOutputItemPhase::Done,
                             output_index,
                             item,
-                        } = &event
-                        {
-                            let mut fact = debug_stream_events::provider_output_item_done(
-                                &node_id,
-                                node_run_id,
-                                *output_index,
-                                item.clone(),
-                            );
-                            fact.payload["response_round_id"] = json!(response_round_id_for_task);
-                            runtime_event_persister::persist_runtime_event_payload(
-                                &repository_for_events,
-                                flow_run_id,
-                                &fact,
-                            )
-                            .await?;
-                        }
+                        },
+                    ) = (
+                        capture_native_history,
+                        tool_delivery.as_ref(),
+                        flow_run_id,
+                        &event,
+                    ) {
+                        let mut fact = debug_stream_events::provider_output_item_done(
+                            &node_id,
+                            node_run_id,
+                            *output_index,
+                            item.clone(),
+                        );
+                        fact.payload["response_round_id"] = json!(response_round_id_for_task);
+                        runtime_event_persister::persist_runtime_event_payload(
+                            &repository_for_events,
+                            flow_run_id,
+                            &fact,
+                        )
+                        .await?;
                     }
                     project_canonical_provider_deltas(
                         runtime_event_stream.as_ref(),
