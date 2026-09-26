@@ -29,8 +29,8 @@ impl PortableTemplateIdentityRepository for PgControlPlaneStore {
         source_id: &str,
         target_id: &str,
     ) -> Result<()> {
-        let written = sqlx::query("insert into portable_template_identities (workspace_id, kind, source_id, target_id) values ($1, $2, $3, $4) on conflict (workspace_id, source_id) do update set target_id = excluded.target_id where portable_template_identities.kind = excluded.kind")
-            .bind(workspace_id).bind(kind).bind(source_id).bind(target_id).execute(self.pool()).await?;
+        let written = sqlx::query("insert into portable_template_identities (id, workspace_id, scope_id, kind, source_id, target_id) values ($1, $2, $2, $3, $4, $5) on conflict (workspace_id, source_id) do update set target_id = excluded.target_id, updated_at = now() where portable_template_identities.kind = excluded.kind")
+            .bind(Uuid::now_v7()).bind(workspace_id).bind(kind).bind(source_id).bind(target_id).execute(self.pool()).await?;
         anyhow::ensure!(
             written.rows_affected() == 1,
             "portable_template_identity_kind_conflict:{source_id}"

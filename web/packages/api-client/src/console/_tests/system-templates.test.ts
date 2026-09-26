@@ -15,7 +15,8 @@ describe('portable template transport', () => {
     const selection = {
       page_ids: ['page'],
       application_ids: [],
-      data_model_ids: []
+      data_model_ids: [],
+      mcp_instance_ids: []
     };
     const body = {
       schema_version: '1flowbase.portable-template/v1',

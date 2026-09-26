@@ -3,6 +3,7 @@ use control_plane::{
     portable_template::*,
     ports::{ApplicationRepository, FrontstagePageRepository, ModelDefinitionRepository},
 };
+use control_plane_contracts::ports::PortableTemplateIdentityRepository;
 use serde_json::json;
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -15,6 +16,45 @@ fn fixture() -> PortableTemplatePackage {
     PortableTemplatePackage {schema_version:PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),plugins:vec![],mcp_bundle:None,applications:vec![],
         data_models:vec![PortableDataModel {id:model_id,code:"portable_orders".into(),title:"Portable orders".into(),description:None,scope_kind:domain::DataModelScopeKind::Workspace,template_provider:"core".into(),template_code:"general".into(),template_version:"v1".into(),status:domain::DataModelStatus::Published,builtin:false,fields:vec![PortableModelField {id:Uuid::new_v4(),code:"label".into(),title:"Label".into(),description:None,field_kind:domain::ModelFieldKind::String,is_system:false,is_required:false,api_required:false,is_unique:false,default_value:None,display_interface:None,display_options:json!({"page_id":page_id}),relation_target_model_id:None,relation_options:json!({})}]}],
         pages:vec![PortablePage {id:page_id,parent_id:None,kind:domain::FrontstagePageKind::Page,title:Some("Portable".into()),icon:None,tooltip:None,is_hidden:false,placement:domain::frontstage::FrontstageNavigationPlacement::Topbar,content_presentation:domain::frontstage::FrontstagePageContentPresentation::Single,slug:Some("portable".into()),rank:"a".into(),visibility_rules:vec![],tabs:vec![PortableTab {id:tab_id,title:Some("Default".into()),rank:"a".into(),is_default:true,route_segment:None,document_root_uid:format!("source-tab-{tab_id}"),document_payload:json!({"root":format!("source-tab-{tab_id}"),"model":model_id,"page":page_id,"tab":tab_id}),blocks:vec![PortableBlock {block_id:block_id.clone(),parent_block_id:None,rank:"a".into(),presentation:domain::frontstage::FrontstageBlockPresentation::Inline,title:Some("Orders".into()),description:None,code_ref:format!("frontstage.block.{block_id}"),schema_version:1,input_mapping:BTreeMap::new(),output_mapping:BTreeMap::new(),runtime_descriptor:json!({"props":{"model_id":model_id}}),source_code:format!("export default function Component() {{ return '{model_id}:{page_id}:{tab_id}:{block_id}'; }}")}]}]}]}
+}
+
+#[tokio::test]
+async fn stale_identity_target_is_replaced_when_install_recreates_missing_resource() {
+    let (store, workspace, actor) = support::seed_store().await;
+    let package = fixture();
+    let source_id = package.data_models[0].id;
+    let stale_target_id = Uuid::now_v7();
+    store
+        .record_portable_template_identity(
+            workspace.id,
+            "data_model",
+            &source_id.to_string(),
+            &stale_target_id.to_string(),
+        )
+        .await
+        .unwrap();
+
+    let result = PortableTemplateInstallService::new(store.clone())
+        .install(actor.id, package)
+        .await
+        .unwrap();
+
+    assert!(result.complete, "{:?}", result.failures);
+    let target_id: Uuid = result.id_map[&source_id.to_string()].parse().unwrap();
+    assert_ne!(target_id, stale_target_id);
+    assert!(
+        ModelDefinitionRepository::get_model_definition(&store, workspace.id, target_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        store
+            .load_portable_template_identity_map(workspace.id)
+            .await
+            .unwrap()[&source_id.to_string()],
+        target_id.to_string()
+    );
 }
 
 #[tokio::test]

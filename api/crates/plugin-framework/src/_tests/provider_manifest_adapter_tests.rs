@@ -211,7 +211,25 @@ fn provider_package_accepts_stateful_provider_worker_runtime() {
 }
 
 #[test]
-fn provider_package_rejects_non_process_per_call_execution_mode() {
+fn provider_package_accepts_stateful_provider_worker_multiplex_runtime() {
+    let fixture = make_package_fixture(
+        "acme_openai_compatible",
+        &["model_provider"],
+        "stateful_provider_worker",
+        "stdio_json_multiplex_v1",
+    );
+
+    let package = ProviderPackage::load_from_dir(fixture.path()).unwrap();
+
+    assert_eq!(
+        package.manifest.execution_mode.as_str(),
+        "stateful_provider_worker"
+    );
+    assert_eq!(package.manifest.runtime.protocol, "stdio_json_multiplex_v1");
+}
+
+#[test]
+fn provider_package_rejects_unsupported_execution_mode() {
     let fixture = make_package_fixture(
         "acme_openai_compatible",
         &["model_provider"],
@@ -223,11 +241,11 @@ fn provider_package_rejects_non_process_per_call_execution_mode() {
 
     assert!(error
         .to_string()
-        .contains("model provider package must declare execution_mode=process_per_call"));
+        .contains("model provider package requires process_per_call/stdio_json or stateful_provider_worker with stdio_json_worker or stdio_json_multiplex_v1"));
 }
 
 #[test]
-fn provider_package_rejects_non_stdio_runtime_protocol() {
+fn provider_package_rejects_unsupported_runtime_protocol() {
     let fixture = make_package_fixture(
         "acme_openai_compatible",
         &["model_provider"],
@@ -239,5 +257,5 @@ fn provider_package_rejects_non_stdio_runtime_protocol() {
 
     assert!(error
         .to_string()
-        .contains("model provider package must declare execution_mode=process_per_call"));
+        .contains("model provider package requires process_per_call/stdio_json or stateful_provider_worker with stdio_json_worker or stdio_json_multiplex_v1"));
 }

@@ -127,6 +127,13 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         );
     }
     assert_eq!(application.label_key, "auto.application_management");
+    let backups = categories
+        .iter()
+        .find(|category| category.feature_id == "system.backups")
+        .unwrap();
+    assert!(backups
+        .data_tables
+        .contains(&"portable_template_identities".into()));
     let all = categories
         .iter()
         .flat_map(|c| c.structure_tables.iter().chain(&c.data_tables))

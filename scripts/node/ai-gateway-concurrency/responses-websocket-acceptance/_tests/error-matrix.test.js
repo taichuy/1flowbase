@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { inspectClient, runGatewayErrorMatrix } = require('../error-matrix');
+const { inspectClient, observeRun, runGatewayErrorMatrix } = require('../error-matrix');
 const { UPSTREAM_ERROR_FIXTURES, ERROR_SURFACES } = require('../../protocol-oracle/error-fidelity');
 
 function records(surface, message, success) {
@@ -41,6 +41,7 @@ test('Root #1998 P7: executes all 20 online rows and four separate failed/recove
   assert.deepEqual(result.rows.map((row) => row.id), UPSTREAM_ERROR_FIXTURES.flatMap((item) => ERROR_SURFACES.map((surface) => `${item.id}/${surface}`)));
   assert.equal(result.rows.reduce((sum, row) => sum + row.attempts.length, 0), 24);
   assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.run_id))).size, 24);
+  assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.upstream_nonce))).size, 24);
 });
 
 test('Root #1998 P7 authenticity: durable whitespace loss fails rows while remaining online matrix still executes', async () => {
@@ -59,4 +60,56 @@ test('Root #1998 P7 authenticity: success following error, missing terminal and 
     assert.throws(() => inspectClient(surface, [...failed, ...failed], false), /cardinality/u);
     assert.throws(() => inspectClient(surface, [...failed, ...records(surface, null, true)], false), /cardinality/u);
   }
+});
+
+
+test('error matrix reads persisted error payload from trace export, not metadata-only overview', async () => {
+  const traceId = 'trace-1';
+  const runId = 'run-1';
+  const message = ' exact upstream body\n';
+  const calls = [];
+  const target = {
+    durable: {
+      list_runs: {
+        url: 'https://fixture/api/console/applications/app-1/logs/runs?page=1',
+        headers: { cookie: 'owner-session' },
+      },
+      query_run: {
+        url_template: 'https://fixture/api/agent/v1/runs/{run_id}',
+        headers: { authorization: 'Bearer app-key' },
+      },
+    },
+  };
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    if (url === target.durable.list_runs.url) {
+      return { ok: true, json: async () => ({ items: [{ id: runId, correlation: { external_trace_id: traceId } }] }) };
+    }
+    if (url === target.durable.query_run.url_template.replace('{run_id}', runId)) {
+      return { ok: true, json: async () => ({ id: runId, status: 'failed', metadata: { external_trace_id: traceId }, error: { message } }) };
+    }
+    if (url === `https://fixture/api/console/applications/app-1/logs/runs/${runId}/export`) {
+      return { ok: true, json: async () => ({ flow_run: { id: runId, status: 'failed', error_payload: { message } } }) };
+    }
+    if (url.endsWith('/overview')) {
+      return { ok: true, json: async () => ({ flow_run: { id: runId, status: 'failed' } }) };
+    }
+    throw new Error(`unexpected evidence URL: ${url}`);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fetchImpl;
+  let observed;
+  try {
+    observed = await observeRun(target, traceId);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(observed.durable, {
+    id: runId, status: 'failed', error_payload: { message },
+  });
+  assert.ok(calls.some(({ url }) => url.endsWith(`/${runId}/export`)));
+  assert.ok(calls.every(({ url }) => !url.endsWith('/overview')));
+  assert.deepEqual(calls.find(({ url }) => url.endsWith(`/${runId}/export`)).options.headers, target.durable.list_runs.headers);
 });

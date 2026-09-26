@@ -63,16 +63,16 @@ async function observeRun(target, traceId) {
       const nativeUrl = target.durable.query_run.url_template.replace('{run_id}', encodeURIComponent(runId));
       const native = await readJson(nativeUrl, target.durable.query_run.headers);
       if (TERMINAL_STATUSES.has(native.status)) {
-        const overviewUrl = new URL(target.durable.list_runs.url);
-        overviewUrl.search = '';
-        overviewUrl.pathname += `/${encodeURIComponent(runId)}/overview`;
-        const overview = await readJson(overviewUrl.href, target.durable.list_runs.headers);
+        const exportUrl = new URL(target.durable.list_runs.url);
+        exportUrl.search = '';
+        exportUrl.pathname += `/${encodeURIComponent(runId)}/export`;
+        const exported = await readJson(exportUrl.href, target.durable.list_runs.headers);
         if (native.metadata?.external_trace_id !== traceId) throw new Error('Native trace correlation mismatch');
-        if (native.id !== runId || overview.flow_run?.id !== runId || overview.flow_run.status !== native.status) throw new Error('Native/durable identity or terminal mismatch');
+        if (native.id !== runId || exported.flow_run?.id !== runId || exported.flow_run.status !== native.status) throw new Error('Native/durable identity or terminal mismatch');
         return {
           run_id: runId, trace_id: traceId,
           native: { id: native.id, status: native.status, error: native.error ?? null },
-          durable: { id: overview.flow_run.id, status: overview.flow_run.status, error_payload: overview.flow_run.error_payload ?? null },
+          durable: { id: exported.flow_run.id, status: exported.flow_run.status, error_payload: exported.flow_run.error_payload ?? null },
         };
       }
     }

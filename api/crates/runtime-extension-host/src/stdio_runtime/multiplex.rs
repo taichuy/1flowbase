@@ -33,7 +33,7 @@ enum CommandMessage {
     Call {
         request: Value,
         events: mpsc::UnboundedSender<Delivered>,
-        host_calls: Option<ProviderHostCallContext>,
+        host_calls: Option<Box<ProviderHostCallContext>>,
         registered: oneshot::Sender<String>,
         permit: OwnedSemaphorePermit,
         lease: Option<Box<dyn Send + Sync>>,
@@ -59,6 +59,15 @@ struct ActiveCall {
     cancelling_since: Option<Instant>,
     written: bool,
     _lease: Option<Box<dyn Send + Sync>>,
+}
+
+struct ReaderContext {
+    command_sender: mpsc::Sender<CommandMessage>,
+    writes: mpsc::UnboundedSender<WriteFrame>,
+    controls: mpsc::Sender<ControlFrame>,
+    writer_budget: Arc<Semaphore>,
+    control: ProviderWorkerProcessControl,
+    failed: Arc<AtomicBool>,
 }
 
 impl Drop for ActiveCall {
@@ -129,12 +138,14 @@ impl MultiplexProviderWorker {
             run_reader(
                 stdout,
                 receiver,
-                reader_commands,
-                writes,
-                controls,
-                actor_writer_budget,
-                actor_control,
-                actor_failed,
+                ReaderContext {
+                    command_sender: reader_commands,
+                    writes,
+                    controls,
+                    writer_budget: actor_writer_budget,
+                    control: actor_control,
+                    failed: actor_failed,
+                },
             )
             .await;
         });
@@ -191,7 +202,8 @@ impl MultiplexProviderWorker {
                 events,
                 host_calls: context
                     .as_ref()
-                    .and_then(|context| context.host_calls.clone()),
+                    .and_then(|context| context.host_calls.clone())
+                    .map(Box::new),
                 registered,
                 permit,
                 lease,
@@ -440,13 +452,16 @@ async fn writer(
 async fn run_reader(
     stdout: ChildStdout,
     mut commands: mpsc::Receiver<CommandMessage>,
-    command_sender: mpsc::Sender<CommandMessage>,
-    writes: mpsc::UnboundedSender<WriteFrame>,
-    controls: mpsc::Sender<ControlFrame>,
-    writer_budget: Arc<Semaphore>,
-    control: ProviderWorkerProcessControl,
-    failed: Arc<AtomicBool>,
+    context: ReaderContext,
 ) {
+    let ReaderContext {
+        command_sender,
+        writes,
+        controls,
+        writer_budget,
+        control,
+        failed,
+    } = context;
     let mut reader = BufReader::new(stdout);
     // Kept outside select: a command may interrupt a partially read frame.
     let mut pending_frame = Vec::new();
@@ -509,7 +524,7 @@ async fn run_reader(
                         next_id = match next_id.checked_add(1) { Some(value) => value, None => break "multiplex call id exhausted".to_string() };
                         let id = next_id.to_string();
                         let bytes = match encode(MultiplexHostMessage::Call { call_id: id.clone(), request }) { Ok(bytes) => bytes, Err(error) => { let _ = events.send(Delivered { message: Err(error), _permit: None }); continue; } };
-                        active.insert(id.clone(), ActiveCall { events, event_budget: Arc::new(Semaphore::new(CALL_EVENT_BYTES)), host_calls, callbacks: HashMap::new(), max_callback_id: 0, cancelling_since: None, written: false, _lease: lease });
+                        active.insert(id.clone(), ActiveCall { events, event_budget: Arc::new(Semaphore::new(CALL_EVENT_BYTES)), host_calls: host_calls.map(|context| *context), callbacks: HashMap::new(), max_callback_id: 0, cancelling_since: None, written: false, _lease: lease });
                         if writes.send(WriteFrame { bytes, _permit: permit, call_id: Some(id) }).is_err() { break "multiplex writer queue is full or closed".to_string(); }
                         let id = next_id.to_string();
                         if registered.send(id.clone()).is_err() { if let Some(call) = active.get_mut(&id) { request_cancel(&id, call, &controls); } }

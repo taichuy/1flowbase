@@ -329,3 +329,84 @@ async fn implicit_plugin_identity_creates_only_disabled_unverified_target_identi
         0
     );
 }
+
+#[tokio::test]
+async fn selective_backup_roundtrips_portable_identities_and_requires_workspace() {
+    use control_plane_contracts::ports::PortableTemplateIdentityRepository;
+
+    let (db, _actor) = fixture().await;
+    let repo = PgSelectiveBackupRepository::new(db.clone());
+    let tenant = Uuid::now_v7();
+    let workspace = Uuid::now_v7();
+    let source_id = Uuid::now_v7().to_string();
+    let target_id = Uuid::now_v7().to_string();
+    sqlx::query("insert into tenants(id,code,name) values($1,$2,'Portable identities')")
+        .bind(tenant)
+        .bind(format!("portable-{}", tenant.simple()))
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("insert into workspaces(id,tenant_id,name) values($1,$2,'Portable identities')")
+        .bind(workspace)
+        .bind(tenant)
+        .execute(&db)
+        .await
+        .unwrap();
+    let store = crate::PgControlPlaneStore::new(db.clone());
+    store
+        .record_portable_template_identity(workspace, "data_model", &source_id, &target_id)
+        .await
+        .unwrap();
+    let before: (Uuid, Uuid, String) = sqlx::query_as(
+        "select id, scope_id, target_id from portable_template_identities where workspace_id=$1 and source_id=$2",
+    )
+    .bind(workspace)
+    .bind(&source_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    let bytes = capture(&repo, select("backups", false, true)).await;
+    sqlx::query("update portable_template_identities set target_id=$3 where workspace_id=$1 and source_id=$2")
+        .bind(workspace)
+        .bind(&source_id)
+        .bind(Uuid::now_v7().to_string())
+        .execute(&db)
+        .await
+        .unwrap();
+    repo.restore(reader(bytes.clone()), "key", "key", true)
+        .await
+        .unwrap();
+    let after: (Uuid, Uuid, String) = sqlx::query_as(
+        "select id, scope_id, target_id from portable_template_identities where workspace_id=$1 and source_id=$2",
+    )
+    .bind(workspace)
+    .bind(&source_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(after, (before.0, before.1, target_id));
+
+    sqlx::query("delete from workspaces where id=$1")
+        .bind(workspace)
+        .execute(&db)
+        .await
+        .unwrap();
+    let preview = repo.preflight(reader(bytes), "key", "key").await.unwrap();
+    assert!(
+        preview
+            .failures
+            .iter()
+            .any(|failure| { failure.contains("portable_template_identities -> workspaces") }),
+        "{:?}",
+        preview.failures
+    );
+    let restored_rows: i64 = sqlx::query_scalar(
+        "select count(*) from portable_template_identities where workspace_id=$1",
+    )
+    .bind(workspace)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(restored_rows, 0);
+}

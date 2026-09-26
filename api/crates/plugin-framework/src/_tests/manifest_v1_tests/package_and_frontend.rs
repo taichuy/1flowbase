@@ -189,6 +189,45 @@ node_contributions: []
     );
     assert_eq!(manifest.execution_mode.as_str(), "stateful_provider_worker");
     assert_eq!(manifest.runtime.protocol, "stdio_json_worker");
+
+    let multiplex_manifest = parse_plugin_manifest(
+        &r#"
+manifest_version: 1
+plugin_id: openai@0.1.0
+version: 0.1.0
+publisher_namespace: 1flowbase
+vendor: 1flowbase
+display_name: OpenAI
+description: OpenAI Responses provider runtime extension
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: runtime_extension
+execution_mode: stateful_provider_worker
+slot_codes:
+  - model_provider
+binding_targets:
+  - workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.provider/v2
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: outbound_only
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json_multiplex_v1
+  entry: bin/openai-provider
+node_contributions: []
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        multiplex_manifest.runtime.protocol,
+        "stdio_json_multiplex_v1"
+    );
 }
 
 #[test]
@@ -229,7 +268,7 @@ node_contributions: []
     .unwrap_err();
 
     assert!(error.to_string().contains(
-        "stateful_provider_worker execution_mode requires runtime.protocol=stdio_json_worker"
+        "stateful_provider_worker requires stdio_json_worker or stdio_json_multiplex_v1"
     ));
 }
 
