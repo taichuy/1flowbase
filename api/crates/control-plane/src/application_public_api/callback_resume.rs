@@ -97,6 +97,9 @@ pub enum PreparedPublishedCallbackResume {
     Resume {
         initial_run: Box<NativeRunResult>,
     },
+    Attach {
+        initial_run: Box<NativeRunResult>,
+    },
     StartNewTurnFromHistory,
     RecoverInference {
         grant: Box<NativeInferenceRecoveryGrant>,
@@ -190,6 +193,17 @@ where
                 && attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
                 && !is_expired_responses_predecessor(&context, attempt, command)
         }) {
+            if context.callback_task.status == domain::CallbackTaskStatus::Completed
+                && self
+                    .is_identical_active_native_retry(&context, processing, command)
+                    .await?
+            {
+                return Ok(PreparedPublishedCallbackResume::Attach {
+                    initial_run: Box::new(
+                        self.native_result_for_flow_run(&context.flow_run).await?,
+                    ),
+                });
+            }
             self.wait_for_responses_predecessor(processing, command)
                 .await?;
             // The previous invocation may have completed its callback and opened
@@ -303,6 +317,66 @@ where
         Ok(PreparedPublishedCallbackResume::Resume {
             initial_run: Box::new(initial_run),
         })
+    }
+
+    async fn is_identical_active_native_retry(
+        &self,
+        context: &PublishedCallbackResumeContext,
+        processing: &domain::FlowRunCallbackResumeAttemptRecord,
+        command: &ResumePublishedCallbackCommand,
+    ) -> Result<bool> {
+        if processing.response_payload != command.response_payload {
+            return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
+        }
+        if processing.source != command.source.as_str() {
+            return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
+        }
+        let transport = command
+            .native_transport
+            .as_ref()
+            .ok_or_else(|| ControlPlaneError::Conflict("native_tool_output_round_invalid"))?;
+        let Some((correlated, tool_results)) =
+            super::native_tool_resume::correlate_native_responses_callback(
+                &self.repository,
+                &context.actor,
+                transport.wire_body(),
+            )
+            .await?
+        else {
+            return Err(ControlPlaneError::Conflict("native_tool_output_round_invalid").into());
+        };
+        if correlated.id != context.callback_task.id || tool_results != command.response_payload {
+            return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
+        }
+        let evidence = inference_recovery::load_owned_evidence(
+            &self.repository,
+            &context.actor,
+            &context.callback_task,
+        )
+        .await?;
+        let input = &transport.wire_body()["input"];
+        let call_count = command.response_payload["tool_results"]
+            .as_array()
+            .map_or(0, Vec::len);
+        if transport.wire_body().get("previous_response_id").is_none()
+            && input
+                .as_array()
+                .is_some_and(|items| items.len() > call_count)
+        {
+            if let Err(error) =
+                inference_recovery::validate_context(&context.flow_run, &evidence, command)
+            {
+                if inference_recovery::is_full_context_continuation(
+                    &context.flow_run,
+                    &evidence,
+                    command,
+                )? {
+                    return Ok(false);
+                }
+                return Err(error);
+            }
+        }
+        Ok(true)
     }
 
     async fn wait_for_responses_predecessor(

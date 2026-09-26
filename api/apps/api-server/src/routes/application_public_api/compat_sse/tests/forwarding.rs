@@ -104,6 +104,90 @@ fn committed_delivery_envelope(
     )
 }
 
+#[tokio::test]
+async fn callback_attach_replays_exact_output_and_disconnect_leaves_round_open() {
+    let mut run = native_run();
+    let callback_task_id = Uuid::now_v7();
+    run.metadata["response_round_id"] = json!(callback_task_id);
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let stream = Arc::new(LocalRuntimeEventStream::new());
+    stream
+        .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let mut started = debug_stream_events::flow_started(run.id);
+    started.payload["response_round_id"] = json!(callback_task_id);
+    stream.append(run.id, started).await.unwrap();
+    let exact_output = json!({
+        "output_index": 0,
+        "item": {"type": "message", "content": [{"type": "output_text", "text": "exact reply"}]}
+    });
+    stream
+        .append(
+            run.id,
+            RuntimeEventPayload {
+                event_type: "provider_output_item_done".into(),
+                source: RuntimeEventSource::Provider,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: false,
+                trace_visible: true,
+                payload: exact_output.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let terminal_dependencies = NativeRunTerminalDependencies::new(
+        state.store.clone(),
+        state.runtime_engine.clone(),
+        state.provider_runtime.clone(),
+        state.provider_secret_master_key.clone(),
+        state.model_billing_require_provider_usage,
+        state.infrastructure.provider_transport_store(),
+        stream.clone(),
+    );
+    let mut attached = attach_compatible_typed_stream_with_replay(
+        terminal_dependencies,
+        stream.clone(),
+        run.clone(),
+        Some(0),
+        Vec::new(),
+    )
+    .await
+    .unwrap();
+    let first = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.envelope.event_type, "flow_started");
+    assert_eq!(second.envelope.event_type, "provider_output_item_done");
+    assert_eq!(second.envelope.payload, exact_output);
+    drop(attached);
+
+    let next = stream
+        .append(
+            run.id,
+            debug_stream_events::answer_text_delta(
+                "node-answer",
+                "still running".into(),
+                0,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await
+        .expect("subscriber disconnect must not close the shared round");
+    assert_eq!(next.sequence, 3);
+    let survivor = stream.subscribe(run.id, Some(2)).await.unwrap();
+    assert_eq!(survivor.replay.len(), 1);
+    assert_eq!(survivor.replay[0].payload["text"], "still running");
+}
+
 fn spawn_typed_stream(
     state: &Arc<ApiState>,
     run: &NativeRunResult,
