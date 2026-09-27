@@ -11,7 +11,7 @@ impl TraceProjectionBuilder {
         parent_trace_node_id: Uuid,
         parent_stable_locator: &str,
         mut child_index: usize,
-        detail: &domain::ApplicationRunDetail,
+        detail: &domain::ApplicationRunTraceProjectionSource,
     ) -> Result<usize> {
         if !detail.task_rounds.is_empty() {
             child_index += 1;
@@ -39,7 +39,7 @@ impl TraceProjectionBuilder {
         order_key: String,
         parent_trace_node_id: Uuid,
         parent_stable_locator: &str,
-        detail: &domain::ApplicationRunDetail,
+        detail: &domain::ApplicationRunTraceProjectionSource,
     ) -> Result<()> {
         let stable_locator = format!("{parent_stable_locator}/rounds");
         let trace_node_id = trace_node_id_for_locator(self.flow_run_id, &stable_locator);
@@ -166,7 +166,7 @@ impl TraceProjectionBuilder {
         order_key: String,
         parent_trace_node_id: Uuid,
         parent_stable_locator: &str,
-        detail: &domain::ApplicationRunDetail,
+        detail: &domain::ApplicationRunTraceProjectionSource,
     ) -> Result<()> {
         let stable_locator = format!("{parent_stable_locator}/child_tasks");
         let trace_node_id = trace_node_id_for_locator(self.flow_run_id, &stable_locator);
@@ -269,7 +269,7 @@ impl TraceProjectionBuilder {
         owner_kind: &str,
     ) -> Result<()> {
         let first_node_run = &node_runs[0];
-        let summary_node_run = merge_node_run_group(node_runs);
+        let summary_node_run = node_run_group_summary(node_runs);
         let (stable_locator, source_stable_locator) = if node_runs.len() == 1 {
             (
                 format!("{parent_stable_locator}/node:{}", first_node_run.id),

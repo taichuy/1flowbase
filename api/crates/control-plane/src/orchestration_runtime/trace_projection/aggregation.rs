@@ -238,6 +238,16 @@ pub(super) fn merge_node_run_group(node_runs: &[domain::NodeRunRecord]) -> domai
     merged
 }
 
+pub(super) fn node_run_group_summary(
+    node_runs: &[domain::NodeRunRecord],
+) -> std::borrow::Cow<'_, domain::NodeRunRecord> {
+    if node_runs.len() == 1 {
+        std::borrow::Cow::Borrowed(&node_runs[0])
+    } else {
+        std::borrow::Cow::Owned(merge_node_run_group(node_runs))
+    }
+}
+
 pub(super) fn tool_call_id(tool_call: &serde_json::Value) -> Option<&str> {
     tool_call
         .get("id")
@@ -256,7 +266,7 @@ pub(super) fn subagent_trace_matches_tool_call(
 }
 
 pub(super) fn linked_subagent_trace_for_tool_call<'a>(
-    detail: &'a domain::ApplicationRunDetail,
+    detail: &'a domain::ApplicationRunTraceProjectionSource,
     task: &domain::CallbackTaskRecord,
     tool_call: &serde_json::Value,
 ) -> Option<&'a domain::ApplicationRunSubagentTrace> {
@@ -267,7 +277,7 @@ pub(super) fn linked_subagent_trace_for_tool_call<'a>(
 }
 
 pub(super) fn ordinary_tool_calls_not_linked_to_subagents<'a>(
-    detail: &'a domain::ApplicationRunDetail,
+    detail: &'a domain::ApplicationRunTraceProjectionSource,
     tool_tasks: &[&'a domain::CallbackTaskRecord],
 ) -> Vec<ToolCallProjection<'a>> {
     let mut tool_calls = Vec::new();
@@ -284,7 +294,7 @@ pub(super) fn ordinary_tool_calls_not_linked_to_subagents<'a>(
 }
 
 pub(super) fn linked_subagent_traces_for_tool_tasks<'a>(
-    detail: &'a domain::ApplicationRunDetail,
+    detail: &'a domain::ApplicationRunTraceProjectionSource,
     tool_tasks: &[&domain::CallbackTaskRecord],
 ) -> Vec<&'a domain::ApplicationRunSubagentTrace> {
     let mut subagent_traces = Vec::new();
@@ -306,7 +316,7 @@ pub(super) fn linked_subagent_traces_for_tool_tasks<'a>(
 }
 
 pub(super) fn count_linked_subagent_tool_calls(
-    detail: &domain::ApplicationRunDetail,
+    detail: &domain::ApplicationRunTraceProjectionSource,
     tool_tasks: &[&domain::CallbackTaskRecord],
 ) -> usize {
     linked_subagent_traces_for_tool_tasks(detail, tool_tasks).len()
@@ -314,7 +324,7 @@ pub(super) fn count_linked_subagent_tool_calls(
 
 pub(super) fn subagent_primary_node_run_group(
     subagent_trace: &domain::ApplicationRunSubagentTrace,
-) -> Option<Vec<domain::NodeRunRecord>> {
+) -> Option<&[domain::NodeRunRecord]> {
     trace_visible_node_run_groups(&subagent_trace.node_runs)
         .into_iter()
         .find(|group| {
@@ -375,7 +385,7 @@ pub(super) fn subagent_display_alias(parent_tool_call_description: Option<&str>)
 }
 
 pub(super) fn subagent_parent_tool_call_description(
-    detail: &domain::ApplicationRunDetail,
+    detail: &domain::ApplicationRunTraceProjectionSource,
     subagent_trace: &domain::ApplicationRunSubagentTrace,
 ) -> Option<String> {
     for task in &detail.callback_tasks {

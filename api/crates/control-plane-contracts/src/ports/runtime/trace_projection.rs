@@ -43,7 +43,7 @@ pub struct CompleteCallbackTaskInput {
     pub completed_at: OffsetDateTime,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationRunTraceNodeProjectionInput {
     pub trace_node_id: Uuid,
     pub parent_trace_node_id: Option<Uuid>,
@@ -72,7 +72,7 @@ pub struct ApplicationRunTraceNodeProjectionInput {
     pub trace_relation_kind: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationRunTraceNodeContentProjectionInput {
     pub trace_node_id: Uuid,
     pub content_kind: String,
@@ -115,7 +115,7 @@ pub struct ApplicationRunTraceProjectionStatistics {
     pub tool_callback_count: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplaceApplicationRunTraceProjectionInput {
     pub flow_run_id: Uuid,
     pub projection_version: i32,

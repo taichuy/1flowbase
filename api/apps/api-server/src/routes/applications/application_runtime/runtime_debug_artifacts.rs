@@ -39,6 +39,7 @@ use payloads::{
 };
 pub use visible_internal_enrichment::{
     enrich_application_run_detail_visible_internal_llm_route_traces,
+    enrich_application_run_trace_projection_source_visible_internal_llm_route_traces,
     enrich_node_last_run_visible_internal_llm_route_traces,
 };
 use visible_internal_llm_route_traces::{

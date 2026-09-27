@@ -17,6 +17,20 @@ pub fn enrich_application_run_detail_visible_internal_llm_route_traces(
     detail
 }
 
+pub fn enrich_application_run_trace_projection_source_visible_internal_llm_route_traces(
+    mut source: domain::ApplicationRunTraceProjectionSource,
+    runtime_events: &[domain::RuntimeEventRecord],
+) -> domain::ApplicationRunTraceProjectionSource {
+    enrich_node_runs_visible_internal_llm_route_traces(&mut source.node_runs, runtime_events);
+    for trace in &mut source.stitched_trace {
+        enrich_node_runs_visible_internal_llm_route_traces(
+            &mut trace.node_runs,
+            &trace.runtime_events,
+        );
+    }
+    source
+}
+
 pub fn enrich_node_last_run_visible_internal_llm_route_traces(
     mut last_run: domain::NodeLastRun,
     runtime_events: &[domain::RuntimeEventRecord],

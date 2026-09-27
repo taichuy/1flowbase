@@ -1112,6 +1112,67 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
         .await
         .unwrap();
     }
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_run_event(
+        &store,
+        &AppendRunEventInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            event_type: "unrelated_runtime_fact".to_string(),
+            payload: json!({ "large": "not a node detail" }),
+        },
+    )
+    .await
+    .unwrap();
+
+    let projection_source =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
+            &store,
+            seeded.application_id,
+            run.id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(projection_source.event_count, 4);
+    assert_eq!(
+        projection_source.event_counts_by_node_run.get(&node.id),
+        Some(&3)
+    );
+    assert_eq!(
+        projection_source
+            .checkpoint_counts_by_node_run
+            .get(&node.id),
+        Some(&1)
+    );
+    let projection =
+        control_plane::orchestration_runtime::trace_projection::build_application_run_trace_projection_from_source(
+            &projection_source,
+        )
+        .unwrap();
+    let node_content = projection
+        .contents
+        .iter()
+        .find(|content| content.content_kind == "node_run")
+        .unwrap();
+    assert_eq!(
+        node_content.payload["payload_index"]["event_count"],
+        json!(3)
+    );
+    assert_eq!(
+        node_content.payload["payload_index"]["checkpoint_count"],
+        json!(1)
+    );
+    assert_eq!(
+        projection.source_watermark,
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(
+            &store,
+            seeded.application_id,
+            run.id,
+        )
+        .await
+        .unwrap()
+        .unwrap()
+    );
 
     let overview =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_overview(

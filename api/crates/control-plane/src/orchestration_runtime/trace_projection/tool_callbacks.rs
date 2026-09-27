@@ -11,7 +11,7 @@ pub fn merge_trace_node_run_detail(
 }
 
 pub(super) fn callback_tasks_for_node_run_ids(
-    detail: &domain::ApplicationRunDetail,
+    detail: &domain::ApplicationRunTraceProjectionSource,
     node_run_ids: &HashSet<Uuid>,
 ) -> Vec<domain::CallbackTaskRecord> {
     detail
@@ -603,30 +603,32 @@ pub(super) fn tool_group_status(tool_tasks: &[&domain::CallbackTaskRecord]) -> S
 pub(super) fn node_run_group_content(
     trace_node_id: Uuid,
     node_runs: &[domain::NodeRunRecord],
-    detail: &domain::ApplicationRunDetail,
+    detail: &domain::ApplicationRunTraceProjectionSource,
 ) -> Result<ApplicationRunTraceNodeContentProjectionInput> {
     let node_run_ids = node_runs
         .iter()
         .map(|node_run| node_run.id)
         .collect::<HashSet<_>>();
-    let checkpoints: Vec<&domain::CheckpointRecord> = detail
-        .checkpoints
+    let checkpoint_count = node_run_ids
         .iter()
-        .filter(|checkpoint| {
-            checkpoint
-                .node_run_id
-                .is_some_and(|node_run_id| node_run_ids.contains(&node_run_id))
+        .map(|node_run_id| {
+            detail
+                .checkpoint_counts_by_node_run
+                .get(node_run_id)
+                .copied()
+                .unwrap_or(0)
         })
-        .collect();
-    let events: Vec<&domain::RunEventRecord> = detail
-        .events
+        .sum::<usize>();
+    let event_count = node_run_ids
         .iter()
-        .filter(|event| {
-            event
-                .node_run_id
-                .is_some_and(|node_run_id| node_run_ids.contains(&node_run_id))
+        .map(|node_run_id| {
+            detail
+                .event_counts_by_node_run
+                .get(node_run_id)
+                .copied()
+                .unwrap_or(0)
         })
-        .collect();
+        .sum::<usize>();
     let primary_node_run = &node_runs[0];
     let source_ref_values = node_runs
         .iter()
@@ -670,14 +672,14 @@ pub(super) fn node_run_group_content(
             "detail_kind": "checkpoints",
             "source_kind": "flow_run_checkpoints",
             "source_locator": trace_node_id,
-            "count": checkpoints.len()
+            "count": checkpoint_count
         },
         {
             "detail_ref_id": "events",
             "detail_kind": "events",
             "source_kind": "flow_run_events",
             "source_locator": trace_node_id,
-            "count": events.len()
+            "count": event_count
         }
     ]);
 
@@ -687,8 +689,8 @@ pub(super) fn node_run_group_content(
         payload: serde_json::json!({
             "payload_index": {
                 "node_run_count": node_runs.len(),
-                "checkpoint_count": checkpoints.len(),
-                "event_count": events.len(),
+                "checkpoint_count": checkpoint_count,
+                "event_count": event_count,
                 "node_run_ids": node_runs.iter().map(|node_run| node_run.id).collect::<Vec<_>>()
             },
             "source_refs": source_ref_values,

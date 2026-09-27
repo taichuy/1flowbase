@@ -1,6 +1,7 @@
 mod responses_continuation;
 pub use responses_continuation::{ResponsesContinuation, ResponsesRoundEvidence};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -693,6 +694,56 @@ pub struct ApplicationRunDetail {
     /// Tasks whose client declared this task as their parent (subagent threads).
     #[serde(default)]
     pub child_task_traces: Vec<ApplicationRunChildTaskTrace>,
+}
+
+/// Inputs actually consumed while rebuilding a persisted trace projection.
+/// Event payloads and checkpoint payloads are read separately by the trace
+/// detail endpoint; the projection needs only their total/per-node counts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunTraceProjectionSource {
+    pub native_messages: Vec<serde_json::Value>,
+    pub flow_run: FlowRunRecord,
+    pub node_runs: Vec<NodeRunRecord>,
+    pub callback_tasks: Vec<CallbackTaskRecord>,
+    pub event_count: usize,
+    pub checkpoint_counts_by_node_run: HashMap<Uuid, usize>,
+    pub event_counts_by_node_run: HashMap<Uuid, usize>,
+    pub stitched_trace: Vec<ApplicationRunStitchedTrace>,
+    pub subagent_traces: Vec<ApplicationRunSubagentTrace>,
+    pub task_rounds: Vec<ApplicationRunTaskRoundTrace>,
+    pub child_task_traces: Vec<ApplicationRunChildTaskTrace>,
+}
+
+impl From<&ApplicationRunDetail> for ApplicationRunTraceProjectionSource {
+    fn from(detail: &ApplicationRunDetail) -> Self {
+        Self {
+            native_messages: detail.native_messages.clone(),
+            flow_run: detail.flow_run.clone(),
+            node_runs: detail.node_runs.clone(),
+            callback_tasks: detail.callback_tasks.clone(),
+            event_count: detail.events.len(),
+            checkpoint_counts_by_node_run: detail
+                .checkpoints
+                .iter()
+                .filter_map(|checkpoint| checkpoint.node_run_id)
+                .fold(HashMap::new(), |mut counts, node_run_id| {
+                    *counts.entry(node_run_id).or_insert(0) += 1;
+                    counts
+                }),
+            event_counts_by_node_run: detail
+                .events
+                .iter()
+                .filter_map(|event| event.node_run_id)
+                .fold(HashMap::new(), |mut counts, node_run_id| {
+                    *counts.entry(node_run_id).or_insert(0) += 1;
+                    counts
+                }),
+            stitched_trace: detail.stitched_trace.clone(),
+            subagent_traces: detail.subagent_traces.clone(),
+            task_rounds: detail.task_rounds.clone(),
+            child_task_traces: detail.child_task_traces.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

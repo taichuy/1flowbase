@@ -723,6 +723,10 @@ fn builder_projects_node_run_content_as_lightweight_refs() {
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
+    let compact_source = domain::ApplicationRunTraceProjectionSource::from(&detail);
+    let compact_projection =
+        build_application_run_trace_projection_from_source(&compact_source).unwrap();
+    assert_eq!(compact_projection, projection);
     let node_run_content = projection
         .contents
         .iter()

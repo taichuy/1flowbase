@@ -20,7 +20,8 @@ fn repeated_llm_node_ids_preserve_every_execution_identity() {
         started_at: OffsetDateTime::UNIX_EPOCH,
         finished_at: Some(OffsetDateTime::UNIX_EPOCH),
     };
-    let groups = trace_visible_node_run_groups(&[node(first_id), node(second_id)]);
+    let node_runs = [node(first_id), node(second_id)];
+    let groups = trace_visible_node_run_groups(&node_runs);
     assert_eq!(groups.len(), 2);
     assert_eq!(groups[0].len(), 1);
     assert_eq!(groups[1].len(), 1);

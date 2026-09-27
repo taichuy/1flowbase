@@ -696,7 +696,7 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         application_id: Uuid,
         flow_run_id: Uuid,
-    ) -> anyhow::Result<Option<domain::ApplicationRunDetail>> {
+    ) -> anyhow::Result<Option<domain::ApplicationRunTraceProjectionSource>> {
         let _ = (application_id, flow_run_id);
         anyhow::bail!("get_application_run_trace_projection_source not implemented")
     }

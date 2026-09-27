@@ -67,6 +67,7 @@ pub use debug_variable_cache::{
 };
 pub use debug_variable_snapshot::{get_debug_variable_snapshot, DebugVariableSnapshotResponse};
 pub(crate) use runtime_debug_artifacts::enrich_application_run_detail_visible_internal_llm_route_traces;
+pub(crate) use runtime_debug_artifacts::enrich_application_run_trace_projection_source_visible_internal_llm_route_traces;
 use runtime_debug_artifacts::{
     application_run_model, application_run_query, count_llm_tool_callback_trace_items,
     enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_content,

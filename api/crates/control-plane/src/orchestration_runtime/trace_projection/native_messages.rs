@@ -1,7 +1,10 @@
 use super::*;
 
 impl TraceProjectionBuilder {
-    pub(super) fn apply_native_messages(&mut self, detail: &domain::ApplicationRunDetail) {
+    pub(super) fn apply_native_messages(
+        &mut self,
+        detail: &domain::ApplicationRunTraceProjectionSource,
+    ) {
         for message in &detail.native_messages {
             let Some(item) = message.get("_source_item") else {
                 continue;

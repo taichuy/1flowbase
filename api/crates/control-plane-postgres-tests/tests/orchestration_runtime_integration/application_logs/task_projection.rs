@@ -370,6 +370,29 @@ async fn issue_2035_task_projection_owns_list_and_converged_detail() {
         .await
         .unwrap()
         .unwrap();
+    let projection_source = store
+        .get_application_run_trace_projection_source(seeded.application_id, members[0])
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(projection_source.event_count, detail.events.len());
+    assert_eq!(projection_source.node_runs, detail.node_runs);
+    assert_eq!(projection_source.task_rounds, detail.task_rounds);
+    assert_eq!(
+        projection_source.child_task_traces,
+        detail.child_task_traces
+    );
+    let projection_from_source =
+        control_plane::orchestration_runtime::trace_projection::build_application_run_trace_projection_from_source(
+            &projection_source,
+        )
+        .unwrap();
+    let projection_from_detail =
+        control_plane::orchestration_runtime::trace_projection::build_application_run_trace_projection(
+            &detail,
+        )
+        .unwrap();
+    assert_eq!(projection_from_source, projection_from_detail);
     assert_eq!(
         detail
             .task_rounds

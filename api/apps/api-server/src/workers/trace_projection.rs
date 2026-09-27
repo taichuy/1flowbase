@@ -1,11 +1,12 @@
 //! Durable, coalesced trace projection updates. Log reads never run this work.
 use crate::{
     app_state::ApiState,
-    routes::application_runtime::enrich_application_run_detail_visible_internal_llm_route_traces,
+    routes::application_runtime::enrich_application_run_trace_projection_source_visible_internal_llm_route_traces,
 };
 use control_plane::{
     orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+        build_application_run_trace_projection_from_source,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     },
     ports::{OrchestrationRuntimeRepository, UpsertApplicationRunTraceProjectionStatusInput},
     system_recovery::SystemWriteOwner,
@@ -93,8 +94,10 @@ pub(crate) async fn rebuild_trace_projection(
         .await?
         .ok_or_else(|| anyhow::anyhow!("trace projection source disappeared"))?;
     let events = store.list_trace_enrichment_events(flow_run_id).await?;
-    let source = enrich_application_run_detail_visible_internal_llm_route_traces(source, &events);
-    let projection = build_application_run_trace_projection(&source)?;
+    let source = enrich_application_run_trace_projection_source_visible_internal_llm_route_traces(
+        source, &events,
+    );
+    let projection = build_application_run_trace_projection_from_source(&source)?;
     store
         .replace_application_run_trace_projection(&projection)
         .await?;

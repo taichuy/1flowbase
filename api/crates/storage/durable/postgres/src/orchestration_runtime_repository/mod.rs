@@ -1027,7 +1027,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
         flow_run_id: Uuid,
-    ) -> Result<Option<domain::ApplicationRunDetail>> {
+    ) -> Result<Option<domain::ApplicationRunTraceProjectionSource>> {
         PgControlPlaneStore::get_application_run_trace_projection_source(
             self,
             application_id,

@@ -1100,7 +1100,7 @@ impl PgControlPlaneStore {
         &self,
         application_id: Uuid,
         flow_run_id: Uuid,
-    ) -> Result<Option<domain::ApplicationRunDetail>> {
+    ) -> Result<Option<domain::ApplicationRunTraceProjectionSource>> {
         let Some(flow_run) =
             fetch_flow_run_for_application(self, application_id, flow_run_id).await?
         else {
@@ -1108,13 +1108,48 @@ impl PgControlPlaneStore {
         };
 
         let callback_tasks = list_callback_tasks_for_flow_run(self, flow_run.id).await?;
-        Ok(Some(domain::ApplicationRunDetail {
+        let event_counts = sqlx::query(
+            "select node_run_id, count(*) as row_count from flow_run_events where flow_run_id = $1 group by node_run_id",
+        )
+        .bind(flow_run.id)
+        .fetch_all(self.pool())
+        .await?;
+        let mut event_count = 0_usize;
+        let mut event_counts_by_node_run = std::collections::HashMap::new();
+        for row in event_counts {
+            let count = usize::try_from(row.get::<i64, _>("row_count"))
+                .map_err(|_| anyhow!("event count must fit usize"))?;
+            event_count = event_count
+                .checked_add(count)
+                .ok_or_else(|| anyhow!("event count overflow"))?;
+            if let Some(node_run_id) = row.get::<Option<Uuid>, _>("node_run_id") {
+                event_counts_by_node_run.insert(node_run_id, count);
+            }
+        }
+        let checkpoint_counts = sqlx::query(
+            "select node_run_id, count(*) as row_count from flow_run_checkpoints where flow_run_id = $1 and node_run_id is not null group by node_run_id",
+        )
+        .bind(flow_run.id)
+        .fetch_all(self.pool())
+        .await?;
+        let checkpoint_counts_by_node_run = checkpoint_counts
+            .into_iter()
+            .map(|row| {
+                Ok((
+                    row.get::<Uuid, _>("node_run_id"),
+                    usize::try_from(row.get::<i64, _>("row_count"))
+                        .map_err(|_| anyhow!("checkpoint count must fit usize"))?,
+                ))
+            })
+            .collect::<Result<std::collections::HashMap<_, _>>>()?;
+        Ok(Some(domain::ApplicationRunTraceProjectionSource {
             native_messages: self
                 .application_run_native_trace_messages(flow_run.application_id, flow_run.id)
                 .await?,
             node_runs: list_node_runs_for_flow_run(self, flow_run.id).await?,
-            checkpoints: list_checkpoints_for_flow_run(self, flow_run.id).await?,
-            events: list_events_for_flow_run(self, flow_run.id).await?,
+            event_count,
+            event_counts_by_node_run,
+            checkpoint_counts_by_node_run,
             stitched_trace: list_stitched_trace_for_flow_run(self, &flow_run).await?,
             subagent_traces: list_subagent_traces_for_flow_run(self, &flow_run, &callback_tasks)
                 .await?,

@@ -13,6 +13,9 @@ use crate::ports::{
 pub use control_plane_contracts::persistence_projection::{
     trace_node_id_for_locator, trace_projection_source_watermark_from_counts,
 };
+pub use watermark::{
+    trace_projection_source_watermark, trace_projection_source_watermark_from_source,
+};
 
 pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 15;
 
@@ -38,7 +41,13 @@ pub fn legacy_locator_component(
 pub fn build_application_run_trace_projection(
     detail: &domain::ApplicationRunDetail,
 ) -> Result<ReplaceApplicationRunTraceProjectionInput> {
-    let source_watermark = trace_projection_source_watermark(detail);
+    build_application_run_trace_projection_from_source(&detail.into())
+}
+
+pub fn build_application_run_trace_projection_from_source(
+    detail: &domain::ApplicationRunTraceProjectionSource,
+) -> Result<ReplaceApplicationRunTraceProjectionInput> {
+    let source_watermark = trace_projection_source_watermark_from_source(detail);
     let mut builder = TraceProjectionBuilder::new(detail.flow_run.id, source_watermark);
     let current_node_groups = trace_visible_current_node_run_groups(detail);
     let stitched_context_target_index = stitched_context_target_index(detail, &current_node_groups);
@@ -84,65 +93,28 @@ pub fn projection_status_needs_lazy_rebuild(
     }
 }
 
-pub fn trace_projection_source_watermark(detail: &domain::ApplicationRunDetail) -> String {
-    let base = trace_projection_source_watermark_from_counts(
-        detail.flow_run.updated_at,
-        detail.node_runs.len(),
-        detail.callback_tasks.len(),
-        detail.events.len(),
-        detail.stitched_trace.len(),
-        detail.subagent_traces.len(),
-    );
-    let base =
-        control_plane_contracts::persistence_projection::trace_projection_native_message_watermark(
-            base,
-            &detail.native_messages,
-        );
-    let task_output_count = detail
-        .task_rounds
-        .iter()
-        .map(|round| round.native_messages.len())
-        .sum::<usize>()
-        + detail
-            .native_messages
-            .iter()
-            .filter(|message| message.get("_source_item").is_some())
-            .count();
-    control_plane_contracts::persistence_projection::trace_projection_task_watermark(
-        base,
-        detail.task_rounds.len(),
-        detail.child_task_traces.len(),
-        task_output_count,
-    )
-}
-
-fn trace_visible_node_runs(node_runs: &[domain::NodeRunRecord]) -> Vec<domain::NodeRunRecord> {
-    node_runs
-        .iter()
-        .filter(|node_run| !is_legacy_waiting_answer_snapshot_node_run(node_run))
-        .cloned()
-        .collect()
-}
-
 fn trace_visible_current_node_run_groups(
-    detail: &domain::ApplicationRunDetail,
-) -> Vec<Vec<domain::NodeRunRecord>> {
+    detail: &domain::ApplicationRunTraceProjectionSource,
+) -> Vec<&[domain::NodeRunRecord]> {
     trace_visible_node_run_groups(&detail.node_runs)
 }
 
 fn trace_visible_node_run_groups(
     node_runs: &[domain::NodeRunRecord],
-) -> Vec<Vec<domain::NodeRunRecord>> {
+) -> Vec<&[domain::NodeRunRecord]> {
     // A repeated node id is another execution, not a replacement snapshot.
-    trace_visible_node_runs(node_runs)
-        .into_iter()
-        .map(|node_run| vec![node_run])
+    node_runs
+        .iter()
+        .filter(|node_run| !is_legacy_waiting_answer_snapshot_node_run(node_run))
+        .map(std::slice::from_ref)
         .collect()
 }
 
 /// The task groups attach to the same LLM root the stitched context targets:
 /// the run's target LLM node, else its first LLM node. Returns its order key.
-fn task_groups_target_index(detail: &domain::ApplicationRunDetail) -> Option<String> {
+fn task_groups_target_index(
+    detail: &domain::ApplicationRunTraceProjectionSource,
+) -> Option<String> {
     if detail.task_rounds.is_empty() && detail.child_task_traces.is_empty() {
         return None;
     }
@@ -151,8 +123,8 @@ fn task_groups_target_index(detail: &domain::ApplicationRunDetail) -> Option<Str
 }
 
 fn stitched_context_target_index(
-    detail: &domain::ApplicationRunDetail,
-    current_node_groups: &[Vec<domain::NodeRunRecord>],
+    detail: &domain::ApplicationRunTraceProjectionSource,
+    current_node_groups: &[&[domain::NodeRunRecord]],
 ) -> Option<usize> {
     current_node_groups
         .iter()
@@ -256,11 +228,11 @@ impl TraceProjectionBuilder {
         &mut self,
         index: usize,
         node_runs: &[domain::NodeRunRecord],
-        detail: &domain::ApplicationRunDetail,
+        detail: &domain::ApplicationRunTraceProjectionSource,
         stitched_trace: &[domain::ApplicationRunStitchedTrace],
     ) -> Result<()> {
         let first_node_run = &node_runs[0];
-        let summary_node_run = merge_node_run_group(node_runs);
+        let summary_node_run = node_run_group_summary(node_runs);
         let order_key = root_order_key(index);
         let stable_locator = if node_runs.len() == 1 {
             format!("run:{}/node:{}", self.flow_run_id, first_node_run.id)
@@ -360,7 +332,7 @@ impl TraceProjectionBuilder {
         parent_stable_locator: &str,
         parent_node_runs: &[domain::NodeRunRecord],
         callback_tasks: &[domain::CallbackTaskRecord],
-        detail: &domain::ApplicationRunDetail,
+        detail: &domain::ApplicationRunTraceProjectionSource,
         stitched_trace: &[domain::ApplicationRunStitchedTrace],
     ) -> Result<()> {
         let mut child_index = 0_usize;
@@ -530,7 +502,7 @@ impl TraceProjectionBuilder {
         order_key: String,
         parent_trace_node_id: Uuid,
         parent_stable_locator: &str,
-        detail: &domain::ApplicationRunDetail,
+        detail: &domain::ApplicationRunTraceProjectionSource,
         subagent_traces: &[&domain::ApplicationRunSubagentTrace],
     ) -> Result<()> {
         let stable_locator = format!("{parent_stable_locator}/agents");
@@ -668,7 +640,7 @@ impl TraceProjectionBuilder {
             subagent_trace,
         } = context;
         let first_node_run = &node_runs[0];
-        let summary_node_run = merge_node_run_group(node_runs);
+        let summary_node_run = node_run_group_summary(node_runs);
         let stable_locator = format!(
             "{parent_stable_locator}/agent:{}/run:{}/node:{}",
             subagent_trace.parent_tool_call_id,
@@ -1362,7 +1334,7 @@ impl TraceProjectionBuilder {
     ) -> Result<()> {
         let source_run = &trace.source_flow_run;
         let first_node_run = &node_runs[0];
-        let summary_node_run = merge_node_run_group(node_runs);
+        let summary_node_run = node_run_group_summary(node_runs);
         let stable_locator = if node_runs.len() == 1 {
             format!("{parent_stable_locator}/node:{}", first_node_run.id)
         } else {
@@ -1511,6 +1483,7 @@ mod tests;
 
 mod native_messages;
 mod task_rounds;
+mod watermark;
 
 #[cfg(test)]
 #[path = "_tests/native_callback.rs"]
