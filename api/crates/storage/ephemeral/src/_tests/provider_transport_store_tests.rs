@@ -505,7 +505,9 @@ async fn wp12_expiry_eagerly_clears_request_and_continuation() {
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
 
-    assert_eq!(store.clear_expired().await.unwrap(), 3);
+    // The background task may have removed some or all slots before this explicit sweep.
+    assert!(store.clear_expired().await.unwrap() <= 3);
+    assert_eq!(store.retained_counts_for_test().await, (0, 0, 0));
     assert_eq!(store.get(request_slot).await.unwrap(), None);
     assert_eq!(
         store.get_continuation(continuation_slot).await.unwrap(),
@@ -515,6 +517,88 @@ async fn wp12_expiry_eagerly_clears_request_and_continuation() {
         store.get_protocol_context(context_slot).await.unwrap(),
         None
     );
+}
+
+#[tokio::test]
+async fn expired_slots_release_storage_without_another_lookup() {
+    let store = MemoryProviderTransportStore::new(Duration::milliseconds(40), 64 * 1024);
+    let flow_run_id = Uuid::now_v7();
+    let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
+    let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
+    let context = protocol_context_value("idle-expiry");
+    let context_slot =
+        ProviderProtocolContextSlotId::for_locator(flow_run_id, &context.derived_locator());
+    store.put(request_slot, responses_payload()).await.unwrap();
+    store
+        .put_continuation(continuation_slot, responses_continuation())
+        .await
+        .unwrap();
+    store
+        .put_protocol_context(context_slot, context)
+        .await
+        .unwrap();
+    assert_eq!(store.retained_counts_for_test().await, (1, 1, 1));
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if store.retained_counts_for_test().await == (0, 0, 0) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("expired slots must be removed while the store is idle");
+}
+
+#[tokio::test]
+async fn near_zero_retention_reclaims_without_repeated_access() {
+    let store = MemoryProviderTransportStore::new(Duration::nanoseconds(1), 64 * 1024);
+    store
+        .put(
+            ProviderTransportSlotId::for_flow_run(Uuid::now_v7()),
+            responses_payload(),
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while store.retained_counts_for_test().await.0 != 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("even a near-zero TTL must be reclaimed");
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    assert_eq!(store.retained_counts_for_test().await, (0, 0, 0));
+}
+
+#[tokio::test]
+async fn expiry_maintenance_keeps_a_replaced_slot_until_its_new_deadline() {
+    let store = MemoryProviderTransportStore::new(Duration::milliseconds(500), 64 * 1024);
+    let request_slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
+    store.put(request_slot, responses_payload()).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let replacement = ProviderTransportPayload::openai_responses(json!({
+        "model": "gpt-test",
+        "input": "replacement"
+    }))
+    .unwrap();
+    store.put(request_slot, replacement.clone()).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert_eq!(store.retained_counts_for_test().await, (1, 0, 0));
+    assert_eq!(
+        store.get(request_slot).await.unwrap().unwrap().digest(),
+        replacement.digest()
+    );
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while store.retained_counts_for_test().await != (0, 0, 0) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("replacement must eventually be reclaimed without another lookup");
 }
 
 #[tokio::test]

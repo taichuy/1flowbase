@@ -150,6 +150,46 @@ async fn local_runtime_event_stream_replays_then_subscribes_live() {
 }
 
 #[tokio::test]
+async fn local_runtime_event_stream_replays_exact_native_event() {
+    let stream = LocalRuntimeEventStream::new();
+    let run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+
+    let event = stream
+        .append(
+            run_id,
+            RuntimeEventPayload {
+                event_type: "provider_responses_output_delta".into(),
+                source: RuntimeEventSource::Provider,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: true,
+                trace_visible: false,
+                payload: json!({
+                    "type": "provider_responses_output_delta",
+                    "delta_index": 7,
+                    "content_type": "reasoning",
+                    "text": "多行\n\\u0000",
+                    "opaque": {"encrypted_content": "AAECAwQFBgc=", "items": [null, true, 42]}
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stream.replay(run_id, Some(0), 10).await.unwrap(),
+        vec![event.clone()]
+    );
+    assert_eq!(
+        stream.subscribe(run_id, Some(0)).await.unwrap().replay,
+        vec![event]
+    );
+}
+
+#[tokio::test]
 async fn local_runtime_event_stream_reports_replay_expired_after_trim() {
     let stream = LocalRuntimeEventStream::new();
     let run_id = Uuid::now_v7();
@@ -919,4 +959,84 @@ async fn local_runtime_event_stream_expires_orphan_open_run_after_seventy_two_ho
         .unwrap();
 
     assert!(stream.list_ephemeral_entries().await.unwrap().is_empty());
+}
+
+async fn wait_for_idle_reclamation(stream: &LocalRuntimeEventStream, run_id: Uuid) {
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while stream.contains_run_without_purge_for_tests(run_id) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("expired run should be reclaimed without another stream call");
+}
+
+#[tokio::test]
+async fn local_runtime_event_stream_reclaims_finished_waiting_and_orphan_runs_while_idle() {
+    let stream = LocalRuntimeEventStream::new();
+    let now = OffsetDateTime::now_utc();
+    for (closure, age) in [
+        (
+            Some(RuntimeEventCloseReason::Finished),
+            TimeDuration::hours(2),
+        ),
+        (
+            Some(RuntimeEventCloseReason::WaitingHuman),
+            TimeDuration::hours(24),
+        ),
+        (None, TimeDuration::hours(72)),
+    ] {
+        let run_id = Uuid::now_v7();
+        stream
+            .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+            .await
+            .unwrap();
+        stream.append(run_id, heartbeat()).await.unwrap();
+        if let Some(reason) = closure {
+            stream.close_run(run_id, reason).await.unwrap();
+        }
+        stream
+            .set_run_timestamps_for_tests(
+                run_id,
+                now - age - TimeDuration::seconds(1),
+                closure.map(|_| now - age - TimeDuration::seconds(1)),
+            )
+            .unwrap();
+        wait_for_idle_reclamation(&stream, run_id).await;
+    }
+}
+
+#[tokio::test]
+async fn local_runtime_event_stream_reopened_run_survives_old_expiry_wakeup() {
+    let stream = LocalRuntimeEventStream::new();
+    let run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    stream.append(run_id, heartbeat()).await.unwrap();
+    stream
+        .close_run(run_id, RuntimeEventCloseReason::Finished)
+        .await
+        .unwrap();
+    stream
+        .set_run_timestamps_for_tests(
+            run_id,
+            OffsetDateTime::now_utc() - TimeDuration::hours(3),
+            Some(OffsetDateTime::now_utc() - TimeDuration::hours(2) - TimeDuration::seconds(1)),
+        )
+        .unwrap();
+
+    // The scheduler can remove the old value before, during, or after `open_run`.
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    assert_eq!(
+        stream.append(run_id, heartbeat()).await.unwrap().sequence,
+        1
+    );
+    tokio::task::yield_now().await;
+    assert!(stream.contains_run_without_purge_for_tests(run_id));
+    assert_eq!(stream.replay(run_id, Some(0), 10).await.unwrap().len(), 1);
 }
