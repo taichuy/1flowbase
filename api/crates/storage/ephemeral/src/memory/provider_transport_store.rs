@@ -13,7 +13,7 @@ use control_plane_contracts::ports::{
     ProviderTransportStore,
 };
 use time::{Duration, OffsetDateTime};
-use tokio::sync::RwLock;
+use tokio::sync::{watch, RwLock};
 
 const MAX_PROTOCOL_CONTEXT_SLOTS_PER_FLOW_RUN: usize = 16;
 
@@ -25,6 +25,7 @@ pub struct MemoryProviderTransportStore {
     protocol_contexts: Arc<RwLock<HashMap<ProviderProtocolContextSlotId, ProtocolContextEntry>>>,
     continuations: Arc<RwLock<HashMap<ProviderContinuationSlotId, ContinuationEntry>>>,
     maintenance_started: Arc<AtomicBool>,
+    maintenance_revision: watch::Sender<u64>,
 }
 
 #[derive(Clone)]
@@ -47,6 +48,7 @@ struct ProtocolContextEntry {
 
 impl MemoryProviderTransportStore {
     pub fn new(retention: Duration, max_payload_bytes: usize) -> Self {
+        let (maintenance_revision, _) = watch::channel(0);
         Self {
             retention,
             max_payload_bytes,
@@ -54,10 +56,13 @@ impl MemoryProviderTransportStore {
             protocol_contexts: Arc::new(RwLock::new(HashMap::new())),
             continuations: Arc::new(RwLock::new(HashMap::new())),
             maintenance_started: Arc::new(AtomicBool::new(false)),
+            maintenance_revision,
         }
     }
 
     fn ensure_expiry_maintenance(&self) {
+        self.maintenance_revision
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
         if self
             .maintenance_started
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -65,25 +70,84 @@ impl MemoryProviderTransportStore {
         {
             return;
         }
-        let interval = std::time::Duration::try_from(self.retention)
-            .unwrap_or(std::time::Duration::from_secs(60))
-            .min(std::time::Duration::from_secs(60));
-        let entries = Arc::downgrade(&self.entries);
-        let protocol_contexts = Arc::downgrade(&self.protocol_contexts);
-        let continuations = Arc::downgrade(&self.continuations);
+        let mut changes = self.maintenance_revision.subscribe();
+        let entries_weak = Arc::downgrade(&self.entries);
+        let contexts_weak = Arc::downgrade(&self.protocol_contexts);
+        let continuations_weak = Arc::downgrade(&self.continuations);
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(interval).await;
                 let (Some(entries), Some(protocol_contexts), Some(continuations)) = (
-                    entries.upgrade(),
-                    protocol_contexts.upgrade(),
-                    continuations.upgrade(),
+                    entries_weak.upgrade(),
+                    contexts_weak.upgrade(),
+                    continuations_weak.upgrade(),
                 ) else {
                     break;
                 };
-                Self::clear_expired_maps(&entries, &protocol_contexts, &continuations).await;
+                let next_expiry =
+                    Self::next_expiry(&entries, &protocol_contexts, &continuations).await;
+                drop((entries, protocol_contexts, continuations));
+                match next_expiry {
+                    None => {
+                        if changes.changed().await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(expiry) => {
+                        let remaining = expiry - OffsetDateTime::now_utc();
+                        if remaining <= Duration::ZERO {
+                            let (Some(entries), Some(protocol_contexts), Some(continuations)) = (
+                                entries_weak.upgrade(),
+                                contexts_weak.upgrade(),
+                                continuations_weak.upgrade(),
+                            ) else {
+                                break;
+                            };
+                            Self::clear_expired_maps(&entries, &protocol_contexts, &continuations)
+                                .await;
+                        } else {
+                            let delay = std::time::Duration::try_from(remaining)
+                                .expect("positive expiry duration must convert");
+                            tokio::select! {
+                                _ = tokio::time::sleep(delay) => {}
+                                result = changes.changed() => {
+                                    if result.is_err() { break; }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         });
+    }
+
+    async fn next_expiry(
+        entries: &RwLock<HashMap<ProviderTransportSlotId, TransportEntry>>,
+        protocol_contexts: &RwLock<HashMap<ProviderProtocolContextSlotId, ProtocolContextEntry>>,
+        continuations: &RwLock<HashMap<ProviderContinuationSlotId, ContinuationEntry>>,
+    ) -> Option<OffsetDateTime> {
+        let requests = entries
+            .read()
+            .await
+            .values()
+            .map(|entry| entry.expires_at)
+            .min();
+        let contexts = protocol_contexts
+            .read()
+            .await
+            .values()
+            .map(|entry| entry.expires_at)
+            .min();
+        let continuation = continuations
+            .read()
+            .await
+            .values()
+            .map(|entry| entry.expires_at)
+            .min();
+        requests
+            .into_iter()
+            .chain(contexts)
+            .chain(continuation)
+            .min()
     }
 
     async fn clear_expired_maps(

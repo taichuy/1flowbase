@@ -550,6 +550,27 @@ async fn expired_slots_release_storage_without_another_lookup() {
 }
 
 #[tokio::test]
+async fn near_zero_retention_reclaims_without_repeated_access() {
+    let store = MemoryProviderTransportStore::new(Duration::nanoseconds(1), 64 * 1024);
+    store
+        .put(
+            ProviderTransportSlotId::for_flow_run(Uuid::now_v7()),
+            responses_payload(),
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while store.retained_counts_for_test().await.0 != 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("even a near-zero TTL must be reclaimed");
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    assert_eq!(store.retained_counts_for_test().await, (0, 0, 0));
+}
+
+#[tokio::test]
 async fn expiry_maintenance_keeps_a_replaced_slot_until_its_new_deadline() {
     let store = MemoryProviderTransportStore::new(Duration::milliseconds(500), 64 * 1024);
     let request_slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
