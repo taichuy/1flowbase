@@ -40,6 +40,7 @@ import {
 } from '../lib/page-canvas/render-plan';
 import { i18nText } from '../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../shared/ui/PermissionDeniedState';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import {
   createFrontstagePersistedGridLayout,
@@ -1422,25 +1423,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   );
 
   if (isLoading) {
-    return (
-      <div
-        style={{
-          background: '#fafafa',
-          border: '1px solid #f0f0f0',
-          borderRadius: 6,
-          padding: 12
-        }}
-      >
-        <Space orientation="vertical" size={4}>
-          <Typography.Text strong>
-            {i18nText('frontstage', 'auto.page_content_loading')}
-          </Typography.Text>
-          <Typography.Text type="secondary">
-            {i18nText('frontstage', 'auto.reading_page_content_and_blocks')}
-          </Typography.Text>
-        </Space>
-      </div>
-    );
+    return <LoadingState compact />;
   }
 
   if (hasError) {

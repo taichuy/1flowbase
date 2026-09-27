@@ -133,11 +133,29 @@ describe('PageCanvas', () => {
   });
 
   test('renders a compact loading state before content is available', () => {
-    render(<PageCanvas isLoading />);
+    const { rerender } = render(<PageCanvas isLoading />);
 
-    expect(screen.getByText('页面内容加载中')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass(
+      'loading-state--compact'
+    );
     expect(
-      screen.getByText('正在读取页面内容和区块清单。')
+      screen.queryByTestId('block-ui-loading-shell')
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <PageCanvas
+        content={createPageContent()}
+        runtimeBlocks={[createRuntimeBlock('hero')]}
+      />
+    );
+
+    expect(
+      screen.queryByRole('status', { name: 'thinking' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('block-slot-hero')).getByTestId(
+        'block-ui-loading-shell'
+      )
     ).toBeInTheDocument();
   });
 
