@@ -505,7 +505,9 @@ async fn wp12_expiry_eagerly_clears_request_and_continuation() {
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
 
-    assert_eq!(store.clear_expired().await.unwrap(), 3);
+    // The background task may have removed some or all slots before this explicit sweep.
+    assert!(store.clear_expired().await.unwrap() <= 3);
+    assert_eq!(store.retained_counts_for_test().await, (0, 0, 0));
     assert_eq!(store.get(request_slot).await.unwrap(), None);
     assert_eq!(
         store.get_continuation(continuation_slot).await.unwrap(),
