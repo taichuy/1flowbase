@@ -45,6 +45,73 @@ fn snapshot() -> PortableTemplatePackage {
         mcp_bundle: None,
     }
 }
+
+#[test]
+fn mcp_wrappers_pull_portable_definitions_and_remap_their_target_ids() {
+    let app_id = Uuid::from_u128(31);
+    let model_id = Uuid::from_u128(32);
+    let mut all = snapshot();
+    all.data_models.push(model(32, "report_data"));
+    let mut builtin = model(33, "builtin_data");
+    builtin.builtin = true;
+    all.data_models.push(builtin);
+    all.applications.push(PortableApplication {
+        id: app_id,
+        application_type: domain::ApplicationType::Workflow,
+        workflow_trigger_type: None,
+        name: "Report".into(),
+        description: String::new(),
+        icon: None,
+        icon_type: None,
+        icon_background: None,
+        flow_document: json!({}),
+        mapping: None,
+        published: None,
+        schedule: None,
+        dependency_issues: vec![],
+    });
+    let mut bundle: domain::McpBundlePackage = serde_json::from_value(json!({
+        "manifest": {
+            "schema_version": "1flowbase.mcp.bundle/v2", "organization": "test",
+            "bundle_id": "test", "bundle_version": "1.0.0", "locale": "en_US",
+            "minimum_host_version": "0.4.1", "exported_from_system_version": "0.4.1",
+            "exported_at": "2026-09-27T00:00:00Z", "files": []
+        },
+        "tools": [
+            {"tool_id":"report", "name":"report", "short_description":"", "full_description":"",
+             "execution_target":{"kind":"interface_wrapper","interface_id":format!("published_workflow_operation:{app_id}")},
+             "permission_code_snapshot":null,"risk_level_snapshot":"low","status":"enabled"},
+            {"tool_id":"model", "name":"model", "short_description":"", "full_description":"",
+             "execution_target":{"kind":"interface_wrapper","interface_id":format!("data_model__{model_id}__list_records")},
+             "permission_code_snapshot":null,"risk_level_snapshot":"low","status":"enabled"},
+            {"tool_id":"builtin", "name":"builtin", "short_description":"", "full_description":"",
+             "execution_target":{"kind":"interface_wrapper","interface_id":format!("data_model__{}__list_records", Uuid::from_u128(33))},
+             "permission_code_snapshot":null,"risk_level_snapshot":"low","status":"enabled"}
+        ],
+        "instances": [], "connections": []
+    })).unwrap();
+    let mut selection = PortableTemplateSelection::default();
+    include_mcp_definition_dependencies(&all, &bundle, &mut selection);
+    assert_eq!(selection.application_ids, vec![app_id]);
+    assert_eq!(selection.data_model_ids, vec![model_id]);
+    let target_app = Uuid::from_u128(41);
+    let target_model = Uuid::from_u128(42);
+    remap_mcp_bundle_interfaces(
+        &mut bundle,
+        &BTreeMap::from([
+            (app_id.to_string(), target_app.to_string()),
+            (model_id.to_string(), target_model.to_string()),
+        ]),
+    );
+    assert_eq!(
+        bundle.tools[0].execution_target.interface_id(),
+        Some(format!("published_workflow_operation:{target_app}").as_str())
+    );
+    assert_eq!(
+        bundle.tools[1].execution_target.interface_id(),
+        Some(format!("data_model__{target_model}__list_records").as_str())
+    );
+}
 #[test]
 fn selecting_nested_tree_preserves_route_ancestors_but_excludes_siblings_and_unrelated_definitions()
 {

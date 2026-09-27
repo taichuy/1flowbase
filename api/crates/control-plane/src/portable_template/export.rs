@@ -102,10 +102,11 @@ impl<
     pub async fn export(
         &self,
         actor_user_id: Uuid,
-        selection: PortableTemplateSelection,
+        mut selection: PortableTemplateSelection,
     ) -> Result<PortableTemplatePackage> {
         let mcp_ids = selection.mcp_instance_ids.clone();
-        let mut package = export_selected_template(self.snapshot(actor_user_id).await?, selection)?;
+        let snapshot = self.snapshot(actor_user_id).await?;
+        let mut selected_bundle = None;
         if !mcp_ids.is_empty() {
             let mut bundle = McpManagementService::new(self.repository.clone())
                 .export_bundle(ExportMcpBundleCommand {
@@ -156,8 +157,11 @@ impl<
                 .connections
                 .retain(|connection| connections.contains(&connection.connection_id));
             bundle.manifest.files.clear();
-            package.mcp_bundle = Some(bundle);
+            include_mcp_definition_dependencies(&snapshot, &bundle, &mut selection);
+            selected_bundle = Some(bundle);
         }
+        let mut package = export_selected_template(snapshot, selection)?;
+        package.mcp_bundle = selected_bundle;
         let failures = validate_portable_template(&package);
         anyhow::ensure!(failures.is_empty(), "{}", failures.join("; "));
         Ok(package)
@@ -179,6 +183,71 @@ impl<
             &self.snapshot(actor_user_id).await?,
             &identities,
         ))
+    }
+}
+
+/// MCP interface wrappers may point at portable model or application definitions.
+/// Include those definitions so their target identities can be rebuilt on install.
+pub fn include_mcp_definition_dependencies(
+    snapshot: &PortableTemplatePackage,
+    bundle: &domain::McpBundlePackage,
+    selection: &mut PortableTemplateSelection,
+) {
+    for tool in &bundle.tools {
+        let Some(interface_id) = tool.execution_target.interface_id() else {
+            continue;
+        };
+        if let Some(id) = interface_id
+            .strip_prefix("data_model__")
+            .and_then(|rest| rest.split_once("__"))
+            .and_then(|(id, _)| Uuid::parse_str(id).ok())
+        {
+            if snapshot
+                .data_models
+                .iter()
+                .any(|model| model.id == id && !model.builtin)
+                && !selection.data_model_ids.contains(&id)
+            {
+                selection.data_model_ids.push(id);
+            }
+        }
+        if let Some(id) = interface_id
+            .strip_prefix("published_workflow_operation:")
+            .and_then(|id| Uuid::parse_str(id).ok())
+        {
+            if snapshot
+                .applications
+                .iter()
+                .any(|application| application.id == id)
+                && !selection.application_ids.contains(&id)
+            {
+                selection.application_ids.push(id);
+            }
+        }
+    }
+}
+
+pub fn remap_mcp_bundle_interfaces(
+    bundle: &mut domain::McpBundlePackage,
+    id_map: &std::collections::BTreeMap<String, String>,
+) {
+    for tool in &mut bundle.tools {
+        if let domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } =
+            &mut tool.execution_target
+        {
+            if let Some((id, operation)) = interface_id
+                .strip_prefix("data_model__")
+                .and_then(|rest| rest.split_once("__"))
+            {
+                if let Some(mapped) = id_map.get(id) {
+                    *interface_id = format!("data_model__{mapped}__{operation}");
+                }
+            } else if let Some(id) = interface_id.strip_prefix("published_workflow_operation:") {
+                if let Some(mapped) = id_map.get(id) {
+                    *interface_id = format!("published_workflow_operation:{mapped}");
+                }
+            }
+        }
     }
 }
 

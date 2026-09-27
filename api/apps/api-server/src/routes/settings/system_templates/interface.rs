@@ -200,12 +200,20 @@ impl TemplateAdapter {
                     .install(actor.user_id, package)
                     .await?;
                 if installed.complete {
-                    if let Some(bundle) = mcp_bundle {
+                    if let Some(mut bundle) = mcp_bundle {
+                        control_plane::portable_template::remap_mcp_bundle_interfaces(
+                            &mut bundle,
+                            &installed.id_map,
+                        );
                         let report = McpManagementService::new(self.0.store.clone())
                             .import_bundle(ImportMcpBundleCommand {
                                 actor_user_id: actor.user_id,
                                 package: bundle,
-                                interface_catalog: mcp_catalog.unwrap_or_default(),
+                                interface_catalog: mcp_interface_catalog_entries_with(
+                                    &self.0.mcp_interface_catalog,
+                                    actor,
+                                )
+                                .await?,
                                 current_system_version: env!("CARGO_PKG_VERSION").into(),
                             })
                             .await;
