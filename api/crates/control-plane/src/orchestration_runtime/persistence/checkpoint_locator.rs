@@ -293,16 +293,16 @@ fn apply_llm_callback_append(variable_pool: &mut Map<String, Value>, append: &Va
         .get("node_id")
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow!("LLM callback append is missing node_id"))?;
-    let previous_node = variable_pool
-        .get(node_id)
-        .and_then(Value::as_object)
+    let node = variable_pool
+        .get_mut(node_id)
+        .and_then(Value::as_object_mut)
         .ok_or_else(|| anyhow!("LLM callback node state must be an object"))?;
-    let previous_state = previous_node
-        .get("__llm_tool_callback")
-        .and_then(Value::as_object)
-        .ok_or_else(|| anyhow!("LLM callback state must be an object"))?;
-    let (mut node, mut state) = if let Some(node_set) = append.get("node_set") {
-        let mut node = previous_node.clone();
+    let mut previous_state = match node.remove("__llm_tool_callback") {
+        Some(Value::Object(state)) => state,
+        _ => return Err(anyhow!("LLM callback state must be an object")),
+    };
+    let previous_history = previous_state.remove("history");
+    let mut state = if let Some(node_set) = append.get("node_set") {
         for (key, value) in node_set
             .as_object()
             .ok_or_else(|| anyhow!("LLM callback node_set must be an object"))?
@@ -322,13 +322,12 @@ fn apply_llm_callback_append(variable_pool: &mut Map<String, Value>, append: &Va
         {
             node.remove(key?);
         }
-        let mut state = previous_state.clone();
         for (key, value) in append
             .get("state_set")
             .and_then(Value::as_object)
             .ok_or_else(|| anyhow!("LLM callback state_set must be an object"))?
         {
-            state.insert(key.clone(), value.clone());
+            previous_state.insert(key.clone(), value.clone());
         }
         for key in append
             .get("state_remove")
@@ -341,11 +340,11 @@ fn apply_llm_callback_append(variable_pool: &mut Map<String, Value>, append: &Va
                     .ok_or_else(|| anyhow!("LLM callback state_remove entries must be strings"))
             })
         {
-            state.remove(key?);
+            previous_state.remove(key?);
         }
-        (node, state)
+        previous_state
     } else {
-        let node = append
+        let node_overlay = append
             .get("node_overlay")
             .and_then(Value::as_object)
             .cloned()
@@ -373,26 +372,24 @@ fn apply_llm_callback_append(variable_pool: &mut Map<String, Value>, append: &Va
                         .ok_or_else(|| anyhow!("LLM callback append must contain system"))?,
                 );
             }
-        } else if let Some(system) = previous_state.get("system") {
-            state.insert("system".to_string(), system.clone());
+        } else if let Some(system) = previous_state.remove("system") {
+            state.insert("system".to_string(), system);
         }
-        (node, state)
+        *node = node_overlay;
+        state
     };
-    let mut history = previous_state
-        .get("history")
-        .and_then(Value::as_array)
-        .cloned()
-        .ok_or_else(|| anyhow!("LLM callback history must be an array"))?;
-    history.extend(
+    let mut history = match previous_history {
+        Some(Value::Array(history)) => history,
+        _ => return Err(anyhow!("LLM callback history must be an array")),
+    };
+    history.extend_from_slice(
         append
             .get("history_append")
             .and_then(Value::as_array)
-            .cloned()
             .ok_or_else(|| anyhow!("LLM callback append must contain history_append"))?,
     );
     state.insert("history".to_string(), Value::Array(history));
     node.insert("__llm_tool_callback".to_string(), Value::Object(state));
-    variable_pool.insert(node_id.to_string(), Value::Object(node));
     Ok(())
 }
 

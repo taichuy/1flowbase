@@ -341,6 +341,73 @@ fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context(
 }
 
 #[test]
+fn legacy_callback_append_reuses_prior_system_and_preserves_error_order() {
+    let snapshot = crate::ports::RuntimeContextContentVersion {
+        context_version_id: Uuid::nil(),
+        sequence: 0,
+        content: json!({
+            "format": "runtime_snapshot_v1",
+            "variable_pool": {
+                "node-llm": {
+                    "old_field": "removed",
+                    "__llm_tool_callback": {
+                        "system": "existing-system",
+                        "history": [{"role": "user", "content": "initial"}],
+                    }
+                }
+            }
+        }),
+    };
+    let append = crate::ports::RuntimeContextContentVersion {
+        context_version_id: Uuid::nil(),
+        sequence: 1,
+        content: json!({
+            "format": "runtime_delta_v1",
+            "set": {},
+            "remove": [],
+            "llm_callback_appends": [{
+                "node_id": "node-llm",
+                "node_overlay": {"new_field": "kept"},
+                "state_overlay": {"pending": false},
+                "system_changed": false,
+                "history_append": [{"role": "assistant", "content": "continued"}],
+            }]
+        }),
+    };
+    let result = materialize_checkpoint_content(&[snapshot.clone(), append]).unwrap();
+    assert_eq!(result["node-llm"]["new_field"], "kept");
+    assert!(result["node-llm"].get("old_field").is_none());
+    assert_eq!(
+        result["node-llm"]["__llm_tool_callback"]["system"],
+        "existing-system"
+    );
+    assert_eq!(
+        result["node-llm"]["__llm_tool_callback"]["history"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    let malformed = crate::ports::RuntimeContextContentVersion {
+        context_version_id: Uuid::nil(),
+        sequence: 1,
+        content: json!({
+            "format": "runtime_delta_v1",
+            "set": {},
+            "remove": [],
+            "llm_callback_appends": [{"node_id": "node-llm"}]
+        }),
+    };
+    assert_eq!(
+        materialize_checkpoint_content(&[snapshot, malformed])
+            .unwrap_err()
+            .to_string(),
+        "LLM callback append must contain node_overlay"
+    );
+}
+
+#[test]
 fn failed_flow_output_keeps_last_successful_node_payload() {
     let outcome = FlowDebugExecutionOutcome {
         stop_reason: ExecutionStopReason::Failed(NodeExecutionFailure {
