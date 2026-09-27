@@ -1,4 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
@@ -18,6 +24,7 @@ pub struct MemoryProviderTransportStore {
     entries: Arc<RwLock<HashMap<ProviderTransportSlotId, TransportEntry>>>,
     protocol_contexts: Arc<RwLock<HashMap<ProviderProtocolContextSlotId, ProtocolContextEntry>>>,
     continuations: Arc<RwLock<HashMap<ProviderContinuationSlotId, ContinuationEntry>>>,
+    maintenance_started: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -46,7 +53,70 @@ impl MemoryProviderTransportStore {
             entries: Arc::new(RwLock::new(HashMap::new())),
             protocol_contexts: Arc::new(RwLock::new(HashMap::new())),
             continuations: Arc::new(RwLock::new(HashMap::new())),
+            maintenance_started: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    fn ensure_expiry_maintenance(&self) {
+        if self
+            .maintenance_started
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        let interval = std::time::Duration::try_from(self.retention)
+            .unwrap_or(std::time::Duration::from_secs(60))
+            .min(std::time::Duration::from_secs(60));
+        let entries = Arc::downgrade(&self.entries);
+        let protocol_contexts = Arc::downgrade(&self.protocol_contexts);
+        let continuations = Arc::downgrade(&self.continuations);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(interval).await;
+                let (Some(entries), Some(protocol_contexts), Some(continuations)) = (
+                    entries.upgrade(),
+                    protocol_contexts.upgrade(),
+                    continuations.upgrade(),
+                ) else {
+                    break;
+                };
+                Self::clear_expired_maps(&entries, &protocol_contexts, &continuations).await;
+            }
+        });
+    }
+
+    async fn clear_expired_maps(
+        entries: &RwLock<HashMap<ProviderTransportSlotId, TransportEntry>>,
+        protocol_contexts: &RwLock<HashMap<ProviderProtocolContextSlotId, ProtocolContextEntry>>,
+        continuations: &RwLock<HashMap<ProviderContinuationSlotId, ContinuationEntry>>,
+    ) -> usize {
+        let now = OffsetDateTime::now_utc();
+        let mut entries = entries.write().await;
+        let request_count = entries.len();
+        entries.retain(|_, entry| entry.expires_at > now);
+        let removed_requests = request_count - entries.len();
+        drop(entries);
+
+        let mut contexts = protocol_contexts.write().await;
+        let context_count = contexts.len();
+        contexts.retain(|_, entry| entry.expires_at > now);
+        let removed_contexts = context_count - contexts.len();
+        drop(contexts);
+
+        let mut continuations = continuations.write().await;
+        let continuation_count = continuations.len();
+        continuations.retain(|_, entry| entry.expires_at > now);
+        removed_requests + removed_contexts + continuation_count - continuations.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn retained_counts_for_test(&self) -> (usize, usize, usize) {
+        (
+            self.entries.read().await.len(),
+            self.protocol_contexts.read().await.len(),
+            self.continuations.read().await.len(),
+        )
     }
 
     fn validate_policy(&self) -> anyhow::Result<()> {
@@ -89,6 +159,7 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
                 expires_at: OffsetDateTime::now_utc() + self.retention,
             },
         );
+        self.ensure_expiry_maintenance();
         Ok(())
     }
 
@@ -149,6 +220,8 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
                 expires_at: OffsetDateTime::now_utc() + self.retention,
             },
         );
+        drop(contexts);
+        self.ensure_expiry_maintenance();
         Ok(())
     }
 
@@ -190,6 +263,7 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
                 expires_at: OffsetDateTime::now_utc() + self.retention,
             },
         );
+        self.ensure_expiry_maintenance();
         Ok(())
     }
 
@@ -258,22 +332,9 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
     }
 
     async fn clear_expired(&self) -> anyhow::Result<usize> {
-        let now = OffsetDateTime::now_utc();
-        let mut entries = self.entries.write().await;
-        let request_count = entries.len();
-        entries.retain(|_, entry| entry.expires_at > now);
-        let removed_requests = request_count - entries.len();
-        drop(entries);
-
-        let mut contexts = self.protocol_contexts.write().await;
-        let context_count = contexts.len();
-        contexts.retain(|_, entry| entry.expires_at > now);
-        let removed_contexts = context_count - contexts.len();
-        drop(contexts);
-
-        let mut continuations = self.continuations.write().await;
-        let continuation_count = continuations.len();
-        continuations.retain(|_, entry| entry.expires_at > now);
-        Ok(removed_requests + removed_contexts + continuation_count - continuations.len())
+        Ok(
+            Self::clear_expired_maps(&self.entries, &self.protocol_contexts, &self.continuations)
+                .await,
+        )
     }
 }
