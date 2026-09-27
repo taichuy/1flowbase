@@ -1,8 +1,8 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
-        atomic::{AtomicI64, Ordering},
-        Arc, Mutex,
+        atomic::{AtomicBool, AtomicI64, Ordering},
+        Arc, Mutex, Weak,
     },
 };
 
@@ -28,11 +28,14 @@ const ORPHAN_RUN_RETENTION: TimeDuration = TimeDuration::hours(72);
 pub struct LocalRuntimeEventStream {
     runs: Arc<Mutex<HashMap<Uuid, Arc<LocalRunEventStream>>>>,
     broadcast_capacity: usize,
+    schedule_updates: watch::Sender<()>,
+    scheduler_started: Arc<AtomicBool>,
 }
 
 struct LocalRuntimeEventTerminalWriter {
     run_id: Uuid,
     run: Arc<LocalRunEventStream>,
+    schedule_updates: watch::Sender<()>,
 }
 
 #[async_trait::async_trait]
@@ -41,8 +44,11 @@ impl RuntimeEventTerminalWriter for LocalRuntimeEventTerminalWriter {
         &self,
         event: RuntimeEventPayload,
     ) -> Result<AppendTerminalIfMissingAndCloseOutcome> {
-        self.run
-            .append_terminal_if_missing_and_close(self.run_id, event)
+        let outcome = self
+            .run
+            .append_terminal_if_missing_and_close(self.run_id, event)?;
+        self.schedule_updates.send_replace(());
+        Ok(outcome)
     }
 }
 
@@ -64,9 +70,12 @@ struct RetainedRuntimeEvents {
 
 impl Default for LocalRuntimeEventStream {
     fn default() -> Self {
+        let (schedule_updates, _) = watch::channel(());
         Self {
             runs: Arc::new(Mutex::new(HashMap::new())),
             broadcast_capacity: DEFAULT_BROADCAST_CAPACITY,
+            schedule_updates,
+            scheduler_started: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -79,9 +88,67 @@ impl LocalRuntimeEventStream {
     #[cfg(test)]
     pub(crate) fn with_broadcast_capacity_for_tests(broadcast_capacity: usize) -> Self {
         Self {
-            runs: Arc::new(Mutex::new(HashMap::new())),
             broadcast_capacity: broadcast_capacity.max(1),
+            ..Self::default()
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn contains_run_without_purge_for_tests(&self, run_id: Uuid) -> bool {
+        self.runs
+            .lock()
+            .expect("runtime event stream runs lock poisoned")
+            .contains_key(&run_id)
+    }
+
+    fn start_expiry_scheduler(&self) {
+        if self.scheduler_started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let runs = Arc::downgrade(&self.runs);
+        let updates = self.schedule_updates.subscribe();
+        tokio::spawn(async move { Self::expire_idle_runs(runs, updates).await });
+    }
+
+    async fn expire_idle_runs(
+        runs: Weak<Mutex<HashMap<Uuid, Arc<LocalRunEventStream>>>>,
+        mut updates: watch::Receiver<()>,
+    ) {
+        loop {
+            // Register the revision before inspecting deadlines, so a mutation during
+            // the scan cannot be lost before the timer or wait is armed.
+            updates.borrow_and_update();
+            let Some(runs) = runs.upgrade() else { break };
+            let next_deadline = Self::purge_and_next_deadline(&runs);
+            drop(runs);
+            match next_deadline {
+                Some(deadline) => {
+                    let delay = (deadline - OffsetDateTime::now_utc())
+                        .try_into()
+                        .unwrap_or(std::time::Duration::ZERO);
+                    tokio::select! {
+                        _ = tokio::time::sleep(delay) => {},
+                        changed = updates.changed() => { if changed.is_err() { break; } }
+                    }
+                }
+                None => {
+                    if updates.changed().await.is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fn purge_and_next_deadline(
+        runs: &Mutex<HashMap<Uuid, Arc<LocalRunEventStream>>>,
+    ) -> Option<OffsetDateTime> {
+        let now = OffsetDateTime::now_utc();
+        let mut runs = runs
+            .lock()
+            .expect("runtime event stream runs lock poisoned");
+        runs.retain(|_, run| !run.expired_at(now));
+        runs.values().map(|run| run.retention_deadline()).min()
     }
 
     #[cfg(test)]
@@ -106,11 +173,7 @@ impl LocalRuntimeEventStream {
     }
 
     fn purge_expired_runs(&self) {
-        let now = OffsetDateTime::now_utc();
-        self.runs
-            .lock()
-            .expect("runtime event stream runs lock poisoned")
-            .retain(|_, run| !run.expired_at(now));
+        Self::purge_and_next_deadline(&self.runs);
     }
 
     #[cfg(test)]
@@ -127,6 +190,7 @@ impl LocalRuntimeEventStream {
         *run.closed_at
             .lock()
             .expect("runtime event closed_at lock poisoned") = closed_at;
+        self.schedule_updates.send_replace(());
         Ok(())
     }
 
@@ -479,6 +543,7 @@ async fn send_retained_after_sequence(
 #[async_trait::async_trait]
 impl RuntimeEventStream for LocalRuntimeEventStream {
     async fn open_run(&self, run_id: Uuid, policy: RuntimeEventStreamPolicy) -> Result<()> {
+        self.start_expiry_scheduler();
         self.purge_expired_runs();
         let mut runs = self
             .runs
@@ -499,6 +564,8 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                 );
             }
         }
+        drop(runs);
+        self.schedule_updates.send_replace(());
         Ok(())
     }
 
@@ -538,8 +605,11 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         run_id: Uuid,
         event: RuntimeEventPayload,
     ) -> Result<AppendTerminalIfMissingAndCloseOutcome> {
-        self.run(run_id)?
-            .append_terminal_if_missing_and_close(run_id, event)
+        let outcome = self
+            .run(run_id)?
+            .append_terminal_if_missing_and_close(run_id, event)?;
+        self.schedule_updates.send_replace(());
+        Ok(outcome)
     }
 
     async fn subscribe(
@@ -552,6 +622,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             Arc::new(LocalRuntimeEventTerminalWriter {
                 run_id,
                 run: Arc::clone(&run),
+                schedule_updates: self.schedule_updates.clone(),
             });
         let mut live_receiver = run.subscribe_live();
         let closure = run.closed_sender.subscribe();
@@ -686,6 +757,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                 final_sequence,
             }));
             run.release_live_broadcast();
+            self.schedule_updates.send_replace(());
         }
         Ok(())
     }
