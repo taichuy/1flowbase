@@ -150,6 +150,46 @@ async fn local_runtime_event_stream_replays_then_subscribes_live() {
 }
 
 #[tokio::test]
+async fn local_runtime_event_stream_replays_exact_native_event() {
+    let stream = LocalRuntimeEventStream::new();
+    let run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+
+    let event = stream
+        .append(
+            run_id,
+            RuntimeEventPayload {
+                event_type: "provider_responses_output_delta".into(),
+                source: RuntimeEventSource::Provider,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: true,
+                trace_visible: false,
+                payload: json!({
+                    "type": "provider_responses_output_delta",
+                    "delta_index": 7,
+                    "content_type": "reasoning",
+                    "text": "多行\n\\u0000",
+                    "opaque": {"encrypted_content": "AAECAwQFBgc=", "items": [null, true, 42]}
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stream.replay(run_id, Some(0), 10).await.unwrap(),
+        vec![event.clone()]
+    );
+    assert_eq!(
+        stream.subscribe(run_id, Some(0)).await.unwrap().replay,
+        vec![event]
+    );
+}
+
+#[tokio::test]
 async fn local_runtime_event_stream_reports_replay_expired_after_trim() {
     let stream = LocalRuntimeEventStream::new();
     let run_id = Uuid::now_v7();
