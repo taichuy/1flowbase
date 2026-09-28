@@ -943,11 +943,33 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             if let Some(notice) = task.termination.take() {
                 self.publish_termination(notice);
             }
+            let snapshot = self.registry.lock().await.safe_snapshot();
+            if task.command.action == ProviderTransportSessionAction::Close {
+                // A queued Close may outlive confirmation that its exact physical
+                // generation was released. Consume that proof before retry/exhaustion
+                // checks; terminal notification above remains independently owned.
+                let evidence = snapshot
+                    .sessions
+                    .iter()
+                    .find(|session| session.fence == task.fence)
+                    .and_then(|session| session.closure_evidence.as_ref())
+                    .or_else(|| {
+                        snapshot
+                            .tombstones
+                            .iter()
+                            .find(|receipt| receipt.fence == task.fence)
+                            .and_then(|receipt| receipt.closure_evidence.as_ref())
+                    });
+                if let Some(evidence) = evidence.filter(|evidence| evidence.local_released) {
+                    task.command.worker_incarnation = Some(evidence.identity.worker_incarnation);
+                    task.state = CloseTaskState::Released;
+                    task.last_blocker = None;
+                }
+            }
             if task.state != CloseTaskState::Pending {
                 retained.push_back(task);
                 continue;
             }
-            let snapshot = self.registry.lock().await.safe_snapshot();
             let now = snapshot.observed_at;
             if !task.terminal_close
                 && task.command.action == ProviderTransportSessionAction::Drain

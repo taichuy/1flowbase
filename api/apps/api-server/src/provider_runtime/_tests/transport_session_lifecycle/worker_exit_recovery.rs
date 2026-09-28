@@ -53,6 +53,94 @@ async fn idle_fixture() -> (
 }
 
 #[tokio::test]
+async fn confirmed_exit_satisfies_exhausted_close_without_another_control_call() {
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(false); 5]));
+    let clock = FakeClock::new(2_000_000);
+    let mut config = transport_config();
+    config.fault_grace = Duration::from_secs(60);
+    let coordinator =
+        TransportSessionCoordinator::new_with_clock(runtime.clone(), config, clock.clone())
+            .unwrap();
+    let mut input = invocation_input("exited-exhausted-close", ProviderWireOperation::Generate);
+    input
+        .set_recovery_directive(recovery_directive(TransportEpoch::new(91).unwrap()))
+        .unwrap();
+    let failed = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    let old = failed.lease.fence.clone();
+    coordinator
+        .finish(failed, &Err(transport_error("primary")))
+        .await
+        .unwrap();
+    for _ in 1..5 {
+        let due = coordinator.pending_commands.lock().unwrap()[0].next_due;
+        clock.advance(due.saturating_duration_since(clock.now()));
+        coordinator.maintain_and_dispatch().await;
+    }
+    assert_eq!(runtime.commands().len(), 5);
+    assert!(coordinator.close_task_exhausted(&old));
+    let mut evidence = worker_exit(&old);
+    evidence.identity.worker_incarnation = 1;
+    coordinator
+        .registry
+        .lock()
+        .await
+        .record_worker_exit_evidence(&old, &evidence)
+        .unwrap();
+    coordinator.dispatch_pending_events().await;
+    {
+        let tasks = coordinator.pending_commands.lock().unwrap();
+        assert_eq!(tasks[0].state, CloseTaskState::Released);
+        assert_eq!(tasks[0].attempts, 5);
+        assert_eq!(tasks[0].command.worker_incarnation, Some(1));
+        assert!(tasks[0].first_control_failure.is_some());
+    }
+    let next = coordinator
+        .prepare("runtime-a", &mut input, &context(2_055_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(next.lease.fence.generation > old.generation);
+    assert_eq!(runtime.commands().len(), 5);
+}
+
+#[tokio::test]
+async fn confirmed_exit_terminal_notice_survives_close_elision_once() {
+    let (coordinator, runtime, _, _, old) = idle_fixture().await;
+    let mut notices = coordinator.notices.subscribe();
+    {
+        let mut registry = coordinator.registry.lock().await;
+        registry
+            .record_worker_exit_evidence(&old.fence, &worker_exit(&old.fence))
+            .unwrap();
+        registry
+            .terminate(&old.fence, TerminationKind::ProviderFault)
+            .unwrap();
+    }
+    coordinator.dispatch_pending_events().await;
+    let notice = notices.try_recv().unwrap();
+    assert_eq!(notice.fence, old.fence);
+    assert_eq!(
+        notice.code,
+        termination_code(TerminationKind::ProviderFault)
+    );
+    assert!(runtime.commands().is_empty());
+    coordinator.dispatch_pending_events().await;
+    assert!(matches!(
+        notices.try_recv(),
+        Err(broadcast::error::TryRecvError::Empty)
+    ));
+    let tasks = coordinator.pending_commands.lock().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].state, CloseTaskState::Released);
+    assert_eq!(tasks[0].attempts, 0);
+    assert_eq!(tasks[0].command.worker_incarnation, Some(37));
+}
+
+#[tokio::test]
 async fn live_worker_next_turn_retains_transport_generation_without_control() {
     let (coordinator, runtime, _, mut input, old) = idle_fixture().await;
     let next = coordinator
