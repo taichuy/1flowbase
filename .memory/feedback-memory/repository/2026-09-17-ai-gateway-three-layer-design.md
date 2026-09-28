@@ -3,7 +3,7 @@ title: "AI Gateway 方案保持三层职责并优先成熟机制"
 memory_type: feedback
 feedback_category: repository
 created_at: "2026-09-17 15"
-updated_at: "2026-09-26 15"
+updated_at: "2026-09-28 10"
 decision_policy: direct_reference
 status: active
 tags: [ai-native, architecture, protocol]
@@ -14,3 +14,5 @@ tags: [ai-native, architecture, protocol]
 - 适用场景：AI Gateway 协议映射、工具回传、生成与连接生命周期的诊断和设计。该约束不等于批准任何具体实现或新基础设施。
 - 缓存边界：复用 `api/crates/storage/ephemeral`；启动必需的短期高频数据可缓存约 5 分钟，长期低频且已落库的上下文只保存 DB 主键或索引并按需查询。不按猜测的客户端行为或资源环境硬编码业务容量上限。
 - 取舍顺序：功能完整性 > 稳定性 > 性能 > 可演进性；诊断质量门禁时不得为收绿牺牲当前协议契约。
+- 插件职责边界：底座统一拥有子进程生命周期、通讯分发与回收策略；通用 wire、关联、取消和退出机制复用共享 SDK，插件只保留供应商业务及协议特有行为，避免每个插件重复实现同一套通用协议。
+- 可重建性要求：用户希望插件子进程在业务上无状态，不承担过重职责；允许可丢弃的连接与短期优化状态，但继续会话所需的权威状态由底座持有。方案必须区分进程重建、会话恢复和请求重放；不能把拉起新进程表述成原请求必然无损续传。
