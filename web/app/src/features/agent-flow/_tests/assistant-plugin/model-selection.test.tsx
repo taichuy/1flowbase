@@ -93,3 +93,56 @@ test('selecting defaults or a valid model removes the warning', () => {
     screen.getByRole('button', { name: /Published model/ })
   ).toHaveTextContent('low');
 });
+
+test('each opening refreshes the runtime catalog and refreshed options replace the old menu', async () => {
+  const onRefresh = vi.fn().mockResolvedValue(undefined);
+  const value = {
+    ...runtime,
+    preference: { model: 'published-model' },
+    onRefresh
+  };
+  const { rerender } = render(panel(value));
+  const button = screen.getByRole('button', { name: /Published model/ });
+  fireEvent.click(button);
+  expect(onRefresh).toHaveBeenCalledTimes(1);
+  const updated = {
+    ...value,
+    preference: { model: 'new-model' },
+    run_capabilities: {
+      ...value.run_capabilities,
+      models: [
+        {
+          ...value.run_capabilities.models[0],
+          id: 'new-model',
+          name: 'New model'
+        }
+      ]
+    }
+  };
+  rerender(panel(updated));
+  const modelMenu = await screen.findByRole('menuitem', {
+    name: /模型 New model|Model New model/
+  });
+  fireEvent.mouseEnter(modelMenu);
+  expect(
+    await screen.findByRole('menuitem', { name: /New model/ })
+  ).toBeInTheDocument();
+  expect(screen.queryByText('Published model')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /New model/ }));
+  fireEvent.click(screen.getByRole('button', { name: /New model/ }));
+  expect(onRefresh).toHaveBeenCalledTimes(2);
+});
+
+test('refreshing prevents selecting from a stale menu', async () => {
+  const onChangePreference = vi.fn();
+  render(panel({ ...runtime, refreshing: true, onChangePreference }));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole('button', { name: /模型已不可用|Model unavailable/ })
+  );
+  const reset = await screen.findByText(
+    i18nText('appShell', 'auto.assistant_reset_defaults')
+  );
+  fireEvent.click(reset);
+  expect(onChangePreference).not.toHaveBeenCalled();
+});

@@ -26,6 +26,8 @@ import './assistant-panel-plugin.css';
 export interface AssistantPanelRuntime {
   run_capabilities: ConsoleAssistantRunCapabilities;
   preference: Pick<ConsoleAssistantPreference, 'model' | 'reasoning_effort'>;
+  onRefresh?: () => Promise<void>;
+  refreshing?: boolean;
   contextSnapshot?: {
     effective_context_window?: number | null;
     input_tokens?: number | null;
@@ -101,6 +103,7 @@ export function AssistantPanelPlugin({
     ? [
         {
           key: 'model',
+          disabled: runtime.refreshing,
           label: (
             <span className="assistant-panel-plugin__runtime-menu-row">
               <span>{i18nText('appShell', 'auto.assistant_model')}</span>
@@ -124,6 +127,7 @@ export function AssistantPanelPlugin({
           ? [
               {
                 key: 'reasoning-effort',
+                disabled: runtime.refreshing,
                 label: (
                   <span className="assistant-panel-plugin__runtime-menu-row">
                     <span>
@@ -151,6 +155,7 @@ export function AssistantPanelPlugin({
         { type: 'divider' },
         {
           key: 'reset-defaults',
+          disabled: runtime.refreshing,
           label: i18nText('appShell', 'auto.assistant_reset_defaults')
         }
       ]
@@ -160,7 +165,7 @@ export function AssistantPanelPlugin({
       {...conversation}
       composerHeader={
         <>
-          {modelUnavailable ? (
+          {modelUnavailable && !runtime?.refreshing ? (
             <Alert
               type="warning"
               showIcon
@@ -246,9 +251,13 @@ export function AssistantPanelPlugin({
                 }}
                 placement="topLeft"
                 trigger={['click']}
+                onOpenChange={(open) => {
+                  if (open) void runtime.onRefresh?.();
+                }}
                 menu={{
                   items: runtimePreferenceMenuItems,
                   onClick: ({ key }) => {
+                    if (runtime.refreshing) return;
                     const selection = String(key);
                     if (selection === 'reset-defaults') {
                       void runtime.onChangePreference({

@@ -290,8 +290,14 @@ export function EmbeddedAgentAssistantPreview({
   const [historyPage, setHistoryPage] =
     useState<ConsoleAssistantConversationPage | null>(null);
   const [saving, setSaving] = useState(false);
-  const { settings, setSettings, invalidateSettingsRead, refreshError } =
-    useEmbeddedAssistantSettings({ open, workspaceId, saving });
+  const {
+    settings,
+    setSettings,
+    invalidateSettingsRead,
+    refreshError,
+    refreshSettings,
+    refreshing
+  } = useEmbeddedAssistantSettings({ open, workspaceId, saving, csrfToken });
   const [mobile, setMobile] = useState(false);
   const [historyWidth, setHistoryWidth] = useState(
     ASSISTANT_HISTORY_DEFAULT_WIDTH
@@ -761,7 +767,7 @@ export function EmbeddedAgentAssistantPreview({
   }
 
   async function saveSettings() {
-    if (!csrfToken) {
+    if (!csrfToken || refreshing) {
       return;
     }
     const preference = await form.validateFields();
@@ -786,7 +792,7 @@ export function EmbeddedAgentAssistantPreview({
   async function updateRuntimePreference(
     patch: Pick<ConsoleAssistantPreference, 'model' | 'reasoning_effort'>
   ) {
-    if (!csrfToken || !settings) {
+    if (!csrfToken || !settings || refreshing) {
       return;
     }
     invalidateSettingsRead();
@@ -1076,7 +1082,9 @@ export function EmbeddedAgentAssistantPreview({
                             (session.messages.length === 0
                               ? { input_tokens: 0 }
                               : undefined),
-                          onChangePreference: updateRuntimePreference
+                          onChangePreference: updateRuntimePreference,
+                          onRefresh: refreshSettings,
+                          refreshing: refreshing || saving
                         }
                       : undefined
                   }
@@ -1164,7 +1172,7 @@ export function EmbeddedAgentAssistantPreview({
             form.setFieldsValue({ model: null, reasoning_effort: null });
           }
         }}
-        confirmLoading={saving}
+        confirmLoading={saving || refreshing}
         open={open && settingsOpen}
         zIndex={assistantSettingsModalZIndex}
         onCancel={() => setSettingsOpen(false)}
