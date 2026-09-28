@@ -77,7 +77,9 @@ async fn confirmed_exit_satisfies_exhausted_close_without_another_control_call()
         .unwrap();
     for _ in 1..5 {
         let due = coordinator.pending_commands.lock().unwrap()[0].next_due;
-        clock.advance(due.saturating_duration_since(clock.now()));
+        clock.advance(Duration::from_millis(
+            due.as_millis() - clock.now().as_millis(),
+        ));
         coordinator.maintain_and_dispatch().await;
     }
     assert_eq!(runtime.commands().len(), 5);
