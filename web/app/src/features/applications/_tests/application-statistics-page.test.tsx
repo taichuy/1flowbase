@@ -479,6 +479,11 @@ describe('ApplicationStatisticsPage', () => {
       connectNulls: false
     });
     expect(trend.yAxis[1]).toMatchObject({ min: 0, max: 100 });
+    expect(trend.yAxis[0].axisLabel.formatter(350_000_000)).toBe('350M');
+    expect(trend.series[0].tooltip.valueFormatter(155_606_484)).toBe('155.6M');
+    expect(trend.series[1].tooltip.valueFormatter(636_058)).toBe('636.1K');
+    expect(trend.series[2].tooltip.valueFormatter(328_931_200)).toBe('328.9M');
+    expect(trend.series[3].tooltip.valueFormatter(67.89)).toBe('67.89%');
   });
 
   test('leaves undefined cache rates as gaps rather than zero percent', async () => {
@@ -504,6 +509,7 @@ describe('ApplicationStatisticsPage', () => {
       .map((call) => call[0])
       .find((option) => option.xAxis);
     expect(trend.series[3].data).toEqual([null]);
+    expect(trend.series[3].tooltip.valueFormatter(null)).toBe('-');
     expect(trend.series[3].connectNulls).toBe(false);
   });
 

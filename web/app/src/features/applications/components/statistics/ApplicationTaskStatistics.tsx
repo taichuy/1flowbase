@@ -459,6 +459,21 @@ export function ApplicationTaskStatistics({
               {report.tokens_trend.length ? (
                 <ApplicationMonitoringChart
                   ariaLabel={t('statistics.token_trend')}
+                  yAxisValueFormatters={
+                    trendMetric === 'total_tokens'
+                      ? [formatTokenCount]
+                      : undefined
+                  }
+                  seriesValueFormatters={
+                    trendMetric === 'total_tokens'
+                      ? [
+                          formatTokenCount,
+                          formatTokenCount,
+                          formatTokenCount,
+                          (value) => `${value}%`
+                        ]
+                      : undefined
+                  }
                   onDataClick={(index) => {
                     const point = report.tokens_trend[index];
                     if (point)

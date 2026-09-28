@@ -47,6 +47,8 @@ export interface EChartProps {
   readonly style?: CSSProperties;
   readonly tooltipValueUnit?: string;
   readonly yAxisValueUnit?: string;
+  readonly yAxisValueFormatters?: readonly ((value: number) => string)[];
+  readonly seriesValueFormatters?: readonly ((value: number) => string)[];
 }
 
 export function EChart({
@@ -56,7 +58,9 @@ export function EChart({
   style,
   onDataClick,
   tooltipValueUnit,
-  yAxisValueUnit
+  yAxisValueUnit,
+  yAxisValueFormatters,
+  seriesValueFormatters
 }: EChartProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
@@ -94,6 +98,41 @@ export function EChart({
         : undefined;
     const safeOption = {
       ...option,
+      ...(yAxisValueFormatters && Array.isArray(option.yAxis)
+        ? {
+            yAxis: option.yAxis.map((axis, index) => {
+              const formatter = yAxisValueFormatters[index];
+              if (!formatter) return axis;
+              const axisOption = axis as Record<string, EChartValue>;
+              return {
+                ...axisOption,
+                axisLabel: {
+                  ...(axisOption.axisLabel as Record<string, EChartValue>),
+                  formatter
+                }
+              };
+            })
+          }
+        : {}),
+      ...(seriesValueFormatters && Array.isArray(option.series)
+        ? {
+            series: option.series.map((series, index) => {
+              const formatter = seriesValueFormatters[index];
+              if (!formatter) return series;
+              const seriesOption = series as Record<string, EChartValue>;
+              return {
+                ...seriesOption,
+                tooltip: {
+                  ...(seriesOption.tooltip as Record<string, EChartValue>),
+                  valueFormatter: (value: unknown) =>
+                    value === null || value === undefined
+                      ? '-'
+                      : formatter(Number(value))
+                }
+              };
+            })
+          }
+        : {}),
       ...(yAxisValueUnit && yAxis
         ? {
             yAxis: {
@@ -123,7 +162,13 @@ export function EChart({
       notMerge: true,
       lazyUpdate: true
     });
-  }, [option, tooltipValueUnit, yAxisValueUnit]);
+  }, [
+    option,
+    tooltipValueUnit,
+    yAxisValueUnit,
+    yAxisValueFormatters,
+    seriesValueFormatters
+  ]);
 
   useEffect(() => {
     const chart = chartRef.current;
