@@ -191,7 +191,7 @@ async fn same_logical_owner_queues_while_an_independent_owner_runs() {
     host.stop_all().await.unwrap();
 }
 
-async fn wait_reaped(host: &ProviderHost, id: &str) {
+pub(super) async fn wait_reaped(host: &ProviderHost, id: &str) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if host.provider_worker_snapshot(id).unwrap().is_none() {

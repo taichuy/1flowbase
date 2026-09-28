@@ -105,7 +105,7 @@ pub(crate) struct ProviderWorkerSupervisor {
     drained: Notify,
     quiesce_owner: Mutex<()>,
     capacity_slot: StdMutex<Option<super::session_workers::SessionWorkerPermit>>,
-    worker: Mutex<ProviderWorker>,
+    worker: Arc<Mutex<ProviderWorker>>,
     multiplex: Option<MultiplexProviderWorker>,
     process_control: ProviderWorkerProcessControl,
     last_cleanup: StdMutex<Option<ProviderWorkerCleanupReceipt>>,
@@ -179,7 +179,7 @@ impl ProviderWorkerSupervisor {
             drained: Notify::new(),
             quiesce_owner: Mutex::new(()),
             capacity_slot: StdMutex::new(None),
-            worker: Mutex::new(worker),
+            worker: Arc::new(Mutex::new(worker)),
             multiplex: None,
             process_control,
             last_cleanup: StdMutex::new(None),
@@ -209,7 +209,7 @@ impl ProviderWorkerSupervisor {
             drained: Notify::new(),
             quiesce_owner: Mutex::new(()),
             capacity_slot: StdMutex::new(None),
-            worker: Mutex::new(ProviderWorker::new(executable_path, limits)),
+            worker: Arc::new(Mutex::new(ProviderWorker::new(executable_path, limits))),
             multiplex: Some(multiplex),
             process_control,
             last_cleanup: StdMutex::new(None),
@@ -421,26 +421,28 @@ impl ProviderWorkerSupervisor {
             }
             return result;
         }
-        // Once admitted, a detached cleanup owner keeps the serial carrier and
-        // reservation alive even when its caller stops polling the response.
+        // The caller owns the queue wait: cancellation here releases admission
+        // without dispatch. Only transfer a ready carrier to its cleanup owner.
+        let mut worker = Arc::clone(&self.worker).lock_owned().await;
+        self.ensure_lease_can_dispatch(&worker)?;
         let supervisor = Arc::clone(self);
         let request = request.clone();
         tokio::spawn(async move {
-        let _resource = resource;
-        let mut worker = supervisor.worker.lock().await;
-        supervisor.ensure_lease_can_dispatch(&worker)?;
-        let result = worker.call(&request).await;
-        if result.is_err() && worker.last_cleanup_receipt().is_some() {
-            // The carrier, not a provider error kind, determines synchronization.
-            // A complete unary rejection leaves the same worker and cursors alive.
-            if let Err(cleanup_error) = supervisor.fail_active_worker(&mut worker).await {
-                tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+            let _resource = resource;
+            let result = worker.call(&request).await;
+            if result.is_err() && worker.last_cleanup_receipt().is_some() {
+                // The carrier, not a provider error kind, determines synchronization.
+                // A complete unary rejection leaves the same worker and cursors alive.
+                if let Err(cleanup_error) = supervisor.fail_active_worker(&mut worker).await {
+                    tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+                }
             }
-        }
-        drop(worker);
-        drop(lease);
-        result
-        }).await.map_err(|_| lifecycle_lock_error())?
+            drop(worker);
+            drop(lease);
+            result
+        })
+        .await
+        .map_err(|_| lifecycle_lock_error())?
     }
 
     /// Queue expiry never writes to stdio. Once dispatched, the carrier owns
@@ -471,19 +473,17 @@ impl ProviderWorkerSupervisor {
             }
             return result;
         }
-        // Once admitted, a detached cleanup owner keeps the serial carrier and
-        // reservation alive even when its caller stops polling the response.
+        let mut worker = tokio::time::timeout(
+            control_remaining(deadline_unix_ms)?,
+            Arc::clone(&self.worker).lock_owned(),
+        )
+        .await
+        .map_err(|_| control_deadline_error())?;
+        self.ensure_lease_can_dispatch(&worker)?;
         let supervisor = Arc::clone(self);
         let request = request.clone();
         let limits = limits.clone();
         tokio::spawn(async move {
-            let mut worker = tokio::time::timeout(
-                control_remaining(deadline_unix_ms)?,
-                supervisor.worker.lock(),
-            )
-            .await
-            .map_err(|_| control_deadline_error())?;
-            supervisor.ensure_lease_can_dispatch(&worker)?;
             let remaining = control_remaining(deadline_unix_ms)?;
             let mut limits = limits.clone();
             limits.timeout_ms = Some(remaining.as_millis().min(u64::MAX as u128) as u64);
@@ -557,30 +557,30 @@ impl ProviderWorkerSupervisor {
             }
             return result;
         }
-        // Once admitted, a detached cleanup owner keeps the serial carrier and
-        // reservation alive even when its caller stops polling the response.
+        let mut worker = Arc::clone(&self.worker).lock_owned().await;
+        self.ensure_lease_can_dispatch(&worker)?;
         let supervisor = Arc::clone(self);
         let request = request.clone();
         let timeout_limits = timeout_limits.clone();
         tokio::spawn(async move {
-        let _resource = resource;
-        let mut worker = supervisor.worker.lock().await;
-        supervisor.ensure_lease_can_dispatch(&worker)?;
-        let result = worker
-            .call_streaming_with_limits_and_host_calls(&request, &timeout_limits, context)
-            .await;
-        if result.is_err() && worker.last_cleanup_receipt().is_some() {
-            // Stdio retires only broken streams. A provider error drained through
-            // its result delimiter leaves the worker usable for the next call.
-            // Lifecycle cleanup is secondary and cannot replace the primary error.
-            if let Err(cleanup_error) = supervisor.fail_active_worker(&mut worker).await {
-                tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+            let _resource = resource;
+            let result = worker
+                .call_streaming_with_limits_and_host_calls(&request, &timeout_limits, context)
+                .await;
+            if result.is_err() && worker.last_cleanup_receipt().is_some() {
+                // Stdio retires only broken streams. A provider error drained through
+                // its result delimiter leaves the worker usable for the next call.
+                // Lifecycle cleanup is secondary and cannot replace the primary error.
+                if let Err(cleanup_error) = supervisor.fail_active_worker(&mut worker).await {
+                    tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+                }
             }
-        }
-        drop(worker);
-        drop(lease);
-        result
-        }).await.map_err(|_| lifecycle_lock_error())?
+            drop(worker);
+            drop(lease);
+            result
+        })
+        .await
+        .map_err(|_| lifecycle_lock_error())?
     }
 
     pub(crate) async fn finish_quiesce(
@@ -1337,3 +1337,7 @@ for line in sys.stdin:
 #[cfg(all(test, unix))]
 #[path = "../_tests/provider_unary.rs"]
 mod unary_tests;
+
+#[cfg(all(test, unix))]
+#[path = "../_tests/provider_host/serial_cancellation.rs"]
+mod serial_cancellation_tests;

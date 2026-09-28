@@ -350,9 +350,13 @@ pub(super) fn merge_models(
 const TRANSPORT_BINDING_MAX_RETENTION: std::time::Duration =
     std::time::Duration::from_secs(24 * 60 * 60 + 60);
 
-pub(super) fn prune_transport_bindings(_registry: &mut ProviderWorkerRegistryState) {
-    // Retention is not evidence of release. Binding ownership is conservative;
-    // expiry cannot silently erase an unreleased physical transport.
+pub(super) fn prune_transport_bindings(registry: &mut ProviderWorkerRegistryState) {
+    let now = std::time::Instant::now();
+    // Expiry bounds released history. An unreleased physical owner still needs
+    // an explicit release receipt or confirmed child exit, regardless of age.
+    registry
+        .transport_bindings
+        .retain(|_, binding| binding.released_receipt.is_none() || binding.expires_at > now);
 }
 pub(super) fn transport_binding_error(message: &str) -> PluginFrameworkError {
     PluginFrameworkError::runtime(ProviderRuntimeError::new(

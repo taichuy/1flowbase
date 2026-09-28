@@ -1370,18 +1370,22 @@ async fn failed_stateful_worker_is_replaced_on_next_handle_acquisition() {
         .unwrap()
         .plugin_id;
 
+    host.validate(&plugin_id, json!({ "mode": "normal" }))
+        .await
+        .unwrap();
+    let original = host.provider_worker_snapshot(&plugin_id).unwrap().unwrap();
     assert!(host
         .validate(&plugin_id, json!({ "mode": "crash" }))
         .await
         .is_err());
-    let failed = host.provider_worker_snapshot(&plugin_id).unwrap().unwrap();
+    shared_workers::wait_reaped(&host, &plugin_id).await;
     let failed_receipt = host
         .provider_worker_cleanup_receipt(&plugin_id)
         .unwrap()
         .unwrap();
-    assert_eq!(failed.state, ProviderWorkerLifecycleState::Failed);
-    assert_eq!(failed.generation, 1);
-    assert_eq!(failed_receipt.prior_pid, failed.pid);
+    assert_eq!(failed_receipt.generation, original.generation);
+    assert_eq!(failed_receipt.prior_pid, original.pid);
+    assert!(failed_receipt.exited);
 
     let output = host
         .validate(&plugin_id, json!({ "mode": "normal" }))
@@ -1395,7 +1399,7 @@ async fn failed_stateful_worker_is_replaced_on_next_handle_acquisition() {
 
     assert_eq!(replacement.state, ProviderWorkerLifecycleState::Active);
     assert_eq!(replacement.generation, 2);
-    assert_ne!(replacement.pid, failed.pid);
+    assert_ne!(replacement.pid, original.pid);
     assert_eq!(output.output["pid"], json!(replacement.pid.unwrap()));
     assert_eq!(retained_receipt, failed_receipt);
 }
