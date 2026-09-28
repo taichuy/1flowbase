@@ -77,5 +77,16 @@ const NODE_TYPE_ICONS: Record<string, ReactNode> = {
 };
 
 export function getAgentFlowNodeTypeIcon(nodeType: string) {
-  return NODE_TYPE_ICONS[nodeType] ?? null;
+  return (
+    NODE_TYPE_ICONS[nodeType] ??
+    createElement(
+      'span',
+      {
+        'aria-label': nodeType,
+        role: 'img',
+        style: { fontWeight: 600, lineHeight: 1 }
+      },
+      Array.from(nodeType.trim())[0]?.toUpperCase() || '?'
+    )
+  );
 }
