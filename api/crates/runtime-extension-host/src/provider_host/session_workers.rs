@@ -82,21 +82,43 @@ pub(super) async fn select_worker(
     input: &mut ProviderInvocationInput,
     deadline: tokio::time::Instant,
     expected_epoch: u64,
-) -> FrameworkResult<ProviderWorkerHandle> {
+) -> FrameworkResult<super::idle_workers::ReservedWorker> {
+    super::idle_workers::ensure_scheduler(workers)?;
     if loaded.package.manifest.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
-        return select_shared_worker(workers, plugin, loaded, input, expected_epoch);
+        let changed = lock_provider_worker_registry(workers)?
+            .session_capacity
+            .changed
+            .clone();
+        loop {
+            let notified = changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            match select_shared_worker(workers, plugin, loaded, input, expected_epoch) {
+                Ok(super::operations::WorkerSelection::Ready(worker)) => return Ok(worker),
+                Ok(super::operations::WorkerSelection::Retiring) => {}
+                Err(error) => return Err(error),
+            }
+            tokio::time::timeout_at(deadline, notified)
+                .await
+                .map_err(|_| admission_timeout())?;
+        }
     }
     let directive = input
         .transport_session_directive()
         .map_err(PluginFrameworkError::invalid_provider_contract)?;
     let Some(directive) = directive else {
-        let mut registry = lock_provider_worker_registry(workers)?;
-        check_epoch(&registry, plugin, expected_epoch)?;
-        return super::operations::provider_worker_handle_locked(
-            &mut registry,
+        {
+            let registry = lock_provider_worker_registry(workers)?;
+            check_epoch(&registry, plugin, expected_epoch)?;
+        }
+        return super::operations::provider_worker_handle_wait(
+            workers,
             plugin.to_owned(),
             loaded,
-        );
+            deadline,
+            Some(expected_epoch),
+        )
+        .await;
     };
     let key = (plugin.to_owned(), directive.logical_session_id.clone());
     let physical_key = (key.0.clone(), key.1.clone(), directive.generation);
@@ -128,7 +150,7 @@ pub(super) async fn select_worker(
             super::operations::prune_transport_bindings(&mut registry);
             if let Some(worker) = existing(&registry, &physical_key)? {
                 bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
-                return Ok(worker);
+                return super::idle_workers::ReservedWorker::new(worker);
             }
             if let Some(session) = registry.session_workers.get_mut(&key) {
                 if session
@@ -174,7 +196,7 @@ pub(super) async fn select_worker(
                         .expect("locked logical session");
                     session.cancel_expiry();
                     session.generation = directive.generation;
-                    return Ok(worker);
+                    return super::idle_workers::ReservedWorker::new(worker);
                 }
                 if let Some(slot) =
                     capacity.try_acquire(loaded.package.manifest.runtime.limits.memory_bytes)?
@@ -196,6 +218,7 @@ pub(super) async fn select_worker(
                         incarnation,
                     )?;
                     worker.retain_capacity(slot);
+                    super::idle_workers::register_worker(&registry, plugin, &worker);
                     registry
                         .next_generation
                         .insert(plugin.to_owned(), incarnation.saturating_add(1));
@@ -221,7 +244,7 @@ pub(super) async fn select_worker(
                         ));
                         return Err(error);
                     }
-                    return Ok(worker);
+                    return super::idle_workers::ReservedWorker::new(worker);
                 }
                 waiting_for_memory = true;
                 // Never evict an active physical generation. A retirement stays
@@ -286,7 +309,7 @@ fn select_shared_worker(
     loaded: &LoadedProviderPackage,
     input: &mut ProviderInvocationInput,
     expected_epoch: u64,
-) -> FrameworkResult<ProviderWorkerHandle> {
+) -> FrameworkResult<super::operations::WorkerSelection<super::idle_workers::ReservedWorker>> {
     let directive = input
         .transport_session_directive()
         .map_err(PluginFrameworkError::invalid_provider_contract)?;
@@ -300,7 +323,8 @@ fn select_shared_worker(
             &(key.0.clone(), key.1.clone(), directive.generation),
         )? {
             bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
-            return Ok(worker);
+            return super::idle_workers::ReservedWorker::new(worker)
+                .map(super::operations::WorkerSelection::Ready);
         }
         if let Some(session) = registry.session_workers.get(&key) {
             if directive.generation <= session.generation {
@@ -315,8 +339,16 @@ fn select_shared_worker(
             }
         }
     }
-    let worker =
-        super::operations::provider_worker_handle_locked(&mut registry, plugin.to_owned(), loaded)?;
+    let worker = match super::operations::provider_worker_handle_locked(
+        &mut registry,
+        plugin.to_owned(),
+        loaded,
+    )? {
+        super::operations::WorkerSelection::Ready(worker) => worker,
+        super::operations::WorkerSelection::Retiring => {
+            return Ok(super::operations::WorkerSelection::Retiring)
+        }
+    };
     bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
     if let Some(directive) = directive {
         registry.session_workers.insert(
@@ -331,7 +363,7 @@ fn select_shared_worker(
             },
         );
     }
-    Ok(worker)
+    super::idle_workers::ReservedWorker::new(worker).map(super::operations::WorkerSelection::Ready)
 }
 
 fn existing(
@@ -373,7 +405,10 @@ pub(super) fn release_worker(
     if current.identity != binding.identity || !Arc::ptr_eq(&current.worker, &binding.worker) {
         return Err(transport_binding_error("transport release binding changed"));
     }
-    current.released_receipt.get_or_insert(receipt);
+    if current.released_receipt.is_none() {
+        current.released_receipt = Some(receipt);
+        current.worker.binding_released()?;
+    }
     let expires_at = current.expires_at;
     let Some(session) = registry.session_workers.get_mut(&key) else {
         return Ok(());
@@ -457,7 +492,7 @@ fn take_all(
     let epoch = registry.epochs.entry(plugin.to_owned()).or_default();
     *epoch = epoch.saturating_add(1);
     let mut all = Vec::new();
-    if let Some(worker) = registry.workers.remove(plugin) {
+    if let Some(worker) = registry.workers.get(plugin).cloned() {
         all.push(worker);
     }
     let keys: Vec<_> = registry
@@ -643,6 +678,9 @@ fn remove_exited(
     if receipt.exited {
         let mut registry = lock_provider_worker_registry(workers)?;
         registry
+            .workers
+            .retain(|_, current| !Arc::ptr_eq(current, worker));
+        registry
             .session_workers
             .retain(|_, current| !Arc::ptr_eq(&current.worker, worker));
         registry.session_capacity.changed.notify_waiters();
@@ -650,7 +688,7 @@ fn remove_exited(
     Ok(())
 }
 
-async fn cleanup_batch(
+pub(super) async fn cleanup_batch(
     workers: ProviderWorkerRegistry,
     plugin: String,
     all: Vec<ProviderWorkerHandle>,

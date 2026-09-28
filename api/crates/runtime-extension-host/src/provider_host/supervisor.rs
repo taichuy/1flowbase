@@ -86,6 +86,9 @@ impl ProviderWorkerLifecycle {
 struct AdmissionState {
     lifecycle: ProviderWorkerLifecycle,
     in_flight: usize,
+    unreleased_bindings: usize,
+    idle_revision: u64,
+    idle_since: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -102,14 +105,16 @@ pub(crate) struct ProviderWorkerSupervisor {
     drained: Notify,
     quiesce_owner: Mutex<()>,
     capacity_slot: StdMutex<Option<super::session_workers::SessionWorkerPermit>>,
-    worker: Mutex<ProviderWorker>,
+    worker: Arc<Mutex<ProviderWorker>>,
     multiplex: Option<MultiplexProviderWorker>,
     process_control: ProviderWorkerProcessControl,
     last_cleanup: StdMutex<Option<ProviderWorkerCleanupReceipt>>,
+    idle_notifier: StdMutex<Option<super::idle_workers::WorkerNotifier>>,
+    exit_observer: StdMutex<Option<tokio::task::AbortHandle>>,
 }
 
 #[derive(Debug)]
-struct ProviderWorkerInvocationLease {
+pub(super) struct ProviderWorkerInvocationLease {
     supervisor: Arc<ProviderWorkerSupervisor>,
 }
 
@@ -118,7 +123,24 @@ impl Drop for ProviderWorkerInvocationLease {
         if let Ok(mut admission) = self.supervisor.admission.lock() {
             admission.in_flight = admission.in_flight.saturating_sub(1);
             if admission.in_flight == 0 {
+                if admission.unreleased_bindings == 0
+                    && admission.lifecycle.state() == ProviderWorkerLifecycleState::Active
+                {
+                    admission.idle_revision = admission.idle_revision.wrapping_add(1);
+                    admission.idle_since = Some(std::time::Instant::now());
+                }
                 self.supervisor.drained.notify_waiters();
+            }
+        }
+        self.supervisor.notify_idle_change();
+    }
+}
+
+impl Drop for ProviderWorkerSupervisor {
+    fn drop(&mut self) {
+        if let Ok(observer) = self.exit_observer.get_mut() {
+            if let Some(observer) = observer.take() {
+                observer.abort();
             }
         }
     }
@@ -150,14 +172,19 @@ impl ProviderWorkerSupervisor {
             admission: StdMutex::new(AdmissionState {
                 lifecycle,
                 in_flight: 0,
+                unreleased_bindings: 0,
+                idle_revision: 0,
+                idle_since: Some(std::time::Instant::now()),
             }),
             drained: Notify::new(),
             quiesce_owner: Mutex::new(()),
             capacity_slot: StdMutex::new(None),
-            worker: Mutex::new(worker),
+            worker: Arc::new(Mutex::new(worker)),
             multiplex: None,
             process_control,
             last_cleanup: StdMutex::new(None),
+            idle_notifier: StdMutex::new(None),
+            exit_observer: StdMutex::new(None),
         }))
     }
 
@@ -175,15 +202,127 @@ impl ProviderWorkerSupervisor {
             admission: StdMutex::new(AdmissionState {
                 lifecycle,
                 in_flight: 0,
+                unreleased_bindings: 0,
+                idle_revision: 0,
+                idle_since: Some(std::time::Instant::now()),
             }),
             drained: Notify::new(),
             quiesce_owner: Mutex::new(()),
             capacity_slot: StdMutex::new(None),
-            worker: Mutex::new(ProviderWorker::new(executable_path, limits)),
+            worker: Arc::new(Mutex::new(ProviderWorker::new(executable_path, limits))),
             multiplex: Some(multiplex),
             process_control,
             last_cleanup: StdMutex::new(None),
+            idle_notifier: StdMutex::new(None),
+            exit_observer: StdMutex::new(None),
         }))
+    }
+
+    pub(super) fn exit_control(&self) -> ProviderWorkerProcessControl {
+        self.process_control.clone()
+    }
+    pub(super) fn retain_exit_observer(&self, task: tokio::task::AbortHandle) {
+        *self.exit_observer.lock().expect("exit observer") = Some(task);
+    }
+
+    pub(super) fn attach_idle_notifier(&self, notifier: super::idle_workers::WorkerNotifier) {
+        *self.idle_notifier.lock().expect("idle notifier") = Some(notifier);
+    }
+
+    fn notify_idle_change(&self) {
+        if let Ok(notifier) = self.idle_notifier.lock() {
+            if let Some(notifier) = notifier.as_ref() {
+                notifier.changed();
+            }
+        }
+    }
+
+    pub(super) fn binding_acquired(&self) -> FrameworkResult<()> {
+        let mut state = self.lock_admission()?;
+        state.unreleased_bindings += 1;
+        state.idle_since = None;
+        state.idle_revision = state.idle_revision.wrapping_add(1);
+        Ok(())
+    }
+
+    pub(super) fn binding_released(&self) -> FrameworkResult<()> {
+        {
+            let mut state = self.lock_admission()?;
+            state.unreleased_bindings = state.unreleased_bindings.saturating_sub(1);
+            state.idle_since = (state.unreleased_bindings == 0
+                && state.in_flight == 0
+                && state.lifecycle.state() == ProviderWorkerLifecycleState::Active)
+                .then(std::time::Instant::now);
+            state.idle_revision = state.idle_revision.wrapping_add(1);
+        }
+        self.notify_idle_change();
+        Ok(())
+    }
+
+    pub(super) fn idle_revision(&self) -> FrameworkResult<Option<(u64, std::time::Instant)>> {
+        let state = self.lock_admission()?;
+        Ok(
+            (state.lifecycle.state() == ProviderWorkerLifecycleState::Active
+                && state.in_flight == 0
+                && state.unreleased_bindings == 0)
+                .then(|| state.idle_since.map(|since| (state.idle_revision, since)))
+                .flatten(),
+        )
+    }
+
+    pub(super) fn begin_idle_quiesce(&self, revision: u64) -> FrameworkResult<bool> {
+        let mut state = self.lock_admission()?;
+        if state.lifecycle.state() != ProviderWorkerLifecycleState::Active
+            || state.in_flight != 0
+            || state.unreleased_bindings != 0
+            || state.idle_revision != revision
+        {
+            return Ok(false);
+        }
+        state
+            .lifecycle
+            .transition(ProviderWorkerLifecycleEvent::BeginQuiesce)?;
+        Ok(true)
+    }
+
+    pub(super) async fn confirmed_process_exit(&self) -> bool {
+        self.process_control.confirmed_exit().await
+    }
+
+    pub(super) async fn observe_exit(&self) -> FrameworkResult<bool> {
+        if self
+            .last_cleanup_receipt()?
+            .is_some_and(|receipt| receipt.exited)
+        {
+            return Ok(true);
+        }
+        if !self.process_control.confirmed_exit().await {
+            return Ok(false);
+        }
+        let generation = self.incarnation()?;
+        *self
+            .last_cleanup
+            .lock()
+            .map_err(|_| lifecycle_lock_error())? = Some(ProviderWorkerCleanupReceipt {
+            generation,
+            prior_pid: self.process_control.pid(),
+            kill_sent: false,
+            exited: true,
+            final_state: ProviderWorkerLifecycleState::Failed,
+            reason: ProviderWorkerCleanupReason::RuntimeFailure,
+            cleanup_error: None,
+        });
+        self.capacity_slot
+            .lock()
+            .map_err(|_| lifecycle_lock_error())?
+            .take();
+        let mut state = self.lock_admission()?;
+        if state.lifecycle.state() == ProviderWorkerLifecycleState::Active {
+            state
+                .lifecycle
+                .transition(ProviderWorkerLifecycleEvent::RuntimeFailed)?;
+        }
+        Ok(true)
     }
 
     pub(crate) fn is_multiplex(&self) -> bool {
@@ -239,6 +378,7 @@ impl ProviderWorkerSupervisor {
             .transition(ProviderWorkerLifecycleEvent::BeginQuiesce)
     }
 
+    #[cfg(test)]
     pub(crate) async fn call(
         self: &Arc<Self>,
         request: &ProviderStdioRequest,
@@ -266,7 +406,12 @@ impl ProviderWorkerSupervisor {
             }
             self.ensure_multiplex_can_dispatch(multiplex)?;
             let result = multiplex
-                .call(request, multiplex.limits(), None, resource)
+                .call(
+                    request,
+                    multiplex.limits(),
+                    None,
+                    Some(Box::new((lease, resource))),
+                )
                 .await
                 .and_then(|(response, _)| self.multiplex_response(response));
             if multiplex.is_failed() {
@@ -274,22 +419,30 @@ impl ProviderWorkerSupervisor {
                     tracing::warn!(%error, "secondary multiplex cleanup failure");
                 }
             }
-            drop(lease);
             return result;
         }
-        let mut worker = self.worker.lock().await;
+        // The caller owns the queue wait: cancellation here releases admission
+        // without dispatch. Only transfer a ready carrier to its cleanup owner.
+        let mut worker = Arc::clone(&self.worker).lock_owned().await;
         self.ensure_lease_can_dispatch(&worker)?;
-        let result = worker.call(request).await;
-        if result.is_err() && worker.last_cleanup_receipt().is_some() {
-            // The carrier, not a provider error kind, determines synchronization.
-            // A complete unary rejection leaves the same worker and cursors alive.
-            if let Err(cleanup_error) = self.fail_active_worker(&mut worker).await {
-                tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+        let supervisor = Arc::clone(self);
+        let request = request.clone();
+        tokio::spawn(async move {
+            let _resource = resource;
+            let result = worker.call(&request).await;
+            if result.is_err() && worker.last_cleanup_receipt().is_some() {
+                // The carrier, not a provider error kind, determines synchronization.
+                // A complete unary rejection leaves the same worker and cursors alive.
+                if let Err(cleanup_error) = supervisor.fail_active_worker(&mut worker).await {
+                    tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+                }
             }
-        }
-        drop(worker);
-        drop(lease);
-        result
+            drop(worker);
+            drop(lease);
+            result
+        })
+        .await
+        .map_err(|_| lifecycle_lock_error())?
     }
 
     /// Queue expiry never writes to stdio. Once dispatched, the carrier owns
@@ -310,7 +463,7 @@ impl ProviderWorkerSupervisor {
             let mut limits = limits.clone();
             limits.timeout_ms = Some(remaining.as_millis().min(u64::MAX as u128) as u64);
             let result = multiplex
-                .call(request, &limits, None, None)
+                .call(request, &limits, None, Some(Box::new(lease)))
                 .await
                 .and_then(|(response, _)| self.multiplex_response(response));
             if multiplex.is_failed() {
@@ -318,28 +471,37 @@ impl ProviderWorkerSupervisor {
                     tracing::warn!(%error, "secondary multiplex cleanup failure");
                 }
             }
-            drop(lease);
             return result;
         }
-        let mut worker =
-            tokio::time::timeout(control_remaining(deadline_unix_ms)?, self.worker.lock())
-                .await
-                .map_err(|_| control_deadline_error())?;
+        let mut worker = tokio::time::timeout(
+            control_remaining(deadline_unix_ms)?,
+            Arc::clone(&self.worker).lock_owned(),
+        )
+        .await
+        .map_err(|_| control_deadline_error())?;
         self.ensure_lease_can_dispatch(&worker)?;
-        let remaining = control_remaining(deadline_unix_ms)?;
-        let mut limits = limits.clone();
-        limits.timeout_ms = Some(remaining.as_millis().min(u64::MAX as u128) as u64);
-        let result = worker.call_with_limits(request, &limits).await;
-        if result.is_err() && worker.last_cleanup_receipt().is_some() {
-            if let Err(error) = self.fail_active_worker(&mut worker).await {
-                tracing::warn!(error = %error, "secondary provider control cleanup failure");
+        let supervisor = Arc::clone(self);
+        let request = request.clone();
+        let limits = limits.clone();
+        tokio::spawn(async move {
+            let remaining = control_remaining(deadline_unix_ms)?;
+            let mut limits = limits.clone();
+            limits.timeout_ms = Some(remaining.as_millis().min(u64::MAX as u128) as u64);
+            let result = worker.call_with_limits(&request, &limits).await;
+            if result.is_err() && worker.last_cleanup_receipt().is_some() {
+                if let Err(error) = supervisor.fail_active_worker(&mut worker).await {
+                    tracing::warn!(error = %error, "secondary provider control cleanup failure");
+                }
             }
-        }
-        drop(worker);
-        drop(lease);
-        result
+            drop(worker);
+            drop(lease);
+            result
+        })
+        .await
+        .map_err(|_| lifecycle_lock_error())?
     }
 
+    #[cfg(test)]
     pub(crate) async fn call_streaming_with_limits_and_host_calls(
         self: &Arc<Self>,
         request: &ProviderStdioRequest,
@@ -375,7 +537,12 @@ impl ProviderWorkerSupervisor {
             }
             self.ensure_multiplex_can_dispatch(multiplex)?;
             let result = multiplex
-                .call(request, timeout_limits, Some(context), resource)
+                .call(
+                    request,
+                    timeout_limits,
+                    Some(context),
+                    Some(Box::new((lease, resource))),
+                )
                 .await
                 .and_then(|(response, events)| {
                     let result = serde_json::from_value(response).map_err(|error| {
@@ -388,25 +555,32 @@ impl ProviderWorkerSupervisor {
                     tracing::warn!(%error, "secondary multiplex cleanup failure");
                 }
             }
-            drop(lease);
             return result;
         }
-        let mut worker = self.worker.lock().await;
+        let mut worker = Arc::clone(&self.worker).lock_owned().await;
         self.ensure_lease_can_dispatch(&worker)?;
-        let result = worker
-            .call_streaming_with_limits_and_host_calls(request, timeout_limits, context)
-            .await;
-        if result.is_err() && worker.last_cleanup_receipt().is_some() {
-            // Stdio retires only broken streams. A provider error drained through
-            // its result delimiter leaves the worker usable for the next call.
-            // Lifecycle cleanup is secondary and cannot replace the primary error.
-            if let Err(cleanup_error) = self.fail_active_worker(&mut worker).await {
-                tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+        let supervisor = Arc::clone(self);
+        let request = request.clone();
+        let timeout_limits = timeout_limits.clone();
+        tokio::spawn(async move {
+            let _resource = resource;
+            let result = worker
+                .call_streaming_with_limits_and_host_calls(&request, &timeout_limits, context)
+                .await;
+            if result.is_err() && worker.last_cleanup_receipt().is_some() {
+                // Stdio retires only broken streams. A provider error drained through
+                // its result delimiter leaves the worker usable for the next call.
+                // Lifecycle cleanup is secondary and cannot replace the primary error.
+                if let Err(cleanup_error) = supervisor.fail_active_worker(&mut worker).await {
+                    tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+                }
             }
-        }
-        drop(worker);
-        drop(lease);
-        result
+            drop(worker);
+            drop(lease);
+            result
+        })
+        .await
+        .map_err(|_| lifecycle_lock_error())?
     }
 
     pub(crate) async fn finish_quiesce(
@@ -510,7 +684,7 @@ impl ProviderWorkerSupervisor {
         Ok(receipt)
     }
 
-    fn admit(self: &Arc<Self>) -> FrameworkResult<ProviderWorkerInvocationLease> {
+    pub(super) fn admit(self: &Arc<Self>) -> FrameworkResult<ProviderWorkerInvocationLease> {
         let mut admission = self.lock_admission()?;
         if admission.lifecycle.state() != ProviderWorkerLifecycleState::Active {
             return Err(PluginFrameworkError::invalid_provider_package(format!(
@@ -520,6 +694,8 @@ impl ProviderWorkerSupervisor {
             )));
         }
         admission.in_flight = admission.in_flight.saturating_add(1);
+        admission.idle_since = None;
+        admission.idle_revision = admission.idle_revision.wrapping_add(1);
         Ok(ProviderWorkerInvocationLease {
             supervisor: Arc::clone(self),
         })
@@ -1161,3 +1337,7 @@ for line in sys.stdin:
 #[cfg(all(test, unix))]
 #[path = "../_tests/provider_unary.rs"]
 mod unary_tests;
+
+#[cfg(all(test, unix))]
+#[path = "../_tests/provider_host/serial_cancellation.rs"]
+mod serial_cancellation_tests;

@@ -19,6 +19,15 @@ use uuid::Uuid;
 struct RestartOnlyRuntime;
 #[async_trait::async_trait]
 impl ProviderRuntimePort for RestartOnlyRuntime {
+    async fn reconcile_provider_worker_demand(
+        &self,
+        _installation: &domain::PluginInstallationRecord,
+        _revision: u64,
+        _selectable: Option<bool>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     async fn ensure_loaded(&self, _: &LocalPluginInstallationRecord) -> Result<()> {
         anyhow::bail!("native selection must not load code")
     }

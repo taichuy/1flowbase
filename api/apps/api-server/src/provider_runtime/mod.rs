@@ -640,6 +640,19 @@ struct DataSourceRuntimeTarget {
 
 #[async_trait]
 impl ProviderRuntimePort for ApiProviderRuntime {
+    async fn reconcile_provider_worker_demand(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        revision: u64,
+        selectable: Option<bool>,
+    ) -> anyhow::Result<()> {
+        self.services
+            .runtime_backend
+            .reconcile_provider_worker_demand(&installation.plugin_id, revision, selectable)
+            .await
+            .map_err(map_runtime_backend_error)
+    }
+
     async fn provider_distribution_registry_fingerprint(&self) -> anyhow::Result<String> {
         Ok(self.services.provider_distribution_fingerprint().await)
     }

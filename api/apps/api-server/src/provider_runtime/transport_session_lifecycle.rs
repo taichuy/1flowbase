@@ -149,6 +149,13 @@ pub(crate) struct PreparedTransportInvocation {
 
 #[async_trait::async_trait]
 trait TransportLifecycleRuntime: Send + Sync {
+    async fn transport_worker_exit_evidence(
+        &self,
+        target_id: &str,
+        logical_session_id: &str,
+        generation: u64,
+    ) -> Result<Option<ProviderTransportClosureEvidence>, RuntimeBackendError>;
+
     async fn transport_session(
         &self,
         target_id: &str,
@@ -160,6 +167,17 @@ struct RuntimeBackendTransportLifecycle(Arc<dyn RuntimeBackend>);
 
 #[async_trait::async_trait]
 impl TransportLifecycleRuntime for RuntimeBackendTransportLifecycle {
+    async fn transport_worker_exit_evidence(
+        &self,
+        target_id: &str,
+        logical_session_id: &str,
+        generation: u64,
+    ) -> Result<Option<ProviderTransportClosureEvidence>, RuntimeBackendError> {
+        self.0
+            .provider_transport_worker_exit_evidence(target_id, logical_session_id, generation)
+            .await
+    }
+
     async fn transport_session(
         &self,
         target_id: &str,
@@ -441,7 +459,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 return Err(transport_error("transport_invocation_deadline_exceeded"));
             }
             let fence = if let Some(fence) = registry.fence(&session_id) {
-                let state = registry.state(&fence)?;
+                let mut state = registry.state(&fence)?;
                 if state == TransportSessionState::Orphaned {
                     // Unbinding the delivery is a fact, not a verdict. Only the
                     // execution state decides whether a successor may start here, and
@@ -498,6 +516,35 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                             scope_requested,
                         ),
                     ));
+                }
+                // Admission and the read-only exit probe share the dispatcher and
+                // registry owner. An in-flight call keeps its completion owner;
+                // only the following turn can fence a confirmed dead worker.
+                if !registry.invocation_inflight(&fence)? {
+                    if let Some(evidence) = self
+                        .runtime
+                        .transport_worker_exit_evidence(
+                            target_id,
+                            fence.session_id.as_str(),
+                            fence.generation.get(),
+                        )
+                        .await
+                        .map_err(anyhow::Error::from)?
+                    {
+                        registry
+                            .record_worker_exit_evidence(&fence, &evidence)
+                            .map_err(|_| {
+                                transport_error("provider_transport_worker_exit_evidence_invalid")
+                            })?;
+                        state = registry.state(&fence)?;
+                    }
+                }
+                let now = registry.safe_snapshot().observed_at;
+                if invocation_deadline.is_some_and(|deadline| deadline <= now)
+                    || handoff_deadline
+                        .is_some_and(|deadline| tokio::time::Instant::now() >= deadline)
+                {
+                    return Err(transport_error("transport_invocation_deadline_exceeded"));
                 }
                 if matches!(
                     state,
@@ -896,11 +943,33 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             if let Some(notice) = task.termination.take() {
                 self.publish_termination(notice);
             }
+            let snapshot = self.registry.lock().await.safe_snapshot();
+            if task.command.action == ProviderTransportSessionAction::Close {
+                // A queued Close may outlive confirmation that its exact physical
+                // generation was released. Consume that proof before retry/exhaustion
+                // checks; terminal notification above remains independently owned.
+                let evidence = snapshot
+                    .sessions
+                    .iter()
+                    .find(|session| session.fence == task.fence)
+                    .and_then(|session| session.closure_evidence.as_ref())
+                    .or_else(|| {
+                        snapshot
+                            .tombstones
+                            .iter()
+                            .find(|receipt| receipt.fence == task.fence)
+                            .and_then(|receipt| receipt.closure_evidence.as_ref())
+                    });
+                if let Some(evidence) = evidence.filter(|evidence| evidence.local_released) {
+                    task.command.worker_incarnation = Some(evidence.identity.worker_incarnation);
+                    task.state = CloseTaskState::Released;
+                    task.last_blocker = None;
+                }
+            }
             if task.state != CloseTaskState::Pending {
                 retained.push_back(task);
                 continue;
             }
-            let snapshot = self.registry.lock().await.safe_snapshot();
             let now = snapshot.observed_at;
             if !task.terminal_close
                 && task.command.action == ProviderTransportSessionAction::Drain

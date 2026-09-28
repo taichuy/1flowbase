@@ -1,4 +1,6 @@
-use extension_contracts::provider_contract::ProviderTransportClosureEvidence;
+use extension_contracts::provider_contract::{
+    ProviderTransportClosureEvidence, ProviderTransportClosureSource,
+};
 use std::{
     collections::{BTreeMap, VecDeque},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -409,6 +411,55 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .iter()
             .rev()
             .find(|receipt| receipt.fence.session_id == *session_id)
+    }
+
+    /// Applies proof of actual worker exit before a new invocation is admitted.
+    /// The proof fences only this physical generation; it cannot settle an active call.
+    pub fn record_worker_exit_evidence(
+        &mut self,
+        fence: &TransportFence,
+        evidence: &ProviderTransportClosureEvidence,
+    ) -> Result<(), RegistryError> {
+        evidence
+            .validate()
+            .map_err(|_| RegistryError::InvalidClosureEvidence)?;
+        if evidence.source != ProviderTransportClosureSource::ConfirmedWorkerExit
+            || !evidence.local_released
+            || evidence.identity.logical_session_id != fence.session_id.as_str()
+            || evidence.identity.generation != fence.generation.get()
+        {
+            return Err(RegistryError::InvalidClosureEvidence);
+        }
+        let now = self.clock.now();
+        self.maintain_at(now);
+        let record = self.record(fence)?;
+        if record.logical.invocation.is_some() {
+            return Err(RegistryError::InflightExists);
+        }
+        if record
+            .physical
+            .closure_evidence
+            .as_ref()
+            .is_some_and(|known| {
+                known.identity.worker_incarnation != evidence.identity.worker_incarnation
+            })
+        {
+            return Err(RegistryError::InvalidClosureEvidence);
+        }
+        let state = record.logical.state;
+        if !matches!(
+            state,
+            TransportSessionState::Faulted | TransportSessionState::IdleReleased
+        ) {
+            if !valid_transition(state, TransportSessionState::Faulted) {
+                return Err(RegistryError::InvalidTransition {
+                    from: state,
+                    to: TransportSessionState::Faulted,
+                });
+            }
+            self.set_state(fence, TransportSessionState::Faulted, now)?;
+        }
+        self.record_closure_evidence(fence, evidence)
     }
 
     /// Consumes a host-validated control receipt for exactly the closed generation.
@@ -913,8 +964,22 @@ fn capped_state_deadline_for(
         .min(record.logical.absolute_deadline)
 }
 
+// A released physical generation no longer bounds an idle logical identity.
+// Closure evidence is validated against its fence on insertion and cleared on
+// rotation. A Faulted invocation must still settle or expire under its old leases.
+fn retains_only_logical_deadline(record: &SessionRecord) -> bool {
+    record.logical.state == TransportSessionState::IdleReleased
+        || (record.logical.state == TransportSessionState::Faulted
+            && record.logical.invocation.is_none()
+            && record
+                .physical
+                .closure_evidence
+                .as_ref()
+                .is_some_and(|evidence| evidence.local_released))
+}
+
 fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKind) {
-    if record.logical.state == TransportSessionState::IdleReleased {
+    if retains_only_logical_deadline(record) {
         return (
             record.logical.absolute_deadline,
             DeadlineKind::LogicalAbsolute,
@@ -934,7 +999,7 @@ fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKin
 }
 
 fn expired_kind(record: &SessionRecord, now: TransportInstant) -> Option<TerminationKind> {
-    if record.logical.state == TransportSessionState::IdleReleased {
+    if retains_only_logical_deadline(record) {
         return (now >= record.logical.absolute_deadline).then_some(
             TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute),
         );

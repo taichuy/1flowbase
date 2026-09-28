@@ -1404,3 +1404,93 @@ config_schema: []
         workspace_id,
     )
 }
+
+#[tokio::test]
+async fn ac_2153_version_switch_publishes_all_workspace_demand_and_retains_artifacts() {
+    for (other_workspace_selects_old, query_fails) in [(true, false), (false, false), (false, true)]
+    {
+        let workspace_id = Uuid::now_v7();
+        let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+            workspace_id,
+            &["plugin_config.view.all", "plugin_config.configure.all"],
+        ));
+        let runtime = MemoryProviderRuntime::default();
+        let install_root =
+            std::env::temp_dir().join(format!("plugin-worker-demand-{}", Uuid::now_v7()));
+        let service = PluginManagementService::new(
+            repository.clone(),
+            runtime.clone(),
+            Arc::new(MemoryOfficialPluginSource::default()),
+            &install_root,
+        );
+        let previous = seed_test_installation(
+            &repository,
+            &install_root,
+            "fixture_provider",
+            "0.1.0",
+            PluginDesiredState::ActiveRequested,
+        )
+        .await;
+        let target = seed_test_installation(
+            &repository,
+            &install_root,
+            "fixture_provider",
+            "0.2.0",
+            PluginDesiredState::ActiveRequested,
+        )
+        .await;
+        repository
+            .create_assignment(&CreatePluginAssignmentInput {
+                installation_id: previous,
+                workspace_id,
+                provider_code: "fixture_provider".into(),
+                actor_user_id: repository.actor.user_id,
+            })
+            .await
+            .unwrap();
+        if other_workspace_selects_old {
+            repository
+                .create_assignment(&CreatePluginAssignmentInput {
+                    installation_id: previous,
+                    workspace_id: Uuid::now_v7(),
+                    provider_code: "fixture_provider".into(),
+                    actor_user_id: repository.actor.user_id,
+                })
+                .await
+                .unwrap();
+        }
+        if query_fails {
+            repository.fail_worker_demand_query().await;
+        }
+        let task = service
+            .switch_version(SwitchPluginVersionCommand {
+                actor_user_id: repository.actor.user_id,
+                provider_code: "fixture_provider".into(),
+                target_installation_id: target,
+            })
+            .await
+            .unwrap();
+        assert_eq!(task.status, PluginTaskStatus::Succeeded);
+        let demand = runtime.worker_demands().await;
+        let old = demand.iter().find(|row| row.0 == previous).unwrap();
+        let new = demand.iter().find(|row| row.0 == target).unwrap();
+        assert_eq!(
+            old.2,
+            if query_fails {
+                None
+            } else {
+                Some(other_workspace_selects_old)
+            }
+        );
+        assert_eq!(new.2, if query_fails { None } else { Some(true) });
+        assert_eq!(old.1, new.1);
+        assert!(old.1 > 0);
+        assert!(runtime.unloaded_installations().await.is_empty());
+        assert!(repository
+            .get_installation(previous)
+            .await
+            .unwrap()
+            .is_some());
+        assert!(repository.get_installation(target).await.unwrap().is_some());
+    }
+}

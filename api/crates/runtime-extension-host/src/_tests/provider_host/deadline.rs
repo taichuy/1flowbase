@@ -41,6 +41,7 @@ done
     host.validate(&plugin_id, json!({}))
         .await
         .expect("warm the worker before measuring its invoke deadline");
+    let original = host.provider_worker_snapshot(&plugin_id).unwrap().unwrap();
     let now_ms =
         i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000).unwrap();
     let principal = runtime_core::runtime_backend::RuntimeExecutionPrincipal {
@@ -63,13 +64,13 @@ done
         .expect("execution deadline must stop the call")
         .unwrap_err();
     assert!(error.to_string().contains("timed out"), "{error}");
-    let worker = host.provider_worker_snapshot(&plugin_id).unwrap().unwrap();
+    shared_workers::wait_reaped(&host, &plugin_id).await;
     let cleanup = host
         .provider_worker_cleanup_receipt(&plugin_id)
         .unwrap()
         .unwrap();
-    assert_eq!(worker.state, ProviderWorkerLifecycleState::Failed);
-    assert_eq!(cleanup.prior_pid, worker.pid);
+    assert_eq!(cleanup.generation, original.generation);
+    assert_eq!(cleanup.prior_pid, original.pid);
     assert!(cleanup.exited, "timed out worker must have exited");
     assert!(cleanup.cleanup_error.is_none());
 }

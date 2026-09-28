@@ -3390,6 +3390,7 @@ dependencies = [
  "sysinfo",
  "time",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
@@ -4480,6 +4481,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "pin-project-lite",
+ "slab",
  "tokio",
 ]
 

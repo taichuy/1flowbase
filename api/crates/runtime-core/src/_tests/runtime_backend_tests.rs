@@ -174,6 +174,25 @@ impl ProviderRuntimePort for CompleteFakeBackend {
         unreachable!("compile fixture is not executed")
     }
 
+    async fn reconcile_provider_worker_demand(
+        &self,
+        _plugin_id: &str,
+        _revision: u64,
+        _selectable: Option<bool>,
+    ) -> Result<(), RuntimeBackendError> {
+        Ok(())
+    }
+
+    async fn provider_transport_worker_exit_evidence(
+        &self,
+        _target_id: &str,
+        _logical_session_id: &str,
+        _generation: u64,
+    ) -> Result<Option<extension_contracts::ProviderTransportClosureEvidence>, RuntimeBackendError>
+    {
+        Ok(None)
+    }
+
     async fn provider_transport_session(
         &self,
         _target_id: &str,

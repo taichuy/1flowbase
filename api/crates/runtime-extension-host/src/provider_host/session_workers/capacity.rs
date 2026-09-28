@@ -47,7 +47,7 @@ enum CapacityMode {
 #[derive(Debug, Clone)]
 pub(crate) struct SessionWorkerCapacity {
     mode: CapacityMode,
-    pub(super) changed: Arc<Notify>,
+    pub(in crate::provider_host) changed: Arc<Notify>,
 }
 
 #[derive(Debug)]

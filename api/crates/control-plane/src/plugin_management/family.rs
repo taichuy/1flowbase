@@ -31,6 +31,10 @@ pub struct DeletePluginFamilyCommand {
     pub provider_code: String,
 }
 
+// Local Host and this projection share the process lifetime. Allocate before
+// querying so a late old snapshot cannot override a newer committed selection.
+static WORKER_DEMAND_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 impl<R, H> PluginManagementService<R, H>
 where
     R: AuthRepository
@@ -931,6 +935,43 @@ where
             .ok_or(ControlPlaneError::NotFound("plugin_installation").into())
     }
 
+    async fn reconcile_family_worker_demand(
+        &self,
+        previous: &domain::PluginInstallationRecord,
+        target: &domain::PluginInstallationRecord,
+    ) {
+        let Ok(revision) = WORKER_DEMAND_REVISION.fetch_update(
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire,
+            |value| value.checked_add(1),
+        ) else {
+            return;
+        };
+        // These repositories query all workspaces, never just the upgraded one.
+        let installations = self.repository.list_installations().await;
+        let assigned = self.repository.list_assigned_installation_ids().await;
+        let known = installations.is_ok() && assigned.is_ok();
+        let mut family = installations.unwrap_or_else(|_| vec![previous.clone(), target.clone()]);
+        family.retain(|installation| {
+            installation.organization == previous.organization
+                && installation.provider_code == previous.provider_code
+                && installation.contract_version == CURRENT_PROVIDER_CONTRACT
+        });
+        let assigned = assigned.unwrap_or_default();
+        for installation in family {
+            let selectable = known.then(|| assigned.contains(&installation.id));
+            if let Err(error) = self
+                .runtime
+                .reconcile_provider_worker_demand(&installation, revision, selectable)
+                .await
+            {
+                // The durable switch is already committed. The regular idle
+                // policy still reclaims safely if this optimization is unavailable.
+                tracing::warn!(installation_id = %installation.id, %error, "provider worker demand notification failed");
+            }
+        }
+    }
+
     pub(super) async fn switch_family_installation(
         &self,
         actor: &domain::ActorContext,
@@ -1092,6 +1133,7 @@ where
                 .await?;
             self.invalidate_model_routing_catalog(actor.current_workspace_id)
                 .await;
+            self.reconcile_family_worker_demand(current, target).await;
             Ok::<usize, anyhow::Error>(migrated_instances.len())
         }
         .await;

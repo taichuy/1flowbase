@@ -12,6 +12,15 @@ struct CapturingCompactRuntime {
 
 #[async_trait]
 impl ProviderRuntimePort for CapturingCompactRuntime {
+    async fn reconcile_provider_worker_demand(
+        &self,
+        _installation: &domain::PluginInstallationRecord,
+        _revision: u64,
+        _selectable: Option<bool>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     async fn ensure_loaded(
         &self,
         _installation: &domain::LocalPluginInstallationRecord,
@@ -151,6 +160,15 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
 
 #[async_trait]
 impl ProviderRuntimePort for CapturingCountTokensRuntime {
+    async fn reconcile_provider_worker_demand(
+        &self,
+        _installation: &domain::PluginInstallationRecord,
+        _revision: u64,
+        _selectable: Option<bool>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     async fn ensure_loaded(
         &self,
         _installation: &domain::LocalPluginInstallationRecord,

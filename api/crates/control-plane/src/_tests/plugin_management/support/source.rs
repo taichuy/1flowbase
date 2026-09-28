@@ -5,9 +5,14 @@ use super::*;
 pub(crate) struct MemoryProviderRuntime {
     loaded_installations: Arc<RwLock<Vec<Uuid>>>,
     unloaded_installations: Arc<RwLock<Vec<Uuid>>>,
+    worker_demands: Arc<RwLock<Vec<(Uuid, u64, Option<bool>)>>>,
 }
 
 impl MemoryProviderRuntime {
+    pub(crate) async fn worker_demands(&self) -> Vec<(Uuid, u64, Option<bool>)> {
+        self.worker_demands.read().await.clone()
+    }
+
     pub(crate) async fn loaded_installations(&self) -> Vec<Uuid> {
         self.loaded_installations.read().await.clone()
     }
@@ -156,6 +161,19 @@ impl OfficialPluginSourcePort for MemoryOfficialPluginSource {
 
 #[async_trait]
 impl ProviderRuntimePort for MemoryProviderRuntime {
+    async fn reconcile_provider_worker_demand(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        revision: u64,
+        selectable: Option<bool>,
+    ) -> anyhow::Result<()> {
+        self.worker_demands
+            .write()
+            .await
+            .push((installation.id, revision, selectable));
+        Ok(())
+    }
+
     async fn deactivate_plugin(
         &self,
         installation: &domain::PluginInstallationRecord,

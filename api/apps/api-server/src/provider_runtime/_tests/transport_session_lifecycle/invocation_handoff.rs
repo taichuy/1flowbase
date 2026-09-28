@@ -389,6 +389,17 @@ impl GatedCloseRuntime {
 
 #[async_trait::async_trait]
 impl TransportLifecycleRuntime for GatedCloseRuntime {
+    async fn transport_worker_exit_evidence(
+        &self,
+        target_id: &str,
+        logical_session_id: &str,
+        generation: u64,
+    ) -> Result<Option<ProviderTransportClosureEvidence>, RuntimeBackendError> {
+        self.runtime
+            .transport_worker_exit_evidence(target_id, logical_session_id, generation)
+            .await
+    }
+
     async fn transport_session(
         &self,
         target_id: &str,

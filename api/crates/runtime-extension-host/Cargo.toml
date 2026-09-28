@@ -18,6 +18,7 @@ serde_json.workspace = true
 sysinfo.workspace = true
 time.workspace = true
 tokio.workspace = true
+tokio-util = { version = "0.7", features = ["time"] }
 tracing.workspace = true
 
 [dev-dependencies]

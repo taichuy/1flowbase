@@ -73,6 +73,7 @@ struct ProviderWorkerRegistryState {
     next_generation: HashMap<String, u64>,
     cleanup_receipts: HashMap<String, ProviderWorkerCleanupReceipt>,
     transport_bindings: HashMap<(String, String, u64), TransportWorkerBinding>,
+    idle: idle_workers::IdleWorkerPolicy,
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +218,22 @@ struct ActiveProviderStreamRecord {
     #[cfg(test)]
     started_at: OffsetDateTime,
     last_event_at: OffsetDateTime,
+}
+
+struct ActiveProviderStreamLease {
+    streams: Arc<Mutex<HashMap<String, ActiveProviderStreamRecord>>>,
+    invocation_id: String,
+}
+impl Drop for ActiveProviderStreamLease {
+    fn drop(&mut self) {
+        let streams = self.streams.clone();
+        let invocation_id = self.invocation_id.clone();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                streams.lock().await.remove(&invocation_id);
+            });
+        }
+    }
 }
 
 impl ActiveProviderStreamRecord {
@@ -1178,7 +1195,25 @@ impl ProviderHost {
             }
             PluginExecutionMode::StatefulProviderWorker => {
                 let plugin_id = loaded.package.identifier();
-                let worker = provider_worker_handle(&provider_workers, plugin_id, &loaded)?;
+                let admission_deadline = tokio::time::Instant::now()
+                    + std::time::Duration::from_millis(
+                        loaded
+                            .package
+                            .manifest
+                            .runtime
+                            .limits
+                            .timeout_ms
+                            .unwrap_or(DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS),
+                    );
+                let reserved = operations::provider_worker_handle_wait(
+                    &provider_workers,
+                    plugin_id,
+                    &loaded,
+                    admission_deadline,
+                    None,
+                )
+                .await?;
+                let worker = reserved.worker.clone();
                 if worker.is_multiplex() {
                     let deadline = tokio::time::Instant::now()
                         + std::time::Duration::from_millis(
@@ -1197,9 +1232,11 @@ impl ProviderHost {
                         deadline,
                     )
                     .await?;
-                    return worker.call_admitted(&request, Box::new(permit)).await;
+                    return worker
+                        .call_admitted(&request, Box::new((permit, reserved)))
+                        .await;
                 }
-                worker.call(&request).await
+                worker.call_admitted(&request, Box::new(reserved)).await
             }
             _ => Err(PluginFrameworkError::invalid_provider_package(
                 "model provider package declares unsupported execution_mode",
@@ -1277,6 +1314,10 @@ impl ProviderHost {
         );
         Self::register_active_stream(&active_streams, invocation_id.clone(), &plugin_id, &input)
             .await;
+        let active_stream_lease = ActiveProviderStreamLease {
+            streams: active_streams.clone(),
+            invocation_id: invocation_id.clone(),
+        };
         let event_observer = Some(Self::active_stream_event_observer(
             Arc::clone(&active_streams),
             invocation_id.clone(),
@@ -1310,7 +1351,8 @@ impl ProviderHost {
                 }
             }
             PluginExecutionMode::StatefulProviderWorker => {
-                let worker = selected_worker.expect("stateful invocation selected its worker");
+                let reserved = selected_worker.expect("stateful invocation selected its worker");
+                let worker = reserved.worker.clone();
                 let context = StreamingCallContext {
                     required_live_events,
                     diagnostic_live_events,
@@ -1333,7 +1375,7 @@ impl ProviderHost {
                                     &request,
                                     &invocation_limits,
                                     context,
-                                    Box::new(permit),
+                                    Box::new((permit, reserved, _lease, active_stream_lease)),
                                 )
                                 .await
                         }
@@ -1341,10 +1383,11 @@ impl ProviderHost {
                     }
                 } else {
                     worker
-                        .call_streaming_with_limits_and_host_calls(
+                        .call_streaming_admitted(
                             &request,
                             &invocation_limits,
                             context,
+                            Box::new((reserved, _lease, active_stream_lease)),
                         )
                         .await
                 }
@@ -1552,20 +1595,20 @@ fn compact_framework_error(error: PluginFrameworkError) -> ProviderCompactError 
 mod operations;
 mod session_workers;
 use session_workers::SessionWorkerCapacity;
+mod idle_workers;
 mod supervisor;
 
 use operations::{
     cache_failed_transport_closure, call_bound_transport_session, generic_count_tokens_fallback,
     limit_provider_invocation_to_deadline, merge_models, normalize_balance, normalize_models,
     normalize_reset_credit_result, normalize_usage_windows, provider_invocation_limits,
-    provider_pool_key, provider_worker_handle, record_provider_worker_cleanup,
-    reset_credit_result_matches_operation,
+    provider_pool_key, record_provider_worker_cleanup, reset_credit_result_matches_operation,
 };
 
 #[cfg(test)]
 use operations::{
     elapsed_milliseconds, format_timestamp, lock_provider_worker_registry,
-    provider_stream_transport, provider_worker_cleanup_receipt,
+    provider_stream_transport, provider_worker_cleanup_receipt, provider_worker_handle,
     provider_worker_supervisor_snapshot,
 };
 
