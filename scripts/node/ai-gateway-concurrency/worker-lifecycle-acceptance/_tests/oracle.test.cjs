@@ -45,12 +45,14 @@ for (const [label, mutate, fragment] of [
   assert.equal(result.pass, false); assert.ok(result.errors.some((error) => error.includes(fragment)), result.errors.join('; '));
 });
 test('kill selection requires exact live supplier ownership and start time', () => {
-  const expected = { parentPid: 10, parentExe: '/candidate/api', parentArg: '--candidate-7600',
+  const expected = { parentPid: 10, protectedParentPid: 30, parentExe: '/candidate/api', parentArg: '--candidate-7800',
     workerExe: '/installed/openai/0.2.66/bin/openai-provider', workerArg: '--stdio', workerDigest: 'digest', startTime: '100' };
   const parent = { pid: 10, exe: expected.parentExe, argv: [expected.parentArg] };
   const worker = { pid: 20, ppid: 10, exe: expected.workerExe, argv: ['--stdio'], digest: 'digest', startTime: '100' };
   assert.equal(assertKillIdentity(worker, expected, parent), 20);
-  for (const bad of [{ pid: 10 }, { ppid: 11 }, { exe: '/unrelated/plugin' }, { digest: 'other-build' },
+  for (const bad of [{ pid: 10 }, { pid: 30 }, { ppid: 11 }, { exe: '/unrelated/plugin' }, { digest: 'other-build' },
     { startTime: '101' }, { argv: ['--other'] }]) assert.throws(() => assertKillIdentity({ ...worker, ...bad }, expected, parent), /Unsafe/);
-  assert.throws(() => assertKillIdentity(worker, expected, { ...parent, argv: ['--candidate-7600', '--port=7800'] }), /Unsafe/);
+  assert.throws(() => assertKillIdentity(worker, expected, { ...parent, argv: ['--candidate-7800', '--port=7600'] }), /Unsafe/);
+  assert.throws(() => assertKillIdentity(worker, { ...expected, protectedParentPid: 10 }, parent), /Unsafe/);
+  assert.throws(() => assertKillIdentity(worker, { ...expected, protectedParentPid: undefined }, parent), /Unsafe/);
 });

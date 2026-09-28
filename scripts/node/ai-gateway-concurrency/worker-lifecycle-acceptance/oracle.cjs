@@ -1,13 +1,15 @@
 'use strict';
 
 function assertKillIdentity(worker, expected, parent) {
-  if (!Number.isInteger(worker.pid) || worker.pid <= 1 || worker.pid === expected.parentPid
+  if (!Number.isInteger(expected.protectedParentPid) || expected.protectedParentPid <= 1
+      || expected.parentPid === expected.protectedParentPid || worker.pid === expected.protectedParentPid
+      || !Number.isInteger(worker.pid) || worker.pid <= 1 || worker.pid === expected.parentPid
       || worker.ppid !== expected.parentPid || parent.pid !== expected.parentPid
       || parent.exe !== expected.parentExe || worker.exe !== expected.workerExe
       || worker.digest !== expected.workerDigest || worker.startTime !== expected.startTime
       || !worker.argv.includes(expected.workerArg) || !expected.workerArg
       || !parent.argv.includes(expected.parentArg) || !expected.parentArg
-      || parent.argv.some((arg) => arg.includes('7800'))) {
+      || parent.argv.some((arg) => arg.includes('7600'))) {
     throw new Error('Unsafe supplier identity: PID, PPID, executable, digest, start time or exact argv mismatch');
   }
   return worker.pid;

@@ -14,13 +14,14 @@ async function main() {
   const out = path.resolve(process.env.WL_ARTIFACT_DIR || path.join(workspace, 'tmp/test-governance/2153/long-task'));
   if (!out.endsWith('/tmp/test-governance/2153/long-task')) throw new Error('Artifact directory must end in tmp/test-governance/2153/long-task');
   if (fs.existsSync(path.join(out, 'timeline.jsonl'))) throw new Error('Existing timeline: archive the prior run before starting a new one');
-  const baseUrl = process.env.WL_BASE_URL || 'http://127.0.0.1:7600/v1';
-  if (baseUrl !== 'http://127.0.0.1:7600/v1') throw new Error('Only the authorized candidate host on 7600 is supported');
+  const baseUrl = process.env.WL_BASE_URL || 'http://127.0.0.1:7800/v1';
+  if (baseUrl !== 'http://127.0.0.1:7800/v1') throw new Error('Only the authorized candidate host on 7800 is supported');
   const credentialText = fs.readFileSync(required('WL_KEY_FILE'), 'utf8').trim();
   const credentials = [...new Set(credentialText.match(/\bsk-[A-Za-z0-9_-]+/g) || [])];
   const secret = credentials.length === 1 ? credentials[0] : (!credentialText.includes('\n') && credentials.length === 0 ? credentialText : null);
   if (!secret) throw new Error('Secret file must identify exactly one gateway credential');
-  const expected = { parentPid: Number(required('WL_PARENT_PID')), parentExe: fs.realpathSync(required('WL_PARENT_EXE')),
+  const expected = { parentPid: Number(required('WL_PARENT_PID')), protectedParentPid: Number(required('WL_PROTECTED_PARENT_PID')),
+    parentExe: fs.realpathSync(required('WL_PARENT_EXE')),
     parentArg: required('WL_PARENT_ARG'), workerExe: fs.realpathSync(required('WL_WORKER_EXE')),
     workerArg: required('WL_WORKER_ARG'), workerDigest: required('WL_WORKER_SHA256') };
   const candidateSha = required('WL_CANDIDATE_SHA');
