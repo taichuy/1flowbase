@@ -966,7 +966,7 @@ impl ApplicationManagementRepository for PgControlPlaneStore {
                 a.icon_type,
                 a.icon_background,
                 a.created_by,
-                coalesce(nullif(creator.nickname, ''), nullif(creator.name, ''), creator.account)
+                coalesce(nullif(creator.nickname, ''), nullif(creator.name, ''), creator.account, '')
                     as created_by_display_name,
                 a.created_at,
                 a.updated_at,
@@ -978,7 +978,7 @@ impl ApplicationManagementRepository for PgControlPlaneStore {
                 ) as published,
                 coalesce(tags.tags, '[]'::jsonb) as tags
             from applications a
-            join users creator on creator.id = a.created_by
+            left join users creator on creator.id = a.created_by
             left join lateral (
                 select jsonb_agg(
                     jsonb_build_object('id', tag.id, 'name', tag.name)

@@ -22,7 +22,7 @@ async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
         .unwrap()
 }
 
-async fn bootstrapped_store() -> (PgControlPlaneStore, Uuid, Uuid) {
+pub(super) async fn bootstrapped_store() -> (PgControlPlaneStore, Uuid, Uuid) {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -105,7 +105,7 @@ async fn role_codes_for_user(store: &PgControlPlaneStore, user_id: Uuid) -> Vec<
     .unwrap()
 }
 
-async fn create_member(
+pub(super) async fn create_member(
     store: &PgControlPlaneStore,
     workspace_id: Uuid,
     actor_user_id: Uuid,
