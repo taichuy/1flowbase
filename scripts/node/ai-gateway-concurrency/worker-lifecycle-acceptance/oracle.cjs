@@ -24,6 +24,9 @@ function evaluate(events, meta) {
   if (!items.some((e) => e.params.item.type === 'collabAgentToolCall'
     && e.params.item.tool === 'spawnAgent' && e.params.item.status === 'completed'
     && e.params.item.receiverThreadIds?.length)) errors.push('missing actual subagent spawn');
+  if (items.some((e) => e.params.item.type === 'collabAgentToolCall' && e.params.item.tool === 'spawnAgent'
+    && e.params.item.status === 'completed' && (e.params.item.model !== 'gpt-6-sol' || e.params.item.reasoningEffort !== 'medium')))
+    errors.push('subagent model/effort differs from requested gpt-6-sol/medium');
   if (!items.some((e) => e.params.item.type === 'collabAgentToolCall'
     && e.params.item.tool === 'wait' && e.params.item.status === 'completed'
     && Object.values(e.params.item.agentsStates || {}).some((s) => s.status === 'completed')))

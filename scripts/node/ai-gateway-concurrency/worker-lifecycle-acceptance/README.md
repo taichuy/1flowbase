@@ -13,6 +13,7 @@ WL_WORKER_EXE=/absolute/installed/openai/version/bin/openai-provider \
 WL_WORKER_ARG=<exact-supplier-argv-token> \
 WL_WORKER_SHA256=<installed-supplier-sha256> \
 WL_CANDIDATE_SHA=<frozen-assembly-sha> \
+WL_MODEL_CATALOG=/private/path/client-model-catalog.json \
 node scripts/node/ai-gateway-concurrency/worker-lifecycle-acceptance/run.cjs
 ```
 
@@ -31,3 +32,5 @@ node --test scripts/node/ai-gateway-concurrency/worker-lifecycle-acceptance/_tes
 ```
 
 Counterexamples reject missing subagents, compaction, steer nonce, insufficient duration, missing successful tools, continuity gaps, duplicate failed terminals, retry notifications, unchanged generation and absent semantic output. Kill guards reject unrelated exe/PPID/digest, reused PID/start time and baseline-port arguments. These are fixture-oracle tests; they do not prove the long run or candidate runtime behavior.
+
+Installed 0.155.1 rejects an unregistered `gpt-6-sol` subagent before calling the gateway. Supply a private `ModelsResponse` catalog through the existing `model_catalog_json` configuration. This run registers the requested slug using the installed-client-compatible `gpt-5.6-sol` metadata template from the pinned local Codex source; this is client tooling metadata, not a claim about model capabilities or a gateway business/resource limit. The wire request remains `gpt-6-sol`; no model alias or substitution is applied in the gateway. Catalog SHA256 is captured and `model/list` must advertise that exact slug. Completed actual spawn events must report `gpt-6-sol/medium`; an unknown or substituted model fails early and the acceptance oracle rejects it. Only the fixture private configuration is edited.

@@ -12,7 +12,7 @@ function fixture() {
     add('item/completed', id, { type: 'agentMessage', text: `${'Evidence-based source trace '.repeat(8)}${i === 1 ? 'nonce' : ''}` }, atMs);
     events.push({ method: 'turn/completed', atMs, params: { threadId: 'root', turn: { id, status: 'completed' } } });
   }
-  add('item/completed', 't0', { type: 'collabAgentToolCall', tool: 'spawnAgent', status: 'completed', receiverThreadIds: ['child'] });
+  add('item/completed', 't0', { type: 'collabAgentToolCall', tool: 'spawnAgent', status: 'completed', receiverThreadIds: ['child'], model: 'gpt-6-sol', reasoningEffort: 'medium' });
   add('item/completed', 't0', { type: 'collabAgentToolCall', tool: 'wait', status: 'completed', agentsStates: { child: { status: 'completed' } } });
   add('item/completed', 'compact', { type: 'contextCompaction' });
   events.push({ kind: 'rpc/request', method: 'thread/compact/start' });
@@ -28,6 +28,8 @@ test('complete real-protocol-shaped evidence passes oracle', () => {
 });
 for (const [label, mutate, fragment] of [
   ['subagent', (f) => { f.events = f.events.filter((e) => e.params?.item?.type !== 'collabAgentToolCall'); }, 'subagent'],
+  ['subagent model', (f) => { f.events.find((e) => e.params?.item?.tool === 'spawnAgent').params.item.model = 'gpt-5.6-sol'; }, 'model/effort'],
+  ['subagent effort', (f) => { f.events.find((e) => e.params?.item?.tool === 'spawnAgent').params.item.reasoningEffort = 'low'; }, 'model/effort'],
   ['compact completion', (f) => { f.events = f.events.filter((e) => e.params?.item?.type !== 'contextCompaction'); }, 'compaction'],
   ['steer processed', (f) => { f.meta.nonce = 'never-processed'; }, 'steer'],
   ['minimum duration', (f) => { f.meta.durationMs = 5399999; }, 'duration'],

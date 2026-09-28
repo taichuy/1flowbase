@@ -29,6 +29,11 @@ async function main() {
   if (version !== 'codex-cli 0.155.1') throw new Error(`Unsupported installed Codex version ${version}`);
   fs.mkdirSync(out, { recursive: true, mode: 0o700 });
   const privateHome = path.join(out, 'codex-home'); fs.mkdirSync(privateHome, { mode: 0o700 });
+  const catalogText = fs.readFileSync(required('WL_MODEL_CATALOG'), 'utf8');
+  const catalog = JSON.parse(catalogText);
+  if (!catalog.models?.some((model) => model.slug === 'gpt-6-sol')) throw new Error('Client catalog must register the exact requested subagent model gpt-6-sol');
+  const catalogFile = path.join(privateHome, 'model-catalog.json');
+  fs.writeFileSync(catalogFile, catalogText, { mode: 0o600 });
   const redact = (value) => JSON.stringify(value).split(secret).join('[REDACTED]')
     .replace(/Bearer\s+[^\s"\\]+/gi, 'Bearer [REDACTED]').replace(/sk-[A-Za-z0-9._-]{8,}/g, '[REDACTED]');
   const events = []; const started = process.hrtime.bigint();
@@ -41,7 +46,7 @@ async function main() {
   const env = { PATH: process.env.PATH, HOME: privateHome, CODEX_HOME: privateHome,
     WL_GATEWAY_KEY: secret, LANG: 'C.UTF-8', NO_PROXY: '127.0.0.1,localhost,::1', no_proxy: '127.0.0.1,localhost,::1' };
   // Neither the secret nor the user's default configuration is written to disk.
-  fs.writeFileSync(path.join(privateHome, 'config.toml'), `model = "gpt-6-luna"\nmodel_provider = "candidate"\nmodel_reasoning_effort = "max"\napproval_policy = "never"\nsandbox_mode = "read-only"\n[features]\nmulti_agent = true\n[model_providers.candidate]\nname = "Candidate gateway"\nbase_url = "${baseUrl}"\nenv_key = "WL_GATEWAY_KEY"\nwire_api = "responses"\nrequest_max_retries = 0\nstream_max_retries = 0\n`, { mode: 0o600 });
+  fs.writeFileSync(path.join(privateHome, 'config.toml'), `model = "gpt-6-luna"\nmodel_provider = "candidate"\nmodel_reasoning_effort = "max"\nmodel_catalog_json = ${JSON.stringify(catalogFile)}\napproval_policy = "never"\nsandbox_mode = "read-only"\n[features]\nmulti_agent = true\n[model_providers.candidate]\nname = "Candidate gateway"\nbase_url = "${baseUrl}"\nenv_key = "WL_GATEWAY_KEY"\nwire_api = "responses"\nrequest_max_retries = 0\nstream_max_retries = 0\n`, { mode: 0o600 });
   execFileSync(codex, ['app-server', 'generate-json-schema', '--experimental', '--out', path.join(out, 'protocol-schema')],
     { env, stdio: 'pipe', maxBuffer: 1024 * 1024 });
   const scopes = execFileSync('rg', ['--files', 'api/crates', 'api/apps', 'web', 'scripts/node'],
@@ -52,7 +57,10 @@ async function main() {
   const nonce = `WL_STEER_${crypto.randomUUID()}`;
   const sentinelFile = path.join(out, 'sentinel.txt'); fs.writeFileSync(sentinelFile, sentinel, { mode: 0o600 });
   const meta = { candidateSha, expected, candidateExecutableDigest: snapshot(expected.parentPid).digest,
-    codexVersion: version, workspace, baseUrl, model: 'gpt-6-luna', reasoning: 'max', nonce, startedUtc: new Date().toISOString() };
+    codexVersion: version, workspace, baseUrl, model: 'gpt-6-luna', reasoning: 'max', nonce,
+    clientCatalogDigest: crypto.createHash('sha256').update(catalogText).digest('hex'), startedUtc: new Date().toISOString() };
+  meta.fixtureFiles = Object.fromEntries(['run.cjs', 'rpc.cjs', 'proc.cjs', 'oracle.cjs'].map((name) =>
+    [name, crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, name))).digest('hex')]));
   save('manifest.json', meta);
   const child = spawn(codex, ['app-server', '--stdio'], { cwd: workspace, env, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stderr.on('data', (data) => record({ kind: 'client/stderr', text: data.toString() }));
@@ -78,12 +86,18 @@ async function main() {
   try {
     await rpc.request('initialize', { clientInfo: { name: 'worker_lifecycle_acceptance', version: '1' }, capabilities: { experimentalApi: true } });
     rpc.send({ method: 'initialized', params: {} });
+    const models = await rpc.request('model/list', {});
+    if (!models.data?.some((model) => model.id === 'gpt-6-sol')) throw new Error('Installed client did not load the requested gpt-6-sol catalog entry');
     const thread = await rpc.request('thread/start', { model: 'gpt-6-luna', modelProvider: 'candidate', cwd: workspace,
       approvalPolicy: 'never', sandbox: 'read-only', ephemeral: false,
       developerInstructions: 'This is an explicitly authorized real-client multi-agent audit. Spawn one bounded read-only subagent when requested; no nested subagents. All tool output must be byte-capped. Never modify files.' });
     meta.threadId = thread.thread.id; save('manifest.json', meta);
-    const first = await startTurn(prompt(0, `First run cat ${sentinelFile} as a tool, retaining the exact tool result in memory. Spawn a real bounded subagent to independently audit a related source path, wait for its completed result and synthesize it. Use model gpt-6-sol reasoning medium for that subagent. Then continue your own audit.`));
+    const first = await startTurn(prompt(0, `First run cat ${sentinelFile} as a tool, retaining the exact tool result in memory. Spawn a real bounded subagent to independently audit a related source path, wait for its completed result and synthesize it. Use only model gpt-6-sol reasoning medium for that subagent; never substitute a different model, report a failure if rejected. Then continue your own audit.`));
     if ((await terminal(first)).params.turn.status !== 'completed') throw new Error('Initial useful turn failed');
+    const spawns = events.filter((e) => e.method === 'item/completed' && e.params.threadId === meta.threadId
+      && e.params.item.type === 'collabAgentToolCall' && e.params.item.tool === 'spawnAgent' && e.params.item.status === 'completed');
+    if (!spawns.length || spawns.some((e) => e.params.item.model !== 'gpt-6-sol' || e.params.item.reasoningEffort !== 'medium'))
+      throw new Error('Real subagent did not use the exact requested gpt-6-sol/medium');
     const firstWorkAt = now();
     if (!commandProof(first).includes(sentinel)) throw new Error('Initial sentinel was not read through a successful tool');
     meta.sentinelBefore = crypto.createHash('sha256').update(sentinel).digest('hex');
