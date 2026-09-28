@@ -1,3 +1,5 @@
+mod observation_bodies;
+
 impl PgControlPlaneStore {
     async fn append_run_event(
         &self,
@@ -189,6 +191,8 @@ impl PgControlPlaneStore {
         lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let next_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
+        let (payload, observation_body_content_id) =
+            observation_bodies::archive_payload(&mut tx, input).await?;
         let row = sqlx::query(
             r#"
             insert into runtime_events (
@@ -207,7 +211,7 @@ impl PgControlPlaneStore {
                 payload,
                 visibility,
                 durability
-            , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ($13::jsonb -> 0), $14, $15, jsonb_strip_nulls(jsonb_build_object('payload', ($13::jsonb -> 1))) )
+            , raw_json_payloads, observation_body_content_id) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ($13::jsonb -> 0), $14, $15, jsonb_strip_nulls(jsonb_build_object('payload', ($13::jsonb -> 1))), $16 )
             returning
                 id,
                 flow_run_id,
@@ -221,7 +225,7 @@ impl PgControlPlaneStore {
                 trust_level,
                 item_id,
                 ledger_ref,
-                runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
+                runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
                 visibility,
                 durability,
                 created_at
@@ -239,9 +243,10 @@ impl PgControlPlaneStore {
         .bind(input.trust_level.as_str())
         .bind(input.item_id)
         .bind(input.ledger_ref.as_deref())
-        .bind(lossless_json_parameter(&(&input.payload)))
+        .bind(lossless_json_parameter(&payload))
         .bind(input.visibility.as_str())
         .bind(input.durability.as_str())
+        .bind(observation_body_content_id)
         .fetch_one(&mut *tx)
         .await?;
         let event = map_runtime_event_record(row)?;
@@ -274,8 +279,8 @@ impl PgControlPlaneStore {
         lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_runtime_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
-        // PostgreSQL encodes the bind count as u16; each event binds 16 columns.
-        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 16;
+        // PostgreSQL encodes the bind count as u16; each event binds 17 columns.
+        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 17;
         let mut records = Vec::with_capacity(inputs.len());
         for (chunk_index, chunk) in inputs.chunks(MAX_BATCH_ROWS).enumerate() {
             let mut builder = QueryBuilder::<Postgres>::new(
@@ -296,28 +301,37 @@ impl PgControlPlaneStore {
                     payload,
                     visibility,
                     durability,
-                    raw_json_payloads
+                    raw_json_payloads,
+                    observation_body_content_id
                 ) "#,
             );
-            builder.push_values(chunk.iter().enumerate(), |mut row, (index, input)| {
-                let (projection, originals) = lossless_json_columns("payload", &input.payload);
-                row.push_bind(Uuid::now_v7())
-                    .push_bind(input.flow_run_id)
-                    .push_bind(input.node_run_id)
-                    .push_bind(input.span_id)
-                    .push_bind(input.parent_span_id)
-                    .push_bind(first_sequence + (chunk_index * MAX_BATCH_ROWS + index) as i64)
-                    .push_bind(&input.event_type)
-                    .push_bind(input.layer.as_str())
-                    .push_bind(input.source.as_str())
-                    .push_bind(input.trust_level.as_str())
-                    .push_bind(input.item_id)
-                    .push_bind(input.ledger_ref.as_deref())
-                    .push_bind(projection)
-                    .push_bind(input.visibility.as_str())
-                    .push_bind(input.durability.as_str())
-                    .push_bind(originals);
-            });
+            let mut archived = Vec::with_capacity(chunk.len());
+            for input in chunk {
+                archived.push(observation_bodies::archive_payload(&mut tx, input).await?);
+            }
+            builder.push_values(
+                chunk.iter().zip(archived.iter()).enumerate(),
+                |mut row, (index, (input, (payload, content_id)))| {
+                    let (projection, originals) = lossless_json_columns("payload", payload);
+                    row.push_bind(Uuid::now_v7())
+                        .push_bind(input.flow_run_id)
+                        .push_bind(input.node_run_id)
+                        .push_bind(input.span_id)
+                        .push_bind(input.parent_span_id)
+                        .push_bind(first_sequence + (chunk_index * MAX_BATCH_ROWS + index) as i64)
+                        .push_bind(&input.event_type)
+                        .push_bind(input.layer.as_str())
+                        .push_bind(input.source.as_str())
+                        .push_bind(input.trust_level.as_str())
+                        .push_bind(input.item_id)
+                        .push_bind(input.ledger_ref.as_deref())
+                        .push_bind(projection)
+                        .push_bind(input.visibility.as_str())
+                        .push_bind(input.durability.as_str())
+                        .push_bind(originals)
+                        .push_bind(*content_id);
+                },
+            );
             builder.push(
                 r#"
                 returning
@@ -333,7 +347,7 @@ impl PgControlPlaneStore {
                     trust_level,
                     item_id,
                     ledger_ref,
-                    runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
+                    runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
                     visibility,
                     durability,
                     created_at

@@ -404,9 +404,12 @@ where
             active_node.map(|node| (node.node_id, node.node_run_id)),
             &input,
             self.observation_context.as_ref(),
-        );
+        )
+        .await;
         let result = self.runtime.compact(&installation, input).await;
-        capture.finish_compact(result.as_ref().ok(), result.is_err());
+        capture
+            .finish_compact(result.as_ref().ok(), result.is_err())
+            .await;
         result
     }
 
@@ -668,7 +671,8 @@ where
                 .map(|node| (node.node_id.clone(), node.node_run_id)),
             &input,
             self.observation_context.as_ref(),
-        );
+        )
+        .await;
         let native_observer = native_capture.observer();
         let (protocol_observation, protocol_completion) =
             if std::env::var("FLOWBASE_PROVIDER_PROTOCOL_CAPTURE").as_deref() == Ok("1") {
@@ -1055,14 +1059,16 @@ where
             } else {
                 (None, None)
             };
-        native_capture.finish(
-            invocation_result.as_ref().ok().map(|output| &output.result),
-            invocation_result
-                .as_ref()
-                .err()
-                .map(|_| "invocation failed"),
-            forwarding_error.is_none(),
-        );
+        native_capture
+            .finish(
+                invocation_result.as_ref().ok().map(|output| &output.result),
+                invocation_result
+                    .as_ref()
+                    .err()
+                    .map(|_| "invocation failed"),
+                forwarding_error.is_none(),
+            )
+            .await;
         protocol_completion.finish(invocation_result.is_ok() && forwarding_error.is_none());
         if let Some(handle) = diagnostic_forward_handle {
             if let Err(error) = handle.await {

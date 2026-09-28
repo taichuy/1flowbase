@@ -72,7 +72,7 @@ pub async fn persist_runtime_event_payload_with_after_commit<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
-    if !event.persist_required {
+    if !event.persist_required || is_stream_delta_event(&event.event_type) {
         return Ok(Vec::new());
     }
     let node_run_id = event
@@ -116,89 +116,30 @@ pub async fn persist_runtime_debug_stream_events_with_after_commit<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
-    let after_commit_events = events
-        .iter()
-        .filter(|event| {
-            event.persist_required && event.durability != RuntimeEventDurability::Ephemeral
-        })
-        .cloned()
+    // Canonical reducers and invocation snapshots own completed content. The live
+    // stream retains its sequence; token fragments never acquire durable rows.
+    let events = events
+        .into_iter()
+        .filter(|event| event.persist_required && !is_stream_delta_event(&event.event_type))
         .collect::<Vec<_>>();
-    let mut runtime_events = Vec::new();
-    let mut pending_delta: Option<PendingStreamDelta> = None;
-
-    for event in events {
-        if !event.persist_required {
-            // A visible event that was committed by its lifecycle owner still separates
-            // adjacent streamed deltas. Skipping the boundary would merge reasoning or
-            // answer text from both sides of a tool/node event into one durable segment.
-            if !is_stream_delta_event(&event.event_type) {
-                flush_pending_delta(&mut runtime_events, pending_delta.take());
-            }
-            continue;
-        }
-
-        if is_stream_delta_event(&event.event_type) {
-            let node_run_id = event.node_run_id;
-            let text = event
-                .text
-                .as_deref()
-                .or_else(|| event.payload.get("text").and_then(Value::as_str))
-                .or_else(|| event.payload.get("delta").and_then(Value::as_str))
-                .unwrap_or_default();
-
-            match &mut pending_delta {
-                Some(pending)
-                    if pending.run_id == event.run_id
-                        && pending.node_run_id == node_run_id
-                        && pending.event_type == event.event_type
-                        && pending.has_same_projection_identity(&event) =>
-                {
-                    pending.text.push_str(text);
-                    pending.sequence_end = event.sequence;
-                    pending.merge_metadata(&event);
-                    pending.event_ids.push(event.event_id);
-                }
-                _ => {
-                    flush_pending_delta(&mut runtime_events, pending_delta.take());
-                    let mut next_pending = PendingStreamDelta {
-                        run_id: event.run_id,
-                        node_run_id,
-                        sequence_start: event.sequence,
-                        sequence_end: event.sequence,
-                        event_ids: vec![event.event_id.clone()],
-                        event_type: event.event_type.clone(),
-                        content_type: event.content_type.clone(),
-                        source: event.source,
-                        node_id: event.payload.get("node_id").cloned(),
-                        presentation: event.payload.get("presentation").cloned(),
-                        text: text.to_string(),
-                        content_refs: Vec::new(),
-                        artifact_refs: Vec::new(),
-                        truncated: false,
-                        truncation_reason: None,
-                        original_bytes: None,
-                    };
-                    next_pending.merge_metadata(&event);
-                    pending_delta = Some(next_pending);
-                }
-            }
-            continue;
-        }
-
-        flush_pending_delta(&mut runtime_events, pending_delta.take());
-        runtime_events.push(build_runtime_event_input(
-            event.run_id,
-            event.node_run_id,
-            event.event_type,
-            event.source,
-            payload_with_stream_sequence(event.payload, event.sequence, event.sequence),
-        ));
-    }
-
-    flush_pending_delta(&mut runtime_events, pending_delta.take());
+    let runtime_events = events
+        .iter()
+        .map(|event| {
+            build_runtime_event_input(
+                event.run_id,
+                event.node_run_id,
+                event.event_type.clone(),
+                event.source,
+                payload_with_stream_sequence(event.payload.clone(), event.sequence, event.sequence),
+            )
+        })
+        .collect::<Vec<_>>();
     if !runtime_events.is_empty() {
         repository.append_runtime_events(&runtime_events).await?;
     }
+    let after_commit_events = events
+        .into_iter()
+        .filter(|event| event.durability != RuntimeEventDurability::Ephemeral);
 
     let mut receipts = Vec::new();
     for event in after_commit_events {
@@ -434,146 +375,14 @@ where
 }
 
 fn is_stream_delta_event(event_type: &str) -> bool {
-    event_type == "text_delta" || event_type == "reasoning_delta"
+    matches!(
+        event_type,
+        "text_delta" | "reasoning_delta" | "tool_call_delta" | "mcp_call_delta"
+    )
 }
 
 fn is_terminal_runtime_event(event_type: &str) -> bool {
     RuntimeEventCloseReason::from_terminal_event_type(event_type).is_some()
-}
-
-struct PendingStreamDelta {
-    run_id: Uuid,
-    node_run_id: Option<Uuid>,
-    sequence_start: i64,
-    sequence_end: i64,
-    event_ids: Vec<String>,
-    event_type: String,
-    content_type: Option<String>,
-    source: crate::ports::RuntimeEventSource,
-    node_id: Option<Value>,
-    presentation: Option<Value>,
-    text: String,
-    content_refs: Vec<String>,
-    artifact_refs: Vec<String>,
-    truncated: bool,
-    truncation_reason: Option<String>,
-    original_bytes: Option<i64>,
-}
-
-impl PendingStreamDelta {
-    fn has_same_projection_identity(&self, event: &RuntimeEventEnvelope) -> bool {
-        self.node_id.as_ref() == event.payload.get("node_id")
-            && self.presentation.as_ref() == event.payload.get("presentation")
-    }
-
-    fn merge_metadata(&mut self, event: &RuntimeEventEnvelope) {
-        collect_string_field(&event.payload, "text_ref", &mut self.content_refs);
-        collect_string_field(&event.payload, "content_ref", &mut self.content_refs);
-        collect_string_field(&event.payload, "payload_ref", &mut self.content_refs);
-        collect_string_array_field(&event.payload, "content_refs", &mut self.content_refs);
-        collect_string_array_field(&event.payload, "payload_refs", &mut self.content_refs);
-        collect_string_field(&event.payload, "artifact_ref", &mut self.artifact_refs);
-        collect_string_array_field(&event.payload, "artifact_refs", &mut self.artifact_refs);
-        for content_ref in self.content_refs.clone() {
-            if content_ref.starts_with("runtime_artifact:") {
-                push_unique(&mut self.artifact_refs, content_ref);
-            }
-        }
-
-        let truncation = event.payload.get("truncation").and_then(Value::as_object);
-        let event_truncated = event
-            .payload
-            .get("truncated")
-            .or_else(|| event.payload.get("is_truncated"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-            || truncation
-                .and_then(|value| value.get("truncated"))
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-        self.truncated = self.truncated || event_truncated;
-
-        if self.truncation_reason.is_none() {
-            self.truncation_reason = event
-                .payload
-                .get("truncation_reason")
-                .and_then(Value::as_str)
-                .or_else(|| {
-                    truncation
-                        .and_then(|value| value.get("reason"))
-                        .and_then(Value::as_str)
-                })
-                .map(ToString::to_string);
-        }
-
-        let original_bytes = event
-            .payload
-            .get("original_bytes")
-            .and_then(Value::as_i64)
-            .or_else(|| {
-                truncation
-                    .and_then(|value| value.get("original_bytes"))
-                    .and_then(Value::as_i64)
-            });
-        if let Some(original_bytes) = original_bytes {
-            self.original_bytes = Some(self.original_bytes.unwrap_or(0).max(original_bytes));
-        }
-    }
-}
-
-fn flush_pending_delta(
-    runtime_events: &mut Vec<AppendRuntimeEventInput>,
-    pending_delta: Option<PendingStreamDelta>,
-) {
-    let Some(pending) = pending_delta else {
-        return;
-    };
-    let event_type = pending.event_type;
-    let node_run_id = pending.node_run_id.map(|value| value.to_string());
-    let stored_bytes = pending.text.len() as i64;
-    let original_bytes = pending.original_bytes.unwrap_or(stored_bytes);
-    let content_refs = pending.content_refs;
-    let artifact_refs = pending.artifact_refs;
-    let mut payload = json!({
-        "type": event_type.clone(),
-        "event_type": event_type.clone(),
-        "node_run_id": node_run_id,
-        "text": pending.text,
-        "content_type": pending.content_type,
-        "stream_sequence": pending.sequence_end,
-        "sequence_start": pending.sequence_start,
-        "sequence_end": pending.sequence_end,
-        "event_ids": pending.event_ids,
-        "truncated": pending.truncated,
-        "truncation": {
-            "truncated": pending.truncated,
-            "reason": pending.truncation_reason,
-            "original_bytes": original_bytes,
-            "stored_bytes": stored_bytes,
-        },
-        "content_refs": content_refs.clone(),
-        "artifact_refs": artifact_refs.clone(),
-        "refs": {
-            "content": content_refs,
-            "artifacts": artifact_refs,
-        },
-    });
-    if let Some(object) = payload.as_object_mut() {
-        if let Some(node_id) = pending.node_id {
-            object.insert("node_id".to_string(), node_id);
-        }
-        if let Some(presentation) = pending.presentation {
-            object.insert("presentation".to_string(), presentation);
-        }
-    }
-
-    runtime_events.push(build_runtime_event_input(
-        pending.run_id,
-        pending.node_run_id,
-        event_type,
-        pending.source,
-        payload,
-    ));
 }
 
 pub(super) fn payload_with_stream_sequence(
@@ -656,26 +465,4 @@ fn classify_event(
         domain::RuntimeEventVisibility::Workspace,
         domain::RuntimeEventDurability::Durable,
     )
-}
-
-fn collect_string_field(payload: &Value, key: &str, output: &mut Vec<String>) {
-    if let Some(value) = payload.get(key).and_then(Value::as_str) {
-        push_unique(output, value.to_string());
-    }
-}
-
-fn collect_string_array_field(payload: &Value, key: &str, output: &mut Vec<String>) {
-    let Some(values) = payload.get(key).and_then(Value::as_array) else {
-        return;
-    };
-
-    for value in values.iter().filter_map(Value::as_str) {
-        push_unique(output, value.to_string());
-    }
-}
-
-fn push_unique(output: &mut Vec<String>, value: String) {
-    if !output.iter().any(|existing| existing == &value) {
-        output.push(value);
-    }
 }

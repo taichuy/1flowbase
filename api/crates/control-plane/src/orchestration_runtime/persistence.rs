@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use observability::RuntimeEventBus;
 use plugin_framework::provider_contract::ProviderStreamEvent;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -19,9 +18,8 @@ use crate::{
     },
     runtime_observability::{
         append_host_event, append_host_span, append_provider_stream_events_raw,
-        coalesce_provider_stream_events,
         projection::{estimate_tokens_for_text, model_input_hash},
-        AppendHostSpanInput, PROVIDER_DELTA_COALESCE_MAX_BYTES,
+        AppendHostSpanInput,
     },
     state_transition::{ensure_flow_run_transition, ensure_node_run_transition},
 };

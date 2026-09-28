@@ -148,7 +148,7 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
             } else {
                 let body = if native {
                     let payload: Value = sqlx::query_scalar(
-                        "select runtime_original_json(payload,raw_json_payloads,'payload') from runtime_events where id=$1 and flow_run_id=$2 and node_run_id=$3"
+                        "select runtime_event_original_payload(payload,raw_json_payloads,flow_run_id) from runtime_events where id=$1 and flow_run_id=$2 and node_run_id=$3"
                     ).bind(scope.get::<Uuid,_>("body_event_id")).bind(flow_run_id).bind(node_run_id)
                         .fetch_one(self.pool()).await?;
                     self.native_trajectory_body(flow_run_id, node_run_id, &payload)
@@ -201,7 +201,7 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             select p.event_id,(p.metadata->>'sequence')::bigint as sequence,
-                runtime_original_json(e.payload,e.raw_json_payloads,'payload') as payload
+                runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) as payload
             from provider_protocol_trajectory_events p join runtime_events e on e.id=p.event_id
             where p.flow_run_id=$1 and p.node_run_id=$2
                 and p.event_type='provider_protocol_observation'

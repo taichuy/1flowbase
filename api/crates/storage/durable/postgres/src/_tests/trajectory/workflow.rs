@@ -11,7 +11,7 @@ async fn clone_run(store: &PgControlPlaneStore, original: Uuid, application: Uui
 }
 async fn node(store: &PgControlPlaneStore, flow: Uuid, alias: &str) -> Uuid {
     let id = Uuid::now_v7();
-    sqlx::query("insert into node_runs(id,scope_id,flow_run_id,node_id,node_type,node_alias,status,started_at,finished_at,input_payload,output_payload) select $1,scope_id,id,$1::text,'llm',$3,'succeeded','2026-09-22T00:00:00Z','2026-09-22T00:01:00Z','{\"input\":\"selected only\"}','{\"output\":\"selected only\"}' from flow_runs where id=$2")
+    sqlx::query("insert into node_run_records(id,scope_id,flow_run_id,node_id,node_type,node_alias,status,started_at,finished_at,input_payload,output_payload) select $1,scope_id,id,$1::text,'llm',$3,'succeeded','2026-09-22T00:00:00Z','2026-09-22T00:01:00Z','{\"input\":\"selected only\"}','{\"output\":\"selected only\"}' from flow_runs where id=$2")
         .bind(id).bind(flow).bind(alias).execute(store.pool()).await.unwrap();
     id
 }
@@ -260,7 +260,7 @@ async fn workflow_trajectory_scope_filters_keyset_and_selected_bodies() {
             .value,
         json!({"output":"selected only"})
     );
-    sqlx::query("update node_runs set raw_json_payloads=jsonb_build_object('output_payload','invalid JSON','error_payload','invalid JSON') where id=$1").bind(child_node).execute(store.pool()).await.unwrap();
+    sqlx::query("update node_run_records set raw_json_payloads=jsonb_build_object('output_payload','invalid JSON','error_payload','invalid JSON') where id=$1").bind(child_node).execute(store.pool()).await.unwrap();
     let started_body = store
         .workflow_trajectory_body(application, root, &format!("node_started:{child_node}"))
         .await

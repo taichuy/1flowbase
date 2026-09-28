@@ -146,31 +146,31 @@ impl PgControlPlaneStore {
                         select sum(
                             coalesce(
                                 case
-                                    when node_runs.metrics_payload #>> '{usage,total_tokens}' ~ '^-?[0-9]+$'
-                                    then (node_runs.metrics_payload #>> '{usage,total_tokens}')::bigint
+                                    when node_run_records.metrics_payload #>> '{usage,total_tokens}' ~ '^-?[0-9]+$'
+                                    then (node_run_records.metrics_payload #>> '{usage,total_tokens}')::bigint
                                 end,
                                 case
-                                    when node_runs.metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
-                                      or node_runs.metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
-                                      or node_runs.metrics_payload #>> '{usage,reasoning_tokens}' ~ '^-?[0-9]+$'
+                                    when node_run_records.metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
+                                      or node_run_records.metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
+                                      or node_run_records.metrics_payload #>> '{usage,reasoning_tokens}' ~ '^-?[0-9]+$'
                                     then coalesce(
                                         case
-                                            when node_runs.metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
-                                            then (node_runs.metrics_payload #>> '{usage,input_tokens}')::bigint
+                                            when node_run_records.metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
+                                            then (node_run_records.metrics_payload #>> '{usage,input_tokens}')::bigint
                                         end,
                                         0
                                     )
                                     + coalesce(
                                         case
-                                            when node_runs.metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
-                                            then (node_runs.metrics_payload #>> '{usage,output_tokens}')::bigint
+                                            when node_run_records.metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
+                                            then (node_run_records.metrics_payload #>> '{usage,output_tokens}')::bigint
                                         end,
                                         0
                                     )
                                     + coalesce(
                                         case
-                                            when node_runs.metrics_payload #>> '{usage,reasoning_tokens}' ~ '^-?[0-9]+$'
-                                            then (node_runs.metrics_payload #>> '{usage,reasoning_tokens}')::bigint
+                                            when node_run_records.metrics_payload #>> '{usage,reasoning_tokens}' ~ '^-?[0-9]+$'
+                                            then (node_run_records.metrics_payload #>> '{usage,reasoning_tokens}')::bigint
                                         end,
                                         0
                                     )
@@ -178,8 +178,8 @@ impl PgControlPlaneStore {
                                 0
                             )
                         )::bigint
-                        from node_runs
-                        where node_runs.flow_run_id = $1
+                        from node_run_records
+                        where node_run_records.flow_run_id = $1
                     )
                 ),
                 coalesce(
@@ -189,10 +189,10 @@ impl PgControlPlaneStore {
                         where runtime_usage_ledger.flow_run_id = $1
                     ),
                     (
-                        select sum((node_runs.metrics_payload #>> '{usage,input_tokens}')::bigint)::bigint
-                        from node_runs
-                        where node_runs.flow_run_id = $1
-                          and node_runs.metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
+                        select sum((node_run_records.metrics_payload #>> '{usage,input_tokens}')::bigint)::bigint
+                        from node_run_records
+                        where node_run_records.flow_run_id = $1
+                          and node_run_records.metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
                     )
                 ),
                 coalesce(
@@ -202,10 +202,10 @@ impl PgControlPlaneStore {
                         where runtime_usage_ledger.flow_run_id = $1
                     ),
                     (
-                        select sum((node_runs.metrics_payload #>> '{usage,output_tokens}')::bigint)::bigint
-                        from node_runs
-                        where node_runs.flow_run_id = $1
-                          and node_runs.metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
+                        select sum((node_run_records.metrics_payload #>> '{usage,output_tokens}')::bigint)::bigint
+                        from node_run_records
+                        where node_run_records.flow_run_id = $1
+                          and node_run_records.metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
                     )
                 ),
                 coalesce(
@@ -222,21 +222,21 @@ impl PgControlPlaneStore {
                         select sum(
                             coalesce(
                                 case
-                                    when node_runs.metrics_payload #>> '{usage,input_cache_hit_tokens}' ~ '^-?[0-9]+$'
-                                    then (node_runs.metrics_payload #>> '{usage,input_cache_hit_tokens}')::bigint
+                                    when node_run_records.metrics_payload #>> '{usage,input_cache_hit_tokens}' ~ '^-?[0-9]+$'
+                                    then (node_run_records.metrics_payload #>> '{usage,input_cache_hit_tokens}')::bigint
                                 end,
                                 case
-                                    when node_runs.metrics_payload #>> '{usage,cache_read_tokens}' ~ '^-?[0-9]+$'
-                                    then (node_runs.metrics_payload #>> '{usage,cache_read_tokens}')::bigint
+                                    when node_run_records.metrics_payload #>> '{usage,cache_read_tokens}' ~ '^-?[0-9]+$'
+                                    then (node_run_records.metrics_payload #>> '{usage,cache_read_tokens}')::bigint
                                 end,
                                 case
-                                    when node_runs.metrics_payload #>> '{usage,cached_input_tokens}' ~ '^-?[0-9]+$'
-                                    then (node_runs.metrics_payload #>> '{usage,cached_input_tokens}')::bigint
+                                    when node_run_records.metrics_payload #>> '{usage,cached_input_tokens}' ~ '^-?[0-9]+$'
+                                    then (node_run_records.metrics_payload #>> '{usage,cached_input_tokens}')::bigint
                                 end
                             )
                         )::bigint
-                        from node_runs
-                        where node_runs.flow_run_id = $1
+                        from node_run_records
+                        where node_run_records.flow_run_id = $1
                     )
                 ),
                 coalesce(
@@ -265,13 +265,13 @@ impl PgControlPlaneStore {
                     (
                         select sum(
                             case
-                                when node_runs.metrics_payload ->> 'internal_tool_call_count' ~ '^[0-9]+$'
-                                then (node_runs.metrics_payload ->> 'internal_tool_call_count')::bigint
+                                when node_run_records.metrics_payload ->> 'internal_tool_call_count' ~ '^[0-9]+$'
+                                then (node_run_records.metrics_payload ->> 'internal_tool_call_count')::bigint
                                 else 0
                             end
                         )::bigint
-                        from node_runs
-                        where node_runs.flow_run_id = $1
+                        from node_run_records
+                        where node_run_records.flow_run_id = $1
                     ),
                     0
                 ) + (

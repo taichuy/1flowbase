@@ -201,13 +201,15 @@ where
     if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
         bail!("provider protocol observations require invocation-scoped persistence");
     }
-    if matches!(
-        event,
-        ProviderStreamEvent::NativeEvent { .. }
-            | ProviderStreamEvent::ReasoningSignatureDelta { .. }
-            | ProviderStreamEvent::ResponsesOutputDelta { .. }
-            | ProviderStreamEvent::OutputItem { .. }
-    ) {
+    if !provider_event_is_durable_fact(event)
+        || matches!(
+            event,
+            ProviderStreamEvent::NativeEvent { .. }
+                | ProviderStreamEvent::ReasoningSignatureDelta { .. }
+                | ProviderStreamEvent::ResponsesOutputDelta { .. }
+                | ProviderStreamEvent::OutputItem { .. }
+        )
+    {
         bail!("ephemeral provider events cannot be persisted");
     }
     let event_type = provider_stream_event_type(event);
@@ -275,14 +277,16 @@ where
     let mut runtime_inputs = Vec::with_capacity(events.len());
 
     for event in events {
-        if matches!(
-            event,
-            ProviderStreamEvent::ProtocolObservation { .. }
-                | ProviderStreamEvent::NativeEvent { .. }
-                | ProviderStreamEvent::ReasoningSignatureDelta { .. }
-                | ProviderStreamEvent::ResponsesOutputDelta { .. }
-                | ProviderStreamEvent::OutputItem { .. }
-        ) {
+        if !provider_event_is_durable_fact(event)
+            || matches!(
+                event,
+                ProviderStreamEvent::ProtocolObservation { .. }
+                    | ProviderStreamEvent::NativeEvent { .. }
+                    | ProviderStreamEvent::ReasoningSignatureDelta { .. }
+                    | ProviderStreamEvent::ResponsesOutputDelta { .. }
+                    | ProviderStreamEvent::OutputItem { .. }
+            )
+        {
             continue;
         }
         let event_type = provider_stream_event_type(event);
@@ -337,6 +341,18 @@ where
     }
 
     Ok(records)
+}
+
+/// Fragments have a realtime owner and a completed invocation snapshot, not rows.
+/// This does not discard usage, commit, failure, or lifecycle evidence.
+pub fn provider_event_is_durable_fact(event: &ProviderStreamEvent) -> bool {
+    !matches!(
+        event,
+        ProviderStreamEvent::TextDelta { .. }
+            | ProviderStreamEvent::ReasoningDelta { .. }
+            | ProviderStreamEvent::ToolCallDelta { .. }
+            | ProviderStreamEvent::McpCallDelta { .. }
+    )
 }
 
 pub fn provider_stream_event_type(event: &ProviderStreamEvent) -> &'static str {

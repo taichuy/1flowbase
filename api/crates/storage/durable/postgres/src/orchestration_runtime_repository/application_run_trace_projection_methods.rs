@@ -11,31 +11,48 @@ impl PgControlPlaneStore {
         ) {
             anyhow::bail!("invalid trace payload section");
         }
-        let expression = |field: &str| {
-            if field == section || (section == "output_payload" && field == "error_payload") {
-                format!("runtime_original_json({field}, node_runs.raw_json_payloads, '{field}') as {field}")
-            } else {
-                format!("'{{}}'::jsonb as {field}")
-            }
+        let mut nodes =
+            list_node_run_metadata_for_flow_run(self, flow_run_id, &node_run_ids).await?;
+        let sections = if section == "output_payload" {
+            vec![section, "error_payload"]
+        } else {
+            vec![section]
         };
-        let fields = [
-            "input_payload",
-            "output_payload",
-            "error_payload",
-            "metrics_payload",
-            "debug_payload",
-        ]
-        .map(expression)
-        .join(", ");
-        let sql=format!("select id,flow_run_id,node_id,node_type,node_alias,status,{fields},started_at,finished_at from node_runs where flow_run_id=$1 and id=any($2) order by started_at,id");
-        sqlx::query(&sql)
-            .bind(flow_run_id)
-            .bind(node_run_ids)
-            .fetch_all(self.pool())
-            .await?
-            .into_iter()
-            .map(map_node_run_record)
-            .collect()
+        let details = sqlx::query(
+            r#"
+            select detail.node_run_id, detail.section,
+                runtime_original_json(detail.payload,detail.raw_json_payloads,detail.section) as payload
+            from node_run_details detail
+            join node_runs directory on directory.id=detail.node_run_id
+            where directory.flow_run_id=$1 and detail.node_run_id=any($2)
+                and detail.section=any($3)
+            "#,
+        )
+        .bind(flow_run_id)
+        .bind(node_run_ids)
+        .bind(sections)
+        .fetch_all(self.pool())
+        .await?;
+        let mut by_id = std::collections::HashMap::new();
+        for detail in details {
+            let id: Uuid = detail.get("node_run_id");
+            let field: String = detail.get("section");
+            let payload: Option<Value> = detail.get("payload");
+            by_id.insert((id, field), payload);
+        }
+        for node in &mut nodes {
+            let payload = by_id.remove(&(node.id, section.to_owned())).flatten();
+            match section {
+                "input_payload" => node.input_payload = payload.unwrap_or_else(|| json!({})),
+                "debug_payload" => node.debug_payload = payload.unwrap_or_else(|| json!({})),
+                "output_payload" => {
+                    node.output_payload = payload.unwrap_or_else(|| json!({}));
+                    node.error_payload = by_id.remove(&(node.id, "error_payload".into())).flatten();
+                }
+                _ => unreachable!("section checked above"),
+            }
+        }
+        Ok(nodes)
     }
 
     async fn get_application_run_trace_projection_source_watermark(

@@ -142,6 +142,11 @@ where
             .await?;
             apply_llm_debug_observability_refs(&mut debug_payload, &refs);
         }
+        // Presentation consumers use trace.provider_events, not this durable copy.
+        // Keep actual input/output/context/attempt facts without duplicating tokens.
+        if let Some(debug) = debug_payload.as_object_mut() {
+            debug.remove("provider_events");
+        }
         let node_run = repository
             .update_node_run(&UpdateNodeRunInput {
                 node_run_id: node_run.id,

@@ -144,7 +144,7 @@ async fn client_http_body_tee_preserves_json_and_sse_bytes_and_marks_drop_incomp
         ("text/event-stream", "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"你好  🌏\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n")
     ] {
         let recorder = ClientTrajectoryRecorder::new(Arc::new(store.clone()), ClientTrajectoryTransport::Http);
-        recorder.record(ClientTrajectoryFrameKind::Request, request);
+        recorder.record(ClientTrajectoryFrameKind::Request, request).await.unwrap();
         assert!(recorder.bind_run(flow, None));
         // Split inside UTF-8 and JSON/SSE tokens; the transport must not reserialize.
         let chunks: Vec<Result<Bytes, std::io::Error>> = output.as_bytes().chunks(7).map(|chunk| Ok(Bytes::copy_from_slice(chunk))).collect();
@@ -160,7 +160,10 @@ async fn client_http_body_tee_preserves_json_and_sse_bytes_and_marks_drop_incomp
     }
     let recorder =
         ClientTrajectoryRecorder::new(Arc::new(store.clone()), ClientTrajectoryTransport::Http);
-    recorder.record(ClientTrajectoryFrameKind::Request, request);
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, request)
+        .await
+        .unwrap();
     recorder.bind_run(flow, None);
     let response = observe_response(
         Response::new(Body::from("not read")),
@@ -177,7 +180,10 @@ async fn client_http_body_tee_preserves_json_and_sse_bytes_and_marks_drop_incomp
     assert_eq!(status, "incomplete");
     let recorder =
         ClientTrajectoryRecorder::new(Arc::new(store.clone()), ClientTrajectoryTransport::Http);
-    recorder.record(ClientTrajectoryFrameKind::Request, request);
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, request)
+        .await
+        .unwrap();
     recorder.bind_run(flow, None);
     let failed_stream =
         futures_util::stream::iter([Err::<Bytes, _>(std::io::Error::other("transport failed"))]);
@@ -229,7 +235,10 @@ async fn client_http_observer_preserves_trailers_and_size_hint() {
     let store = PgControlPlaneStore::new(pool);
     let recorder =
         ClientTrajectoryRecorder::new(Arc::new(store.clone()), ClientTrajectoryTransport::Http);
-    recorder.record(ClientTrajectoryFrameKind::Request, b"{\"input\":\"x\"}");
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, b"{\"input\":\"x\"}")
+        .await
+        .unwrap();
     recorder.bind_run(flow, None);
     let bytes = Bytes::from_static(b"{\"output\":[]}");
     let mut trailers = axum::http::HeaderMap::new();
@@ -278,10 +287,13 @@ async fn client_http_pending_drop_uses_protocol_terminal_but_io_errors_remain_in
     ] {
         let recorder =
             ClientTrajectoryRecorder::new(Arc::new(store.clone()), ClientTrajectoryTransport::Http);
-        recorder.record(
-            ClientTrajectoryFrameKind::Request,
-            b"{\"input\":\"x\",\"stream\":true}",
-        );
+        recorder
+            .record(
+                ClientTrajectoryFrameKind::Request,
+                b"{\"input\":\"x\",\"stream\":true}",
+            )
+            .await
+            .unwrap();
         recorder.bind_run(flow, None);
         let bytes = Bytes::from_static(if terminal {
             b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n"
@@ -345,15 +357,21 @@ async fn client_http_pending_drop_uses_protocol_terminal_but_io_errors_remain_in
         Arc::new(store.clone()),
         ClientTrajectoryTransport::Websocket,
     );
-    recorder.record(
-        ClientTrajectoryFrameKind::Request,
-        b"{\"type\":\"response.create\",\"input\":\"x\"}",
-    );
+    recorder
+        .record(
+            ClientTrajectoryFrameKind::Request,
+            b"{\"type\":\"response.create\",\"input\":\"x\"}",
+        )
+        .await
+        .unwrap();
     recorder.bind_run(flow, None);
-    recorder.record(
-        ClientTrajectoryFrameKind::ResponseJson,
-        b"{\"type\":\"response.completed\",\"response\":{\"output\":[]}}",
-    );
+    recorder
+        .record(
+            ClientTrajectoryFrameKind::ResponseJson,
+            b"{\"type\":\"response.completed\",\"response\":{\"output\":[]}}",
+        )
+        .await
+        .unwrap();
     drop(CaptureGuard::new(recorder.clone()));
     recorder.wait_finished().await;
     let status: String =

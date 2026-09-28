@@ -39,7 +39,7 @@ async fn application_runtime_run_trajectory_and_payload_sections_are_scoped_lazy
     let original = json!({"text":"actual NUL \0 and literal \\u0000"});
     sqlx::query("update flow_runs set input_payload='{}',raw_json_payloads=jsonb_build_object('input_payload',$2::text,'output_payload','invalid JSON') where id=$1")
         .bind(run_id).bind(original.to_string()).execute(&pool).await.unwrap();
-    sqlx::query("update node_runs set raw_json_payloads=jsonb_build_object('input_payload','invalid JSON') where flow_run_id=$1")
+    sqlx::query("update node_run_records set raw_json_payloads=jsonb_build_object('input_payload','invalid JSON') where flow_run_id=$1")
         .bind(run_id).execute(&pool).await.unwrap();
     let (status, input) = get(
         &app,

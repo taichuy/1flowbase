@@ -75,6 +75,7 @@ impl CanonicalCallId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SegmentedString {
+    #[cfg(test)]
     segments: Vec<String>,
     materialized: String,
 }
@@ -83,6 +84,7 @@ impl SegmentedString {
     pub fn append(&mut self, segment: impl Into<String>) {
         let segment = segment.into();
         self.materialized.push_str(&segment);
+        #[cfg(test)]
         self.segments.push(segment);
     }
 

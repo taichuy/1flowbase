@@ -103,3 +103,24 @@ pub struct AppendClientTrajectoryInput {
     pub observed_at: String,
     pub fact: ClientTrajectoryFact,
 }
+
+/// Immutable capture part. Sequence is request-local and never an Outbox sequence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientTrajectoryArchiveFrame {
+    pub sequence: i64,
+    pub kind: ClientTrajectoryFrameKind,
+    pub observed_at: String,
+    pub bytes: Vec<u8>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppendClientTrajectoryArchiveInput {
+    pub request_id: Uuid,
+    pub part_id: Uuid,
+    pub transport: ClientTrajectoryTransport,
+    pub frames: Vec<ClientTrajectoryArchiveFrame>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ClientTrajectoryArchiveReceipt {
+    pub request_id: Uuid,
+    pub persisted_through: i64,
+}

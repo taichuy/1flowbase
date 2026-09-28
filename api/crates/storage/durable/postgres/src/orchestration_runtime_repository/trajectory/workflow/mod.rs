@@ -196,7 +196,12 @@ impl PgControlPlaneStore {
             } else {
                 "flow_run_events"
             };
-            let body_sql = format!("select runtime_original_json(payload,raw_json_payloads,'payload') from {table} where id=$1 and flow_run_id=$2");
+            let resolver = if table == "runtime_events" {
+                "runtime_event_original_payload(payload,raw_json_payloads,flow_run_id)"
+            } else {
+                "runtime_original_json(payload,raw_json_payloads,'payload')"
+            };
+            let body_sql = format!("select {resolver} from {table} where id=$1 and flow_run_id=$2");
             let value: Value = sqlx::query_scalar(&body_sql)
                 .bind(source_id)
                 .bind(source_run)
@@ -208,7 +213,7 @@ impl PgControlPlaneStore {
             }]
         } else {
             let finished = event_id.starts_with("node_finished:");
-            let row=sqlx::query("select node_id,node_alias,node_type,status,runtime_original_json(input_payload,raw_json_payloads,'input_payload') input_payload,case when $3 then runtime_original_json(output_payload,raw_json_payloads,'output_payload') end output_payload,case when $3 then runtime_original_json(error_payload,raw_json_payloads,'error_payload') end error_payload from node_runs where id=$1 and flow_run_id=$2")
+            let row=sqlx::query("select node_id,node_alias,node_type,status,runtime_original_json(input_payload,raw_json_payloads,'input_payload') input_payload,case when $3 then runtime_original_json(output_payload,raw_json_payloads,'output_payload') end output_payload,case when $3 then runtime_original_json(error_payload,raw_json_payloads,'error_payload') end error_payload from node_run_records where id=$1 and flow_run_id=$2")
                 .bind(source_id).bind(source_run).bind(finished).fetch_one(self.pool()).await?;
             let mut sections = vec![WorkflowEventSection {
                 kind: "node".into(),

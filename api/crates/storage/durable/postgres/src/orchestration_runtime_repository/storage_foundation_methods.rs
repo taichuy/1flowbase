@@ -40,6 +40,17 @@ async fn put_canonical_runtime_content_in_transaction(
     application_id: Uuid,
     content: &Value,
 ) -> Result<(Uuid, String, i64)> {
+    let (id, hash, size, _) =
+        put_canonical_runtime_content_with_creation(tx, scope_id, application_id, content).await?;
+    Ok((id, hash, size))
+}
+
+async fn put_canonical_runtime_content_with_creation(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    scope_id: Uuid,
+    application_id: Uuid,
+    content: &Value,
+) -> Result<(Uuid, String, i64, bool)> {
     let mut canonical = Vec::new();
     write_canonical_runtime_json(content, &mut canonical)?;
     let content_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
@@ -67,6 +78,7 @@ async fn put_canonical_runtime_content_in_transaction(
     .bind(application_id)
     .fetch_optional(&mut **tx)
     .await?;
+    let created = inserted.is_some();
     let (content_id, stored_content, stored_byte_size) = match inserted {
         Some(content_id) => (content_id, content.clone(), byte_size),
         None => {
@@ -89,7 +101,7 @@ async fn put_canonical_runtime_content_in_transaction(
             "canonical runtime content hash collision for application {application_id}"
         ));
     }
-    Ok((content_id, content_hash, byte_size))
+    Ok((content_id, content_hash, byte_size, created))
 }
 
 fn recovery_state_for_flow_status(

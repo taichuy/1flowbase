@@ -60,7 +60,7 @@ export interface UpdateConsoleFileTableInput {
 
 export function fetchConsoleFileStorages(baseUrl?: string) {
   return apiFetch<ConsoleFileStorage[]>({
-    path: '/api/console/file-storages',
+    path: '/api/console/settings/files/storages',
     baseUrl
   });
 }
@@ -71,7 +71,7 @@ export function createConsoleFileStorage(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleFileStorage>({
-    path: '/api/console/file-storages',
+    path: '/api/console/settings/files/storages',
     method: 'POST',
     body: input,
     csrfToken,
@@ -81,7 +81,7 @@ export function createConsoleFileStorage(
 
 export function fetchConsoleFileTables(baseUrl?: string) {
   return apiFetch<ConsoleFileTable[]>({
-    path: '/api/console/file-tables',
+    path: '/api/console/settings/files/tables',
     baseUrl
   });
 }
@@ -92,7 +92,7 @@ export function createConsoleFileTable(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleFileTable>({
-    path: '/api/console/file-tables',
+    path: '/api/console/settings/files/tables',
     method: 'POST',
     body: input,
     csrfToken,
@@ -107,7 +107,7 @@ export function updateConsoleFileTableBinding(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleFileTable>({
-    path: `/api/console/file-tables/${fileTableId}/binding`,
+    path: `/api/console/settings/files/tables/${fileTableId}/binding`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -122,7 +122,7 @@ export function updateConsoleFileStorage(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleFileStorage>({
-    path: `/api/console/file-storages/${fileStorageId}`,
+    path: `/api/console/settings/files/storages/${fileStorageId}`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -136,7 +136,7 @@ export function deleteConsoleFileStorage(
   baseUrl?: string
 ) {
   return apiFetch<void>({
-    path: `/api/console/file-storages/${fileStorageId}`,
+    path: `/api/console/settings/files/storages/${fileStorageId}`,
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -149,7 +149,7 @@ export function deleteConsoleFileTable(
   baseUrl?: string
 ) {
   return apiFetch<void>({
-    path: `/api/console/file-tables/${fileTableId}`,
+    path: `/api/console/settings/files/tables/${fileTableId}`,
     method: 'DELETE',
     csrfToken,
     baseUrl

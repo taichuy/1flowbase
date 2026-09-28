@@ -27,7 +27,7 @@ impl PgControlPlaneStore {
             .as_i64()
             .ok_or_else(|| anyhow!("native attempt missing"))?;
         let source: Option<Value> = sqlx::query_scalar(
-            "select runtime_original_json(e.payload,e.raw_json_payloads,'payload')
+            "select runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id)
              from provider_semantic_trajectory_steps s join runtime_events e on e.id=s.body_event_id
              where s.flow_run_id=$1 and s.node_run_id=$2 and s.invocation_id=$3
                and s.provider_attempt_index=$4 and s.step_key=$5

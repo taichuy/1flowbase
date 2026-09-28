@@ -639,25 +639,6 @@ fn provider_status_code(details: Option<&Value>) -> Option<u16> {
         .filter(|status| (100..=599).contains(status))
 }
 
-pub(super) fn durable_provider_events(
-    events: Vec<ProviderStreamEvent>,
-) -> Vec<ProviderStreamEvent> {
-    events
-        .into_iter()
-        .filter_map(|event| match event {
-            ProviderStreamEvent::ProtocolObservation { .. }
-            | ProviderStreamEvent::NativeEvent { .. }
-            | ProviderStreamEvent::ReasoningSignatureDelta { .. }
-            | ProviderStreamEvent::ResponsesOutputDelta { .. }
-            | ProviderStreamEvent::OutputItem { .. } => None,
-            ProviderStreamEvent::Error { error } => Some(ProviderStreamEvent::Error {
-                error: ProviderRuntimeError::new(error.kind, error.message.clone()),
-            }),
-            other => Some(other),
-        })
-        .collect()
-}
-
 pub(super) fn recoverable_provider_error_message(error: &ProviderRuntimeError) -> String {
     error.message.clone()
 }

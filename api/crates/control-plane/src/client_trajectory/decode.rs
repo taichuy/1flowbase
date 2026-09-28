@@ -1,8 +1,5 @@
 use super::ClientTrajectoryFrameKind;
 use serde_json::Value;
-// This best-effort diagnostic budget is independent of the larger Responses ingress limit.
-// SSE/WS values remain individually bounded; whole sessions are not accumulated.
-pub(super) const AGGREGATE_BYTES: usize = 2 * 1024 * 1024;
 /// Byte-based framing preserves partial UTF-8 until a complete JSON/SSE value exists.
 #[derive(Default)]
 pub(super) struct Decoder {
@@ -25,11 +22,6 @@ impl Decoder {
         } else {
             &mut self.response
         };
-        if buffer.len().saturating_add(bytes.len()) > AGGREGATE_BYTES {
-            buffer.clear();
-            self.incomplete = true;
-            return vec![];
-        }
         buffer.extend_from_slice(bytes);
         let mut values = Vec::new();
         let mut stream = serde_json::Deserializer::from_slice(buffer).into_iter::<Value>();
@@ -39,10 +31,6 @@ impl Decoder {
                 Ok(value) => {
                     consumed = stream.byte_offset();
                     values.push(value);
-                    if values.len() >= 256 {
-                        self.incomplete = true;
-                        break;
-                    }
                 }
                 Err(error) if error.is_eof() => break,
                 Err(_) => {
@@ -89,25 +77,12 @@ impl Decoder {
                     if value.first() == Some(&b' ') {
                         value = &value[1..];
                     }
-                    if self.data.len() + value.len() + 1 > AGGREGATE_BYTES {
-                        self.incomplete = true;
-                        self.discarding = true;
-                        self.data.clear();
-                    } else {
-                        self.data.extend_from_slice(value);
-                        self.data.push(b'\n');
-                    }
+                    self.data.extend_from_slice(value);
+                    self.data.push(b'\n');
                 }
                 self.line.clear();
-            } else if self.line.len() < AGGREGATE_BYTES {
-                self.line.push(byte);
             } else {
-                self.incomplete = true;
-                self.discarding = true;
-            }
-            if values.len() >= 256 {
-                self.incomplete = true;
-                break;
+                self.line.push(byte);
             }
         }
         values

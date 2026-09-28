@@ -9,6 +9,30 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<()> {
         anyhow::bail!("append_client_trajectory not implemented")
     }
+    /// Internal writer: unbound captures are durable but unavailable to public readers.
+    async fn append_client_trajectory_archive(
+        &self,
+        _input: &AppendClientTrajectoryArchiveInput,
+    ) -> anyhow::Result<ClientTrajectoryArchiveReceipt> {
+        anyhow::bail!("append_client_trajectory_archive not implemented")
+    }
+    /// Final unbound recorder-owner completion. Delete only an unbound archive;
+    /// bound trajectories must survive, and cleanup failure must reach the owner.
+    async fn discard_unbound_client_trajectory_archive(
+        &self,
+        _request_id: Uuid,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("discard_unbound_client_trajectory_archive not implemented")
+    }
+    /// Trusted recorder replay, never exposed by an API route.
+    async fn read_client_trajectory_archive(
+        &self,
+        _request_id: Uuid,
+        _cursor: i64,
+        _limit: i64,
+    ) -> anyhow::Result<Vec<ClientTrajectoryArchiveFrame>> {
+        anyhow::bail!("read_client_trajectory_archive not implemented")
+    }
     async fn client_trajectory_page(
         &self,
         _flow_run_id: Uuid,

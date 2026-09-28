@@ -11,17 +11,23 @@ fn long_request() -> Vec<u8> {
 async fn large_valid_history_is_complete_beyond_old_aggregate_and_item_limits() {
     let request = long_request();
     assert!(request.len() > 1024 * 1024);
-    assert!(request.len() < decode::AGGREGATE_BYTES);
+    assert!(request.len() < (2 * 1024 * 1024));
     let writer = Arc::new(MemoryWriter::default());
     let recorder = capture(writer.clone());
     // The whole accepted request can be admitted before the worker is scheduled.
-    recorder.record(ClientTrajectoryFrameKind::Request, &request);
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, &request)
+        .await
+        .unwrap();
     assert_eq!(recorder.owner.state.dropped.load(Ordering::Acquire), 0);
     recorder.bind_run(Uuid::now_v7(), None);
-    recorder.record(
-        ClientTrajectoryFrameKind::ResponseJson,
-        b"{\"object\":\"response\",\"output\":[]}",
-    );
+    recorder
+        .record(
+            ClientTrajectoryFrameKind::ResponseJson,
+            b"{\"object\":\"response\",\"output\":[]}",
+        )
+        .await
+        .unwrap();
     recorder.finish();
     recorder.wait_finished().await;
     let records = writer.records.lock().unwrap();
@@ -101,21 +107,24 @@ async fn classifier_waits_for_sink_instead_of_buffering_all_history_facts() {
 }
 
 #[tokio::test]
-async fn maximum_request_fits_admission_and_oversized_decode_is_incomplete() {
+async fn large_request_fits_admission_and_decode_has_no_observer_size_cutoff() {
     let writer = Arc::new(MemoryWriter::default());
     let recorder = capture(writer.clone());
-    let request = format!(
-        "{{\"input\":\"{}\"}}",
-        "x".repeat(decode::AGGREGATE_BYTES - 12)
-    );
-    assert_eq!(request.len(), decode::AGGREGATE_BYTES);
-    recorder.record(ClientTrajectoryFrameKind::Request, request.as_bytes());
+    let request = format!("{{\"input\":\"{}\"}}", "x".repeat((2 * 1024 * 1024) - 12));
+    assert_eq!(request.len(), (2 * 1024 * 1024));
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, request.as_bytes())
+        .await
+        .unwrap();
     assert_eq!(recorder.owner.state.dropped.load(Ordering::Acquire), 0);
     recorder.bind_run(Uuid::now_v7(), None);
-    recorder.record(
-        ClientTrajectoryFrameKind::ResponseJson,
-        b"{\"object\":\"response\",\"output\":[]}",
-    );
+    recorder
+        .record(
+            ClientTrajectoryFrameKind::ResponseJson,
+            b"{\"object\":\"response\",\"output\":[]}",
+        )
+        .await
+        .unwrap();
     recorder.finish();
     recorder.wait_finished().await;
     assert!(complete(&writer.records.lock().unwrap()));
@@ -123,10 +132,10 @@ async fn maximum_request_fits_admission_and_oversized_decode_is_incomplete() {
     assert!(decoder
         .feed(
             ClientTrajectoryFrameKind::Request,
-            &vec![b' '; decode::AGGREGATE_BYTES + 1]
+            &vec![b' '; (2 * 1024 * 1024) + 1]
         )
         .is_empty());
-    assert!(decoder.incomplete);
+    assert!(!decoder.incomplete);
 }
 
 #[tokio::test]
@@ -135,14 +144,20 @@ async fn observed_nodes_are_deduplicated_without_reassigning_the_client_capture(
     let recorder = capture(writer.clone());
     let flow = Uuid::now_v7();
     let nodes = [Uuid::now_v7(), Uuid::now_v7()];
-    recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, b"{}")
+        .await
+        .unwrap();
     for node in [nodes[0], nodes[1], nodes[0]] {
         recorder.link_llm_node(flow, node);
     }
-    recorder.record(
-        ClientTrajectoryFrameKind::ResponseJson,
-        b"{\"object\":\"response\",\"output\":[]}",
-    );
+    recorder
+        .record(
+            ClientTrajectoryFrameKind::ResponseJson,
+            b"{\"object\":\"response\",\"output\":[]}",
+        )
+        .await
+        .unwrap();
     recorder.finish();
     recorder.wait_finished().await;
     let records = writer.records.lock().unwrap();

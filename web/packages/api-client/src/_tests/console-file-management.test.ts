@@ -19,12 +19,12 @@ describe('console-file-management client', () => {
     {
       name: 'storage collection',
       request: () => fetchConsoleFileStorages(),
-      expected: { path: '/api/console/file-storages' }
+      expected: { path: '/api/console/settings/files/storages' }
     },
     {
       name: 'file-table collection',
       request: () => fetchConsoleFileTables(),
-      expected: { path: '/api/console/file-tables' }
+      expected: { path: '/api/console/settings/files/tables' }
     }
   ])('reads the $name route', async ({ request, expected }) => {
     await expect(request()).resolves.toMatchObject(expected);
@@ -40,7 +40,7 @@ describe('console-file-management client', () => {
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/file-tables/table-1/binding',
+        path: '/api/console/settings/files/tables/table-1/binding',
         method: 'PUT',
         csrfToken: 'csrf-123'
       }
@@ -61,7 +61,7 @@ describe('console-file-management client', () => {
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/file-storages',
+        path: '/api/console/settings/files/storages',
         method: 'POST',
         csrfToken: 'csrf-123'
       }
@@ -77,7 +77,7 @@ describe('console-file-management client', () => {
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/file-tables',
+        path: '/api/console/settings/files/tables',
         method: 'POST',
         csrfToken: 'csrf-123'
       }
@@ -94,7 +94,7 @@ describe('console-file-management client', () => {
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/file-storages/storage-1',
+        path: '/api/console/settings/files/storages/storage-1',
         method: 'PUT',
         csrfToken: 'csrf-123'
       }
@@ -103,7 +103,7 @@ describe('console-file-management client', () => {
       name: 'storage deletion',
       request: () => deleteConsoleFileStorage('storage-1', 'csrf-123'),
       expected: {
-        path: '/api/console/file-storages/storage-1',
+        path: '/api/console/settings/files/storages/storage-1',
         method: 'DELETE',
         csrfToken: 'csrf-123'
       }
@@ -112,7 +112,7 @@ describe('console-file-management client', () => {
       name: 'file-table deletion',
       request: () => deleteConsoleFileTable('table-1', 'csrf-123'),
       expected: {
-        path: '/api/console/file-tables/table-1',
+        path: '/api/console/settings/files/tables/table-1',
         method: 'DELETE',
         csrfToken: 'csrf-123'
       }

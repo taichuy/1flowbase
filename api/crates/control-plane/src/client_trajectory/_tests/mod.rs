@@ -1,21 +1,75 @@
 use super::*;
+use base64::Engine;
+use serde_json::json;
 #[derive(Default)]
 struct MemoryWriter {
     records: Mutex<Vec<AppendClientTrajectoryInput>>,
-    timeout_once: AtomicBool,
+    frames: Mutex<Vec<ClientTrajectoryArchiveFrame>>,
     fail_once: AtomicBool,
+    fail_cleanup_once: AtomicBool,
+    cleanup_count: AtomicU64,
+    archived: Notify,
 }
 #[async_trait::async_trait]
 impl FactWriter for MemoryWriter {
     async fn append(&self, input: &AppendClientTrajectoryInput) -> anyhow::Result<()> {
-        if self.timeout_once.swap(false, Ordering::AcqRel) {
-            tokio::time::sleep(WRITE_TIMEOUT + Duration::from_millis(100)).await;
-        }
         if self.fail_once.swap(false, Ordering::AcqRel) {
             anyhow::bail!("fixture failed persist");
         }
         self.records.lock().unwrap().push(input.clone());
         Ok(())
+    }
+    async fn archive(
+        &self,
+        input: &AppendClientTrajectoryArchiveInput,
+    ) -> anyhow::Result<ClientTrajectoryArchiveReceipt> {
+        let mut archive = self.frames.lock().unwrap();
+        for frame in &input.frames {
+            let mut frame = frame.clone();
+            frame.sequence = archive.len() as i64 + 1;
+            archive.push(frame.clone());
+            let (encoding, body) = match std::str::from_utf8(&frame.bytes) {
+                Ok(s) => ("utf8", s.to_owned()),
+                Err(_) => (
+                    "base64",
+                    base64::engine::general_purpose::STANDARD.encode(&frame.bytes),
+                ),
+            };
+            // Test-only view of archived values keeps existing reconstruction assertions.
+            self.records.lock().unwrap().push(AppendClientTrajectoryInput {flow_run_id:Uuid::nil(),node_run_id:None,request_id:input.request_id,observed_at:frame.observed_at,fact:ClientTrajectoryFact::Section {step_id:input.request_id,section:"raw".into(),value:json!({"direction":if frame.kind==ClientTrajectoryFrameKind::Request {"submitted"} else {"emitted"},"encoding":encoding,"body":body,"frame_kind":frame.kind})}});
+        }
+        self.archived.notify_one();
+        Ok(ClientTrajectoryArchiveReceipt {
+            request_id: input.request_id,
+            persisted_through: archive.len() as i64,
+        })
+    }
+    async fn discard_unbound(&self, request: Uuid) -> anyhow::Result<()> {
+        if self.fail_cleanup_once.swap(false, Ordering::AcqRel) {
+            anyhow::bail!("fixture cleanup failed");
+        }
+        self.cleanup_count.fetch_add(1, Ordering::Relaxed);
+        self.frames.lock().unwrap().clear();
+        self.records
+            .lock()
+            .unwrap()
+            .retain(|record| record.request_id != request);
+        Ok(())
+    }
+    async fn replay(
+        &self,
+        _request: Uuid,
+        cursor: i64,
+    ) -> anyhow::Result<Vec<ClientTrajectoryArchiveFrame>> {
+        Ok(self
+            .frames
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|f| f.sequence > cursor)
+            .take(32)
+            .cloned()
+            .collect())
     }
 }
 fn capture(writer: Arc<MemoryWriter>) -> ClientTrajectoryRecorder {
@@ -52,11 +106,17 @@ async fn exact_raw_unicode_whitespace_and_user_credential_named_fields_survive()
     let request=" {\n \"model\": \"x\", \"instructions\":\"system\", \"input\":[{\"role\":\"user\",\"content\":\"你好 🌍\",\"token\":\"user token\",\"password\":\"user password\"}] } \n";
     // Queue before a run is bound; arbitrary UTF-8 splits must remain lossless.
     for chunk in request.as_bytes().chunks(7) {
-        recorder.record(ClientTrajectoryFrameKind::Request, chunk);
+        recorder
+            .record(ClientTrajectoryFrameKind::Request, chunk)
+            .await
+            .unwrap();
     }
     recorder.bind_run(Uuid::now_v7(), None);
     let response=b" {\"object\":\"response\",\"id\":\"resp-1\",\"output\":[],\"usage\":{\"input_tokens\":1}} ";
-    recorder.record(ClientTrajectoryFrameKind::ResponseJson, response);
+    recorder
+        .record(ClientTrajectoryFrameKind::ResponseJson, response)
+        .await
+        .unwrap();
     recorder.finish();
     recorder.wait_finished().await;
     let records = writer.records.lock().unwrap();
@@ -132,51 +192,30 @@ async fn sse_chunks_and_completed_output_deduplicate_real_calls_and_keep_schema_
 }
 
 #[tokio::test]
-async fn overflow_unbound_discard_drop_and_persist_timeout_are_nonblocking_and_incomplete() {
+async fn prebind_binary_frame_boundary_survives_until_unbound_owner_completion() {
     let writer = Arc::new(MemoryWriter::default());
     let recorder = capture(writer.clone());
-    recorder.record(
-        ClientTrajectoryFrameKind::Request,
-        &vec![b' '; QUEUE_BYTES + FRAME_BYTES],
-    );
-    assert!(recorder.owner.state.dropped.load(Ordering::Relaxed) > 0);
-    recorder.bind_run(Uuid::now_v7(), None);
-    recorder.finish();
-    recorder.wait_finished().await;
-    assert!(!complete(&writer.records.lock().unwrap()));
-    let unbound = Arc::new(MemoryWriter::default());
-    let recorder = capture(unbound.clone());
-    recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
-    recorder.finish();
-    recorder.wait_finished().await;
-    assert!(unbound.records.lock().unwrap().is_empty());
-    let dropped = Arc::new(MemoryWriter::default());
-    let recorder = capture(dropped.clone());
-    recorder.bind_run(Uuid::now_v7(), None);
-    let state = recorder.owner.state.clone();
-    drop(recorder);
-    loop {
-        let wake = state.stopped_notify.notified();
-        tokio::pin!(wake);
-        wake.as_mut().enable();
-        if state.stopped.load(Ordering::Acquire) {
-            break;
-        }
-        wake.await;
+    let bytes = [vec![0, 255, 128], vec![b'x'; FRAME_BYTES * 3]].concat();
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, &bytes)
+        .await
+        .unwrap();
+    writer.archived.notified().await;
+    {
+        let frames = writer.frames.lock().unwrap();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].bytes, bytes);
+        assert!(!writer
+            .records
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| matches!(r.fact, ClientTrajectoryFact::Integrity { .. })));
     }
-    assert!(!complete(&dropped.records.lock().unwrap()));
-    let slow = Arc::new(MemoryWriter::default());
-    slow.timeout_once.store(true, Ordering::Release);
-    let recorder = capture(slow.clone());
-    recorder.bind_run(Uuid::now_v7(), None);
-    recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
-    recorder.record(
-        ClientTrajectoryFrameKind::ResponseJson,
-        b"{\"object\":\"response\",\"output\":[]}",
-    );
-    recorder.finish();
-    recorder.wait_finished().await;
-    assert!(!complete(&slow.records.lock().unwrap()));
+    let receipt = recorder.complete().await.unwrap();
+    assert_eq!(receipt.persisted_through, 0);
+    assert!(writer.frames.lock().unwrap().is_empty());
+    assert_eq!(writer.cleanup_count.load(Ordering::Relaxed), 1);
 }
 
 #[tokio::test]
@@ -184,17 +223,23 @@ async fn long_stream_releases_queue_budget_and_json_chunks_are_incremental() {
     let writer = Arc::new(MemoryWriter::default());
     let recorder = capture(writer.clone());
     recorder.bind_run(Uuid::now_v7(), None);
-    recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, b"{}")
+        .await
+        .unwrap();
     // Total wire size exceeds the queue budget, but steady draining must not truncate it.
     let chunk = format!(":{}\n\n", "x".repeat(FRAME_BYTES / 2));
     for _ in 0..80 {
-        recorder.record(ClientTrajectoryFrameKind::ResponseSse, chunk.as_bytes());
-        while recorder.owner.bytes.available_permits() < QUEUE_BYTES {
-            tokio::task::yield_now().await;
-        }
+        recorder
+            .record(ClientTrajectoryFrameKind::ResponseSse, chunk.as_bytes())
+            .await
+            .unwrap();
     }
     let tail = "data: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n";
-    recorder.record(ClientTrajectoryFrameKind::ResponseSse, tail.as_bytes());
+    recorder
+        .record(ClientTrajectoryFrameKind::ResponseSse, tail.as_bytes())
+        .await
+        .unwrap();
     recorder.finish();
     recorder.wait_finished().await;
     let records = writer.records.lock().unwrap();
@@ -326,14 +371,20 @@ async fn empty_prewarm_keeps_response_identity_without_fabricating_output() {
     let writer = Arc::new(MemoryWriter::default());
     let recorder = capture(writer.clone());
     recorder.bind_run(Uuid::now_v7(), None);
-    recorder.record(
-        ClientTrajectoryFrameKind::Request,
-        br#"{"generate":false,"input":[]}"#,
-    );
-    recorder.record(
-        ClientTrajectoryFrameKind::ResponseJson,
-        br#"{"id":"resp-prewarm","object":"response","status":"completed","output":[]}"#,
-    );
+    recorder
+        .record(
+            ClientTrajectoryFrameKind::Request,
+            br#"{"generate":false,"input":[]}"#,
+        )
+        .await
+        .unwrap();
+    recorder
+        .record(
+            ClientTrajectoryFrameKind::ResponseJson,
+            br#"{"id":"resp-prewarm","object":"response","status":"completed","output":[]}"#,
+        )
+        .await
+        .unwrap();
     recorder.finish();
     recorder.wait_finished().await;
     let records = writer.records.lock().unwrap();

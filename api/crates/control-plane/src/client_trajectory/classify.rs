@@ -5,12 +5,6 @@ use crate::ports::{
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
-const MAX_IDENTITIES: usize = 4096;
-const MAX_SCHEMAS: usize = 128;
-// A step can reference its original item, extracted content and one tool schema.
-// The input JSON and schema indexes are independently bounded.
-const MAX_STEP_FACT_BYTES: usize = 3 * super::decode::AGGREGATE_BYTES;
-
 #[async_trait::async_trait]
 pub(super) trait FactSink: Send {
     async fn push(&mut self, fact: Fact);
@@ -82,6 +76,10 @@ impl Classifier {
         at: &str,
         facts: &mut impl FactSink,
     ) {
+        if self.completed && kind != ClientTrajectoryFrameKind::Request {
+            // Raw tail frames remain archived; terminal semantics are already settled.
+            return;
+        }
         if !value.is_object() {
             self.incomplete = true;
             return;
@@ -141,6 +139,11 @@ impl Classifier {
             // Deltas are not semantic items. Their exact frames are retained as raw evidence.
             _ => {}
         }
+        if self.completed {
+            self.output_seen.clear();
+            self.calls.clear();
+            self.schemas = Default::default();
+        }
     }
     async fn request(&mut self, mut value: Value, at: &str, facts: &mut impl FactSink) {
         if self.request_seen {
@@ -196,10 +199,7 @@ impl Classifier {
                 .await;
         }
         if let Some(Value::Array(tools)) = tools {
-            if tools.len() > MAX_SCHEMAS {
-                self.incomplete = true;
-            }
-            for tool in tools.into_iter().take(MAX_SCHEMAS) {
+            for tool in tools {
                 let name = tool_name(&tool)
                     .unwrap_or_else(|| tool["type"].as_str().unwrap_or("tool").to_owned());
                 self.schemas.insert_root(&tool);
@@ -300,20 +300,10 @@ impl Classifier {
         {
             return;
         }
-        if self.output_seen.len() + 2 > MAX_IDENTITIES {
-            self.incomplete = true;
-            return;
-        }
         self.output_seen.extend(id_key.into_iter().chain(index_key));
         self.item(item, "emitted", at, facts).await;
     }
     async fn item(&mut self, item: Value, origin: &str, at: &str, facts: &mut impl FactSink) {
-        if ["id", "call_id", "tool_call_id", "name", "namespace"]
-            .iter()
-            .any(|key| item[*key].as_str().is_some_and(|value| value.len() > 1024))
-        {
-            self.incomplete = true;
-        }
         let kind = item["type"].as_str().unwrap_or("");
         let role = item["role"].as_str().unwrap_or("");
         let is_result =
@@ -385,11 +375,7 @@ impl Classifier {
                 sections.push(("schema", schema.clone()));
             }
             if let Some(id) = call_id {
-                if self.calls.len() < MAX_IDENTITIES {
-                    self.calls.insert(id, (step.id, name, namespace));
-                } else {
-                    self.incomplete = true;
-                }
+                self.calls.insert(id, (step.id, name, namespace));
             }
         } else if is_result {
             if let Some(value) = item.get("output").or_else(|| item.get("content")) {
@@ -461,19 +447,6 @@ impl Classifier {
         at: &str,
         facts: &mut impl FactSink,
     ) {
-        let bytes = sections
-            .iter()
-            .map(|(_, value)| {
-                serde_json::to_vec(value)
-                    .map(|v| v.len())
-                    .unwrap_or(usize::MAX / 2)
-            })
-            .sum::<usize>()
-            + 4096;
-        if bytes > MAX_STEP_FACT_BYTES {
-            self.incomplete = true;
-            return;
-        }
         step.available_sections = sections
             .iter()
             .map(|(name, _)| (*name).into())
@@ -504,11 +477,7 @@ impl Classifier {
     }
 }
 pub(super) fn bounded_id(value: &str) -> Option<String> {
-    if value.len() <= 1024 {
-        Some(value.into())
-    } else {
-        None
-    }
+    Some(value.into())
 }
 pub(super) fn tool_name(item: &Value) -> Option<String> {
     item["name"]

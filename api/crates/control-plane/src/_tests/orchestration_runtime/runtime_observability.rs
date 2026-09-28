@@ -192,7 +192,7 @@ async fn flow_debug_run_shadow_writes_runtime_spans_and_provider_events() {
     assert!(spans
         .iter()
         .any(|span| span.kind == domain::RuntimeSpanKind::LlmTurn));
-    assert!(events.iter().any(|event| event.event_type == "text_delta"));
+    assert!(!events.iter().any(|event| event.event_type == "text_delta"));
     assert!(events
         .iter()
         .any(|event| event.layer == domain::RuntimeEventLayer::ProviderRaw));
@@ -266,9 +266,6 @@ async fn provider_events_returned_by_runtime_are_persisted_before_debug_run_fini
     assert_eq!(
         provider_run_event_types,
         vec![
-            provider_stream_event_type(&ProviderStreamEvent::TextDelta {
-                delta: String::new()
-            }),
             provider_stream_event_type(&ProviderStreamEvent::UsageSnapshot {
                 usage: plugin_framework::provider_contract::ProviderUsage {
                     input_tokens: None,
@@ -283,9 +280,10 @@ async fn provider_events_returned_by_runtime_are_persisted_before_debug_run_fini
         ]
     );
     assert_eq!(provider_runtime_event_types, provider_run_event_types);
-    assert!(run_events.iter().any(|event| {
-        event.event_type == "text_delta" && event.payload["delta"] == "hello world"
-    }));
+    assert!(!run_events
+        .iter()
+        .any(|event| event.event_type == "text_delta"));
+    assert_eq!(detail.flow_run.output_payload["answer"], "hello world");
 }
 
 #[tokio::test]
@@ -366,9 +364,7 @@ async fn live_debug_persists_llm_debug_payload_without_polluting_public_outputs(
         llm_node.debug_payload["assistant_message"]["content"],
         "echo:gpt-5.4-mini:请查询订单"
     );
-    assert!(llm_node.debug_payload["provider_events"]
-        .as_array()
-        .is_some_and(|events| events.len() >= 4));
+    assert!(llm_node.debug_payload.get("provider_events").is_none());
 
     assert_eq!(
         detail.flow_run.output_payload["answer"],
@@ -535,7 +531,7 @@ fn d4_ac_026_native_provider_events_never_enter_durable_observability() {
 }
 
 #[tokio::test]
-async fn provider_text_deltas_are_coalesced_before_durable_write() {
+async fn provider_text_deltas_remain_visible_without_durable_fragment_rows() {
     let service = OrchestrationRuntimeService::for_tests_with_provider_events(vec![
         ProviderStreamEvent::TextDelta {
             delta: "hel".into(),
@@ -585,8 +581,12 @@ async fn provider_text_deltas_are_coalesced_before_durable_write() {
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(text_deltas.len(), 1);
-    assert_eq!(text_deltas[0].payload["delta"], "hello");
+    assert!(text_deltas.is_empty());
+    assert!(!service
+        .list_run_events(detail.flow_run.id)
+        .iter()
+        .any(|event| event.event_type == "text_delta"));
+    assert_eq!(detail.flow_run.output_payload["answer"], "hello");
 }
 
 #[tokio::test]
@@ -965,10 +965,18 @@ fn failover_queue_document(
 }
 
 #[tokio::test]
-async fn provider_events_fold_into_runtime_items() {
+async fn completed_tool_facts_fold_into_items_without_message_fragments() {
     let service = OrchestrationRuntimeService::for_tests_with_provider_events(vec![
         ProviderStreamEvent::TextDelta {
             delta: "hello".into(),
+        },
+        ProviderStreamEvent::ToolCallCommit {
+            call: ProviderToolCall {
+                id: "committed-call".into(),
+                name: "lookup_policy".into(),
+                arguments: serde_json::json!({"query":"refund"}),
+                provider_metadata: serde_json::json!({}),
+            },
         },
         ProviderStreamEvent::Finish {
             reason: plugin_framework::provider_contract::ProviderFinishReason::Stop,
@@ -999,9 +1007,21 @@ async fn provider_events_fold_into_runtime_items() {
 
     let items = service.list_runtime_items(detail.flow_run.id).await;
 
+    assert!(!items.iter().any(|item| matches!(
+        item.kind,
+        domain::RuntimeItemKind::Message | domain::RuntimeItemKind::Reasoning
+    )));
     assert!(items
         .iter()
-        .any(|item| item.kind == domain::RuntimeItemKind::Message));
+        .any(|item| item.kind == domain::RuntimeItemKind::ToolCall));
+    assert_eq!(detail.flow_run.output_payload["answer"], "hello");
+    let events = service.list_runtime_events(detail.flow_run.id, 0).await;
+    assert!(events
+        .iter()
+        .any(|event| event.event_type == "tool_call_commit"
+            && event.payload["call"]["id"] == "committed-call"));
+    assert!(events.iter().any(|event| event.event_type == "finish"));
+    assert!(!events.iter().any(|event| event.event_type == "text_delta"));
     assert!(items
         .iter()
         .any(|item| item.trust_level == domain::RuntimeTrustLevel::HostFact));
@@ -1091,5 +1111,30 @@ fn capability_ids_are_canonical_across_sources() {
     assert_eq!(
         control_plane::capability_runtime::subagent_capability_id("builtin", "reviewer", "1"),
         "system_agent:builtin:reviewer@1"
+    );
+}
+
+#[test]
+fn fragment_policy_rejects_obsolete_per_delta_message_items() {
+    let fragments = [
+        "text_delta",
+        "reasoning_delta",
+        "tool_call_delta",
+        "mcp_call_delta",
+        "finish",
+    ];
+    assert!(fragments
+        .iter()
+        .all(|kind| item_kind_for_event(kind).is_none()));
+    // Controlled obsolete policy: the same expectation rejects token-as-item storage.
+    let obsolete = |kind: &str| match kind {
+        "text_delta" | "finish" => Some(domain::RuntimeItemKind::Message),
+        "reasoning_delta" => Some(domain::RuntimeItemKind::Reasoning),
+        _ => None,
+    };
+    assert!(!fragments.iter().all(|kind| obsolete(kind).is_none()));
+    assert_eq!(
+        item_kind_for_event("tool_call_commit"),
+        Some(domain::RuntimeItemKind::ToolCall)
     );
 }

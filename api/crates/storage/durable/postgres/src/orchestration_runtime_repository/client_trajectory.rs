@@ -1,4 +1,10 @@
 use super::*;
+#[path = "client_trajectory/archive.rs"]
+mod archive;
+use control_plane_contracts::ports::{
+    AppendClientTrajectoryArchiveInput, ClientTrajectoryArchiveFrame,
+    ClientTrajectoryArchiveReceipt,
+};
 use control_plane_contracts::ports::{
     AppendClientTrajectoryInput, ClientTrajectoryFact, ClientTrajectoryPage,
     ClientTrajectorySection, ClientTrajectorySectionItem, ClientTrajectoryStep,
@@ -17,13 +23,13 @@ impl PgControlPlaneStore {
                 "client trajectory scope mismatch"
             );
         }
+        if let ClientTrajectoryFact::Section { section, value, .. } = &input.fact {
+            if section == "raw" {
+                // Legacy adapter callers use the same archive; no raw event is appended.
+                return self.append_legacy_client_raw(input, value).await;
+            }
+        }
         let payload = serde_json::to_value(input)?;
-        anyhow::ensure!(
-            // The source HTTP value can use the full 2 MiB request allowance.
-            // Account separately for the fixed observation envelope and bounded identifiers.
-            serde_json::to_vec(&payload)?.len() <= 2 * 1024 * 1024 + 8192,
-            "client trajectory record capacity"
-        );
         let mut tx = self.pool().begin().await?;
         // Client delivery occurs after a business terminal commit. This dedicated
         // observational append does not reopen a run or relax the execution append fence.
@@ -107,6 +113,9 @@ impl PgControlPlaneStore {
         sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) values($1,$2,$3,$4,'client_protocol_trajectory','runtime_item','host','host_fact',($5::jsonb->0),jsonb_strip_nulls(jsonb_build_object('payload',($5::jsonb->1))),'internal','durable')")
             .bind(Uuid::now_v7()).bind(input.flow_run_id).bind(input.node_run_id).bind(sequence)
             .bind(lossless_json_parameter(&payload)).execute(&mut *tx).await?;
+        // Binding moves the pre-bound durable capture into the run deletion scope.
+        sqlx::query("update client_trajectory_archive_heads set flow_run_id=$2 where request_id=$1 and (flow_run_id is null or flow_run_id=$2)")
+            .bind(input.request_id).bind(input.flow_run_id).execute(&mut *tx).await?;
         if matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "result")
         {
             sqlx::query("update application_run_log_tasks set projection_output=projection_output where id=(select coalesce(log_task_run_id,flow_run_id) from application_run_log_summaries where flow_run_id=$1) and projection_settled_at is not null")
@@ -234,8 +243,14 @@ impl PgControlPlaneStore {
             step_id
         };
         let limit = limit.clamp(1, 32);
+        if section == "raw" {
+            return self
+                .read_archived_client_raw(flow_run_id, request_id, step_id, cursor, limit)
+                .await
+                .map(Some);
+        }
         let rows=sqlx::query(r#"
-            select p.event_sequence,runtime_original_json(e.payload,e.raw_json_payloads,'payload') as payload
+            select p.event_sequence,runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) as payload
             from client_trajectory_sections p join runtime_events e on e.id=p.event_id
             where p.flow_run_id=$1 and p.request_id=$2 and p.step_id=$3 and p.section=$4
                 and p.event_sequence>$5

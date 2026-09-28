@@ -191,7 +191,7 @@ async fn seed_runtime_read_model_rows(store: &PgControlPlaneStore) -> RuntimeRea
     .unwrap();
     sqlx::query(
         r#"
-        insert into node_runs (
+        insert into node_run_records (
             id, scope_id, flow_run_id, node_id, node_type, node_alias, status,
             input_payload, output_payload, metrics_payload, debug_payload, started_at, created_at
         ) values (

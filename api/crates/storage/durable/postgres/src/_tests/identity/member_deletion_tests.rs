@@ -29,7 +29,7 @@ async fn member_deletion_preserves_history_and_cleans_identity() {
         ("insert into flow_drafts (id,flow_id,scope_id,schema_version,document,created_by,updated_by) values ($1,$2,$3,'0.1.0','{}',$4,$4)", vec![draft, flow, workspace, member.id]),
         ("insert into assistant_conversations (conversation_id,scope_id,application_id,created_by) values ($1,$2,$3,$4)", vec![conversation, workspace, application, member.id]),
         ("insert into flow_runs (id,application_id,flow_id,flow_draft_id,scope_id,run_mode,status,created_by,assistant_conversation_id,input_payload,output_payload) values ($1,$2,$3,$4,$5,'debug_flow_run','succeeded',$6,$7,'{\"input\":1}','{\"output\":2}')", vec![run, application, flow, draft, workspace, member.id, conversation]),
-        ("insert into node_runs (id,flow_run_id,scope_id,node_id,node_type,node_alias,status,output_payload) values ($1,$2,$3,'test','test','Test','succeeded','{\"result\":3}')", vec![Uuid::now_v7(), run, workspace]),
+        ("insert into node_run_records (id,flow_run_id,scope_id,node_id,node_type,node_alias,status,output_payload) values ($1,$2,$3,'test','test','Test','succeeded','{\"result\":3}')", vec![Uuid::now_v7(), run, workspace]),
         ("insert into api_keys (id,name,token_hash,token_prefix,creator_user_id,tenant_id,scope_kind,scope_id,key_kind,application_id) select $1,'Removed credential','test-member-deletion-key','test',$2,tenant_id,'workspace',id,'application_api_key',$4 from workspaces where id=$3", vec![key, member.id, workspace, application]),
         ("insert into application_public_conversations (id,application_id,api_key_id,external_user,external_conversation_id) values ($1,$2,$3,'external-user','history')", vec![public_conversation, application, key]),
         ("insert into runtime_credit_ledger (id,transaction_id,workspace_id,user_id,account_id,flow_run_id,transaction_type,amount,credit_unit,reason,idempotency_key,status) select $1,$1,$2,$3,id,$4,'charge',1,'USD','history','member-delete-history','settled' from user_credit_accounts where workspace_id=$2 and user_id=$3", vec![ledger, workspace, member.id, run]),
@@ -99,7 +99,7 @@ async fn member_deletion_preserves_history_and_cleans_identity() {
         ("select count(*) from application_public_conversations where id=$1", public_conversation),
         ("select count(*) from user_credit_accounts where user_id=$1", member.id),
         ("select count(*) from runtime_credit_ledger where id=$1 and amount=1 and account_id is not null and user_id is null", ledger),
-        (r#"select count(*) from node_runs where flow_run_id=$1 and output_payload='{"result":3}'::jsonb"#, run),
+        (r#"select count(*) from node_run_records where flow_run_id=$1 and output_payload='{"result":3}'::jsonb"#, run),
     ] {
         let count: i64 = sqlx::query_scalar(statement).bind(id).fetch_one(store.pool()).await.unwrap();
         assert_eq!(count, 1, "history must survive: {statement}");

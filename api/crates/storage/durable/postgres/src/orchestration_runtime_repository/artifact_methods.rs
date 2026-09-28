@@ -154,21 +154,21 @@ impl PgControlPlaneStore {
     ) -> Result<domain::NodeRunRecord> {
         let row = sqlx::query(
             r#"
-            update node_runs
+            update node_run_records
             set input_payload = ($2::jsonb -> 0),
                 output_payload = ($3::jsonb -> 0),
                 error_payload = case
                     when ($4::jsonb -> 0) is null
-                        and node_runs.status = 'failed'
-                    then node_runs.error_payload
+                        and node_run_records.status = 'failed'
+                    then node_run_records.error_payload
                     else ($4::jsonb -> 0)
                 end,
                 metrics_payload = ($5::jsonb -> 0),
                 debug_payload = ($6::jsonb -> 0),
-                raw_json_payloads = (node_runs.raw_json_payloads - 'input_payload' - 'output_payload' - 'error_payload' - 'metrics_payload' - 'debug_payload') || jsonb_strip_nulls(jsonb_build_object('input_payload', ($2::jsonb -> 1), 'output_payload', ($3::jsonb -> 1), 'error_payload', case
+                raw_json_payloads = (node_run_records.raw_json_payloads - 'input_payload' - 'output_payload' - 'error_payload' - 'metrics_payload' - 'debug_payload') || jsonb_strip_nulls(jsonb_build_object('input_payload', ($2::jsonb -> 1), 'output_payload', ($3::jsonb -> 1), 'error_payload', case
                     when ($4::jsonb -> 1) is null
-                        and node_runs.status = 'failed'
-                    then node_runs.raw_json_payloads -> 'error_payload'
+                        and node_run_records.status = 'failed'
+                    then node_run_records.raw_json_payloads -> 'error_payload'
                     else ($4::jsonb -> 1)
                 end, 'metrics_payload', ($5::jsonb -> 1), 'debug_payload', ($6::jsonb -> 1)))
             where id = $1
@@ -179,11 +179,11 @@ impl PgControlPlaneStore {
                 node_type,
                 node_alias,
                 status,
-                runtime_original_json(input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload,
-                runtime_original_json(output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload,
-                runtime_original_json(error_payload, node_runs.raw_json_payloads, 'error_payload') as error_payload,
-                runtime_original_json(metrics_payload, node_runs.raw_json_payloads, 'metrics_payload') as metrics_payload,
-                runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload,
+                runtime_original_json(input_payload, node_run_records.raw_json_payloads, 'input_payload') as input_payload,
+                runtime_original_json(output_payload, node_run_records.raw_json_payloads, 'output_payload') as output_payload,
+                runtime_original_json(error_payload, node_run_records.raw_json_payloads, 'error_payload') as error_payload,
+                runtime_original_json(metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
+                runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
                 started_at,
                 finished_at
             "#,

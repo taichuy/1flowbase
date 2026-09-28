@@ -392,7 +392,7 @@ async fn terminal_flow_run_counts_external_and_host_internal_tool_calls() {
 
     sqlx::query(
         r#"
-        update node_runs
+        update node_run_records
         set metrics_payload = '{"usage":{"total_tokens":999}}'::jsonb
         where id = $1
         "#,
