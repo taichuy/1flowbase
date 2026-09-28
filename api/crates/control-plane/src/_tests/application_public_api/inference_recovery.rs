@@ -440,8 +440,8 @@ async fn terminal_transport_reissue_rejects_untrusted_or_non_transport_failure()
             2 => failure["ai_native_recovery"]["provider_final_commit"] = json!("lifecycle_only"),
             3 => failure["ai_native_recovery"]["provider_inner_receipt"] = Value::Null,
             4 => {
-                failure["ai_native_recovery"]["provider_inner_receipt"]["reason"] =
-                    json!("semantic_completed")
+                failure["ai_native_recovery"]["provider_inner_receipt"]["commit_level"] =
+                    json!("lifecycle_only")
             }
             _ => unreachable!(),
         }
