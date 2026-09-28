@@ -665,6 +665,7 @@ export function ApplicationRunDetailPanel({
   logConversationId,
   onClose,
   onOpenMessageLog,
+  onOpenRunTrace,
   onOpenResumeTimeline,
   traceLoader,
   runId
@@ -675,6 +676,7 @@ export function ApplicationRunDetailPanel({
   reasoning_effort?: string | null;
   logConversationId?: string | null;
   onClose: () => void;
+  onOpenRunTrace?: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string | null;
@@ -689,6 +691,11 @@ export function ApplicationRunDetailPanel({
       className="application-run-detail application-run-detail--loaded"
     >
       <div className="application-run-detail__body">
+        {onOpenRunTrace ? (
+          <Button onClick={onOpenRunTrace}>
+            {i18nText('applications', 'auto.view_execution_trace')}
+          </Button>
+        ) : null}
         <div className="application-run-detail__content">
           <RunConversation
             key={`${runId}:${logConversationId ?? ''}`}

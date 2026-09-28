@@ -163,7 +163,10 @@ export function ApplicationDetailPage({
       )
     ) : requestedSectionKey === 'logs' ? (
       <ApplicationSectionBoundary>
-        <ApplicationLogsPage applicationId={applicationId} />
+        <ApplicationLogsPage
+          applicationId={applicationId}
+          applicationType={application.application_type}
+        />
       </ApplicationSectionBoundary>
     ) : requestedSectionKey === 'api' ? (
       <ApplicationSectionBoundary>

@@ -1019,6 +1019,11 @@ function useConversationLogArtifactLoader(
 }
 
 export function ConversationLogPanel({
+  activeTab,
+  onTabChange,
+  title,
+  closeLabel,
+  traceLabel,
   defaultTraceToolsExpanded = false,
   exportingRun = false,
   message,
@@ -1029,6 +1034,11 @@ export function ConversationLogPanel({
   overviewLoader,
   traceLoader
 }: {
+  activeTab?: 'detail' | 'trace';
+  onTabChange?: (tab: 'detail' | 'trace') => void;
+  title?: string;
+  closeLabel?: string;
+  traceLabel?: string;
   defaultTraceToolsExpanded?: boolean;
   exportingRun?: boolean;
   message: AgentFlowDebugMessage;
@@ -1043,7 +1053,10 @@ export function ConversationLogPanel({
     message.id,
     onLoadArtifact
   );
-  const [activeTabKey, setActiveTabKey] = useState('detail');
+  const [localActiveTab, setLocalActiveTab] = useState<'detail' | 'trace'>(
+    'detail'
+  );
+  const activeTabKey = activeTab ?? localActiveTab;
   const exportRunId = message.detailRunId ?? message.runId ?? null;
   const exportActionLabel = i18nText(
     'agentFlow',
@@ -1070,8 +1083,10 @@ export function ConversationLogPanel({
       actions={exportAction}
       bodyClassName="agent-flow-editor__conversation-log-body"
       className="agent-flow-editor__conversation-log-panel"
-      closeLabel={i18nText('agentFlow', 'auto.turn_off_conversation_log')}
-      title={i18nText('agentFlow', 'auto.conversation_log')}
+      closeLabel={
+        closeLabel ?? i18nText('agentFlow', 'auto.turn_off_conversation_log')
+      }
+      title={title ?? i18nText('agentFlow', 'auto.conversation_log')}
       onClose={onClose}
     >
       <Tabs
@@ -1099,7 +1114,7 @@ export function ConversationLogPanel({
           },
           {
             key: 'trace',
-            label: i18nText('agentFlow', 'auto.track'),
+            label: traceLabel ?? i18nText('agentFlow', 'auto.track'),
             children:
               activeTabKey === 'trace' ? (
                 <ConversationTrace
@@ -1112,7 +1127,11 @@ export function ConversationLogPanel({
               ) : null
           }
         ]}
-        onChange={setActiveTabKey}
+        onChange={(key) => {
+          const tab = key === 'trace' ? 'trace' : 'detail';
+          setLocalActiveTab(tab);
+          onTabChange?.(tab);
+        }}
       />
     </AgentFlowDockPanel>
   );

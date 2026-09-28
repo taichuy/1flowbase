@@ -969,4 +969,163 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));
     expect(await screen.findByText('调用 4')).toBeInTheDocument();
   });
+
+  test.each(['workflow_http', 'workflow_schedule'] as const)(
+    'opens %s nodes without requiring conversation messages',
+    async (invocation_source) => {
+      runtimeApi.fetchApplicationRuns.mockResolvedValue(
+        applicationRunsPage([
+          {
+            ...sampleRunDetail().flow_run,
+            invocation_source,
+            run_mode:
+              invocation_source === 'workflow_http'
+                ? 'workflow_http_run'
+                : 'workflow_schedule_run'
+          }
+        ])
+      );
+      runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+        conversationMessagesPage([])
+      );
+      render(
+        <AppProviders>
+          <AntdApp>
+            <ApplicationLogsPage
+              applicationId="app-1"
+              applicationType="workflow"
+            />
+          </AntdApp>
+        </AppProviders>
+      );
+      fireEvent.click(
+        await screen.findByRole('button', { name: '查看运行详情' })
+      );
+      const detail = await screen.findByTestId(
+        'application-logs-floating-run-detail'
+      );
+      expect(
+        within(detail).getByRole('tab', { name: '节点执行' })
+      ).toHaveAttribute('aria-selected', 'true');
+      fireEvent.click(
+        await within(detail).findByRole('button', { name: /LLM.*llm/ })
+      );
+      expect(
+        await within(detail).findByRole('region', { name: 'LLM 节点详情' })
+      ).toBeInTheDocument();
+      expect(
+        runtimeApi.fetchApplicationRunConversationMessages
+      ).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId('application-logs-floating-conversation-log')
+      ).not.toBeInTheDocument();
+      fireEvent.click(
+        within(detail).getByRole('button', { name: '关闭运行详情' })
+      );
+      expect(
+        screen.queryByTestId('application-logs-floating-run-detail')
+      ).not.toBeInTheDocument();
+      expect(new URLSearchParams(window.location.search).has('run_id')).toBe(
+        false
+      );
+    }
+  );
+
+  test.each(['', '&view=trace'])(
+    'opens a workflow deep link in one node detail window (%s)',
+    async (suffix) => {
+      window.history.replaceState(
+        {},
+        '',
+        `/applications/app-1/logs?run_id=run-1${suffix}`
+      );
+      runtimeApi.fetchApplicationRuns.mockResolvedValue(
+        applicationRunsPage([])
+      );
+      render(
+        <AppProviders>
+          <AntdApp>
+            <ApplicationLogsPage
+              applicationId="app-1"
+              applicationType="workflow"
+            />
+          </AntdApp>
+        </AppProviders>
+      );
+      const detail = await screen.findByTestId(
+        'application-logs-floating-run-detail'
+      );
+      expect(
+        await within(detail).findByRole('button', { name: /LLM.*llm/ })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('application-logs-floating-conversation-log')
+      ).not.toBeInTheDocument();
+      fireEvent.click(within(detail).getByRole('tab', { name: '详情' }));
+      expect(within(detail).getByRole('tab', { name: '详情' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      await waitFor(() =>
+        expect(runtimeApi.fetchApplicationRunOverview).toHaveBeenCalledWith(
+          'app-1',
+          'run-1'
+        )
+      );
+      fireEvent.click(within(detail).getByRole('tab', { name: '节点执行' }));
+      expect(new URLSearchParams(window.location.search).get('view')).toBe(
+        'trace'
+      );
+      fireEvent.click(within(detail).getByRole('tab', { name: '详情' }));
+      window.history.replaceState(
+        {},
+        '',
+        '/applications/app-1/logs?run_id=run-1&view=trace'
+      );
+      fireEvent(window, new PopStateEvent('popstate'));
+      expect(
+        within(detail).getByRole('tab', { name: '节点执行' })
+      ).toHaveAttribute('aria-selected', 'true');
+      expect(
+        runtimeApi.fetchApplicationRunConversationMessages
+      ).not.toHaveBeenCalled();
+    }
+  );
+
+  test('an agent flow without messages can still open its execution trace', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/applications/app-1/logs?run_id=run-1'
+    );
+    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+      conversationMessagesPage([])
+    );
+    render(
+      <AppProviders>
+        <AntdApp>
+          <ApplicationLogsPage
+            applicationId="app-1"
+            applicationType="agent_flow"
+          />
+        </AntdApp>
+      </AppProviders>
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: '查看执行轨迹' })
+    );
+    const trace = await screen.findByTestId(
+      'application-logs-floating-conversation-log'
+    );
+    expect(within(trace).getByRole('tab', { name: '追踪' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(
+      await within(trace).findByRole('button', { name: /LLM.*llm/ })
+    ).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get('view')).toBe(
+      'trace'
+    );
+  });
 });

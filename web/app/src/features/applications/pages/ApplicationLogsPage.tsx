@@ -2,6 +2,7 @@ import {
   readStatisticsLogFilters,
   statisticsFilterKeys
 } from '../lib/statistics-log-filters';
+import type { ConsoleApplicationType } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../../agent-flow/components/debug-console/conversation-log-trace-model';
 import {
   fetchWorkflowTrajectory,
@@ -35,8 +36,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type Key,
-  type MouseEvent
+  type Key
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -384,10 +384,14 @@ function resolveCollision(
 }
 
 export function ApplicationLogsPage({
-  applicationId
+  applicationId,
+  applicationType = 'agent_flow'
 }: {
   applicationId: string;
+  applicationType?: ConsoleApplicationType;
 }) {
+  const isWorkflow = applicationType === 'workflow';
+  const [executionTab, setExecutionTab] = useState<'detail' | 'trace'>('trace');
   const { t } = useTranslation('applications');
   const initialSearchState = useMemo(readApplicationLogsSearchState, []);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(
@@ -465,10 +469,11 @@ export function ApplicationLogsPage({
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [activeFloatingWindow, setActiveFloatingWindow] =
     useState<ApplicationLogsFloatingWindowKind>(
-      initialSearchState.view === 'trace' ? 'conversation-log' : 'run-detail'
+      !isWorkflow && initialSearchState.view === 'trace'
+        ? 'conversation-log'
+        : 'run-detail'
     );
   const archiveImportInputRef = useRef<HTMLInputElement | null>(null);
-  const tracePanelRef = useRef<HTMLDivElement | null>(null);
   const restoringArchiveImportRef = useRef(false);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
@@ -546,6 +551,7 @@ export function ApplicationLogsPage({
       setPage(1);
       const searchState = readApplicationLogsSearchState();
       setSelectedRunId(searchState.runId);
+      setExecutionTab('trace');
       setOpenConversationLogMessage(
         searchState.runId && searchState.view === 'trace'
           ? buildTraceDeepLinkMessage(searchState.runId)
@@ -554,7 +560,9 @@ export function ApplicationLogsPage({
       setTraceViewRequested(searchState.view === 'trace');
       setOpenResumeTimelineRunId(null);
       setActiveFloatingWindow(
-        searchState.view === 'trace' ? 'conversation-log' : 'run-detail'
+        !isWorkflow && searchState.view === 'trace'
+          ? 'conversation-log'
+          : 'run-detail'
       );
       setRunDetailRect(null);
       setConversationLogRect(null);
@@ -563,26 +571,13 @@ export function ApplicationLogsPage({
 
     window.addEventListener('popstate', applyLocationSearch);
     return () => window.removeEventListener('popstate', applyLocationSearch);
-  }, [applicationId]);
-
-  useEffect(() => {
-    if (
-      !traceViewRequested ||
-      !openConversationLogMessage ||
-      !tracePanelRef.current
-    ) {
-      return;
-    }
-
-    const traceTab =
-      tracePanelRef.current.querySelectorAll<HTMLElement>('[role="tab"]')[1];
-    traceTab?.click();
-  }, [openConversationLogMessage, traceViewRequested]);
+  }, [applicationId, isWorkflow]);
 
   function selectRun(run: ApplicationRunSummary | null) {
     const nextRunId = run ? run.id : null;
     writeApplicationLogsSearchState({ runId: nextRunId, view: null });
     setSelectedRunId(nextRunId);
+    setExecutionTab('trace');
     setTraceViewRequested(false);
     setOpenConversationLogMessage(null);
     setOpenResumeTimelineRunId(null);
@@ -899,20 +894,11 @@ export function ApplicationLogsPage({
     }
   }
 
-  function handleConversationLogTabClick(event: MouseEvent<HTMLDivElement>) {
-    const target = event.target as HTMLElement;
-    const tab = target.closest<HTMLElement>('[role="tab"]');
-    if (!tab || !selectedRunId) {
-      return;
-    }
-
-    const tabs =
-      tracePanelRef.current?.querySelectorAll<HTMLElement>('[role="tab"]');
-    const traceSelected = tabs?.[1] === tab;
-    setTraceViewRequested(traceSelected);
+  function changeLogTab(tab: 'detail' | 'trace') {
+    setTraceViewRequested(tab === 'trace');
     writeApplicationLogsSearchState({
       runId: selectedRunId,
-      view: traceSelected ? 'trace' : null
+      view: tab === 'trace' ? 'trace' : null
     });
   }
 
@@ -1263,7 +1249,7 @@ export function ApplicationLogsPage({
         {archiveImportStatus}
         {logsList}
       </div>
-      {openConversationLogMessage ? (
+      {!isWorkflow && openConversationLogMessage ? (
         <ApplicationLogsFloatingWindow
           active={activeFloatingWindow === 'conversation-log'}
           initialRect={getConversationLogInitialRect}
@@ -1273,12 +1259,10 @@ export function ApplicationLogsPage({
           title={t('auto.conversation_logs')}
           onActivate={() => setActiveFloatingWindow('conversation-log')}
         >
-          <div
-            ref={tracePanelRef}
-            className="application-logs-page__conversation-log-panel"
-            onClick={handleConversationLogTabClick}
-          >
+          <div className="application-logs-page__conversation-log-panel">
             <ConversationLogPanel
+              activeTab={traceViewRequested ? 'trace' : 'detail'}
+              onTabChange={changeLogTab}
               defaultTraceToolsExpanded
               message={openConversationLogMessage}
               onClose={() => {
@@ -1348,23 +1332,64 @@ export function ApplicationLogsPage({
           title={t('auto.run_details')}
           onActivate={() => setActiveFloatingWindow('run-detail')}
         >
-          <ApplicationRunDetailPanel
-            traceLoader={traceLoader}
-            applicationId={applicationId}
-            requested_model_id={
-              runs.find((run) => run.id === selectedRunId)?.requested_model_id
-            }
-            reasoning_effort={
-              runs.find((run) => run.id === selectedRunId)?.reasoning_effort
-            }
-            logConversationId={
-              runs.find((run) => run.id === selectedRunId)?.log_conversation_id
-            }
-            onClose={() => selectRun(null)}
-            onOpenMessageLog={openConversationLog}
-            onOpenResumeTimeline={openResumeTimeline}
-            runId={selectedRunId}
-          />
+          {isWorkflow ? (
+            <div className="application-logs-page__conversation-log-panel">
+              <ConversationLogPanel
+                key={selectedRunId}
+                title={t('auto.run_details')}
+                closeLabel={t('auto.close_run_details')}
+                traceLabel={t('auto.node_execution')}
+                activeTab={executionTab}
+                onTabChange={(tab) => {
+                  setExecutionTab(tab);
+                  changeLogTab(tab);
+                }}
+                defaultTraceToolsExpanded
+                message={buildTraceDeepLinkMessage(selectedRunId)}
+                onClose={() => selectRun(null)}
+                traceLoader={traceLoader}
+                overviewLoader={{
+                  loadPayload: (runId, section) =>
+                    fetchRunPayload(applicationId, runId, section),
+                  loadOverview: (runId) =>
+                    fetchApplicationRunOverview(applicationId, runId)
+                }}
+                onLoadArtifact={(artifactRef) =>
+                  fetchRuntimeDebugArtifact(applicationId, artifactRef)
+                }
+                onLoadArtifacts={(artifactRefs) =>
+                  fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
+                }
+                exportingRun={exportingRunId === selectedRunId}
+                onExportRun={(runId) => {
+                  void exportRunTraceDump(runId);
+                }}
+              />
+            </div>
+          ) : (
+            <ApplicationRunDetailPanel
+              traceLoader={traceLoader}
+              applicationId={applicationId}
+              requested_model_id={
+                runs.find((run) => run.id === selectedRunId)?.requested_model_id
+              }
+              reasoning_effort={
+                runs.find((run) => run.id === selectedRunId)?.reasoning_effort
+              }
+              logConversationId={
+                runs.find((run) => run.id === selectedRunId)
+                  ?.log_conversation_id
+              }
+              onClose={() => selectRun(null)}
+              onOpenMessageLog={openConversationLog}
+              onOpenRunTrace={() => {
+                openConversationLog(buildTraceDeepLinkMessage(selectedRunId));
+                changeLogTab('trace');
+              }}
+              onOpenResumeTimeline={openResumeTimeline}
+              runId={selectedRunId}
+            />
+          )}
         </ApplicationLogsFloatingWindow>
       ) : null}
     </div>
