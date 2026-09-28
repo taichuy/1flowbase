@@ -119,7 +119,7 @@ describe('Frontstage Native React preparation demand', () => {
 });
 
 describe('FrontstageNativePreparationScheduler', () => {
-  test('AC-001/AC-002 defers compile admission during an active interaction lease', async () => {
+  test('AC-001/AC-002 admits Worker compilation but defers module evaluation during interaction', async () => {
     vi.useFakeTimers();
     try {
       const scheduler = new FrontstageNativePreparationScheduler(1);
@@ -128,6 +128,7 @@ describe('FrontstageNativePreparationScheduler', () => {
         [
           task('nearby', 0, async (_signal, enterStage) => {
             await enterStage('compile');
+            await enterStage('module_resolve');
             return prepared('nearby');
           })
         ],
@@ -136,12 +137,40 @@ describe('FrontstageNativePreparationScheduler', () => {
       await tick();
 
       expect(scheduler.getSnapshots()[0]).toMatchObject({
-        status: 'source_fetch'
+        status: 'compile'
       });
 
       await vi.advanceTimersByTimeAsync(250);
       await tick();
       expect(scheduler.getSnapshots()[0]).toMatchObject({ status: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('explicit refresh reaches evaluation and mounting during the interaction lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new FrontstageNativePreparationScheduler(1);
+      scheduler.noteInteraction();
+      scheduler.reconcile(
+        [
+          {
+            ...task('refresh', 0, async (_signal, enterStage) => {
+              await enterStage('compile');
+              await enterStage('module_resolve');
+              return prepared('refresh');
+            }),
+            explicitRefresh: true
+          }
+        ],
+        { refresh: 1 }
+      );
+      await vi.advanceTimersByTimeAsync(5);
+      expect(scheduler.getBlockSnapshot('refresh')).toMatchObject({
+        status: 'ready'
+      });
+      scheduler.dispose();
     } finally {
       vi.useRealTimers();
     }

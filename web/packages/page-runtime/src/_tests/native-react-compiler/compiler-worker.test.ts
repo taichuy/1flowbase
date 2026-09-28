@@ -117,6 +117,40 @@ describe('Native React compiler Worker contract', () => {
     expect(closeCount).toBe(1);
   });
 
+  test('persistent Workers compile each message and never execute user module code', () => {
+    const responses: NativeReactCompilerResponse[] = [];
+    let closed = false;
+    const scope: NativeReactCompilerWorkerScope = {
+      onmessage: null,
+      postMessage: (message) => responses.push(message),
+      close: () => {
+        closed = true;
+      }
+    };
+    attachNativeReactCompilerWorker(scope, { persistent: true });
+    for (const requestId of ['first', 'second'])
+      scope.onmessage?.({
+        data: {
+          direction: 'host_to_worker',
+          type: 'compile_native_react_component',
+          requestId,
+          source: standardReactComponentFixture,
+          moduleDefinitions: coreModuleDefinitions
+        }
+      });
+    expect(responses.map((response) => response.requestId)).toEqual([
+      'first',
+      'second'
+    ]);
+    expect(
+      responses.every(
+        (response) => response.type === 'native_react_component_compiled'
+      )
+    ).toBe(true);
+    expect(closed).toBe(false);
+    expect(scope.onmessage).toBeTypeOf('function');
+  });
+
   test('D1-AC-002 returns stable compile diagnostics for malformed TSX', () => {
     const response = handleNativeReactCompilerRequest({
       direction: 'host_to_worker',

@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const nativeRuntime = vi.hoisted(() => ({
-  evaluate: vi.fn(async (artifact: unknown) => ({
+  evaluate: vi.fn(async (artifact: unknown, _registry?: unknown) => ({
     ok: true as const,
     artifact,
     component: () => null,
@@ -45,7 +45,11 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
       source_sha256: null
     }));
     const artifactCache = {
-      get: vi.fn(async () => ({ status: 'hit' as const, artifact })),
+      get: vi.fn(async (_identity: { module_policy_sha256: string }) => ({
+        status: 'hit' as const,
+        artifact,
+        tier: 'l1' as const
+      })),
       put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
     };
     const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
@@ -68,7 +72,10 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
     await waitFor(() =>
       expect(
         result.current.preparations.getBlockSnapshot('block-1')
-      ).toMatchObject({ status: 'ready' })
+      ).toMatchObject({
+        status: 'ready',
+        prepared: { artifactCacheTier: 'l1' }
+      })
     );
     expect(ownerRender).toHaveBeenCalledOnce();
   });
@@ -83,14 +90,17 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
         source_sha256: null
       })
     );
-    const compile = vi.fn(async () => ({
+    const compile = vi.fn(async (_input: unknown) => ({
       ok: true as const,
       artifact,
       diagnostics: [] as []
     }));
     const artifactCache = {
-      get: vi.fn(async () => ({ status: 'hit' as const, artifact })),
-      put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+      get: vi.fn(async (_identity: { module_policy_sha256: string }) => ({
+        status: 'hit' as const,
+        artifact
+      })),
+      put: vi.fn(async () => new Promise<never>(() => {}))
     };
     const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
       definitions: [],
@@ -119,6 +129,7 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
     expect(compile).not.toHaveBeenCalled();
     expect(artifactCache.get).toHaveBeenCalledOnce();
 
+    const before = result.current.preparations.getBlockSnapshot('block-1');
     result.current.refreshBlock('block-1');
 
     await waitFor(() => expect(fetchSource).toHaveBeenCalledTimes(2));
@@ -132,6 +143,71 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
         generation: 1
       })
     );
+    expect(nativeRuntime.evaluate).toHaveBeenCalledTimes(2);
+    expect(nativeRuntime.evaluate.mock.calls[1][1]).not.toBe(
+      nativeRuntime.evaluate.mock.calls[0][1]
+    );
+    const refreshed = result.current.preparations.getBlockSnapshot('block-1');
+    if (before?.status !== 'ready' || refreshed?.status !== 'ready')
+      throw new Error('Expected ready components');
+    expect(refreshed.prepared.component).not.toBe(before.prepared.component);
+    expect(compile).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(compile.mock.calls[0][0]).not.toHaveProperty('flightKey');
+  });
+
+  test('a module policy change invalidates a ready preparation and its artifact identity', async () => {
+    const artifact = createArtifact();
+    const plan = readPlan();
+    const fetchSource = vi.fn(async () => ({
+      block_id: 'block-1',
+      page_id: 'page-1',
+      source_code: SOURCE,
+      source_sha256: null
+    }));
+    const artifactCache = {
+      get: vi.fn(async (_identity: { module_policy_sha256: string }) => ({
+        status: 'hit' as const,
+        artifact
+      })),
+      put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+    };
+    const factory =
+      (moduleSource: string) => (): NativeReactModuleRegistry => ({
+        definitions: [{ module_source: moduleSource, exports: ['default'] }],
+        load: vi.fn(async () => ({})),
+        resolveModuleMap: vi.fn(async () => ({})),
+        resolveModuleAssets: vi.fn(async () => [])
+      });
+    const { result, rerender } = renderHook(
+      ({ registryFactory }) =>
+        useFrontstagePageCanvasNativePreparations({
+          actorId: 'actor-1',
+          actorWorkspaceId: 'workspace-1',
+          readPlan: plan,
+          fetchSource,
+          artifactCache,
+          moduleRegistryFactory: registryFactory
+        }),
+      { initialProps: { registryFactory: factory('first-policy') } }
+    );
+    await waitFor(() =>
+      expect(
+        result.current.preparations.getBlockSnapshot('block-1')
+      ).toMatchObject({ status: 'ready' })
+    );
+    rerender({ registryFactory: factory('second-policy') });
+    await waitFor(() => expect(artifactCache.get).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        result.current.preparations.getBlockSnapshot('block-1')
+      ).toMatchObject({ status: 'ready', generation: 1 })
+    );
+    expect(artifactCache.get.mock.calls[0][0].module_policy_sha256).not.toBe(
+      artifactCache.get.mock.calls[1][0].module_policy_sha256
+    );
+    expect(nativeRuntime.evaluate).toHaveBeenCalledTimes(2);
   });
 
   test('I1989-AC-static-style keeps the component and assets in one shared artifact flight', async () => {
@@ -154,7 +230,10 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
       })
     );
     const artifactCache = {
-      get: vi.fn(async () => ({ status: 'hit' as const, artifact })),
+      get: vi.fn(async (_identity: { module_policy_sha256: string }) => ({
+        status: 'hit' as const,
+        artifact
+      })),
       put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
     };
 
@@ -188,7 +267,7 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
       ).toBe(true)
     );
     expect(nativeRuntime.evaluate).toHaveBeenCalledTimes(1);
-    expect(moduleRegistryFactory).toHaveBeenCalledTimes(1);
+    expect(moduleRegistryFactory).toHaveBeenCalledTimes(2);
     expect(resolveModuleAssets).toHaveBeenCalledOnce();
     expect(resolveModuleAssets).toHaveBeenCalledWith(['antd-style']);
     expect(

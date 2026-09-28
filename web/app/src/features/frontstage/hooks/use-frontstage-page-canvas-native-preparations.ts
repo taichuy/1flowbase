@@ -2,6 +2,7 @@ import {
   evaluateNativeReactComponentArtifactWithRegistry,
   diagnoseLegacyBlockModuleSource,
   NativeReactSourceContractError,
+  sha256Text,
   type NativeReactModuleDefinition,
   type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime';
@@ -19,6 +20,7 @@ import {
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-modules/registry';
 import {
   createFrontstageNativeReactArtifactCacheIdentity,
+  createFrontstageNativeReactArtifactCacheKey,
   frontstageNativeReactArtifactCache,
   type FrontstageNativeReactArtifactCache
 } from '../lib/runtime-cache';
@@ -58,7 +60,8 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
   catalogEntries?: readonly NormalizedFrontstageBlockCatalogEntry[] | null;
   demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
   maxConcurrent?: number;
-  artifactCache?: Pick<FrontstageNativeReactArtifactCache, 'get' | 'put'>;
+  artifactCache?: Pick<FrontstageNativeReactArtifactCache, 'get' | 'put'> &
+    Partial<Pick<FrontstageNativeReactArtifactCache, 'captureWriteEpoch'>>;
   fetchSource?: (
     request: FrontstagePageCanvasBlockCodeReadPlan['requests'][number],
     signal: AbortSignal
@@ -67,6 +70,8 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
     source: string;
     requestId: string;
     moduleDefinitions: readonly NativeReactModuleDefinition[];
+    signal?: AbortSignal;
+    flightKey?: string;
   }) => Promise<NativeReactBrowserCompileResult>;
   moduleRegistryFactory?: () => NativeReactModuleRegistry;
 }
@@ -96,9 +101,33 @@ export function useFrontstagePageCanvasNativePreparations({
   );
   const [refreshGenerationsByRequestId, setRefreshGenerationsByRequestId] =
     useState<Record<string, number>>({});
+  const moduleDefinitions = useMemo(
+    () => moduleRegistryFactory().definitions,
+    [moduleRegistryFactory, actorId, actorWorkspaceId]
+  );
+  const modulePolicySha256 = useMemo(
+    () =>
+      sha256Text(
+        JSON.stringify(
+          moduleDefinitions
+            .map((definition) => ({
+              module_source: definition.module_source,
+              exports: [...definition.exports].sort()
+            }))
+            .sort((left, right) =>
+              left.module_source < right.module_source
+                ? -1
+                : left.module_source > right.module_source
+                  ? 1
+                  : 0
+            )
+        )
+      ),
+    [moduleDefinitions]
+  );
   const componentFactoryFlights = useMemo(
     () => new Map<string, Promise<NativeComponentFlight>>(),
-    []
+    [actorId, actorWorkspaceId, moduleRegistryFactory, modulePolicySha256]
   );
   const tasks = useMemo<FrontstageNativePreparationTask[]>(() => {
     if (
@@ -124,10 +153,12 @@ export function useFrontstagePageCanvasNativePreparations({
       return {
         blockId: request.blockId,
         slotIndex: request.slotIndex,
+        explicitRefresh: forceCompile,
         identity: [
           actorId,
           readPlan.workspaceId,
           request.codeRef,
+          modulePolicySha256,
           `refresh:${refreshGeneration}`,
           catalogEntries === undefined
             ? 'legacy-fixture'
@@ -166,6 +197,9 @@ export function useFrontstagePageCanvasNativePreparations({
                   request,
                   readPlan.workspaceId
                 );
+          const writeEpoch = artifactCache
+            .captureWriteEpoch?.(actorId)
+            .catch(() => ({ local: -1, persisted: -1 }));
           const source = await fetchSource(request, signal);
           throwIfAborted(signal);
           const legacyDiagnostic = diagnoseLegacyBlockModuleSource(
@@ -177,26 +211,33 @@ export function useFrontstagePageCanvasNativePreparations({
           const identity = createFrontstageNativeReactArtifactCacheIdentity({
             actorId,
             workspaceId: readPlan.workspaceId,
-            source: source.source_code
+            source: source.source_code,
+            modulePolicySha256
           });
           let artifact;
-          let artifactCacheTier: 'l2' | 'miss' = 'miss';
+          let artifactCacheTier: 'l1' | 'l2' | 'miss' = 'miss';
           if (!forceCompile) {
             await enterStage('artifact_lookup');
             const cached = await artifactCache.get(identity);
             throwIfAborted(signal);
             if (cached.status === 'hit') {
               artifact = cached.artifact;
-              artifactCacheTier = 'l2';
+              artifactCacheTier = cached.tier ?? 'l2';
             }
           }
           if (!artifact) {
             await enterStage('compile', 'miss');
-            const moduleRegistry = moduleRegistryFactory();
             const compiled = await compile({
               source: source.source_code,
-              requestId: `${request.requestId}:${identity.source_sha256}`,
-              moduleDefinitions: moduleRegistry.definitions
+              requestId: `${request.requestId}:${identity.source_sha256}:refresh:${refreshGeneration}`,
+              moduleDefinitions,
+              signal,
+              ...(forceCompile
+                ? {}
+                : {
+                    flightKey:
+                      createFrontstageNativeReactArtifactCacheKey(identity)
+                  })
             });
             throwIfAborted(signal);
             if (!compiled.ok) {
@@ -207,16 +248,19 @@ export function useFrontstagePageCanvasNativePreparations({
             }
             artifact = compiled.artifact;
             artifactCacheTier = 'miss';
-            await artifactCache.put(identity, artifact);
-            throwIfAborted(signal);
+            void artifactCache
+              .put(identity, artifact, writeEpoch)
+              .catch(() => undefined);
           }
 
           await enterStage('module_resolve', artifactCacheTier);
-          const componentFactoryKey = JSON.stringify(artifact.identity);
+          const componentFactoryKey =
+            createFrontstageNativeReactArtifactCacheKey(identity);
           if (forceCompile) componentFactoryFlights.delete(componentFactoryKey);
           let componentFactoryFlight =
             componentFactoryFlights.get(componentFactoryKey);
           if (!componentFactoryFlight) {
+            // Evaluated module facades (including generated styles) belong to this factory.
             const moduleRegistry = moduleRegistryFactory();
             componentFactoryFlight =
               (async (): Promise<NativeComponentFlight> => {
@@ -248,12 +292,20 @@ export function useFrontstagePageCanvasNativePreparations({
           try {
             componentFlight = await componentFactoryFlight;
           } catch (error) {
-            componentFactoryFlights.delete(componentFactoryKey);
+            if (
+              componentFactoryFlights.get(componentFactoryKey) ===
+              componentFactoryFlight
+            )
+              componentFactoryFlights.delete(componentFactoryKey);
             throw error;
           }
           throwIfAborted(signal);
           if (!componentFlight.ok) {
-            componentFactoryFlights.delete(componentFactoryKey);
+            if (
+              componentFactoryFlights.get(componentFactoryKey) ===
+              componentFactoryFlight
+            )
+              componentFactoryFlights.delete(componentFactoryKey);
             throw new Error(
               componentFlight.evaluated.diagnostics[0]?.message ??
                 'Native React module resolution failed.'
@@ -285,7 +337,9 @@ export function useFrontstagePageCanvasNativePreparations({
     catalogEntries,
     componentFactoryFlights,
     fetchSource,
+    moduleDefinitions,
     moduleRegistryFactory,
+    modulePolicySha256,
     readPlan,
     refreshGenerationsByRequestId
   ]);

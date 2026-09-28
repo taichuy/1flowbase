@@ -14,6 +14,7 @@ export type FrontstageRuntimeObservationStage =
 export type FrontstageRuntimeObservationCacheTier =
   | 'network'
   | 'runtime'
+  | 'l1'
   | 'l2'
   | 'miss';
 

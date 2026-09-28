@@ -230,6 +230,9 @@ importers:
       lodash:
         specifier: ^4.18.1
         version: 4.18.1
+      lru-cache:
+        specifier: 10.4.3
+        version: 10.4.3
       monaco-editor:
         specifier: ^0.55.1
         version: 0.55.1

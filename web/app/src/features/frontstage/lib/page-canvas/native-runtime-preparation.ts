@@ -56,7 +56,7 @@ export interface FrontstageNativePreparedRuntime {
     { ok: true }
   >['component'];
   identityInput: FrontstageNativeInstanceIdentityInput;
-  artifactCacheTier: 'l2' | 'miss';
+  artifactCacheTier: 'l1' | 'l2' | 'miss';
   moduleAssets: NativeReactResolvedModuleAsset[];
   moduleSources: string[];
   contribution?: PreparedTrustedFrontendContribution;
@@ -123,6 +123,7 @@ export interface FrontstageNativePreparationTask {
   blockId: string;
   slotIndex: number;
   identity: string;
+  explicitRefresh?: boolean;
   observationContext?: FrontstageRuntimeObservationContext;
   observe?(input: {
     stage: FrontstageNativeRuntimeObservationStage;
@@ -354,6 +355,11 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
       )
     )
       .filter(({ value: { current } }) => current.snapshot.status === 'idle')
+      .sort(
+        (left, right) =>
+          Number(Boolean(right.value.current.task.explicitRefresh)) -
+          Number(Boolean(left.value.current.task.explicitRefresh))
+      )
       .slice(0, available);
 
     for (const {
@@ -375,7 +381,7 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
       stage: FrontstageNativePreparationActiveStage,
       cacheTier?: FrontstageRuntimeObservationCacheTier
     ) => {
-      if (stage === 'compile' || stage === 'module_resolve') {
+      if (stage === 'module_resolve') {
         await this.admitMainThreadStage(current, generation, abortController);
       }
       if (!this.isCurrent(current, generation, abortController)) {
@@ -421,7 +427,10 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
     generation: number,
     abortController: AbortController
   ): Promise<void> {
-    while (Date.now() < this.interactionLeaseUntilMs) {
+    while (
+      !current.task.explicitRefresh &&
+      Date.now() < this.interactionLeaseUntilMs
+    ) {
       await waitForPreparationTurn(
         this.interactionLeaseUntilMs - Date.now(),
         abortController.signal
@@ -429,7 +438,9 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
       if (!this.isCurrent(current, generation, abortController)) return;
     }
     await schedulePreparationTurn(
-      current.priority <= 1 ? 'user-visible' : 'background',
+      current.task.explicitRefresh || current.priority <= 1
+        ? 'user-visible'
+        : 'background',
       abortController.signal
     );
   }

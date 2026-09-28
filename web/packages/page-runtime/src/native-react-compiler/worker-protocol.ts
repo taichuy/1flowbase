@@ -74,16 +74,17 @@ export function handleNativeReactCompilerRequest(
       };
 }
 
-/** Attaches the one-shot compiler Worker. Component code is never evaluated here. */
+/** Component code is never evaluated. Hosts may keep a bounded compiler Worker warm. */
 export function attachNativeReactCompilerWorker(
-  scope: NativeReactCompilerWorkerScope
+  scope: NativeReactCompilerWorkerScope,
+  { persistent = false }: { persistent?: boolean } = {}
 ): void {
   scope.onmessage = (event) => {
-    scope.onmessage = null;
+    if (!persistent) scope.onmessage = null;
     try {
       scope.postMessage(handleNativeReactCompilerRequest(event.data));
     } finally {
-      scope.close();
+      if (!persistent) scope.close();
     }
   };
 }
@@ -100,7 +101,8 @@ function readRequest(value: unknown): NativeReactCompilerRequest | null {
         type: value.type,
         requestId: value.requestId,
         source: value.source,
-        moduleDefinitions: value.moduleDefinitions as NativeReactModuleDefinition[]
+        moduleDefinitions:
+          value.moduleDefinitions as NativeReactModuleDefinition[]
       }
     : null;
 }
