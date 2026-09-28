@@ -964,8 +964,22 @@ fn capped_state_deadline_for(
         .min(record.logical.absolute_deadline)
 }
 
+// A released physical generation no longer bounds an idle logical identity.
+// Closure evidence is validated against its fence on insertion and cleared on
+// rotation. A Faulted invocation must still settle or expire under its old leases.
+fn retains_only_logical_deadline(record: &SessionRecord) -> bool {
+    record.logical.state == TransportSessionState::IdleReleased
+        || (record.logical.state == TransportSessionState::Faulted
+            && record.logical.invocation.is_none()
+            && record
+                .physical
+                .closure_evidence
+                .as_ref()
+                .is_some_and(|evidence| evidence.local_released))
+}
+
 fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKind) {
-    if record.logical.state == TransportSessionState::IdleReleased {
+    if retains_only_logical_deadline(record) {
         return (
             record.logical.absolute_deadline,
             DeadlineKind::LogicalAbsolute,
@@ -985,7 +999,7 @@ fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKin
 }
 
 fn expired_kind(record: &SessionRecord, now: TransportInstant) -> Option<TerminationKind> {
-    if record.logical.state == TransportSessionState::IdleReleased {
+    if retains_only_logical_deadline(record) {
         return (now >= record.logical.absolute_deadline).then_some(
             TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute),
         );

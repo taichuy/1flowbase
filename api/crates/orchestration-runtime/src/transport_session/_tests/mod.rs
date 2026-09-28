@@ -1154,3 +1154,124 @@ fn confirmed_exit_cannot_settle_an_active_invocation_or_rewrite_a_known_incarnat
         .is_err());
     assert_eq!(registry.safe_snapshot(), current);
 }
+
+#[test]
+fn released_fault_delayed_successor_ignores_old_fault_deadline() {
+    assert_released_fault_delayed_successor(6);
+}
+
+#[test]
+fn released_fault_delayed_successor_ignores_old_physical_deadline() {
+    assert_released_fault_delayed_successor(91);
+}
+
+fn assert_released_fault_delayed_successor(delay: u64) {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let first = registry.admit(request("released-fault-delay")).unwrap();
+    registry.activate(&first).unwrap();
+    let failed = registry
+        .begin_invocation(&first, invocation_request(Some(10_000)))
+        .unwrap();
+    registry
+        .finish_invocation(&failed, InvocationCompletion::Faulted)
+        .unwrap();
+    registry
+        .record_closure_evidence(&first, &released_evidence(&first, 7))
+        .unwrap();
+    clock.advance(Duration::from_secs(delay));
+    registry.maintain();
+    assert_eq!(registry.state(&first), Ok(TransportSessionState::Faulted));
+    let snapshot = registry.safe_snapshot();
+    assert_eq!(
+        snapshot.sessions[0].deadline_kind,
+        DeadlineKind::LogicalAbsolute
+    );
+    assert_eq!(
+        snapshot.sessions[0].logical_ttl,
+        Duration::from_secs(200 - delay)
+    );
+    assert_eq!(
+        registry.finish_invocation(&failed, InvocationCompletion::Active),
+        Err(RegistryError::NoInflight)
+    );
+    let next = registry.rotate_generation(&first).unwrap();
+    registry.activate(&next).unwrap();
+    let invocation = registry
+        .begin_invocation(&next, invocation_request(Some(150_000)))
+        .unwrap();
+    assert_eq!(invocation.sequence(), failed.sequence() + 1);
+    assert_eq!(invocation.deadline().as_millis(), 150_000);
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].logical_ttl,
+        Duration::from_secs(200 - delay)
+    );
+    let before = registry.safe_snapshot();
+    assert!(matches!(
+        registry.finish_invocation(&failed, InvocationCompletion::Active),
+        Err(RegistryError::StaleGeneration { .. })
+    ));
+    assert_eq!(registry.safe_snapshot(), before);
+}
+
+#[test]
+fn released_fault_still_expires_at_original_logical_absolute_deadline() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let fence = registry.admit(request("released-fault-expiry")).unwrap();
+    registry.activate(&fence).unwrap();
+    registry
+        .record_worker_exit_evidence(&fence, &confirmed_worker_exit(&fence, 7))
+        .unwrap();
+    clock.advance(Duration::from_secs(199));
+    registry.maintain();
+    assert_eq!(registry.state(&fence), Ok(TransportSessionState::Faulted));
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].logical_ttl,
+        Duration::from_secs(1)
+    );
+    clock.advance(Duration::from_secs(1));
+    assert_eq!(
+        registry.rotate_generation(&fence),
+        Err(RegistryError::NotFound)
+    );
+    assert_eq!(
+        registry.tombstone(&fence.session_id).unwrap().kind,
+        TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+    );
+}
+
+#[test]
+fn released_fault_with_inflight_invocation_still_expires_and_cannot_revive() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let fence = registry.admit(request("released-fault-inflight")).unwrap();
+    registry.activate(&fence).unwrap();
+    let invocation = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry
+        .transition(&fence, TransportSessionState::Faulted)
+        .unwrap();
+    registry
+        .record_closure_evidence(&fence, &released_evidence(&fence, 7))
+        .unwrap();
+    assert_eq!(
+        registry.rotate_generation(&fence),
+        Err(RegistryError::InflightExists)
+    );
+    clock.advance(Duration::from_secs(6));
+    assert_eq!(
+        registry.rotate_generation(&fence),
+        Err(RegistryError::NotFound)
+    );
+    assert_eq!(
+        registry.tombstone(&fence.session_id).unwrap().kind,
+        TerminationKind::DeadlineExceeded(DeadlineKind::StateLease)
+    );
+    assert_eq!(
+        registry.finish_invocation(&invocation, InvocationCompletion::Active),
+        Err(RegistryError::NotFound)
+    );
+    assert_eq!(registry.state(&fence), Err(RegistryError::NotFound));
+}

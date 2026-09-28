@@ -28,7 +28,10 @@ async fn idle_fixture() -> (
     let clock = FakeClock::new(2_000_000);
     let coordinator = TransportSessionCoordinator::new_with_clock(
         runtime.clone(),
-        transport_config(),
+        TransportRegistryConfig {
+            fault_grace: Duration::from_secs(2),
+            ..transport_config()
+        },
         clock.clone(),
     )
     .unwrap();
@@ -130,7 +133,8 @@ async fn worker_exit_between_turns_rotates_once_preserving_logical_deadline_and_
 
 #[tokio::test]
 async fn worker_exit_rejects_connection_bound_cursor_before_next_dispatch() {
-    let (coordinator, runtime, _, mut input, old) = idle_fixture().await;
+    let (coordinator, runtime, clock, mut input, old) = idle_fixture().await;
+    let before = coordinator.safe_snapshot().await;
     *runtime.worker_exit_evidence.lock().unwrap() = Some(worker_exit(&old.fence));
     let epoch = TransportEpoch::new(91).unwrap();
     let mut directive = recovery_directive(epoch);
@@ -163,6 +167,93 @@ async fn worker_exit_rejects_connection_bound_cursor_before_next_dispatch() {
         input.recovery_directive().unwrap(),
         original.recovery_directive().unwrap()
     );
+    assert!(runtime.commands().is_empty());
+
+    // The rejected cursor leaves a released Faulted identity. A later full-history
+    // successor must survive both the old fault lease and the dead physical age.
+    clock.advance(Duration::from_secs(41));
+    input.previous_response_id = None;
+    input
+        .set_recovery_directive(recovery_directive(epoch))
+        .unwrap();
+    input.messages = serde_json::from_value(serde_json::json!([
+        {"role":"user", "content":"first question"},
+        {"role":"assistant", "content":"first answer"},
+        {"role":"user", "content":"continue using the complete history"},
+    ]))
+    .unwrap();
+    let history = input.messages.clone();
+    let recovery = input.recovery_directive().unwrap();
+    let next = coordinator
+        .prepare("runtime-a", &mut input, &context(2_055_000))
+        .await
+        .unwrap()
+        .unwrap();
+    let after = coordinator.safe_snapshot().await;
+    assert_eq!(next.lease.fence.session_id, old.fence.session_id);
+    assert!(next.lease.fence.generation > old.fence.generation);
+    assert_eq!(next.lease.sequence(), old.sequence() + 1);
+    assert_eq!(
+        next.lease.deadline(),
+        TransportInstant::from_millis(2_055_000)
+    );
+    assert_eq!(
+        after.sessions[0].logical_ttl + Duration::from_secs(41),
+        before.sessions[0].logical_ttl
+    );
+    assert_eq!(input.messages, history);
+    assert_eq!(input.recovery_directive().unwrap(), recovery);
+    assert!(input.previous_response_id.is_none());
+    assert!(runtime.commands().is_empty());
+    assert!(after.sessions[0].closure_evidence.is_none());
+    assert!(matches!(
+        coordinator.registry.lock().await.fence_status(&old.fence),
+        TransportFenceStatus::Stale { .. }
+    ));
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .finish_invocation(&old, InvocationCompletion::Active)
+        .is_err());
+}
+
+#[tokio::test]
+async fn released_fault_delayed_successor_preserves_expired_call_budget_guard() {
+    let (coordinator, runtime, clock, mut input, old) = idle_fixture().await;
+    *runtime.worker_exit_evidence.lock().unwrap() = Some(worker_exit(&old.fence));
+    let epoch = TransportEpoch::new(91).unwrap();
+    let mut directive = recovery_directive(epoch);
+    directive.cursor_provenance = Some(CursorProvenance::connection_bound(
+        epoch,
+        SocketIncarnation::new(37).unwrap(),
+    ));
+    input.set_recovery_directive(directive).unwrap();
+    let error = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("provider_transport_cursor_unreconstructible"));
+    clock.advance(Duration::from_secs(41));
+    let mut directive = recovery_directive(epoch);
+    directive.policy = RecoveryPolicy::SemanticMapped {
+        budget: RecoveryBudget {
+            max_inner_attempts: 2,
+            absolute_deadline_unix_ms: 2_041_000,
+        },
+    };
+    input.set_recovery_directive(directive).unwrap();
+    let error = coordinator
+        .prepare("runtime-a", &mut input, &context(2_055_000))
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("transport_invocation_deadline_exceeded"));
+    let after = coordinator.safe_snapshot().await;
+    assert_eq!(after.sessions[0].fence, old.fence);
+    assert_eq!(after.sessions[0].state, TransportSessionState::Faulted);
+    assert!(!after.sessions[0].inflight);
     assert!(runtime.commands().is_empty());
 }
 
