@@ -295,10 +295,12 @@ pub(super) fn is_terminal_transport_reissue(
     receipt.validate_against(&directive).map_err(|_| reject())?;
     if receipt.commit_level != CommitLevel::Terminal
         || receipt.disposition != RecoveryDisposition::TerminalInterruption
-        || receipt.reason != RecoveryReason::SemanticFailed
     {
         return Ok(false);
     }
+    // The receipt terminates the old provider invocation. Its reason does not
+    // prohibit a new Responses sample from proven input and already accepted
+    // tool outputs; this path never issues an internal recovery grant.
     validate_context(flow, callback, command)?;
     Ok(true)
 }

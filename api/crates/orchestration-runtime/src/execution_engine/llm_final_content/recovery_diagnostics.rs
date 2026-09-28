@@ -142,6 +142,7 @@ fn failure(source: &Value) -> Option<Value> {
                 "previous_response_id is no longer available",
                 "upstream websocket proxy failed",
                 "upstream policy rejected the request; reason redacted",
+                "upstream websocket closed with policy status 1008; reason redacted",
                 "websocket disconnected before response.completed",
                 "provider failure; unclassified details redacted",
                 "provider recovery deadline exceeded",

@@ -109,3 +109,20 @@ fn semantic_event_type_digest_projection_rejects_arbitrary_strings_and_wrong_sha
         );
     }
 }
+
+#[test]
+fn policy_close_projection_preserves_safe_reason_and_discards_raw_refusal() {
+    let safe = "upstream websocket closed with policy status 1008; reason redacted";
+    let input = json!({"kind":"websocket_close", "close_code":1008,
+        "reason_category":"policy_rejected", "reason":safe,
+        "raw_reason":"PRIVATE_CANARY", "token":"PRIVATE_CANARY"});
+    let projected = failure(&input).unwrap();
+    assert_eq!(projected["reason"], safe);
+    assert_eq!(projected["reason_category"], "policy_rejected");
+    assert_eq!(projected["close_code"], 1008);
+    assert!(!projected.to_string().contains("PRIVATE_CANARY"));
+    assert!(failure(&json!({"reason":"PRIVATE_CANARY"}))
+        .unwrap()
+        .get("reason")
+        .is_none());
+}
