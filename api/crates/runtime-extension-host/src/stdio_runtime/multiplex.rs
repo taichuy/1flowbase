@@ -48,6 +48,7 @@ enum CommandMessage {
     },
     WriterFailed(String),
     Written(String),
+    GracefulStop(oneshot::Sender<()>),
 }
 
 struct ActiveCall {
@@ -58,7 +59,7 @@ struct ActiveCall {
     max_callback_id: u64,
     cancelling_since: Option<Instant>,
     written: bool,
-    _lease: Option<Box<dyn Send + Sync>>,
+    _lease: Option<Arc<Box<dyn Send + Sync>>>,
 }
 
 struct ReaderContext {
@@ -333,7 +334,15 @@ impl MultiplexProviderWorker {
     ) -> ProviderWorkerCleanupReceipt {
         let evidence = match evidence {
             Some(evidence) => evidence,
-            None => self.control.terminate().await,
+            None => {
+                let (sender, receiver) = oneshot::channel();
+                let _ = self
+                    .commands
+                    .send(CommandMessage::GracefulStop(sender))
+                    .await;
+                let _ = tokio::time::timeout(Duration::from_secs(2), receiver).await;
+                self.control.wait_for_graceful_exit().await
+            }
         };
         ProviderWorkerCleanupReceipt {
             generation,
@@ -486,7 +495,9 @@ async fn run_reader(
                         let sender = command_sender.clone();
                         let call_id = id.clone();
                         let callback = callback_id.clone();
+                        let retained_lease = call._lease.clone();
                         let task = tokio::spawn(async move {
+                            let _retained_lease = retained_lease;
                             let result = if let Some(context) = binding {
                                 let remaining = context.binding.deadline_unix_ms.saturating_sub(now_unix_ms());
                                 if remaining <= 0 { Err(plugin_data_error(PluginDataErrorKind::DeadlineExceeded, "plugin_data_deadline", false)) }
@@ -524,7 +535,7 @@ async fn run_reader(
                         next_id = match next_id.checked_add(1) { Some(value) => value, None => break "multiplex call id exhausted".to_string() };
                         let id = next_id.to_string();
                         let bytes = match encode(MultiplexHostMessage::Call { call_id: id.clone(), request }) { Ok(bytes) => bytes, Err(error) => { let _ = events.send(Delivered { message: Err(error), _permit: None }); continue; } };
-                        active.insert(id.clone(), ActiveCall { events, event_budget: Arc::new(Semaphore::new(CALL_EVENT_BYTES)), host_calls: host_calls.map(|context| *context), callbacks: HashMap::new(), max_callback_id: 0, cancelling_since: None, written: false, _lease: lease });
+                        active.insert(id.clone(), ActiveCall { events, event_budget: Arc::new(Semaphore::new(CALL_EVENT_BYTES)), host_calls: host_calls.map(|context| *context), callbacks: HashMap::new(), max_callback_id: 0, cancelling_since: None, written: false, _lease: lease.map(Arc::new) });
                         if writes.send(WriteFrame { bytes, _permit: permit, call_id: Some(id) }).is_err() { break "multiplex writer queue is full or closed".to_string(); }
                         let id = next_id.to_string();
                         if registered.send(id.clone()).is_err() { if let Some(call) = active.get_mut(&id) { request_cancel(&id, call, &controls); } }
@@ -546,6 +557,15 @@ async fn run_reader(
                                 if controls.try_send(ControlFrame { bytes, _permit: Some(permit) }).is_err() { request_cancel(&id, call, &controls); }
                             }
                         }
+                    }
+                    Some(CommandMessage::GracefulStop(done)) => {
+                        if active.is_empty() {
+                            drop(writes);
+                            drop(controls);
+                            let _ = done.send(());
+                            return;
+                        }
+                        let _ = done.send(());
                     }
                     Some(CommandMessage::WriterFailed(error)) => break format!("multiplex writer failed: {error}"),
                     None => break "multiplex command channel closed".to_string(),

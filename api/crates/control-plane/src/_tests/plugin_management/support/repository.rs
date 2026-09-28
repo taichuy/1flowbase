@@ -10,6 +10,7 @@ pub(crate) struct MemoryPluginManagementRepository {
     catalog_projections: Arc<RwLock<HashMap<Uuid, PluginPackageCatalogProjectionRecord>>>,
     plugin_ids: Arc<RwLock<HashMap<String, Uuid>>>,
     assignments: Arc<RwLock<Vec<PluginAssignmentRecord>>>,
+    fail_worker_demand_query: Arc<RwLock<bool>>,
     tasks: Arc<RwLock<HashMap<Uuid, PluginTaskRecord>>>,
     instances: Arc<RwLock<HashMap<Uuid, ModelProviderInstanceRecord>>>,
     caches: Arc<RwLock<HashMap<Uuid, ModelProviderCatalogCacheRecord>>>,
@@ -40,6 +41,7 @@ impl MemoryPluginManagementRepository {
             catalog_projections: Arc::new(RwLock::new(HashMap::new())),
             plugin_ids: Arc::new(RwLock::new(HashMap::new())),
             assignments: Arc::new(RwLock::new(Vec::new())),
+            fail_worker_demand_query: Arc::new(RwLock::new(false)),
             tasks: Arc::new(RwLock::new(HashMap::new())),
             instances: Arc::new(RwLock::new(HashMap::new())),
             caches: Arc::new(RwLock::new(HashMap::new())),
@@ -72,6 +74,10 @@ impl MemoryPluginManagementRepository {
                 )],
             )],
         )];
+    }
+
+    pub(crate) async fn fail_worker_demand_query(&self) {
+        *self.fail_worker_demand_query.write().await = true;
     }
 
     pub(crate) async fn audit_events(&self) -> Vec<String> {
@@ -947,6 +953,9 @@ impl PluginRepository for MemoryPluginManagementRepository {
     }
 
     async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
+        if *self.fail_worker_demand_query.read().await {
+            anyhow::bail!("all-workspace demand query unavailable");
+        }
         let mut installation_ids = self
             .assignments
             .read()

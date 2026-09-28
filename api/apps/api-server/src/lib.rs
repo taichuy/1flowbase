@@ -645,6 +645,9 @@ async fn app_and_runtime_host_from_config(
             Arc::new(store.clone()),
         )?,
     );
+    runtime_extension_host
+        .configure_provider_worker_idle_grace(config.provider_worker_idle_grace)
+        .await?;
     let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
     runtime_backend_slot.bind(runtime_extension_host.clone())?;
     let runtime_backend = runtime_backend_slot.backend()?;

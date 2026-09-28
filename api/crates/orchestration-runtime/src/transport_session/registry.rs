@@ -1,4 +1,6 @@
-use extension_contracts::provider_contract::ProviderTransportClosureEvidence;
+use extension_contracts::provider_contract::{
+    ProviderTransportClosureEvidence, ProviderTransportClosureSource,
+};
 use std::{
     collections::{BTreeMap, VecDeque},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -409,6 +411,55 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .iter()
             .rev()
             .find(|receipt| receipt.fence.session_id == *session_id)
+    }
+
+    /// Applies proof of actual worker exit before a new invocation is admitted.
+    /// The proof fences only this physical generation; it cannot settle an active call.
+    pub fn record_worker_exit_evidence(
+        &mut self,
+        fence: &TransportFence,
+        evidence: &ProviderTransportClosureEvidence,
+    ) -> Result<(), RegistryError> {
+        evidence
+            .validate()
+            .map_err(|_| RegistryError::InvalidClosureEvidence)?;
+        if evidence.source != ProviderTransportClosureSource::ConfirmedWorkerExit
+            || !evidence.local_released
+            || evidence.identity.logical_session_id != fence.session_id.as_str()
+            || evidence.identity.generation != fence.generation.get()
+        {
+            return Err(RegistryError::InvalidClosureEvidence);
+        }
+        let now = self.clock.now();
+        self.maintain_at(now);
+        let record = self.record(fence)?;
+        if record.logical.invocation.is_some() {
+            return Err(RegistryError::InflightExists);
+        }
+        if record
+            .physical
+            .closure_evidence
+            .as_ref()
+            .is_some_and(|known| {
+                known.identity.worker_incarnation != evidence.identity.worker_incarnation
+            })
+        {
+            return Err(RegistryError::InvalidClosureEvidence);
+        }
+        let state = record.logical.state;
+        if !matches!(
+            state,
+            TransportSessionState::Faulted | TransportSessionState::IdleReleased
+        ) {
+            if !valid_transition(state, TransportSessionState::Faulted) {
+                return Err(RegistryError::InvalidTransition {
+                    from: state,
+                    to: TransportSessionState::Faulted,
+                });
+            }
+            self.set_state(fence, TransportSessionState::Faulted, now)?;
+        }
+        self.record_closure_evidence(fence, evidence)
     }
 
     /// Consumes a host-validated control receipt for exactly the closed generation.

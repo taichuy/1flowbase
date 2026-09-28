@@ -401,7 +401,11 @@ impl ProviderWorker {
     ) -> ProviderWorkerCleanupReceipt {
         let evidence = match (self.process.take(), evidence) {
             (_, Some(evidence)) => evidence,
-            (Some(process), None) => process.control.terminate().await,
+            (Some(process), None) => {
+                let control = process.control.clone();
+                drop(process.stdin);
+                control.wait_for_graceful_exit().await
+            }
             (None, None) => ProviderWorkerTerminationEvidence {
                 prior_pid: None,
                 kill_sent: false,
@@ -595,6 +599,61 @@ impl ProviderWorkerProcessControl {
         self.pid
     }
 
+    /// pidfd readiness reports exit; Child::try_wait remains the sole reaper.
+    pub(crate) async fn wait_for_exit_notification(&self) {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::fd::{FromRawFd, OwnedFd};
+            if let Some(pid) = self.pid {
+                let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+                if fd >= 0 {
+                    let fd = unsafe { OwnedFd::from_raw_fd(fd as i32) };
+                    if let Ok(fd) = tokio::io::unix::AsyncFd::new(fd) {
+                        if fd.readable().await.is_ok() {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        // Older kernels, unsupported platforms and unavailable pidfds cannot
+        // expose exit readiness. Keep their existing bounded observation fallback.
+        tracing::debug!(pid = ?self.pid, "pidfd unavailable; using child exit polling fallback");
+        loop {
+            if self.confirmed_exit().await {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    pub(crate) async fn confirmed_exit(&self) -> bool {
+        self.child.lock().await.try_wait().ok().flatten().is_some()
+    }
+
+    pub(crate) async fn wait_for_graceful_exit(&self) -> ProviderWorkerTerminationEvidence {
+        let exited = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if self.confirmed_exit().await {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .is_ok();
+        if exited {
+            ProviderWorkerTerminationEvidence {
+                prior_pid: self.pid,
+                kill_sent: false,
+                exited: true,
+                cleanup_error: None,
+            }
+        } else {
+            self.terminate().await
+        }
+    }
+
     pub(crate) async fn terminate(&self) -> ProviderWorkerTerminationEvidence {
         let mut child = self.child.lock().await;
         let mut kill_sent = false;
@@ -603,9 +662,13 @@ impl ProviderWorkerProcessControl {
             Ok(Some(_)) => true,
             Ok(None) => {
                 kill_sent = true;
-                match child.kill().await {
-                    Ok(()) => true,
-                    Err(error) => {
+                match tokio::time::timeout(Duration::from_secs(2), child.kill()).await {
+                    Ok(Ok(())) => true,
+                    Err(_) => {
+                        cleanup_error = Some("provider kill/reap deadline exceeded".to_string());
+                        child.try_wait().ok().flatten().is_some()
+                    }
+                    Ok(Err(error)) => {
                         cleanup_error = Some(error.to_string());
                         child.try_wait().ok().flatten().is_some()
                     }

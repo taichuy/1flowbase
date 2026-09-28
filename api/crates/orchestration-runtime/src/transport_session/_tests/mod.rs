@@ -1104,3 +1104,53 @@ fn orphaned_failed_invocation_requires_physical_release_before_successor_generat
     assert_eq!(successor.sequence(), failed.sequence() + 1);
     assert!(registry.invocation_inflight(&next).unwrap());
 }
+
+fn confirmed_worker_exit(
+    fence: &TransportFence,
+    incarnation: u64,
+) -> extension_contracts::ProviderTransportClosureEvidence {
+    let mut evidence = released_evidence(fence, incarnation);
+    evidence.source = extension_contracts::ProviderTransportClosureSource::ConfirmedWorkerExit;
+    evidence.peer_close_acknowledged = None;
+    evidence.no_ack_reason = Some(extension_contracts::ProviderTransportNoAckReason::Unknown);
+    evidence
+}
+
+#[test]
+fn confirmed_exit_cannot_settle_an_active_invocation_or_rewrite_a_known_incarnation() {
+    let mut registry = TransportSessionRegistry::new(FakeClock::default(), config(1)).unwrap();
+    let fence = registry.admit(request("exit-proof")).unwrap();
+    registry.activate(&fence).unwrap();
+    let invocation = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    let before = registry.safe_snapshot();
+    assert_eq!(
+        registry.record_worker_exit_evidence(&fence, &confirmed_worker_exit(&fence, 7)),
+        Err(RegistryError::InflightExists)
+    );
+    assert_eq!(registry.safe_snapshot(), before);
+    registry
+        .finish_invocation(&invocation, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    registry
+        .record_worker_exit_evidence(&fence, &confirmed_worker_exit(&fence, 7))
+        .unwrap();
+    let released = registry.safe_snapshot();
+    assert_eq!(released.sessions[0].state, TransportSessionState::Faulted);
+    assert_eq!(
+        registry.record_worker_exit_evidence(&fence, &confirmed_worker_exit(&fence, 8)),
+        Err(RegistryError::InvalidClosureEvidence)
+    );
+    assert_eq!(registry.safe_snapshot(), released);
+    let next = registry.rotate_generation(&fence).unwrap();
+    registry.activate(&next).unwrap();
+    let current = registry.safe_snapshot();
+    assert!(registry
+        .record_worker_exit_evidence(&fence, &confirmed_worker_exit(&fence, 7))
+        .is_err());
+    assert!(registry
+        .record_worker_exit_evidence(&next, &confirmed_worker_exit(&fence, 7))
+        .is_err());
+    assert_eq!(registry.safe_snapshot(), current);
+}

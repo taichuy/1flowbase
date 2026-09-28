@@ -192,6 +192,15 @@ fn events_for_result(result: &ProviderInvocationResult) -> Vec<ProviderStreamEve
 
 #[async_trait]
 impl ProviderRuntimePort for InMemoryProviderRuntime {
+    async fn reconcile_provider_worker_demand(
+        &self,
+        _installation: &domain::PluginInstallationRecord,
+        _revision: u64,
+        _selectable: Option<bool>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     async fn ensure_loaded(
         &self,
         _installation: &domain::LocalPluginInstallationRecord,

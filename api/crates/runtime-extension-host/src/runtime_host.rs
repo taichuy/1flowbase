@@ -171,6 +171,26 @@ impl RuntimeExtensionHost {
         })
     }
 
+    /// Composition-root policy; configure before activation or admission.
+    pub async fn configure_provider_worker_idle_grace(
+        &self,
+        grace: std::time::Duration,
+    ) -> Result<(), RuntimeBackendError> {
+        if self.lifecycle() != RuntimeBackendLifecycle::Starting {
+            return Err(RuntimeBackendError::InvalidRequest(
+                "worker policy must be configured before runtime readiness".into(),
+            ));
+        }
+        let mut host = self.provider_host.write().await;
+        if host.loaded_count() != 0 {
+            return Err(RuntimeBackendError::InvalidRequest(
+                "worker policy must be configured before package activation".into(),
+            ));
+        }
+        *host = ProviderHost::with_worker_idle_grace(grace);
+        Ok(())
+    }
+
     pub fn mark_ready(&self) -> Result<(), RuntimeBackendError> {
         let mut lifecycle = self.lifecycle.write().map_err(|_| {
             RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".to_string())
@@ -488,6 +508,36 @@ impl ProviderRuntimePort for RuntimeExtensionHost {
         operation
             .await
             .map(|output| output.result)
+            .map_err(RuntimeBackendError::from)
+    }
+
+    async fn reconcile_provider_worker_demand(
+        &self,
+        plugin_id: &str,
+        revision: u64,
+        selectable: Option<bool>,
+    ) -> Result<(), RuntimeBackendError> {
+        self.ensure_accepting()?;
+        self.provider_host
+            .read()
+            .await
+            .reconcile_worker_demand(plugin_id, revision, selectable)
+            .map_err(RuntimeBackendError::from)
+    }
+
+    async fn provider_transport_worker_exit_evidence(
+        &self,
+        target_id: &str,
+        logical_session_id: &str,
+        generation: u64,
+    ) -> Result<Option<extension_contracts::ProviderTransportClosureEvidence>, RuntimeBackendError>
+    {
+        self.ensure_accepting()?;
+        self.provider_host
+            .read()
+            .await
+            .transport_worker_exit_evidence(target_id, logical_session_id, generation)
+            .await
             .map_err(RuntimeBackendError::from)
     }
 

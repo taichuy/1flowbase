@@ -6,8 +6,8 @@ use extension_contracts::provider_contract::{
     ProviderCompactResult, ProviderCountTokensError, ProviderCountTokensInput,
     ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,
     ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
-    ProviderStreamEvent, ProviderTransportSessionCommand, ProviderTransportSessionReceipt,
-    ProviderUsageWindowsResult,
+    ProviderStreamEvent, ProviderTransportClosureEvidence, ProviderTransportSessionCommand,
+    ProviderTransportSessionReceipt, ProviderUsageWindowsResult,
 };
 use extension_contracts::{
     DataModelTemplateDescriptor, DataSourceCatalogEntry, DataSourceConfigInput,
@@ -379,6 +379,22 @@ pub trait ProviderRuntimePort: Send + Sync {
         request: RuntimePackageActivation,
     ) -> Result<(), RuntimeBackendError>;
     async fn deactivate_provider(&self, plugin_id: &str) -> Result<(), RuntimeBackendError>;
+
+    async fn reconcile_provider_worker_demand(
+        &self,
+        plugin_id: &str,
+        revision: u64,
+        selectable: Option<bool>,
+    ) -> Result<(), RuntimeBackendError>;
+
+    /// Read-only proof for the exact physical transport owned by an exited worker.
+    /// This never starts a worker or sends control traffic to a live process.
+    async fn provider_transport_worker_exit_evidence(
+        &self,
+        target_id: &str,
+        logical_session_id: &str,
+        generation: u64,
+    ) -> Result<Option<ProviderTransportClosureEvidence>, RuntimeBackendError>;
 
     async fn provider_validate(
         &self,

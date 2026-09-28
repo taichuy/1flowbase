@@ -938,3 +938,32 @@ fn api_config_resolves_independent_official_i18n_catalog_mirror_and_proxy() {
         config.official_plugin_github_proxy_url
     );
 }
+
+#[test]
+fn worker_idle_grace_accepts_zero_and_is_independent_of_transport_lifetime() {
+    for seconds in ["0", "7", "3600"] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.push(("API_PROVIDER_WORKER_IDLE_GRACE_SECONDS", seconds));
+        let config = ApiConfig::from_env_map(&env).unwrap();
+        assert_eq!(
+            config.provider_worker_idle_grace,
+            Duration::from_secs(seconds.parse().unwrap())
+        );
+        assert_eq!(
+            config.transport_session_registry.idle_affinity_lease,
+            Duration::from_secs(90)
+        );
+        assert_eq!(
+            config.transport_session_registry.logical_max_age,
+            Duration::from_secs(7200)
+        );
+    }
+    for invalid in ["-1", "1.5", "invalid"] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.push(("API_PROVIDER_WORKER_IDLE_GRACE_SECONDS", invalid));
+        assert!(ApiConfig::from_env_map(&env)
+            .unwrap_err()
+            .to_string()
+            .contains("API_PROVIDER_WORKER_IDLE_GRACE_SECONDS"));
+    }
+}

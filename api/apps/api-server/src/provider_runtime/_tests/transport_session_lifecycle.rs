@@ -44,6 +44,8 @@ enum AckBehavior {
 struct FakeTransportRuntime {
     responses: StdMutex<VecDeque<AckBehavior>>,
     commands: StdMutex<Vec<ProviderTransportSessionCommand>>,
+    worker_exit_evidence: StdMutex<Option<ProviderTransportClosureEvidence>>,
+    probes: StdMutex<Vec<(String, String, u64)>>,
 }
 
 impl FakeTransportRuntime {
@@ -51,6 +53,8 @@ impl FakeTransportRuntime {
         Self {
             responses: StdMutex::new(responses.into_iter().collect()),
             commands: StdMutex::new(Vec::new()),
+            worker_exit_evidence: StdMutex::new(None),
+            probes: StdMutex::new(Vec::new()),
         }
     }
 
@@ -61,6 +65,19 @@ impl FakeTransportRuntime {
 
 #[async_trait::async_trait]
 impl TransportLifecycleRuntime for FakeTransportRuntime {
+    async fn transport_worker_exit_evidence(
+        &self,
+        target_id: &str,
+        logical_session_id: &str,
+        generation: u64,
+    ) -> Result<Option<ProviderTransportClosureEvidence>, RuntimeBackendError> {
+        self.probes
+            .lock()
+            .unwrap()
+            .push((target_id.into(), logical_session_id.into(), generation));
+        Ok(self.worker_exit_evidence.lock().unwrap().clone())
+    }
+
     async fn transport_session(
         &self,
         _target_id: &str,
@@ -1652,3 +1669,6 @@ mod logical_rollover;
 
 #[path = "transport_session_lifecycle/orphan_rollover.rs"]
 mod orphan_rollover;
+
+#[path = "transport_session_lifecycle/worker_exit_recovery.rs"]
+mod worker_exit_recovery;

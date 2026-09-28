@@ -23,6 +23,15 @@ pub struct ProviderRuntimeExecutionContext {
 
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
+    /// A revisioned all-workspace selection fact. Unknown references use None;
+    /// retirement cannot delete the artifact or terminate admitted work.
+    async fn reconcile_provider_worker_demand(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        revision: u64,
+        selectable: Option<bool>,
+    ) -> anyhow::Result<()>;
+
     async fn guard_managed_artifact_removal(
         &self,
         _installation_ids: &[uuid::Uuid],

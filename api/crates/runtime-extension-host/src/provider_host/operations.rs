@@ -8,26 +8,88 @@ pub(super) fn lock_provider_worker_registry(
     })
 }
 
+#[cfg(test)]
 pub(super) fn provider_worker_handle(
     provider_workers: &ProviderWorkerRegistry,
     plugin_id: String,
     loaded: &LoadedProviderPackage,
-) -> FrameworkResult<ProviderWorkerHandle> {
+) -> FrameworkResult<super::idle_workers::ReservedWorker> {
+    super::idle_workers::ensure_scheduler(provider_workers)?;
     let mut registry = lock_provider_worker_registry(provider_workers)?;
-    provider_worker_handle_locked(&mut registry, plugin_id, loaded)
+    match provider_worker_handle_locked(&mut registry, plugin_id, loaded)? {
+        WorkerSelection::Ready(worker) => super::idle_workers::ReservedWorker::new(worker),
+        WorkerSelection::Retiring => {
+            Err(transport_binding_error("provider worker is still retiring"))
+        }
+    }
+}
+
+pub(super) enum WorkerSelection<T> {
+    Ready(T),
+    Retiring,
+}
+
+pub(super) async fn provider_worker_handle_wait(
+    workers: &ProviderWorkerRegistry,
+    plugin: String,
+    loaded: &LoadedProviderPackage,
+    deadline: tokio::time::Instant,
+    expected_epoch: Option<u64>,
+) -> FrameworkResult<super::idle_workers::ReservedWorker> {
+    super::idle_workers::ensure_scheduler(workers)?;
+    let (changed, epoch) = {
+        let registry = lock_provider_worker_registry(workers)?;
+        (
+            registry.session_capacity.changed.clone(),
+            expected_epoch.unwrap_or_else(|| *registry.epochs.get(&plugin).unwrap_or(&0)),
+        )
+    };
+    loop {
+        let notified = changed.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        let selected = (|| {
+            let mut registry = lock_provider_worker_registry(workers)?;
+            if *registry.epochs.get(&plugin).unwrap_or(&0) != epoch {
+                return Err(transport_binding_error(
+                    "provider package changed during admission",
+                ));
+            }
+            match provider_worker_handle_locked(&mut registry, plugin.clone(), loaded)? {
+                WorkerSelection::Ready(worker) => {
+                    super::idle_workers::ReservedWorker::new(worker).map(WorkerSelection::Ready)
+                }
+                WorkerSelection::Retiring => Ok(WorkerSelection::Retiring),
+            }
+        })();
+        match selected {
+            Ok(WorkerSelection::Ready(worker)) => return Ok(worker),
+            Ok(WorkerSelection::Retiring) => {}
+            Err(error) => return Err(error),
+        }
+        tokio::time::timeout_at(deadline, notified)
+            .await
+            .map_err(|_| session_workers::admission_timeout())?;
+    }
 }
 
 pub(super) fn provider_worker_handle_locked(
     registry: &mut ProviderWorkerRegistryState,
     plugin_id: String,
     loaded: &LoadedProviderPackage,
-) -> FrameworkResult<ProviderWorkerHandle> {
+) -> FrameworkResult<WorkerSelection<ProviderWorkerHandle>> {
     if let Some(worker) = registry.workers.get(&plugin_id).cloned() {
         if worker.snapshot()?.state == ProviderWorkerLifecycleState::Active {
-            return Ok(worker);
+            return Ok(WorkerSelection::Ready(worker));
         }
         if let Some(receipt) = worker.last_cleanup_receipt()? {
             registry.cleanup_receipts.insert(plugin_id.clone(), receipt);
+        }
+        if !worker
+            .last_cleanup_receipt()?
+            .is_some_and(|receipt| receipt.exited)
+        {
+            return Ok(WorkerSelection::Retiring);
         }
         registry.workers.remove(&plugin_id);
     }
@@ -53,8 +115,9 @@ pub(super) fn provider_worker_handle_locked(
     registry
         .next_generation
         .insert(plugin_id.clone(), generation.saturating_add(1));
+    super::idle_workers::register_worker(registry, &plugin_id, &supervisor);
     registry.workers.insert(plugin_id, Arc::clone(&supervisor));
-    Ok(supervisor)
+    Ok(WorkerSelection::Ready(supervisor))
 }
 
 pub(super) fn record_provider_worker_cleanup(
@@ -62,9 +125,16 @@ pub(super) fn record_provider_worker_cleanup(
     plugin_id: &str,
     receipt: ProviderWorkerCleanupReceipt,
 ) -> FrameworkResult<()> {
-    lock_provider_worker_registry(provider_workers)?
+    let mut registry = lock_provider_worker_registry(provider_workers)?;
+    if registry
         .cleanup_receipts
-        .insert(plugin_id.to_string(), receipt);
+        .get(plugin_id)
+        .is_none_or(|current| current.generation <= receipt.generation)
+    {
+        registry
+            .cleanup_receipts
+            .insert(plugin_id.to_string(), receipt);
+    }
     Ok(())
 }
 
@@ -280,17 +350,9 @@ pub(super) fn merge_models(
 const TRANSPORT_BINDING_MAX_RETENTION: std::time::Duration =
     std::time::Duration::from_secs(24 * 60 * 60 + 60);
 
-pub(super) fn prune_transport_bindings(registry: &mut ProviderWorkerRegistryState) {
-    let active = &registry.session_workers;
-    let now = std::time::Instant::now();
-    registry.transport_bindings.retain(|key, binding| {
-        binding.expires_at > now
-            || active
-                .get(&(key.0.clone(), key.1.clone()))
-                .is_some_and(|session| {
-                    session.generation == key.2 && binding.released_receipt.is_none()
-                })
-    });
+pub(super) fn prune_transport_bindings(_registry: &mut ProviderWorkerRegistryState) {
+    // Retention is not evidence of release. Binding ownership is conservative;
+    // expiry cannot silently erase an unreleased physical transport.
 }
 pub(super) fn transport_binding_error(message: &str) -> PluginFrameworkError {
     PluginFrameworkError::runtime(ProviderRuntimeError::new(
@@ -350,6 +412,7 @@ pub(super) fn bind_transport_worker_locked(
         )
         .saturating_add(std::time::Duration::from_secs(60))
         .min(TRANSPORT_BINDING_MAX_RETENTION);
+        worker.binding_acquired()?;
         registry.transport_bindings.insert(
             key,
             TransportWorkerBinding {
@@ -367,7 +430,7 @@ pub(super) fn bind_transport_worker_locked(
         .map_err(PluginFrameworkError::invalid_provider_contract)
 }
 
-fn confirmed_exit_receipt(
+pub(super) fn confirmed_exit_receipt(
     binding: &TransportWorkerBinding,
     action: ProviderTransportSessionAction,
 ) -> FrameworkResult<Option<ProviderTransportSessionReceipt>> {
@@ -562,10 +625,6 @@ pub(super) fn cache_transport_receipt(
         return Err(transport_binding_error(
             "failure closure does not prove local release",
         ));
-    }
-    // A repeated fact cannot overwrite the first proven release or its missing ACK.
-    if binding.released_receipt.is_none() {
-        binding.released_receipt = Some(receipt.clone());
     }
     let binding = binding.clone();
     drop(registry);

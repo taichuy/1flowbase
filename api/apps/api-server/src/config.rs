@@ -67,6 +67,8 @@ pub struct ApiConfig {
     pub official_model_pricing_catalog_index_url: String,
     pub model_pricing_bootstrap_root: String,
     pub model_billing_require_provider_usage: bool,
+    /// Physical worker keep-warm period, after all running/physical owners release.
+    pub provider_worker_idle_grace: Duration,
     pub transport_session_registry:
         orchestration_runtime::transport_session::TransportRegistryConfig,
     pub official_extension_catalog_sources:
@@ -376,6 +378,9 @@ impl ApiConfig {
                 "API_MODEL_BILLING_REQUIRE_PROVIDER_USAGE",
                 map.get("API_MODEL_BILLING_REQUIRE_PROVIDER_USAGE"),
                 false,
+            )?,
+            provider_worker_idle_grace: parse_worker_idle_grace(
+                map.get("API_PROVIDER_WORKER_IDLE_GRACE_SECONDS"),
             )?,
             transport_session_registry:
                 orchestration_runtime::transport_session::TransportRegistryConfig {
@@ -688,6 +693,17 @@ fn parse_positive_usize(key: &str, value: Option<&String>, default: usize) -> Re
     }
 
     Ok(parsed)
+}
+
+// Process warmth is independent of transport leases and ephemeral cache expiry.
+fn parse_worker_idle_grace(raw: Option<&String>) -> Result<Duration> {
+    let seconds = match raw {
+        Some(raw) => raw
+            .parse::<u64>()
+            .map_err(|_| anyhow!("invalid API_PROVIDER_WORKER_IDLE_GRACE_SECONDS"))?,
+        None => 90,
+    };
+    Ok(Duration::from_secs(seconds))
 }
 
 fn parse_positive_duration_seconds(
