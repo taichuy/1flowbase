@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use storage_durable_postgres::PgControlPlaneStore;
 use uuid::Uuid;
 const AT: &str = "2026-09-22T00:00:00Z";
+mod semantic;
 async fn append(
     store: &PgControlPlaneStore,
     flow: Uuid,
@@ -222,7 +223,7 @@ async fn client_trajectory_scoped_pages_sections_originals_terminal_append_and_c
     assert_eq!(next.items[0].id, call);
     assert!(next.next_cursor.is_none());
     // Poison the unrelated body: a body-free list and selected parameters/schema must still work.
-    sqlx::query("update runtime_events e set raw_json_payloads=jsonb_build_object('payload','invalid JSON') from client_trajectory_sections p where p.event_id=e.id and p.step_id=$1 and p.section='result'")
+    sqlx::query("update client_trajectory_sections set value_hash='invalid' where step_id=$1 and section='result'")
         .bind(call).execute(store.pool()).await.unwrap();
     assert_eq!(
         store

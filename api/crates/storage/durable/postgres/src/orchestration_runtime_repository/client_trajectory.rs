@@ -1,6 +1,8 @@
 use super::*;
 #[path = "client_trajectory/archive.rs"]
 mod archive;
+#[path = "client_trajectory/semantic.rs"]
+mod semantic;
 use control_plane_contracts::ports::{
     AppendClientTrajectoryArchiveInput, ClientTrajectoryArchiveFrame,
     ClientTrajectoryArchiveReceipt,
@@ -29,7 +31,6 @@ impl PgControlPlaneStore {
                 return self.append_legacy_client_raw(input, value).await;
             }
         }
-        let payload = serde_json::to_value(input)?;
         let mut tx = self.pool().begin().await?;
         // Client delivery occurs after a business terminal commit. This dedicated
         // observational append does not reopen a run or relax the execution append fence.
@@ -110,9 +111,26 @@ impl PgControlPlaneStore {
         }
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
-        sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) values($1,$2,$3,$4,'client_protocol_trajectory','runtime_item','host','host_fact',($5::jsonb->0),jsonb_strip_nulls(jsonb_build_object('payload',($5::jsonb->1))),'internal','durable')")
-            .bind(Uuid::now_v7()).bind(input.flow_run_id).bind(input.node_run_id).bind(sequence)
-            .bind(lossless_json_parameter(&payload)).execute(&mut *tx).await?;
+        match &input.fact {
+            ClientTrajectoryFact::Step { step } => {
+                semantic::write_step(&mut tx, input, step, sequence).await?;
+            }
+            ClientTrajectoryFact::Section {
+                step_id,
+                section,
+                value,
+            } => {
+                semantic::write_section(&mut tx, input, *step_id, section, value, sequence, None)
+                    .await?;
+            }
+            // Integrity, node correlation and response identity are real events.
+            _ => {
+                let payload = serde_json::to_value(input)?;
+                sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) values($1,$2,$3,$4,'client_protocol_trajectory','runtime_item','host','host_fact',($5::jsonb->0),jsonb_strip_nulls(jsonb_build_object('payload',($5::jsonb->1))),'internal','durable')")
+                    .bind(Uuid::now_v7()).bind(input.flow_run_id).bind(input.node_run_id).bind(sequence)
+                    .bind(lossless_json_parameter(&payload)).execute(&mut *tx).await?;
+            }
+        }
         // Binding moves the pre-bound durable capture into the run deletion scope.
         sqlx::query("update client_trajectory_archive_heads set flow_run_id=$2 where request_id=$1 and (flow_run_id is null or flow_run_id=$2)")
             .bind(input.request_id).bind(input.flow_run_id).execute(&mut *tx).await?;
@@ -165,16 +183,17 @@ impl PgControlPlaneStore {
         let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_or(status not in ('pending','complete') or dropped_count>0 or persist_failed_count>0) then 'incomplete' when bool_or(status='pending') then 'pending' else 'complete' end from client_trajectory_captures c where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=c.request_id and l.node_run_id=$2)) and ($3::uuid is null or c.request_id=$3)")
             .bind(flow_run_id).bind(node_run_id).bind(selection.request_id).fetch_one(self.pool()).await?;
         let rows = sqlx::query(r#"
-            select s.metadata,s.event_sequence,related.id as related_step_id,related.namespace as related_namespace
+            select client_trajectory_step_storage_body(s.id,s.flow_run_id) as metadata,s.semantic_metadata_restored,s.event_sequence,
+                related.candidates as related_candidates,related.restored as related_restored
             from client_trajectory_steps s
             left join lateral (
-                select p.id,p.metadata->>'namespace' as namespace from client_trajectory_steps p
+                select array_agg(client_trajectory_step_storage_body(p.id,p.flow_run_id) order by p.event_sequence desc) as candidates,
+                    array_agg(p.semantic_metadata_restored order by p.event_sequence desc) as restored from client_trajectory_steps p
                 where p.flow_run_id=s.flow_run_id and p.node_run_id is not distinct from s.node_run_id and p.metadata->>'call_id'=s.metadata->>'call_id'
                     and (s.metadata->>'namespace' is null or p.metadata->>'namespace'=s.metadata->>'namespace')
                     and p.id<>s.id and p.event_sequence<s.event_sequence
                     and p.metadata->>'category'='tool_call' and p.metadata->>'origin'='emitted'
                     and p.metadata->'available_sections' ? 'parameters'
-                order by p.event_sequence desc limit 1
             ) related on s.metadata->>'origin'='submitted' and s.metadata->'available_sections' ? 'result'
             where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and s.event_sequence>$3 and ($5::uuid is null or s.request_id=$5)
             order by s.event_sequence limit $4
@@ -182,13 +201,32 @@ impl PgControlPlaneStore {
         let more = rows.len() > limit as usize;
         let mut items = Vec::new();
         for row in rows.into_iter().take(limit as usize) {
-            let mut step: ClientTrajectoryStep = serde_json::from_value(row.get("metadata"))?;
+            let metadata: Value = row.get("metadata");
+            let mut step: ClientTrajectoryStep = serde_json::from_value(semantic::step_metadata(
+                metadata,
+                row.get("semantic_metadata_restored"),
+            )?)?;
             step.sequence = row.get("event_sequence");
-            step.related_step_id = row
-                .get::<Option<Uuid>, _>("related_step_id")
-                .or(step.related_step_id);
-            if step.namespace.is_none() {
-                step.namespace = row.get::<Option<String>, _>("related_namespace");
+            // Query projections only narrow candidates. Actual identifiers can
+            // include NUL and must be compared after complete Rust restoration.
+            if let Some(candidates) = row.get::<Option<Vec<Value>>, _>("related_candidates") {
+                let restored: Vec<bool> = row.get("related_restored");
+                for (candidate, restored) in candidates.into_iter().zip(restored) {
+                    let candidate: ClientTrajectoryStep =
+                        serde_json::from_value(semantic::step_metadata(candidate, restored)?)?;
+                    if candidate.call_id == step.call_id
+                        && step
+                            .namespace
+                            .as_ref()
+                            .is_none_or(|namespace| candidate.namespace.as_ref() == Some(namespace))
+                    {
+                        step.related_step_id = Some(candidate.id);
+                        if step.namespace.is_none() {
+                            step.namespace = candidate.namespace;
+                        }
+                        break;
+                    }
+                }
             }
             items.push(step);
         }
@@ -226,10 +264,11 @@ impl PgControlPlaneStore {
         {
             return Ok(None);
         }
-        let step = sqlx::query("select request_id,metadata from client_trajectory_steps s where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and id=$3")
+        let step = sqlx::query("select request_id,client_trajectory_step_storage_body(s.id,s.flow_run_id) as metadata,semantic_metadata_restored from client_trajectory_steps s where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and id=$3")
             .bind(flow_run_id).bind(node_run_id).bind(step_id).fetch_optional(self.pool()).await?;
         let Some(step) = step else { return Ok(None) };
-        let metadata: Value = step.get("metadata");
+        let metadata =
+            semantic::step_metadata(step.get("metadata"), step.get("semantic_metadata_restored"))?;
         if !metadata["available_sections"]
             .as_array()
             .is_some_and(|v| v.iter().any(|v| v.as_str() == Some(section)))
@@ -249,25 +288,27 @@ impl PgControlPlaneStore {
                 .await
                 .map(Some);
         }
-        let rows=sqlx::query(r#"
-            select p.event_sequence,runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) as payload
-            from client_trajectory_sections p join runtime_events e on e.id=p.event_id
-            where p.flow_run_id=$1 and p.request_id=$2 and p.step_id=$3 and p.section=$4
-                and p.event_sequence>$5
-            order by p.event_sequence limit $6
-        "#).bind(flow_run_id).bind(request_id).bind(selected).bind(section).bind(cursor.unwrap_or(0)).bind(limit+1).fetch_all(self.pool()).await?;
+        let rows = semantic::section_rows(
+            self.pool(),
+            flow_run_id,
+            request_id,
+            selected,
+            section,
+            cursor.unwrap_or(0),
+            limit + 1,
+        )
+        .await?;
         let more = rows.len() > limit as usize;
         let items: Vec<_> = rows
             .into_iter()
             .take(limit as usize)
             .map(|row| {
-                let payload: Value = row.get("payload");
-                ClientTrajectorySectionItem {
+                Ok(ClientTrajectorySectionItem {
                     sequence: row.get("event_sequence"),
-                    value: payload["fact"]["value"].clone(),
-                }
+                    value: semantic::restore_section(&row)?,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
         let next_cursor = if more {
             items.last().map(|item| item.sequence)
         } else {
