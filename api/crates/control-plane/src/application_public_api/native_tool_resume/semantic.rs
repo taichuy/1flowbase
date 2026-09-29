@@ -117,6 +117,15 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
     {
         return Err(ControlPlaneError::PermissionDenied("responses_continuation_owner").into());
     }
+    if previous.is_none()
+        && callback.status == CallbackTaskStatus::Completed
+        && envelope
+            .index()
+            .input()
+            .has_assistant_message_after_tool_outputs()
+    {
+        return Ok(None);
+    }
     let evidence: domain::orchestration::ResponsesRoundEvidence =
         serde_json::from_value(callback.request_payload["responses_round"].clone())
             .map_err(|_| ControlPlaneError::Conflict("responses_history_evidence_missing"))?;

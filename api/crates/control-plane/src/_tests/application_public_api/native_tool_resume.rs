@@ -154,6 +154,118 @@ fn seed_proven_full_round(
 }
 
 #[tokio::test]
+async fn native_admission_treats_fork_history_as_new_sampling_after_assistant_response() {
+    for message_type in [None, Some("message")] {
+        for phase in [None, Some("commentary"), Some("final_answer")] {
+            let (repository, actor, run) =
+                fixture_with_input(json!({"sys":{"requested_model_id":"fixture"}})).await;
+            let (callback, mut body) = seed_proven_full_round(&repository, run, true);
+            repository.complete_callback_task_for_test(callback.id);
+            // A fresh session may rebuild its leading context and select new sampling
+            // options. Neither change is a mutation of the historical tool receipt.
+            body["input"][0]["content"] = json!("Rebuilt fork context");
+            body["instructions"] = json!("New session instructions");
+            body["model"] = json!("another-model");
+            let mut response = json!({"role":"assistant","content":"Previous answer"});
+            if let Some(kind) = message_type {
+                response["type"] = json!(kind);
+            }
+            if let Some(phase) = phase {
+                response["phase"] = json!(phase);
+            }
+            body["input"].as_array_mut().unwrap().extend([
+                response,
+                json!({"role":"user","content":"Continue in this fork"}),
+            ]);
+            let envelope = OpenAiResponsesEnvelope::capture(body.clone()).unwrap();
+            assert!(
+                correlate_native_responses_callback(&repository, &actor, &body)
+                    .await
+                    .expect("historical outputs must not enter callback recovery")
+                    .is_none()
+            );
+            assert!(
+                correlate_semantic_responses_callback(&repository, &actor, &envelope)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(repository.callback_resume_attempts().is_empty());
+            // An explicit cursor still submits to the old round; changed model
+            // configuration must not be hidden by an appended assistant message.
+            body["previous_response_id"] = json!("resp_round");
+            assert!(
+                correlate_native_responses_callback(&repository, &actor, &body)
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("native_tool_output_configuration_mismatch")
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn native_admission_accepts_self_contained_history_without_an_owned_receipt() {
+    let (repository, actor, _) = fixture().await;
+    let mut body = request();
+    let outputs = body["input"].clone();
+    body["input"] = json!([
+        {"type":"function_call","call_id":"function","name":"read","arguments":"{}"},
+        {"type":"custom_tool_call","call_id":"custom","name":"exec","input":"read"}
+    ]);
+    body["input"]
+        .as_array_mut()
+        .unwrap()
+        .extend(outputs.as_array().unwrap().iter().cloned());
+    body["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"type":"message","role":"assistant","content":"Historical answer"}));
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    body["previous_response_id"] = json!("resp_unknown");
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("native_tool_output_unknown")
+    );
+}
+
+#[tokio::test]
+async fn native_admission_keeps_pending_outputs_after_assistant_history_boundary() {
+    let (repository, actor, run) = fixture().await;
+    let mut body = request();
+    seed_round(&repository, run, &body);
+    let outputs = body["input"].as_array().unwrap().clone();
+    body["input"] = json!([
+        {"type":"function_call","call_id":"historical","name":"read","arguments":"{}"},
+        {"type":"function_call_output","call_id":"historical","output":"old result"},
+        {"type":"message","role":"assistant","content":"Previous answer"},
+        {"type":"function_call","call_id":"function","name":"read","arguments":"{}"},
+        {"type":"custom_tool_call","call_id":"custom","name":"exec","input":"read"}
+    ]);
+    body["input"].as_array_mut().unwrap().extend(outputs);
+    body["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"role":"user","content":"Additional context for pending tools"}));
+    // An explicit cursor establishes this pending round independently of history.
+    body["previous_response_id"] = json!("resp_round");
+    let (_, result) = correlate_native_responses_callback(&repository, &actor, &body)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(result["tool_results"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
 async fn native_admission_accepts_proven_full_configuration_refresh_and_completed_replay() {
     for (field, value) in [
         (
@@ -1230,6 +1342,45 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
             ["image_url"]["url"],
         "https://example.test/image.png"
     );
+    let mut fork = full;
+    fork["instructions"] = json!("New fork instructions");
+    fork["input"][0]["content"] = json!("Reconstructed fork prefix");
+    fork["input"].as_array_mut().unwrap().extend([
+        json!({"type":"message","role":"assistant","phase":"final_answer","content":"Previous answer"}),
+        json!({"role":"user","content":"Continue in a new fork"}),
+    ]);
+    assert!(
+        correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(fork.clone()).unwrap(),
+        )
+        .await
+        .is_err(),
+        "an assistant message must not bypass a pending receipt"
+    );
+    repository.complete_callback_task_for_test(callback.id);
+    let mut cursor_retry = fork.clone();
+    cursor_retry["previous_response_id"] = json!(format!("resp_{run}"));
+    assert!(
+        correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(cursor_retry).unwrap(),
+        )
+        .await
+        .is_err(),
+        "an assistant message must not bypass an explicit cursor"
+    );
+    assert!(correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(fork).unwrap(),
+    )
+    .await
+    .unwrap()
+    .is_none());
+    assert!(repository.callback_resume_attempts().is_empty());
     let mut other = actor.clone();
     other.api_key_id = Uuid::now_v7();
     assert!(correlate_semantic_responses_callback(

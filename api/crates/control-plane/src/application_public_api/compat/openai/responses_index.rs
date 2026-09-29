@@ -153,6 +153,7 @@ pub(crate) struct ResponsesInputIndex {
     tool_output_positions: Vec<usize>,
     outputs_by_call_id: BTreeMap<String, Vec<usize>>,
     last_tool_call_position: Option<usize>,
+    last_assistant_message_position: Option<usize>,
 }
 
 impl ResponsesInputIndex {
@@ -164,6 +165,7 @@ impl ResponsesInputIndex {
                 tool_output_positions: Vec::new(),
                 outputs_by_call_id: BTreeMap::new(),
                 last_tool_call_position: None,
+                last_assistant_message_position: None,
             });
         }
         let items = input
@@ -179,6 +181,7 @@ impl ResponsesInputIndex {
             tool_output_positions: Vec::new(),
             outputs_by_call_id: BTreeMap::new(),
             last_tool_call_position: None,
+            last_assistant_message_position: None,
         };
         for (position, item) in items.iter().enumerate() {
             let object = item
@@ -192,6 +195,11 @@ impl ResponsesInputIndex {
             match item_type.as_deref() {
                 Some("function_call" | "custom_tool_call") => {
                     index.last_tool_call_position = Some(position);
+                }
+                Some("message") | None
+                    if object.get("role").and_then(Value::as_str) == Some("assistant") =>
+                {
+                    index.last_assistant_message_position = Some(position);
                 }
                 Some("function_call_output" | "custom_tool_call_output") => {
                     index.tool_output_positions.push(position);
@@ -226,8 +234,8 @@ impl ResponsesInputIndex {
         &self.outputs_by_call_id
     }
 
-    /// Selects outputs after the latest tool-call segment. Message roles do not
-    /// establish response causality: a continuation may include new user context.
+    /// Selects outputs after the latest tool-call segment. Message roles alone do not
+    /// establish response causality: a pending continuation may include new context.
     pub(crate) fn current_tool_output_positions(&self) -> Vec<usize> {
         let start = self
             .last_tool_call_position
@@ -237,5 +245,13 @@ impl ResponsesInputIndex {
             .copied()
             .filter(|position| *position >= start)
             .collect()
+    }
+
+    /// A model message after all outputs is evidence of historical sampling, not
+    /// authority to consume a callback. Admission also checks its durable state.
+    pub(crate) fn has_assistant_message_after_tool_outputs(&self) -> bool {
+        self.last_assistant_message_position
+            .zip(self.tool_output_positions.last().copied())
+            .is_some_and(|(message, output)| message > output)
     }
 }

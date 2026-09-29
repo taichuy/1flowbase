@@ -114,6 +114,11 @@ where
     };
     let mut candidates = candidates.into_iter();
     let Some(callback) = candidates.next() else {
+        // A self-contained history can come from another session/key or provider.
+        // Its past outputs are not submissions to an owned callback round.
+        if previous_response_id.is_none() && index.has_assistant_message_after_tool_outputs() {
+            return Ok(None);
+        }
         let compact_trigger_is_final = input
             .last()
             .and_then(|item| item.get("type"))
@@ -160,6 +165,15 @@ where
     }
     if expected_ids != call_ids {
         return Err(ControlPlaneError::Conflict("native_tool_output_incomplete_round").into());
+    }
+    // Fork/new-turn sampling replays completed tool history with fresh context and
+    // configuration. It must not mutate or recover the historical callback receipt.
+    // Pending rounds and explicit response cursors retain the resume checks below.
+    if previous_response_id.is_none()
+        && callback.status == CallbackTaskStatus::Completed
+        && index.has_assistant_message_after_tool_outputs()
+    {
+        return Ok(None);
     }
     let metadata = callback
         .request_payload
