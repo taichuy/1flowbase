@@ -205,6 +205,26 @@ test("scanSourceFile reports low-value test smells as advisory findings", () => 
   );
 });
 
+test("field compatibility markers are warnings only in actual source comments", () => {
+  const findings = scanSourceFile({
+    relativePath: "scripts/node/example/core.js",
+    content: [
+      "const quoted = '// @field-contract-compat source=a alias=b';",
+      String.raw`const marker = /(?:\/\/|#|\/\*|\*)\s*@field-contract-compat\b/u;`,
+      "const inline = 1; /* @field-contract-compat source=a alias=b remove_by=2027-01-01 */",
+      "/*",
+      " * @field-contract-compat source=c alias=d remove_by=2027-01-01",
+      " */",
+      "// @field-contract-compat source=e alias=f remove_by=2027-01-01",
+    ].join("\n"),
+  });
+  assert.deepEqual(findings.map(({ rule, line, severity }) => ({ rule, line, severity })), [
+    { rule: "field-contract-compat-marker", line: 3, severity: "warning" },
+    { rule: "field-contract-compat-marker", line: 5, severity: "warning" },
+    { rule: "field-contract-compat-marker", line: 7, severity: "warning" },
+  ]);
+});
+
 test("scanSourceFile reports front-back field contract compatibility markers as warnings", () => {
   const findings = scanSourceFile({
     relativePath: "web/app/src/features/example/api/example.ts",

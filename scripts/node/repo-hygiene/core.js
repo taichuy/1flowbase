@@ -48,8 +48,6 @@ const SKIPPED_FILES = new Set(["api/Cargo.lock", "web/pnpm-lock.yaml"]);
 const DEBT_MARKER_PATTERN =
   /\b(TODO|FIXME|HACK|legacy|compat(?:ibility)?|deprecated|obsolete)\b/iu;
 const FIELD_CONTRACT_COMPAT_MARKER_TEXT = /@field-contract-compat\b/u;
-const FIELD_CONTRACT_COMPAT_MARKER_PATTERN =
-  /(?:\/\/|#|\/\*|\*)\s*@field-contract-compat\b/u;
 const BENIGN_MARKER_PATTERNS = [
   /\bdeprecated:\s*false\b/u,
   /\bdeprecated:\s*bool\b/u,
@@ -522,8 +520,7 @@ function scanSourceFile({ relativePath, content }) {
     if (
       !testPath &&
       isCodeFile(relativePath) &&
-      !line.includes("FIELD_CONTRACT_COMPAT_MARKER") &&
-      FIELD_CONTRACT_COMPAT_MARKER_PATTERN.test(line)
+      FIELD_CONTRACT_COMPAT_MARKER_TEXT.test(debtScanText.text)
     ) {
       findings.push(
         createFinding({
