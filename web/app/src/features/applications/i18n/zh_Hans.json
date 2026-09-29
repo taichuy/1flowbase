@@ -139,7 +139,7 @@
     "refresh_failed": "刷新失败",
     "refresh_logs": "刷新日志",
     "api_key_prefix_notice": "列表只显示可识别的 Key 前缀；完整 token 只在创建后显示一次，关闭后无法再次查看。",
-    "tool_callback_count": "工具回调次数",
+    "invocation_count": "调用次数",
     "run_id": "运行 ID",
     "name_required": "请输入名称",
     "run_details_preview": "运行详情预览",

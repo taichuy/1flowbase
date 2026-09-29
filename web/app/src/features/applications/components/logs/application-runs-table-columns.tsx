@@ -302,10 +302,10 @@ export function getApplicationRunsTableColumns(
       render: (_value, run) => formatRunStatisticNumber(run.unique_node_count)
     },
     {
-      key: 'tool_callback_count',
-      title: t('auto.tool_callback_count'),
+      key: 'invocation_count',
+      title: t('auto.invocation_count'),
       width: 150,
-      render: (_value, run) => formatRunStatisticNumber(run.tool_callback_count)
+      render: (_value, run) => formatRunStatisticNumber(run.invocation_count)
     },
     {
       key: 'started_at',

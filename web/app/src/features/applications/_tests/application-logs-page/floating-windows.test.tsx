@@ -260,7 +260,8 @@ describe('ApplicationLogsPage - floating windows shell', () => {
           output_tokens: 10,
           input_cache_hit_tokens: 12,
           unique_node_count: 3,
-          tool_callback_count: 20,
+          invocation_count: 3,
+          tool_callback_count: 2,
           started_at: '2026-04-17T09:00:00Z',
           finished_at: '2026-04-17T09:00:01Z',
           created_at: '2026-04-17T09:00:00Z',
@@ -335,6 +336,26 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     dateNowSpy = undefined;
   });
 
+  test('uses the task invocation count for both the summary and count column', async () => {
+    render(
+      <AppProviders>
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
+      </AppProviders>
+    );
+
+    const taskRow = (await screen.findByText('公开 API 退款总结')).closest('tr')!;
+    expect(
+      screen.getByRole('columnheader', { name: '调用次数' })
+    ).toBeInTheDocument();
+    expect(within(taskRow).getByText('3 次调用')).toBeInTheDocument();
+    expect(within(taskRow).getAllByRole('cell', { name: '3' })).toHaveLength(2);
+    expect(
+      within(taskRow).queryByRole('cell', { name: '2' })
+    ).not.toBeInTheDocument();
+  });
+
   test('opens run detail and conversation log as floating windows', async () => {
     render(
       <AppProviders>
@@ -366,11 +387,15 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       screen.getByRole('columnheader', { name: '真实节点数' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('columnheader', { name: '工具回调次数' })
+      screen.getByRole('columnheader', { name: '调用次数' })
     ).toBeInTheDocument();
     expect(screen.getByText('50')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
-    expect(screen.getByText('20')).toBeInTheDocument();
+    const taskRow = screen.getByText('公开 API 退款总结').closest('tr')!;
+    expect(within(taskRow).getByText('3 次调用')).toBeInTheDocument();
+    expect(within(taskRow).getAllByRole('cell', { name: '3' })).toHaveLength(2);
+    expect(
+      within(taskRow).queryByRole('cell', { name: '2' })
+    ).not.toBeInTheDocument();
     expect(runtimeApi.fetchApplicationRuns).toHaveBeenCalledWith('app-1', {
       page: 1,
       pageSize: 20,
