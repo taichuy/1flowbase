@@ -557,7 +557,7 @@ impl TraceProjectionBuilder {
                         parent_tool_call_description: parent_tool_call_description.as_deref(),
                         subagent_trace,
                     },
-                    &node_runs,
+                    node_runs,
                 )?;
             } else {
                 self.push_subagent_flow_run_fallback(

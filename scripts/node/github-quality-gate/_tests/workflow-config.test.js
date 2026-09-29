@@ -19,6 +19,27 @@ function readQualityGateWorkflow() {
   );
 }
 
+test('quality gate jobs execute one resolved candidate and aggregate every required job outcome', () => {
+  const workflow = readQualityGateWorkflow();
+  const jobs = workflow.split(/\n(?=  [a-z][a-z0-9-]+:)/u);
+  for (const name of [
+    'single-scope-gate', 'repo-tooling-gate', 'repo-frontend-gate',
+    'repo-frontend-react-doctor-gate', 'repo-backend-gate', 'backend-consistency-gate',
+    'coverage-frontend-gate', 'coverage-backend-gate', 'coverage-backend-api-server-sharded',
+    'coverage-backend-api-server-sharded-merge', 'container-images-gate', 'aggregate',
+  ]) {
+    const job = jobs.find((block) => block.startsWith(`  ${name}:`));
+    assert.ok(job, `${name} must exist`);
+    assert.match(job, /needs:[\s\S]*?resolve-quality-gate-target/u, name);
+    assert.match(job, /ref: \$\{\{ needs\.resolve-quality-gate-target\.outputs\.target_sha \}\}/u, name);
+    assert.doesNotMatch(job, /ref: \$\{\{ env\.QUALITY_GATE_TARGET_BRANCH \}\}/u, name);
+  }
+  const ai = jobs.find((block) => block.startsWith('  ai-gateway-protocol-conformance:'));
+  assert.match(ai, /target_ref: \$\{\{ needs\.resolve-quality-gate-target\.outputs\.target_sha \}\}/u);
+  assert.match(workflow, /INPUT_JOB_RESULTS: \$\{\{ toJSON\(needs\) \}\}/u);
+  assert.match(readVerifyWorkflow(), /INPUT_JOB_RESULTS: \$\{\{ toJSON\(needs\) \}\}/u);
+});
+
 function readContainerImagesWorkflow() {
   return fs.readFileSync(
     path.join(repoRoot, ".github", "workflows", "container-images.yml"),
@@ -182,7 +203,7 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
   assert.doesNotMatch(workflow, /coverage-backend-gate:/u);
   assert.match(
     workflow,
-    /verify:\n\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-backend-gate\n\s+- foundation-contract-gate/u,
+    /verify:\n\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-backend-gate\n\s+- foundation-contract-gate/u,
   );
   assert.match(
     workflow,
@@ -282,7 +303,7 @@ test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/
 
   const docs = readGitHubAutomationDocs();
   assert.match(docs, /below one hour/u);
-  assert.match(docs, /fewer than three foundations repeatedly fail/u);
+  assert.match(docs, /task-approved remote\/local execution policy/u);
   assert.match(docs, /not\s+configured as required checks/u);
 });
 
@@ -408,7 +429,7 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
   assert.match(singleScopeBlock, /REACT_DOCTOR_CANDIDATE_SOURCE: quality-gate-target-sha/u);
   assert.match(
     workflow,
-    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate/u,
+    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate/u,
   );
   assert.match(
     workflow,
@@ -751,7 +772,7 @@ test("quality gate workflow supports dispatch targets and nightly latest CI defa
   );
   assert.match(
     workflow,
-    /concurrency:\n\s+group: quality-gate-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.target_branch \|\| 'latest' \}\}\n\s+cancel-in-progress: true/u,
+    /concurrency:\n\s+group: quality-gate-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.target_branch \|\| 'latest' \}\}-\$\{\{ inputs\.scope \|\| 'ci' \}\}\n\s+cancel-in-progress: true/u,
   );
   assert.match(
     workflow,
@@ -858,7 +879,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   );
   assert.match(
     workflow,
-    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- backend-consistency-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
+    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- backend-consistency-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
   );
   assert.doesNotMatch(workflow, /- state-protocols-gate/u);
   assert.match(workflow, /- container-images-gate/u);

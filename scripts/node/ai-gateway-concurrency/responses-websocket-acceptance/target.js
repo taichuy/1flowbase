@@ -24,7 +24,9 @@ function createGatewayTarget(ready) {
   const responsesUrl = requiredString(provider.gateway?.responses_url, 'Gateway Responses URL');
   const target = {
     evidence_role: 'gateway-support-target',
+    // The explicit client transport hint wins over the instance http_sse default.
     transport: TRANSPORT.RESPONSES_WEBSOCKET,
+    expected_upstream_transport: TRANSPORT.RESPONSES_WEBSOCKET,
     url: websocketUrl(responsesUrl),
     application_id: requiredString(provider.application_id, 'OpenAI application id'),
     provider_instance_id: requiredString(provider.provider_instance_id, 'OpenAI provider instance id'),
@@ -62,6 +64,7 @@ function publicTarget(target) {
   return {
     evidence_role: target.evidence_role,
     transport: target.transport,
+    expected_upstream_transport: target.expected_upstream_transport,
     url: target.url,
     application_id: target.application_id,
     provider_instance_id: target.provider_instance_id,

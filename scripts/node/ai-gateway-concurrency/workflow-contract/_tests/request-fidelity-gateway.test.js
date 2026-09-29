@@ -4,10 +4,13 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { REQUEST_FIDELITY_VECTORS } = require('../../protocol-oracle/request-fidelity');
-const { requestPair } = require('../request-fidelity-gateway');
+const { requestPair, sealedSessionIdentity } = require('../request-fidelity-gateway');
 
 test('Root #1477 AC-001/005: live request pairs target protocol-matched providers', () => {
   const target = (code) => ({
+    application_id: '00000000-0000-0000-0000-000000000001',
+    api_key_id: '00000000-0000-0000-0000-000000000002',
+    workspace_id: '00000000-0000-0000-0000-000000000003',
     model: '1flowbase', upstream_model: `${code}-upstream-model`, api_key: `${code}-key`,
     gateway: {
       responses_url: 'http://127.0.0.1:7800/v1/responses',
@@ -40,8 +43,32 @@ test('Root #1477 AC-001/005: live request pairs target protocol-matched provider
     rows.anthropic_messages.directBody.messages,
     rows.anthropic_messages.gatewayBody.messages,
   );
+  assert.equal(rows.openai_responses.directHeaders['session-id'], '84c42162826d9d16cba051c62b3497c642c2566b72c092cf2540314065cd401b');
+  assert.equal(rows.openai_responses.gatewayHeaders['session-id'], 'fidelity-session');
+  assert.equal(rows.openai_responses.directHeaders['thread-id'], 'fidelity-thread');
+  assert.equal(rows.openai_responses.directHeaders['x-fixture-extension'], 'responses-header-value');
   assert.equal(rows.openai_responses.gatewayBody.input, 'Root #1477 request fidelity probe');
   assert.equal(rows.openai_responses.directBody.input, rows.openai_responses.gatewayBody.input);
   assert.equal(rows.openai_responses.directBody.max_output_tokens, 4096);
   assert.equal(rows.openai_responses.gatewayBody.max_output_tokens, 4096);
+});
+
+
+test('session seal binds every authenticated and client identity part', () => {
+  const target = {
+    application_id: '00000000-0000-0000-0000-000000000001',
+    api_key_id: '00000000-0000-0000-0000-000000000002',
+    workspace_id: '00000000-0000-0000-0000-000000000003',
+  };
+  const headers = { 'session-id': 'fidelity-session', 'thread-id': 'fidelity-thread' };
+  const expected = '84c42162826d9d16cba051c62b3497c642c2566b72c092cf2540314065cd401b';
+  assert.equal(sealedSessionIdentity(target, headers), expected);
+  for (const field of Object.keys(target)) {
+    assert.notEqual(sealedSessionIdentity({ ...target, [field]: `${target[field]}-changed` }, headers), expected);
+    assert.throws(() => sealedSessionIdentity({ ...target, [field]: undefined }, headers), /session identity omitted/u);
+  }
+  for (const field of Object.keys(headers)) {
+    assert.notEqual(sealedSessionIdentity(target, { ...headers, [field]: `${headers[field]}-changed` }), expected);
+    assert.throws(() => sealedSessionIdentity(target, { ...headers, [field]: undefined }), /requires explicit/u);
+  }
 });

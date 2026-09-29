@@ -42,7 +42,7 @@
 命中以下任一条件时，必须追加后端专项检查：
 
 - 后端路由、响应结构、OpenAPI 或调用契约发生变化
-- service、repository、mapper、runtime-core、orchestration-runtime、runtime-profile、plugin-framework、storage-durable/postgres、storage-durable、storage-object 发生变化
+- service、repository、mapper、runtime-core、orchestration-runtime、runtime-profile、plugin-framework、storage/durable/postgres、storage-durable、storage-object 发生变化
 - 任务涉及 `HostExtension`、`RuntimeExtension`、`CapabilityPlugin`、动态建模、`Resource Action Kernel`、文件管理 / 对象存储、验证脚本
 
 先核对后端架构与当前改动 owner，再按 `../backend/backend-regression-steps.md` 选择适用项；Dev Acceptance 遵循 `gate-lanes.md` 的资源边界，不把源码核对扩展为全量后端门禁。
@@ -56,7 +56,7 @@
 | 插件消费边界 | 是否仍守住 `HostExtension / RuntimeExtension / CapabilityPlugin` 边界，有没有出现 runtime 或 capability 插件直接扩系统接口或持有基础设施连接 | plugin-framework、runtime-core、host contribution、接口注册点 |
 | HostExtension 启动面 | manifest contribution、load plan、pre-state infra provider、route/worker/migration namespace 是否一致 | host-extension.yaml、load plan tests、host infrastructure registry、route/worker/migration registry tests |
 | 分层边界 | 是否出现 repository 混业务逻辑、mapper 混规则、route 混 SQL、service 失焦 | 代码结构、文件职责、写路径 |
-| 存储分层 | `storage-durable/postgres` 内的 `storage-postgres` 是否仍保持 repository / mapper 拆分，`storage-durable` 是否只暴露主存储稳定入口，`storage-object` 是否只承担文件 driver 边界 | storage-durable/postgres、storage-durable、storage-object 目录、repository/mapper tests、driver tests、调用链 |
+| 存储分层 | `storage/durable/postgres`（crate `storage-durable-postgres`） 是否仍保持 repository / mapper 拆分，`storage-durable` 是否只暴露主存储稳定入口，`storage-object` 是否只承担文件 driver 边界 | storage/durable/postgres、storage/durable/core、storage/object 目录、repository/mapper tests、driver tests、调用链 |
 | 质量门禁 | 是否执行了后端最小验证命令或验证脚本，是否补了对应 tests，是否继续把大文件和目录压力放大 | 命令输出、脚本输出、测试文件、`wc -l`、目录结构 |
 
 ## Blast Radius Review
@@ -71,7 +71,7 @@
 - 公共行为变化需核对已确认目标与直接消费者；只对有证据的偏离按影响分级，不把获批变化本身报告为缺陷
 - 后端公共路由改动必须抽查其他调用方、OpenAPI 和相关 `_tests`
 - session、auth、provider 或 callback 改动必须补查 `public` 与 `control` 平面的传播影响
-- `storage-durable/postgres`、`storage-durable`、`storage-object`、`runtime-core`、`orchestration-runtime`、`runtime-profile`、`plugin-framework` 这类基础层改动，默认按高 blast radius 看待
+- `storage/durable/postgres`、`storage-durable`、`storage-object`、`runtime-core`、`orchestration-runtime`、`runtime-profile`、`plugin-framework` 这类基础层改动，默认按高 blast radius 看待
 
 ## Output Discipline
 

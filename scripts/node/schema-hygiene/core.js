@@ -34,6 +34,7 @@ const BROAD_EXEMPTION_SKIPS = new Set([
   'managed_table',
   'dynamic_model_table',
   'registered_system_table',
+  'physical_contract_table',
 ]);
 const BOUNDED_PROJECTION_EXEMPTION_KIND = 'bounded_projection';
 const BOUNDED_PROJECTION_EXEMPT_ACTION = 'bounded_projection_exempt';
@@ -448,11 +449,17 @@ function parseReference(raw) {
   };
 }
 
+function parseDeleteAction(raw) {
+  return /on\s+delete\s+(cascade|restrict|no\s+action|set\s+null|set\s+default)/iu.exec(raw)?.[1].toLowerCase().replace(/\s+/gu, ' ') || 'no action';
+}
+
 function addInlineConstraints(table, column, raw) {
+  const inlineCheck = /\bcheck\s*(\([\s\S]*\))\s*$/iu.exec(raw);
+  if (inlineCheck) table.checks.push({ name: `${table.name}_${column.name}_check`, definition: `check${inlineCheck[1]}`, source: 'inline', column: column.name });
   if (/\bprimary\s+key\b/iu.test(raw)) {
     table.primaryKey = {
       columns: [column.name],
-      name: null,
+      name: `${table.name}_pkey`,
       source: 'inline',
     };
   }
@@ -460,7 +467,7 @@ function addInlineConstraints(table, column, raw) {
   if (/\bunique\b/iu.test(raw)) {
     table.uniqueConstraints.push({
       columns: [column.name],
-      name: null,
+      name: `${table.name}_${column.name}_key`,
       source: 'inline',
     });
   }
@@ -470,7 +477,8 @@ function addInlineConstraints(table, column, raw) {
     table.foreignKeys.push({
       columns: [column.name],
       references: reference,
-      name: null,
+      onDelete: parseDeleteAction(raw),
+      name: `${table.name}_${column.name}_fkey`,
       source: 'inline',
     });
   }
@@ -487,7 +495,7 @@ function parseTableConstraint(table, definition) {
   if (primaryKeyMatch) {
     table.primaryKey = {
       columns: parseColumnList(primaryKeyMatch[1]),
-      name: constraintName,
+      name: constraintName || `${table.name}_pkey`,
       source: 'table',
     };
     return true;
@@ -497,7 +505,7 @@ function parseTableConstraint(table, definition) {
   if (uniqueMatch) {
     table.uniqueConstraints.push({
       columns: parseColumnList(uniqueMatch[1]),
-      name: constraintName,
+      name: constraintName || `${table.name}_${parseColumnList(uniqueMatch[1]).join('_')}_key`,
       source: 'table',
     });
     return true;
@@ -511,7 +519,8 @@ function parseTableConstraint(table, definition) {
         table: normalizeIdentifier(foreignKeyMatch[2]),
         columns: foreignKeyMatch[3] ? parseColumnList(foreignKeyMatch[3]) : [],
       },
-      name: constraintName,
+      onDelete: parseDeleteAction(normalized),
+      name: constraintName || `${table.name}_${parseColumnList(foreignKeyMatch[1]).join('_')}_fkey`,
       source: 'table',
     });
     return true;
@@ -617,6 +626,7 @@ function parseAlterTableDropColumn(table, action) {
   const columnName = normalizeIdentifier(match[1]);
   table.columns = table.columns.filter((column) => column.name !== columnName);
   table.jsonbColumns = table.jsonbColumns.filter((column) => column !== columnName);
+  table.checks = table.checks.filter((check) => check.column !== columnName);
   return true;
 }
 
@@ -724,6 +734,7 @@ function parseAlterTableDropConstraint(table, action) {
   const constraintName = normalizeIdentifier(match[1]);
   table.uniqueConstraints = table.uniqueConstraints.filter((constraint) => constraint.name !== constraintName);
   table.foreignKeys = table.foreignKeys.filter((constraint) => constraint.name !== constraintName);
+  table.checks = table.checks.filter((constraint) => constraint.name !== constraintName);
   if (table.primaryKey && table.primaryKey.name === constraintName) {
     table.primaryKey = null;
   }
@@ -975,6 +986,7 @@ function loadConfig(repoRoot, configPath = DEFAULT_CONFIG_FILE) {
 function normalizeConfig(config = {}) {
   return {
     tableProfiles: config.tableProfiles || {},
+    physicalTableContracts: config.physicalTableContracts || {},
     dynamicModelTablePatterns: (config.dynamicModelTablePatterns || []).map((pattern) => new RegExp(pattern, 'u')),
     registeredSystemTables: new Set(config.registeredSystemTables || []),
     registeredSystemTableTemplates: config.registeredSystemTableTemplates || {},
@@ -1233,7 +1245,8 @@ function evaluateRegisteredSystemTableTemplate(table, config, exemption) {
     ];
   }
 
-  const findings = [];
+  const findings = config.physicalTableContracts[table.name]
+    ? profileFindingsForTable(table, 'physical_contract_table', config).map((item) => finding({ ...item, table })) : [];
   for (const columnName of template.requiredColumns || []) {
     if (!hasColumn(table, columnName) && !isSkipped(exemption, 'registered-system-table-required-column', columnName)) {
       findings.push(finding({
@@ -1268,8 +1281,8 @@ function evaluateSchemaHygiene({ inventory, config = {} }) {
       }));
     } else if (profile === 'dynamic_model_table') {
       tableFindings.push(...evaluateDynamicModelTable(table, exemption));
-    } else if (profile === 'flow_run_owned_table' || profile === 'retired_archive_table') {
-      tableFindings.push(...profileFindingsForTable(table, profile).map((item) => finding({
+    } else if (profile === 'flow_run_owned_table' || profile === 'retired_archive_table' || profile === 'physical_contract_table') {
+      tableFindings.push(...profileFindingsForTable(table, profile, normalizedConfig).map((item) => finding({
         ...item,
         table,
       })));

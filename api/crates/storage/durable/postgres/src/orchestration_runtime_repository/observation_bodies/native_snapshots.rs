@@ -9,7 +9,7 @@ fn digest(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
-fn spans<'a>(body: &'a str) -> Option<Vec<(usize, &'a str)>> {
+fn spans(body: &str) -> Option<Vec<(usize, &str)>> {
     fn collect<'a>(
         root: &'a str,
         value: &'a RawValue,

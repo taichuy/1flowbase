@@ -17,23 +17,27 @@ const ROOT_ENTRIES = [
   "scripts",
   "docker",
   ".github",
+  ".agents",
   "AGENTS.md",
   "test_dir.txt",
 ];
 const SOURCE_EXTENSIONS = new Set([
   ".css",
+  ".cjs",
   ".js",
   ".json",
   ".md",
+  ".mjs",
   ".rs",
   ".ts",
   ".tsx",
   ".yml",
   ".yaml",
 ]);
-const CODE_EXTENSIONS = new Set([".css", ".js", ".rs", ".ts", ".tsx"]);
+const CODE_EXTENSIONS = new Set([".css", ".cjs", ".js", ".mjs", ".rs", ".ts", ".tsx"]);
 const SKIPPED_DIRS = new Set([
   ".git",
+  ".memory",
   "coverage",
   "dist",
   "node_modules",
@@ -44,8 +48,6 @@ const SKIPPED_FILES = new Set(["api/Cargo.lock", "web/pnpm-lock.yaml"]);
 const DEBT_MARKER_PATTERN =
   /\b(TODO|FIXME|HACK|legacy|compat(?:ibility)?|deprecated|obsolete)\b/iu;
 const FIELD_CONTRACT_COMPAT_MARKER_TEXT = /@field-contract-compat\b/u;
-const FIELD_CONTRACT_COMPAT_MARKER_PATTERN =
-  /(?:\/\/|#|\/\*|\*)\s*@field-contract-compat\b/u;
 const BENIGN_MARKER_PATTERNS = [
   /\bdeprecated:\s*false\b/u,
   /\bdeprecated:\s*bool\b/u,
@@ -132,7 +134,7 @@ function isCodeFile(relativePath) {
 function isTestPath(relativePath) {
   return (
     TEST_PATH_PATTERN.test(relativePath) ||
-    /(?:^|[./-])(?:test|spec)\.[jt]sx?$/u.test(relativePath)
+    /(?:^|[./-])(?:test|spec)\.(?:[jt]sx?|[cm]js)$/u.test(relativePath)
   );
 }
 
@@ -518,8 +520,7 @@ function scanSourceFile({ relativePath, content }) {
     if (
       !testPath &&
       isCodeFile(relativePath) &&
-      !line.includes("FIELD_CONTRACT_COMPAT_MARKER") &&
-      FIELD_CONTRACT_COMPAT_MARKER_PATTERN.test(line)
+      FIELD_CONTRACT_COMPAT_MARKER_TEXT.test(debtScanText.text)
     ) {
       findings.push(
         createFinding({
@@ -655,6 +656,18 @@ function isFileSizePressureExempt(relativePath) {
 }
 
 function collectLinePressureFindings({ relativePath, content }) {
+  if (path.posix.basename(relativePath) === "AGENTS.md") {
+    const lines = countLines(content);
+    return lines > 200
+      ? [createFinding({
+          rule: "agents-file-size-pressure",
+          file: relativePath,
+          message: "AGENTS.md exceeds the repository 200-line instruction limit",
+          snippet: `${lines} lines`,
+        })]
+      : [];
+  }
+
   if (!isCodeFile(relativePath) || isFileSizePressureExempt(relativePath)) {
     return [];
   }

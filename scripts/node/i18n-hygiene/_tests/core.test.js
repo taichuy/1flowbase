@@ -520,6 +520,113 @@ test('collectI18nHygieneFindings resolves statically imported frontend namespace
   assert.deepEqual(unusedKeys, ['auto.stale']);
 });
 
+for (const [importKind, importStatement] of [
+  ['dynamic', "void import('./application-i18n-resources').then(({ applicationTranslationResources }) => register(applicationTranslationResources));"],
+  ['static', "import { applicationTranslationResources } from './application-i18n-resources.ts';"]
+]) {
+  test(`collectI18nHygieneFindings resolves directly ${importKind} imported resource owners across features`, () => {
+    const repoRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'oneflowbase-i18n-split-resources-')
+    );
+    writeFile(repoRoot, 'web/app/src/shared/i18n/app-i18n.ts', [
+      importStatement,
+      'const publicTranslationLoaders = {',
+      "  auth: { zh_Hans: () => import('../../features/auth/i18n/zh_Hans.json') }",
+      '};'
+    ].join('\n'));
+    writeFile(repoRoot, 'web/app/src/shared/i18n/application-i18n-resources.ts', [
+      "import appShellZhHans from '../../app-shell/i18n/zh_Hans.json';",
+      "import appShellEnUS from '../../app-shell/i18n/en_US.json';",
+      'export const applicationTranslationResources = {',
+      '  zh_Hans: { appShell: appShellZhHans },',
+      '  en_US: { appShell: appShellEnUS }',
+      '};',
+      'export const applicationTranslationLoaders = {',
+      "  example: { zh_Hans: () => import('../../features/example/i18n/zh_Hans.json') }",
+      '};'
+    ].join('\n'));
+    writeI18nPair(repoRoot, 'web/app/src/app-shell',
+      { auto: { assistant: '助手', stale: '废弃' } },
+      { auto: { assistant: 'Assistant', stale: 'Stale' } }
+    );
+    writeI18nPair(repoRoot, 'web/app/src/features/example',
+      { actions: { save: '保存', stale: '旧操作' } },
+      { actions: { save: 'Save', stale: 'Old action' } }
+    );
+    writeI18nPair(repoRoot, 'web/app/src/features/auth',
+      { actions: { sign_in: '登录' } },
+      { actions: { sign_in: 'Sign in' } }
+    );
+    writeFile(repoRoot, 'web/app/src/features/agent-flow/EmbeddedAgentAssistant.tsx', [
+      "const label = i18nText('appShell', 'auto.assistant');",
+      "const { t } = useTranslation('example');",
+      "const saveLabel = t('actions.save');",
+      "const signInLabel = i18nText('auth', 'actions.sign_in');"
+    ].join('\n'));
+
+    const unused = collectI18nHygieneFindings({ repoRoot })
+      .filter((finding) => finding.rule === 'unused-i18n-key')
+      .map((finding) => [finding.owner, finding.key, finding.severity]);
+
+    assert.deepEqual(unused, [
+      ['web/app/src/app-shell', 'auto.stale', 'warning'],
+      ['web/app/src/features/example', 'actions.stale', 'warning']
+    ]);
+  });
+}
+
+test('collectI18nHygieneFindings limits resource discovery to direct local source imports', () => {
+  const repoRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'oneflowbase-i18n-import-boundary-')
+  );
+  writeFile(repoRoot, 'web/app/src/shared/i18n/app-i18n.ts', [
+    "import { resolveLocale } from './locales';",
+    "import type { Resources } from './type-resources';",
+    "void import('package-resources');",
+    "void import('../../../../outside-resources');",
+    "void import('./missing-resources');",
+    "void import('./ignored-resources.mjs');"
+  ].join('\n'));
+  writeFile(repoRoot, 'web/app/src/shared/i18n/locales.ts',
+    "export { resources } from './indirect-resources';"
+  );
+  const resourceModule = (namespace, localePath) => [
+    `import appShellZhHans from '${localePath}';`,
+    `export const resources = { zh_Hans: { ${namespace}: appShellZhHans } };`
+  ].join('\n');
+  for (const namespace of ['indirect', 'type', 'package', 'ignored']) {
+    const fileName = namespace === 'type' ? 'type-resources.ts'
+      : namespace === 'ignored' ? 'ignored-resources.mjs'
+        : `${namespace}-resources.ts`;
+    writeFile(repoRoot, `web/app/src/shared/i18n/${fileName}`,
+      resourceModule(namespace, '../../app-shell/i18n/zh_Hans.json')
+    );
+  }
+  writeFile(repoRoot, 'web/outside-resources.ts',
+    resourceModule('outside', './app/src/app-shell/i18n/zh_Hans.json')
+  );
+  writeI18nPair(repoRoot, 'web/app/src/app-shell', {
+    auto: { indirect: '间接', type: '类型', package: '依赖', outside: '外部', ignored: '忽略' }
+  }, {
+    auto: { indirect: 'Indirect', type: 'Type', package: 'Package', outside: 'Outside', ignored: 'Ignored' }
+  });
+  writeFile(repoRoot, 'web/app/src/features/example/ExamplePage.tsx', [
+    "i18nText('indirect', 'auto.indirect');",
+    "i18nText('type', 'auto.type');",
+    "i18nText('package', 'auto.package');",
+    "i18nText('outside', 'auto.outside');",
+    "i18nText('ignored', 'auto.ignored');"
+  ].join('\n'));
+
+  const unusedKeys = collectI18nHygieneFindings({ repoRoot })
+    .filter((finding) => finding.rule === 'unused-i18n-key')
+    .map((finding) => finding.key);
+
+  assert.deepEqual(unusedKeys, [
+    'auto.ignored', 'auto.indirect', 'auto.outside', 'auto.package', 'auto.type'
+  ]);
+});
+
 test('collectI18nHygieneFindings keeps same-owner labelKey literals as frontend i18n references', () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'oneflowbase-i18n-label-key-')

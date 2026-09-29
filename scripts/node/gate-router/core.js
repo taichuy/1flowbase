@@ -1,7 +1,7 @@
 const { spawnSync } = require('node:child_process');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
-const { buildFoundationPlan } = require('../foundation-contracts/core.js');
+const { buildFoundationPlan, isAiGatewayProtocolFile } = require('../foundation-contracts/core.js');
 
 const DEFAULT_BASE_REF = 'origin/main';
 const CHANGED_FILES_ENV = 'GATE_ROUTER_CHANGED_FILES';
@@ -286,7 +286,7 @@ function isBackendConsistencyFile(filePath) {
 
 function isStateProtocolFile(filePath) {
   return /^scripts\/node\/(?:acp-claude-smoke\/|cli\/acp-claude-smoke\.js$|verify-state-protocols(?:\.js|\/))/u.test(filePath)
-    || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic\.rs$|compat_sse(?:\/|\.rs$))/u.test(filePath);
+    || isAiGatewayProtocolFile(filePath);
 }
 
 function isContainerFile(filePath) {

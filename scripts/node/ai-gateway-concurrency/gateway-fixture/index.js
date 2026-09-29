@@ -26,6 +26,7 @@ function providerTarget(baseUrl, client, provider) {
   const ownerHeaders = { cookie: client.cookie };
   return {
     application_id: provider.application_id,
+    workspace_id: provider.workspace_id,
     provider_instance_id: provider.provider_instance_id,
     installation_id: provider.installation_id,
     model: provider.model,

@@ -11,6 +11,7 @@ function target() {
   return {
     evidence_role: 'gateway-support-target',
     transport: 'responses-websocket',
+    expected_upstream_transport: 'responses-websocket',
     url: 'ws://127.0.0.1:4100/v1/responses',
     application_id: 'application-1',
     provider_instance_id: 'provider-1',
@@ -24,7 +25,7 @@ function target() {
   };
 }
 
-function evidence(transport = 'responses-sse') {
+function evidence(transport = 'responses-websocket') {
   return {
     upstreamBefore: {
       counters: { gatewayExecutorInvocations: 7, networkObserverOutbound: 3, providerExecutions: 2 },
@@ -74,11 +75,35 @@ test('Root #1461 AC WireAudit proves Gateway traversal, durable trace, redaction
   assert.equal(JSON.stringify(audit).includes('application-secret'), false);
 });
 
-test('Root #1461 authenticity negative: direct mock WebSocket arrival is not Gateway support evidence', () => {
-  assert.throws(
-    () => createWireAudit(auditInput('responses-websocket')),
-    /Gateway-to-upstream Responses SSE arrival/u,
-  );
+test('declared upstream transport is exact for native WebSocket and explicit SSE targets', () => {
+  for (const transport of ['responses-websocket', 'responses-sse']) {
+    const input = auditInput(transport);
+    input.target.expected_upstream_transport = transport;
+    assert.equal(createWireAudit(input).gateway.expected_upstream_transport, transport);
+    input.target.expected_upstream_transport = transport === 'responses-sse' ? 'responses-websocket' : 'responses-sse';
+    assert.throws(() => createWireAudit(input), /expected one Gateway-to-upstream/u);
+  }
+  const missing = auditInput();
+  delete missing.target.expected_upstream_transport;
+  assert.throws(() => createWireAudit(missing), /expected upstream transport/u);
+});
+
+test('authenticity negatives reject probe role, model, nonce, run and duplicate arrivals', () => {
+  const probe = auditInput();
+  probe.target.evidence_role = 'upstream-probe-only';
+  assert.throws(() => createWireAudit(probe), /requires a Gateway target/u);
+  const wrongModel = auditInput();
+  wrongModel.upstreamAfter.entries[1].request.body.model = 'direct-probe-model';
+  assert.throws(() => createWireAudit(wrongModel), /expected one Gateway-to-upstream/u);
+  const wrongNonce = auditInput();
+  wrongNonce.trace.upstream_nonce = 'direct-probe-nonce';
+  assert.throws(() => createWireAudit(wrongNonce), /nonce mismatch/u);
+  const wrongRun = auditInput();
+  wrongRun.durable.run.id = 'different-run';
+  assert.throws(() => createWireAudit(wrongRun), /run id mismatch/u);
+  const duplicate = auditInput();
+  duplicate.upstreamAfter.entries.push({ ...duplicate.upstreamAfter.entries[1], sequence: 12 });
+  assert.throws(() => createWireAudit(duplicate), /received 2/u);
 });
 
 test('Root #1461 authenticity negative: executor or tool outbound evidence fails closed', () => {

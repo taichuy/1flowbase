@@ -263,7 +263,7 @@ async function observeActiveStreamOverlap({ endpoints, expectedInstanceIds, fetc
 
 async function runSseRequest({
   endpoint, transport, scenario, clientNonce, model, headers, timeoutMs, batchStartedAt, fetchImpl,
-  topology, batchBarrierId, targetIndex, applicationId, providerInstanceId,
+  topology, batchBarrierId, targetIndex, applicationId, providerInstanceId, interruptionReleaseUrl,
 }) {
   const startedAt = performance.now();
   const controller = new AbortController();
@@ -276,6 +276,8 @@ async function runSseRequest({
   let errorNonce = null;
   let publicErrorMessage = null;
   let outcome = 'interrupted';
+  let interruptionReleasePending = null;
+  let interruptionControlError = null;
   try {
     const response = await fetchImpl(endpoint, {
       method: 'POST',
@@ -313,6 +315,19 @@ async function runSseRequest({
         if (protocolId) protocolIds.push(protocolId);
         const text = eventText(event);
         if (text) texts.push(text);
+        const upstreamNonce = nonceFromText(text);
+        if (scenario === SCENARIO.STREAM_INTERRUPTION && upstreamNonce && !interruptionReleasePending) {
+          interruptionReleasePending = (async () => {
+            if (!interruptionReleaseUrl) throw new Error('HTTP interruption requires a controlled release endpoint');
+            const release = await fetchImpl(interruptionReleaseUrl, {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ nonce: upstreamNonce }), signal: controller.signal,
+            });
+            if (!release.ok || (await release.json()).released !== true) {
+              throw new Error('HTTP interruption first-delta acknowledgement was rejected');
+            }
+          })().catch((error) => { interruptionControlError = error; controller.abort(error); });
+        }
         if (ttftMs === null && text) ttftMs = round(performance.now() - startedAt);
         if (scenario === SCENARIO.CANCEL_OBSERVATION && text && !cancelSent) {
           cancelSent = true;
@@ -324,8 +339,12 @@ async function runSseRequest({
           const { done, value } = await reader.read();
           if (done) break;
           parser.push(value);
+          if (interruptionReleasePending) await interruptionReleasePending;
+          if (interruptionControlError) throw interruptionControlError;
         }
         parser.finish();
+        if (interruptionReleasePending) await interruptionReleasePending;
+        if (interruptionControlError) throw interruptionControlError;
       } catch (error) {
         if (!(scenario === SCENARIO.CANCEL_OBSERVATION && controller.signal.aborted)) throw error;
       }
@@ -342,6 +361,7 @@ async function runSseRequest({
   } finally {
     clearTimeout(timer);
   }
+  if (interruptionControlError) throw interruptionControlError;
   const evidence = requestNonceEvidence(transport, protocolEvents, texts, errorNonce);
   const uniqueProtocolIds = [...new Set(protocolIds)];
   return {
@@ -356,6 +376,8 @@ async function runSseRequest({
     outcome,
     httpStatus,
     publicErrorMessage,
+    interruptionDeltaAcknowledged: scenario === SCENARIO.STREAM_INTERRUPTION
+      && interruptionReleasePending !== null && interruptionControlError === null,
     protocolEvents,
     protocolId: uniqueProtocolIds.length === 1 ? uniqueProtocolIds[0] : null,
     protocolIdCount: uniqueProtocolIds.length,
@@ -459,6 +481,11 @@ function validateRequestResult(result) {
   const expected = result.scenario === SCENARIO.STREAM_INTERRUPTION && gatewayOwnsAcceptedHttpRun
     ? 'failed'
     : EXPECTED_OUTCOME[result.scenario];
+  if (result.scenario === SCENARIO.STREAM_INTERRUPTION
+    && AUTHORIZED_HTTP_TRANSPORTS.includes(result.transport)
+    && (result.interruptionDeltaAcknowledged !== true || result.upstreamNonceCount !== 1 || result.chunkTexts.length === 0)) {
+    failures.push('HTTP interruption requires one receiver-visible nonce and acknowledged first delta');
+  }
   if (result.outcome !== expected) failures.push(`expected outcome ${expected}, received ${result.outcome}`);
   if ([SCENARIO.NORMAL, SCENARIO.SLOW].includes(result.scenario)) {
     if (result.terminalCount !== 1) failures.push(`expected one success terminal, received ${result.terminalCount}`);
@@ -644,6 +671,7 @@ async function executeCharacterizePlan({
   durableGraceMs,
   durablePollIntervalMs,
   memoryProbeFactory,
+  interruptionReleaseUrl,
 }) {
   if (!Array.isArray(plan) || plan.length === 0) throw new Error('characterize plan must not be empty');
   if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is unavailable');
@@ -715,7 +743,7 @@ async function executeCharacterizePlan({
           if (typeof WebSocketImpl !== 'function') throw new Error('WebSocket implementation is unavailable');
           return runWebSocketRequest({ ...request, WebSocketImpl });
         }
-        return runSseRequest({ ...request, fetchImpl });
+        return runSseRequest({ ...request, fetchImpl, interruptionReleaseUrl });
       })();
       return pending.catch((error) => requestErrorResult(request, error));
     });
@@ -886,6 +914,7 @@ async function runDirectMockCharacterize({ repoRoot, timeoutMs }) {
       },
       plan: CHARACTERIZE_PLAN.filter((row) => row.topology === TOPOLOGY.SAME_POOL),
       mockSnapshot: mock.snapshot,
+      interruptionReleaseUrl: endpoints.interruptionReleaseUrl,
       timeoutMs,
     });
     return { ...result, artifacts: writeCharacterizeArtifacts({ repoRoot, ...result }) };
@@ -906,6 +935,7 @@ async function runGatewayCharacterize({
   durablePollIntervalMs,
   anthropicTargetPool,
   gatewayPid,
+  interruptionReleaseUrl,
   fetchImpl = globalThis.fetch,
 }) {
   const headersByTransport = authorizationHeadersByTransport(authorizationTokenByTransport);
@@ -939,6 +969,7 @@ async function runGatewayCharacterize({
     plan: CHARACTERIZE_PLAN,
     headersByTransport,
     modelByTransport: publishedModels,
+    interruptionReleaseUrl,
     mockSnapshot,
     timeoutMs,
     fetchImpl,

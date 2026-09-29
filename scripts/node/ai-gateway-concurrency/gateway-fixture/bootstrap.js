@@ -89,7 +89,10 @@ function configureDraft(document, provider, publicModel) {
   return document;
 }
 
-async function createPublishedApplication(client, provider, publicModel, ordinal = 1) {
+async function createPublishedApplication(client, provider, publicModel, ordinal = 1, workspaceId) {
+  if (typeof workspaceId !== 'string' || !workspaceId) {
+    throw new Error('authenticated owner response omitted current_workspace_id');
+  }
   const suffix = crypto.randomBytes(5).toString('hex');
   const created = await client.write('/api/console/applications', 'POST', {
     application_type: 'agent_flow',
@@ -150,6 +153,7 @@ async function createPublishedApplication(client, provider, publicModel, ordinal
     upstream_model: provider.model,
     model: publicModel,
     application_id: applicationId,
+    workspace_id: workspaceId,
     api_key_id: key.data.id,
     api_key: key.data.token,
     publication_id: publicationId,
@@ -157,7 +161,11 @@ async function createPublishedApplication(client, provider, publicModel, ordinal
 }
 
 async function bootstrapGateway(client, options) {
-  await client.signIn(options.rootAccount, options.rootPassword);
+  const owner = await client.signIn(options.rootAccount, options.rootPassword);
+  const workspaceId = owner?.actor?.current_workspace_id;
+  if (typeof workspaceId !== 'string' || !workspaceId) {
+    throw new Error('authenticated owner response omitted current_workspace_id');
+  }
   const packages = await Promise.all([
     installProvider(client, options.openaiPackage, 'openai'),
     installProvider(client, options.anthropicPackage, 'anthropic'),
@@ -178,13 +186,13 @@ async function bootstrapGateway(client, options) {
     client, openaiCompatibleInstallation, `${options.upstreamBaseUrl}/v1`, options.upstreamModel
   );
   return {
-    openai: await createPublishedApplication(client, openaiInstance, options.publicModel),
+    openai: await createPublishedApplication(client, openaiInstance, options.publicModel, 1, workspaceId),
     openai_compatible: await createPublishedApplication(
-      client, openaiCompatibleInstance, options.publicModel
+      client, openaiCompatibleInstance, options.publicModel, 1, workspaceId
     ),
     anthropic: await Promise.all(anthropicInstances.map(
       (instance, index) => createPublishedApplication(
-        client, instance, options.publicModel, index + 1
+        client, instance, options.publicModel, index + 1, workspaceId
       )
     )),
   };

@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('node:crypto');
+
 const { REQUEST_FIDELITY_VECTORS } = require('../protocol-oracle/request-fidelity');
 
 const PROMPT = 'Root #1477 request fidelity probe';
@@ -7,6 +9,23 @@ const PROMPT = 'Root #1477 request fidelity probe';
 function queryString(entries) {
   const value = new URLSearchParams(entries).toString();
   return value ? `?${value}` : '';
+}
+
+// Finite fixture oracle for the authenticated Responses session contract.
+function sealedSessionIdentity(target, headers) {
+  const parts = ['application_id', 'api_key_id', 'workspace_id'].map((field) => {
+    const value = target[field];
+    if (typeof value !== 'string' || !value) throw new Error(`session identity omitted ${field}`);
+    return value;
+  });
+  for (const field of ['session-id', 'thread-id']) {
+    const value = headers[field];
+    if (typeof value !== 'string' || !value || Buffer.byteLength(value) > 256) {
+      throw new Error(`session identity requires explicit ${field}`);
+    }
+    parts.push(value);
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
 function requestPair(vector, ready, upstreamBaseUrl) {
@@ -76,7 +95,11 @@ function requestPair(vector, ready, upstreamBaseUrl) {
     directUrl: `${upstreamBaseUrl}${vector.expected_upstream_path}${queryString(residual.query)}`,
     gatewayUrl: `${ready.targets.openai.gateway.responses_url}${queryString(residual.query)}`,
     gatewayToken: ready.targets.openai.api_key,
-    directHeaders: { accept: 'text/event-stream', ...residual.headers },
+    directHeaders: {
+      accept: 'text/event-stream',
+      ...residual.headers,
+      'session-id': sealedSessionIdentity(ready.targets.openai, residual.headers),
+    },
     gatewayHeaders: residual.headers,
     directBody: {
       ...common,
@@ -178,4 +201,4 @@ async function verifyGatewayRequestFidelity({ ready, upstreamBaseUrl, mockSnapsh
   };
 }
 
-module.exports = { requestPair, verifyGatewayRequestFidelity };
+module.exports = { requestPair, sealedSessionIdentity, verifyGatewayRequestFidelity };

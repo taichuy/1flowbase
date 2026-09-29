@@ -846,7 +846,7 @@ async fn seed_node_run_history(
     let pool = sqlx::PgPool::connect(database_url).await?;
     sqlx::query(
         r#"
-        update node_runs
+        update node_run_records
         set status = $2,
             output_payload = $3,
             error_payload = $4,
@@ -878,7 +878,7 @@ async fn seed_node_run_history_record(
     let id = Uuid::now_v7();
     sqlx::query(
         r#"
-        insert into node_runs (
+        insert into node_run_records (
             id,
             scope_id,
             flow_run_id,

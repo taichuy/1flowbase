@@ -40,6 +40,7 @@ test('AC-012: passing gateway evidence becomes an aggregate-compatible component
   assert.equal(report.status, 'passed');
   assert.equal(report.scope, 'ai-gateway-protocol-conformance');
   assert.equal(report.exitCode, 0);
+  assert.equal(report.commit, passingGateResult.main_source_sha);
   assert.equal(report.protocolConformance.oracleRows, 16);
   assert.equal(report.protocolConformance.profileRows, 9);
   assert.equal(report.protocolConformance.errorRows, 20);

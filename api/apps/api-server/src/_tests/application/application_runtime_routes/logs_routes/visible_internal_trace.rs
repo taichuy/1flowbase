@@ -56,13 +56,15 @@ async fn application_runtime_routes_trace_tree_content_exposes_visible_internal_
             "total_tokens": 128
         }
     });
-    sqlx::query("update node_run_records set debug_payload = $2, output_payload = $3 where id = $1")
-        .bind(node_run_id)
-        .bind(&debug_payload)
-        .bind(&output_payload)
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "update node_run_records set debug_payload = $2, output_payload = $3 where id = $1",
+    )
+    .bind(node_run_id)
+    .bind(&debug_payload)
+    .bind(&output_payload)
+    .execute(&pool)
+    .await
+    .unwrap();
     seed_flow_run_history_events(
         &database_url,
         &[

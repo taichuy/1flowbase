@@ -34,7 +34,7 @@
 
 - 本地默认只运行受影响 fast pack；完整 provider/browser/migration/coverage 留 CI/nightly。
 - PR / `beta` 的统一 `verify` 质量门禁调用 fast component；nightly/manual 的统一 `quality gate` 调用四基座并纳入 aggregate。可复用 workflow 不建立独立 PR/push 门禁，最长执行路径必须低于 60 分钟。
-- 少于 3 个基座反复失败时：本地单基座 → GitHub Actions 单基座 → `auto/all` 全量；不得用重复全量运行代替根因定位。
+- 沿用任务已批准的线上 / 本地执行策略；先归因并定向修复，再补受影响的基座证据，不用重复全量运行代替根因定位。用户要求全线上时，仅在其允许的剩余失败数量与重复失败条件满足后使用本地复现。
 - 管理员保留手动合并判断；不得把本规则扩张为 required check、branch protection 或 ruleset 变更。
 
 ## Deterministic Evidence And Legal Negatives

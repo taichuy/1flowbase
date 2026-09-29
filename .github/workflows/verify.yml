@@ -165,6 +165,7 @@ jobs:
           merge-multiple: false
       - run: node scripts/node/cli/github-quality-gate-aggregate.js
         env:
+          INPUT_JOB_RESULTS: ${{ toJSON(needs) }}
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ci
           INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,foundation-contracts

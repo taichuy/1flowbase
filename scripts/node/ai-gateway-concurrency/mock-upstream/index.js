@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const http = require('node:http');
+const { createInterruptionBarrier } = require('./interruption-barrier');
 const { createTerminalBarrier } = require('./terminal-barrier');
 const {
   MOCK_ROUTE,
@@ -97,7 +98,7 @@ function safeRequestSummary(request, body) {
     method: request.method,
     path: new URL(request.url, 'http://mock.invalid').pathname,
     headers,
-    body: requestBodySummary(body),
+    body: requestBodySummary(body?.type === 'response.create' ? (body.response ?? body) : body),
     semantic_sha256: normalizedRequestFingerprint({
       method: request.method,
       url: request.url,
@@ -142,8 +143,8 @@ function readJson(request) {
   });
 }
 
-function writeSse(response, event, data) {
-  response.write(`${event ? `event: ${event}\n` : ''}data: ${JSON.stringify(data)}\n\n`);
+function writeSse(response, event, data, callback) {
+  response.write(`${event ? `event: ${event}\n` : ''}data: ${JSON.stringify(data)}\n\n`, callback);
 }
 
 function createTimeline() {
@@ -396,25 +397,45 @@ async function emitHttpStream({
   cancelObservationMs,
   barrier,
   terminalBarrier,
+  interruptionBarrier,
 }) {
   let disconnected = false;
   request.on('aborted', () => { disconnected = true; });
-  response.on('close', () => { if (!response.writableEnded) disconnected = true; });
-  const write = (event, data) => {
+  response.on('close', () => {
+    if (!response.writableEnded) disconnected = true;
+    interruptionBarrier?.abandon();
+  });
+  const write = (event, data, callback) => {
     if (disconnected || response.destroyed) return false;
-    writeSse(response, event, data);
+    writeSse(response, event, data, callback);
     timeline.record('chunk', { protocolEvent: event });
     return true;
   };
 
   let terminalBarrierHeld = false;
   let visibleDeltaReleased = false;
+  let interruptionAcknowledged = false;
   const barrierEvents = stream.barrierEvent
     ? [stream.barrierEvent]
     : ['content_block_delta', 'response.output_text.delta', 'chat.completion.chunk'];
   for (const chunk of stream.chunks) {
     const event = chunk.event ?? chunk.type ?? (chunk.choices ? 'chat.completion.chunk' : undefined);
-    if (!write(event, chunk.data ?? chunk)) break;
+    const firstInterruptedDelta = interruptionBarrier && !interruptionAcknowledged
+      && barrierEvents.includes(event) && JSON.stringify(chunk).includes(timeline.nonce);
+    if (firstInterruptedDelta) {
+      const flushed = await new Promise((resolve, reject) => {
+        const closed = () => resolve(false);
+        response.once('close', closed);
+        if (!write(event, chunk.data ?? chunk, (error) => {
+          response.off('close', closed);
+          if (error) reject(error); else resolve(true);
+        })) { response.off('close', closed); resolve(false); }
+      });
+      if (!flushed) break;
+      timeline.record('interruption_delta_flushed');
+      interruptionAcknowledged = await interruptionBarrier.wait();
+      if (!interruptionAcknowledged) break;
+    } else if (!write(event, chunk.data ?? chunk)) break;
     if (terminalBarrier && !terminalBarrierHeld && event === 'response.output_text.delta') {
       terminalBarrierHeld = true;
       await terminalBarrier();
@@ -429,6 +450,12 @@ async function emitHttpStream({
     if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
   }
   if (scenario === SCENARIO.STREAM_INTERRUPTION) {
+    interruptionBarrier?.abandon();
+    if (!interruptionAcknowledged) {
+      response.destroy();
+      timeline.finish('disconnected', { successTerminalCount: 0 });
+      return;
+    }
     timeline.record('stream_interrupted');
     response.destroy();
     timeline.finish('interrupted');
@@ -473,6 +500,7 @@ function createMockUpstream(options = {}) {
   const cancelObservationMs = options.cancelObservationMs ?? 250;
   const timeline = createTimeline();
   const terminalBarriers = createTerminalBarrier();
+  const interruptionBarriers = createInterruptionBarrier();
   const counters = { gatewayExecutorInvocations: 0, networkObserverOutbound: 0, providerExecutions: 0 };
   const errorFixtureAttempts = new Map();
   const callbackRetryAttempts = new Map();
@@ -510,6 +538,13 @@ function createMockUpstream(options = {}) {
       if (request.method === 'GET' && path === '/__control/snapshot') {
         response.writeHead(200, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ ...timeline.snapshot(), counters }));
+        return;
+      }
+      if (request.method === 'POST' && path === '/__control/interruption/release') {
+        const { nonce } = await readJson(request);
+        const released = interruptionBarriers.release(nonce);
+        response.writeHead(released ? 200 : 409, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ released }));
         return;
       }
       if (request.method === 'POST' && path === '/__control/barrier/release') {
@@ -653,6 +688,8 @@ function createMockUpstream(options = {}) {
         slowChunkDelayMs,
         cancelObservationMs,
         terminalBarrier: terminalBarriers.forRequest(body, requestTimeline),
+        interruptionBarrier: scenario === SCENARIO.STREAM_INTERRUPTION
+          ? interruptionBarriers.arm(requestTimeline) : null,
         barrier,
       });
       terminalBarriers.completeRequest(body);
@@ -675,6 +712,7 @@ function createMockUpstream(options = {}) {
     }
     if (head.length > 0) socket.unshift(head);
     let requestTimeline;
+    let activePayload;
     let scenario = SCENARIO.NORMAL;
     let started = false;
     let cancelRequested = false;
@@ -698,6 +736,7 @@ function createMockUpstream(options = {}) {
       }
       if (body.type !== 'response.create' || started) return;
       started = true;
+      activePayload = body.response ?? body;
       scenario = scenarioFrom(body.response ?? body);
       requestTimeline = timeline.arrive(
         TRANSPORT.RESPONSES_WEBSOCKET,
@@ -757,33 +796,43 @@ function createMockUpstream(options = {}) {
         : clientText !== null
           ? responsesEvents(requestTimeline.nonce, ...textChunks)
           : responsesEvents(requestTimeline.nonce);
-      let visibleDeltaReleased = false;
-      for (const chunk of stream.chunks) {
-        if (cancelRequested || socket.destroyed) return;
-        sendJson(socket, chunk);
-        requestTimeline.record('chunk', { protocolEvent: chunk.type });
-        const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
-        const barrierEvent = stream.barrierEvent ?? chunk.type;
-        if (!visibleDeltaReleased && barrier.enabled && visibleMarker && chunk.type === barrierEvent) {
-          visibleDeltaReleased = true;
-          requestTimeline.record('barrier_waiting', { protocolEvent: chunk.type });
-          await barrier.wait();
-          requestTimeline.record('barrier_released', { protocolEvent: chunk.type });
+      const terminalBarrier = terminalBarriers.forRequest(payload, requestTimeline);
+      let terminalBarrierHeld = false;
+      try {
+        let visibleDeltaReleased = false;
+        for (const chunk of stream.chunks) {
+          if (cancelRequested || socket.destroyed) return;
+          sendJson(socket, chunk);
+          requestTimeline.record('chunk', { protocolEvent: chunk.type });
+          if (terminalBarrier && !terminalBarrierHeld && chunk.type === 'response.output_text.delta') {
+            terminalBarrierHeld = true;
+            await terminalBarrier();
+            if (cancelRequested || socket.destroyed) return;
+          }
+          const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
+          const barrierEvent = stream.barrierEvent ?? chunk.type;
+          if (!visibleDeltaReleased && barrier.enabled && visibleMarker && chunk.type === barrierEvent) {
+            visibleDeltaReleased = true;
+            requestTimeline.record('barrier_waiting', { protocolEvent: chunk.type });
+            await barrier.wait();
+            requestTimeline.record('barrier_released', { protocolEvent: chunk.type });
+          }
+          if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
         }
-        if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
-      }
-      if (scenario === SCENARIO.STREAM_INTERRUPTION) {
-        requestTimeline.record('stream_interrupted');
-        requestTimeline.finish('interrupted', { successTerminalCount: 0 });
-        socket.destroy();
-        return;
-      }
-      if (scenario === SCENARIO.CANCEL_OBSERVATION) return;
-      sendJson(socket, stream.terminal);
-      requestTimeline.record('chunk', { protocolEvent: stream.terminal.type });
-      requestTimeline.finish('completed', { successTerminalCount: 1 });
-      sendClose(socket);
+        if (scenario === SCENARIO.STREAM_INTERRUPTION) {
+          requestTimeline.record('stream_interrupted');
+          requestTimeline.finish('interrupted', { successTerminalCount: 0 });
+          socket.destroy();
+          return;
+        }
+        if (scenario === SCENARIO.CANCEL_OBSERVATION) return;
+        sendJson(socket, stream.terminal);
+        requestTimeline.record('chunk', { protocolEvent: stream.terminal.type });
+        requestTimeline.finish('completed', { successTerminalCount: 1 });
+        sendClose(socket);
+      } finally { terminalBarriers.completeRequest(payload); }
     }, (kind) => {
+      if (activePayload) terminalBarriers.completeRequest(activePayload);
       if (requestTimeline) requestTimeline.finish('disconnected', { kind, successTerminalCount: 0 });
     });
   });
@@ -802,6 +851,7 @@ function createMockUpstream(options = {}) {
       return {
         httpBaseUrl: `http://${host}:${address.port}`,
         websocketBaseUrl: `ws://${host}:${address.port}`,
+        interruptionReleaseUrl: `http://${host}:${address.port}/__control/interruption/release`,
         barrierReleaseUrl: `http://${host}:${address.port}/__control/barrier/release`,
         snapshotUrl: `http://${host}:${address.port}/__control/snapshot`,
         networkObserverUrl: `http://${host}:${address.port}/__observer/mcp-network`,
@@ -810,6 +860,7 @@ function createMockUpstream(options = {}) {
     },
     async stop() {
       terminalBarriers.close();
+      interruptionBarriers.close();
       for (const socket of sockets) socket.destroy();
       if (!server.listening) return;
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

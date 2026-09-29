@@ -116,9 +116,12 @@ Every fast component has a 40-minute timeout, while route and aggregate jobs use
 so the workflow execution path remains below one hour. Full AI Gateway conformance has a
 55-minute job timeout and remains available through nightly/manual orchestration.
 
-When fewer than three foundations repeatedly fail, first run the corresponding local pack,
-then dispatch `foundation-contracts.yml` with that single `foundation`, and only after it is
-green rerun `auto` or `all`. These checks provide evidence for administrators; they are not
+Follow the task-approved remote/local execution policy for repeated foundation failures.
+Diagnose the root cause, dispatch focused evidence, and refresh only affected results. A task
+requiring remote gates must meet its stated fallback conditions before local reproduction.
+All full quality jobs execute one resolved candidate SHA, and aggregation rejects mismatched
+receipts or failed required jobs, including the sharded API coverage merge.
+These checks provide evidence for administrators; they are not
 configured as required checks and do not alter branch protection or repository rulesets.
 
 ## Container Image CD

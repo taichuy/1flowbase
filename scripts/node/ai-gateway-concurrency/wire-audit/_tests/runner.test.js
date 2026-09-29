@@ -8,6 +8,7 @@ const {
   assertRequestFidelityAudit,
   errorFidelityInventory,
   requestFidelityInventory,
+  readMcpApprovalStart,
   runWireAudit,
   vectorBodies,
 } = require('../runner');
@@ -95,7 +96,10 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
       };
     }
     if (inputTypes.includes('mcp_approval_response')) data = { ...data, fixture: 'approval-accepted' };
-    return new Response(`data: ${JSON.stringify(data)}\n\n`, {
+    const completion = toolTypes.includes('mcp')
+      ? `data: ${JSON.stringify({ type: 'response.completed', response: data.response })}\n\n`
+      : '';
+    return new Response(`data: ${JSON.stringify(data)}\n\n${completion}`, {
       status: 200, headers: { 'content-type': 'text/event-stream' },
     });
   };
@@ -119,6 +123,40 @@ test('controlled WireAudit submits MCP approval as a provider continuation', asy
   assert.deepEqual(continuation.input, [{
     type: 'mcp_approval_response', approval_request_id: approvalRequestId, approve: true,
   }]);
+});
+
+test('MCP continuation waits for the matching completed response round', async () => {
+  const encoder = new TextEncoder();
+  let controller;
+  const response = new Response(new ReadableStream({ start(value) { controller = value; } }));
+  const created = {
+    type: 'response.created', response: { id: 'resp_round', output: [
+      { type: 'mcp_approval_request', id: 'approval_round' },
+    ] },
+  };
+  controller.enqueue(encoder.encode(`data: ${JSON.stringify(created)}\n\n`));
+  let resolved = false;
+  const pending = readMcpApprovalStart(response).then((value) => { resolved = true; return value; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(resolved, false, 'approval announcement cannot authorize the next round');
+  controller.enqueue(encoder.encode('data: {"type":"response.completed","response":{"id":"resp_round"}}\n\n'));
+  controller.close();
+  const result = await pending;
+  assert.deepEqual(result.continuation, {
+    previous_response_id: 'resp_round',
+    input: [{ type: 'mcp_approval_response', approval_request_id: 'approval_round', approve: true }],
+  });
+  assert.match(await result.finish(), /response.completed/u);
+});
+
+test('MCP continuation rejects missing, failed and unrelated completion', async () => {
+  const created = 'data: {"type":"response.created","response":{"id":"resp_round","output":[{"type":"mcp_approval_request","id":"approval_round"}]}}\n\n';
+  for (const terminal of ['',
+    'data: {"type":"response.failed","response":{"id":"resp_round"}}\n\n',
+    'data: {"type":"response.completed","response":{"id":"resp_other"}}\n\n',
+  ]) {
+    await assert.rejects(readMcpApprovalStart(new Response(created + terminal)), /matching response completion/u);
+  }
 });
 
 test('Root #1477 AC-001/004/005/006: request audit inventory is finite and fail closed', () => {

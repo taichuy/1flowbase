@@ -106,7 +106,11 @@ const REQUEST_FIDELITY_VECTORS = Object.freeze([
     comparison: 'normalized-direct-vs-gateway-sha256',
     request: Object.freeze({
       query: Object.freeze([['fixture_query', 'responses-query-value']]),
-      headers: Object.freeze({ 'x-fixture-extension': 'responses-header-value' }),
+      headers: Object.freeze({
+        'x-fixture-extension': 'responses-header-value',
+        'session-id': 'fidelity-session',
+        'thread-id': 'fidelity-thread',
+      }),
       body: Object.freeze({
         reasoning: Object.freeze({ effort: 'high', summary: 'auto' }),
         truncation: 'auto',

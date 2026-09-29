@@ -22,15 +22,17 @@ function createWireAudit({ target, trace, durable, upstreamBefore, upstreamAfter
   const gateway = publicTarget(target);
   const cursor = upstreamBefore?.entries?.at(-1)?.sequence ?? 0;
   const entries = (upstreamAfter?.entries ?? []).filter((entry) => entry.sequence > cursor);
-  // The Gateway fixture configures the OpenAI provider as http_sse. A direct mock
-  // WebSocket arrival is only an upstream probe and cannot satisfy this assertion.
+  const expectedTransport = target.expected_upstream_transport;
+  if (![TRANSPORT.RESPONSES_SSE, TRANSPORT.RESPONSES_WEBSOCKET].includes(expectedTransport)) {
+    throw new Error('Gateway target omitted a supported expected upstream transport');
+  }
   const gatewayArrivals = entries.filter((entry) =>
     entry.event === 'arrival'
-    && entry.transport === TRANSPORT.RESPONSES_SSE
+    && entry.transport === expectedTransport
     && entry.request?.body?.model === target.upstream_model
   );
   if (gatewayArrivals.length !== 1) {
-    throw new Error(`expected one Gateway-to-upstream Responses SSE arrival, received ${gatewayArrivals.length}`);
+    throw new Error(`expected one Gateway-to-upstream ${expectedTransport} arrival, received ${gatewayArrivals.length}`);
   }
   const arrival = gatewayArrivals[0];
   if (arrival.nonce !== trace?.upstream_nonce) throw new Error('Gateway trace/upstream nonce mismatch');

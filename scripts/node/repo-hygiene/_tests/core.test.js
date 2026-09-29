@@ -7,6 +7,7 @@ const path = require("node:path");
 const {
   OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST,
   collectRepoHygieneFindings,
+  collectSourceFiles,
   main,
   partitionTrackedWarnings,
   scanSourceFile,
@@ -46,6 +47,77 @@ function writeFile(repoRoot, relativePath, content) {
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
   fs.writeFileSync(absolutePath, content, "utf8");
 }
+
+test("maintenance discovery includes CJS, ESM and agent rules but excludes memory and historical docs", (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oneflowbase-hygiene-discovery-"));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const fixtures = [
+    "scripts/node/example/core.cjs",
+    "scripts/node/example/core.mjs",
+    ".agents/skills/example/SKILL.md",
+    ".agents/AGENTS.md",
+    ".memory/AGENTS.md",
+    ".agents/.memory/private.md",
+    "docs/superpowers/plans/historical.md",
+    "docs/superpowers/specs/historical.md",
+  ];
+  for (const fixture of fixtures) {
+    writeFile(repoRoot, fixture, "// TODO: review owner\n");
+  }
+
+  assert.deepEqual(collectSourceFiles(repoRoot).map((file) => file.relativePath), [
+    ".agents/AGENTS.md",
+    ".agents/skills/example/SKILL.md",
+    "scripts/node/example/core.cjs",
+    "scripts/node/example/core.mjs",
+  ]);
+  assert.deepEqual(
+    collectRepoHygieneFindings({ repoRoot }).map((finding) => finding.file).sort(),
+    [
+      ".agents/AGENTS.md",
+      ".agents/skills/example/SKILL.md",
+      "scripts/node/example/core.cjs",
+      "scripts/node/example/core.mjs",
+    ],
+  );
+});
+
+test("CJS and ESM tests preserve focused-test errors and advisory debt warnings", () => {
+  for (const extension of ["cjs", "mjs"]) {
+    const findings = scanSourceFile({
+      relativePath: `scripts/node/example/core.test.${extension}`,
+      content: "// TODO: replace fixture\ntest.only('checks discovery', () => {});\n",
+    });
+    assert.deepEqual(findings.map((finding) => [finding.rule, finding.severity]), [
+      ["source-debt-marker", "warning"],
+      ["focused-test", "error"],
+    ]);
+    assert.deepEqual(scanSourceFile({
+      relativePath: `scripts/node/example/core.${extension}`,
+      content: "const fixture = 'TODO legacy';\n",
+    }), []);
+  }
+});
+
+test("AGENTS line pressure is advisory only above 200 lines", (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oneflowbase-agents-pressure-"));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  writeFile(repoRoot, "AGENTS.md", "instruction\n".repeat(201));
+  writeFile(repoRoot, ".agents/example/AGENTS.md", "instruction\n".repeat(200));
+  writeFile(repoRoot, ".agents/example/SKILL.md", "instruction\n".repeat(201));
+
+  assert.deepEqual(collectRepoHygieneFindings({ repoRoot }).map((finding) => ({
+    file: finding.file,
+    rule: finding.rule,
+    severity: finding.severity,
+    snippet: finding.snippet,
+  })), [{
+    file: "AGENTS.md",
+    rule: "agents-file-size-pressure",
+    severity: "warning",
+    snippet: "201 lines",
+  }]);
+});
 
 test("scanSourceFile reports debt markers and weak assertions without failing the gate", () => {
   const findings = scanSourceFile({
@@ -131,6 +203,26 @@ test("scanSourceFile reports low-value test smells as advisory findings", () => 
     findings.every((finding) => finding.severity === "warning"),
     true,
   );
+});
+
+test("field compatibility markers are warnings only in actual source comments", () => {
+  const findings = scanSourceFile({
+    relativePath: "scripts/node/example/core.js",
+    content: [
+      "const quoted = '// @field-contract-compat source=a alias=b';",
+      String.raw`const marker = /(?:\/\/|#|\/\*|\*)\s*@field-contract-compat\b/u;`,
+      "const inline = 1; /* @field-contract-compat source=a alias=b remove_by=2027-01-01 */",
+      "/*",
+      " * @field-contract-compat source=c alias=d remove_by=2027-01-01",
+      " */",
+      "// @field-contract-compat source=e alias=f remove_by=2027-01-01",
+    ].join("\n"),
+  });
+  assert.deepEqual(findings.map(({ rule, line, severity }) => ({ rule, line, severity })), [
+    { rule: "field-contract-compat-marker", line: 3, severity: "warning" },
+    { rule: "field-contract-compat-marker", line: 5, severity: "warning" },
+    { rule: "field-contract-compat-marker", line: 7, severity: "warning" },
+  ]);
 });
 
 test("scanSourceFile reports front-back field contract compatibility markers as warnings", () => {

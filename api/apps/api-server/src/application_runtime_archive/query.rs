@@ -9,10 +9,13 @@ pub(crate) async fn load_node_run_error_payloads(
 ) -> Result<HashMap<String, serde_json::Value>, crate::error_response::ApiError> {
     let rows = sqlx::query(
         r#"
-        select id, error_payload
-        from node_runs
+        select directory.id,
+            runtime_original_json(detail.payload, detail.raw_json_payloads, 'error_payload') as error_payload
+        from node_runs directory
+        join node_run_details detail on detail.node_run_id = directory.id
+          and detail.section = 'error_payload'
         where flow_run_id = $1
-          and error_payload is not null
+          and detail.payload is not null
         "#,
     )
     .bind(run_id)

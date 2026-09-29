@@ -381,10 +381,11 @@ async fn selective_imports_required_plugin_identity_without_artifact_state() {
 }
 
 #[tokio::test]
-async fn selective_preflight_reports_missing_unselected_identity_parent() {
+async fn selective_restore_preserves_historical_actor_after_user_deletion() {
     let (db, actor) = fixture().await;
     let repo = PgSelectiveBackupRepository::new(db.clone());
-    pool(&db, actor, Uuid::now_v7(), "Needs actor").await;
+    let resource_id = Uuid::now_v7();
+    pool(&db, actor, resource_id, "Historical actor").await;
     let bytes = capture(&repo, select("network-center", true, false)).await;
     sqlx::query("delete from network_egress_pools")
         .execute(&db)
@@ -395,17 +396,32 @@ async fn selective_preflight_reports_missing_unselected_identity_parent() {
         .execute(&db)
         .await
         .unwrap();
-    let preview = repo.preflight(reader(bytes), "key", "key").await.unwrap();
-    assert!(
-        preview
-            .failures
-            .iter()
-            .any(|f| f.contains("network_egress_pools -> users")),
-        "{:?}",
-        preview.failures
-    );
+    let preview = repo
+        .preflight(reader(bytes.clone()), "key", "key")
+        .await
+        .unwrap();
+    assert!(preview.failures.is_empty(), "{:?}", preview.failures);
     assert_eq!(
         sqlx::query_scalar::<_, i64>("select count(*) from network_egress_pools")
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    repo.restore(reader(bytes), "key", "key", true)
+        .await
+        .unwrap();
+    let restored = sqlx::query_as::<_, (Uuid, Uuid, String)>(
+        "select created_by, updated_by, display_name from network_egress_pools where id=$1",
+    )
+    .bind(resource_id)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(restored, (actor, actor, "Historical actor".to_string()));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from users where id=$1")
+            .bind(actor)
             .fetch_one(&db)
             .await
             .unwrap(),

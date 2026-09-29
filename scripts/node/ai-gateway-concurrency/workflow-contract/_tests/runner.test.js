@@ -82,6 +82,7 @@ function fixtureManifest() {
   ));
   return {
     schema_version: '1flowbase.ai-gateway-fixture/v1',
+    controlled_upstream: { snapshot_url: 'http://127.0.0.1:4000/__control/snapshot' },
     targets: {
       openai,
       openai_compatible: openaiCompatible,
@@ -221,6 +222,7 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   });
   assert.equal(characterize.endpointSet[TRANSPORT.RESPONSES_WEBSOCKET], 'ws://127.0.0.1:4000/v1/responses');
   assert.equal(characterize.gatewayPid, 1234);
+  assert.equal(characterize.interruptionReleaseUrl, 'http://127.0.0.1:4000/__control/interruption/release');
   assert.equal(characterize.endpointSet[TRANSPORT.CHAT_COMPLETIONS_SSE], 'http://127.0.0.1:4100/v1/chat/completions');
   assert.deepEqual(
     characterize.durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],

@@ -13,13 +13,19 @@ const FOUNDATION_IDS = [
 ];
 const MCP_CORE_OPERATIONS = ['mcp_list', 'mcp_get', 'mcp_call'];
 
+function isAiGatewayProtocolFile(filePath) {
+  return /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic|openai|native|compat_sse|compatibility_interface|native_interface|native_read_interface|responses_websocket|native_websocket|callback_adapter|client_observer|delivery_receipt|sse|stream_terminal_fallback|tool_callback_ids)(?:\/.*\.rs|\.rs)$/u.test(filePath)
+    || /^api\/apps\/api-server\/src\/provider_runtime(?:\/.*\.rs|\.rs)$/u.test(filePath)
+    || /^api\/crates\/runtime-extension-host\/src\/provider_host(?:\/.*\.rs|\.rs)$/u.test(filePath);
+}
+
 const FOUNDATION_DEFINITIONS = {
   'ai-gateway': {
     risk: 'protocol projection, transport compatibility, and provider-facing contract drift',
     matches(filePath) {
       return /^scripts\/node\/(?:ai-gateway-concurrency|provider-conformance|verify-state-protocols)(?:\/|\.js$)/u.test(filePath)
         || /^scripts\/node\/cli\/(?:ai-gateway|acp-claude-smoke)/u.test(filePath)
-        || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic\.rs|compat_sse(?:\/|\.rs$))/u.test(filePath)
+        || isAiGatewayProtocolFile(filePath)
         || /^\.github\/workflows\/ai-gateway-concurrency\.yml$/u.test(filePath);
     },
     fast: [
@@ -540,6 +546,7 @@ module.exports = {
   buildFoundationPlan,
   buildQualityGateComponentReport,
   collectComponentReceipts,
+  isAiGatewayProtocolFile,
   main,
   parseArgs,
   runFastPack,

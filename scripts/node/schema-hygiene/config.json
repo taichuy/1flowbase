@@ -5,7 +5,91 @@
     "native_trajectory_integrity": "flow_run_owned_table",
     "provider_protocol_trajectory_events": "flow_run_owned_table",
     "provider_semantic_trajectory_steps": "flow_run_owned_table",
-    "retired_host_infrastructure_settings": "retired_archive_table"
+    "retired_host_infrastructure_settings": "retired_archive_table",
+    "node_run_details": "physical_contract_table",
+    "client_trajectory_archive_heads": "physical_contract_table",
+    "client_trajectory_archive_parts": "physical_contract_table",
+    "client_trajectory_archive_blocks": "physical_contract_table",
+    "runtime_native_snapshot_items": "physical_contract_table",
+    "runtime_native_snapshot_manifests": "physical_contract_table",
+    "runtime_native_snapshot_references": "physical_contract_table",
+    "runtime_observation_body_ownership": "physical_contract_table"
+  },
+  "physicalTableContracts": {
+    "node_runs": {
+      "columns": {"id": {"type": "uuid", "nullable": false}, "scope_id": {"type": "uuid", "nullable": false}, "flow_run_id": {"type": "uuid", "nullable": false}, "node_run_id": {"type": "uuid", "nullable": true}, "node_id": {"type": "text", "nullable": false}, "node_type": {"type": "text", "nullable": false}, "node_alias": {"type": "text", "nullable": false}, "status": {"type": "text", "nullable": false}, "started_at": {"type": "timestamptz", "nullable": false}, "finished_at": {"type": "timestamptz", "nullable": true}, "created_at": {"type": "timestamptz", "nullable": false}},
+      "primaryKey": ["id"],
+      "foreignKeys": [{"columns": ["flow_run_id"], "table": "flow_runs", "references": ["id"], "onDelete": "cascade"}],
+      "ownershipSource": "flow_run_id -> flow_runs.id; scope_id is copied from the run owner",
+      "writePathSource": "write_node_run_record trigger writes only directory identity/status and routes payload sections into node_run_details"
+    },
+    "node_run_details": {
+      "columns": {"node_run_id": {"type": "uuid", "nullable": false}, "section": {"type": "text", "nullable": false}, "payload": {"type": "jsonb", "nullable": true}, "raw_json_payloads": {"type": "jsonb", "nullable": false}},
+      "primaryKey": ["node_run_id", "section"],
+      "foreignKeys": [{"columns": ["node_run_id"], "table": "node_runs", "references": ["id"], "onDelete": "cascade"}],
+      "ownershipSource": "node_run_id -> node_runs.id -> flow_runs.id",
+      "writePathSource": "write_node_run_record trigger upserts each payload section and sidecar by node_run_id and section",
+      "checks": ["(section not in ('input_payload','output_payload','metrics_payload','debug_payload') or payload is not null)"]
+    },
+    "client_trajectory_archive_heads": {
+      "columns": {"request_id": {"type": "uuid", "nullable": false}, "transport": {"type": "text", "nullable": false}, "flow_run_id": {"type": "uuid", "nullable": true}, "persisted_through": {"type": "bigint", "nullable": false}},
+      "primaryKey": ["request_id"],
+      "foreignKeys": [{"columns": ["flow_run_id"], "table": "flow_runs", "references": ["id"], "onDelete": "cascade"}],
+      "ownershipSource": "request_id capture directory; nullable flow_run_id binds to flow_runs.id before public access",
+      "writePathSource": "client_trajectory/archive.rs writes request heads and binds flow_run_id from client_trajectory_captures"
+    },
+    "client_trajectory_archive_parts": {
+      "columns": {"part_id": {"type": "uuid", "nullable": false}, "request_id": {"type": "uuid", "nullable": false}, "first_sequence": {"type": "bigint", "nullable": false}, "last_sequence": {"type": "bigint", "nullable": false}, "frames": {"type": "jsonb", "nullable": false}, "bytes": {"type": "bytea", "nullable": false}, "codec_version": {"type": "smallint", "nullable": false}, "frame_directory": {"type": "bytea", "nullable": true}, "raw_byte_length": {"type": "bigint", "nullable": true}, "raw_checksum": {"type": "bytea", "nullable": true}, "block_id": {"type": "uuid", "nullable": true}, "block_offset": {"type": "bigint", "nullable": true}},
+      "primaryKey": ["part_id"],
+      "foreignKeys": [{"columns": ["request_id"], "table": "client_trajectory_archive_heads", "references": ["request_id"], "onDelete": "cascade"}, {"columns": ["request_id", "block_id"], "table": "client_trajectory_archive_blocks", "references": ["request_id", "block_id"], "onDelete": "no action"}],
+      "ownershipSource": "request_id -> client_trajectory_archive_heads.request_id; block owner retains request_id",
+      "writePathSource": "client_trajectory/archive.rs appends parts; archive_block packs exact part identities into request-owned blocks",
+      "uniqueConstraints": [["request_id", "first_sequence"]],
+      "checks": ["(last_sequence >= first_sequence)", "(codec_version >= 0)", "(raw_byte_length >= 0)", "(raw_checksum is null or octet_length(raw_checksum)=32)", "((codec_version=0 and frame_directory is null and raw_byte_length is null and raw_checksum is null and block_id is null and block_offset is null) or (codec_version=1 and frame_directory is not null and raw_byte_length is not null and raw_checksum is not null and block_id is null and block_offset is null) or (codec_version in (2,3) and frame_directory is not null and raw_byte_length is not null and raw_checksum is not null and block_id is not null and block_offset>=0 and octet_length(bytes)=0))", "((block_id is null and block_offset is null) or (block_id is not null and block_offset is not null))"],
+      "indexPrefixes": [["request_id", "last_sequence"], ["block_id"]]
+    },
+    "client_trajectory_archive_blocks": {
+      "columns": {"block_id": {"type": "uuid", "nullable": false}, "request_id": {"type": "uuid", "nullable": false}, "codec_version": {"type": "smallint", "nullable": false}, "bytes": {"type": "bytea", "nullable": false}, "raw_byte_length": {"type": "bigint", "nullable": false}, "raw_checksum": {"type": "bytea", "nullable": false}},
+      "primaryKey": ["block_id"],
+      "foreignKeys": [{"columns": ["request_id"], "table": "client_trajectory_archive_heads", "references": ["request_id"], "onDelete": "cascade"}],
+      "ownershipSource": "request_id -> client_trajectory_archive_heads.request_id",
+      "writePathSource": "client_trajectory/archive_block writes request-owned immutable block bytes with checksum and raw length",
+      "uniqueConstraints": [["request_id", "block_id"]],
+      "checks": ["(codec_version in (1,2))", "(raw_byte_length>=0)", "(octet_length(raw_checksum)=32)"]
+    },
+    "runtime_native_snapshot_items": {
+      "columns": {"id": {"type": "uuid", "nullable": false}, "scope_id": {"type": "uuid", "nullable": false}, "application_id": {"type": "uuid", "nullable": false}, "content_hash": {"type": "text", "nullable": false}, "body": {"type": "text", "nullable": false}, "byte_size": {"type": "bigint", "nullable": false}},
+      "primaryKey": ["id"],
+      "foreignKeys": [{"columns": ["application_id", "scope_id"], "table": "applications", "references": ["id", "scope_id"], "onDelete": "cascade"}],
+      "ownershipSource": "application_id,scope_id -> applications.id,scope_id; sharing is confined to this owner",
+      "writePathSource": "observation_bodies/native_snapshots.rs writes immutable hash-addressed items",
+      "uniqueConstraints": [["application_id", "content_hash"]],
+      "checks": ["(content_hash ~ '^sha256:[0-9a-f]{64}$')", "(byte_size=octet_length(body))"]
+    },
+    "runtime_native_snapshot_manifests": {
+      "columns": {"id": {"type": "uuid", "nullable": false}, "scope_id": {"type": "uuid", "nullable": false}, "application_id": {"type": "uuid", "nullable": false}, "content_hash": {"type": "text", "nullable": false}, "layout": {"type": "jsonb", "nullable": false}, "byte_size": {"type": "bigint", "nullable": false}},
+      "primaryKey": ["id"],
+      "foreignKeys": [{"columns": ["application_id", "scope_id"], "table": "applications", "references": ["id", "scope_id"], "onDelete": "cascade"}],
+      "ownershipSource": "application_id,scope_id -> applications.id,scope_id; sharing is confined to this owner",
+      "writePathSource": "observation_bodies/native_snapshots.rs writes immutable hash-addressed manifests",
+      "uniqueConstraints": [["application_id", "content_hash"]],
+      "checks": ["(content_hash ~ '^sha256:[0-9a-f]{64}$')", "(byte_size>=0)", "(jsonb_typeof(layout)='array')"]
+    },
+    "runtime_native_snapshot_references": {
+      "columns": {"manifest_id": {"type": "uuid", "nullable": false}, "item_id": {"type": "uuid", "nullable": false}},
+      "primaryKey": ["manifest_id", "item_id"],
+      "foreignKeys": [{"columns": ["manifest_id"], "table": "runtime_native_snapshot_manifests", "references": ["id"], "onDelete": "cascade"}, {"columns": ["item_id"], "table": "runtime_native_snapshot_items", "references": ["id"], "onDelete": "no action"}],
+      "ownershipSource": "manifest_id -> runtime_native_snapshot_manifests.id and item_id -> runtime_native_snapshot_items.id",
+      "writePathSource": "observation_bodies/native_snapshots.rs links each manifest to its exact immutable items",
+      "indexPrefixes": [["item_id"]]
+    },
+    "runtime_observation_body_ownership": {
+      "columns": {"content_id": {"type": "uuid", "nullable": false}},
+      "primaryKey": ["content_id"],
+      "foreignKeys": [{"columns": ["content_id"], "table": "runtime_canonical_contents", "references": ["id"], "onDelete": "cascade"}],
+      "ownershipSource": "content_id -> runtime_canonical_contents.id; only archive-created bodies have reclaim ownership",
+      "writePathSource": "observation_bodies.rs and client_trajectory/semantic.rs register only newly archived bodies for reference-driven reclamation"
+    }
   },
   "dynamicModelTablePatterns": [],
   "registeredSystemTables": [
@@ -36,7 +120,7 @@
       "requiredColumns": ["id", "scope_id", "conversation_id", "application_id", "flow_run_id", "node_run_id", "role", "content", "sequence", "status", "started_at", "finished_at", "created_at", "updated_at"]
     },
     "node_runs": {
-      "requiredColumns": ["id", "flow_run_id", "node_id", "node_type", "node_alias", "status", "input_payload", "output_payload", "error_payload", "metrics_payload", "started_at", "finished_at", "debug_payload", "scope_id", "node_run_id", "created_at"]
+      "requiredColumns": ["id", "flow_run_id", "node_id", "node_type", "node_alias", "status", "started_at", "finished_at", "scope_id", "node_run_id", "created_at"]
     },
     "flow_run_events": {
       "requiredColumns": ["id", "flow_run_id", "node_run_id", "sequence", "event_type", "payload", "created_at", "scope_id"]
