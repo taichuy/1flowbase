@@ -630,6 +630,10 @@ impl PgControlPlaneStore {
                         where events.observation_body_content_id = contents.id
                    )
                    and not exists (
+                       select 1 from client_trajectory_sections sections
+                        where sections.content_id = contents.id
+                   )
+                   and not exists (
                        select 1 from flow_run_recovery_history recovery
                         where recovery.recovery_content_id = contents.id
                    )

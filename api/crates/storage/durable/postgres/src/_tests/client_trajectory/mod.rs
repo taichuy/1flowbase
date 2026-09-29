@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use storage_durable_postgres::PgControlPlaneStore;
 use uuid::Uuid;
 const AT: &str = "2026-09-22T00:00:00Z";
+mod archive_codec;
 mod semantic;
 async fn append(
     store: &PgControlPlaneStore,
@@ -905,6 +906,12 @@ async fn formal_archive_migration_retains_legacy_cursor_and_lossless_nul() {
         .bind(Uuid::now_v7()).bind(flow).bind(projection).bind(json!({"payload":serde_json::to_string(&original).unwrap()})).execute(&pool).await.unwrap();
     sqlx::raw_sql(include_str!(
         "../../../migrations/20260928191000_client_trajectory_archives.sql"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/20260929101000_client_archive_codec.sql"
     ))
     .execute(&pool)
     .await

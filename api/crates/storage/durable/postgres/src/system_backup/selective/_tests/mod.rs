@@ -120,6 +120,14 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         "provider_semantic_trajectory_steps",
         "client_trajectory_node_links",
         "runtime_canonical_contents",
+        "runtime_native_snapshot_items",
+        "runtime_native_snapshot_manifests",
+        "runtime_native_snapshot_references",
+        "runtime_observation_body_ownership",
+        "client_trajectory_archive_heads",
+        "client_trajectory_archive_parts",
+        "client_trajectory_steps",
+        "client_trajectory_sections",
     ] {
         assert!(
             application.data_tables.contains(&name.into()),

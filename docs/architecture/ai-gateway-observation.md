@@ -27,11 +27,15 @@
 
 ## 边界
 
-物理正文复用与 `body_ref` 的语义关联分别处理。Native / 供应商观察正文可复用同 application / scope 的不可变 canonical 内容；SHA-256 命中后再验证完整 JSON 值相等。每个观察点的 run、node、invocation、attempt、来源和格式仍独立保留，读取验证正文归属。相同正文不表示相同调用，也不用于执行幂等或推断客户端字节。这里只复用完全相等正文，不实现跨租户复用、文本相似匹配或上下文前缀差量。
+物理正文复用与 `body_ref` 的语义关联分别处理。Native / 供应商观察正文可复用同 application / scope 的不可变 canonical 内容；SHA-256 命中后再验证完整 JSON 值相等。Native model_call 的原始输入 String 另用不可变 manifest、item 与有序引用保存：JSON 数组中的完整 item 共享精确原始字节，literal spans 保留空白、字段顺序、数字写法与转义，重复 occurrence 仍独立出现。读取核验归属、引用、字节长度和整串 SHA-256 后恢复完整 String；未知或无法无损拆分的形状沿用 canonical。每个观察点的 run、node、invocation、attempt、来源和格式仍独立保留。相同正文不表示相同调用，也不用于执行幂等或推断客户端字节；不做跨租户复用或相似匹配。
 
-由观察归档首次创建的 canonical 内容具有明确所有权标记；最后一个 durable 引用删除后，以延迟事务触发器校验 runtime event、context、recovery、legacy shadow 引用并回收。复用原有 canonical 内容时沿用其原有生命周期。运行删除不保留新的无主观察正文。
+由观察归档首次创建的 canonical 内容具有明确所有权标记；最后一个 durable 引用删除后，以延迟事务触发器校验 runtime event、client section、context、recovery、legacy shadow 引用并回收。复用原有 canonical 内容时沿用其原有生命周期。Native manifest 在最后一个 event 引用删除后回收，item 在最后一个 manifest 引用删除后回收；共享写入和回收使用相同 application 锁。运行删除不保留新的无主观察正文，选择性备份按 application owner 保存全部新表。
 
-节点目录仅存身份和运行状态，独立 section 保存精确正文及 lossless sidecar。客户端 request 独立保存实际字节与紧凑帧目录，节点仅关联请求；流式帧不再各占一个 runtime event。写入背压与完成回执保证已接纳字节持久化。迁移保留旧事件身份，只有字节、游标、归属一致才释放旧副本；无法安全拆分的 NUL 原文或不一致历史行保持完整来源。
+节点目录仅存身份和运行状态。客户端 Step / Section 新写入直接保存发生目录，不再各写一个 runtime event；Integrity、NodeLink、ResponseLink 仍保存真实事件。全 run 的 durable sequence 高水位同时覆盖事件与目录，旧 numeric cursor 不重编号。section 复用同 application / scope 的精确 canonical 原值；parameters / result 只有与已恢复 overview 的指定 child 完全相等时才保存 locator。普通 timing 复用 occurrence 的 observed_at，特殊形状保存完整值。后端完整恢复 originals 后在 Rust 选择 child，原 DTO 保持一致。
+
+客户端 request 独立保存实际字节与版本化紧凑帧目录，节点仅关联请求；流式帧不再各占一个 runtime event。新 part 使用 zlib 无损压缩，校验原长度、目录和 SHA-256；逐 part 解码后按原帧分页，保留精确 bytes、时间、kind、顺序和 sequence。v0 reader 继续读取旧 wire / legacy 格式，SQL legacy 引用所指 part 不转换。写入背压、head 锁和 commit 后完成回执保证已接纳字节持久化。
+
+历史维护只接受显式 run allowlist，经真实 reader 恢复和完整值 / 帧核验后切换引用，可重入；启动与请求路径不自动搬迁。旧事件身份及游标保留，Step 历史 revision 保留原 envelope，可验证的 Section 正文改为小引用。NUL 等不能安全转换的历史 Section 保留旧正文和 reader，记录跳过状态以继续处理后续批次。新数据仍走无损 originals 路径；长期上下文不放入 ephemeral。
 
 预绑定采集在最终 owner EOF、已接纳帧排空后关闭绑定；无运行归属时由 repository 显式清理 head/parts。清理失败返回完成错误并保留字节，排空期间的晚绑定继续保留轨迹。此收尾不以 TTL 猜测运行状态；进程崩溃前未完成的采集仍可能留下待调查记录。
 
