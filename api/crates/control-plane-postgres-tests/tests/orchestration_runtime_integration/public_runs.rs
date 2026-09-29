@@ -204,7 +204,7 @@ async fn published_run_stream_state_projects_status_usage_and_latest_pending_cal
     let node_run = seed_node_run(&store, &run, started_at).await;
     sqlx::query(
         r#"
-        update node_runs
+        update node_run_records
         set metrics_payload = $2,
             output_payload = $3
         where id = $1

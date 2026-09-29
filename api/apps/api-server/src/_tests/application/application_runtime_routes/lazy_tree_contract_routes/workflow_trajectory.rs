@@ -16,7 +16,7 @@ async fn workflow_trajectory_routes_preserve_authorization_filters_and_selected_
     let base =
         format!("/api/console/applications/{application}/logs/runs/{run}/workflow-trajectory");
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
-    sqlx::query("update node_runs set node_alias='执行时节点名',raw_json_payloads=jsonb_build_object('input_payload','invalid JSON') where id=$1").bind(node).execute(&pool).await.unwrap();
+    sqlx::query("update node_run_records set node_alias='执行时节点名',raw_json_payloads=jsonb_build_object('input_payload','invalid JSON') where id=$1").bind(node).execute(&pool).await.unwrap();
     seed_flow_run_history_events(&database_url, &[AppendRuntimeEventInput {
         flow_run_id: run_id, node_run_id: Some(node), span_id: None, parent_span_id: None,
         event_type: "provider_semantic_step".into(), layer: domain::RuntimeEventLayer::RuntimeItem,
@@ -67,7 +67,7 @@ async fn workflow_trajectory_routes_preserve_authorization_filters_and_selected_
     assert_eq!(status, StatusCode::OK, "{nodes}");
     assert!(!nodes["data"]["items"].as_array().unwrap().is_empty());
     // Body is read only on selection, and only from the authorized task closure.
-    sqlx::query("update node_runs set raw_json_payloads='{}',input_payload=jsonb_build_object('input','selected only') where id=$1").bind(node).execute(&pool).await.unwrap();
+    sqlx::query("update node_run_records set raw_json_payloads='{}',input_payload=jsonb_build_object('input','selected only') where id=$1").bind(node).execute(&pool).await.unwrap();
     let event = nodes["data"]["items"][0]["event_id"].as_str().unwrap();
     assert_eq!(
         get(&app, Some(&cookie), &format!("{base}/{event}")).await.0,

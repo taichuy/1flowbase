@@ -360,7 +360,7 @@ async fn failed_after_commit_claim_is_released_for_replay_and_completed_claim_is
 }
 
 #[tokio::test]
-async fn ephemeral_persisted_history_does_not_enter_after_commit_lane() {
+async fn ephemeral_delta_creates_neither_history_nor_after_commit_delivery() {
     let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let run_id = Uuid::now_v7();
     let calls = Arc::new(Mutex::new(Vec::new()));
@@ -392,21 +392,48 @@ async fn ephemeral_persisted_history_does_not_enter_after_commit_lane() {
             .await
             .unwrap()
             .len(),
-        1
+        0
     );
 }
 
-#[test]
-fn streaming_deltas_request_history_without_requiring_ephemeral_delivery() {
+#[tokio::test]
+async fn streaming_provider_and_answer_deltas_remain_live_without_durable_history() {
+    let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let stream = OpenTestRuntimeEventStream::default();
+    let run_id = Uuid::now_v7();
     let node_run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
     let provider_delta = debug_stream_events::text_delta("node-llm", node_run_id, "A".into());
     let answer_delta =
         debug_stream_events::answer_reasoning_delta("node-answer", "B".into(), 0, None, None, None);
-
+    let mut projected = Vec::new();
     for event in [provider_delta, answer_delta] {
         assert_eq!(event.durability, RuntimeEventDurability::Ephemeral);
-        assert!(event.persist_required);
+        projected.push(stream.append(run_id, event).await.unwrap());
     }
+    let live = stream.replay(run_id, Some(0), 10).await.unwrap();
+    assert_eq!(live.len(), 2);
+    assert_eq!(live[0].payload["text"], "A");
+    assert_eq!(live[1].payload["text"], "B");
+    assert_eq!(
+        live[1].payload["presentation"]["answer_node_id"],
+        "node-answer"
+    );
+    control_plane::orchestration_runtime::persist_runtime_debug_stream_events(
+        &repository,
+        projected,
+    )
+    .await
+    .unwrap();
+    assert!(repository
+        .list_runtime_events(run_id, 0)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(repository.events_for_flow_run(run_id).is_empty());
 }
 
 #[tokio::test]
@@ -703,7 +730,7 @@ impl RuntimeEventStream for OpenTestRuntimeEventStream {
 }
 
 #[tokio::test]
-async fn runtime_debug_event_persister_flushes_delta_batch_on_time_window() {
+async fn runtime_debug_event_persister_flushes_usage_fact_on_time_window_without_delta_rows() {
     let repository =
         crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let stream = std::sync::Arc::new(OpenTestRuntimeEventStream::default());
@@ -726,6 +753,26 @@ async fn runtime_debug_event_persister_flushes_delta_batch_on_time_window() {
         .await
         .unwrap();
 
+    let live = stream.replay(run_id, Some(0), 10).await.unwrap();
+    assert_eq!(live[0].event_type, "text_delta");
+    assert_eq!(live[0].payload["text"], "及时落盘");
+    stream
+        .append(
+            run_id,
+            debug_stream_events::usage_snapshot(
+                "node-llm",
+                node_run_id,
+                &plugin_framework::provider_contract::ProviderUsage {
+                    input_tokens: Some(10),
+                    output_tokens: Some(5),
+                    total_tokens: Some(15),
+                    ..Default::default()
+                },
+            ),
+        )
+        .await
+        .unwrap();
+
     let persisted = tokio::time::timeout(std::time::Duration::from_millis(500), async {
         loop {
             let events = repository.list_runtime_events(run_id, 0).await.unwrap();
@@ -736,10 +783,12 @@ async fn runtime_debug_event_persister_flushes_delta_batch_on_time_window() {
         }
     })
     .await
-    .expect("delta batch should flush while the runtime stream remains open");
+    .expect("usage fact should flush while the runtime stream remains open");
 
     assert_eq!(persisted.len(), 1);
-    assert_eq!(persisted[0].payload["text"], "及时落盘");
+    assert_eq!(persisted[0].event_type, "usage_snapshot");
+    assert_eq!(persisted[0].payload["usage"]["total_tokens"], 15);
+    assert!(repository.events_for_flow_run(run_id).is_empty());
     stream
         .close_run(run_id, RuntimeEventCloseReason::Finished)
         .await
@@ -796,7 +845,7 @@ async fn assistant_activity_sequence_is_kept_by_durably_persisted_lifecycle_even
 }
 
 #[tokio::test]
-async fn runtime_event_persister_coalesces_text_delta_runtime_events() {
+async fn runtime_event_persister_does_not_archive_text_fragments() {
     let repository =
         crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let run_id = Uuid::now_v7();
@@ -812,29 +861,12 @@ async fn runtime_event_persister_coalesces_text_delta_runtime_events() {
         .unwrap();
 
     let runtime_events = repository.list_runtime_events(run_id, 0).await.unwrap();
-    assert_eq!(runtime_events.len(), 1);
-    assert_eq!(runtime_events[0].event_type, "text_delta");
-    assert_eq!(runtime_events[0].node_run_id, Some(node_run_id));
-    assert_eq!(
-        runtime_events[0].layer,
-        domain::RuntimeEventLayer::RuntimeItem
-    );
-    assert_eq!(runtime_events[0].source, domain::RuntimeEventSource::Host);
-    assert_eq!(
-        runtime_events[0].visibility,
-        domain::RuntimeEventVisibility::Workspace
-    );
-    assert_eq!(
-        runtime_events[0].durability,
-        domain::RuntimeEventDurability::Durable
-    );
-    assert_eq!(runtime_events[0].payload["text"], "退款摘要");
-    let run_events = repository.events_for_flow_run(run_id);
-    assert!(run_events.is_empty());
+    assert!(runtime_events.is_empty());
+    assert!(repository.events_for_flow_run(run_id).is_empty());
 }
 
 #[tokio::test]
-async fn runtime_event_persister_persists_delta_cursor_and_artifact_metadata() {
+async fn runtime_event_persister_keeps_live_delta_metadata_out_of_durable_rows() {
     let repository =
         crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let run_id = Uuid::now_v7();
@@ -874,38 +906,12 @@ async fn runtime_event_persister_persists_delta_cursor_and_artifact_metadata() {
         .unwrap();
 
     let runtime_events = repository.list_runtime_events(run_id, 0).await.unwrap();
-    assert_eq!(runtime_events.len(), 1);
-    let event = &runtime_events[0];
-    assert_eq!(event.node_run_id, Some(node_run_id));
-    assert_eq!(event.event_type, "text_delta");
-    assert_eq!(event.payload["event_type"], "text_delta");
-    assert_eq!(event.payload["node_run_id"], node_run_id.to_string());
-    assert_eq!(event.payload["content_type"], "text");
-    assert_eq!(event.payload["stream_sequence"], 8);
-    assert_eq!(event.payload["sequence_start"], 7);
-    assert_eq!(event.payload["sequence_end"], 8);
-    assert_eq!(
-        event.payload["event_ids"],
-        json!([format!("{run_id}:7"), format!("{run_id}:8")])
-    );
-    assert_eq!(event.payload["truncated"], true);
-    assert_eq!(event.payload["truncation"]["reason"], "max_bytes");
-    assert_eq!(event.payload["truncation"]["original_bytes"], 200);
-    assert_eq!(
-        event.payload["content_refs"],
-        json!(["runtime_artifact:inline:chunk-1"])
-    );
-    assert_eq!(
-        event.payload["artifact_refs"],
-        json!([
-            "runtime_artifact:inline:chunk-1",
-            "runtime_artifact:object:chunk-2"
-        ])
-    );
+    assert!(runtime_events.is_empty());
+    assert!(repository.events_for_flow_run(run_id).is_empty());
 }
 
 #[tokio::test]
-async fn runtime_event_persister_coalesces_reasoning_delta_separately_from_text() {
+async fn runtime_event_persister_does_not_archive_reasoning_fragments() {
     let repository =
         crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let run_id = Uuid::now_v7();
@@ -922,11 +928,8 @@ async fn runtime_event_persister_coalesces_reasoning_delta_separately_from_text(
         .unwrap();
 
     let runtime_events = repository.list_runtime_events(run_id, 0).await.unwrap();
-    assert_eq!(runtime_events.len(), 2);
-    assert_eq!(runtime_events[0].event_type, "reasoning_delta");
-    assert_eq!(runtime_events[0].payload["text"], "先分析");
-    assert_eq!(runtime_events[1].event_type, "text_delta");
-    assert_eq!(runtime_events[1].payload["text"], "结果");
+    assert!(runtime_events.is_empty());
+    assert!(repository.events_for_flow_run(run_id).is_empty());
 }
 
 #[tokio::test]
@@ -971,17 +974,11 @@ async fn assistant_activity_sequence_ends_reasoning_at_a_precommitted_visible_bo
         .into_iter()
         .filter(|event| event.event_type == "reasoning_delta")
         .collect::<Vec<_>>();
-    assert_eq!(reasoning.len(), 2);
-    assert_eq!(reasoning[0].payload["text"], "先检查");
-    assert_eq!(reasoning[0].payload["sequence_start"], 3);
-    assert_eq!(reasoning[0].payload["sequence_end"], 3);
-    assert_eq!(reasoning[1].payload["text"], "继续检查");
-    assert_eq!(reasoning[1].payload["sequence_start"], 5);
-    assert_eq!(reasoning[1].payload["sequence_end"], 5);
+    assert!(reasoning.is_empty());
 }
 
 #[tokio::test]
-async fn runtime_event_persister_flushes_pending_delta_before_cancelled_terminal_event() {
+async fn runtime_event_persister_preserves_cancelled_terminal_without_delta_rows() {
     let repository =
         crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let run_id = Uuid::now_v7();
@@ -1034,15 +1031,13 @@ async fn runtime_event_persister_flushes_pending_delta_before_cancelled_terminal
     .unwrap();
 
     let runtime_events = repository.list_runtime_events(run_id, 0).await.unwrap();
-    assert_eq!(runtime_events.len(), 2);
-    assert_eq!(runtime_events[0].event_type, "text_delta");
-    assert_eq!(runtime_events[0].payload["text"], "正在回答");
-    assert_eq!(runtime_events[1].event_type, "flow_cancelled");
-    assert_eq!(runtime_events[1].payload["stream_sequence"], 9);
-    assert_eq!(runtime_events[1].payload["sequence_start"], 9);
-    assert_eq!(runtime_events[1].payload["sequence_end"], 9);
+    assert_eq!(runtime_events.len(), 1);
+    assert_eq!(runtime_events[0].event_type, "flow_cancelled");
+    assert_eq!(runtime_events[0].payload["stream_sequence"], 9);
+    assert_eq!(runtime_events[0].payload["sequence_start"], 9);
+    assert_eq!(runtime_events[0].payload["sequence_end"], 9);
     assert_eq!(
-        runtime_events[1].layer,
+        runtime_events[0].layer,
         domain::RuntimeEventLayer::AgentTransition
     );
 }
@@ -1526,7 +1521,7 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         .await
         .unwrap();
 
-    service
+    let completed_detail = service
         .continue_flow_debug_run(ContinueFlowDebugRunCommand {
             application_id: seeded.application_id,
             flow_run_id: detail.flow_run.id,
@@ -1535,7 +1530,15 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         .await
         .unwrap();
 
+    assert_eq!(completed_detail.flow_run.output_payload["answer"], "hello");
     let live_events = stream.events();
+    assert!(
+        live_events
+            .iter()
+            .any(|event| event.event_type == "text_delta" && event.payload["text"] == "hello"),
+        "actual provider content must remain observable on the live stream"
+    );
+
     let context_index = live_events
         .iter()
         .position(|event| event.event_type == "context_snapshot")
@@ -1575,10 +1578,11 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         .map(|event| event.event_type)
         .collect::<Vec<_>>();
     assert!(
-        runtime_event_types
-            .iter()
-            .any(|event_type| event_type == "text_delta"),
-        "provider text deltas should still be written to durable runtime_events: {runtime_event_types:?}"
+        !runtime_event_types.iter().any(|event_type| matches!(
+            event_type.as_str(),
+            "text_delta" | "reasoning_delta" | "tool_call_delta" | "mcp_call_delta"
+        )),
+        "provider fragments must not become durable runtime_events: {runtime_event_types:?}"
     );
     assert!(
         runtime_event_types
@@ -1605,6 +1609,15 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         "provider finish events should still be written to durable runtime_events: {runtime_event_types:?}"
     );
 
+    assert!(
+        runtime_event_types
+            .iter()
+            .any(|event_type| event_type == "provider_semantic_step"),
+        "complete native invocation facts must survive fragment removal"
+    );
+    assert!(runtime_event_types
+        .iter()
+        .any(|event_type| event_type == "flow_finished"));
     let capability_invocations = service
         .list_capability_invocations(detail.flow_run.id)
         .await;

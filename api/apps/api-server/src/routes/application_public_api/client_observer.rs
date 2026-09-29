@@ -9,6 +9,7 @@ use control_plane::client_trajectory::{
 };
 use http_body::{Body as HttpBody, Frame, SizeHint};
 use std::{
+    future::Future,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -39,6 +40,12 @@ impl CaptureGuard {
             self.finished = true;
         }
     }
+    pub(super) async fn complete(&mut self) {
+        self.finish();
+        if let Err(error) = self.recorder.complete().await {
+            tracing::warn!(request_id=%self.recorder.capture_id(), %error, "client capture durable completion failed");
+        }
+    }
     pub(super) fn fail(&mut self) {
         if !self.finished {
             self.recorder.mark_incomplete();
@@ -52,17 +59,33 @@ impl Drop for CaptureGuard {
     }
 }
 
+type CaptureFuture = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
 struct ObservedBody {
     inner: Body,
     capture: CaptureGuard,
     kind: ClientTrajectoryFrameKind,
+    pending: Option<CaptureFuture>,
+    frame: Option<Result<Frame<Bytes>, axum::Error>>,
+    eof: bool,
+    done: bool,
 }
 impl Drop for ObservedBody {
     fn drop(&mut self) {
-        // HTTP clients may stop reading after a protocol terminal while SSE keepalive
-        // remains open. The recorder verifies the terminal; an explicit I/O error
-        // still calls fail() before this drop, and a missing terminal is incomplete.
-        self.capture.finish();
+        // A polled frame remains owned by its admission future during disconnect.
+        // Detach that finite frame and await it before signaling recorder EOF.
+        let pending = self.pending.take();
+        let recorder = self.capture.recorder.clone();
+        self.capture.finished = true;
+        tokio::spawn(async move {
+            if let Some(pending) = pending {
+                if pending.await.is_err() {
+                    recorder.mark_incomplete();
+                }
+            }
+            if let Err(error) = recorder.complete().await {
+                tracing::warn!(%error,"disconnected client archive completion failed");
+            }
+        });
     }
 }
 impl HttpBody for ObservedBody {
@@ -73,30 +96,64 @@ impl HttpBody for ObservedBody {
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, Self::Error>>> {
         let this = self.get_mut();
-        match Pin::new(&mut this.inner).poll_frame(cx) {
-            Poll::Ready(Some(Ok(frame))) => {
-                if let Some(bytes) = frame.data_ref() {
-                    this.capture.recorder.record(this.kind, bytes);
+        loop {
+            if let Some(pending) = this.pending.as_mut() {
+                match pending.as_mut().poll(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(result) => {
+                        this.pending = None;
+                        if let Err(error) = result {
+                            this.capture.recorder.mark_incomplete();
+                            tracing::warn!(%error,"client archive persistence failed");
+                        }
+                        if this.eof {
+                            this.done = true;
+                            this.capture.finished = true;
+                        }
+                        if let Some(frame) = this.frame.take() {
+                            return Poll::Ready(Some(frame));
+                        }
+                        if this.done {
+                            return Poll::Ready(None);
+                        }
+                    }
                 }
-                // Hyper need not poll again when the wrapped body reports EOF.
-                if this.inner.is_end_stream() {
-                    this.capture.finish();
+            }
+            if this.done {
+                return Poll::Ready(None);
+            }
+            match Pin::new(&mut this.inner).poll_frame(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(frame) => {
+                    this.eof = frame.is_none() || this.inner.is_end_stream();
+                    let bytes = frame
+                        .as_ref()
+                        .and_then(|f| f.as_ref().ok())
+                        .and_then(|f| f.data_ref())
+                        .cloned();
+                    if frame.as_ref().is_some_and(|f| f.is_err()) {
+                        this.capture.recorder.mark_incomplete();
+                        this.eof = true;
+                    }
+                    this.frame = frame;
+                    let recorder = this.capture.recorder.clone();
+                    let kind = this.kind;
+                    let eof = this.eof;
+                    this.pending = Some(Box::pin(async move {
+                        if let Some(bytes) = bytes {
+                            recorder.record(kind, &bytes).await?;
+                        }
+                        if eof {
+                            recorder.complete().await?;
+                        }
+                        Ok(())
+                    }));
                 }
-                Poll::Ready(Some(Ok(frame)))
             }
-            Poll::Ready(Some(Err(error))) => {
-                this.capture.fail();
-                Poll::Ready(Some(Err(error)))
-            }
-            Poll::Ready(None) => {
-                this.capture.finish();
-                Poll::Ready(None)
-            }
-            Poll::Pending => Poll::Pending,
         }
     }
     fn is_end_stream(&self) -> bool {
-        self.inner.is_end_stream()
+        self.done && self.frame.is_none()
     }
     fn size_hint(&self) -> SizeHint {
         self.inner.size_hint()
@@ -114,16 +171,16 @@ pub(super) fn observe_response(response: Response, capture: CaptureGuard) -> Res
         ClientTrajectoryFrameKind::ResponseJson
     };
     let (parts, body) = response.into_parts();
-    let mut capture = capture;
-    if body.is_end_stream() {
-        capture.finish();
-    }
     Response::from_parts(
         parts,
         Body::new(ObservedBody {
             inner: body,
             capture,
             kind,
+            pending: None,
+            frame: None,
+            eof: false,
+            done: false,
         }),
     )
 }

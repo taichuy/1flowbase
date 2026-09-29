@@ -6,9 +6,9 @@ use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
+#[cfg(test)]
 const CAPACITY: usize = 1024 * 1024;
 const RECORDS: usize = 128;
-const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 static WRITERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(32);
 
 #[derive(Clone)]
@@ -57,24 +57,9 @@ impl Identity {
     }
 }
 
-// Serialize into a capped buffer before cloning any provider-owned structured value.
-struct Limited(Vec<u8>);
-impl std::io::Write for Limited {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        if self.0.len().saturating_add(bytes.len()) > CAPACITY / 4 {
-            return Err(std::io::Error::other("native detail capacity"));
-        }
-        self.0.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-fn bounded<T: serde::Serialize + ?Sized>(value: &T) -> Option<Value> {
-    let mut buffer = Limited(Vec::new());
-    serde_json::to_writer(&mut buffer, value).ok()?;
-    serde_json::from_slice(&buffer.0).ok()
+// Immutable actual values are archived once; size cannot erase evidence.
+fn snapshot_value<T: serde::Serialize + ?Sized>(value: &T) -> Option<Value> {
+    serde_json::to_value(value).ok()
 }
 // This applies only to Native snapshots, never to execution values. Unknown ordinary
 // metadata survives; authentication containers and credential-bearing fields do not.
@@ -131,7 +116,7 @@ struct SafeInput<'a> {
     previous_response_id: &'a Option<String>,
 }
 fn safe_input(input: &ProviderInvocationInput) -> Option<Value> {
-    bounded(&SafeInput {
+    snapshot_value(&SafeInput {
         operation: &input.operation,
         model: &input.model,
         provider_code: &input.provider_code,
@@ -163,18 +148,20 @@ fn redact_metadata(value: &mut Value) {
         _ => {}
     }
 }
-fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
+async fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
     let detail = safe_input(input);
     let gap = detail.is_none();
     let snapshot_key = Uuid::now_v7().to_string();
-    let saved = sink.step(
-        "model_call",
-        &snapshot_key,
-        "prepared",
-        detail.unwrap_or_else(|| json!({"truncated":true})),
-        None,
-        gap,
-    );
+    let saved = sink
+        .step(
+            "model_call",
+            &snapshot_key,
+            "prepared",
+            detail.unwrap_or_else(|| json!({"truncated":true})),
+            None,
+            gap,
+        )
+        .await;
     let mut submitted = BTreeSet::new();
     for (index, message) in input
         .messages
@@ -182,7 +169,7 @@ fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
         .enumerate()
         .filter(|(_, message)| message.role == ProviderMessageRole::Tool)
     {
-        if let Some(detail) = bounded(message) {
+        if let Some(detail) = snapshot_value(message) {
             sink.referenced_step(
                 "tool_result",
                 &format!("submitted:{index}"),
@@ -190,11 +177,10 @@ fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
                 detail,
                 message.tool_call_id.as_deref(),
                 (saved && !gap).then(|| (snapshot_key.as_str(), format!("/messages/{index}"))),
-            );
+            )
+            .await;
             if let Some(id) = &message.tool_call_id {
-                if submitted.len() < RECORDS {
-                    submitted.insert(id.clone());
-                }
+                submitted.insert(id.clone());
             }
         } else {
             sink.dropped.fetch_add(1, Relaxed);
@@ -218,7 +204,7 @@ fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
             if id.is_some_and(|id| submitted.contains(id)) {
                 continue;
             }
-            if let Some(detail) = bounded(item) {
+            if let Some(detail) = snapshot_value(item) {
                 sink.referenced_step(
                     "tool_result",
                     &format!("native-submitted:{index}"),
@@ -231,7 +217,8 @@ fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
                             format!("/native_request/wire_body/input/{index}"),
                         )
                     }),
-                );
+                )
+                .await;
             } else {
                 sink.dropped.fetch_add(1, Relaxed);
             }
@@ -250,7 +237,10 @@ struct Aggregate {
     items: BTreeMap<usize, Value>,
     tools: BTreeMap<String, Value>,
     errors: Vec<Value>,
-    retained: usize,
+    partial_items: BTreeMap<usize, Value>,
+    partial_tools: BTreeMap<String, Value>,
+    partial_content: BTreeMap<(usize, String, u64), String>,
+    extensions: Vec<Value>,
     gap: bool,
 }
 impl Aggregate {
@@ -259,11 +249,6 @@ impl Aggregate {
         match event {
             ProviderStreamEvent::TextDelta { delta }
             | ProviderStreamEvent::ReasoningDelta { delta } => {
-                if self.retained.saturating_add(delta.len()) > CAPACITY / 2 {
-                    self.gap = true;
-                    return;
-                }
-                self.retained += delta.len();
                 if matches!(event, ProviderStreamEvent::TextDelta { .. }) {
                     self.text.push_str(delta);
                 } else {
@@ -271,11 +256,6 @@ impl Aggregate {
                 }
             }
             ProviderStreamEvent::ReasoningSignatureDelta { signature } => {
-                if self.retained.saturating_add(signature.len()) > CAPACITY / 2 {
-                    self.gap = true;
-                    return;
-                }
-                self.retained += signature.len();
                 self.signature.push_str(signature);
             }
             ProviderStreamEvent::OutputItem {
@@ -284,45 +264,98 @@ impl Aggregate {
                 item,
             } => {
                 if *phase == ProviderOutputItemPhase::Added {
-                    if self.open_items.len() >= RECORDS {
-                        self.gap = true;
-                    } else {
-                        self.open_items.insert(*output_index);
-                    }
+                    self.open_items.insert(*output_index);
+                    self.partial_items.insert(*output_index, item.clone());
                     return;
                 }
                 self.open_items.remove(output_index);
+                self.partial_items.remove(output_index);
+                self.partial_content
+                    .retain(|(index, _, _), _| index != output_index);
                 if let Some(value) = self.admit(item) {
                     self.items.insert(*output_index, value);
                 }
             }
             ProviderStreamEvent::ResponsesOutputDelta { event } => {
                 if let Some(index) = event["output_index"].as_u64() {
-                    // A Responses delta belongs to an Added, not-yet-Done item.
-                    // It cannot open a new item or reopen one already committed.
-                    if !self.open_items.contains(&(index as usize)) {
+                    let index = index as usize;
+                    if !self.open_items.contains(&index) {
                         self.gap = true;
+                    }
+                    let kind = event["type"].as_str().unwrap_or_default();
+                    let content_index = event["content_index"]
+                        .as_u64()
+                        .or_else(|| event["summary_index"].as_u64())
+                        .unwrap_or(0);
+                    if let Some(delta) = event["delta"].as_str() {
+                        self.partial_content
+                            .entry((index, kind.trim_end_matches(".delta").into(), content_index))
+                            .or_default()
+                            .push_str(delta);
+                    } else {
+                        // Part/done snapshots and unknown fields are actual facts,
+                        // not disposable text fragments.
+                        self.extensions.push(event.clone());
+                    }
+                    let mut extra = event.clone();
+                    if let Some(fields) = extra.as_object_mut() {
+                        for key in [
+                            "type",
+                            "delta",
+                            "output_index",
+                            "item_id",
+                            "content_index",
+                            "summary_index",
+                            "sequence_number",
+                        ] {
+                            fields.remove(key);
+                        }
+                        if !fields.is_empty() && event.get("delta").is_some() {
+                            self.extensions.push(json!({"output_index":index,"item_id":event["item_id"],"fields":extra}));
+                        }
                     }
                 } else {
                     self.gap = true;
+                    self.extensions.push(event.clone());
                 }
             }
-            ProviderStreamEvent::ToolCallDelta { call_id, .. }
-            | ProviderStreamEvent::McpCallDelta { call_id, .. } => {
-                if call_id.len() > 1024 || self.open_tools.len() >= RECORDS {
-                    self.gap = true;
-                } else {
-                    self.open_tools.insert(call_id.clone());
+            ProviderStreamEvent::ToolCallDelta { call_id, delta }
+            | ProviderStreamEvent::McpCallDelta { call_id, delta } => {
+                self.open_tools.insert(call_id.clone());
+                let partial = self
+                    .partial_tools
+                    .entry(call_id.clone())
+                    .or_insert_with(|| json!({}));
+                merge_partial_value(partial, delta);
+                // A commit replaces argument fragments, but cannot erase unique
+                // vendor evidence carried beside them.
+                if let Some(fields) = delta.as_object() {
+                    let extra = fields
+                        .iter()
+                        .filter(|(key, _)| {
+                            !matches!(
+                                key.as_str(),
+                                "arguments" | "name" | "id" | "call_id" | "type"
+                            )
+                        })
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect::<serde_json::Map<_, _>>();
+                    if !extra.is_empty() {
+                        self.extensions
+                            .push(json!({"call_id":call_id,"fields":extra}));
+                    }
                 }
             }
             ProviderStreamEvent::ToolCallCommit { call } => {
                 self.open_tools.remove(&call.id);
+                self.partial_tools.remove(&call.id);
                 if let Some(value) = self.admit(call) {
                     self.tools.insert(call.id.clone(), value);
                 }
             }
             ProviderStreamEvent::McpCallCommit { call } => {
                 self.open_tools.remove(&call.id);
+                self.partial_tools.remove(&call.id);
                 if let Some(value) = self.admit(call) {
                     self.tools.insert(call.id.clone(), value);
                 }
@@ -344,30 +377,36 @@ impl Aggregate {
         }
     }
     fn admit<T: serde::Serialize + ?Sized>(&mut self, value: &T) -> Option<Value> {
-        let Some(mut value) = bounded(value) else {
+        let Some(mut value) = snapshot_value(value) else {
             self.gap = true;
             return None;
         };
         redact_metadata(&mut value);
-        let size = value.to_string().len();
-        if self.retained.saturating_add(size) > CAPACITY / 2
-            || self.items.len() + self.tools.len() + self.errors.len() >= RECORDS / 2
-        {
-            self.gap = true;
-            return None;
-        }
-        self.retained += size;
         Some(value)
+    }
+}
+// Merge strings only inside a single identified call. Preserve structured fields.
+fn merge_partial_value(target: &mut Value, delta: &Value) {
+    match (target, delta) {
+        (Value::String(target), Value::String(delta)) => target.push_str(delta),
+        (Value::Object(target), Value::Object(delta)) => {
+            for (key, value) in delta {
+                if let Some(existing) = target.get_mut(key) {
+                    merge_partial_value(existing, value);
+                } else {
+                    target.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        (target, delta) => *target = delta.clone(),
     }
 }
 struct Record {
     payload: crate::ports::RuntimeEventPayload,
-    _bytes: tokio::sync::OwnedSemaphorePermit,
 }
 struct Sink {
     id: Identity,
     sender: mpsc::Sender<Record>,
-    bytes: Arc<tokio::sync::Semaphore>,
     observed: Arc<AtomicU64>,
     dropped: Arc<AtomicU64>,
 }
@@ -452,7 +491,7 @@ fn native_preview(kind: &str, detail: &Value) -> String {
 }
 
 impl Sink {
-    fn step(
+    async fn step(
         &self,
         kind: &str,
         key: &str,
@@ -479,10 +518,10 @@ impl Sink {
         if compact_reply {
             payload.payload["body_format"] = json!("native_reply_v2");
         }
-        self.enqueue(payload)
+        self.enqueue(payload).await
     }
 
-    fn referenced_step(
+    async fn referenced_step(
         &self,
         kind: &str,
         key: &str,
@@ -492,7 +531,7 @@ impl Sink {
         reference: Option<(&str, String)>,
     ) {
         let Some((step_key, pointer)) = reference else {
-            self.step(kind, key, direction, detail, tool, false);
+            self.step(kind, key, direction, detail, tool, false).await;
             return;
         };
         let preview = native_preview(kind, &detail);
@@ -503,26 +542,14 @@ impl Sink {
                 "preview":preview, "tool_call_id":tool,
                 "body_ref":{"step_key":step_key,"pointer":pointer}
             }),
-        ));
+        ))
+        .await;
     }
 
-    fn enqueue(&self, payload: crate::ports::RuntimeEventPayload) -> bool {
-        let size = payload.payload.to_string().len().saturating_add(512);
-        let permit = u32::try_from(size)
-            .ok()
-            .and_then(|size| self.bytes.clone().try_acquire_many_owned(size).ok());
-        if let Some(permit) = permit {
-            if self
-                .sender
-                .try_send(Record {
-                    payload,
-                    _bytes: permit,
-                })
-                .is_ok()
-            {
-                self.observed.fetch_add(1, Relaxed);
-                return true;
-            }
+    async fn enqueue(&self, payload: crate::ports::RuntimeEventPayload) -> bool {
+        if self.sender.send(Record { payload }).await.is_ok() {
+            self.observed.fetch_add(1, Relaxed);
+            return true;
         }
         self.dropped.fetch_add(1, Relaxed);
         false
@@ -536,6 +563,7 @@ pub(super) struct Capture {
     aggregate: Arc<std::sync::Mutex<Aggregate>>,
     completion: Option<tokio::sync::oneshot::Sender<bool>>,
     started_at: Option<std::time::Instant>,
+    writer: Option<tokio::task::JoinHandle<()>>,
 }
 impl Drop for Capture {
     fn drop(&mut self) {
@@ -557,7 +585,7 @@ impl Capture {
     }
 
     /// Remote compaction has its own typed result; preserve it without inventing generated text.
-    pub(super) fn finish_compact(
+    pub(super) async fn finish_compact(
         mut self,
         result: Option<&plugin_framework::provider_contract::ProviderCompactResult>,
         failed: bool,
@@ -568,7 +596,7 @@ impl Capture {
         };
         let mut complete = self.aggregate.lock().is_ok_and(|state| !state.gap);
         if let Some(result) = result {
-            let detail = bounded(result);
+            let detail = snapshot_value(result);
             complete &= detail.is_some();
             sink.step(
                 "model_reply",
@@ -577,7 +605,8 @@ impl Capture {
                 detail.unwrap_or_else(|| json!({"truncated":true})),
                 None,
                 !complete,
-            );
+            )
+            .await;
         }
         if failed {
             sink.step(
@@ -587,7 +616,8 @@ impl Capture {
                 json!({"message":"Native compaction failed"}),
                 None,
                 false,
-            );
+            )
+            .await;
         }
         if !complete {
             sink.dropped.fetch_add(1, Relaxed);
@@ -595,12 +625,15 @@ impl Capture {
         if let Some(done) = self.completion.take() {
             let _ = done.send(complete);
         }
+        if let Some(writer) = self.writer.take() {
+            let _ = writer.await;
+        }
     }
 
     pub(super) fn observer(&self) -> Observer {
         Observer(self.sink.as_ref().map(|_| self.aggregate.clone()))
     }
-    pub(super) fn finish(
+    pub(super) async fn finish(
         mut self,
         result: Option<&plugin_framework::provider_contract::ProviderInvocationResult>,
         error: Option<&str>,
@@ -610,11 +643,12 @@ impl Capture {
         let Some(sink) = self.sink.as_ref() else {
             return;
         };
-        let Ok(mut state) = self.aggregate.lock() else {
-            return;
+        let mut state = match self.aggregate.lock() {
+            Ok(mut state) => std::mem::take(&mut *state),
+            Err(_) => return,
         };
         let result = result.and_then(|result| {
-            let mut value = bounded(result);
+            let mut value = snapshot_value(result);
             if let Some(value) = value.as_mut() {
                 redact_metadata(value);
             }
@@ -680,17 +714,26 @@ impl Capture {
         if result.is_some()
             || !text.is_empty()
             || !state.reasoning.is_empty()
+            || !state.signature.is_empty()
+            || !state.partial_content.is_empty()
             || !reply_items.is_empty()
+            || !state.partial_items.is_empty()
+            || !state.partial_tools.is_empty()
+            || !state.extensions.is_empty()
         {
             saved_reply = sink.step(
                 "model_reply",
                 &reply_key,
                 "received",
                 json!({"final_content":text,"reasoning":state.reasoning,
-            "reasoning_signature":state.signature,"output_items":reply_items,"result":result}),
+            "reasoning_signature":state.signature,"output_items":reply_items,"result":result,
+            "partial_output_items":state.partial_items.values().collect::<Vec<_>>(),
+            "partial_content":state.partial_content.iter().map(|((index,kind,content_index),text)|json!({"output_index":index,"kind":kind,"content_index":content_index,"text":text})).collect::<Vec<_>>(),
+            "partial_tool_calls":state.partial_tools.iter().filter(|(id,_)|state.open_tools.contains(*id)).map(|(id,value)|json!({"call_id":id,"delta":value})).collect::<Vec<_>>(),
+            "extensions":state.extensions}),
                 None,
                 state.gap,
-            );
+            ).await;
         }
         for (id, call) in &state.tools {
             // A stream output item may carry different metadata from the final
@@ -715,7 +758,8 @@ impl Capture {
                 call.clone(),
                 Some(id),
                 pointer.map(|pointer| (reply_key.as_str(), pointer)),
-            );
+            )
+            .await;
         }
         for (index, error) in state.errors.iter().enumerate() {
             sink.step(
@@ -725,7 +769,8 @@ impl Capture {
                 error.clone(),
                 None,
                 false,
-            );
+            )
+            .await;
         }
         if let Some(error) = error {
             if state.errors.is_empty() {
@@ -738,7 +783,8 @@ impl Capture {
                     json!({"message":"Native invocation failed"}),
                     None,
                     false,
-                );
+                )
+                .await;
             }
         }
         if state.gap {
@@ -750,10 +796,14 @@ impl Capture {
                 json!({"reason":"native_capture_capacity_or_output_gap"}),
                 None,
                 true,
-            );
+            )
+            .await;
         }
         if let Some(done) = self.completion.take() {
             let _ = done.send(forwarding_ok && !state.gap);
+        }
+        if let Some(writer) = self.writer.take() {
+            let _ = writer.await;
         }
     }
 }
@@ -791,7 +841,7 @@ fn invocation_purpose(
     }
 }
 
-pub(super) fn start<
+pub(super) async fn start<
     R: crate::ports::OrchestrationRuntimeRepository + Clone + Send + Sync + 'static,
 >(
     repository: R,
@@ -803,8 +853,7 @@ pub(super) fn start<
     let (Some(run), Some((node, node_run))) = (run, node) else {
         return Capture::default();
     };
-    let Ok(permit) = WRITERS.try_acquire() else {
-        tracing::warn!(%run, "Native trajectory writer capacity exceeded; trajectory unavailable");
+    let Ok(permit) = WRITERS.acquire().await else {
         return Capture::default();
     };
     let id = Identity {
@@ -832,12 +881,10 @@ pub(super) fn start<
     let sink = Sink {
         id: id.clone(),
         sender,
-        bytes: Arc::new(tokio::sync::Semaphore::new(CAPACITY)),
         observed: observed.clone(),
         dropped: dropped.clone(),
     };
-    let gap = record_input(&sink, input);
-    tokio::spawn(async move {
+    let writer = tokio::spawn(async move {
         let _permit = permit;
         write(
             id,
@@ -860,6 +907,7 @@ pub(super) fn start<
         )
         .await;
     });
+    let gap = record_input(&sink, input).await;
     Capture {
         sink: Some(sink),
         aggregate: Arc::new(std::sync::Mutex::new(Aggregate {
@@ -868,6 +916,7 @@ pub(super) fn start<
         })),
         completion: Some(done),
         started_at: Some(std::time::Instant::now()),
+        writer: Some(writer),
     }
 }
 async fn write<F, Fut>(
@@ -885,18 +934,15 @@ async fn write<F, Fut>(
         id.event("native_trajectory_integrity", json!({"status":status,"observed_count":observed.load(Relaxed),"persist_failed_count":failed,"dropped_count":dropped.load(Relaxed)}))
     };
     let mut failed = 0;
-    if !matches!(
-        tokio::time::timeout(TIMEOUT, writer(integrity("pending", 0))).await,
-        Ok(true)
-    ) {
+    // Repository operations own their resource/error policy. A local deadline
+    // must not cancel an already-admitted immutable snapshot during a slow write.
+    if !writer(integrity("pending", 0)).await {
         failed += 1;
     }
     let mut finished = None;
-    let mut deadline = None;
     loop {
         let record = tokio::select! {
-            done = &mut completion, if finished.is_none() => { finished = Some(done.unwrap_or(false)); receiver.close(); deadline = Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5)); continue; }
-            _ = async { if let Some(deadline) = deadline { tokio::time::sleep_until(deadline).await } else { std::future::pending::<()>().await } } => { dropped.fetch_add(receiver.len() as u64, Relaxed); finished = Some(false); break; }
+            done = &mut completion, if finished.is_none() => { finished = Some(done.unwrap_or(false)); receiver.close(); continue; }
             record = receiver.recv() => record,
         };
         let Some(record) = record else {
@@ -905,10 +951,7 @@ async fn write<F, Fut>(
             }
             break;
         };
-        if !matches!(
-            tokio::time::timeout(TIMEOUT, writer(record.payload)).await,
-            Ok(true)
-        ) {
+        if !writer(record.payload).await {
             failed += 1;
         }
     }
@@ -917,10 +960,7 @@ async fn write<F, Fut>(
     } else {
         "incomplete"
     };
-    if !matches!(
-        tokio::time::timeout(TIMEOUT, writer(integrity(status, failed))).await,
-        Ok(true)
-    ) {
+    if !writer(integrity(status, failed)).await {
         tracing::warn!(run=%id.run, "Native trajectory integrity persistence failed");
     }
 }

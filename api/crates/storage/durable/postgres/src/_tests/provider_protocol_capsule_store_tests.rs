@@ -17,11 +17,29 @@ fn base_database_url() -> String {
 }
 
 pub(crate) async fn seeded_flow_run() -> (sqlx::PgPool, Uuid) {
+    seeded_flow_run_before(None).await
+}
+
+/// Upgrade fixtures seed the same real repository domain using an exact prefix
+/// of the official migrations, then run the remaining official migrations.
+pub(crate) async fn seeded_flow_run_before(version: Option<i64>) -> (sqlx::PgPool, Uuid) {
     let schema = postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
         .unwrap();
     let pool = schema.connect().await.unwrap();
-    run_migrations(&pool).await.unwrap();
+    if let Some(version) = version {
+        let mut migrator = sqlx::migrate!("./migrations");
+        migrator.migrations = std::borrow::Cow::Owned(
+            migrator
+                .iter()
+                .filter(|migration| migration.version < version)
+                .cloned()
+                .collect(),
+        );
+        migrator.run(&pool).await.unwrap();
+    } else {
+        run_migrations(&pool).await.unwrap();
+    }
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant_id: Uuid = sqlx::query_scalar("select id from tenants where code = 'root-tenant'")
         .fetch_one(store.pool())

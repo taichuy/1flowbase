@@ -6,10 +6,6 @@ use std::{
     sync::Arc,
 };
 
-const MAX_LEAVES: usize = 1024;
-const MAX_NODES: usize = 2048;
-const MAX_DEPTH: usize = 8;
-const MAX_BYTES: usize = 512 * 1024;
 type Key = (Option<String>, String);
 struct Locator {
     root: usize,
@@ -20,20 +16,10 @@ pub(super) struct SchemaIndex {
     roots: Vec<Arc<Value>>,
     entries: BTreeMap<Key, Locator>,
     ambiguous: BTreeSet<Key>,
-    bytes: usize,
-    visited: usize,
     pub incomplete: bool,
 }
 impl SchemaIndex {
     pub fn insert_root(&mut self, value: &Value) {
-        let size = serde_json::to_vec(value)
-            .map(|value| value.len())
-            .unwrap_or(MAX_BYTES + 1);
-        if self.bytes.saturating_add(size) > MAX_BYTES || self.visited >= MAX_NODES {
-            self.incomplete = true;
-            return;
-        }
-        self.bytes += size;
         let root = Arc::new(value.clone());
         let index = self.roots.len();
         self.roots.push(Arc::clone(&root));
@@ -46,11 +32,6 @@ impl SchemaIndex {
         path: &mut Vec<usize>,
         namespace: Option<String>,
     ) {
-        if path.len() > MAX_DEPTH || self.visited >= MAX_NODES {
-            self.incomplete = true;
-            return;
-        }
-        self.visited += 1;
         if value["type"] == "namespace" {
             let Some(name) = value["name"].as_str().and_then(bounded_id) else {
                 self.incomplete = true;
@@ -61,10 +42,6 @@ impl SchemaIndex {
                 return;
             };
             for (index, tool) in tools.iter().enumerate() {
-                if self.visited >= MAX_NODES {
-                    self.incomplete = true;
-                    break;
-                }
                 path.push(index);
                 // Use the declared namespace, never synthesize a dotted path.
                 self.index(tool, root, path, Some(name.clone()));
@@ -90,10 +67,6 @@ impl SchemaIndex {
         }
         if self.entries.remove(&key).is_some() {
             self.ambiguous.insert(key);
-            self.incomplete = true;
-            return;
-        }
-        if self.entries.len() + self.ambiguous.len() >= MAX_LEAVES {
             self.incomplete = true;
             return;
         }

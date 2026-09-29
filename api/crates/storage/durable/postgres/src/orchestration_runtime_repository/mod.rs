@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+mod storage_maintenance;
 use async_trait::async_trait;
 use control_plane_contracts::{
     application_public_runtime::{
@@ -59,6 +60,7 @@ use control_plane_contracts::{
 };
 use serde_json::{json, Value};
 use sqlx::{Postgres, QueryBuilder, Row};
+pub use storage_maintenance::RuntimeStorageCompactionReceipt;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -411,6 +413,25 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &control_plane_contracts::ports::AppendClientTrajectoryInput,
     ) -> Result<()> {
         self.append_client_trajectory_fact(input).await
+    }
+    async fn append_client_trajectory_archive(
+        &self,
+        input: &control_plane_contracts::ports::AppendClientTrajectoryArchiveInput,
+    ) -> Result<control_plane_contracts::ports::ClientTrajectoryArchiveReceipt> {
+        self.append_client_trajectory_archive_part(input).await
+    }
+    async fn discard_unbound_client_trajectory_archive(&self, request_id: Uuid) -> Result<()> {
+        self.discard_unbound_client_trajectory_archive_parts(request_id)
+            .await
+    }
+    async fn read_client_trajectory_archive(
+        &self,
+        request_id: Uuid,
+        cursor: i64,
+        limit: i64,
+    ) -> Result<Vec<control_plane_contracts::ports::ClientTrajectoryArchiveFrame>> {
+        self.read_client_trajectory_archive_frames(request_id, cursor, limit)
+            .await
     }
     async fn client_trajectory_page(
         &self,
@@ -1477,14 +1498,14 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 flow_runs.created_at,
                 flow_runs.updated_at
             from flow_runs
-            join node_runs on node_runs.flow_run_id = flow_runs.id
+            join node_run_records on node_run_records.flow_run_id = flow_runs.id
             where flow_runs.application_id = $1
               and flow_runs.api_key_id = $2
               and flow_runs.run_mode = 'published_api_run'
-              and (node_runs.output_payload ->> 'response_id' = $3
-                      or node_runs.output_payload #>> '{provider_metadata,native_response,response_id}' = $3
+              and (node_run_records.output_payload ->> 'response_id' = $3
+                      or node_run_records.output_payload #>> '{provider_metadata,native_response,response_id}' = $3
                    or exists (select 1 from runtime_spans rs where rs.flow_run_id = flow_runs.id and rs.metadata #>> '{native_response,response_id}' = $3))
-            order by node_runs.finished_at desc nulls last, node_runs.id desc
+            order by node_run_records.finished_at desc nulls last, node_run_records.id desc
             limit 1
             "#,
         )
@@ -1805,7 +1826,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
             select
                 metrics_payload -> 'usage' as metrics_usage,
                 output_payload -> 'usage' as output_usage
-            from node_runs
+            from node_run_records
             where flow_run_id = $1
             order by started_at asc, id asc
             "#,
@@ -2012,12 +2033,12 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         if completed.is_some() {
             sqlx::query(
                 r#"
-                update node_runs
+                update node_run_records
                 set status = 'succeeded',
                 output_payload = ($2::jsonb -> 0),
                 error_payload = null,
                 finished_at = $3,
-                raw_json_payloads = (node_runs.raw_json_payloads - 'output_payload' - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('output_payload', ($2::jsonb -> 1), 'error_payload', null))
+                raw_json_payloads = (node_run_records.raw_json_payloads - 'output_payload' - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('output_payload', ($2::jsonb -> 1), 'error_payload', null))
             where flow_run_id = $1
                   and status = 'waiting_callback'
                 "#,

@@ -61,7 +61,6 @@ pub(super) fn build_failed_llm_execution(
     provider_events: Vec<ProviderStreamEvent>,
     debug_invocation: LlmDebugInvocation<'_>,
 ) -> Result<LlmNodeExecution> {
-    let provider_events = durable_provider_events(provider_events);
     let mut executor_output = Map::new();
     if failure_projection != LlmFailureProjection::NoNodeOutput {
         executor_output.insert(

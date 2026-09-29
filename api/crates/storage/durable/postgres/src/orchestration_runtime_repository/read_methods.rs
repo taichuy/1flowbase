@@ -74,8 +74,8 @@ impl PgControlPlaneStore {
             .ok_or_else(|| anyhow!("checkpoint not found for callback task"))?;
         let waiting_node_row = sqlx::query(
             r#"
-            select id, status, runtime_original_json(output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload
-            from node_runs
+            select id, status, runtime_original_json(output_payload, node_run_records.raw_json_payloads, 'output_payload') as output_payload
+            from node_run_records
             where id = $1
               and flow_run_id = $2
             "#,
@@ -163,7 +163,7 @@ impl PgControlPlaneStore {
                 trust_level,
                 item_id,
                 ledger_ref,
-                runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
+                runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
                 visibility,
                 durability,
                 created_at
@@ -226,7 +226,7 @@ impl PgControlPlaneStore {
                 trust_level,
                 item_id,
                 ledger_ref,
-                runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
+                runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
                 visibility,
                 durability,
                 created_at

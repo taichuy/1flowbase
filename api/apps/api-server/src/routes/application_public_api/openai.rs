@@ -436,7 +436,13 @@ async fn create_response_for_endpoint(
     endpoint: OpenAiResponsesEndpoint,
 ) -> Result<Response, OpenAiRouteError> {
     let recorder = client_observer::recorder(&state, ClientTrajectoryTransport::Http);
-    recorder.record(ClientTrajectoryFrameKind::Request, &body);
+    if recorder
+        .record(ClientTrajectoryFrameKind::Request, &body)
+        .await
+        .is_err()
+    {
+        recorder.mark_incomplete();
+    }
     let capture = CaptureGuard::new(recorder.clone());
     let result = dispatch_response_for_endpoint(
         state,

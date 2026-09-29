@@ -18,7 +18,7 @@ impl PgControlPlaneStore {
                 trust_level,
                 item_id,
                 ledger_ref,
-                runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
+                runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
                 visibility,
                 durability,
                 created_at

@@ -39,3 +39,4 @@ mod runtime_json_storage_tests;
 mod trajectory;
 
 mod client_trajectory;
+mod storage_compaction_replay;

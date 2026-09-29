@@ -88,14 +88,14 @@ pub(super) async fn fetch_node_run(
             node_type,
             node_alias,
             status,
-            runtime_original_json(input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload,
-            runtime_original_json(output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload,
-            runtime_original_json(error_payload, node_runs.raw_json_payloads, 'error_payload') as error_payload,
-            runtime_original_json(metrics_payload, node_runs.raw_json_payloads, 'metrics_payload') as metrics_payload,
-            runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload,
+            runtime_original_json(input_payload, node_run_records.raw_json_payloads, 'input_payload') as input_payload,
+            runtime_original_json(output_payload, node_run_records.raw_json_payloads, 'output_payload') as output_payload,
+            runtime_original_json(error_payload, node_run_records.raw_json_payloads, 'error_payload') as error_payload,
+            runtime_original_json(metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
+            runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
             started_at,
             finished_at
-        from node_runs
+        from node_run_records
         where id = $1
         "#,
     )
@@ -104,6 +104,29 @@ pub(super) async fn fetch_node_run(
     .await?;
 
     row.map(map_node_run_record).transpose()
+}
+
+/// Metadata-only node directory; full operational consumers use
+/// `list_node_runs_for_flow_run` so payloads are never silently dropped.
+pub(super) async fn list_node_run_metadata_for_flow_run(
+    store: &PgControlPlaneStore,
+    flow_run_id: Uuid,
+    node_run_ids: &[Uuid],
+) -> Result<Vec<domain::NodeRunRecord>> {
+    let rows = sqlx::query(
+        r#"
+        select id, flow_run_id, node_id, node_type, node_alias, status,
+            '{}'::jsonb as input_payload, '{}'::jsonb as output_payload,
+            null::jsonb as error_payload, '{}'::jsonb as metrics_payload,
+            '{}'::jsonb as debug_payload, started_at, finished_at
+        from node_runs where flow_run_id=$1 and id=any($2) order by started_at,id
+        "#,
+    )
+    .bind(flow_run_id)
+    .bind(node_run_ids)
+    .fetch_all(store.pool())
+    .await?;
+    rows.into_iter().map(map_node_run_record).collect()
 }
 
 pub(super) async fn list_node_runs_for_flow_run(
@@ -119,14 +142,14 @@ pub(super) async fn list_node_runs_for_flow_run(
             node_type,
             node_alias,
             status,
-            runtime_original_json(input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload,
-            runtime_original_json(output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload,
-            runtime_original_json(error_payload, node_runs.raw_json_payloads, 'error_payload') as error_payload,
-            runtime_original_json(metrics_payload, node_runs.raw_json_payloads, 'metrics_payload') as metrics_payload,
-            runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload,
+            runtime_original_json(input_payload, node_run_records.raw_json_payloads, 'input_payload') as input_payload,
+            runtime_original_json(output_payload, node_run_records.raw_json_payloads, 'output_payload') as output_payload,
+            runtime_original_json(error_payload, node_run_records.raw_json_payloads, 'error_payload') as error_payload,
+            runtime_original_json(metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
+            runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
             started_at,
             finished_at
-        from node_runs
+        from node_run_records
         where flow_run_id = $1
         order by started_at asc, id asc
         "#,
@@ -634,7 +657,7 @@ pub(super) async fn list_runtime_events_for_flow_run(
             trust_level,
             item_id,
             ledger_ref,
-            runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
+            runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
             visibility,
             durability,
             created_at

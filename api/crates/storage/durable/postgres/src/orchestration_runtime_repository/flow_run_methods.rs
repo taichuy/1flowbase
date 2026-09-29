@@ -661,7 +661,7 @@ impl PgControlPlaneStore {
                   and flow_runs.status not in ('succeeded', 'incomplete', 'failed', 'cancelled')
                 for update of flow_runs
             )
-            insert into node_runs (
+            insert into node_run_records (
                 id,
                 scope_id,
                 flow_run_id,
@@ -681,11 +681,11 @@ impl PgControlPlaneStore {
                 node_type,
                 node_alias,
                 status,
-                runtime_original_json(input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload,
-                runtime_original_json(output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload,
-                runtime_original_json(error_payload, node_runs.raw_json_payloads, 'error_payload') as error_payload,
-                runtime_original_json(metrics_payload, node_runs.raw_json_payloads, 'metrics_payload') as metrics_payload,
-                runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload,
+                runtime_original_json(input_payload, node_run_records.raw_json_payloads, 'input_payload') as input_payload,
+                runtime_original_json(output_payload, node_run_records.raw_json_payloads, 'output_payload') as output_payload,
+                runtime_original_json(error_payload, node_run_records.raw_json_payloads, 'error_payload') as error_payload,
+                runtime_original_json(metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
+                runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
                 started_at,
                 finished_at
             "#,
@@ -708,6 +708,25 @@ impl PgControlPlaneStore {
 
     async fn update_node_run(&self, input: &UpdateNodeRunInput) -> Result<domain::NodeRunRecord> {
         let mut tx = self.pool().begin().await?;
+        // Lock in a separate statement: a view UPDATE cannot re-evaluate its
+        // metadata WHERE clause through the base table's EvalPlanQual after a
+        // concurrent terminal transition releases the flow lock.
+        let locked_flow = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            select flow_runs.id from flow_runs
+            join node_runs candidate on candidate.flow_run_id=flow_runs.id
+            where candidate.id=$1
+                and flow_runs.status not in ('succeeded','incomplete','failed','cancelled')
+            for update of flow_runs
+            "#,
+        )
+        .bind(input.node_run_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if locked_flow.is_none() {
+            tx.rollback().await?;
+            return Err(ControlPlaneError::Conflict("flow_run_terminal").into());
+        }
         let row = sqlx::query(
             r#"
             with locked_flow as (
@@ -718,44 +737,44 @@ impl PgControlPlaneStore {
                   and flow_runs.status not in ('succeeded', 'incomplete', 'failed', 'cancelled')
                 for update of flow_runs
             )
-            update node_runs
+            update node_run_records
             set status = $2,
                 output_payload = ($3::jsonb -> 0),
                 error_payload = case
                     when ($4::jsonb -> 0) is null
-                        and node_runs.status = 'failed'
+                        and node_run_records.status = 'failed'
                         and $2 <> 'retrying'
-                    then node_runs.error_payload
+                    then node_run_records.error_payload
                     else ($4::jsonb -> 0)
                 end,
                 metrics_payload = ($5::jsonb -> 0),
                 debug_payload = ($6::jsonb -> 0),
                 finished_at = $7,
-                raw_json_payloads = (node_runs.raw_json_payloads - 'output_payload' - 'error_payload' - 'metrics_payload' - 'debug_payload') || jsonb_strip_nulls(jsonb_build_object('output_payload', ($3::jsonb -> 1), 'error_payload', case
+                raw_json_payloads = (node_run_records.raw_json_payloads - 'output_payload' - 'error_payload' - 'metrics_payload' - 'debug_payload') || jsonb_strip_nulls(jsonb_build_object('output_payload', ($3::jsonb -> 1), 'error_payload', case
                     when ($4::jsonb -> 1) is null
-                        and node_runs.status = 'failed'
+                        and node_run_records.status = 'failed'
                         and $2 <> 'retrying'
-                    then node_runs.raw_json_payloads -> 'error_payload'
+                    then node_run_records.raw_json_payloads -> 'error_payload'
                     else ($4::jsonb -> 1)
                 end, 'metrics_payload', ($5::jsonb -> 1), 'debug_payload', ($6::jsonb -> 1)))
             from locked_flow
-            where node_runs.id = $1
-              and node_runs.flow_run_id = locked_flow.id
-              and node_runs.status <> 'cancelled'
+            where node_run_records.id = $1
+              and node_run_records.flow_run_id = locked_flow.id
+              and node_run_records.status <> 'cancelled'
             returning
-                node_runs.id,
-                node_runs.flow_run_id,
-                node_runs.node_id,
-                node_runs.node_type,
-                node_runs.node_alias,
-                node_runs.status,
-                runtime_original_json(node_runs.input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload,
-                runtime_original_json(node_runs.output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload,
-                runtime_original_json(node_runs.error_payload, node_runs.raw_json_payloads, 'error_payload') as error_payload,
-                runtime_original_json(node_runs.metrics_payload, node_runs.raw_json_payloads, 'metrics_payload') as metrics_payload,
-                runtime_original_json(node_runs.debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload,
-                node_runs.started_at,
-                node_runs.finished_at
+                node_run_records.id,
+                node_run_records.flow_run_id,
+                node_run_records.node_id,
+                node_run_records.node_type,
+                node_run_records.node_alias,
+                node_run_records.status,
+                runtime_original_json(node_run_records.input_payload, node_run_records.raw_json_payloads, 'input_payload') as input_payload,
+                runtime_original_json(node_run_records.output_payload, node_run_records.raw_json_payloads, 'output_payload') as output_payload,
+                runtime_original_json(node_run_records.error_payload, node_run_records.raw_json_payloads, 'error_payload') as error_payload,
+                runtime_original_json(node_run_records.metrics_payload, node_run_records.raw_json_payloads, 'metrics_payload') as metrics_payload,
+                runtime_original_json(node_run_records.debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload,
+                node_run_records.started_at,
+                node_run_records.finished_at
             "#,
         )
         .bind(input.node_run_id)

@@ -128,7 +128,7 @@ async fn results_inherit_only_actual_related_call_namespace_and_respect_explicit
     }
 }
 #[tokio::test]
-async fn nested_schema_index_is_bounded_without_emitting_leaf_rows() {
+async fn nested_schema_index_preserves_all_leaves_without_emitting_leaf_rows() {
     let mut classifier = classifier().await;
     let leaves:Vec<_>=(0..1025).map(|n|json!({"type":"function","name":format!("tool-{n}"),"parameters":{"type":"object"}})).collect();
     let facts = classifier
@@ -138,7 +138,7 @@ async fn nested_schema_index_is_bounded_without_emitting_leaf_rows() {
             AT,
         )
         .await;
-    assert!(classifier.incomplete);
+    assert!(!classifier.incomplete);
     assert_eq!(
         steps(&facts)
             .iter()
@@ -152,7 +152,7 @@ async fn nested_schema_index_is_bounded_without_emitting_leaf_rows() {
     ]}),AT).await;
     let calls_steps = steps(&calls);
     assert!(schema(&calls, calls_steps[0].id).is_some());
-    assert!(schema(&calls, calls_steps[1].id).is_none());
+    assert!(schema(&calls, calls_steps[1].id).is_some());
     let mut deep = json!({"type":"function","name":"leaf","parameters":{}});
     for n in 0..9 {
         deep = json!({"type":"namespace","name":format!("level-{n}"),"tools":[deep]});
@@ -165,10 +165,10 @@ async fn nested_schema_index_is_bounded_without_emitting_leaf_rows() {
     assert!(!exact.incomplete);
     let mut index = super::super::schemas::SchemaIndex::default();
     index.insert_root(&deep);
-    assert!(index.incomplete);
-    assert!(index.get(Some("level-0"), "leaf").is_none());
+    assert!(!index.incomplete);
+    assert!(index.get(Some("level-0"), "leaf").is_some());
     let mut index = super::super::schemas::SchemaIndex::default();
     index.insert_root(&json!({"type":"namespace","name":"large","tools":[{"type":"function","name":"leaf","description":"x".repeat(512*1024)}]}));
-    assert!(index.incomplete);
-    assert!(index.get(Some("large"), "leaf").is_none());
+    assert!(!index.incomplete);
+    assert!(index.get(Some("large"), "leaf").is_some());
 }

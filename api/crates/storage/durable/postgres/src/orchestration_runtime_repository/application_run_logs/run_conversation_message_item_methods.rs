@@ -226,8 +226,8 @@ impl PgControlPlaneStore {
     ) -> Result<Option<String>> {
         let rows = sqlx::query(
             r#"
-            select runtime_original_json(input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload, runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload
-            from node_runs
+            select runtime_original_json(input_payload, node_run_records.raw_json_payloads, 'input_payload') as input_payload, runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload
+            from node_run_records
             where flow_run_id = $1
               and node_type = 'llm'
             order by started_at asc, id asc
@@ -258,8 +258,8 @@ impl PgControlPlaneStore {
     ) -> Result<Option<serde_json::Value>> {
         let rows = sqlx::query(
             r#"
-            select runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload
-            from node_runs
+            select runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload
+            from node_run_records
             where flow_run_id = $1
               and node_type = 'llm'
               and status = 'succeeded'

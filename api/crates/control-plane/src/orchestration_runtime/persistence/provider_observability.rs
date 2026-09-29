@@ -14,13 +14,10 @@ pub(super) async fn append_provider_stream_events<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
-    let runtime_bus = RuntimeEventBus::new((events.len() + 4).max(16));
-    let events =
-        coalesce_provider_stream_events(&runtime_bus, events, PROVIDER_DELTA_COALESCE_MAX_BYTES)?;
     let records =
-        append_provider_stream_events_raw(repository, flow_run_id, node_run_id, span_id, &events)
+        append_provider_stream_events_raw(repository, flow_run_id, node_run_id, span_id, events)
             .await?;
-    for event in &events {
+    for event in events {
         append_provider_capability_intent(repository, flow_run_id, node_run_id, span_id, event)
             .await?;
     }

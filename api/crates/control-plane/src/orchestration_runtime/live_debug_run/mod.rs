@@ -287,7 +287,15 @@ where
                 ),
                 error_payload: trace.error_payload.clone(),
                 metrics_payload: trace.metrics_payload.clone(),
-                debug_payload: trace.debug_payload.clone(),
+                debug_payload: {
+                    // Trim the durable copy after output facts are materialized;
+                    // presentation continues to consume the unchanged trace.
+                    let mut debug = trace.debug_payload.clone();
+                    if let Some(debug) = debug.as_object_mut() {
+                        debug.remove("provider_events");
+                    }
+                    debug
+                },
                 finished_at: OffsetDateTime::now_utc(),
             })
             .await?;

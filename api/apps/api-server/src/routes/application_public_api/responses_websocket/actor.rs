@@ -274,13 +274,14 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                         matches!(event.get("type").and_then(Value::as_str), Some("response.completed" | "response.failed" | "response.incomplete" | "response.cancelled" | "error"))
                     });
                     if let Some(capture) = capture.as_ref() {
-                        capture.recorder.record(ClientTrajectoryFrameKind::ResponseJson, frame.as_bytes());
+                        if capture.recorder.record(ClientTrajectoryFrameKind::ResponseJson, frame.as_bytes()).await.is_err() {capture.recorder.mark_incomplete();}
                     }
                     if sender.send(Message::Text(frame)).await.is_err() {
+                        if let Some(capture)=capture.as_ref() {capture.recorder.mark_incomplete();}
                         break;
                     }
                     terminal_delivered |= terminal;
-                    if terminal { if let Some(capture) = capture.as_mut() { capture.finish(); } }
+                    if terminal { if let Some(capture) = capture.as_mut() { capture.complete().await; } }
                     active = Some((turn, task, frames));
                 }
                 result = &mut task => {
@@ -330,7 +331,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                             break;
                         }
                         message => {
-                            let incoming_capture = capture_message(repository.as_ref(), &message);
+                            let incoming_capture = capture_message(repository.as_ref(), &message).await;
                             match decode_client_message(message.clone()) {
                                 Ok(Some(ResponsesWebSocketClientRequest::Create { response })) => {
                                     // A delivered protocol terminal permits one next request,
@@ -415,7 +416,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                     continue;
                 }
             };
-            let incoming_capture = capture_message(repository.as_ref(), &message);
+            let incoming_capture = capture_message(repository.as_ref(), &message).await;
             (message, incoming_capture)
         };
         match message {
@@ -476,9 +477,15 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
             },
         }
     }
+    if let Some(capture) = capture.as_mut() {
+        if !terminal_delivered {
+            capture.recorder.mark_incomplete();
+        }
+        capture.complete().await;
+    }
 }
 
-fn capture_message(
+async fn capture_message(
     repository: Option<&Arc<dyn OrchestrationRuntimeRepository>>,
     message: &Message,
 ) -> Option<CaptureGuard> {
@@ -487,7 +494,13 @@ fn capture_message(
     };
     let recorder =
         ClientTrajectoryRecorder::new(repository.clone(), ClientTrajectoryTransport::Websocket);
-    recorder.record(ClientTrajectoryFrameKind::Request, text.as_bytes());
+    if recorder
+        .record(ClientTrajectoryFrameKind::Request, text.as_bytes())
+        .await
+        .is_err()
+    {
+        recorder.mark_incomplete();
+    }
     Some(CaptureGuard::new(recorder))
 }
 
@@ -527,16 +540,22 @@ async fn send_transport_terminal(
     };
     let frame = frame.to_string();
     if let Some(capture) = capture.as_ref() {
-        capture
+        if capture
             .recorder
-            .record(ClientTrajectoryFrameKind::ResponseJson, frame.as_bytes());
+            .record(ClientTrajectoryFrameKind::ResponseJson, frame.as_bytes())
+            .await
+            .is_err()
+        {
+            capture.recorder.mark_incomplete();
+        }
     }
     let sent = sender.send(Message::Text(frame)).await.is_ok();
     if let Some(capture) = capture {
         if sent {
-            capture.finish();
+            capture.complete().await;
         } else {
             capture.fail();
+            capture.complete().await;
         }
     }
 }

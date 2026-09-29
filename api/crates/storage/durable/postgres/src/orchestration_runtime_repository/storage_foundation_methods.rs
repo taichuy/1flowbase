@@ -1,37 +1,67 @@
 use sha2::{Digest, Sha256};
 
-fn write_canonical_runtime_json(
+fn write_canonical_runtime_json<W: std::io::Write>(
     value: &serde_json::Value,
-    output: &mut Vec<u8>,
+    output: &mut W,
 ) -> serde_json::Result<()> {
+    let write = |out: &mut W, bytes: &[u8]| out.write_all(bytes).map_err(serde_json::Error::io);
     match value {
-        serde_json::Value::Object(object) => {
-            output.push(b'{');
+        Value::Object(object) => {
+            write(output, b"{")?;
             let mut keys = object.keys().collect::<Vec<_>>();
             keys.sort_unstable();
             for (index, key) in keys.into_iter().enumerate() {
                 if index > 0 {
-                    output.push(b',');
+                    write(output, b",")?;
                 }
                 serde_json::to_writer(&mut *output, key)?;
-                output.push(b':');
+                write(output, b":")?;
                 write_canonical_runtime_json(&object[key], output)?;
             }
-            output.push(b'}');
+            write(output, b"}")?;
         }
-        serde_json::Value::Array(items) => {
-            output.push(b'[');
+        Value::Array(items) => {
+            write(output, b"[")?;
             for (index, item) in items.iter().enumerate() {
                 if index > 0 {
-                    output.push(b',');
+                    write(output, b",")?;
                 }
                 write_canonical_runtime_json(item, output)?;
             }
-            output.push(b']');
+            write(output, b"]")?;
         }
         scalar => serde_json::to_writer(output, scalar)?,
     }
     Ok(())
+}
+
+fn canonical_runtime_json_identity(value: &Value) -> Result<(String, i64)> {
+    struct HashWriter {
+        hash: Sha256,
+        length: i64,
+    }
+    impl std::io::Write for HashWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.length = self
+                .length
+                .checked_add(i64::try_from(bytes.len()).map_err(std::io::Error::other)?)
+                .ok_or_else(|| std::io::Error::other("canonical JSON length overflow"))?;
+            self.hash.update(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut output = HashWriter {
+        hash: Sha256::new(),
+        length: 0,
+    };
+    write_canonical_runtime_json(value, &mut output)?;
+    Ok((
+        format!("sha256:{:x}", output.hash.finalize()),
+        output.length,
+    ))
 }
 
 async fn put_canonical_runtime_content_in_transaction(
@@ -40,10 +70,18 @@ async fn put_canonical_runtime_content_in_transaction(
     application_id: Uuid,
     content: &Value,
 ) -> Result<(Uuid, String, i64)> {
-    let mut canonical = Vec::new();
-    write_canonical_runtime_json(content, &mut canonical)?;
-    let content_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
-    let byte_size = i64::try_from(canonical.len())?;
+    let (id, hash, size, _) =
+        put_canonical_runtime_content_with_creation(tx, scope_id, application_id, content).await?;
+    Ok((id, hash, size))
+}
+
+async fn put_canonical_runtime_content_with_creation(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    scope_id: Uuid,
+    application_id: Uuid,
+    content: &Value,
+) -> Result<(Uuid, String, i64, bool)> {
+    let (content_hash, byte_size) = canonical_runtime_json_identity(content)?;
     sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(format!("canonical-runtime:{application_id}:{content_hash}"))
         .execute(&mut **tx)
@@ -67,6 +105,7 @@ async fn put_canonical_runtime_content_in_transaction(
     .bind(application_id)
     .fetch_optional(&mut **tx)
     .await?;
+    let created = inserted.is_some();
     let (content_id, stored_content, stored_byte_size) = match inserted {
         Some(content_id) => (content_id, content.clone(), byte_size),
         None => {
@@ -89,7 +128,7 @@ async fn put_canonical_runtime_content_in_transaction(
             "canonical runtime content hash collision for application {application_id}"
         ));
     }
-    Ok((content_id, content_hash, byte_size))
+    Ok((content_id, content_hash, byte_size, created))
 }
 
 fn recovery_state_for_flow_status(

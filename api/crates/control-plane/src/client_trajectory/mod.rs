@@ -1,42 +1,27 @@
-//! Best-effort bounded sidecar for actual client Responses bytes. Never handles credentials.
+//! Lossless client capture: bounded transport backpressure and durable immutable parts.
 #[cfg(test)]
 mod _tests;
 mod classify;
 mod decode;
 mod schemas;
-
 use crate::ports::{
-    AppendClientTrajectoryInput, ClientTrajectoryFact, OrchestrationRuntimeRepository,
+    AppendClientTrajectoryArchiveInput, AppendClientTrajectoryInput, ClientTrajectoryArchiveFrame,
+    ClientTrajectoryArchiveReceipt, ClientTrajectoryFact, OrchestrationRuntimeRepository,
 };
 pub use crate::ports::{ClientTrajectoryFrameKind, ClientTrajectoryTransport};
-use base64::Engine;
-use serde_json::json;
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
-    time::Duration,
 };
 use time::OffsetDateTime;
-use tokio::sync::{mpsc, Notify, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{mpsc, Notify};
 use uuid::Uuid;
-
+// Physical batching parameters, never limits on captured task length or frame size.
 const FRAME_BYTES: usize = 64 * 1024;
-// Admit one maximum-sized HTTP request including per-frame overhead while
-// retaining a bounded 2 MiB response backlog during incremental classification.
-const QUEUE_BYTES: usize = decode::AGGREGATE_BYTES
-    + decode::AGGREGATE_BYTES.div_ceil(FRAME_BYTES) * FRAME_OVERHEAD_BYTES
-    + 2 * 1024 * 1024;
-// Charge timestamp/Vec/permit storage, queue bookkeeping and allocation slack per
-// resident frame, including frames retained before binding and during persistence.
-const FRAME_OVERHEAD_BYTES: usize = 512;
-const QUEUE_RECORDS: usize = QUEUE_BYTES / FRAME_OVERHEAD_BYTES;
-// Persistence runs only in the bounded sidecar. Its total deadline must allow
-// the PostgreSQL default 5s pool acquisition plus a bounded transaction budget.
-const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
-const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const QUEUE_RECORDS: usize = 8;
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Scope {
     flow: Uuid,
@@ -46,28 +31,26 @@ struct Frame {
     kind: ClientTrajectoryFrameKind,
     bytes: Vec<u8>,
     at: String,
-    _permit: OwnedSemaphorePermit,
 }
 struct Shared {
     scope: Mutex<Option<Scope>>,
+    binding_closed: AtomicBool,
     node_links: Mutex<BTreeMap<Uuid, String>>,
     notify: Notify,
     finished: AtomicBool,
     dropped: AtomicU64,
     stopped: AtomicBool,
     stopped_notify: Notify,
+    result: Mutex<Option<Result<ClientTrajectoryArchiveReceipt, String>>>,
 }
 struct Owner {
     state: Arc<Shared>,
     sender: mpsc::Sender<Frame>,
-    bytes: Arc<Semaphore>,
     id: Uuid,
 }
 impl Drop for Owner {
     fn drop(&mut self) {
-        if !self.state.finished.swap(true, Ordering::AcqRel) {
-            self.state.dropped.fetch_add(1, Ordering::Relaxed);
-        }
+        self.state.finished.store(true, Ordering::Release);
         self.state.notify.notify_one();
     }
 }
@@ -78,12 +61,42 @@ pub struct ClientTrajectoryRecorder {
 #[async_trait::async_trait]
 trait FactWriter: Send + Sync {
     async fn append(&self, input: &AppendClientTrajectoryInput) -> anyhow::Result<()>;
+    async fn archive(
+        &self,
+        input: &AppendClientTrajectoryArchiveInput,
+    ) -> anyhow::Result<ClientTrajectoryArchiveReceipt>;
+    async fn discard_unbound(&self, request: Uuid) -> anyhow::Result<()>;
+    async fn replay(
+        &self,
+        request: Uuid,
+        cursor: i64,
+    ) -> anyhow::Result<Vec<ClientTrajectoryArchiveFrame>>;
 }
 struct RepositoryWriter(Arc<dyn OrchestrationRuntimeRepository>);
 #[async_trait::async_trait]
 impl FactWriter for RepositoryWriter {
     async fn append(&self, input: &AppendClientTrajectoryInput) -> anyhow::Result<()> {
         self.0.append_client_trajectory(input).await
+    }
+    async fn archive(
+        &self,
+        input: &AppendClientTrajectoryArchiveInput,
+    ) -> anyhow::Result<ClientTrajectoryArchiveReceipt> {
+        self.0.append_client_trajectory_archive(input).await
+    }
+    async fn discard_unbound(&self, request: Uuid) -> anyhow::Result<()> {
+        self.0
+            .discard_unbound_client_trajectory_archive(request)
+            .await
+    }
+    async fn replay(
+        &self,
+        request: Uuid,
+        cursor: i64,
+    ) -> anyhow::Result<Vec<ClientTrajectoryArchiveFrame>> {
+        self.0
+            .read_client_trajectory_archive(request, cursor, 32)
+            .await
     }
 }
 impl ClientTrajectoryRecorder {
@@ -97,28 +110,19 @@ impl ClientTrajectoryRecorder {
         let (sender, receiver) = mpsc::channel(QUEUE_RECORDS);
         let state = Arc::new(Shared {
             scope: Mutex::new(None),
+            binding_closed: AtomicBool::new(false),
             node_links: Mutex::new(BTreeMap::new()),
             notify: Notify::new(),
             finished: AtomicBool::new(false),
             dropped: AtomicU64::new(0),
             stopped: AtomicBool::new(false),
             stopped_notify: Notify::new(),
+            result: Mutex::new(None),
         });
         let id = Uuid::now_v7();
-        tokio::spawn(worker(
-            repository,
-            transport,
-            id,
-            Arc::clone(&state),
-            receiver,
-        ));
+        tokio::spawn(worker(repository, transport, id, state.clone(), receiver));
         Self {
-            owner: Arc::new(Owner {
-                state,
-                sender,
-                bytes: Arc::new(Semaphore::new(QUEUE_BYTES)),
-                id,
-            }),
+            owner: Arc::new(Owner { state, sender, id }),
         }
     }
     pub fn capture_id(&self) -> Uuid {
@@ -136,72 +140,73 @@ impl ClientTrajectoryRecorder {
             self.mark_incomplete();
             return false;
         };
-        if let Some(existing) = *scope {
-            if existing != target {
-                self.mark_incomplete();
-                return false;
-            }
-        } else {
-            *scope = Some(target);
+        // EOF freezes binding while holding this same mutex. A queued frame
+        // may still finish and bind late before that final ownership boundary.
+        if self.owner.state.binding_closed.load(Ordering::Acquire) {
+            return false;
         }
+        if scope.is_some_and(|s| s != target) {
+            self.mark_incomplete();
+            return false;
+        }
+        *scope = Some(target);
         self.owner.state.notify.notify_one();
         true
     }
-    /// Associate only an observed Native LLM event; a capture may traverse several nodes.
     pub fn link_llm_node(&self, flow_run_id: Uuid, node_run_id: Uuid) {
         if !self.bind_run(flow_run_id, None) {
             return;
         }
-        let Ok(mut links) = self.owner.state.node_links.lock() else {
+        if let Ok(mut links) = self.owner.state.node_links.lock() {
+            links.entry(node_run_id).or_insert_with(observed_at);
+        } else {
             self.mark_incomplete();
-            return;
-        };
-        if links.contains_key(&node_run_id) {
-            return;
         }
-        if links.len() >= 1024 {
-            self.mark_incomplete();
-            return;
-        }
-        links.insert(node_run_id, observed_at());
         self.owner.state.notify.notify_one();
     }
-    /// Copies at most the available byte/record budget. Neither queue admission nor
-    /// database persistence waits on the business forwarding path.
-    pub fn record(&self, kind: ClientTrajectoryFrameKind, bytes: &[u8]) {
-        if self.owner.state.finished.load(Ordering::Acquire) {
-            return;
-        }
-        let at = observed_at();
-        for chunk in bytes.chunks(FRAME_BYTES) {
-            let Ok(permit) = self
-                .owner
-                .bytes
-                .clone()
-                .try_acquire_many_owned((chunk.len() + FRAME_OVERHEAD_BYTES) as u32)
-            else {
-                self.mark_incomplete();
-                return;
-            };
-            let frame = Frame {
+    /// Backpressure preserves original frame boundaries; awaiting admission never truncates.
+    pub async fn record(
+        &self,
+        kind: ClientTrajectoryFrameKind,
+        bytes: &[u8],
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.owner.state.finished.load(Ordering::Acquire),
+            "client capture already finished"
+        );
+        self.owner
+            .sender
+            .send(Frame {
                 kind,
-                bytes: chunk.to_vec(),
-                at: at.clone(),
-                _permit: permit,
-            };
-            if self.owner.sender.try_send(frame).is_err() {
-                self.mark_incomplete();
-                return;
-            }
-        }
+                bytes: bytes.to_vec(),
+                at: observed_at(),
+            })
+            .await
+            .map_err(|_| anyhow::anyhow!("client archive writer stopped"))
     }
     pub fn mark_incomplete(&self) {
         self.owner.state.dropped.fetch_add(1, Ordering::Relaxed);
     }
-    /// Call after the last observed byte; this does not wait for persistence.
+    /// Signals EOF. Owners must await complete() before reporting durable completion.
     pub fn finish(&self) {
         self.owner.state.finished.store(true, Ordering::Release);
         self.owner.state.notify.notify_one();
+    }
+    pub async fn complete(&self) -> anyhow::Result<ClientTrajectoryArchiveReceipt> {
+        self.finish();
+        self.wait_finished().await;
+        match self
+            .owner
+            .state
+            .result
+            .lock()
+            .expect("capture result lock")
+            .clone()
+        {
+            Some(Ok(receipt)) => Ok(receipt),
+            Some(Err(error)) => Err(anyhow::anyhow!(error)),
+            None => Err(anyhow::anyhow!("client archive completion missing")),
+        }
     }
     pub async fn wait_finished(&self) {
         loop {
@@ -243,19 +248,16 @@ async fn persist(
         ClientTrajectoryFact::Step { .. } => "step",
         ClientTrajectoryFact::Section { section, .. } => section.as_str(),
     };
-    let result = tokio::time::timeout(WRITE_TIMEOUT, repository.append(&input)).await;
-    let reason = match &result {
-        Ok(Ok(())) => return,
-        Err(_) => "timeout",
-        Ok(Err(error)) => match error.to_string().as_str() {
-            "client trajectory record capacity" => "record_capacity",
-            "client trajectory capture scope mismatch" => "capture_scope",
-            "client trajectory capture missing" => "capture_missing",
-            "client trajectory step scope mismatch" => "step_scope",
-            "client trajectory section scope mismatch" => "section_scope",
-            "client trajectory node scope mismatch" => "node_scope",
-            _ => "repository",
-        },
+    let Err(error) = repository.append(&input).await else {
+        return;
+    };
+    let reason = match error.to_string().as_str() {
+        "client trajectory capture scope mismatch" => "capture_scope",
+        "client trajectory capture missing" => "capture_missing",
+        "client trajectory step scope mismatch" => "step_scope",
+        "client trajectory section scope mismatch" => "section_scope",
+        "client trajectory node scope mismatch" => "node_scope",
+        _ => "repository",
     };
     *failed = failed.saturating_add(1);
     tracing::warn!(request_id = %id, flow_run_id = %scope.flow, fact_kind = kind, reason, "client trajectory fact persistence failed");
@@ -322,104 +324,139 @@ async fn worker(
     state: Arc<Shared>,
     mut receiver: mpsc::Receiver<Frame>,
 ) {
-    // Permits stay with pre-bind frames; draining the channel cannot defeat the byte budget.
-    let mut pending = VecDeque::new();
-    let scope = loop {
-        let scope = state.scope.lock().ok().and_then(|scope| *scope);
-        if let Some(scope) = scope {
-            break Some(scope);
-        }
-        if state.finished.load(Ordering::Acquire) {
-            break None;
-        }
-        tokio::select! {
-            _=state.notify.notified()=>{},
-            frame=receiver.recv()=>match frame {Some(frame)=>pending.push_back(frame),None=>break None},
-            _=tokio::time::sleep(IDLE_TIMEOUT)=>{state.dropped.fetch_add(1,Ordering::Relaxed);break None;}
-        }
+    let result = archive_worker(repository.as_ref(), transport, id, &state, &mut receiver)
+        .await
+        .map_err(|e| e.to_string());
+    if let Err(error) = &result {
+        // Drop-only transport owners have no caller left to inspect complete().
+        tracing::warn!(request_id=%id, %error, "client trajectory archive owner completion failed");
+    }
+    *state.result.lock().expect("capture result lock") = Some(result);
+    state.stopped.store(true, Ordering::Release);
+    state.stopped_notify.notify_waiters();
+}
+async fn archive_worker(
+    repository: &dyn FactWriter,
+    transport: ClientTrajectoryTransport,
+    id: Uuid,
+    state: &Shared,
+    receiver: &mut mpsc::Receiver<Frame>,
+) -> anyhow::Result<ClientTrajectoryArchiveReceipt> {
+    let mut receipt = ClientTrajectoryArchiveReceipt {
+        request_id: id,
+        persisted_through: 0,
     };
-    if let Some(scope) = scope {
-        let mut failed = 0;
-        persist(
-            repository.as_ref(),
-            scope,
-            id,
-            observed_at(),
-            ClientTrajectoryFact::Integrity {
-                status: "pending".into(),
-                dropped_count: 0,
-                persist_failed_count: 0,
-            },
-            &mut failed,
-        )
-        .await;
-        let mut classifier = classify::Classifier::new(id, scope.flow, scope.node, transport);
-        let mut decoder = decode::Decoder::default();
-        let mut linked = BTreeSet::new();
-        loop {
-            persist_node_links(
-                repository.as_ref(),
-                scope,
-                id,
-                &state,
-                &mut linked,
-                &mut failed,
-            )
-            .await;
-            if state.finished.load(Ordering::Acquire) {
-                receiver.close();
-            }
-            let frame = if let Some(frame) = pending.pop_front() {
-                Some(frame)
-            } else {
-                tokio::select! {
-                    frame=receiver.recv()=>frame,
-                    _=state.notify.notified()=>continue,
-                    _=tokio::time::sleep(IDLE_TIMEOUT)=>{state.dropped.fetch_add(1,Ordering::Relaxed);receiver.close();continue;}
-                }
-            };
-            let Some(frame) = frame else {
-                break;
-            };
-            let direction = if frame.kind == ClientTrajectoryFrameKind::Request {
-                "submitted"
-            } else {
-                "emitted"
-            };
-            let (encoding, body) = match std::str::from_utf8(&frame.bytes) {
-                Ok(text) => ("utf8", text.to_owned()),
-                Err(_) => (
-                    "base64",
-                    base64::engine::general_purpose::STANDARD.encode(&frame.bytes),
-                ),
-            };
-            persist(repository.as_ref(),scope,id,frame.at.clone(),ClientTrajectoryFact::Section {step_id:id,section:"raw".into(),value:json!({"direction":direction,"encoding":encoding,"body":body,"frame_kind":frame.kind})},&mut failed).await;
-            let mut sink = PersistenceSink {
-                repository: repository.as_ref(),
-                scope,
-                id,
-                at: &frame.at,
-                failed: &mut failed,
-            };
-            if frame.kind == ClientTrajectoryFrameKind::Request {
-                classifier.begin_request_into(&frame.at, &mut sink).await;
-            }
-            for value in decoder.feed(frame.kind, &frame.bytes) {
-                classifier
-                    .observe_into(frame.kind, value, &frame.at, &mut sink)
-                    .await;
-            }
-            // Frame permit released each iteration, so arbitrarily long streams drain.
+    let mut classifier = None;
+    let mut decoder = decode::Decoder::default();
+    let mut replay_cursor = 0;
+    let mut failed = 0;
+    let mut linked = BTreeSet::new();
+    loop {
+        if state.finished.load(Ordering::Acquire) {
+            receiver.close();
         }
-        persist_node_links(
-            repository.as_ref(),
-            scope,
-            id,
-            &state,
-            &mut linked,
-            &mut failed,
-        )
-        .await;
+        let (next, eof) = tokio::select! {frame=receiver.recv()=>{let eof=frame.is_none();(frame,eof)},_=state.notify.notified()=>(None,false)};
+        if let Some(frame) = next {
+            let mut frames = vec![ClientTrajectoryArchiveFrame {
+                sequence: 0,
+                kind: frame.kind,
+                observed_at: frame.at,
+                bytes: frame.bytes,
+            }];
+            let mut bytes = frames[0].bytes.len();
+            while bytes < FRAME_BYTES && frames.len() < 32 {
+                let Ok(frame) = receiver.try_recv() else {
+                    break;
+                };
+                bytes += frame.bytes.len();
+                frames.push(ClientTrajectoryArchiveFrame {
+                    sequence: 0,
+                    kind: frame.kind,
+                    observed_at: frame.at,
+                    bytes: frame.bytes,
+                });
+            }
+            receipt = repository
+                .archive(&AppendClientTrajectoryArchiveInput {
+                    request_id: id,
+                    part_id: Uuid::now_v7(),
+                    transport,
+                    frames,
+                })
+                .await?;
+        }
+        let scope = {
+            let scope = state
+                .scope
+                .lock()
+                .map_err(|_| anyhow::anyhow!("client binding scope lock poisoned"))?;
+            if eof {
+                // Owner EOF and drained queue are the terminal binding boundary.
+                // Freeze before checking scope so a bind cannot race deletion.
+                state.binding_closed.store(true, Ordering::Release);
+            }
+            *scope
+        };
+        if let Some(scope) = scope {
+            if classifier.is_none() {
+                persist(
+                    repository,
+                    scope,
+                    id,
+                    observed_at(),
+                    ClientTrajectoryFact::Integrity {
+                        status: "pending".into(),
+                        dropped_count: 0,
+                        persist_failed_count: 0,
+                    },
+                    &mut failed,
+                )
+                .await;
+                classifier = Some(classify::Classifier::new(
+                    id, scope.flow, scope.node, transport,
+                ));
+            }
+            persist_node_links(repository, scope, id, state, &mut linked, &mut failed).await;
+            let classifier = classifier.as_mut().expect("classifier initialized");
+            loop {
+                let frames = repository.replay(id, replay_cursor).await?;
+                if frames.is_empty() {
+                    break;
+                }
+                for frame in frames {
+                    let mut sink = PersistenceSink {
+                        repository,
+                        scope,
+                        id,
+                        at: &frame.observed_at,
+                        failed: &mut failed,
+                    };
+                    if frame.kind == ClientTrajectoryFrameKind::Request {
+                        classifier
+                            .begin_request_into(&frame.observed_at, &mut sink)
+                            .await;
+                    }
+                    for value in decoder.feed(frame.kind, &frame.bytes) {
+                        classifier
+                            .observe_into(frame.kind, value, &frame.observed_at, &mut sink)
+                            .await;
+                    }
+                    replay_cursor = frame.sequence;
+                }
+            }
+        }
+        if eof {
+            break;
+        }
+    }
+    let final_scope = state.scope.lock().ok().and_then(|s| *s);
+    if final_scope.is_none() {
+        // No run can acquire this capture after the final owner boundary. Release
+        // pre-bind bytes explicitly; a failed cleanup makes complete() fail.
+        repository.discard_unbound(id).await?;
+        receipt.persisted_through = 0;
+    }
+    if let (Some(scope), Some(classifier)) = (final_scope, classifier) {
         decoder.finish();
         let dropped = state.dropped.load(Ordering::Acquire)
             + u64::from(
@@ -428,18 +465,19 @@ async fn worker(
                     || !classifier.completed
                     || !classifier.request_seen,
             );
-        let status = if dropped == 0 && failed == 0 {
-            "complete"
-        } else {
-            "incomplete"
-        };
+        persist_node_links(repository, scope, id, state, &mut linked, &mut failed).await;
         persist(
-            repository.as_ref(),
+            repository,
             scope,
             id,
             observed_at(),
             ClientTrajectoryFact::Integrity {
-                status: status.into(),
+                status: if dropped == 0 && failed == 0 {
+                    "complete"
+                } else {
+                    "incomplete"
+                }
+                .into(),
                 dropped_count: dropped,
                 persist_failed_count: failed,
             },
@@ -447,6 +485,9 @@ async fn worker(
         )
         .await;
     }
-    state.stopped.store(true, Ordering::Release);
-    state.stopped_notify.notify_waiters();
+    anyhow::ensure!(
+        failed == 0,
+        "client trajectory classification persistence failed"
+    );
+    Ok(receipt)
 }

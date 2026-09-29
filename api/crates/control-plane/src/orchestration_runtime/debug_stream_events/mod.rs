@@ -321,7 +321,7 @@ pub fn text_delta(node_id: &str, node_run_id: Uuid, text: String) -> RuntimeEven
         event_type: "text_delta".to_string(),
         source: RuntimeEventSource::Provider,
         durability: RuntimeEventDurability::Ephemeral,
-        persist_required: true,
+        persist_required: false,
         trace_visible: false,
         payload: json!({
             "type": "text_delta",
@@ -472,7 +472,7 @@ pub fn reasoning_delta(node_id: &str, node_run_id: Uuid, text: String) -> Runtim
         event_type: "reasoning_delta".to_string(),
         source: RuntimeEventSource::Provider,
         durability: RuntimeEventDurability::Ephemeral,
-        persist_required: true,
+        persist_required: false,
         trace_visible: false,
         payload: json!({
             "type": "reasoning_delta",

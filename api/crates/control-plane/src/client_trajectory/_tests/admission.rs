@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Default)]
 struct SlowFactWriter {
-    records: Mutex<Vec<AppendClientTrajectoryInput>>,
+    inner: MemoryWriter,
     entered: Notify,
     release: Notify,
     held: AtomicBool,
@@ -10,148 +10,158 @@ struct SlowFactWriter {
 #[async_trait::async_trait]
 impl FactWriter for SlowFactWriter {
     async fn append(&self, input: &AppendClientTrajectoryInput) -> anyhow::Result<()> {
+        self.inner.append(input).await
+    }
+    async fn archive(
+        &self,
+        input: &AppendClientTrajectoryArchiveInput,
+    ) -> anyhow::Result<ClientTrajectoryArchiveReceipt> {
         if !self.held.swap(true, Ordering::AcqRel) {
             self.entered.notify_one();
             self.release.notified().await;
         }
-        self.records.lock().unwrap().push(input.clone());
-        Ok(())
+        self.inner.archive(input).await
+    }
+    async fn discard_unbound(&self, request: Uuid) -> anyhow::Result<()> {
+        self.inner.discard_unbound(request).await
+    }
+    async fn replay(
+        &self,
+        request: Uuid,
+        cursor: i64,
+    ) -> anyhow::Result<Vec<ClientTrajectoryArchiveFrame>> {
+        self.inner.replay(request, cursor).await
     }
 }
 
 #[tokio::test]
-async fn tiny_fragment_bursts_survive_slow_writer_without_coalescing() {
-    for transport in [
-        ClientTrajectoryTransport::Http,
-        ClientTrajectoryTransport::Websocket,
-    ] {
-        let writer = Arc::new(SlowFactWriter::default());
-        let recorder = ClientTrajectoryRecorder::with_writer(writer.clone(), transport);
-        recorder.bind_run(Uuid::now_v7(), None);
-        writer.entered.notified().await;
-        let (kind, wire) = if transport == ClientTrajectoryTransport::Http {
-            (ClientTrajectoryFrameKind::ResponseSse, format!(":{}\n\ndata: {{\"type\":\"response.completed\",\"response\":{{\"output\":[]}}}}\n\n", "x".repeat(512)))
-        } else {
-            (ClientTrajectoryFrameKind::ResponseJson, format!("{{\"type\":\"response.completed\",\"response\":{{\"output\":[],\"padding\":\"{}\"}}}}", "x".repeat(512)))
-        };
-        assert!(wire.len() > 128);
-        let charged = 2 + FRAME_OVERHEAD_BYTES + wire.len() * (1 + FRAME_OVERHEAD_BYTES);
-        assert!(charged < QUEUE_BYTES);
-        recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
-        let before = OffsetDateTime::now_utc();
-        for byte in wire.as_bytes() {
-            recorder.record(kind, &[*byte]);
+async fn tiny_fragment_burst_waits_for_slow_archive_and_preserves_every_frame() {
+    let writer = Arc::new(SlowFactWriter::default());
+    let recorder =
+        ClientTrajectoryRecorder::with_writer(writer.clone(), ClientTrajectoryTransport::Websocket);
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, b"{}")
+        .await
+        .unwrap();
+    writer.entered.notified().await;
+    assert!(recorder.bind_run(Uuid::now_v7(), None));
+    let producer = recorder.clone();
+    let task = tokio::spawn(async move {
+        for byte in 0..64u8 {
+            producer
+                .record(ClientTrajectoryFrameKind::ResponseJson, &[byte])
+                .await
+                .unwrap();
         }
-        let after = OffsetDateTime::now_utc();
-        assert_eq!(
-            recorder.owner.bytes.available_permits(),
-            QUEUE_BYTES - charged
-        );
-        assert_eq!(recorder.owner.state.dropped.load(Ordering::Acquire), 0);
-        recorder.finish();
-        writer.release.notify_one();
-        recorder.wait_finished().await;
-        let records = writer.records.lock().unwrap();
-        assert!(complete(&records));
-        assert_eq!(raw(&records, "submitted"), b"{}");
-        assert_eq!(raw(&records, "emitted"), wire.as_bytes());
-        let fragments: Vec<_> = records
-            .iter()
-            .filter_map(|record| match &record.fact {
-                ClientTrajectoryFact::Section { section, value, .. }
-                    if section == "raw" && value["direction"] == "emitted" =>
-                {
-                    Some((record, value))
-                }
-                _ => None,
-            })
-            .collect();
-        assert_eq!(fragments.len(), wire.len());
-        for ((record, value), byte) in fragments.iter().zip(wire.as_bytes()) {
-            assert_eq!(value["body"].as_str().unwrap().as_bytes(), &[*byte]);
-            assert_eq!(value["frame_kind"], json!(kind));
-            let at = OffsetDateTime::parse(
-                &record.observed_at,
-                &time::format_description::well_known::Rfc3339,
-            )
-            .unwrap();
-            assert!(at >= before && at <= after);
-        }
-        assert_eq!(recorder.owner.bytes.available_permits(), QUEUE_BYTES);
-    }
-}
-
-#[tokio::test]
-async fn prebind_frames_retain_weighted_budget_and_overflow_is_nonblocking() {
-    let writer = Arc::new(MemoryWriter::default());
-    let recorder = capture(writer.clone());
-    recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
-    let frame = b": keepalive\n\n";
-    let charge = frame.len() + FRAME_OVERHEAD_BYTES;
-    let initial = 2 + FRAME_OVERHEAD_BYTES;
-    let accepted = (QUEUE_BYTES - initial) / charge;
-    assert!(accepted > 128);
-    for _ in 0..accepted {
-        recorder.record(ClientTrajectoryFrameKind::ResponseSse, frame);
-        // Let the worker move frames to pre-bind pending; their permits must stay held.
-        tokio::task::yield_now().await;
-    }
-    let remaining = QUEUE_BYTES - initial - accepted * charge;
-    assert_eq!(recorder.owner.bytes.available_permits(), remaining);
-    assert_eq!(recorder.owner.state.dropped.load(Ordering::Acquire), 0);
-    // Synchronous admissions all return despite a full retained-memory budget.
-    let started = std::time::Instant::now();
-    for _ in 0..32 {
-        recorder.record(ClientTrajectoryFrameKind::ResponseSse, frame);
-    }
-    assert!(started.elapsed() < WRITE_TIMEOUT);
-    assert_eq!(recorder.owner.state.dropped.load(Ordering::Acquire), 32);
-    assert_eq!(recorder.owner.bytes.available_permits(), remaining);
-    recorder.bind_run(Uuid::now_v7(), None);
-    while recorder.owner.bytes.available_permits() != QUEUE_BYTES {
-        tokio::task::yield_now().await;
-    }
-    let tail = b"data: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n";
-    recorder.record(ClientTrajectoryFrameKind::ResponseSse, tail);
-    recorder.finish();
-    recorder.wait_finished().await;
-    let records = writer.records.lock().unwrap();
-    assert_eq!(
-        raw(&records, "emitted"),
-        [frame.repeat(accepted), tail.to_vec()].concat()
-    );
+        producer.complete().await.unwrap()
+    });
+    tokio::task::yield_now().await;
     assert!(
-        matches!(&records.last().unwrap().fact, ClientTrajectoryFact::Integrity {
-        status, dropped_count: 32, persist_failed_count: 0,
-    } if status == "incomplete")
+        !task.is_finished(),
+        "bounded queue must backpressure while durable writer is blocked"
     );
-    assert_eq!(recorder.owner.bytes.available_permits(), QUEUE_BYTES);
+    writer.release.notify_one();
+    let receipt = task.await.unwrap();
+    assert_eq!(receipt.persisted_through, 65);
+    let frames = writer.inner.frames.lock().unwrap();
+    assert_eq!(frames.len(), 65);
+    for (i, f) in frames.iter().skip(1).enumerate() {
+        assert_eq!(f.bytes, vec![i as u8]);
+        assert_eq!(f.sequence, i as i64 + 2);
+    }
+    assert_eq!(recorder.owner.state.dropped.load(Ordering::Acquire), 0);
 }
 
 #[tokio::test]
-async fn normal_database_contention_does_not_block_forwarding_or_discard_capture() {
+async fn complete_waits_for_durable_commit() {
     let writer = Arc::new(SlowFactWriter::default());
     let recorder =
         ClientTrajectoryRecorder::with_writer(writer.clone(), ClientTrajectoryTransport::Http);
-    recorder.bind_run(Uuid::now_v7(), None);
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, b"{}")
+        .await
+        .unwrap();
     writer.entered.notified().await;
-    let started = std::time::Instant::now();
-    recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
-    recorder.record(
-        ClientTrajectoryFrameKind::ResponseJson,
-        b"{\"object\":\"response\",\"output\":[]}",
+    assert!(recorder.bind_run(Uuid::now_v7(), None));
+    let capture = recorder.clone();
+    let completion = tokio::spawn(async move { capture.complete().await });
+    tokio::task::yield_now().await;
+    assert!(!completion.is_finished());
+    writer.release.notify_one();
+    assert_eq!(completion.await.unwrap().unwrap().persisted_through, 1);
+}
+
+#[tokio::test]
+async fn complete_exposes_projection_failure_while_raw_remains_durable() {
+    let writer = Arc::new(MemoryWriter::default());
+    writer.fail_once.store(true, Ordering::Release);
+    let recorder = capture(writer.clone());
+    recorder.bind_run(Uuid::now_v7(), None);
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, b"{}")
+        .await
+        .unwrap();
+    assert!(recorder.complete().await.is_err());
+    assert_eq!(writer.frames.lock().unwrap()[0].bytes, b"{}");
+}
+
+#[tokio::test]
+async fn final_unbound_owner_completion_releases_prebind_bytes_and_closes_binding() {
+    let writer = Arc::new(MemoryWriter::default());
+    let recorder = capture(writer.clone());
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, b"{\"rejected\":true}")
+        .await
+        .unwrap();
+    let receipt = recorder.complete().await.unwrap();
+    assert_eq!(
+        receipt.persisted_through, 0,
+        "cleaned archive cannot claim retained bytes"
     );
+    assert!(writer.frames.lock().unwrap().is_empty());
+    assert!(writer.records.lock().unwrap().is_empty());
+    assert_eq!(writer.cleanup_count.load(Ordering::Relaxed), 1);
+    assert!(!recorder.bind_run(Uuid::now_v7(), None));
+}
+
+#[tokio::test]
+async fn final_unbound_cleanup_failure_reaches_complete_owner() {
+    let writer = Arc::new(MemoryWriter::default());
+    writer.fail_cleanup_once.store(true, Ordering::Release);
+    let recorder = capture(writer.clone());
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, b"{}")
+        .await
+        .unwrap();
+    assert!(recorder
+        .complete()
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("fixture cleanup failed"));
+    assert_eq!(writer.frames.lock().unwrap()[0].bytes, b"{}");
+    assert!(!recorder.bind_run(Uuid::now_v7(), None));
+}
+
+#[tokio::test]
+async fn late_binding_during_admitted_frame_drain_preserves_exact_bound_archive() {
+    let writer = Arc::new(SlowFactWriter::default());
+    let recorder =
+        ClientTrajectoryRecorder::with_writer(writer.clone(), ClientTrajectoryTransport::Http);
+    let bytes = b" {\"input\":\"late bind\"} ";
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, bytes)
+        .await
+        .unwrap();
+    writer.entered.notified().await;
     recorder.finish();
     assert!(
-        started.elapsed() < Duration::from_millis(100),
-        "capture admission must not await the database"
+        recorder.bind_run(Uuid::now_v7(), None),
+        "binding remains open until admitted frames drain"
     );
-    // Real conversation projection held the sequence lock for ~2.4s. This
-    // fixture rejects the former 2s observational deadline without sleeping on forwarding.
-    tokio::time::sleep(Duration::from_secs(3)).await;
     writer.release.notify_one();
-    recorder.wait_finished().await;
-    let records = writer.records.lock().unwrap();
-    assert!(complete(&records));
-    assert_eq!(raw(&records, "submitted"), b"{}");
+    let receipt = recorder.complete().await.unwrap();
+    assert_eq!(receipt.persisted_through, 1);
+    assert_eq!(writer.inner.frames.lock().unwrap()[0].bytes, bytes);
+    assert_eq!(writer.inner.cleanup_count.load(Ordering::Relaxed), 0);
 }

@@ -1,13 +1,11 @@
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import {
-  getConsoleAssistantSettings,
   listConsoleAssistantConversations,
   subscribeConsoleAssistantConversationsWebSocket,
   updateConsoleAssistantSettings,
   type ConsoleAssistantConversationPage,
   type ConsoleAssistantConversationSummary,
-  type ConsoleAssistantPreference,
-  type ConsoleAssistantSettings
+  type ConsoleAssistantPreference
 } from '@1flowbase/api-client';
 import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
@@ -17,7 +15,7 @@ import LoadingOutlined from '@ant-design/icons/es/icons/LoadingOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import WarningOutlined from '@ant-design/icons/es/icons/WarningOutlined';
 import Conversations from '@ant-design/x/es/conversations';
-import { App, Button, Checkbox, Form, Tooltip } from 'antd';
+import { Alert, App, Button, Checkbox, Form, Tooltip } from 'antd';
 import {
   lazy,
   Suspense,
@@ -31,6 +29,7 @@ import { createPortal } from 'react-dom';
 
 import { AssistantSettingsModal } from '../assistant-plugin/AssistantSettingsModal';
 import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
+import { useEmbeddedAssistantSettings } from '../../hooks/useEmbeddedAssistantSettings';
 import {
   fetchRuntimeDebugArtifact,
   fetchRuntimeDebugArtifacts,
@@ -282,9 +281,6 @@ export function EmbeddedAgentAssistantPreview({
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
-  const [settings, setSettings] = useState<ConsoleAssistantSettings | null>(
-    null
-  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activityMessageId, setActivityMessageId] = useState<string | null>(
@@ -294,6 +290,14 @@ export function EmbeddedAgentAssistantPreview({
   const [historyPage, setHistoryPage] =
     useState<ConsoleAssistantConversationPage | null>(null);
   const [saving, setSaving] = useState(false);
+  const {
+    settings,
+    setSettings,
+    invalidateSettingsRead,
+    refreshError,
+    refreshSettings,
+    refreshing
+  } = useEmbeddedAssistantSettings({ open, workspaceId, saving, csrfToken });
   const [mobile, setMobile] = useState(false);
   const [historyWidth, setHistoryWidth] = useState(
     ASSISTANT_HISTORY_DEFAULT_WIDTH
@@ -402,7 +406,6 @@ export function EmbeddedAgentAssistantPreview({
   });
 
   useEffect(() => {
-    setSettings(null);
     setSettingsOpen(false);
     setHistoryOpen(false);
     setActivityMessageId(null);
@@ -419,54 +422,6 @@ export function EmbeddedAgentAssistantPreview({
     window.addEventListener('resize', updateMobile);
     return () => window.removeEventListener('resize', updateMobile);
   }, []);
-
-  useEffect(() => {
-    if (!open || settings) {
-      return;
-    }
-    let disposed = false;
-    void getConsoleAssistantSettings()
-      .then((nextSettings) => {
-        if (disposed) {
-          return;
-        }
-        setSettings(nextSettings);
-      })
-      .catch(() => {
-        if (!disposed) {
-          setSettings({
-            preference: {
-              application_id: null,
-              mcp_instance_ids: [],
-              enabled_client_tools: [
-                'get_client_context',
-                'refresh_client_view'
-              ]
-            },
-            published_agent_flows: [],
-            enabled_mcp_instances: [],
-            page_reference_max_bytes: 0,
-            page_reference_max_count: 0,
-            page_reference_max_total_bytes: 0,
-            run_capabilities: {
-              model_selection_enabled: false,
-              reasoning_effort_enabled: false,
-              models: []
-            }
-          });
-        }
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [form, open, settings]);
-
-  useEffect(() => {
-    if (!settings || !settingsOpen) {
-      return;
-    }
-    form.setFieldsValue(settings.preference);
-  }, [form, settings, settingsOpen]);
 
   const selectedFlow = settings?.published_agent_flows.find(
     (flow) => flow.application_id === settings.preference.application_id
@@ -812,10 +767,11 @@ export function EmbeddedAgentAssistantPreview({
   }
 
   async function saveSettings() {
-    if (!csrfToken) {
+    if (!csrfToken || refreshing) {
       return;
     }
     const preference = await form.validateFields();
+    invalidateSettingsRead();
     setSaving(true);
     try {
       const nextSettings = await updateConsoleAssistantSettings(
@@ -836,9 +792,10 @@ export function EmbeddedAgentAssistantPreview({
   async function updateRuntimePreference(
     patch: Pick<ConsoleAssistantPreference, 'model' | 'reasoning_effort'>
   ) {
-    if (!csrfToken || !settings) {
+    if (!csrfToken || !settings || refreshing) {
       return;
     }
+    invalidateSettingsRead();
     setSaving(true);
     try {
       setSettings(
@@ -1075,8 +1032,19 @@ export function EmbeddedAgentAssistantPreview({
                   clearDisabled={!session.canEditCurrentConversation}
                   composerHeader={
                     pageReferenceSelection.references.length > 0 ||
-                    pageReferenceSelection.error ? (
+                    pageReferenceSelection.error ||
+                    refreshError ? (
                       <div>
+                        {refreshError ? (
+                          <Alert
+                            type="warning"
+                            showIcon
+                            title={i18nText(
+                              'appShell',
+                              'auto.assistant_settings_refresh_failed'
+                            )}
+                          />
+                        ) : null}
                         {pageReferenceSelection.references.map(
                           (reference, index) => (
                             <PageReferenceDraftRow
@@ -1114,7 +1082,9 @@ export function EmbeddedAgentAssistantPreview({
                             (session.messages.length === 0
                               ? { input_tokens: 0 }
                               : undefined),
-                          onChangePreference: updateRuntimePreference
+                          onChangePreference: updateRuntimePreference,
+                          onRefresh: refreshSettings,
+                          refreshing: refreshing || saving
                         }
                       : undefined
                   }
@@ -1134,7 +1104,10 @@ export function EmbeddedAgentAssistantPreview({
                   history={{ disabled: !settings, onClick: toggleHistory }}
                   settingsAction={{
                     disabled: !settings,
-                    onClick: () => setSettingsOpen(true)
+                    onClick: () => {
+                      if (settings) form.setFieldsValue(settings.preference);
+                      setSettingsOpen(true);
+                    }
                   }}
                   overlayZIndex={1100 + windowEntry.z_index}
                   messages={session.messages}
@@ -1199,7 +1172,7 @@ export function EmbeddedAgentAssistantPreview({
             form.setFieldsValue({ model: null, reasoning_effort: null });
           }
         }}
-        confirmLoading={saving}
+        confirmLoading={saving || refreshing}
         open={open && settingsOpen}
         zIndex={assistantSettingsModalZIndex}
         onCancel={() => setSettingsOpen(false)}

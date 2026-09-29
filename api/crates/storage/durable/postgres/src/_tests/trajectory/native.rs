@@ -450,7 +450,7 @@ async fn selected_run_payload_preserves_original_and_never_reads_other_sections(
     let original = json!({"text":"actual NUL \0 and literal \\u0000", "ordered":[3,1,2]});
     sqlx::query("update flow_runs set input_payload='{}',raw_json_payloads=jsonb_build_object('input_payload',$2::text,'output_payload','invalid JSON') where id=$1")
         .bind(flow).bind(original.to_string()).execute(store.pool()).await.unwrap();
-    sqlx::query("update node_runs set raw_json_payloads=jsonb_build_object('input_payload','invalid JSON') where id=$1")
+    sqlx::query("update node_run_records set raw_json_payloads=jsonb_build_object('input_payload','invalid JSON') where id=$1")
         .bind(node).execute(store.pool()).await.unwrap();
     assert_eq!(
         store

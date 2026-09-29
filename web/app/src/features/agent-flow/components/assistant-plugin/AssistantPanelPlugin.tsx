@@ -5,6 +5,7 @@ import SelectOutlined from '@ant-design/icons/es/icons/SelectOutlined';
 import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
 import Sender from '@ant-design/x/es/sender';
 import {
+  Alert,
   Button,
   Dropdown,
   Flex,
@@ -25,6 +26,8 @@ import './assistant-panel-plugin.css';
 export interface AssistantPanelRuntime {
   run_capabilities: ConsoleAssistantRunCapabilities;
   preference: Pick<ConsoleAssistantPreference, 'model' | 'reasoning_effort'>;
+  onRefresh?: () => Promise<void>;
+  refreshing?: boolean;
   contextSnapshot?: {
     effective_context_window?: number | null;
     input_tokens?: number | null;
@@ -59,14 +62,24 @@ export function AssistantPanelPlugin({
   overlayZIndex,
   ...conversation
 }: AssistantPanelPluginProps) {
-  const selectedModel =
-    runtime?.run_capabilities.models.find(
-      (model) => model.id === runtime.preference.model
-    ) ?? runtime?.run_capabilities.models[0];
-  const selectedReasoningEffort =
-    runtime?.preference.reasoning_effort ??
-    selectedModel?.default_reasoning_effort ??
-    selectedModel?.reasoning_efforts[0];
+  const selectedModel = runtime?.preference.model
+    ? runtime.run_capabilities.models.find(
+        (model) => model.id === runtime.preference.model
+      )
+    : runtime?.run_capabilities.models[0];
+  const modelUnavailable = Boolean(
+    runtime?.run_capabilities.model_selection_enabled &&
+    runtime.preference.model &&
+    !selectedModel
+  );
+  const modelLabel = modelUnavailable
+    ? i18nText('appShell', 'auto.assistant_model_unavailable')
+    : (selectedModel?.name ?? selectedModel?.id ?? '-');
+  const selectedReasoningEffort = selectedModel
+    ? (runtime?.preference.reasoning_effort ??
+      selectedModel.default_reasoning_effort ??
+      selectedModel.reasoning_efforts[0])
+    : undefined;
   const contextWindow =
     runtime?.contextSnapshot?.effective_context_window ??
     selectedModel?.context_window ??
@@ -90,11 +103,12 @@ export function AssistantPanelPlugin({
     ? [
         {
           key: 'model',
+          disabled: runtime.refreshing,
           label: (
             <span className="assistant-panel-plugin__runtime-menu-row">
               <span>{i18nText('appShell', 'auto.assistant_model')}</span>
               <span className="assistant-panel-plugin__runtime-menu-value">
-                {selectedModel?.name ?? selectedModel?.id ?? '-'}
+                {modelLabel}
               </span>
             </span>
           ),
@@ -113,6 +127,7 @@ export function AssistantPanelPlugin({
           ? [
               {
                 key: 'reasoning-effort',
+                disabled: runtime.refreshing,
                 label: (
                   <span className="assistant-panel-plugin__runtime-menu-row">
                     <span>
@@ -140,6 +155,7 @@ export function AssistantPanelPlugin({
         { type: 'divider' },
         {
           key: 'reset-defaults',
+          disabled: runtime.refreshing,
           label: i18nText('appShell', 'auto.assistant_reset_defaults')
         }
       ]
@@ -147,6 +163,18 @@ export function AssistantPanelPlugin({
   return (
     <AgentFlowDebugConsole
       {...conversation}
+      composerHeader={
+        <>
+          {modelUnavailable && !runtime?.refreshing ? (
+            <Alert
+              type="warning"
+              showIcon
+              title={i18nText('appShell', 'auto.assistant_model_reselect')}
+            />
+          ) : null}
+          {conversation.composerHeader}
+        </>
+      }
       composerFooterActions={
         <Flex
           align="center"
@@ -223,9 +251,13 @@ export function AssistantPanelPlugin({
                 }}
                 placement="topLeft"
                 trigger={['click']}
+                onOpenChange={(open) => {
+                  if (open) void runtime.onRefresh?.();
+                }}
                 menu={{
                   items: runtimePreferenceMenuItems,
                   onClick: ({ key }) => {
+                    if (runtime.refreshing) return;
                     const selection = String(key);
                     if (selection === 'reset-defaults') {
                       void runtime.onChangePreference({
@@ -271,7 +303,7 @@ export function AssistantPanelPlugin({
                   value={false}
                 >
                   <span className="assistant-panel-plugin__model-label">
-                    {selectedModel?.name ?? selectedModel?.id ?? '-'}
+                    {modelLabel}
                   </span>
                   {runtime.run_capabilities.reasoning_effort_enabled &&
                   selectedReasoningEffort ? (

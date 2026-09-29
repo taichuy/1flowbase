@@ -438,7 +438,7 @@ impl PgControlPlaneStore {
                     'output:'||case when e.payload->'item'->>'call_id' is not null then 'tool'
                         else coalesce(e.payload->'item'->>'type','unknown') end||':'||
                         coalesce(e.payload->'item'->>'call_id',e.payload->'item'->>'id',e.id::text) as source_key,
-                    runtime_original_json(e.payload, e.raw_json_payloads, 'payload') as original,
+                    runtime_event_original_payload(e.payload, e.raw_json_payloads, e.flow_run_id) as original,
                     null::bigint as result_ordinal
                 from scope_runs f join runtime_events e on e.flow_run_id=f.id
                 where e.event_type='provider_output_item_done' and e.payload->'item' is not null
