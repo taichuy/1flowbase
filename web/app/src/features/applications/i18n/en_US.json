@@ -303,8 +303,7 @@
     "run_no_answer_generated": "This call finished without generating an answer.",
     "run_prewarm_no_answer_generated": "This call is a prewarm and generated no answer.",
     "run_error_without_output": "This call ended with an error and produced no output.",
-    "node_execution": "Node execution",
-    "view_execution_trace": "View execution trace"
+    "node_execution": "Node execution"
   },
   "archive_import": {
     "path_conflict": "The application path is already in use. Import failed.",

@@ -1382,10 +1382,6 @@ export function ApplicationLogsPage({
               }
               onClose={() => selectRun(null)}
               onOpenMessageLog={openConversationLog}
-              onOpenRunTrace={() => {
-                openConversationLog(buildTraceDeepLinkMessage(selectedRunId));
-                changeLogTab('trace');
-              }}
               onOpenResumeTimeline={openResumeTimeline}
               runId={selectedRunId}
             />
