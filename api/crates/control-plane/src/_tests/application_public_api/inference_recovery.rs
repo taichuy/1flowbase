@@ -384,6 +384,53 @@ async fn terminal_transport_failure_allows_new_responses_sampling_without_recons
 }
 
 #[tokio::test]
+async fn terminal_response_reissue_is_independent_of_the_old_transport_failure_reason() {
+    for reason in [
+        "semantic_failed",
+        "transport_disconnected",
+        "transport_rejected",
+        "protocol_error",
+        "budget_exhausted",
+        "deadline_exceeded",
+    ] {
+        let mut failure = terminal_transport_failure();
+        failure["failed_after_first_token"] = json!(false);
+        failure["ai_native_recovery"]["provider_inner_receipt"]["reason"] = json!(reason);
+        let f = fixture(Some(failure)).await;
+        assert!(
+            matches!(
+                f.prepare(&f.command).await.unwrap(),
+                PreparedPublishedCallbackResume::StartNewTurnFromHistory
+            ),
+            "a new sample must not reopen the old terminal attempt: {reason}"
+        );
+        f.assert_receipt_unchanged();
+    }
+}
+
+#[tokio::test]
+async fn terminal_response_reissue_cannot_change_accepted_tools_or_configuration() {
+    let f = fixture(Some(terminal_transport_failure())).await;
+    for mutation in 0..4 {
+        let mut command = f.command.clone();
+        let mut body = command.native_transport.take().unwrap().into_wire_body();
+        match mutation {
+            0 => {
+                body["input"][5]["output"] = json!("changed");
+                command.response_payload["tool_results"][0]["content"] = json!("changed");
+            }
+            1 => body["input"][1]["encrypted_content"] = json!("changed"),
+            2 => body["model"] = json!("foreign"),
+            3 => body["previous_response_id"] = json!("old-terminal-response"),
+            _ => unreachable!(),
+        }
+        command.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+        assert!(f.prepare(&command).await.is_err(), "mutation {mutation}");
+        f.assert_receipt_unchanged();
+    }
+}
+
+#[tokio::test]
 async fn terminal_transport_reissue_rejects_untrusted_or_non_transport_failure() {
     for mutation in 0..5 {
         let mut failure = terminal_transport_failure();
@@ -393,8 +440,8 @@ async fn terminal_transport_reissue_rejects_untrusted_or_non_transport_failure()
             2 => failure["ai_native_recovery"]["provider_final_commit"] = json!("lifecycle_only"),
             3 => failure["ai_native_recovery"]["provider_inner_receipt"] = Value::Null,
             4 => {
-                failure["ai_native_recovery"]["provider_inner_receipt"]["reason"] =
-                    json!("protocol_error")
+                failure["ai_native_recovery"]["provider_inner_receipt"]["commit_level"] =
+                    json!("lifecycle_only")
             }
             _ => unreachable!(),
         }
