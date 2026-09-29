@@ -581,22 +581,108 @@ async fn raw_history_prefilter_retains_unreferenced_legacy_and_rejects_unknown_f
     sqlx::query("insert into client_trajectory_archive_heads(request_id,transport,flow_run_id) values($1,'http',$2)")
         .bind(request).bind(flow).execute(&pool).await.unwrap();
     for (sequence, format) in [(10, "legacy_json"), (11, "legacy_payload_json")] {
-        let body = json!({"fact":{"value":{"body":"retained original"}},"body":"retained original"});
-        insert_original_part(&store, request, Uuid::now_v7(), &[frame(sequence,
-            ClientTrajectoryFrameKind::ResponseJson, AT, &serde_json::to_vec(&body).unwrap())], format).await;
+        let body =
+            json!({"fact":{"value":{"body":"retained original"}},"body":"retained original"});
+        insert_original_part(
+            &store,
+            request,
+            Uuid::now_v7(),
+            &[frame(
+                sequence,
+                ClientTrajectoryFrameKind::ResponseJson,
+                AT,
+                &serde_json::to_vec(&body).unwrap(),
+            )],
+            format,
+        )
+        .await;
     }
     let before: Vec<(Uuid, Value, Vec<u8>, i16)> = sqlx::query_as("select part_id,frames,bytes,codec_version from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
         .bind(request).fetch_all(&pool).await.unwrap();
-    assert_eq!(store.migrate_client_trajectory_archive_parts(flow, request).await.unwrap(), 0);
+    assert_eq!(
+        store
+            .migrate_client_trajectory_archive_parts(flow, request)
+            .await
+            .unwrap(),
+        0
+    );
     let after: Vec<(Uuid, Value, Vec<u8>, i16)> = sqlx::query_as("select part_id,frames,bytes,codec_version from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
         .bind(request).fetch_all(&pool).await.unwrap();
-    assert_eq!(before, after, "unreferenced known legacy layouts must remain byte-for-byte intact");
+    assert_eq!(
+        before, after,
+        "unreferenced known legacy layouts must remain byte-for-byte intact"
+    );
     let unknown = Uuid::now_v7();
-    insert_original_part(&store, request, unknown,
-        &[frame(12, ClientTrajectoryFrameKind::ResponseJson, AT, b"unknown original")], "future_format").await;
-    let error = store.migrate_client_trajectory_archive_parts(flow, request).await.unwrap_err();
+    insert_original_part(
+        &store,
+        request,
+        unknown,
+        &[frame(
+            12,
+            ClientTrajectoryFrameKind::ResponseJson,
+            AT,
+            b"unknown original",
+        )],
+        "future_format",
+    )
+    .await;
+    let error = store
+        .migrate_client_trajectory_archive_parts(flow, request)
+        .await
+        .unwrap_err();
     assert!(format!("{error:#}").contains("archive original frame format unknown"));
-    let version: i16 = sqlx::query_scalar("select codec_version from client_trajectory_archive_parts where part_id=$1")
-        .bind(unknown).fetch_one(&pool).await.unwrap();
+    let version: i16 = sqlx::query_scalar(
+        "select codec_version from client_trajectory_archive_parts where part_id=$1",
+    )
+    .bind(unknown)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(version, 0);
+    sqlx::query("delete from client_trajectory_archive_parts where part_id=$1")
+        .bind(unknown)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for known in ["legacy_json", "legacy_payload_json"] {
+        let mixed = Uuid::now_v7();
+        let body =
+            serde_json::to_vec(&json!({"fact":{"value":{"body":"kept"}},"body":"kept"})).unwrap();
+        insert_original_part(
+            &store,
+            request,
+            mixed,
+            &[
+                frame(12, ClientTrajectoryFrameKind::ResponseJson, AT, &body),
+                frame(
+                    13,
+                    ClientTrajectoryFrameKind::ResponseJson,
+                    AT,
+                    b"future bytes",
+                ),
+            ],
+            known,
+        )
+        .await;
+        sqlx::query("update client_trajectory_archive_parts set frames=jsonb_set(frames,'{1,format}','\"future_format\"'::jsonb) where part_id=$1")
+            .bind(mixed).execute(&pool).await.unwrap();
+        let before: (Value, Vec<u8>, i16) = sqlx::query_as("select frames,bytes,codec_version from client_trajectory_archive_parts where part_id=$1")
+            .bind(mixed).fetch_one(&pool).await.unwrap();
+        let error = store
+            .migrate_client_trajectory_archive_parts(flow, request)
+            .await
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("archive original frame format unknown"),
+            "mixed {known} bypassed strict decoding"
+        );
+        let after: (Value, Vec<u8>, i16) = sqlx::query_as("select frames,bytes,codec_version from client_trajectory_archive_parts where part_id=$1")
+            .bind(mixed).fetch_one(&pool).await.unwrap();
+        assert_eq!(before, after);
+        sqlx::query("delete from client_trajectory_archive_parts where part_id=$1")
+            .bind(mixed)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
 }
