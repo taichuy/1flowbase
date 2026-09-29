@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+mod storage_maintenance;
 use async_trait::async_trait;
 use control_plane_contracts::{
     application_public_runtime::{
@@ -59,6 +60,7 @@ use control_plane_contracts::{
 };
 use serde_json::{json, Value};
 use sqlx::{Postgres, QueryBuilder, Row};
+pub use storage_maintenance::RuntimeStorageCompactionReceipt;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 

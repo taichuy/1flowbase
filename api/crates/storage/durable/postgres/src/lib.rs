@@ -52,6 +52,7 @@ pub use connection::{
 };
 pub use model_definition_repository::RuntimeTableNamePolicy;
 pub use native_sql::execute_native_sql;
+pub use orchestration_runtime_repository::RuntimeStorageCompactionReceipt;
 pub use provider_protocol_capsule_store::PgProviderProtocolCapsuleStore;
 pub use repositories::PgControlPlaneStore;
 pub use runtime::{
