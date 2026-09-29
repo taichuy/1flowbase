@@ -96,10 +96,24 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
         .iter()
         .filter_map(|event| event["event_type"].as_str())
         .collect::<Vec<_>>();
-    assert!(event_types.contains(&"text_delta"));
+    assert!(
+        !event_types.contains(&"text_delta"),
+        "live token fragments must not become durable preview history"
+    );
     assert!(event_types.contains(&"usage_snapshot"));
     assert!(event_types.contains(&"finish"));
     assert!(event_types.contains(&"node_preview_completed"));
+    let completed = preview_payload["data"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["event_type"] == json!("node_preview_completed"))
+        .unwrap();
+    assert_eq!(
+        completed["payload"]["node_output"]["text"],
+        json!("reply:总结退款政策"),
+        "completed history must retain the full semantic output"
+    );
 
     let list = app
         .clone()
