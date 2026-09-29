@@ -164,9 +164,10 @@ test('AC-004: Gateway converts accepted HTTP upstream interruption to explicit f
     transport: TRANSPORT.RESPONSES_SSE,
     scenario: SCENARIO.STREAM_INTERRUPTION,
     terminalCount: 0,
-    chunkTexts: [],
-    upstreamNonce: null,
-    upstreamNonceCount: 0,
+    chunkTexts: ['mock-000001:chunk-1'],
+    upstreamNonce: 'mock-000001',
+    upstreamNonceCount: 1,
+    interruptionDeltaAcknowledged: true,
   };
   assert.deepEqual(validateRequestResult({ ...base, outcome: 'interrupted' }), []);
   assert.deepEqual(validateRequestResult({
@@ -533,4 +534,79 @@ test('AC-003: invalid plan rows fail closed before load generation', async () =>
     }),
     /invalid characterize gate role/u,
   );
+});
+
+
+test('HTTP interruption releases only after parsed first delta and preserves exactly one arrival', { timeout: 10000 }, async () => {
+  const mock = createMockUpstream();
+  const endpoints = await mock.start();
+  try {
+    const endpointSet = {
+      [TRANSPORT.RESPONSES_SSE]: `${endpoints.httpBaseUrl}/v1/responses`,
+      [TRANSPORT.ANTHROPIC_SSE]: `${endpoints.httpBaseUrl}/v1/messages`,
+      [TRANSPORT.CHAT_COMPLETIONS_SSE]: `${endpoints.httpBaseUrl}/v1/chat/completions`,
+    };
+    let acknowledgements = 0;
+    const result = await executeCharacterizePlan({
+      endpointSet, mockSnapshot: mock.snapshot, interruptionReleaseUrl: endpoints.interruptionReleaseUrl,
+      plan: Object.keys(endpointSet).map((transport) => ({ transport, scenario: SCENARIO.STREAM_INTERRUPTION, concurrency: 1 })),
+      async fetchImpl(url, options) {
+        if (String(url) === endpoints.interruptionReleaseUrl) {
+          acknowledgements += 1;
+          const { nonce } = JSON.parse(options.body);
+          const entries = mock.snapshot().entries.filter((entry) => entry.nonce === nonce);
+          assert.equal(entries.some((entry) => entry.event === 'interruption_delta_flushed'), true);
+          assert.equal(entries.some((entry) => entry.event === 'stream_interrupted'), false);
+        }
+        return fetch(url, options);
+      },
+    });
+    assert.equal(result.summary.verdict, 'PASS');
+    assert.equal(acknowledgements, 3);
+    const requests = result.events.filter((entry) => entry.kind === 'request');
+    assert.equal(requests.every((entry) => entry.interruptionDeltaAcknowledged && entry.upstreamNonceCount === 1 && entry.chunkTexts.length > 0), true);
+    const entries = mock.snapshot().entries;
+    assert.equal(entries.filter((entry) => entry.event === 'arrival').length, 3);
+    for (const request of requests) {
+      const correlated = entries.filter((entry) => entry.nonce === request.upstreamNonce);
+      assert.equal(correlated.filter((entry) => entry.event === 'interruption_delta_acknowledged').length, 1);
+      assert.ok(correlated.find((entry) => entry.event === 'interruption_delta_acknowledged').sequence
+        < correlated.find((entry) => entry.event === 'stream_interrupted').sequence);
+    }
+    const normal = await executeCharacterizePlan({
+      endpointSet, mockSnapshot: mock.snapshot, interruptionReleaseUrl: endpoints.interruptionReleaseUrl,
+      plan: [{ transport: TRANSPORT.RESPONSES_SSE, scenario: SCENARIO.NORMAL, concurrency: 1 }],
+      fetchImpl(url, options) {
+        assert.notEqual(String(url), endpoints.interruptionReleaseUrl);
+        return fetch(url, options);
+      },
+    });
+    assert.equal(normal.summary.verdict, 'PASS');
+    assert.equal(normal.events.find((entry) => entry.kind === 'request').terminalCount, 1);
+  } finally { await mock.stop(); }
+});
+
+test('missing or rejected HTTP interruption acknowledgement fails the oracle', { timeout: 10000 }, async () => {
+  for (const mode of ['missing', 'rejected']) {
+    await withMock(async ({ mock, endpointSet }) => {
+      const result = await executeCharacterizePlan({
+        endpointSet, mockSnapshot: mock.snapshot,
+        interruptionReleaseUrl: mode === 'missing' ? undefined : 'http://127.0.0.1/__control/interruption/release',
+        plan: [{ transport: TRANSPORT.RESPONSES_SSE, scenario: SCENARIO.STREAM_INTERRUPTION, concurrency: 1 }],
+        fetchImpl(url, options) {
+          if (String(url).endsWith('/__control/interruption/release')) {
+            return Promise.resolve(new Response(JSON.stringify({ released: false }), { status: 409 }));
+          }
+          return fetch(url, options);
+        },
+      });
+      assert.equal(result.summary.verdict, 'FAIL');
+      assert.equal(result.events.find((entry) => entry.kind === 'request').outcome, 'request-error');
+      assert.equal(mock.snapshot().entries.some((entry) => entry.event === 'stream_interrupted'), false);
+    });
+  }
+  assert.match(validateRequestResult({
+    transport: TRANSPORT.RESPONSES_SSE, scenario: SCENARIO.STREAM_INTERRUPTION,
+    outcome: 'interrupted', terminalCount: 0, chunkTexts: [], upstreamNonceCount: 0,
+  }).join(' '), /receiver-visible nonce/u);
 });

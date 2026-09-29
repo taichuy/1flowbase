@@ -56,6 +56,7 @@ test('native WebSocket holds terminal until the matching first-delta barrier is 
     assert.equal(events.some((event) => event.type === 'response.completed'), false);
     const held = mock.snapshot().entries;
     assert.equal(held.filter((entry) => entry.event === 'arrival').length, 1);
+    assert.equal(held.find((entry) => entry.event === 'arrival').request.body.model, 'mock');
     assert.equal(held.some((entry) => entry.event === 'settled'), false);
     assert.equal(held.find((entry) => entry.event === 'terminal_barrier_waiting').nonce, waiting.nonce);
     assert.equal(mock.terminalBarriers.release('wrong-request'), false);

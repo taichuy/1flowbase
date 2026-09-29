@@ -451,7 +451,36 @@ test('AC-004: stream interruption closes Responses SSE without a success termina
         input: mockScenarioSentinel(SCENARIO.STREAM_INTERRUPTION),
       }),
     });
-    await assert.rejects(response.text());
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let visible = '';
+    while (!visible.includes('response.output_text.delta')) {
+      const { done, value } = await reader.read();
+      assert.equal(done, false);
+      visible += decoder.decode(value, { stream: true });
+    }
+    const nonce = visible.match(/mock-\d{6}/u)[0];
+    await upstream.waitForEvent('interruption_barrier_waiting');
+    assert.equal(upstream.snapshot().entries.some((entry) => entry.event === 'stream_interrupted'), false);
+    for (const body of [{}, { nonce: 'mock-999999' }]) {
+      const wrong = await fetch(`${httpBaseUrl}/__control/interruption/release`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+      assert.equal(wrong.status, 409);
+      assert.deepEqual(await wrong.json(), { released: false });
+    }
+    assert.equal(upstream.snapshot().entries.some((entry) => entry.event === 'stream_interrupted'), false);
+    const release = await fetch(`${httpBaseUrl}/__control/interruption/release`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }),
+    });
+    assert.deepEqual(await release.json(), { released: true });
+    await assert.rejects(async () => { while (!(await reader.read()).done) {} });
+    const timeline = upstream.snapshot().entries;
+    assert.equal(timeline.filter((entry) => entry.event === 'arrival').length, 1);
+    assert.ok(timeline.find((entry) => entry.event === 'interruption_delta_flushed').sequence
+      < timeline.find((entry) => entry.event === 'interruption_delta_acknowledged').sequence);
+    assert.ok(timeline.find((entry) => entry.event === 'interruption_delta_acknowledged').sequence
+      < timeline.find((entry) => entry.event === 'stream_interrupted').sequence);
     const evidence = await waitFor(() => upstream.snapshot().entries.find((entry) => entry.outcome === 'interrupted'));
     assert.equal(evidence.successTerminalCount, undefined);
     assert.equal(upstream.snapshot().entries.some((entry) => entry.protocolEvent === 'response.completed'), false);

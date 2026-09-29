@@ -209,6 +209,9 @@ function characterizeOptions({ repoRoot, ready, websocketBaseUrl, mockSnapshot, 
   return {
     repoRoot,
     gatewayPid,
+    interruptionReleaseUrl: new URL(
+      '/__control/interruption/release', ready.controlled_upstream.snapshot_url,
+    ).href,
     endpointSet: {
       [TRANSPORT.RESPONSES_SSE]: ready.targets.openai.gateway.responses_url,
       [TRANSPORT.RESPONSES_WEBSOCKET]: `${websocketBaseUrl}/v1/responses`,
