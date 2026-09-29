@@ -81,3 +81,22 @@ test('Root #1477 AC-006: ephemeral raw canaries and envelope values cannot enter
     'raw-secret-canary',
   ]), /ephemeral raw protocol context leaked/u);
 });
+
+
+test('session identity and safe residuals remain strict upstream fidelity fields', () => {
+  const direct = {
+    url: '/v1/responses?fixture_query=responses-query-value',
+    headers: { 'session-id': 'sealed-identity', 'thread-id': 'fidelity-thread', 'x-fixture-extension': 'residual' },
+    body: { fixture_body_extension: { nested: 'residual' } },
+  };
+  for (const field of Object.keys(direct.headers)) {
+    for (const value of [undefined, 'mutation']) {
+      const gateway = { ...direct, headers: { ...direct.headers } };
+      if (value === undefined) delete gateway.headers[field]; else gateway.headers[field] = value;
+      assert.throws(() => assertRequestPair({ direct, gateway }), /request fidelity mismatch/u);
+    }
+  }
+  assert.throws(() => assertRequestPair({ direct, gateway: {
+    ...direct, body: { fixture_body_extension: { nested: 'mutation' } },
+  } }), /request fidelity mismatch/u);
+});

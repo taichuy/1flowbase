@@ -47,6 +47,7 @@ class FakeOwnerClient {
     FakeOwnerClient.calls.push({ kind: 'sign-in', identifier, password });
     this.cookie = 'gateway_session=fake';
     this.csrf = 'fake-csrf';
+    return { actor: { current_workspace_id: 'fixture-workspace-id' } };
   }
 
   async uploadPackage(archivePath) {
@@ -169,6 +170,10 @@ test('lifecycle exposes gateway, durable, and in-process runtime activity target
     fixture = await createGatewayFixture(files.options, fake.dependencies);
     assert.equal(fixture.result.gateway_base_url, 'http://127.0.0.1:41001');
     assert.equal(fixture.result.targets.openai.application_id, 'openai-application-1');
+    for (const target of Object.values(fixture.result.targets)) {
+      assert.equal(target.workspace_id, 'fixture-workspace-id');
+      assert.equal(target.api_key_id, `${target.application_id}-key-id`);
+    }
     assert.equal(fixture.result.targets.anthropic.model, '1flowbase');
     assert.equal(fixture.result.targets.anthropic.upstream_model, 'gateway-fixture-model');
     assert.equal(fixture.result.model, '1flowbase');
@@ -256,9 +261,9 @@ test('publication source binds Generate and protocol context for all gateway pro
     model: 'gateway-fixture-model',
   });
 
-  await createPublishedApplication(client, provider('openai'), '1flowbase');
-  await createPublishedApplication(client, provider('anthropic'), '1flowbase');
-  await createPublishedApplication(client, provider('openai_compatible'), '1flowbase');
+  await createPublishedApplication(client, provider('openai'), '1flowbase', 1, 'fixture-workspace-id');
+  await createPublishedApplication(client, provider('anthropic'), '1flowbase', 1, 'fixture-workspace-id');
+  await createPublishedApplication(client, provider('openai_compatible'), '1flowbase', 1, 'fixture-workspace-id');
 
   const drafts = FakeOwnerClient.calls.filter(
     (call) => call.kind === 'write' && call.pathname.endsWith('/orchestration/draft')
@@ -390,4 +395,26 @@ test('injected service-log write failure still stops the Backend, removes scratc
     await fixture?.close().catch(() => {});
     fs.rmSync(files.root, { recursive: true, force: true });
   }
+});
+
+
+test('bootstrap rejects missing authenticated workspace metadata and API key identity', async () => {
+  class MissingWorkspaceClient extends FakeOwnerClient {
+    async signIn(...args) { await super.signIn(...args); return { actor: {} }; }
+  }
+  const files = fixtureFiles();
+  const fake = fakeDependencies({ OwnerClient: MissingWorkspaceClient });
+  try {
+    await assert.rejects(createGatewayFixture(files.options, fake.dependencies), /omitted current_workspace_id/u);
+  } finally { fs.rmSync(files.root, { recursive: true, force: true }); }
+  class MissingKeyIdClient extends FakeOwnerClient {
+    async write(...args) {
+      const result = await super.write(...args);
+      if (args[0].endsWith('/api-keys')) delete result.data.id;
+      return result;
+    }
+  }
+  await assert.rejects(createPublishedApplication(new MissingKeyIdClient(), {
+    provider_code: 'openai', model: 'model', provider_instance_id: 'instance',
+  }, '1flowbase', 1, 'fixture-workspace-id'), /API key response omitted id or token/u);
 });
