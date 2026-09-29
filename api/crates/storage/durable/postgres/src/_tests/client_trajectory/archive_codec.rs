@@ -571,3 +571,32 @@ async fn raw_codec_database_corruption_unknown_version_raw_length_checksum_and_t
         .unwrap();
     assert_eq!(restored[0].bytes, b"exact\0\xff");
 }
+
+#[tokio::test]
+async fn raw_history_prefilter_retains_unreferenced_legacy_and_rejects_unknown_format() {
+    let (pool, flow) = super::super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let request = Uuid::now_v7();
+    bind_request(&store, flow, request).await;
+    sqlx::query("insert into client_trajectory_archive_heads(request_id,transport,flow_run_id) values($1,'http',$2)")
+        .bind(request).bind(flow).execute(&pool).await.unwrap();
+    for (sequence, format) in [(10, "legacy_json"), (11, "legacy_payload_json")] {
+        let body = json!({"fact":{"value":{"body":"retained original"}},"body":"retained original"});
+        insert_original_part(&store, request, Uuid::now_v7(), &[frame(sequence,
+            ClientTrajectoryFrameKind::ResponseJson, AT, &serde_json::to_vec(&body).unwrap())], format).await;
+    }
+    let before: Vec<(Uuid, Value, Vec<u8>, i16)> = sqlx::query_as("select part_id,frames,bytes,codec_version from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
+        .bind(request).fetch_all(&pool).await.unwrap();
+    assert_eq!(store.migrate_client_trajectory_archive_parts(flow, request).await.unwrap(), 0);
+    let after: Vec<(Uuid, Value, Vec<u8>, i16)> = sqlx::query_as("select part_id,frames,bytes,codec_version from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
+        .bind(request).fetch_all(&pool).await.unwrap();
+    assert_eq!(before, after, "unreferenced known legacy layouts must remain byte-for-byte intact");
+    let unknown = Uuid::now_v7();
+    insert_original_part(&store, request, unknown,
+        &[frame(12, ClientTrajectoryFrameKind::ResponseJson, AT, b"unknown original")], "future_format").await;
+    let error = store.migrate_client_trajectory_archive_parts(flow, request).await.unwrap_err();
+    assert!(format!("{error:#}").contains("archive original frame format unknown"));
+    let version: i16 = sqlx::query_scalar("select codec_version from client_trajectory_archive_parts where part_id=$1")
+        .bind(unknown).fetch_one(&pool).await.unwrap();
+    assert_eq!(version, 0);
+}

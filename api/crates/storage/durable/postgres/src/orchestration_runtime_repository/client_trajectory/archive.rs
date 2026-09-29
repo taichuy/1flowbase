@@ -170,11 +170,14 @@ impl PgControlPlaneStore {
         let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_archive_heads h join client_trajectory_captures c on c.request_id=h.request_id where h.request_id=$1 and h.flow_run_id=$2 and c.flow_run_id=$2)")
             .bind(request_id).bind(flow_run_id).fetch_one(self.pool()).await?;
         anyhow::ensure!(valid, "client archive migration scope mismatch");
+        // Known legacy formats are retained by policy. Exclude them before
+        // opening a per-part reference/decode transaction; unknown formats still
+        // reach the strict decoder, and Wire parts keep every existing guard.
         let mut after_part: Option<i64> = None;
         let mut migrated = 0;
         loop {
             let mut tx = self.pool().begin().await?;
-            let row = sqlx::query("select p.part_id,p.first_sequence,p.last_sequence,p.frames,p.bytes,p.codec_version,p.frame_directory,p.raw_byte_length,p.raw_checksum from client_trajectory_archive_parts p join client_trajectory_archive_heads h on h.request_id=p.request_id join client_trajectory_captures c on c.request_id=p.request_id where p.request_id=$1 and h.flow_run_id=$2 and c.flow_run_id=$2 and p.codec_version=0 and ($3::bigint is null or p.first_sequence>$3) order by p.first_sequence limit 1 for update of p")
+            let row = sqlx::query("select p.part_id,p.first_sequence,p.last_sequence,p.frames,p.bytes,p.codec_version,p.frame_directory,p.raw_byte_length,p.raw_checksum from client_trajectory_archive_parts p join client_trajectory_archive_heads h on h.request_id=p.request_id join client_trajectory_captures c on c.request_id=p.request_id where p.request_id=$1 and h.flow_run_id=$2 and c.flow_run_id=$2 and p.codec_version=0 and not p.frames @> '[{\"format\":\"legacy_json\"}]'::jsonb and not p.frames @> '[{\"format\":\"legacy_payload_json\"}]'::jsonb and ($3::bigint is null or p.first_sequence>$3) order by p.first_sequence limit 1 for update of p")
                 .bind(request_id).bind(flow_run_id).bind(after_part).fetch_optional(&mut *tx).await?;
             let Some(row) = row else {
                 tx.commit().await?;
