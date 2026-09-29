@@ -102,7 +102,7 @@ async fn packed_directories_upgrade_prior_blocks_atomically_with_gaps_and_origin
         2
     );
     old_block(&store, request).await;
-    let before: Vec<(Uuid,i64,i64,i16,Vec<u8>,Vec<u8>)> = sqlx::query_as("select part_id,first_sequence,last_sequence,codec_version,frame_directory,raw_checksum from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
+    let before: Vec<(Uuid, i64, i64, i16, Option<Vec<u8>>, Option<Vec<u8>>)> = sqlx::query_as("select part_id,first_sequence,last_sequence,codec_version,frame_directory,raw_checksum from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
         .bind(request).fetch_all(&pool).await.unwrap();
     sqlx::raw_sql("create function packed_fixture_failure() returns trigger language plpgsql as $$ begin raise exception 'controlled packed publication failure'; end $$;create trigger packed_fixture_failure before update on client_trajectory_archive_parts for each row when(new.codec_version=3 and old.first_sequence=3) execute function packed_fixture_failure();").execute(&pool).await.unwrap();
     let failure = store
@@ -110,7 +110,7 @@ async fn packed_directories_upgrade_prior_blocks_atomically_with_gaps_and_origin
         .await
         .unwrap_err();
     assert!(format!("{failure:#}").contains("controlled packed publication failure"));
-    let after: Vec<(Uuid,i64,i64,i16,Vec<u8>,Vec<u8>)> = sqlx::query_as("select part_id,first_sequence,last_sequence,codec_version,frame_directory,raw_checksum from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
+    let after: Vec<(Uuid, i64, i64, i16, Option<Vec<u8>>, Option<Vec<u8>>)> = sqlx::query_as("select part_id,first_sequence,last_sequence,codec_version,frame_directory,raw_checksum from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
         .bind(request).fetch_all(&pool).await.unwrap();
     assert_eq!(before, after);
     let block_version: i16 = sqlx::query_scalar(
