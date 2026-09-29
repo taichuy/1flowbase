@@ -19,7 +19,10 @@ The fixture checks the receipt attachment hash, exactly 15 run identities,
 51,081 source events, 85,201 source frames and 96 captures. It seeds the official
 migration prefix before `20260929100000`, removes the seed run and its cascading
 runtime rows, copies only the selected task rows, and fills missing FK parents
-from source `pg_catalog` metadata. It copies finite conversation-message and
+using the actual official prefix FK graph, checked against source `pg_catalog`
+metadata. Source fingerprints bind a read-only transaction to `public`; isolated
+fingerprints bind to the destination, with transaction-local search_path restored
+before reuse. It copies finite conversation-message and
 observation ownership child rows. An additional run, missing parent, incompatible
 prefix column, cross-schema parent or unsupported partition layout stops replay.
 No application-wide or whole-database source copy is permitted.

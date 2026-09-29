@@ -19,6 +19,7 @@ pub(super) struct CopyReceipt {
     pub supporting_fk_tables: BTreeMap<String, u64>,
     pub domain: BTreeSet<String>,
     pub source_foreign_keys: usize,
+    pub prefix_foreign_keys: usize,
     pub closure_passes: u64,
     pub missing_foreign_key_parents: i64,
     #[serde(skip)]
@@ -184,7 +185,20 @@ pub(super) async fn copy_sample(pool: &PgPool, schema: &str, runs: &[Uuid]) -> R
     let source_by_name: BTreeMap<_, _> = source.iter().map(|t| (t.name.as_str(), t)).collect();
     let destination_by_name: BTreeMap<_, _> =
         destination.iter().map(|t| (t.name.as_str(), t)).collect();
-    let keys = foreign_keys(&mut tx, "public").await?;
+    let source_keys = foreign_keys(&mut tx, "public").await?;
+    let keys = foreign_keys(&mut tx, schema).await?;
+    // Closure must follow the actual official prefix. New nullable references
+    // introduced by the candidate do not exist in that historical schema.
+    ensure!(
+        keys.iter().all(|key| source_keys
+            .iter()
+            .any(|source| source.parent_schema == "public"
+                && source.child == key.child
+                && source.parent == key.parent
+                && source.child_columns == key.child_columns
+                && source.parent_columns == key.parent_columns)),
+        "official prefix FK is incompatible with public source"
+    );
     let mut copied = BTreeMap::new();
     let mut initial = BTreeMap::new();
     let mut domain: BTreeSet<String> = DOMAIN.split_whitespace().map(str::to_owned).collect();
@@ -217,8 +231,8 @@ pub(super) async fn copy_sample(pool: &PgPool, schema: &str, runs: &[Uuid]) -> R
                 continue;
             }
             ensure!(
-                fk.parent_schema == "public",
-                "finite closure requires a non-public parent table: {}",
+                fk.parent_schema == schema,
+                "finite closure requires an escaping prefix parent table: {}",
                 fk.parent
             );
             let parent = destination_by_name
@@ -318,7 +332,8 @@ pub(super) async fn copy_sample(pool: &PgPool, schema: &str, runs: &[Uuid]) -> R
         copied,
         supporting_fk_tables,
         domain,
-        source_foreign_keys: keys.len(),
+        source_foreign_keys: source_keys.len(),
+        prefix_foreign_keys: keys.len(),
         closure_passes: passes,
         missing_foreign_key_parents: 0,
         tables: destination,

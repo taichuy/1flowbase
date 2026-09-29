@@ -74,8 +74,18 @@ pub(super) struct Events {
 }
 
 pub(super) async fn events(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result<Events> {
+    // Qualifying the resolver does not qualify its internal SQL. Bind the whole
+    // read-only transaction to the source/destination schema, then restore the
+    // pool connection's isolated search_path automatically at transaction end.
+    let mut tx = pool.begin().await?;
+    sqlx::query("set transaction read only")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(&format!("set local search_path to {}", ident(schema)))
+        .execute(&mut *tx)
+        .await?;
     let sql=format!("select to_jsonb(e)-array['payload','raw_json_payloads','observation_body_content_id','observation_body_manifest_id']::text[] headers,{}.runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) original from {} e where e.flow_run_id=any({}) order by e.flow_run_id,e.sequence,e.id",ident(schema),qualified(schema,"runtime_events"),run_array(runs));
-    let mut rows = sqlx::query(&sql).fetch(pool);
+    let mut rows = sqlx::query(&sql).fetch(&mut *tx);
     let mut originals = Recorder::default();
     let mut native = Recorder::default();
     while let Some(row) = rows.try_next().await? {
@@ -90,6 +100,8 @@ pub(super) async fn events(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result
             native.add(body.as_bytes());
         }
     }
+    drop(rows);
+    tx.commit().await?;
     let signature = originals.finish();
     ensure!(
         signature.entries == super::EVENTS as u64,
