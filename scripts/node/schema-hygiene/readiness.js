@@ -60,7 +60,64 @@ function hasFlowRunOwnerIndex(table) {
     || table.indexes.some((index) => index.columns[0] === 'flow_run_id');
 }
 
-function profileFindingsForTable(table, profile) {
+function sameColumns(actual = [], expected = []) {
+  return actual.length === expected.length && actual.every((column, index) => column === expected[index]);
+}
+
+function normalizedCheck(definition) {
+  return definition.replace(/^constraint\s+("[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)\s+/iu, '')
+    .replace(/^check\s*/iu, '').replace(/\s+/gu, '');
+}
+
+function physicalContractFindings(table, contract) {
+  if (!contract || !contract.primaryKey?.length || !Object.keys(contract.columns || {}).length
+    || !contract.foreignKeys?.length || !contract.ownershipSource) {
+    return [{ rule: 'physical-contract-declaration', column: null,
+      message: 'physical_contract_table requires columns, exact primary key, owner foreign keys, and ownership source' }];
+  }
+  const findings = [];
+  const report = (rule, column, message) => findings.push({ rule: `physical-contract-${rule}`, column, message });
+  for (const [name, expected] of Object.entries(contract.columns)) {
+    const actual = findColumn(table, name);
+    if (!actual || actual.type !== expected.type || actual.nullable !== expected.nullable) {
+      report('column', name, `physical contract requires ${name} ${expected.type} ${expected.nullable ? 'nullable' : 'not null'}`);
+    }
+  }
+  if (!sameColumns(table.primaryKey?.columns, contract.primaryKey)) {
+    report('primary-key', null, `physical contract requires primary key (${contract.primaryKey.join(', ')})`);
+  }
+  for (const expected of contract.foreignKeys) {
+    if (!table.foreignKeys.some((actual) => sameColumns(actual.columns, expected.columns)
+      && actual.references.table === expected.table && sameColumns(actual.references.columns, expected.references)
+      && actual.onDelete === expected.onDelete)) {
+      report('owner-foreign-key', expected.columns.join(','),
+        `physical contract requires (${expected.columns.join(', ')}) -> ${expected.table}(${expected.references.join(', ')}) on delete ${expected.onDelete}`);
+    }
+  }
+  for (const expected of contract.uniqueConstraints || []) {
+    if (!table.uniqueConstraints.some((actual) => sameColumns(actual.columns, expected) && !actual.predicate)) {
+      report('unique', null, `physical contract requires unique (${expected.join(', ')})`);
+    }
+  }
+  const checks = table.checks.map((check) => normalizedCheck(check.definition));
+  for (const expected of contract.checks || []) {
+    if (!checks.includes(normalizedCheck(expected))) {
+      report('check', null, `physical contract requires CHECK ${expected}`);
+    }
+  }
+  for (const expected of contract.indexPrefixes || []) {
+    if (!table.indexes.some((index) => sameColumns(index.columns.slice(0, expected.length), expected))
+      && ![table.primaryKey, ...table.uniqueConstraints].some((key) => key && sameColumns(key.columns.slice(0, expected.length), expected))) {
+      report('owner-index', expected.join(','), `physical contract requires lookup index led by (${expected.join(', ')})`);
+    }
+  }
+  return findings;
+}
+
+function profileFindingsForTable(table, profile, config = {}) {
+  if (profile === 'physical_contract_table') {
+    return physicalContractFindings(table, config.physicalTableContracts?.[table.name]);
+  }
   if (profile === 'flow_run_owned_table') {
     const findings = [];
     if (!hasFlowRunOwnerReference(table)) {
@@ -324,6 +381,26 @@ function platformReadinessForTable({ table, profile, config, tableFindings }) {
       recommendedActions: ['needs_owner_review'],
       severity: 'warning',
       reason: needsOwnerReviewReason,
+    };
+  }
+  if (profile === 'physical_contract_table') {
+    const invalid = tableFindings.some((item) => item.severity === 'error');
+    const contract = config.physicalTableContracts[table.name];
+    return {
+      category: profile,
+      timeKey: null,
+      tieBreaker: contract?.primaryKey || null,
+      fields,
+      missingFields: tableFindings.filter((item) => item.severity === 'error').map((item) => item.column || item.rule),
+      requiredScopeId: Boolean(contract?.columns?.scope_id),
+      routingKeyStatus: invalid ? 'needs_owner_review' : 'owner_foreign_key',
+      scopeGenerationSource: { status: invalid ? 'needs_owner_review' : 'derived', source: contract?.ownershipSource || null },
+      backfillSource: null,
+      writePathSource: contract?.writePathSource || null,
+      hasScopeTimeIdIndex: false,
+      recommendedActions: [invalid ? 'review_profile_contract' : 'no_action'],
+      severity: invalid ? 'error' : 'ok',
+      reason: invalid ? 'physical identity or ownership contract requires repair' : 'physical columns, identity, ownership and integrity checks passed',
     };
   }
   if (profile === 'flow_run_owned_table' || profile === 'retired_archive_table') {
