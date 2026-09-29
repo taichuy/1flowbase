@@ -95,19 +95,15 @@ impl PgControlPlaneStore {
                     "result",
                     "schema",
                     "timing",
-                    "usage",
-                    "raw"
+                    "usage"
                 ]
                 .contains(&section.as_str()),
                 "client trajectory section invalid"
             );
-            // Raw wire can arrive before request JSON classification, but is always
-            // bound to the real capture root. Other sections must own an indexed step.
-            if section != "raw" || *step_id != input.request_id {
-                let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_steps where id=$1 and request_id=$2 and flow_run_id=$3)")
-                    .bind(step_id).bind(input.request_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
-                anyhow::ensure!(valid, "client trajectory section scope mismatch");
-            }
+            // Raw callers have already entered their archive path above.
+            let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_steps where id=$1 and request_id=$2 and flow_run_id=$3)")
+                .bind(step_id).bind(input.request_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
+            anyhow::ensure!(valid, "client trajectory section scope mismatch");
         }
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
