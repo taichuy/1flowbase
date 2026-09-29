@@ -1,6 +1,7 @@
 mod node_details;
 mod callback_originals;
 mod observation_bodies;
+mod native_snapshots;
 
 use control_plane_contracts::{application_public_runtime::*, ports::*};
 use serde_json::{json, Value};

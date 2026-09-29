@@ -191,7 +191,8 @@ impl PgControlPlaneStore {
         lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let next_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
-        let (payload, observation_body_content_id) =
+        observation_bodies::lock_native_batch(&mut tx, std::slice::from_ref(input)).await?;
+        let (payload, observation_body_content_id, observation_body_manifest_id) =
             observation_bodies::archive_payload(&mut tx, input).await?;
         let row = sqlx::query(
             r#"
@@ -211,7 +212,7 @@ impl PgControlPlaneStore {
                 payload,
                 visibility,
                 durability
-            , raw_json_payloads, observation_body_content_id) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ($13::jsonb -> 0), $14, $15, jsonb_strip_nulls(jsonb_build_object('payload', ($13::jsonb -> 1))), $16 )
+            , raw_json_payloads, observation_body_content_id, observation_body_manifest_id) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ($13::jsonb -> 0), $14, $15, jsonb_strip_nulls(jsonb_build_object('payload', ($13::jsonb -> 1))), $16, $17 )
             returning
                 id,
                 flow_run_id,
@@ -247,6 +248,7 @@ impl PgControlPlaneStore {
         .bind(input.visibility.as_str())
         .bind(input.durability.as_str())
         .bind(observation_body_content_id)
+        .bind(observation_body_manifest_id)
         .fetch_one(&mut *tx)
         .await?;
         let event = map_runtime_event_record(row)?;
@@ -279,8 +281,9 @@ impl PgControlPlaneStore {
         lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_runtime_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
-        // PostgreSQL encodes the bind count as u16; each event binds 17 columns.
-        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 17;
+        observation_bodies::lock_native_batch(&mut tx, inputs).await?;
+        // PostgreSQL encodes the bind count as u16; each event binds 18 columns.
+        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 18;
         let mut records = Vec::with_capacity(inputs.len());
         for (chunk_index, chunk) in inputs.chunks(MAX_BATCH_ROWS).enumerate() {
             let mut builder = QueryBuilder::<Postgres>::new(
@@ -302,7 +305,8 @@ impl PgControlPlaneStore {
                     visibility,
                     durability,
                     raw_json_payloads,
-                    observation_body_content_id
+                    observation_body_content_id,
+                    observation_body_manifest_id
                 ) "#,
             );
             let mut archived = Vec::with_capacity(chunk.len());
@@ -311,7 +315,7 @@ impl PgControlPlaneStore {
             }
             builder.push_values(
                 chunk.iter().zip(archived.iter()).enumerate(),
-                |mut row, (index, (input, (payload, content_id)))| {
+                |mut row, (index, (input, (payload, content_id, manifest_id)))| {
                     let (projection, originals) = lossless_json_columns("payload", payload);
                     row.push_bind(Uuid::now_v7())
                         .push_bind(input.flow_run_id)
@@ -329,7 +333,8 @@ impl PgControlPlaneStore {
                         .push_bind(input.visibility.as_str())
                         .push_bind(input.durability.as_str())
                         .push_bind(originals)
-                        .push_bind(*content_id);
+                        .push_bind(*content_id)
+                        .push_bind(*manifest_id);
                 },
             );
             builder.push(

@@ -20,7 +20,7 @@ rand.workspace = true
 rand_regex.workspace = true
 regex-syntax.workspace = true
 storage-durable = { path = "../core" }
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
 rust_decimal.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
