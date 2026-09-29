@@ -17,23 +17,27 @@ const ROOT_ENTRIES = [
   "scripts",
   "docker",
   ".github",
+  ".agents",
   "AGENTS.md",
   "test_dir.txt",
 ];
 const SOURCE_EXTENSIONS = new Set([
   ".css",
+  ".cjs",
   ".js",
   ".json",
   ".md",
+  ".mjs",
   ".rs",
   ".ts",
   ".tsx",
   ".yml",
   ".yaml",
 ]);
-const CODE_EXTENSIONS = new Set([".css", ".js", ".rs", ".ts", ".tsx"]);
+const CODE_EXTENSIONS = new Set([".css", ".cjs", ".js", ".mjs", ".rs", ".ts", ".tsx"]);
 const SKIPPED_DIRS = new Set([
   ".git",
+  ".memory",
   "coverage",
   "dist",
   "node_modules",
@@ -132,7 +136,7 @@ function isCodeFile(relativePath) {
 function isTestPath(relativePath) {
   return (
     TEST_PATH_PATTERN.test(relativePath) ||
-    /(?:^|[./-])(?:test|spec)\.[jt]sx?$/u.test(relativePath)
+    /(?:^|[./-])(?:test|spec)\.(?:[jt]sx?|[cm]js)$/u.test(relativePath)
   );
 }
 
@@ -655,6 +659,18 @@ function isFileSizePressureExempt(relativePath) {
 }
 
 function collectLinePressureFindings({ relativePath, content }) {
+  if (path.posix.basename(relativePath) === "AGENTS.md") {
+    const lines = countLines(content);
+    return lines > 200
+      ? [createFinding({
+          rule: "agents-file-size-pressure",
+          file: relativePath,
+          message: "AGENTS.md exceeds the repository 200-line instruction limit",
+          snippet: `${lines} lines`,
+        })]
+      : [];
+  }
+
   if (!isCodeFile(relativePath) || isFileSizePressureExempt(relativePath)) {
     return [];
   }

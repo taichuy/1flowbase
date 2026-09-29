@@ -341,7 +341,7 @@ function walkScriptTests(currentDir, collected) {
 
     if (
       entry.isFile() &&
-      entry.name.endsWith(".js") &&
+      (entry.name.endsWith(".js") || /\.test\.[cm]js$/u.test(entry.name)) &&
       absolutePath.includes(`${path.sep}_tests${path.sep}`)
     ) {
       collected.push(absolutePath);

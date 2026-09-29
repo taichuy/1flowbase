@@ -4,7 +4,35 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { parseCliArgs, selectTestFiles, buildCommand, main } = require('../../test-scripts.js');
+const { parseCliArgs, listTestFiles, selectTestFiles, buildCommand, main } = require('../../test-scripts.js');
+
+test('listTestFiles discovers JavaScript tests and named CJS/ESM tests only under _tests', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-script-discovery-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const fixtures = [
+    'scripts/node/example/_tests/core.test.js',
+    'scripts/node/example/_tests/existing.js',
+    'scripts/node/example/_tests/core.test.cjs',
+    'scripts/node/example/_tests/nested/core.test.mjs',
+    'scripts/node/example/_tests/run.cjs',
+    'scripts/node/example/_tests/helper.mjs',
+    'scripts/node/example/core.test.cjs',
+    'scripts/node/example/core.test.mjs',
+    'scripts/node/example/core.test.js',
+  ];
+  for (const fixture of fixtures) {
+    const filePath = path.join(repoRoot, fixture);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, '');
+  }
+
+  assert.deepEqual(listTestFiles(repoRoot).map((file) => path.relative(repoRoot, file)).sort(), [
+    'scripts/node/example/_tests/core.test.cjs',
+    'scripts/node/example/_tests/core.test.js',
+    'scripts/node/example/_tests/existing.js',
+    'scripts/node/example/_tests/nested/core.test.mjs',
+  ]);
+});
 
 test('parseCliArgs defaults to all script tests', () => {
   assert.deepEqual(parseCliArgs([]), {
