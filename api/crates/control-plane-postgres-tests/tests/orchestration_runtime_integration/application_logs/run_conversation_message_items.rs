@@ -59,6 +59,7 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
         "run-conversation-items-page",
         started_at,
         json!({
+            "__native_model_prompt_context": {"system": [{"text": "Use concise Chinese."}]},
             "node-start": {
                 "system": "Use concise Chinese.",
                 "query": "current question",
@@ -164,10 +165,7 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
     assert_eq!(initial_page.newest_sequence, Some(0));
     assert_eq!(initial_page.contexts.len(), 1);
     assert_eq!(initial_page.contexts[0].role, "system");
-    assert_eq!(
-        initial_page.contexts[0].context_source,
-        "application_config"
-    );
+    assert_eq!(initial_page.contexts[0].context_source, "client_request");
     assert_eq!(initial_page.contexts[0].content, "Use concise Chinese.");
     assert_eq!(initial_page.items.len(), 1);
     assert_eq!(initial_page.items[0].source_kind, "business_turn");
@@ -317,7 +315,7 @@ async fn terminal_failed_and_cancelled_runs_write_current_projection_items() {
 }
 
 #[tokio::test]
-async fn terminal_projection_reads_llm_node_system_prompt_when_run_input_has_no_system() {
+async fn terminal_projection_does_not_import_llm_system_when_request_has_no_system() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -392,34 +390,27 @@ async fn terminal_projection_reads_llm_node_system_prompt_when_run_input_has_no_
     .await
     .unwrap();
 
-    let projected_system = sqlx::query_as::<_, (i64, String, String)>(
-        r#"
-        select display_sequence, role, content
-        from application_run_conversation_message_items
-        where flow_run_id = $1
-          and source_kind = 'imported_context'
-        order by display_sequence asc
-        limit 1
-        "#,
-    )
-    .bind(run.id)
-    .fetch_one(store.pool())
-    .await
-    .unwrap();
-
+    let invented: i64 = sqlx::query_scalar(
+        "select count(*) from application_run_conversation_message_items where flow_run_id=$1 and context_source is not null",
+    ).bind(run.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(
-        projected_system,
-        (
-            // Context lives outside the conversation sequence range.
-            1_000_000,
-            "system".to_string(),
-            "Use the node effective system prompt.".to_string()
-        )
+        invented, 0,
+        "effective node context is not a client request message"
+    );
+    let retained: Value =
+        sqlx::query_scalar("select debug_payload from node_run_records where id=$1")
+            .bind(node_run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(
+        retained["llm_context"]["effective_system"],
+        "Use the node effective system prompt."
     );
 }
 
 #[tokio::test]
-async fn migration_repairs_missing_system_projection_without_rebuilding_history() {
+async fn request_history_migration_preserves_legacy_turns_without_injecting_system() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -459,25 +450,23 @@ async fn migration_repairs_missing_system_projection_without_rebuilding_history(
     .await
     .unwrap();
 
-    sqlx::query(
-        r#"
-        delete from application_run_conversation_message_items
-        where flow_run_id = $1
-          and role = 'system'
-        "#,
-    )
-    .bind(run.id)
-    .execute(store.pool())
-    .await
-    .unwrap();
-    // The writer serves context beside the conversation stream, so deleting the
-    // system row leaves exactly the pre-repair layout the migration expects.
+    let original_ids = sqlx::query_scalar::<_, Uuid>(
+        "select id from application_run_conversation_message_items where flow_run_id=$1 order by display_sequence"
+    ).bind(run.id).fetch_all(store.pool()).await.unwrap();
+    sqlx::query("update application_run_conversation_message_items set projection_version=5,source_revision=regexp_replace(source_revision,'^v6:','v5:') where flow_run_id=$1")
+        .bind(run.id).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into application_run_conversation_message_items(id,scope_id,application_id,flow_run_id,display_sequence,source_kind,role,content,can_open_detail,is_current,status,started_at,projection_version,context_source) select $2,scope_id,application_id,flow_run_id,1000000,'imported_context','system','Use the repaired system prompt.',false,false,status,started_at,5,'application_config' from application_run_conversation_message_items where flow_run_id=$1 and is_current")
+        .bind(run.id).bind(Uuid::now_v7()).execute(store.pool()).await.unwrap();
     sqlx::raw_sql(include_str!(
-        "../../../../storage/durable/postgres/migrations/20260630120000_repair_run_conversation_projection_system.sql"
-    ))
-    .execute(store.pool())
-    .await
-    .unwrap();
+        "../../../../storage/durable/postgres/migrations/20260929190000_request_history_context_provenance.sql"
+    )).execute(store.pool()).await.unwrap();
+    let repaired_ids = sqlx::query_scalar::<_, Uuid>(
+        "select id from application_run_conversation_message_items where flow_run_id=$1 order by display_sequence"
+    ).bind(run.id).fetch_all(store.pool()).await.unwrap();
+    assert_eq!(
+        original_ids, repaired_ids,
+        "actual turns and cursor identities remain unchanged"
+    );
 
     let rows = sqlx::query_as::<_, (i64, Option<String>, Option<String>, bool)>(
         r#"
@@ -497,23 +486,17 @@ async fn migration_repairs_missing_system_projection_without_rebuilding_history(
         vec![
             (
                 0,
-                Some("system".to_string()),
-                Some("Use the repaired system prompt.".to_string()),
-                false,
+                Some("user".to_string()),
+                Some("old question".to_string()),
+                false
             ),
             (
                 1,
-                Some("user".to_string()),
-                Some("old question".to_string()),
-                false,
-            ),
-            (
-                2,
                 Some("assistant".to_string()),
                 Some("old answer".to_string()),
-                false,
+                false
             ),
-            (3, None, None, true),
+            (2, None, None, true),
         ]
     );
 }
@@ -624,6 +607,7 @@ async fn non_terminal_run_projects_retained_input_before_the_call_finishes() {
         "run-conversation-running",
         started_at,
         json!({
+            "__native_model_prompt_context": {"system": [{"text": "Use concise Chinese."}]},
             "node-start": {
                 "system": "Use concise Chinese.",
                 "query": "running question",

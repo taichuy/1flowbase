@@ -28,9 +28,8 @@ struct ApplicationRunConversationMessageItemProjection {
     context_source: Option<&'static str>,
 }
 
-/// One system/developer context entry in force for a call, with the layer it
-/// came from: the client request, the application configuration, or the
-/// effective prompt the model node actually ran with.
+/// System/developer content submitted by the client in this request.
+/// Application configuration and resolved model context belong to node logs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ApplicationRunConversationContext {
     role: String,
@@ -40,7 +39,6 @@ struct ApplicationRunConversationContext {
 
 fn application_run_conversation_contexts(
     input_payload: &serde_json::Value,
-    effective_system: Option<String>,
 ) -> Vec<ApplicationRunConversationContext> {
     let mut contexts = Vec::new();
     let native_context = input_payload
@@ -78,28 +76,11 @@ fn application_run_conversation_contexts(
             }
         }
     }
-    if let Some(system) = application_conversation_system_text(input_payload) {
-        push_application_run_conversation_context(
-            &mut contexts,
-            "system",
-            "application_config",
-            system,
-        );
-    }
-    if let Some(system) = effective_system {
-        push_application_run_conversation_context(
-            &mut contexts,
-            "system",
-            "effective_prompt",
-            system,
-        );
-    }
 
     contexts
 }
 
-/// Context entries are deduplicated by content so the same effective prompt is
-/// reported once, from its earliest source.
+/// Preserve each submitted context message, including repeated content across roles.
 fn push_application_run_conversation_context(
     contexts: &mut Vec<ApplicationRunConversationContext>,
     role: &str,
@@ -109,9 +90,6 @@ fn push_application_run_conversation_context(
     let Some(content) = trimmed_text(&content) else {
         return;
     };
-    if contexts.iter().any(|context| context.content == content) {
-        return;
-    }
     contexts.push(ApplicationRunConversationContext {
         role: role.to_string(),
         context_source,
@@ -336,64 +314,6 @@ fn application_run_conversation_history_message_content(
     trimmed_text(&text)
 }
 
-fn llm_prompt_messages_system_content(payload: &serde_json::Value) -> Option<String> {
-    let prompt_messages_value = payload.get("prompt_messages")?;
-    let resolved_prompt_messages = runtime_debug_artifact_preview_value(prompt_messages_value);
-    let messages = resolved_prompt_messages
-        .as_ref()
-        .unwrap_or(prompt_messages_value)
-        .as_array()?;
-    let system = messages
-        .iter()
-        .filter(|message| message.get("role").and_then(serde_json::Value::as_str) == Some("system"))
-        .filter_map(application_run_conversation_history_message_content)
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    trimmed_text(&system)
-}
-
-fn llm_effective_system_content(payload: &serde_json::Value) -> Option<String> {
-    let effective_system = payload
-        .get("llm_context")
-        .and_then(|context| context.get("effective_system"))?;
-    let resolved_system = runtime_debug_artifact_preview_value(effective_system);
-
-    resolved_system
-        .as_ref()
-        .and_then(conversation_prompt_text)
-        .or_else(|| conversation_prompt_text(effective_system))
-}
-
-fn conversation_prompt_text(value: &serde_json::Value) -> Option<String> {
-    if let Some(text) = conversation_text_value(value) {
-        return Some(text);
-    }
-
-    let parts = value.as_array()?;
-    let text = parts
-        .iter()
-        .filter_map(conversation_text_value)
-        .collect::<Vec<_>>()
-        .join("");
-    trimmed_text(&text)
-}
-
-fn runtime_debug_artifact_preview_value(value: &serde_json::Value) -> Option<serde_json::Value> {
-    if !value
-        .get("__runtime_debug_artifact")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false)
-    {
-        return None;
-    }
-
-    value
-        .get("preview")
-        .and_then(serde_json::Value::as_str)
-        .and_then(|preview| serde_json::from_str(preview).ok())
-}
-
 fn application_conversation_model_text(payload: &serde_json::Value) -> Option<String> {
     string_field_value(payload, "model").or_else(|| {
         let start = application_conversation_start_payload(payload);
@@ -556,12 +476,9 @@ impl PgControlPlaneStore {
         // Context is not a conversation turn: it is projected in its own
         // sequence range and served beside the page so it stays discoverable
         // regardless of pagination.
-        let effective_system =
-            Self::application_run_conversation_llm_effective_system(tx, run.id).await?;
-        for (index, entry) in
-            application_run_conversation_contexts(&run.input_payload, effective_system)
-                .into_iter()
-                .enumerate()
+        for (index, entry) in application_run_conversation_contexts(&run.input_payload)
+            .into_iter()
+            .enumerate()
         {
             items.push((
                 APPLICATION_RUN_CONTEXT_SEQUENCE_BASE + index as i64,

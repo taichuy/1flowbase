@@ -84,7 +84,7 @@ async fn native_running_run_projects_prompt_context_and_completed_output_items()
             ))
             .collect::<Vec<_>>(),
         vec![("system", "client_request", "Codex desktop context.")],
-        "identical client and application context is reported once, from its earliest source"
+        "only the client-submitted context is projected"
     );
     let output_state = page.output_state.as_ref().unwrap();
     assert_eq!(output_state.status, "running");
@@ -104,7 +104,7 @@ async fn native_running_run_projects_prompt_context_and_completed_output_items()
 }
 
 #[tokio::test]
-async fn native_projection_distinguishes_client_application_and_effective_context() {
+async fn native_projection_keeps_client_context_and_excludes_execution_context() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -169,10 +169,19 @@ async fn native_projection_distinguishes_client_application_and_effective_contex
     let persisted_effective: Option<String> = sqlx::query_scalar(
         "select content from application_run_conversation_message_items where flow_run_id=$1 and context_source='effective_prompt'")
         .bind(run.id).fetch_optional(store.pool()).await.unwrap();
+    assert!(
+        persisted_effective.is_none(),
+        "node completion must not invent request context"
+    );
+    let retained: Value =
+        sqlx::query_scalar("select input_payload from node_run_records where id=$1")
+            .bind(node_run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
     assert_eq!(
-        persisted_effective.as_deref(),
-        Some("effective system"),
-        "node completion writes the effective context before any GET"
+        retained["prompt_messages"][0]["content"],
+        "effective system"
     );
 
     let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
@@ -188,8 +197,6 @@ async fn native_projection_distinguishes_client_application_and_effective_contex
         vec![
             ("system", "client_request", "client system"),
             ("developer", "client_request", "developer instructions"),
-            ("system", "application_config", "application system"),
-            ("system", "effective_prompt", "effective system"),
         ]
     );
     assert!(
@@ -202,7 +209,7 @@ async fn native_projection_distinguishes_client_application_and_effective_contex
 }
 
 #[tokio::test]
-async fn native_node_updates_write_effective_context_without_get_repair() {
+async fn native_node_updates_do_not_invent_request_prompts_or_compaction() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -226,7 +233,10 @@ async fn native_node_updates_write_effective_context_without_get_repair() {
             node_type: "llm".into(),
             node_alias: "LLM".into(),
             status: NodeRunStatus::Running,
-            input_payload: json!({}),
+            input_payload: json!({"prompt_messages": [
+                {"role": "system", "content": "中文回复"},
+                {"role": "user", "content": "internal compacted summary"}
+            ]}),
             debug_payload: json!({}),
             started_at,
         })
@@ -246,9 +256,16 @@ async fn native_node_updates_write_effective_context_without_get_repair() {
             })
             .await
             .unwrap();
-        let persisted: String = sqlx::query_scalar("select content from application_run_conversation_message_items where flow_run_id=$1 and context_source='effective_prompt'")
+        let invented: i64 = sqlx::query_scalar("select count(*) from application_run_conversation_message_items where flow_run_id=$1 and context_source is not null")
             .bind(run.id).fetch_one(store.pool()).await.unwrap();
-        assert_eq!(persisted, effective);
+        assert_eq!(invented, 0);
+        let retained: Value =
+            sqlx::query_scalar("select debug_payload from node_run_records where id=$1")
+                .bind(node.id)
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(retained["llm_context"]["effective_system"], effective);
     }
     store.complete_node_run(&CompleteNodeRunInput {
         node_run_id: node.id, status: NodeRunStatus::Succeeded,
@@ -256,15 +273,20 @@ async fn native_node_updates_write_effective_context_without_get_repair() {
         debug_payload: json!({"llm_context": {"effective_system": "completed effective system"}}),
         finished_at: started_at,
     }).await.unwrap();
-    let persisted: String = sqlx::query_scalar("select content from application_run_conversation_message_items where flow_run_id=$1 and context_source='effective_prompt'")
-        .bind(run.id).fetch_one(store.pool()).await.unwrap();
-    assert_eq!(persisted, "completed effective system");
     let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
-    assert!(page
-        .contexts
-        .iter()
-        .any(|context| context.context_source == "effective_prompt"
-            && context.content == "completed effective system"));
+    assert!(page.contexts.is_empty());
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].query.as_deref(), Some("q"));
+    let retained: Value =
+        sqlx::query_scalar("select input_payload from node_run_records where id=$1")
+            .bind(node.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(
+        retained["prompt_messages"][1]["content"],
+        "internal compacted summary"
+    );
 }
 
 #[tokio::test]
@@ -730,6 +752,94 @@ async fn run_conversation_after_cursor_drains_a_backlog_larger_than_one_page() {
         .await
         .unwrap();
     assert!(wrong_scope.items.is_empty());
+}
+
+#[tokio::test]
+async fn request_history_migration_removes_derived_context_and_preserves_facts_and_cursors() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_native_run_conversation_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        "request-provenance-migration",
+        datetime!(2026-09-29 09:00:00 UTC),
+        json!({"__native_model_prompt_context": {"system": [{"text": "client system"}]}}),
+        Some(json!({"role": "user", "content": "client summary\u{0000} and literal \\u0000"})),
+    )
+    .await;
+    append_provider_output_item(
+        &store,
+        run.id,
+        json!({
+            "id": "compaction-result", "type": "compaction", "summary": "actual compaction output",
+            "_log_source_revision": "v5:provider-owned-field", "opaque": "output\u{0000}value"
+        }),
+    )
+    .await;
+    let original_page =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    // Recreate v5 with both fabricated layers. Only the version changes for
+    // real facts; opaque source items and raw NUL-bearing content must survive.
+    sqlx::query("update application_run_conversation_message_items set projection_version=5, source_revision=regexp_replace(source_revision,'^v6:','v5:'), native_message=jsonb_set(native_message,'{_log_source_revision}',to_jsonb(regexp_replace(native_message->>'_log_source_revision','^v6:','v5:'))), raw_json_payloads=replace(raw_json_payloads::text,'v6:','v5:')::jsonb where flow_run_id=$1")
+        .bind(run.id).execute(store.pool()).await.unwrap();
+    let before = sqlx::query_as::<_, (Uuid, i64, Value)>(
+        "select id,display_sequence,runtime_original_json(native_message,raw_json_payloads,'native_message') from application_run_conversation_message_items where flow_run_id=$1 order by display_sequence"
+    ).bind(run.id).fetch_all(store.pool()).await.unwrap();
+    for (index, source) in ["application_config", "effective_prompt"]
+        .iter()
+        .enumerate()
+    {
+        sqlx::query("insert into application_run_conversation_message_items(id,scope_id,application_id,flow_run_id,display_sequence,source_kind,role,content,can_open_detail,is_current,status,started_at,projection_version,context_source,source_revision) select $2,scope_id,application_id,flow_run_id,$3,source_kind,'system','fabricated context',false,false,status,started_at,5,$4,source_revision from application_run_conversation_message_items where flow_run_id=$1 and context_source='client_request'")
+            .bind(run.id).bind(Uuid::now_v7()).bind(1_000_001_i64 + index as i64)
+            .bind(source).execute(store.pool()).await.unwrap();
+    }
+    let migration = include_str!("../../../../storage/durable/postgres/migrations/20260929190000_request_history_context_provenance.sql");
+    sqlx::raw_sql(migration)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let after = sqlx::query_as::<_, (Uuid, i64, Value)>(
+        "select id,display_sequence,runtime_original_json(native_message,raw_json_payloads,'native_message') from application_run_conversation_message_items where flow_run_id=$1 order by display_sequence"
+    ).bind(run.id).fetch_all(store.pool()).await.unwrap();
+    assert_eq!(after.len(), before.len());
+    for ((id, sequence, mut original), (new_id, new_sequence, restored)) in
+        before.into_iter().zip(after)
+    {
+        assert_eq!((id, sequence), (new_id, new_sequence));
+        let revision = original["_log_source_revision"]
+            .as_str()
+            .unwrap()
+            .replacen("v5:", "v6:", 1);
+        original["_log_source_revision"] = json!(revision);
+        assert_eq!(original, restored, "only the derived revision may change");
+    }
+    let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    assert_eq!(page.contexts.len(), 1);
+    assert_eq!(page.contexts[0].content, "client system");
+    assert_eq!(
+        page.items[0].query.as_deref(),
+        original_page.items[0].query.as_deref()
+    );
+    // A real compaction output remains formal output evidence, unlike an
+    // internally restored summary inserted into a model prompt.
+    let outputs: i64 = sqlx::query_scalar("select count(*) from application_run_conversation_message_items where flow_run_id=$1 and native_message->'_source_item'->>'type'='compaction' and source_revision like 'v6:%'")
+        .bind(run.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(outputs, 1);
+    sqlx::raw_sql(migration)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5)
+            .await
+            .contexts
+            .len(),
+        1
+    );
 }
 
 /// A native (client protocol) run keeps its request facts in `log_context`, so

@@ -5,7 +5,7 @@
 // Bump when the projection derivation changes: the stored revision is prefixed
 // with this version, so rows written by an older writer are never served as
 // current.
-const APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION: i32 = 5;
+const APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION: i32 = 6;
 
 /// Roles that carry context rather than a conversation turn. They are projected
 /// next to the paged items so the newest page never hides the context in force.
@@ -31,8 +31,7 @@ impl PgControlPlaneStore {
             .bind(flow_run_id).fetch_one(&mut **tx).await?;
         let run = map_flow_run_record(row)?;
         Self::upsert_application_run_log_summary_projection_for_flow_run(tx, &run).await?;
-        // Node debug/prompt facts are not part of the run/event watermark.
-        // A writer boundary must therefore replace the projection even when that watermark matches.
+        // Completed output boundaries refresh retained message facts in the same transaction.
         Self::replace_application_run_conversation_message_items_projection(tx, &run).await?;
         Self::refresh_application_run_log_task_for_flow_run(tx, flow_run_id).await
     }
@@ -135,10 +134,7 @@ impl PgControlPlaneStore {
             }
             return Ok(());
         }
-        let effective_system =
-            Self::application_run_conversation_llm_effective_system(tx, flow_run.id).await?;
-        let contexts =
-            application_run_conversation_contexts(&flow_run.input_payload, effective_system);
+        let contexts = application_run_conversation_contexts(&flow_run.input_payload);
         let llm_assistant_message =
             Self::application_run_conversation_llm_assistant_message(tx, flow_run.id).await?;
         let items = application_run_conversation_message_items_from_flow_run(
@@ -216,40 +212,6 @@ impl PgControlPlaneStore {
         }
 
         Ok(())
-    }
-
-    /// The effective system prompt actually sent to the model node: the prompt
-    /// messages the node ran with, or the resolved system of its LLM context.
-    async fn application_run_conversation_llm_effective_system(
-        tx: &mut sqlx::Transaction<'_, Postgres>,
-        flow_run_id: Uuid,
-    ) -> Result<Option<String>> {
-        let rows = sqlx::query(
-            r#"
-            select runtime_original_json(input_payload, node_run_records.raw_json_payloads, 'input_payload') as input_payload, runtime_original_json(debug_payload, node_run_records.raw_json_payloads, 'debug_payload') as debug_payload
-            from node_run_records
-            where flow_run_id = $1
-              and node_type = 'llm'
-            order by started_at asc, id asc
-            "#,
-        )
-        .bind(flow_run_id)
-        .fetch_all(&mut **tx)
-        .await?;
-
-        for row in rows {
-            let input_payload: serde_json::Value = row.try_get("input_payload")?;
-            if let Some(system) = llm_prompt_messages_system_content(&input_payload) {
-                return Ok(Some(system));
-            }
-
-            let debug_payload: serde_json::Value = row.try_get("debug_payload")?;
-            if let Some(system) = llm_effective_system_content(&debug_payload) {
-                return Ok(Some(system));
-            }
-        }
-
-        Ok(None)
     }
 
     async fn application_run_conversation_llm_assistant_message(
