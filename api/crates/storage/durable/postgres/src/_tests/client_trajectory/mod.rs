@@ -893,7 +893,7 @@ async fn formal_archive_migration_retains_legacy_cursor_and_lossless_nul() {
     // Build a pre-migration row using the actual legacy projection trigger, then
     // execute the unchanged formal migration against that isolated schema.
     sqlx::raw_sql(
-        "drop table client_trajectory_archive_parts; drop table client_trajectory_archive_heads;",
+        "drop table client_trajectory_archive_parts; drop table client_trajectory_archive_blocks; drop table client_trajectory_archive_heads;",
     )
     .execute(&pool)
     .await
@@ -918,6 +918,16 @@ async fn formal_archive_migration_retains_legacy_cursor_and_lossless_nul() {
     .execute(&pool)
     .await
     .unwrap();
+    // This fixture rolls back only the Raw physical tables. Restore the exact
+    // archive portion of the formal forward migration before the current reader;
+    // the semantic directory portion is already installed in this schema.
+    let raw_forward = include_str!(
+        "../../../migrations/20260929120000_client_archive_blocks_and_compact_directory.sql"
+    )
+    .split("\nalter table client_trajectory_steps")
+    .next()
+    .unwrap();
+    sqlx::raw_sql(raw_forward).execute(&pool).await.unwrap();
     let legacy = store
         .client_trajectory_section(flow, None, request, "raw", None, 1)
         .await
