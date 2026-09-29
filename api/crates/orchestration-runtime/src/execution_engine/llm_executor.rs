@@ -1029,6 +1029,10 @@ where
             &mut attempt,
             distribution_selection_receipt.as_ref(),
         );
+        attach_provider_stream_timing_summary(
+            &mut attempt,
+            provider_observability.stream_timing_summary.as_ref(),
+        );
         attach_provider_stream_timing(&mut attempt, provider_observability.stream_timing.as_ref());
         attach_provider_timing_receipt(
             &mut attempt,

@@ -4,6 +4,9 @@ date: 2026-09-29 16
 decision_policy: verify_before_decision
 ---
 
+2026-09-29 21 用户明确批准 #2169 的计时粒度方案：正常供应商调用默认只保存精确统计摘要，逐事件性能计时改为执行前按需诊断；原始协议、工具调用、恢复与投递事实保持既有完整性。Root 负责实现和集成，storage_scout 实现在线累加器，唯一 fresh QA 集中验收；截止日期未指定。动机是消除对用户最终内容无贡献、且现有阶段统计只使用 min ingress/max append delay 的线性计时数组开销，而非压缩后继续永久存下所有过程。此授权只适用于计时采集与指标投影，不授权历史删除、schema/客户端协议变更、client_trajectory_archive_parts 语义改造或任意容量上限；三层边界与长期上下文按 DB locator 查的原则继续。开关为 FLOWBASE_PROVIDER_STREAM_TIMING_CAPTURE=1（调用前在 API 服务端启用），默认0。具体候选和验收取证以 Issue https://github.com/taichuy/1flowbase/issues/2169 及当前源码为准，不将计时字段缩减比例当整库磁盘收益。
+
+
 2026-09-29 16 用户明确授权清空 1flowbase 数据库中的历史会话、聊天记录及相关事件，重新从零研究存储。Root 已清理 public 和库内四个历史测试 schema 的同类运行历史，保留所有 schema/配置、应用/工作流/发布版本、模型配置、账号/API keys、当前余额及非消费初始化赠送记录。截止日期未指定，动机是建立只有新写入的研究基线。7800 已使用原验证过的 dev042二进制恢复；7600/1flowbase_gateway不在清理范围。参考证据在 tmp/test-governance/history-reset-20260929/：312 个历史相关表处理、11328992条旧记录移除，672 个非历史表在事务内的行数与SHA256指纹一致，初始化赠送和对应outbox原值一致；会话/消息/run/运行事件/raw归档/供应商请求日志为0。完成时数据库约368.65MB，public约35.41MB，具体占用应查询当前运行态。此前 #2158/#2159 的历史 run 已从 dev 库清掉，旧实测报告文件仍是当时的证据；后续 dev 研究使用新会话和新 run，不再将那些旧ID当作当前数据库样本。
 
 2026-09-29 15 用户批准的新一轮 dev 无损存储优化（Root https://github.com/taichuy/1flowbase/issues/2159）已由 Root 完成并合回、push dev，远端 04229839b2c9e56ef567a6341eb9f7bc5401b7a1。动机是降低长任务完整日志开销，同时保持应用/工作流/日志 UI、Raw 原值、身份、游标、ACK、恢复和备份；截止日期未指定。当前验证入口是7800/dev（PG35432/1flowbase），7600/gateway独立数据库1flowbase_gateway不变。实际tmux Codex CLI直连7800，gpt-6-luna/max，正常完成33分39.660秒，10关联run全成功、capture完整，UI和源不变验收通过。历史本轮只整合有明确无损证据的旧8+首轮8个run allowlist，新写入采用新布局；不能证明等价的格式保留。量化与口径必须复核 tmp/test-governance/storage-supervision/storage-2159/优化验证结果.md 和 final-integration.json：同一历史任务同等整理后50.012160→42.033152MB（-15.9541%）；新任务未整理隔离副本56.074240MB（49.975555MB/30m），同等整理后52.666368MB（46.938327MB/30m）。包含索引/TOAST及有限FK支持，排除WAL/备份/空闲页，不声称public即时释放空间，也不将新任务平均速率作为任意任务硬上限。此前 #2158 是上一轮结果，下面早期未授权条目仅为历史阶段。

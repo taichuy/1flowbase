@@ -524,6 +524,16 @@ pub(super) fn attach_distribution_selection_receipt(
     );
 }
 
+pub(super) fn attach_provider_stream_timing_summary(attempt: &mut Value, summary: Option<&Value>) {
+    let (Some(attempt), Some(summary)) = (attempt.as_object_mut(), summary) else {
+        return;
+    };
+    attempt.insert(
+        "provider_stream_timing_summary".to_string(),
+        summary.clone(),
+    );
+}
+
 pub(super) fn attach_provider_stream_timing(attempt: &mut Value, timing: Option<&Value>) {
     let (Some(attempt), Some(timing)) = (attempt.as_object_mut(), timing) else {
         return;
@@ -633,6 +643,7 @@ pub(super) fn attach_provider_timing_receipt(
 pub(super) struct ProviderObservabilityMetadata {
     pub(super) user_account: Option<Value>,
     pub(super) stream_timing: Option<Value>,
+    pub(super) stream_timing_summary: Option<Value>,
     pub(super) billing: Option<Value>,
     pub(super) provider_timing: Option<extension_contracts::ProviderInvocationTimingReceipt>,
     pub(super) transport_session: Option<extension_contracts::ProviderTransportSessionReceipt>,
@@ -652,6 +663,14 @@ pub(super) fn take_provider_observability_metadata(
 ) -> ProviderObservabilityMetadata {
     let mut extracted = ProviderObservabilityMetadata::default();
     while let Some(metadata) = result.provider_metadata.as_object_mut() {
+        // Only the explicitly tagged host envelope owns the new summary key.
+        // Once consumed, a supplier's same-name keys remain supplier metadata.
+        let is_summary_wrapper = extracted.stream_timing_summary.is_none()
+            && metadata
+                .get("_1flowbase_provider_observability_schema_version")
+                .and_then(Value::as_u64)
+                == Some(1)
+            && metadata.contains_key("_1flowbase_runtime_stream_timing_summary");
         let is_wrapper = metadata.contains_key("_1flowbase_upstream_provider_metadata")
             && (metadata.contains_key(
                 extension_contracts::PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY,
@@ -660,6 +679,7 @@ pub(super) fn take_provider_observability_metadata(
             ) || metadata.contains_key(RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY)
                 || metadata.contains_key(GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY)
                 || metadata.contains_key("_1flowbase_runtime_stream_timing")
+                || is_summary_wrapper
                 || metadata.contains_key("_1flowbase_billing")
                 || metadata.contains_key("_1flowbase_user_account"));
         if let Some(value) =
@@ -694,6 +714,10 @@ pub(super) fn take_provider_observability_metadata(
             .or(extracted.gateway_stages);
         if !is_wrapper {
             break;
+        }
+        if is_summary_wrapper {
+            extracted.stream_timing_summary =
+                metadata.remove("_1flowbase_runtime_stream_timing_summary");
         }
         extracted.stream_timing = metadata
             .remove("_1flowbase_runtime_stream_timing")
@@ -1366,3 +1390,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/provider_stream_timing_summary.rs"]
+mod provider_stream_timing_summary_tests;

@@ -20,7 +20,9 @@ mod main_instance_routing;
 mod native_trajectory;
 mod protocol_context;
 mod protocol_observation;
+mod stream_timing;
 pub(super) use failover_queue::freeze_failover_queue_routes;
+use stream_timing::ProviderStreamTiming;
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 const RESPONSES_WEBSOCKET_PREWARM_MAX_MS: i64 = 30_000;
@@ -599,7 +601,11 @@ where
         let provider_invoke_started_at = OffsetDateTime::now_utc();
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
-        let provider_stream_timing = Arc::new(Mutex::new(Vec::<Value>::new()));
+        // Freeze diagnostics before this invocation starts; clients cannot enable it.
+        let capture_stream_timing = std::env::var("FLOWBASE_PROVIDER_STREAM_TIMING_CAPTURE")
+            .is_ok_and(|value| value == "1");
+        let provider_stream_timing =
+            Arc::new(Mutex::new(ProviderStreamTiming::new(capture_stream_timing)));
         let native_output_items = Arc::new(Mutex::new(std::collections::BTreeMap::<
             usize,
             Option<Value>,
@@ -910,15 +916,16 @@ where
                             }
                         }
                     }
-                    if let Ok(mut timeline) = provider_stream_timing_for_task.lock() {
-                        timeline.push(json!({
-                            "sequence": ingress_sequence,
-                            "event_kind": event_kind,
-                            "size_bytes": size_bytes,
-                            "ingress_ms": ingress_ms,
-                            "runtime_append_ms": provider_invoke_started.elapsed().as_millis() as u64,
-                        }));
-                    }
+                    provider_stream_timing_for_task
+                        .lock()
+                        .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
+                        .observe(
+                            ingress_sequence,
+                            event_kind,
+                            size_bytes,
+                            ingress_ms,
+                            provider_invoke_started.elapsed().as_millis() as u64,
+                        )?;
                     if tool_delivery.is_none() {
                         if let Some(sender) = &live_sender {
                             sender
@@ -1187,15 +1194,17 @@ where
         }
         let mut invocation_output = invocation_output
             .ok_or_else(|| anyhow!("provider invocation completed without output or error"))?;
-        let runtime_stream_timing = provider_stream_timing
-            .lock()
-            .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
-            .clone();
+        let runtime_stream_timing = std::mem::replace(
+            &mut *provider_stream_timing
+                .lock()
+                .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?,
+            ProviderStreamTiming::new(false),
+        );
         attach_gateway_stage_timing(
             &mut invocation_output.result.provider_metadata,
             flow_ms,
-            first_runtime_ingress_ms(&runtime_stream_timing),
-            max_runtime_flush_ms(&runtime_stream_timing),
+            runtime_stream_timing.first_ingress_ms(),
+            runtime_stream_timing.max_append_delay_ms(),
         )?;
         // Keep the typed recovery receipt at the Host-owned metadata surface while wrapping
         // upstream diagnostics. AI Native must not parse nested Provider Close/cursor payloads.
@@ -1214,12 +1223,17 @@ where
                 "_1flowbase_upstream_provider_metadata": upstream,
             });
         }
-        if !runtime_stream_timing.is_empty() {
-            let provider_metadata = std::mem::take(&mut invocation_output.result.provider_metadata);
-            invocation_output.result.provider_metadata = json!({
-                "_1flowbase_runtime_stream_timing": runtime_stream_timing,
-                "_1flowbase_upstream_provider_metadata": provider_metadata,
-            });
+        let timing_summary = runtime_stream_timing.summary();
+        let timing_details = runtime_stream_timing.into_details();
+        let provider_metadata = std::mem::take(&mut invocation_output.result.provider_metadata);
+        invocation_output.result.provider_metadata = json!({
+            "_1flowbase_provider_observability_schema_version": 1,
+            "_1flowbase_runtime_stream_timing_summary": timing_summary,
+            "_1flowbase_upstream_provider_metadata": provider_metadata,
+        });
+        if let Some(details) = timing_details {
+            invocation_output.result.provider_metadata["_1flowbase_runtime_stream_timing"] =
+                details;
         }
         if let Some(receipt) = recovery_receipt {
             invocation_output
@@ -1249,24 +1263,6 @@ fn bounded_timing_millis(duration: std::time::Duration) -> u64 {
     u64::try_from(duration.as_millis())
         .unwrap_or(u64::MAX)
         .min(24 * 60 * 60 * 1_000)
-}
-
-fn max_runtime_flush_ms(timeline: &[Value]) -> Option<u64> {
-    timeline
-        .iter()
-        .filter_map(|event| {
-            let ingress = event.get("ingress_ms")?.as_u64()?;
-            let appended = event.get("runtime_append_ms")?.as_u64()?;
-            appended.checked_sub(ingress)
-        })
-        .max()
-}
-
-fn first_runtime_ingress_ms(timeline: &[Value]) -> Option<u64> {
-    timeline
-        .iter()
-        .filter_map(|event| event.get("ingress_ms").and_then(Value::as_u64))
-        .min()
 }
 
 fn attach_gateway_stage_timing(

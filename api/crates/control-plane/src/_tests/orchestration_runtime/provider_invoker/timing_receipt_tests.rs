@@ -2,25 +2,12 @@ use super::*;
 
 #[test]
 fn c2_clocked_timeline_keeps_ingress_and_flush_calculable() {
-    let timeline = vec![
-        json!({
-            "sequence": 1,
-            "event_kind": "text_delta",
-            "size_bytes": 12,
-            "ingress_ms": 37,
-            "runtime_append_ms": 40
-        }),
-        json!({
-            "sequence": 2,
-            "event_kind": "finish",
-            "size_bytes": 8,
-            "ingress_ms": 52,
-            "runtime_append_ms": 53
-        }),
-    ];
+    let mut timing = ProviderStreamTiming::new(false);
+    timing.observe(1, "text_delta", 12, 37, 40).unwrap();
+    timing.observe(2, "finish", 8, 52, 53).unwrap();
 
-    assert_eq!(first_runtime_ingress_ms(&timeline), Some(37));
-    assert_eq!(max_runtime_flush_ms(&timeline), Some(3));
+    assert_eq!(timing.first_ingress_ms(), Some(37));
+    assert_eq!(timing.max_append_delay_ms(), Some(3));
 
     let mut metadata = json!({});
     attach_gateway_stage_timing(&mut metadata, 11, Some(37), Some(3)).unwrap();
