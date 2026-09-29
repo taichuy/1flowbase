@@ -14,6 +14,7 @@ domain = { path = "../../../domain" }
 extension-contracts = { path = "../../../extension-contracts" }
 futures-util.workspace = true
 flate2.workspace = true
+zstd.workspace = true
 serde.workspace = true
 percent-encoding.workspace = true
 rand.workspace = true

@@ -1,4 +1,4 @@
-//! Opt-in, candidate-bound replay of the retained 62m sample. No fixture payload
+//! Opt-in, candidate-bound replay of an explicitly approved finite sample. No fixture payload
 //! is exported: the artifact contains counts, hashes and physical sizes only.
 mod copy;
 mod fingerprints;
@@ -19,6 +19,11 @@ const CAPTURES: i64 = 96;
 
 struct Input {
     runs: Vec<Uuid>,
+    events: i64,
+    frames: i64,
+    captures: i64,
+    prefix_version: i64,
+    finite_manifest: bool,
     receipt_hash: String,
     costs_hash: String,
     old_core_row_value_bytes: i64,
@@ -41,6 +46,59 @@ impl Input {
                     && parts[1].as_os_str() == "test-governance"),
             "replay artifact must stay under tmp/test-governance"
         );
+        if let Ok(path) = std::env::var("STORAGE_REPLAY_SAMPLE_MANIFEST") {
+            let path = PathBuf::from(path);
+            ensure!(path.is_absolute(), "sample manifest must be absolute");
+            let bytes = std::fs::read(path)?;
+            let source: Value = serde_json::from_slice(&bytes)?;
+            let mut runs = source["run_ids"]
+                .as_array()
+                .context("run_ids missing")?
+                .iter()
+                .map(|id| {
+                    Uuid::parse_str(id.as_str().context("run ID missing")?).map_err(Into::into)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            runs.sort();
+            ensure!(
+                !runs.is_empty() && runs.iter().collect::<BTreeSet<_>>().len() == runs.len(),
+                "finite sample run IDs must be nonempty and unique"
+            );
+            let events = source["events"].as_i64().context("exact events missing")?;
+            let frames = source["frames"].as_i64().context("exact frames missing")?;
+            let captures = source["captures"]
+                .as_i64()
+                .context("exact captures missing")?;
+            let prefix_version = source["prefix_version"]
+                .as_i64()
+                .context("prefix_version missing")?;
+            ensure!(
+                events > 0 && frames > 0 && captures > 0,
+                "approved finite baseline counts must be positive"
+            );
+            ensure!(
+                [20260929120000, 20260929120001].contains(&prefix_version),
+                "finite sample requires approved prior or current schema prefix"
+            );
+            let candidate_sha = candidate_sha()?;
+            ensure!(
+                source["candidate_sha"].as_str() == Some(candidate_sha.as_str()),
+                "sample manifest candidate SHA mismatch"
+            );
+            return Ok(Self {
+                runs,
+                events,
+                frames,
+                captures,
+                prefix_version,
+                finite_manifest: true,
+                receipt_hash: hash(&bytes),
+                costs_hash: String::new(),
+                old_core_row_value_bytes: 0,
+                candidate_sha,
+                output,
+            });
+        }
         let receipt = std::fs::read(std::env::var("STORAGE_REPLAY_RECEIPT")?)?;
         let costs = std::fs::read(std::env::var("STORAGE_REPLAY_COSTS")?)?;
         let source: Value = serde_json::from_slice(&receipt)?;
@@ -76,19 +134,13 @@ impl Input {
             costs_value["sourceSha256"].as_str() == Some(receipt_hash.as_str()),
             "cost receipt is not attached to source receipt"
         );
-        let git = std::process::Command::new("git")
-            .args(["rev-parse", "HEAD"])
-            .output()?;
-        ensure!(git.status.success(), "candidate SHA unavailable");
-        let candidate_sha = String::from_utf8(git.stdout)?.trim().to_owned();
-        ensure!(
-            candidate_sha.len() == 40 && candidate_sha.bytes().all(|b| b.is_ascii_hexdigit()),
-            "candidate SHA invalid"
-        );
-        if let Ok(expected) = std::env::var("STORAGE_REPLAY_CANDIDATE_SHA") {
-            ensure!(expected == candidate_sha, "fixture candidate SHA mismatch");
-        }
+        let candidate_sha = candidate_sha()?;
         Ok(Self {
+            events: EVENTS,
+            frames: FRAMES,
+            captures: CAPTURES,
+            prefix_version: PREFIX,
+            finite_manifest: false,
             runs,
             receipt_hash,
             costs_hash: hash(&costs),
@@ -99,6 +151,22 @@ impl Input {
             output,
         })
     }
+}
+
+fn candidate_sha() -> Result<String> {
+    let git = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()?;
+    ensure!(git.status.success(), "candidate SHA unavailable");
+    let sha = String::from_utf8(git.stdout)?.trim().to_owned();
+    ensure!(
+        sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit()),
+        "candidate SHA invalid"
+    );
+    if let Ok(expected) = std::env::var("STORAGE_REPLAY_CANDIDATE_SHA") {
+        ensure!(expected == sha, "fixture candidate SHA mismatch");
+    }
+    Ok(sha)
 }
 
 fn hash(bytes: &[u8]) -> String {
@@ -162,41 +230,80 @@ async fn empty_fixture(version: Option<i64>) -> Result<PgPool> {
     Ok(pool)
 }
 
-async fn sample_counts(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result<Value> {
-    let ids = run_array(runs);
-    let sql = format!("select (select count(*) from {s}.flow_runs where id=any({ids})) runs,(select count(*) from {s}.runtime_events where flow_run_id=any({ids})) events,(select coalesce(sum(jsonb_array_length(p.frames)),0)::bigint from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids})) frames,(select count(*) from {s}.client_trajectory_captures where flow_run_id=any({ids})) captures", s=ident(schema));
-    let row = sqlx::query(&sql).fetch_one(pool).await?;
-    let result = json!({"runs":row.try_get::<i64,_>("runs")?,"events":row.try_get::<i64,_>("events")?,"frames":row.try_get::<i64,_>("frames")?,"captures":row.try_get::<i64,_>("captures")?});
+async fn sample_counts(pool: &PgPool, schema: &str, input: &Input) -> Result<Value> {
+    let ids = run_array(&input.runs);
+    let sql = format!("select (select count(*) from {s}.flow_runs where id=any({ids})) runs,(select count(*) from {s}.runtime_events where flow_run_id=any({ids})) events,(select coalesce(sum(case when coalesce((to_jsonb(p)->>'codec_version')::int,0)=0 then jsonb_array_length(p.frames) when (to_jsonb(p)->>'codec_version')::int in (1,2) then p.last_sequence-p.first_sequence+1 else null end),0)::bigint from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids})) frames,(select count(*) from {s}.client_trajectory_captures where flow_run_id=any({ids})) captures", s=ident(schema));
+    let unknown: i64 = sqlx::query_scalar(&format!("select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and coalesce((to_jsonb(p)->>'codec_version')::int,0) not in (0,1,2)",s=ident(schema))).fetch_one(pool).await?;
     ensure!(
-        result["runs"] == 15
-            && result["events"] == EVENTS
-            && result["frames"] == FRAMES
-            && result["captures"] == CAPTURES,
+        unknown == 0,
+        "unknown archive encoding cannot enter frame counts"
+    );
+    let row = sqlx::query(&sql).fetch_one(pool).await?;
+    let mut result = json!({"runs":row.try_get::<i64,_>("runs")?,"events":row.try_get::<i64,_>("events")?,"frames":row.try_get::<i64,_>("frames")?,"captures":row.try_get::<i64,_>("captures")?});
+    ensure!(
+        result["runs"] == input.runs.len()
+            && result["events"] == input.events
+            && result["frames"] == input.frames
+            && result["captures"] == input.captures,
         "source/copy approved sample count mismatch"
     );
+    if input.finite_manifest && input.prefix_version == 20260929120000 {
+        let inventory: (i64, i64, i64) = sqlx::query_as(&format!("select (select count(*) from {s}.client_trajectory_steps where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_sections where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}))",s=ident(schema))).fetch_one(pool).await?;
+        ensure!(
+            input.runs.len() == 8
+                && input.events == 1941
+                && input.frames == 39392
+                && input.captures == 55
+                && inventory == (4326, 13167, 17989),
+            "prior 31m approved finite inventory differs"
+        );
+        result["steps"] = json!(inventory.0);
+        result["sections"] = json!(inventory.1);
+        result["raw_parts"] = json!(inventory.2);
+    }
+    if input.prefix_version == 20260929120001 {
+        let inventory: (i64, i64) = sqlx::query_as(&format!("select (select count(*) from {s}.client_trajectory_steps where flow_run_id=any({ids}) and metadata_compact),(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and p.codec_version=2)",s=ident(schema))).fetch_one(pool).await?;
+        ensure!(
+            inventory.0 > 0 && inventory.1 > 0,
+            "current sample must exercise compact metadata and sealed parts"
+        );
+        result["compact_steps"] = json!(inventory.0);
+        result["sealed_parts"] = json!(inventory.1);
+    }
     Ok(result)
 }
 
 async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     *phase = "prefix_schema";
-    let pool = empty_fixture(Some(PREFIX))
+    let pool = empty_fixture(Some(input.prefix_version))
         .await
         .context("prefix isolated-schema creation")?;
     let schema = isolated_schema(&pool).await?;
     *phase = "source_snapshot";
-    let source_counts = sample_counts(&pool, "public", &input.runs)
+    let source_counts = sample_counts(&pool, "public", input)
         .await
         .context("public source sample count validation")?;
     let source_events = fingerprints::events(&pool, "public", &input.runs)
         .await
         .context("public original-event fingerprint")?;
-    *phase = "prefix_empty_measurement";
-    let prefix_empty = measurement::snapshot(&pool, &schema, &BTreeSet::new()).await?;
     *phase = "finite_copy_and_fk_audit";
     let copy = copy::copy_sample(&pool, &schema, &input.runs)
         .await
         .context("finite task/FK closure copy and audit")?;
-    let copied_counts = sample_counts(&pool, &schema, &input.runs)
+    *phase = "prefix_empty_measurement";
+    let prefix_empty_pool = empty_fixture(Some(input.prefix_version)).await?;
+    let prefix_empty_schema = isolated_schema(&prefix_empty_pool).await?;
+    measurement::compact_isolated_layout(
+        &prefix_empty_pool,
+        &prefix_empty_schema,
+        &copy.domain,
+        &Default::default(),
+    )
+    .await?;
+    let prefix_empty =
+        measurement::snapshot(&prefix_empty_pool, &prefix_empty_schema, &copy.domain).await?;
+    prefix_empty_pool.close().await;
+    let copied_counts = sample_counts(&pool, &schema, input)
         .await
         .context("copied sample count validation")?;
     let copied_events = fingerprints::events(&pool, &schema, &input.runs)
@@ -208,6 +315,9 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     );
     *phase = "old_gross_measurement";
     let before = measurement::snapshot(&pool, &schema, &copy.domain).await?;
+    *phase = "prefix_compact_layout";
+    measurement::compact_isolated_layout(&pool, &schema, &copy.domain, &copy.copied).await?;
+    let before_compact = measurement::snapshot(&pool, &schema, &copy.domain).await?;
     let retained_before = fingerprints::retained(&pool, &schema, &copy.tables).await?;
     let queue_before = fingerprints::refresh_queue(&pool).await?;
     let mut retained_audit = json!({"prefix":&retained_before});
@@ -230,15 +340,23 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         fingerprints::retained_difference(&retained_before, &retained_upgraded);
     std::fs::write(&audit_path, serde_json::to_vec_pretty(&retained_audit)?)?;
     let queue_after = fingerprints::refresh_queue(&pool).await?;
-    let queue_transition = fingerprints::verify_upgrade_queue(
-        &pool,
-        &input.runs,
-        &queue_before,
-        &queue_after,
-        upgrade_started,
-        upgrade_finished,
-    )
-    .await?;
+    let queue_transition = if input.finite_manifest {
+        ensure!(
+            queue_after == queue_before,
+            "finite sample formal upgrade changed trace queue"
+        );
+        json!({"verified":true,"unchanged":true,"row_count":queue_after.len()})
+    } else {
+        fingerprints::verify_upgrade_queue(
+            &pool,
+            &input.runs,
+            &queue_before,
+            &queue_after,
+            upgrade_started,
+            upgrade_finished,
+        )
+        .await?
+    };
     ensure!(
         retained_before.len() == retained_upgraded.len()
             && retained_before
@@ -260,7 +378,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         .await
         .context("upgraded legacy reader fingerprint")?;
     ensure!(
-        before_readers.frames == FRAMES as u64,
+        before_readers.frames == input.frames as u64,
         "legacy reader frame count differs"
     );
     let upgraded = measurement::snapshot(&pool, &schema, &copy.domain).await?;
@@ -270,9 +388,15 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         .await
         .context("actual retained-runtime mover")?;
     ensure!(
-        moved.client_semantic_records_processed > 0
-            && moved.native_snapshot_events > 0
-            && moved.raw_archive_parts > 0,
+        if input.prefix_version == 20260929120001 {
+            true // This sample exercises the current writer, already compact at EOF.
+        } else if input.finite_manifest {
+            moved.compact_directory_records > 0 && moved.raw_archive_parts_sealed > 0
+        } else {
+            moved.client_semantic_records_processed > 0
+                && moved.native_snapshot_events > 0
+                && moved.raw_archive_parts > 0
+        },
         "sample mover did not transform each requested domain"
     );
     *phase = "lossless_after_mover";
@@ -310,7 +434,9 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     ensure!(
         repeated.client_semantic_records_processed == 0
             && repeated.native_snapshot_events == 0
-            && repeated.raw_archive_parts == 0,
+            && repeated.raw_archive_parts == 0
+            && repeated.raw_archive_parts_sealed == 0
+            && repeated.compact_directory_records == 0,
         "mover reentry was not row-idempotent"
     );
     let repeated_events = fingerprints::events(&pool, &schema, &input.runs).await?;
@@ -328,10 +454,17 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         .await
         .context("latest empty physical baseline")?;
     let latest_empty_schema = isolated_schema(&latest_empty_pool).await?;
+    measurement::compact_isolated_layout(
+        &latest_empty_pool,
+        &latest_empty_schema,
+        &copy.domain,
+        &Default::default(),
+    )
+    .await?;
     let latest_empty =
         measurement::snapshot(&latest_empty_pool, &latest_empty_schema, &copy.domain).await?;
     *phase = "source_unchanged_audit";
-    let source_counts_after = sample_counts(&pool, "public", &input.runs).await?;
+    let source_counts_after = sample_counts(&pool, "public", input).await?;
     ensure!(
         source_counts_after == source_counts,
         "public source changed during replay"
@@ -341,17 +474,32 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         source_events_after == source_events,
         "public source event originals changed during replay"
     );
-    let receipt = json!({"status":"passed","candidate_sha":input.candidate_sha,
+    let compact_ab = measurement::compare(
+        &before_compact,
+        &prefix_empty,
+        &compact_equivalent,
+        &latest_empty,
+    )?;
+    if input.prefix_version != 20260929120001 {
+        ensure!(
+            compact_ab["closure_saved_bytes"]
+                .as_i64()
+                .context("compact savings missing")?
+                > 0,
+            "matched compact-layout closure gain must be positive"
+        );
+    }
+    let receipt = json!({"already_compacted":input.prefix_version == 20260929120001,"sample_prefix_version":input.prefix_version,"finite_manifest":input.finite_manifest,"compact_layout_ab":compact_ab,"status":"passed","candidate_sha":input.candidate_sha,
         "source_receipt_sha256":input.receipt_hash,"source_costs_sha256":input.costs_hash,
         "run_allowlist_sha256":hash(serde_json::to_string(&input.runs)?.as_bytes()),"source_counts":source_counts,"copied_counts":copied_counts,
         "old_receipt_core_row_values_bytes":input.old_core_row_value_bytes,
         "copy":copy,"mover":moved,"reentry":repeated,"lossless_original_events":after_events,"lossless_readers":after_readers,"retained_business_rows":retained_after,"formal_upgrade_trace_queue_transition":queue_transition,"retained_stage_audit":"retained-stage-audit.json",
-        "physical":{"prefix_empty":prefix_empty,"latest_empty":latest_empty,"old_gross":before,"formal_upgrade_before_mover":upgraded,"live_after_compaction_allocated":live_after,"isolated_compact_layout_equivalent":compact_equivalent},
+        "physical":{"prefix_empty":prefix_empty,"latest_empty":latest_empty,"old_gross":before,"before_compact_layout":before_compact,"formal_upgrade_before_mover":upgraded,"live_after_compaction_allocated":live_after,"isolated_compact_layout_equivalent":compact_equivalent},
         "notes":["Source public tables were selected only; all writes, migrations and VACUUM FULL targeted guarded isolated schemas.",
-            "193046031-byte/184.103-MiB original core receipt excluded client steps and summary/conversation/recovery/Outbox/usage/billing costs; this replay lists them and every added directory/header/item/ref/ownership/index/TOAST cost.",
+            "Legacy core-only costs are diagnostic context. Full finite closure includes client steps, conversation/recovery/Outbox/usage/billing, directory/header/item/ref/ownership/index/TOAST costs.",
             "Gross relation totals include empty relation/index overhead. Task domain and finite FK support/default costs are separate; shared canonical parents are counted once in the isolated closure, not attributed as incremental source growth.",
-            "Live allocated after-compaction sizes are recorded before VACUUM FULL. Compact-layout equivalent does not claim live source file reclamation, CPU/latency/WAL/replica/backup savings.",
-            "Complete JSON values are compared as representation-preserving Value hashes; Native body Strings and every raw frame byte/kind/time/sequence are hashed exactly. IDs/order/cursors/filter/focus/source-reference identities are included. No original payloads are exported."]});
+            "Raw as-inserted and post-mover MVCC allocation are diagnostic. A/B uses compact before and after with separate own-empty compact baselines; current-writer samples report workload cost. No live source file reclaim, CPU/latency/WAL/replica/backup savings claim.",
+            "Parsed JSON values are compared as Value hashes; this alone does not establish original numeric-token precision. Native body Strings and every raw frame byte/kind/time/sequence are hashed exactly. IDs/order/cursors/filter/focus/source-reference identities are included. No original payloads are exported."]});
     latest_empty_pool.close().await;
     pool.close().await;
     Ok(receipt)
@@ -369,7 +517,7 @@ fn safe_database_error(error: &anyhow::Error) -> Value {
 }
 
 #[tokio::test]
-#[ignore = "Requires explicit 62m receipt/cost/output environment and an isolated PostgreSQL replay"]
+#[ignore = "Requires explicit finite manifest or legacy 62m receipt/cost/output environment and an isolated PostgreSQL replay"]
 async fn real_62m_storage_compaction_lossless_and_physical_receipt() {
     // Test harness errors must never print an original body, credential or query
     // parameter. A failure exposes only its digest and a fixed phase label.

@@ -237,3 +237,67 @@ fn original_version_retains_wire_legacy_formats_and_rejects_truncated_spans() {
     .to_string()
     .contains("out of bounds"));
 }
+
+#[test]
+fn selective_materialization_validates_unselected_directory_and_anchor_checksum() {
+    let frames = originals();
+    let encoded = encode(&frames).unwrap();
+    let part = Part {
+        version: 2,
+        frames: &Value::Null,
+        directory: Some(&encoded.directory),
+        bytes: &[],
+        raw_byte_length: Some(encoded.raw_byte_length),
+        checksum: Some(&encoded.checksum),
+        first_sequence: 1,
+        last_sequence: i64::MAX,
+    };
+    let raw: Vec<u8> = frames
+        .iter()
+        .flat_map(|frame| frame.bytes.iter().copied())
+        .collect();
+    let selected = decode_raw(&part, &raw, 1, 1).unwrap();
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].frame.sequence, 4);
+    assert_eq!(selected[0].frame.bytes, frames[1].bytes);
+    assert!(decode_raw(&part, &raw, i64::MAX, 0).unwrap().is_empty());
+    let mut damaged = encoded.directory.clone();
+    damaged.push(0);
+    let signed = checksum(&damaged, &raw);
+    let bad = Part {
+        directory: Some(&damaged),
+        checksum: Some(&signed),
+        ..part
+    };
+    assert!(decode_raw(&bad, &raw, 0, 1)
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("trailing"));
+    let mut raw = raw;
+    raw[0] ^= 1;
+    assert!(decode_raw(&bad, &raw, i64::MAX, 0)
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("checksum"));
+}
+
+#[test]
+fn assigned_borrowed_encoding_matches_original_sequence_assignment() {
+    let frames = originals();
+    let assigned = encode_assigned(&frames, 81).unwrap();
+    let owned: Vec<_> = frames
+        .into_iter()
+        .enumerate()
+        .map(|(i, frame)| ClientTrajectoryArchiveFrame {
+            sequence: 82 + i as i64,
+            ..frame
+        })
+        .collect();
+    let expected = encode(&owned).unwrap();
+    assert_eq!(assigned.directory, expected.directory);
+    assert_eq!(assigned.bytes, expected.bytes);
+    assert_eq!(assigned.raw_byte_length, expected.raw_byte_length);
+    assert_eq!(assigned.checksum, expected.checksum);
+}

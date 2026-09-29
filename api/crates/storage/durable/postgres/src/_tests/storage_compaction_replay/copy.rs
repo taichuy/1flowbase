@@ -34,7 +34,7 @@ struct ForeignKey {
     parent_columns: Vec<String>,
 }
 
-pub(super) const DOMAIN: &str = "flow_runs node_runs node_run_details flow_run_checkpoints flow_run_events flow_run_tool_callback_inbox flow_run_callback_tasks flow_run_callback_resume_attempts flow_run_resume_claims flow_run_recovery_history runtime_spans runtime_events runtime_items runtime_context_projections runtime_usage_ledger runtime_cost_ledger runtime_credit_ledger billing_sessions runtime_artifacts runtime_audit_hashes runtime_canonical_contents runtime_observation_body_ownership runtime_native_snapshot_items runtime_native_snapshot_manifests runtime_native_snapshot_references runtime_invocation_context_bindings runtime_debug_artifacts runtime_legacy_shadow_batches runtime_legacy_shadow_rows application_conversations application_conversation_messages application_public_conversations application_run_conversation_message_items application_run_log_summaries application_run_log_tasks application_run_trace_projection_statuses application_run_trace_nodes application_run_trace_node_contents application_run_trace_refresh_queue external_agent_sessions external_agent_telemetry_events gateway_log_conversations gateway_log_turns gateway_log_invocations gateway_log_output_items gateway_log_tool_results provider_protocol_capsules provider_protocol_trajectory_events provider_semantic_trajectory_steps native_trajectory_integrity client_trajectory_archive_heads client_trajectory_archive_parts client_trajectory_captures client_trajectory_steps client_trajectory_sections client_trajectory_node_links assistant_conversations capability_invocations debug_variable_cache_entries model_provider_request_logs model_failover_attempt_ledger lifecycle_outbox lifecycle_outbox_deliveries runtime_event_deliveries";
+pub(super) const DOMAIN: &str = "flow_runs node_runs node_run_details flow_run_checkpoints flow_run_events flow_run_tool_callback_inbox flow_run_callback_tasks flow_run_callback_resume_attempts flow_run_resume_claims flow_run_recovery_history runtime_spans runtime_events runtime_items runtime_context_projections runtime_usage_ledger runtime_cost_ledger runtime_credit_ledger billing_sessions runtime_artifacts runtime_audit_hashes runtime_canonical_contents runtime_observation_body_ownership runtime_native_snapshot_items runtime_native_snapshot_manifests runtime_native_snapshot_references runtime_invocation_context_bindings runtime_debug_artifacts runtime_legacy_shadow_batches runtime_legacy_shadow_rows application_conversations application_conversation_messages application_public_conversations application_run_conversation_message_items application_run_log_summaries application_run_log_tasks application_run_trace_projection_statuses application_run_trace_nodes application_run_trace_node_contents application_run_trace_refresh_queue external_agent_sessions external_agent_telemetry_events gateway_log_conversations gateway_log_turns gateway_log_invocations gateway_log_output_items gateway_log_tool_results provider_protocol_capsules provider_protocol_trajectory_events provider_semantic_trajectory_steps native_trajectory_integrity client_trajectory_archive_heads client_trajectory_archive_blocks client_trajectory_archive_parts client_trajectory_captures client_trajectory_steps client_trajectory_sections client_trajectory_node_links assistant_conversations capability_invocations debug_variable_cache_entries model_provider_request_logs model_failover_attempt_ledger lifecycle_outbox lifecycle_outbox_deliveries runtime_event_deliveries";
 
 async fn tables(connection: &mut PgConnection, schema: &str) -> Result<Vec<Table>> {
     let rows = sqlx::query("select c.relname,array_agg(a.attname::text order by a.attnum) columns,array_agg(a.attname::text order by a.attnum) filter(where a.attgenerated='') writable from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped where n.nspname=$1 and c.relkind in ('r','p') and not c.relispartition and c.relname<>'_sqlx_migrations' group by c.relname order by c.relname")
@@ -278,6 +278,12 @@ pub(super) async fn copy_sample(pool: &PgPool, schema: &str, runs: &[Uuid]) -> R
                 "content_id",
                 "id",
             ),
+            (
+                "runtime_native_snapshot_references",
+                "runtime_native_snapshot_manifests",
+                "manifest_id",
+                "id",
+            ),
         ] {
             if !copied.contains_key(parent) {
                 continue;
@@ -353,8 +359,8 @@ async fn audit_connection(
     .fetch_one(&mut *connection)
     .await?;
     ensure!(
-        counts == (15, 0),
-        "copy/maintenance escaped exact 15-run owner set"
+        counts == (runs.len() as i64, 0),
+        "copy/maintenance escaped exact approved run owner set"
     );
     for table in tables(connection, schema).await? {
         if table.columns.iter().any(|c| c == "flow_run_id") {

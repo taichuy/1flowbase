@@ -1,5 +1,6 @@
 mod fixes;
 mod native_storage;
+mod raw_storage;
 
 use super::*;
 use tokio::io::AsyncReadExt;
@@ -126,6 +127,7 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         "runtime_native_snapshot_references",
         "runtime_observation_body_ownership",
         "client_trajectory_archive_heads",
+        "client_trajectory_archive_blocks",
         "client_trajectory_archive_parts",
         "client_trajectory_steps",
         "client_trajectory_sections",

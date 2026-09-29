@@ -1,6 +1,5 @@
 //! Narrow client occurrences; all content sharing is proved on restored Values.
 use super::*;
-use sha2::{Digest, Sha256};
 use sqlx::postgres::PgRow;
 
 pub(super) fn step_metadata(body: Value, restored: bool) -> Result<Value> {
@@ -30,7 +29,13 @@ pub(super) async fn write_step(
     step: &ClientTrajectoryStep,
     sequence: i64,
 ) -> Result<()> {
-    let metadata = serde_json::to_value(step)?;
+    let metadata = compact_metadata(
+        serde_json::to_value(step)?,
+        step.id,
+        input.request_id,
+        input.flow_run_id,
+        input.node_run_id,
+    )?;
     let (projection, mut originals) = lossless_json_columns("metadata", &metadata);
     let (observed_at, at_originals) =
         lossless_json_columns("observed_at", &json!(input.observed_at));
@@ -40,10 +45,10 @@ pub(super) async fn write_step(
         .extend(at_originals.as_object().expect("originals object").clone());
     sqlx::query(r#"
         insert into client_trajectory_steps(id,request_id,flow_run_id,node_run_id,event_sequence,metadata,
-            raw_json_payloads,observed_at,semantic_metadata_restored)
-        values($1,$2,$3,$4,$5,$6,$7,($8::jsonb->>0),true)
+            raw_json_payloads,observed_at,semantic_metadata_restored,metadata_compact)
+        values($1,$2,$3,$4,$5,$6,$7,($8::jsonb->>0),true,true)
         on conflict(id) do update set metadata=excluded.metadata,raw_json_payloads=excluded.raw_json_payloads,
-            observed_at=excluded.observed_at,semantic_metadata_restored=true
+            observed_at=excluded.observed_at,semantic_metadata_restored=true,metadata_compact=true
         where client_trajectory_steps.request_id=excluded.request_id
             and client_trajectory_steps.flow_run_id=excluded.flow_run_id
             and client_trajectory_steps.node_run_id is not distinct from excluded.node_run_id
@@ -54,12 +59,43 @@ pub(super) async fn write_step(
 }
 
 fn value_identity(value: &Value) -> Result<(String, i64)> {
-    let mut bytes = Vec::new();
-    write_canonical_runtime_json(value, &mut bytes)?;
-    Ok((
-        format!("sha256:{:x}", Sha256::digest(&bytes)),
-        i64::try_from(bytes.len())?,
-    ))
+    canonical_runtime_json_identity(value)
+}
+
+fn digest_bytes(hash: &str) -> Result<Vec<u8>> {
+    let hex = hash
+        .strip_prefix("sha256:")
+        .ok_or_else(|| anyhow!("client section hash invalid"))?;
+    anyhow::ensure!(
+        hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()),
+        "client section hash invalid"
+    );
+    (0..32)
+        .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(Into::into))
+        .collect()
+}
+
+fn compact_metadata(
+    mut metadata: Value,
+    id: Uuid,
+    request: Uuid,
+    flow: Uuid,
+    node: Option<Uuid>,
+) -> Result<Value> {
+    let expected = json!({"id":id,"request_id":request,"flow_run_id":flow,"node_run_id":node});
+    let fields = metadata
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("client step metadata object unavailable"))?;
+    for (key, value) in expected.as_object().expect("identities object") {
+        anyhow::ensure!(
+            fields.get(key) == Some(value),
+            "client step metadata identity mismatch"
+        );
+    }
+    for key in ["id", "request_id", "flow_run_id", "node_run_id"] {
+        fields.remove(key);
+    }
+    Ok(metadata)
 }
 
 fn locate<'a>(body: &'a Value, path: &[String]) -> Result<&'a Value> {
@@ -132,6 +168,7 @@ pub(super) async fn write_section(
 ) -> Result<Uuid> {
     let id = historical_id.unwrap_or_else(Uuid::now_v7);
     let (value_hash, value_byte_size) = value_identity(value)?;
+    let value_digest = digest_bytes(&value_hash)?;
     let mut content_id = None;
     let mut content_path = Vec::<String>::new();
     let body_kind = if section == "timing" && *value == json!({"observed_at":input.observed_at}) {
@@ -168,11 +205,11 @@ pub(super) async fn write_section(
     let (observed_at, originals) = lossless_json_columns("observed_at", &json!(input.observed_at));
     sqlx::query(r#"
         insert into client_trajectory_sections(id,event_id,request_id,step_id,flow_run_id,node_run_id,section,event_sequence,
-            content_id,content_path,body_kind,observed_at,raw_json_payloads,value_hash,value_byte_size)
-        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,($12::jsonb#>>'{}'),$13,$14,$15)
+            content_id,content_path,body_kind,observed_at,raw_json_payloads,value_hash,value_byte_size,value_digest)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,($12::jsonb#>>'{}'),$13,NULL,$15,$14)
         on conflict(id) do update set content_id=excluded.content_id,content_path=excluded.content_path,
             body_kind=excluded.body_kind,observed_at=excluded.observed_at,raw_json_payloads=excluded.raw_json_payloads,
-            value_hash=excluded.value_hash,value_byte_size=excluded.value_byte_size
+            value_hash=excluded.value_hash,value_byte_size=excluded.value_byte_size,value_digest=excluded.value_digest
         where client_trajectory_sections.event_id=excluded.event_id
             and client_trajectory_sections.flow_run_id=excluded.flow_run_id
             and client_trajectory_sections.request_id=excluded.request_id
@@ -181,12 +218,12 @@ pub(super) async fn write_section(
             and client_trajectory_sections.event_sequence=excluded.event_sequence
     "#).bind(id).bind(historical_id).bind(input.request_id).bind(step_id).bind(input.flow_run_id).bind(input.node_run_id)
         .bind(section).bind(sequence).bind(content_id).bind(&content_path).bind(body_kind).bind(observed_at).bind(originals)
-        .bind(value_hash).bind(value_byte_size).execute(&mut **tx).await?;
+        .bind(value_digest).bind(value_byte_size).execute(&mut **tx).await?;
     Ok(id)
 }
 
 const SECTION_ROWS: &str = r#"
-    select p.event_sequence,p.body_kind,p.content_path,p.value_hash,p.value_byte_size,
+    select p.event_sequence,p.body_kind,p.content_path,coalesce(p.value_hash,'sha256:'||encode(p.value_digest,'hex')) as value_hash,p.value_byte_size,
         runtime_original_json(to_jsonb(p.observed_at),p.raw_json_payloads,'observed_at') as observed_at,
         case when p.body_kind='legacy' then runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) end as legacy_payload,
         case when p.body_kind='content' then runtime_original_json(c.content,c.raw_json_payloads,'content') end as body
@@ -251,6 +288,133 @@ pub(super) fn restore_section(row: &PgRow) -> Result<Value> {
 }
 
 impl PgControlPlaneStore {
+    /// Compact one bounded directory batch from an explicit run allowlist.
+    /// Verify restored originals before publication; any mismatch rolls back the batch.
+    pub(crate) async fn compact_client_trajectory_directories(
+        &self,
+        run_ids: &[Uuid],
+        batch_size: i64,
+    ) -> Result<u64> {
+        anyhow::ensure!(
+            batch_size > 0,
+            "client directory compaction batch size invalid"
+        );
+        if run_ids.is_empty() {
+            return Ok(0);
+        }
+        let mut runs = run_ids.to_vec();
+        runs.sort_unstable();
+        runs.dedup();
+        let mut tx = self.pool().begin().await?;
+        for run in &runs {
+            let exists: Option<Uuid> =
+                sqlx::query_scalar("select id from flow_runs where id=$1 for no key update")
+                    .bind(run)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            anyhow::ensure!(
+                exists.is_some(),
+                "client directory compaction run unavailable"
+            );
+        }
+        let rows = sqlx::query(
+            r#"
+            select id,request_id,flow_run_id,node_run_id,
+                runtime_original_json(metadata,raw_json_payloads,'metadata') as original,
+                raw_json_payloads
+            from client_trajectory_steps
+            where flow_run_id=any($1) and semantic_metadata_restored and not metadata_compact
+            order by flow_run_id,event_sequence,id limit $2
+        "#,
+        )
+        .bind(&runs)
+        .bind(batch_size)
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut count = u64::try_from(rows.len())?;
+        for row in rows {
+            let id: Uuid = row.try_get("id")?;
+            let original: Value = row.try_get("original")?;
+            let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_captures where request_id=$1 and flow_run_id=$2 and node_run_id is not distinct from $3)")
+                .bind(row.try_get::<Uuid,_>("request_id")?).bind(row.try_get::<Uuid,_>("flow_run_id")?)
+                .bind(row.try_get::<Option<Uuid>,_>("node_run_id")?).fetch_one(&mut *tx).await?;
+            anyhow::ensure!(valid, "client compact step scope mismatch");
+            let compact = compact_metadata(
+                original.clone(),
+                id,
+                row.try_get("request_id")?,
+                row.try_get("flow_run_id")?,
+                row.try_get("node_run_id")?,
+            )?;
+            let (projection, metadata_originals) = lossless_json_columns("metadata", &compact);
+            let mut originals: Value = row.try_get("raw_json_payloads")?;
+            let fields = originals
+                .as_object_mut()
+                .ok_or_else(|| anyhow!("client metadata originals invalid"))?;
+            fields.remove("metadata");
+            fields.extend(
+                metadata_originals
+                    .as_object()
+                    .expect("originals object")
+                    .clone(),
+            );
+            sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,metadata_compact=true where id=$1")
+                .bind(id).bind(projection).bind(originals).execute(&mut *tx).await?;
+            let restored: Value = sqlx::query_scalar("select client_trajectory_step_original_metadata(metadata,raw_json_payloads,id,request_id,flow_run_id,node_run_id,metadata_compact) from client_trajectory_steps where id=$1")
+                .bind(id).fetch_one(&mut *tx).await?;
+            anyhow::ensure!(
+                restored == original,
+                "client compact step original mismatch"
+            );
+        }
+        let remaining = batch_size - i64::try_from(count)?;
+        // Only valid SHA text identities are conversion candidates. Invalid text remains
+        // visible to normal reader integrity checks, rather than being silently repaired.
+        let query = SECTION_ROWS.replace("select p.event_sequence", "select p.id,p.request_id,p.step_id,p.flow_run_id,p.node_run_id,p.event_sequence")
+            .replace("where p.flow_run_id=$1 and p.request_id=$2 and p.step_id=$3 and p.section=$4 and p.event_sequence>$5", "where p.flow_run_id=any($1) and p.body_kind in ('content','timing') and p.value_hash ~ '^sha256:[0-9a-f]{64}$'")
+            .replace("order by p.event_sequence limit $6", "order by p.flow_run_id,p.event_sequence,p.id limit $2");
+        let rows = sqlx::query(&query)
+            .bind(&runs)
+            .bind(remaining)
+            .fetch_all(&mut *tx)
+            .await?;
+        count += u64::try_from(rows.len())?;
+        for row in rows {
+            let id: Uuid = row.try_get("id")?;
+            let valid: bool = sqlx::query_scalar(r#"
+                select exists(select 1 from client_trajectory_steps s
+                    join client_trajectory_captures c on c.request_id=s.request_id
+                    where s.id=$1 and s.request_id=$2 and s.flow_run_id=$3
+                    and s.node_run_id is not distinct from $4
+                    and c.flow_run_id=s.flow_run_id and c.node_run_id is not distinct from s.node_run_id)
+            "#).bind(row.try_get::<Uuid,_>("step_id")?).bind(row.try_get::<Uuid,_>("request_id")?)
+                .bind(row.try_get::<Uuid,_>("flow_run_id")?).bind(row.try_get::<Option<Uuid>,_>("node_run_id")?)
+                .fetch_one(&mut *tx).await?;
+            anyhow::ensure!(valid, "client compact section scope mismatch");
+            let original = restore_section(&row)?;
+            let (hash, _) = value_identity(&original)?;
+            sqlx::query(
+                "update client_trajectory_sections set value_digest=$2,value_hash=NULL where id=$1",
+            )
+            .bind(id)
+            .bind(digest_bytes(&hash)?)
+            .execute(&mut *tx)
+            .await?;
+            let restored_query = SECTION_ROWS.replace("where p.flow_run_id=$1 and p.request_id=$2 and p.step_id=$3 and p.section=$4 and p.event_sequence>$5", "where p.id=$1")
+                .replace("order by p.event_sequence limit $6", "");
+            let restored = sqlx::query(&restored_query)
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await?;
+            anyhow::ensure!(
+                restore_section(&restored)? == original,
+                "client compact section original mismatch"
+            );
+        }
+        tx.commit().await?;
+        Ok(count)
+    }
+
     /// One technical batch from an explicit run allowlist. Repeat until zero.
     /// The returned count includes reviewed NUL rows retained in the old layout.
     /// Integrity/scope failures roll back without modifying old anchors/bodies.
@@ -304,16 +468,30 @@ impl PgControlPlaneStore {
                     && step.node_run_id == input.node_run_id,
                 "client historical step scope mismatch"
             );
-            let (metadata, mut originals) =
-                lossless_json_columns("metadata", &payload["fact"]["step"]);
+            let (metadata, mut originals) = lossless_json_columns(
+                "metadata",
+                &compact_metadata(
+                    payload["fact"]["step"].clone(),
+                    step.id,
+                    input.request_id,
+                    input.flow_run_id,
+                    input.node_run_id,
+                )?,
+            );
             let (_, at_originals) = lossless_json_columns("observed_at", &json!(input.observed_at));
             originals
                 .as_object_mut()
                 .expect("originals object")
                 .extend(at_originals.as_object().expect("originals object").clone());
-            sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,observed_at=($4::jsonb->>0),semantic_metadata_restored=true where id=$1")
+            sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,observed_at=($4::jsonb->>0),semantic_metadata_restored=true,metadata_compact=true where id=$1")
                 .bind(step.id).bind(metadata).bind(originals).bind(lossless_text_parameter(&input.observed_at))
                 .execute(&mut *tx).await?;
+            let restored: Value = sqlx::query_scalar("select client_trajectory_step_original_metadata(metadata,raw_json_payloads,id,request_id,flow_run_id,node_run_id,metadata_compact) from client_trajectory_steps where id=$1")
+                .bind(step.id).fetch_one(&mut *tx).await?;
+            anyhow::ensure!(
+                restored == payload["fact"]["step"],
+                "client historical step original mismatch"
+            );
         }
         let remaining = batch_size - i64::try_from(migrated)?;
         let sections = sqlx::query(r#"

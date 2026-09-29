@@ -208,6 +208,7 @@ pub(super) async fn retained(pool: &PgPool, schema: &str, tables: &[Table]) -> R
                 | "client_trajectory_steps"
                 | "client_trajectory_sections"
                 | "client_trajectory_archive_parts"
+                | "client_trajectory_archive_blocks"
                 | "runtime_canonical_contents"
                 | "runtime_observation_body_ownership"
         ) {

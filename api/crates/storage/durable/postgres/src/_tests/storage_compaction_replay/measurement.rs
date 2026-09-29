@@ -97,8 +97,8 @@ pub(super) async fn snapshot(
 pub(super) async fn compact_isolated_layout(
     pool: &PgPool,
     schema: &str,
-    domain: &BTreeSet<String>,
-    copied: &BTreeMap<String, u64>,
+    _domain: &BTreeSet<String>,
+    _copied: &BTreeMap<String, u64>,
 ) -> Result<()> {
     ensure!(
         super::isolated_schema(pool).await? == schema,
@@ -108,19 +108,69 @@ pub(super) async fn compact_isolated_layout(
     let names:Vec<String>=sqlx::query_scalar("select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=$1 and c.relkind='r' and not c.relispartition and c.relname<>'_sqlx_migrations' order by c.relname")
         .bind(schema).fetch_all(&mut *connection).await?;
     for name in names {
-        if domain.contains(&name)
-            || DOMAIN.split_whitespace().any(|t| t == name)
-            || copied.contains_key(&name)
-        {
-            // VACUUM FULL rebuilds heap/TOAST and the table's indexes. It is an
-            // isolated-layout measurement only, never a live-data reclaim claim.
-            sqlx::query(&format!(
-                "vacuum (full,analyze) {}",
-                qualified(schema, &name)
-            ))
-            .execute(&mut *connection)
-            .await?;
-        }
+        // Same full finite closure policy on both samples and their own empty schemas.
+        // VACUUM FULL rebuilds heap/TOAST and the table's indexes. It is an
+        // isolated-layout measurement only, never a live-data reclaim claim.
+        sqlx::query(&format!(
+            "vacuum (full,analyze) {}",
+            qualified(schema, &name)
+        ))
+        .execute(&mut *connection)
+        .await?;
     }
     Ok(())
+}
+
+/// Compare compact layouts only, subtracting each schema's own equally compact
+/// empty baseline. Gross and per-table costs remain available in the receipt.
+pub(super) fn compare(
+    before: &Snapshot,
+    before_empty: &Snapshot,
+    after: &Snapshot,
+    after_empty: &Snapshot,
+) -> Result<serde_json::Value> {
+    let task_before =
+        before.task_domain_gross_allocated_bytes - before_empty.task_domain_gross_allocated_bytes;
+    let task_after =
+        after.task_domain_gross_allocated_bytes - after_empty.task_domain_gross_allocated_bytes;
+    let support_before = before.fk_support_and_defaults_gross_allocated_bytes
+        - before_empty.fk_support_and_defaults_gross_allocated_bytes;
+    let support_after = after.fk_support_and_defaults_gross_allocated_bytes
+        - after_empty.fk_support_and_defaults_gross_allocated_bytes;
+    ensure!(
+        task_before >= 0 && task_after >= 0 && support_before >= 0 && support_after >= 0,
+        "own-empty baseline exceeds finite closure physical cost"
+    );
+    let names: BTreeSet<_> = before
+        .tables
+        .keys()
+        .chain(after.tables.keys())
+        .cloned()
+        .collect();
+    let per_table: BTreeMap<_, _> = names
+        .into_iter()
+        .map(|name| {
+            let allocated = |snapshot: &Snapshot| {
+                snapshot
+                    .tables
+                    .get(&name)
+                    .map_or(0, |t| t.gross_allocated_bytes)
+            };
+            let before_net = allocated(before) - allocated(before_empty);
+            let after_net = allocated(after) - allocated(after_empty);
+            (
+                name,
+                serde_json::json!({"before_net_bytes":before_net,"after_net_bytes":after_net,
+            "saved_bytes":before_net-after_net}),
+            )
+        })
+        .collect();
+    Ok(
+        serde_json::json!({"per_table":per_table,"layout_policy":"vacuum_full_all_isolated_closure_tables",
+        "task_before_bytes":task_before,"task_after_bytes":task_after,
+        "support_before_bytes":support_before,"support_after_bytes":support_after,
+        "closure_before_bytes":task_before+support_before,"closure_after_bytes":task_after+support_after,
+        "task_saved_bytes":task_before-task_after,
+        "closure_saved_bytes":task_before+support_before-task_after-support_after}),
+    )
 }

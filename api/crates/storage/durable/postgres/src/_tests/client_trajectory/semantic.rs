@@ -214,7 +214,7 @@ async fn client_semantic_locator_hash_and_content_scope_negatives_reject_wrong_v
         .await
         .unwrap();
     let original_hash: String =
-        sqlx::query_scalar("select value_hash from client_trajectory_sections where id=$1")
+        sqlx::query_scalar("select coalesce(value_hash,'sha256:'||encode(value_digest,'hex')) from client_trajectory_sections where id=$1")
             .bind(id)
             .fetch_one(store.pool())
             .await

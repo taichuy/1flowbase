@@ -552,6 +552,14 @@ async fn raw_codec_database_corruption_unknown_version_raw_length_checksum_and_t
         .unwrap();
     let original: (Vec<u8>, Vec<u8>, i64, Vec<u8>) = sqlx::query_as("select bytes,frame_directory,raw_byte_length,raw_checksum from client_trajectory_archive_parts where part_id=$1")
         .bind(part).fetch_one(&pool).await.unwrap();
+    // Controlled corruption bypasses the formal closed-version schema guard;
+    // the reader must independently reject versions it does not implement.
+    sqlx::query(
+        "alter table client_trajectory_archive_parts drop constraint client_archive_codec_columns",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
     for (sql, expected) in [
         ("update client_trajectory_archive_parts set codec_version=99 where part_id=$1", "unknown client archive codec version"),
         ("update client_trajectory_archive_parts set raw_byte_length=raw_byte_length+1 where part_id=$1", "raw length mismatch"),

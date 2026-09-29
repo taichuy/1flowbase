@@ -41,35 +41,61 @@ pub(super) struct DecodedFrame {
 }
 
 pub(super) fn encode(frames: &[ClientTrajectoryArchiveFrame]) -> Result<EncodedPart> {
+    encode_sequences(frames, None)
+}
+
+pub(super) fn encode_assigned(
+    frames: &[ClientTrajectoryArchiveFrame],
+    persisted: i64,
+) -> Result<EncodedPart> {
+    encode_sequences(frames, Some(persisted))
+}
+
+fn encode_sequences(
+    frames: &[ClientTrajectoryArchiveFrame],
+    persisted: Option<i64>,
+) -> Result<EncodedPart> {
     ensure!(!frames.is_empty(), "client archive empty part");
     let mut directory = MAGIC.to_vec();
     put_uint(&mut directory, frames.len().try_into()?);
-    let mut raw = Vec::new();
+    let mut raw_length: usize = 0;
     let mut previous = 0;
-    for frame in frames {
-        ensure!(frame.sequence > previous, "archive sequence order invalid");
-        put_uint(&mut directory, frame.sequence.try_into()?);
+    for (index, frame) in frames.iter().enumerate() {
+        let sequence = match persisted {
+            Some(base) => base
+                .checked_add(i64::try_from(index)? + 1)
+                .context("client archive sequence exhausted")?,
+            None => frame.sequence,
+        };
+        ensure!(sequence > previous, "archive sequence order invalid");
+        put_uint(&mut directory, sequence.try_into()?);
         directory.push(match frame.kind {
             ClientTrajectoryFrameKind::Request => 0,
             ClientTrajectoryFrameKind::ResponseJson => 1,
             ClientTrajectoryFrameKind::ResponseSse => 2,
         });
-        put_uint(&mut directory, raw.len().try_into()?);
+        put_uint(&mut directory, raw_length.try_into()?);
         put_uint(&mut directory, frame.bytes.len().try_into()?);
         put_uint(&mut directory, frame.observed_at.len().try_into()?);
         directory.extend_from_slice(frame.observed_at.as_bytes());
-        raw.extend_from_slice(&frame.bytes);
-        previous = frame.sequence;
+        raw_length = raw_length
+            .checked_add(frame.bytes.len())
+            .context("archive raw length overflow")?;
+        previous = sequence;
     }
-    let raw_byte_length = raw.len().try_into()?;
-    let checksum = checksum(&directory, &raw);
+    let mut digest = Sha256::new();
+    digest.update(VERSION.to_le_bytes());
+    digest.update(&directory);
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(&raw)?;
+    for frame in frames {
+        digest.update(&frame.bytes);
+        encoder.write_all(&frame.bytes)?;
+    }
     Ok(EncodedPart {
         directory,
         bytes: encoder.finish()?,
-        raw_byte_length,
-        checksum,
+        raw_byte_length: raw_length.try_into()?,
+        checksum: digest.finalize().to_vec(),
     })
 }
 
@@ -97,17 +123,21 @@ pub(super) fn decode(part: Part<'_>) -> Result<Vec<DecodedFrame>> {
 }
 
 fn decode_compressed(part: &Part<'_>) -> Result<Vec<DecodedFrame>> {
-    let directory = part.directory.context("archive directory missing")?;
+    let raw = decompress_raw(part)?;
+    decode_raw(part, &raw, i64::MIN, usize::MAX)
+}
+
+pub(super) fn decompress_raw(part: &Part<'_>) -> Result<Vec<u8>> {
+    ensure!(
+        part.version == VERSION,
+        "unknown client archive inline codec version {}",
+        part.version
+    );
     let raw_length: usize = part
         .raw_byte_length
         .context("archive raw length missing")?
         .try_into()
         .context("archive raw length invalid")?;
-    let expected_checksum = part.checksum.context("archive checksum missing")?;
-    ensure!(
-        expected_checksum.len() == 32,
-        "archive checksum length invalid"
-    );
     // Bound decompression by the recorded original length, never by a task-wide
     // capacity policy. Require StreamEnd so a truncated zlib trailer cannot
     // masquerade as a successful read of the correct number of original bytes.
@@ -141,11 +171,38 @@ fn decode_compressed(part: &Part<'_>) -> Result<Vec<DecodedFrame>> {
         decoder.total_in() == u64::try_from(part.bytes.len())?,
         "archive compressed bytes truncated or trailing"
     );
+    Ok(raw)
+}
+
+/// Authenticate and validate the entire original anchor even when only a page
+/// subset is materialized. Version 2 retains the version-1 CAD1 checksum.
+pub(super) fn decode_raw(
+    part: &Part<'_>,
+    raw: &[u8],
+    cursor: i64,
+    limit: usize,
+) -> Result<Vec<DecodedFrame>> {
     ensure!(
-        checksum(directory, &raw) == expected_checksum,
+        matches!(part.version, VERSION | 2),
+        "unknown client archive codec version {}",
+        part.version
+    );
+    let directory = part.directory.context("archive directory missing")?;
+    let raw_length: usize = part
+        .raw_byte_length
+        .context("archive raw length missing")?
+        .try_into()
+        .context("archive raw length invalid")?;
+    ensure!(raw.len() == raw_length, "archive raw length mismatch");
+    let expected_checksum = part.checksum.context("archive checksum missing")?;
+    ensure!(
+        expected_checksum.len() == 32,
+        "archive checksum length invalid"
+    );
+    ensure!(
+        checksum(directory, raw) == expected_checksum,
         "archive checksum mismatch"
     );
-
     let mut reader = DirectoryReader {
         bytes: directory,
         offset: 0,
@@ -163,6 +220,8 @@ fn decode_compressed(part: &Part<'_>) -> Result<Vec<DecodedFrame>> {
     );
     let mut frames = Vec::new();
     let mut previous_end = 0;
+    let mut previous_sequence = 0;
+    let mut first_sequence = None;
     for _ in 0..count {
         let sequence = i64::try_from(reader.uint()?).context("archive sequence invalid")?;
         let kind = match reader.take(1)?[0] {
@@ -175,31 +234,41 @@ fn decode_compressed(part: &Part<'_>) -> Result<Vec<DecodedFrame>> {
         let length = reader.size()?;
         let time_length = reader.size()?;
         let observed_at = std::str::from_utf8(reader.take(time_length)?)
-            .context("archive timestamp encoding invalid")?
-            .to_owned();
+            .context("archive timestamp encoding invalid")?;
         ensure!(offset == previous_end, "archive frame offset invalid");
         let end = offset
             .checked_add(length)
             .context("archive frame bounds overflow")?;
         let bytes = raw
             .get(offset..end)
-            .context("archive frame out of bounds")?
-            .to_vec();
-        frames.push(DecodedFrame {
-            frame: ClientTrajectoryArchiveFrame {
-                sequence,
-                kind,
-                observed_at,
-                bytes,
-            },
-            format: Format::Wire,
-        });
+            .context("archive frame out of bounds")?;
+        ensure!(
+            sequence > previous_sequence,
+            "archive sequence order invalid"
+        );
+        first_sequence.get_or_insert(sequence);
+        previous_sequence = sequence;
+        if sequence > cursor && frames.len() < limit {
+            frames.push(DecodedFrame {
+                frame: ClientTrajectoryArchiveFrame {
+                    sequence,
+                    kind,
+                    observed_at: observed_at.to_owned(),
+                    bytes: bytes.to_vec(),
+                },
+                format: Format::Wire,
+            });
+        }
         previous_end = end;
     }
     ensure!(reader.remaining() == 0, "archive directory trailing bytes");
     ensure!(
         previous_end == raw.len(),
         "archive directory raw length mismatch"
+    );
+    ensure!(
+        first_sequence == Some(part.first_sequence) && previous_sequence == part.last_sequence,
+        "archive part sequence bounds mismatch"
     );
     Ok(frames)
 }

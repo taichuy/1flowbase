@@ -41,6 +41,7 @@ axum-extra = { version = "0.9", features = ["cookie"] }
 base64 = "0.22"
 chacha20poly1305 = "0.10"
 flate2 = "1"
+zstd = "0.13"
 futures-util = "0.3"
 hmac = "0.12"
 http = "1"

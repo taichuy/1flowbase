@@ -136,6 +136,21 @@ impl PgControlPlaneStore {
                 .bind(input.flow_run_id).execute(&mut *tx).await?;
         }
         tx.commit().await?;
+        if matches!(&input.fact, ClientTrajectoryFact::Integrity { status, .. } if status != "pending")
+        {
+            // Physical sealing begins after the observational commit; it never
+            // changes receipt, capture integrity, or the durable ACK boundary.
+            let store = self.clone();
+            let request_id = input.request_id;
+            tokio::spawn(async move {
+                if let Err(error) = store
+                    .seal_client_trajectory_archive_request(request_id)
+                    .await
+                {
+                    tracing::warn!(%request_id, %error, "client raw block sealing deferred to explicit maintenance");
+                }
+            });
+        }
         Ok(())
     }
 

@@ -4,6 +4,8 @@ use control_plane_contracts::ports::{ClientTrajectoryFrameKind, ClientTrajectory
 #[path = "archive_codec.rs"]
 mod archive_codec;
 use archive_codec::{DecodedFrame, Format};
+#[path = "archive_block/mod.rs"]
+mod archive_block;
 
 impl PgControlPlaneStore {
     pub(crate) async fn append_client_trajectory_archive_part(
@@ -53,16 +55,6 @@ impl PgControlPlaneStore {
         let through = persisted
             .checked_add(count)
             .ok_or_else(|| anyhow::anyhow!("client archive sequence exhausted"))?;
-        let mut frames = Vec::new();
-        for (index, frame) in input.frames.iter().enumerate() {
-            let sequence = persisted
-                .checked_add(i64::try_from(index)? + 1)
-                .ok_or_else(|| anyhow::anyhow!("client archive sequence exhausted"))?;
-            frames.push(ClientTrajectoryArchiveFrame {
-                sequence,
-                ..frame.clone()
-            });
-        }
         if let Some(original) = legacy {
             // Historical SQL _client_archive_ref readers require the exact v0
             // layout. Legacy adapter writes keep that same independently useful
@@ -70,8 +62,11 @@ impl PgControlPlaneStore {
             let mut bytes = Vec::new();
             let mut directory = Vec::new();
             let original = serde_json::to_vec(original)?;
-            for frame in &frames {
-                directory.push(serde_json::json!({"sequence":frame.sequence,"kind":frame.kind,"observed_at":frame.observed_at,"offset":bytes.len(),"length":original.len(),"format":"legacy_json"}));
+            for (index, frame) in input.frames.iter().enumerate() {
+                let sequence = persisted
+                    .checked_add(i64::try_from(index)? + 1)
+                    .ok_or_else(|| anyhow::anyhow!("client archive sequence exhausted"))?;
+                directory.push(serde_json::json!({"sequence":sequence,"kind":frame.kind,"observed_at":frame.observed_at,"offset":bytes.len(),"length":original.len(),"format":"legacy_json"}));
                 bytes.extend_from_slice(&original);
             }
             sqlx::query("insert into client_trajectory_archive_parts(part_id,request_id,first_sequence,last_sequence,frames,bytes) values($1,$2,$3,$4,$5,$6)")
@@ -80,7 +75,7 @@ impl PgControlPlaneStore {
         } else {
             // A part remains the original durable transaction boundary; neither
             // frame batching nor the commit-before-receipt contract changes.
-            let encoded = archive_codec::encode(&frames)?;
+            let encoded = archive_codec::encode_assigned(&input.frames, persisted)?;
             sqlx::query("insert into client_trajectory_archive_parts(part_id,request_id,first_sequence,last_sequence,frames,bytes,codec_version,frame_directory,raw_byte_length,raw_checksum) values($1,$2,$3,$4,'[]'::jsonb,$5,$6,$7,$8,$9)")
                 .bind(input.part_id).bind(input.request_id).bind(persisted+1).bind(through)
                 .bind(encoded.bytes).bind(archive_codec::VERSION).bind(encoded.directory)
@@ -138,16 +133,17 @@ impl PgControlPlaneStore {
     ) -> Result<Vec<DecodedFrame>> {
         let mut items = Vec::new();
         let mut after_part: Option<i64> = None;
+        let mut cache = archive_block::PageCache::default();
         while items.len() < limit {
             // Fetch only one intersecting immutable part at a time. A page may
             // cross old/new parts without materializing the request's full task.
-            let row = sqlx::query("select first_sequence,last_sequence,frames,bytes,codec_version,frame_directory,raw_byte_length,raw_checksum from client_trajectory_archive_parts where request_id=$1 and last_sequence>$2 and ($3::bigint is null or first_sequence>$3) order by first_sequence limit 1")
-                .bind(request).bind(cursor).bind(after_part).fetch_optional(self.pool()).await?;
+            let row = sqlx::query("select p.first_sequence,p.last_sequence,p.frames,p.bytes,p.codec_version,p.frame_directory,p.raw_byte_length,p.raw_checksum,p.block_id,p.block_offset,b.codec_version as block_codec_version,case when b.block_id=$4::uuid then null::bytea else b.bytes end as block_bytes,b.raw_byte_length as block_raw_length,b.raw_checksum as block_checksum from client_trajectory_archive_parts p left join client_trajectory_archive_blocks b on b.request_id=p.request_id and b.block_id=p.block_id where p.request_id=$1 and p.last_sequence>$2 and ($3::bigint is null or p.first_sequence>$3) order by p.first_sequence limit 1")
+                .bind(request).bind(cursor).bind(after_part).bind(cache.cached_block_id()).fetch_optional(self.pool()).await?;
             let Some(row) = row else {
                 break;
             };
             after_part = Some(row.get("first_sequence"));
-            for frame in decode_row(&row)? {
+            for frame in cache.decode_row(&row, cursor, limit - items.len())? {
                 if frame.frame.sequence > cursor {
                     items.push(frame);
                     if items.len() == limit {
@@ -256,7 +252,7 @@ impl PgControlPlaneStore {
             let frame = stored.frame;
             let bytes = frame.bytes;
             let value=if stored.format != Format::Wire {archive_original_value(stored.format,&bytes)?} else {
-                let (encoding,body)=match String::from_utf8(bytes.clone()) {Ok(s)=>("utf8",s),Err(_)=>("base64",base64::engine::general_purpose::STANDARD.encode(bytes))};
+                let (encoding,body)=match String::from_utf8(bytes) {Ok(s)=>("utf8",s),Err(error)=>("base64",base64::engine::general_purpose::STANDARD.encode(error.into_bytes()))};
                 serde_json::json!({"direction":if frame.kind==ClientTrajectoryFrameKind::Request {"submitted"} else {"emitted"},"encoding":encoding,"body":body,"frame_kind":frame.kind})
             };
             Ok(ClientTrajectorySectionItem {sequence:frame.sequence,value})
