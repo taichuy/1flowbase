@@ -7,6 +7,22 @@ const {
   routeChangedFiles,
 } = require('../core.js');
 
+test('current AI protocol and provider lifecycle changes route both state protocols and foundation evidence', () => {
+  for (const file of [
+    'api/apps/api-server/src/routes/application_public_api/responses_websocket/actor.rs',
+    'api/apps/api-server/src/routes/application_public_api/native_websocket/turn_bridge.rs',
+    'api/apps/api-server/src/routes/application_public_api/openai.rs',
+    'api/apps/api-server/src/routes/application_public_api/callback_adapter.rs',
+    'api/crates/runtime-extension-host/src/provider_host/operations.rs',
+  ]) {
+    const scopes = routeChangedFiles([file]).map((route) => route.scope);
+    assert.ok(scopes.includes('state-protocols'), file);
+    assert.ok(scopes.includes('foundation-contract-ai-gateway-fast'), file);
+  }
+  const unrelated = routeChangedFiles(['api/crates/runtime-extension-host/src/host_service.rs']);
+  assert.equal(unrelated.some((route) => route.scope === 'state-protocols'), false);
+});
+
 test('routeChangedFiles recommends related gates for frontend and backend consistency changes', () => {
   const routes = routeChangedFiles([
     'web/app/src/pages/workspaces/WorkspacePage.tsx',

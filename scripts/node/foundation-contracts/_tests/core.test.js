@@ -12,6 +12,28 @@ const {
   writeQualityGateComponentArtifacts,
 } = require('../core.js');
 
+test('AI Gateway routing follows current Responses, Native, callback, and provider lifecycle owners', () => {
+  for (const changedFile of [
+    'api/apps/api-server/src/routes/application_public_api/openai.rs',
+    'api/apps/api-server/src/routes/application_public_api/openai/session_context.rs',
+    'api/apps/api-server/src/routes/application_public_api/responses_websocket/turn_bridge.rs',
+    'api/apps/api-server/src/routes/application_public_api/native_websocket/actor.rs',
+    'api/apps/api-server/src/routes/application_public_api/callback_adapter.rs',
+    'api/apps/api-server/src/provider_runtime/transport_session_lifecycle.rs',
+    'api/crates/runtime-extension-host/src/provider_host/session_workers/capacity.rs',
+  ]) {
+    assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, ['ai-gateway'], changedFile);
+  }
+  for (const changedFile of [
+    'api/crates/runtime-extension-host/src/host_service.rs',
+    'api/apps/api-server/src/routes/application_public_api/README.md',
+    'web/app/src/features/frontstage/i18n/en_US.json',
+    'web/app/src/features/frontstage/layout.css',
+  ]) {
+    assert.equal(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations.includes('ai-gateway'), false, changedFile);
+  }
+});
+
 test('AC-001/006 routes four foundations and ignores legal non-contract changes', () => {
   const matrix = [
     ['ai-gateway', 'scripts/node/ai-gateway-concurrency/contracts/index.js'],

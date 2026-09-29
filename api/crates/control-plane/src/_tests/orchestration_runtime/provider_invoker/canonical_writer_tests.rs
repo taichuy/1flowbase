@@ -78,7 +78,7 @@ fn provider_tool_structure_receipt_keeps_only_wire_shape_metadata() {
 }
 
 #[tokio::test]
-async fn assistant_activity_canonical_provider_deltas_append_before_the_terminal_event() {
+async fn canonical_provider_deltas_preserve_live_order_without_duplicate_durable_writes() {
     let stream = Arc::new(crate::_tests::RecordingRuntimeEventStream::default());
     let flow_run_id = Uuid::nil();
     let node_run_id = Uuid::max();
@@ -96,10 +96,7 @@ async fn assistant_activity_canonical_provider_deltas_append_before_the_terminal
     )
     .await;
     assert_eq!(stream.events().len(), 1);
-    assert!(
-        stream.events()[0].persist_required,
-        "AC-002 canonical provider deltas must remain eligible for ordered durable persistence"
-    );
+    assert!(!stream.events()[0].persist_required);
 
     project_canonical_provider_deltas(
         Some(&(stream.clone() as Arc<dyn RuntimeEventStream>)),
@@ -114,7 +111,42 @@ async fn assistant_activity_canonical_provider_deltas_append_before_the_terminal
     )
     .await;
     assert_eq!(stream.events().len(), 2);
-    assert!(stream.events()[1].persist_required);
+    let events = stream.events();
+    assert_eq!(events[0].payload["text"], "first");
+    assert_eq!(events[1].payload["text"], "second");
+    for event in events {
+        assert_eq!(event.event_type, "text_delta");
+        assert_eq!(
+            event.durability,
+            crate::ports::RuntimeEventDurability::Ephemeral
+        );
+        assert!(!event.persist_required);
+        assert_eq!(event.payload["node_run_id"], node_run_id.to_string());
+    }
+    let completed_item = json!({
+        "type": "message", "role": "assistant",
+        "content": [{ "type": "output_text", "text": "firstsecond" }]
+    });
+    append_provider_runtime_event(
+        &(stream.clone() as Arc<dyn RuntimeEventStream>),
+        flow_run_id,
+        debug_stream_events::provider_output_item_done(
+            "node-llm",
+            node_run_id,
+            0,
+            completed_item.clone(),
+        ),
+    )
+    .await;
+    let persisted = stream.events();
+    assert_eq!(persisted.len(), 3);
+    assert_eq!(persisted[2].event_type, "provider_output_item_done");
+    assert!(persisted[2].persist_required);
+    assert_eq!(
+        persisted[2].durability,
+        crate::ports::RuntimeEventDurability::DurableRequired
+    );
+    assert_eq!(persisted[2].payload["item"], completed_item);
 }
 
 #[test]

@@ -16,7 +16,7 @@
 ## Review Checklist
 
 - 请求路径是否没有 `unwrap()` / `panic!()`；允许的 `expect()` 是否只在测试、启动期或不可恢复不变量，并带清晰原因。
-- API 错误是否映射为稳定应用错误；底层数据库、外部依赖和内部错误没有直接泄漏到响应契约。
+- API 错误是否映射为稳定应用错误；数据库实现细节及凭据不泄漏；Provider / upstream 错误沿已确认的 passthrough contract 保留，不以泛化错误丢失排障信息。
 - 领域核心是否用 newtype / enum 表达业务概念和有限状态；重要字段是否默认私有。
 - 状态转换是否只能通过领域方法、service command 或 `Resource Action Kernel` action；没有 handler / repository 绕过主入口改状态。
 - `Option` 是否只表达可缺失，`Result` 是否表达可失败；数据库错误、权限错误和外部依赖失败没有被 `Option` 吞掉。
@@ -32,7 +32,7 @@
 
 ## Evidence Chain
 
-先选最小证据链，不为显得全面叠加无新增覆盖面的命令：
+按任务风险、实际构建单元和执行策略选择证据。下面是 workspace 聚合入口（包含 `cargo test --workspace`），并非局部任务的最小回归：
 
 ```bash
 node scripts/node/test-backend.js
@@ -46,7 +46,7 @@ node scripts/node/tooling.js check-rust-backend
 
 该静态门禁会硬拦新增的生产路径 `unwrap` / `panic` / `dbg` / `todo` / `unimplemented`、敏感字段序列化和敏感日志；阻塞 IO 等高误伤项先作为 warning 写入 `tmp/test-governance/rust-backend-static-gate.json`。历史债由 `scripts/node/check-rust-backend/baseline.json` 兜住；新增命中不应追加 baseline，除非明确登记为阶段性技术债。
 
-如果需要直接落到 Cargo，串行运行：
+已授权 workspace 验收且使用适合的 CI / 专门环境时，可选择以下入口；同一 worktree 的 Cargo 命令串行，不要求每次全跑：
 
 ```bash
 cargo fmt --all --check
@@ -55,7 +55,7 @@ cargo test --workspace
 cargo check --workspace
 ```
 
-如果范围只命中单个 crate，至少补：
+单 crate 风险可用以下定向入口补缺失证据；仍先确认实际链接成本，已有有效证据不重复执行：
 
 ```bash
 cargo test -p <crate-name>

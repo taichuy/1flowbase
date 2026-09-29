@@ -11,7 +11,7 @@ on:
         type: string
         default: latest
       candidate_sha:
-        description: Frozen full SHA required for plugin-composition-2007 (dispatch workflow from the same candidate ref)
+        description: Optional frozen full SHA; required for plugin composition (dispatch from the same candidate ref)
         type: string
         required: false
       batch_mode:
@@ -95,7 +95,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: quality-gate-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'latest' }}
+  group: quality-gate-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'latest' }}-${{ inputs.scope || 'ci' }}
   cancel-in-progress: true
 
 env:
@@ -107,7 +107,7 @@ env:
 
 jobs:
   resolve-quality-gate-target:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -115,7 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ inputs.candidate_sha || env.QUALITY_GATE_TARGET_BRANCH }}
       - id: target
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -131,15 +131,16 @@ jobs:
 
   single-scope-gate:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope != 'ci' && inputs.scope != 'container-images' && inputs.scope != 'plugin-composition-2007' && inputs.scope != 'plugin-composition-2014' }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
           fetch-depth: 0
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v5
         with:
           version: 11.5.0
@@ -351,15 +352,16 @@ jobs:
 
   repo-tooling-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
           fetch-depth: 0
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v5
         with:
           version: 11.5.0
@@ -388,14 +390,15 @@ jobs:
 
   repo-frontend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 70
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v5
         with:
           version: 11.5.0
@@ -423,15 +426,16 @@ jobs:
 
   repo-frontend-react-doctor-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
           fetch-depth: 0
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - name: Resolve React Doctor base and candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -508,6 +512,7 @@ jobs:
 
   repo-backend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -538,9 +543,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
         if: ${{ startsWith(matrix.scope, 'repo-backend-test-api-server-') || startsWith(matrix.scope, 'repo-backend-test-storage-postgres-') }}
@@ -625,6 +630,7 @@ jobs:
 
   backend-consistency-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 35
     strategy:
@@ -637,9 +643,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - name: Resolve release-seeded Rust cache architecture
         id: release_seed_arch
@@ -706,14 +712,15 @@ jobs:
 
   coverage-frontend-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 70
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v5
         with:
           version: 11.5.0
@@ -927,6 +934,7 @@ jobs:
 
   container-images-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.scope == 'ci' || inputs.scope == 'container-images')) }}
+    needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -936,9 +944,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -1015,13 +1023,15 @@ jobs:
 
   ai-gateway-protocol-conformance:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
     uses: ./.github/workflows/ai-gateway-concurrency.yml
     with:
-      target_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'latest' }}
+      target_ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
 
   aggregate:
     if: ${{ always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci')) }}
     needs:
+      - resolve-quality-gate-target
       - repo-tooling-gate
       - repo-frontend-gate
       - repo-frontend-react-doctor-gate
@@ -1038,9 +1048,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
       - name: Resolve quality gate target SHA
-        run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v6
         with:
           pattern: test-governance-*
@@ -1050,6 +1060,7 @@ jobs:
         env:
           GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
           GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
+          INPUT_JOB_RESULTS: ${{ toJSON(needs) }}
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}

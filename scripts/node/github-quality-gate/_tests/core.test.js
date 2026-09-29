@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const {
   BACKEND_CONSISTENCY_COMPONENT_SCOPES,
+  buildAggregateReport,
   buildReport,
   buildGateCommand,
   boundIssueBody,
@@ -17,6 +18,54 @@ const {
   runQualityGateAggregate,
   runQualityGate,
 } = require('../core.js');
+
+test('aggregate rejects missing or different candidate receipts while accepting matching warnings', () => {
+  const candidate = 'a'.repeat(40);
+  const artifact = {
+    artifactName: 'test-governance-repo-tooling',
+    artifactPath: '',
+    reportPath: '',
+    scope: 'repo-tooling',
+    report: { status: 'passed', exitCode: 0, commit: candidate, warningFiles: ['upstream.warnings.log'] },
+  };
+  const aggregate = (receiptCommit, aggregateCommit = candidate) => buildAggregateReport({
+    repoRoot: '/repo', reportType: 'ci', issueUrl: '', environmentName: '', timestamp: '',
+    env: { GITHUB_SHA: aggregateCommit },
+    componentArtifacts: [{ ...artifact, report: { ...artifact.report, commit: receiptCommit } }],
+  }).json;
+
+  assert.equal(aggregate(candidate).status, 'passed');
+  assert.deepEqual(aggregate(candidate).warningFiles, ['upstream.warnings.log']);
+  for (const commit of ['', 'b'.repeat(40)]) {
+    const result = aggregate(commit);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.exitCode, 1);
+    assert.match(result.components[0].failureExcerpt, /Candidate mismatch/u);
+  }
+  assert.equal(aggregate(candidate, '').status, 'failed');
+});
+
+test('aggregate cannot pass when a required coverage merge job fails without a component artifact', () => {
+  const candidate = 'a'.repeat(40);
+  const report = (result) => buildAggregateReport({
+    repoRoot: '/repo', reportType: 'ci', issueUrl: '', environmentName: '', timestamp: '',
+    env: {
+      GITHUB_SHA: candidate,
+      INPUT_JOB_RESULTS: JSON.stringify({ 'coverage-backend-api-server-sharded-merge': { result } }),
+    },
+    componentArtifacts: [{
+      artifactName: 'test-governance-repo-tooling', artifactPath: '', reportPath: '', scope: 'repo-tooling',
+      report: { status: 'passed', exitCode: 0, commit: candidate },
+    }],
+  }).json;
+  assert.equal(report('success').status, 'passed');
+  for (const outcome of ['failure', 'cancelled', 'skipped', '']) {
+    const result = report(outcome);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.exitCode, 1);
+    assert.match(result.components[1].failureExcerpt, /Required workflow job/u);
+  }
+});
 
 test('quality gate bounds GitHub Issue bodies while preserving the report summary', () => {
   const body = `# Quality Gate Report\n\n## Result Summary\n\n${'错误🙂\n'.repeat(30_000)}`;
@@ -820,7 +869,7 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
     fs.mkdirSync(artifactDir, { recursive: true });
     fs.writeFileSync(
       path.join(artifactDir, 'quality-gate-report.json'),
-      `${JSON.stringify(report, null, 2)}\n`,
+      `${JSON.stringify({ commit: 'abcdef1234567890', ...report }, null, 2)}\n`,
       'utf8'
     );
     fs.writeFileSync(path.join(artifactDir, 'quality-gate.latest.log'), `${report.scope} log\n`, 'utf8');
@@ -855,6 +904,7 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
   for (const scope of REPO_BACKEND_COMPONENT_SCOPES) {
     writeArtifact(`test-governance-${scope}`, {
       reportType: 'ci',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope,
       exitCode: 0,
@@ -866,6 +916,7 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
   for (const scope of BACKEND_CONSISTENCY_COMPONENT_SCOPES) {
     writeArtifact(`test-governance-${scope}`, {
       reportType: 'ci',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope,
       exitCode: 0,
@@ -905,6 +956,7 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
   for (const scope of COVERAGE_BACKEND_COMPONENT_SCOPES) {
     writeArtifact(`test-governance-${scope}`, {
       reportType: 'ci',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope,
       exitCode: 0,
@@ -968,7 +1020,7 @@ test('runQualityGateAggregate keeps component warning logs advisory when compone
     fs.mkdirSync(artifactDir, { recursive: true });
     fs.writeFileSync(
       path.join(artifactDir, 'quality-gate-report.json'),
-      `${JSON.stringify(report, null, 2)}\n`,
+      `${JSON.stringify({ commit: 'abcdef1234567890', ...report }, null, 2)}\n`,
       'utf8'
     );
     fs.writeFileSync(path.join(artifactDir, 'quality-gate.latest.log'), `${report.scope} log\n`, 'utf8');
@@ -995,6 +1047,7 @@ test('runQualityGateAggregate keeps component warning logs advisory when compone
   for (const scope of REPO_BACKEND_COMPONENT_SCOPES) {
     writeArtifact(`test-governance-${scope}`, {
       reportType: 'ci',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope,
       exitCode: 0,
@@ -1006,6 +1059,7 @@ test('runQualityGateAggregate keeps component warning logs advisory when compone
   for (const scope of BACKEND_CONSISTENCY_COMPONENT_SCOPES) {
     writeArtifact(`test-governance-${scope}`, {
       reportType: 'ci',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope,
       exitCode: 0,
@@ -1026,6 +1080,7 @@ test('runQualityGateAggregate keeps component warning logs advisory when compone
   for (const scope of COVERAGE_BACKEND_COMPONENT_SCOPES) {
     writeArtifact(`test-governance-${scope}`, {
       reportType: 'ci',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope,
       exitCode: 0,
@@ -1071,6 +1126,7 @@ test('runQualityGateAggregate publishes one upserted pull request report comment
     path.join(artifactDir, 'quality-gate-report.json'),
     `${JSON.stringify({
       reportType: 'ci',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope: 'repo-tooling',
       exitCode: 0,

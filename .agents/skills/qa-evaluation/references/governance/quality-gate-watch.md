@@ -20,7 +20,7 @@
 1. 运行 `git status --short --branch` 和 `git log -1 --oneline --decorate`，确认本地分支与提交。
 2. 查找最新相关 quality-gate issue，优先 `latest` 分支报告；如果旧 issue 仍 open，等新的有效通过报告出现后再处理。
 3. 检查 `latest` 分支的 GitHub Actions，重点看 `verify` 和手动 `manual quality gate` workflow。
-4. 下载或读取 `tmp/test-governance/quality-gate-report.json`。通过条件必须同时满足：workflow conclusion 为 `success`、artifact `status=passed`、`exitCode=0`。`warningFiles` 可以非空，必须展示和解释，但不会自动把 passed 改成 failed；只有报告显式升级为 error/blocker 才失败。
+4. 下载或读取 `tmp/test-governance/quality-gate-report.json`。通过条件必须同时满足：workflow conclusion 为 `success`、artifact `status=passed`、`exitCode=0`，且 report / component receipt 与候选 SHA 一致。所有必需 job（含 API coverage merge）的结果必须成功。`warningFiles` 可以非空，必须展示和解释，但不会自动把 passed 改成 failed；只有报告显式升级为 error/blocker 才失败。
 5. 如果 gate 没有在 `latest` 上运行，先修 workflow/action，再补聚焦测试。重点文件通常是 `.github/actions/quality-gate/action.yml`、`.github/workflows/verify.yml`、`.github/workflows/quality-gate.yml`。
 6. workflow/action 变化要用 `node scripts/node/test-scripts.js github-quality-gate` 或等价定向测试验证；不要靠肉眼检查。
 7. 推送到目标分支后等待 GitHub Actions 完成，再下载 artifact 复核 JSON，最后再说 pass/fail。
@@ -47,8 +47,8 @@
 
 当前仓库的质量门禁自动化入口：
 
-- `.github/workflows/verify.yml`：`pull_request`、`main` 和 `latest` push 触发，调用本地 quality-gate action。
-- `.github/workflows/quality-gate.yml`：手动 quality gate，`target_branch` 默认 `latest`，可选 `latest` / `main`。
+- `.github/workflows/verify.yml`：`pull_request`、`beta` / `main` / `latest` push 触发，调用本地 quality-gate action。
+- `.github/workflows/quality-gate.yml`：手动 quality gate，`target_branch` 默认 `latest`，支持目标 ref，完整批次先冻结 candidate SHA；手动全量还需显式提供 `react_doctor_base`。
 - `.github/actions/quality-gate/action.yml`：复用 action，实际执行 `node scripts/node/cli/github-quality-gate.js`。
 - `scripts/node/cli/github-quality-gate.js`：生成 `quality-gate.latest.log`、`quality-gate-report.md`、`quality-gate-report.json`，有 token 时发布 GitHub issue。
 

@@ -601,8 +601,12 @@ function dedupeBy(items, keyForItem) {
   return deduped;
 }
 
-function normalizeComponentReport({ repoRoot, artifact }) {
-  const exitCode = Number.isFinite(artifact.report.exitCode) ? artifact.report.exitCode : 1;
+function normalizeComponentReport({ repoRoot, artifact, candidateSha }) {
+  const commit = artifact.report.commit || '';
+  const identityFailure = !artifact.missing && (!candidateSha || commit !== candidateSha)
+    ? `Candidate mismatch for ${artifact.scope}: expected ${candidateSha || 'missing'}, received ${commit || 'missing'}`
+    : '';
+  const exitCode = identityFailure ? 1 : (Number.isFinite(artifact.report.exitCode) ? artifact.report.exitCode : 1);
   const status = artifact.report.status === 'passed' && exitCode === 0 ? 'passed' : 'failed';
   const logPath = artifact.artifactPath
     ? path.join(artifact.artifactPath, 'quality-gate.latest.log')
@@ -611,12 +615,13 @@ function normalizeComponentReport({ repoRoot, artifact }) {
   return {
     artifactName: artifact.artifactName,
     scope: artifact.scope,
+    commit,
     status,
     exitCode,
     reportPath: artifact.reportPath ? toRepoRelative(repoRoot, artifact.reportPath) : '',
     logPath: fs.existsSync(logPath) ? toRepoRelative(repoRoot, logPath) : '',
     failureExcerpt: status === 'failed'
-      ? (artifact.missing ? `No quality gate artifact was downloaded for scope: ${artifact.scope}` : readFailureExcerpt(logPath))
+      ? (identityFailure || (artifact.missing ? `No quality gate artifact was downloaded for scope: ${artifact.scope}` : readFailureExcerpt(logPath)))
       : '',
   };
 }
@@ -656,7 +661,21 @@ function buildAggregateReport({
   timestamp,
   env,
 }) {
-  const components = componentArtifacts.map((artifact) => normalizeComponentReport({ repoRoot, artifact }));
+  const components = componentArtifacts.map((artifact) => normalizeComponentReport({ repoRoot, artifact, candidateSha: env.GITHUB_SHA }));
+  const jobResults = env.INPUT_JOB_RESULTS ? JSON.parse(env.INPUT_JOB_RESULTS) : {};
+  for (const [job, outcome] of Object.entries(jobResults)) {
+    if (outcome?.result === 'success') continue;
+    components.push({
+      artifactName: '',
+      scope: `workflow-job:${job}`,
+      commit: env.GITHUB_SHA || '',
+      status: 'failed',
+      exitCode: 1,
+      reportPath: '',
+      logPath: '',
+      failureExcerpt: `Required workflow job ${job} did not succeed: ${outcome?.result || 'missing'}`,
+    });
+  }
   const warningFiles = dedupeBy(
     componentArtifacts.flatMap((artifact) => artifact.report.warningFiles || []),
     (filePath) => filePath
@@ -715,6 +734,7 @@ function buildAggregateReport({
     containerImageSecurityReports,
     backendConsistencyTargets,
     components,
+    jobResults,
   };
 
   const failedComponents = components.filter((component) => component.status !== 'passed');
