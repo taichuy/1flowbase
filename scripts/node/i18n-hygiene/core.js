@@ -366,23 +366,58 @@ function groupBy(values, resolveKey) {
   return groups;
 }
 
-function collectFrontendNamespaceOwners(repoRoot) {
-  const appI18nPath = path.join(repoRoot, FRONTEND_I18N_BOOTSTRAP);
-  const ownersByNamespace = new Map();
+function collectDirectFrontendI18nModules(repoRoot, bootstrapPath, content) {
+  const modulePaths = new Set();
+  const sourceRoot = path.resolve(repoRoot, FRONTEND_SOURCE_ROOT);
+  const importPatterns = [
+    /\bimport\s+(?!type\b)(?:[^;'"()]*?\s+from\s*)?['"]([^'"]+)['"]/gu,
+    /\bimport\(\s*['"]([^'"]+)['"]\s*\)/gu
+  ];
 
-  if (!fs.existsSync(appI18nPath)) {
-    return ownersByNamespace;
+  for (const pattern of importPatterns) {
+    for (const match of content.matchAll(pattern)) {
+      const importPath = match[1];
+      if (!importPath.startsWith('./') && !importPath.startsWith('../')) {
+        continue;
+      }
+
+      const resolvedPath = path.resolve(path.dirname(bootstrapPath), importPath);
+      if (!resolvedPath.startsWith(`${sourceRoot}${path.sep}`)) {
+        continue;
+      }
+
+      const extension = path.extname(resolvedPath);
+      const candidates = extension
+        ? FRONTEND_SOURCE_EXTENSIONS.has(extension)
+          ? [resolvedPath]
+          : []
+        : ['.ts', '.tsx', '.js', '.jsx'].map((suffix) => `${resolvedPath}${suffix}`);
+      const modulePath = candidates.find(
+        (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile()
+      );
+      if (modulePath && modulePath !== bootstrapPath) {
+        modulePaths.add(modulePath);
+      }
+    }
   }
 
-  const appI18nContent = fs.readFileSync(appI18nPath, 'utf8');
+  return modulePaths;
+}
+
+function collectFrontendNamespaceOwnersFromModule(
+  repoRoot,
+  modulePath,
+  content,
+  ownersByNamespace
+) {
   const importOwnersByBinding = new Map();
   const staticImportPattern =
     /import\s+([A-Za-z][A-Za-z0-9]*)\s+from\s+['"]([^'"]+\/i18n\/(?:zh_Hans|en_US)\.json)['"]/gu;
-  let staticImportMatch = staticImportPattern.exec(appI18nContent);
+  let staticImportMatch = staticImportPattern.exec(content);
   while (staticImportMatch) {
     const [, bindingName, importPath] = staticImportMatch;
     const importAbsolutePath = path.resolve(
-      path.dirname(appI18nPath),
+      path.dirname(modulePath),
       importPath
     );
     const importRelativePath = normalizePath(
@@ -394,12 +429,12 @@ function collectFrontendNamespaceOwners(repoRoot) {
       importOwnersByBinding.set(bindingName, owner);
     }
 
-    staticImportMatch = staticImportPattern.exec(appI18nContent);
+    staticImportMatch = staticImportPattern.exec(content);
   }
 
   const staticNamespacePattern =
     /([A-Za-z][A-Za-z0-9]*):\s*([A-Za-z][A-Za-z0-9]*)/gu;
-  let staticNamespaceMatch = staticNamespacePattern.exec(appI18nContent);
+  let staticNamespaceMatch = staticNamespacePattern.exec(content);
   while (staticNamespaceMatch) {
     const [, namespace, bindingName] = staticNamespaceMatch;
     const owner = importOwnersByBinding.get(bindingName);
@@ -408,17 +443,17 @@ function collectFrontendNamespaceOwners(repoRoot) {
       ownersByNamespace.set(namespace, owner);
     }
 
-    staticNamespaceMatch = staticNamespacePattern.exec(appI18nContent);
+    staticNamespaceMatch = staticNamespacePattern.exec(content);
   }
 
   const namespaceImportPattern =
     /([A-Za-z][A-Za-z0-9]*):\s*\{\s*zh_Hans:\s*\(\)\s*=>\s*import\(\s*['"]([^'"]+)['"]\s*\)/gu;
-  let match = namespaceImportPattern.exec(appI18nContent);
+  let match = namespaceImportPattern.exec(content);
 
   while (match) {
     const [, namespace, importPath] = match;
     const importAbsolutePath = path.resolve(
-      path.dirname(appI18nPath),
+      path.dirname(modulePath),
       importPath
     );
     const importRelativePath = normalizePath(
@@ -430,7 +465,37 @@ function collectFrontendNamespaceOwners(repoRoot) {
       ownersByNamespace.set(namespace, owner);
     }
 
-    match = namespaceImportPattern.exec(appI18nContent);
+    match = namespaceImportPattern.exec(content);
+  }
+}
+
+function collectFrontendNamespaceOwners(repoRoot) {
+  const appI18nPath = path.join(repoRoot, FRONTEND_I18N_BOOTSTRAP);
+  const ownersByNamespace = new Map();
+
+  if (!fs.existsSync(appI18nPath)) {
+    return ownersByNamespace;
+  }
+
+  const appI18nContent = fs.readFileSync(appI18nPath, 'utf8');
+  collectFrontendNamespaceOwnersFromModule(
+    repoRoot,
+    appI18nPath,
+    appI18nContent,
+    ownersByNamespace
+  );
+  // Follow only direct local source imports; do not walk the module graph.
+  for (const modulePath of collectDirectFrontendI18nModules(
+    repoRoot,
+    appI18nPath,
+    appI18nContent
+  )) {
+    collectFrontendNamespaceOwnersFromModule(
+      repoRoot,
+      modulePath,
+      fs.readFileSync(modulePath, 'utf8'),
+      ownersByNamespace
+    );
   }
 
   return ownersByNamespace;
