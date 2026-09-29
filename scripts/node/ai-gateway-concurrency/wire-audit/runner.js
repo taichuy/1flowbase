@@ -196,6 +196,12 @@ function mcpApprovalContinuation(capture) {
   ]).find((item) => item?.type === 'mcp_approval_request')?.id;
   if (!responseId) throw new Error('WireAudit MCP start omitted provider response id');
   if (!approvalRequestId) throw new Error('WireAudit MCP start omitted approval request id');
+  // The host stages continuation after successful invocation completion. An
+  // announced approval item alone is not a completed response-round receipt.
+  if (!payloads.some((payload) => payload.type === 'response.completed'
+      && payload.response?.id === responseId)) {
+    throw new Error('WireAudit MCP start omitted matching response completion');
+  }
   return {
     previous_response_id: responseId,
     input: [{
@@ -329,6 +335,7 @@ module.exports = {
   assertRequestFidelityAudit,
   errorFidelityInventory,
   requestFidelityInventory,
+  readMcpApprovalStart,
   runWireAudit,
   vectorBodies,
 };
