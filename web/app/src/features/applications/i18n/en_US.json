@@ -139,7 +139,7 @@
     "refresh_failed": "Refresh failed",
     "refresh_logs": "Refresh log",
     "api_key_prefix_notice": "The list only displays recognized Key prefixes; the complete token is only displayed once after creation and cannot be viewed again after closing.",
-    "invocation_count": "Number of calls",
+    "invocation_count": "Request count",
     "run_id": "Run ID",
     "name_required": "Please enter name",
     "run_details_preview": "Run details preview",

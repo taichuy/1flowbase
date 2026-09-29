@@ -347,7 +347,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
 
     const taskRow = (await screen.findByText('公开 API 退款总结')).closest('tr')!;
     expect(
-      screen.getByRole('columnheader', { name: '调用次数' })
+      screen.getByRole('columnheader', { name: '请求次数' })
     ).toBeInTheDocument();
     expect(within(taskRow).getByText('3 次调用')).toBeInTheDocument();
     expect(within(taskRow).getAllByRole('cell', { name: '3' })).toHaveLength(2);
@@ -387,7 +387,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       screen.getByRole('columnheader', { name: '真实节点数' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('columnheader', { name: '调用次数' })
+      screen.getByRole('columnheader', { name: '请求次数' })
     ).toBeInTheDocument();
     expect(screen.getByText('50')).toBeInTheDocument();
     const taskRow = screen.getByText('公开 API 退款总结').closest('tr')!;
