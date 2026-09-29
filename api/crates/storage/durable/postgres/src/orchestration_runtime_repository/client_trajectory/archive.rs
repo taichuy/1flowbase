@@ -1,6 +1,9 @@
 use super::*;
 use base64::Engine;
 use control_plane_contracts::ports::{ClientTrajectoryFrameKind, ClientTrajectoryTransport};
+#[path = "archive_codec.rs"]
+mod archive_codec;
+use archive_codec::{DecodedFrame, Format};
 
 impl PgControlPlaneStore {
     pub(crate) async fn append_client_trajectory_archive_part(
@@ -46,23 +49,43 @@ impl PgControlPlaneStore {
                 persisted_through: persisted,
             });
         }
-        let mut bytes = Vec::new();
-        let mut directory = Vec::new();
+        let count = i64::try_from(input.frames.len())?;
+        let through = persisted
+            .checked_add(count)
+            .ok_or_else(|| anyhow::anyhow!("client archive sequence exhausted"))?;
+        let mut frames = Vec::new();
         for (index, frame) in input.frames.iter().enumerate() {
             let sequence = persisted
-                .checked_add(index as i64 + 1)
+                .checked_add(i64::try_from(index)? + 1)
                 .ok_or_else(|| anyhow::anyhow!("client archive sequence exhausted"))?;
-            // Preserve a frame boundary regardless of its size; storage batching never
-            // turns one original transport frame into several public section items.
-            let original = legacy.map(serde_json::to_vec).transpose()?;
-            let body = original.as_deref().unwrap_or(&frame.bytes);
-            directory.push(serde_json::json!({"sequence":sequence,"kind":frame.kind,"observed_at":frame.observed_at,"offset":bytes.len(),"length":body.len(),"format":if legacy.is_some() {"legacy_json"} else {"wire"}}));
-            bytes.extend_from_slice(body);
+            frames.push(ClientTrajectoryArchiveFrame {
+                sequence,
+                ..frame.clone()
+            });
         }
-        let through = persisted + input.frames.len() as i64;
-        sqlx::query("insert into client_trajectory_archive_parts(part_id,request_id,first_sequence,last_sequence,frames,bytes) values($1,$2,$3,$4,$5,$6)")
-            .bind(input.part_id).bind(input.request_id).bind(persisted+1).bind(through).bind(Value::Array(directory)).bind(bytes)
-            .execute(&mut *tx).await?;
+        if let Some(original) = legacy {
+            // Historical SQL _client_archive_ref readers require the exact v0
+            // layout. Legacy adapter writes keep that same independently useful
+            // layout instead of introducing a SQL decompression dependency.
+            let mut bytes = Vec::new();
+            let mut directory = Vec::new();
+            let original = serde_json::to_vec(original)?;
+            for frame in &frames {
+                directory.push(serde_json::json!({"sequence":frame.sequence,"kind":frame.kind,"observed_at":frame.observed_at,"offset":bytes.len(),"length":original.len(),"format":"legacy_json"}));
+                bytes.extend_from_slice(&original);
+            }
+            sqlx::query("insert into client_trajectory_archive_parts(part_id,request_id,first_sequence,last_sequence,frames,bytes) values($1,$2,$3,$4,$5,$6)")
+                .bind(input.part_id).bind(input.request_id).bind(persisted+1).bind(through).bind(Value::Array(directory)).bind(bytes)
+                .execute(&mut *tx).await?;
+        } else {
+            // A part remains the original durable transaction boundary; neither
+            // frame batching nor the commit-before-receipt contract changes.
+            let encoded = archive_codec::encode(&frames)?;
+            sqlx::query("insert into client_trajectory_archive_parts(part_id,request_id,first_sequence,last_sequence,frames,bytes,codec_version,frame_directory,raw_byte_length,raw_checksum) values($1,$2,$3,$4,'[]'::jsonb,$5,$6,$7,$8,$9)")
+                .bind(input.part_id).bind(input.request_id).bind(persisted+1).bind(through)
+                .bind(encoded.bytes).bind(archive_codec::VERSION).bind(encoded.directory)
+                .bind(encoded.raw_byte_length).bind(encoded.checksum).execute(&mut *tx).await?;
+        }
         sqlx::query(
             "update client_trajectory_archive_heads set persisted_through=$2 where request_id=$1",
         )
@@ -94,21 +117,116 @@ impl PgControlPlaneStore {
         cursor: i64,
         limit: i64,
     ) -> Result<Vec<ClientTrajectoryArchiveFrame>> {
-        let rows = sqlx::query("select f.value as frame,substring(p.bytes from (f.value->>'offset')::integer+1 for (f.value->>'length')::integer) as bytes from client_trajectory_archive_parts p cross join lateral jsonb_array_elements(p.frames) f(value) where p.request_id=$1 and p.last_sequence>$2 and (f.value->>'sequence')::bigint>$2 order by (f.value->>'sequence')::bigint limit $3")
-            .bind(request_id).bind(cursor).bind(limit.clamp(1,128)).fetch_all(self.pool()).await?;
-        rows.into_iter()
-            .map(|row| {
-                let f: Value = row.get("frame");
+        self.read_archive_values(request_id, cursor, usize::try_from(limit.clamp(1, 128))?)
+            .await?
+            .into_iter()
+            .map(|stored| {
+                let bytes = archive_wire(stored.format, stored.frame.bytes)?;
                 Ok(ClientTrajectoryArchiveFrame {
-                    sequence: f["sequence"]
-                        .as_i64()
-                        .ok_or_else(|| anyhow::anyhow!("archive sequence missing"))?,
-                    kind: serde_json::from_value(f["kind"].clone())?,
-                    observed_at: f["observed_at"].as_str().unwrap_or_default().to_owned(),
-                    bytes: archive_wire(&f, row.get("bytes"))?,
+                    bytes,
+                    ..stored.frame
                 })
             })
             .collect()
+    }
+
+    async fn read_archive_values(
+        &self,
+        request: Uuid,
+        cursor: i64,
+        limit: usize,
+    ) -> Result<Vec<DecodedFrame>> {
+        let mut items = Vec::new();
+        let mut after_part: Option<i64> = None;
+        while items.len() < limit {
+            // Fetch only one intersecting immutable part at a time. A page may
+            // cross old/new parts without materializing the request's full task.
+            let row = sqlx::query("select first_sequence,last_sequence,frames,bytes,codec_version,frame_directory,raw_byte_length,raw_checksum from client_trajectory_archive_parts where request_id=$1 and last_sequence>$2 and ($3::bigint is null or first_sequence>$3) order by first_sequence limit 1")
+                .bind(request).bind(cursor).bind(after_part).fetch_optional(self.pool()).await?;
+            let Some(row) = row else {
+                break;
+            };
+            after_part = Some(row.get("first_sequence"));
+            for frame in decode_row(&row)? {
+                if frame.frame.sequence > cursor {
+                    items.push(frame);
+                    if items.len() == limit {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(items)
+    }
+
+    /// Explicit maintenance scope: a bound request in one allowed run. Each
+    /// part commits independently, so interruption and reentry are safe. Legacy
+    /// JSON parts and any direct SQL archive reference retain their v0 layout.
+    pub(crate) async fn migrate_client_trajectory_archive_parts(
+        &self,
+        flow_run_id: Uuid,
+        request_id: Uuid,
+    ) -> Result<u64> {
+        let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_archive_heads h join client_trajectory_captures c on c.request_id=h.request_id where h.request_id=$1 and h.flow_run_id=$2 and c.flow_run_id=$2)")
+            .bind(request_id).bind(flow_run_id).fetch_one(self.pool()).await?;
+        anyhow::ensure!(valid, "client archive migration scope mismatch");
+        let mut after_part: Option<i64> = None;
+        let mut migrated = 0;
+        loop {
+            let mut tx = self.pool().begin().await?;
+            let row = sqlx::query("select p.part_id,p.first_sequence,p.last_sequence,p.frames,p.bytes,p.codec_version,p.frame_directory,p.raw_byte_length,p.raw_checksum from client_trajectory_archive_parts p join client_trajectory_archive_heads h on h.request_id=p.request_id join client_trajectory_captures c on c.request_id=p.request_id where p.request_id=$1 and h.flow_run_id=$2 and c.flow_run_id=$2 and p.codec_version=0 and ($3::bigint is null or p.first_sequence>$3) order by p.first_sequence limit 1 for update of p")
+                .bind(request_id).bind(flow_run_id).bind(after_part).fetch_optional(&mut *tx).await?;
+            let Some(row) = row else {
+                tx.commit().await?;
+                break;
+            };
+            let part_id: Uuid = row.get("part_id");
+            after_part = Some(row.get("first_sequence"));
+            let referenced: bool = sqlx::query_scalar("select exists(select 1 from runtime_events where payload->'_client_archive_ref'->>'part_id'=$1)")
+                .bind(part_id.to_string()).fetch_one(&mut *tx).await?;
+            if referenced {
+                tx.commit().await?;
+                continue;
+            }
+            let originals = decode_row(&row)?;
+            if originals.iter().any(|frame| frame.format != Format::Wire) {
+                tx.commit().await?;
+                continue;
+            }
+            let frames: Vec<_> = originals.into_iter().map(|frame| frame.frame).collect();
+            let encoded = archive_codec::encode(&frames)?;
+            let empty = Value::Array(Vec::new());
+            let restored = archive_codec::decode(archive_codec::Part {
+                version: archive_codec::VERSION,
+                frames: &empty,
+                directory: Some(&encoded.directory),
+                bytes: &encoded.bytes,
+                raw_byte_length: Some(encoded.raw_byte_length),
+                checksum: Some(&encoded.checksum),
+                first_sequence: row.get("first_sequence"),
+                last_sequence: row.get("last_sequence"),
+            })?;
+            anyhow::ensure!(
+                frames.len() == restored.len()
+                    && frames.iter().zip(&restored).all(|(original, restored)| {
+                        original.sequence == restored.frame.sequence
+                            && original.kind == restored.frame.kind
+                            && original.observed_at == restored.frame.observed_at
+                            && original.bytes == restored.frame.bytes
+                    }),
+                "client archive migration original mismatch"
+            );
+            // Recheck direct SQL references at the switch. The exact source
+            // bytes and all frame metadata have been compared above, not just
+            // hashes or a JSONB projection.
+            let affected = sqlx::query("update client_trajectory_archive_parts p set codec_version=$3,frames='[]'::jsonb,bytes=$4,frame_directory=$5,raw_byte_length=$6,raw_checksum=$7 where p.part_id=$1 and p.request_id=$2 and p.codec_version=0 and not exists(select 1 from runtime_events e where e.payload->'_client_archive_ref'->>'part_id'=p.part_id::text)")
+                .bind(part_id).bind(request_id).bind(archive_codec::VERSION).bind(encoded.bytes)
+                .bind(encoded.directory).bind(encoded.raw_byte_length).bind(encoded.checksum)
+                .execute(&mut *tx).await?.rows_affected();
+            tx.commit().await?;
+            migrated += affected;
+        }
+        Ok(migrated)
     }
 
     pub(super) async fn read_archived_client_raw(
@@ -120,17 +238,25 @@ impl PgControlPlaneStore {
         limit: i64,
     ) -> Result<ClientTrajectorySection> {
         // Caller has already checked step, flow and many-to-many node ownership.
-        let rows = sqlx::query("select f.value as frame,substring(p.bytes from (f.value->>'offset')::integer+1 for (f.value->>'length')::integer) as bytes from client_trajectory_archive_parts p cross join lateral jsonb_array_elements(p.frames) f(value) where p.request_id=$1 and p.last_sequence>$2 and (f.value->>'sequence')::bigint>$2 order by (f.value->>'sequence')::bigint limit $3")
-            .bind(request).bind(cursor.unwrap_or(0)).bind(limit+1).fetch_all(self.pool()).await?;
-        let more = rows.len() > limit as usize;
-        let items:Vec<_>=rows.into_iter().take(limit as usize).map(|row| {
-            let f:Value=row.get("frame");
-            let bytes:Vec<u8>=row.get("bytes");
-            let value=if is_legacy_json(&f) {archive_original_value(&f,&bytes)?} else {
+        let limit = usize::try_from(limit)?;
+        let rows = self
+            .read_archive_values(
+                request,
+                cursor.unwrap_or(0),
+                limit
+                    .checked_add(1)
+                    .ok_or_else(|| anyhow::anyhow!("archive page limit overflow"))?,
+            )
+            .await?;
+        let more = rows.len() > limit;
+        let items:Vec<_>=rows.into_iter().take(limit).map(|stored| {
+            let frame = stored.frame;
+            let bytes = frame.bytes;
+            let value=if stored.format != Format::Wire {archive_original_value(stored.format,&bytes)?} else {
                 let (encoding,body)=match String::from_utf8(bytes.clone()) {Ok(s)=>("utf8",s),Err(_)=>("base64",base64::engine::general_purpose::STANDARD.encode(bytes))};
-                serde_json::json!({"direction":if f["kind"]=="request" {"submitted"} else {"emitted"},"encoding":encoding,"body":body,"frame_kind":f["kind"]})
+                serde_json::json!({"direction":if frame.kind==ClientTrajectoryFrameKind::Request {"submitted"} else {"emitted"},"encoding":encoding,"body":body,"frame_kind":frame.kind})
             };
-            Ok(ClientTrajectorySectionItem {sequence:f["sequence"].as_i64().ok_or_else(||anyhow::anyhow!("stored archive cursor missing"))?,value})
+            Ok(ClientTrajectorySectionItem {sequence:frame.sequence,value})
         }).collect::<Result<Vec<_>>>()?;
         let next_cursor = if more {
             items.last().map(|i| i.sequence)
@@ -200,11 +326,28 @@ impl PgControlPlaneStore {
     }
 }
 
-fn archive_wire(frame: &Value, bytes: Vec<u8>) -> Result<Vec<u8>> {
-    if !is_legacy_json(frame) {
+fn decode_row(row: &sqlx::postgres::PgRow) -> Result<Vec<DecodedFrame>> {
+    let frames: Value = row.try_get("frames")?;
+    let bytes: Vec<u8> = row.try_get("bytes")?;
+    let directory: Option<Vec<u8>> = row.try_get("frame_directory")?;
+    let checksum: Option<Vec<u8>> = row.try_get("raw_checksum")?;
+    archive_codec::decode(archive_codec::Part {
+        version: row.try_get("codec_version")?,
+        frames: &frames,
+        directory: directory.as_deref(),
+        bytes: &bytes,
+        raw_byte_length: row.try_get("raw_byte_length")?,
+        checksum: checksum.as_deref(),
+        first_sequence: row.try_get("first_sequence")?,
+        last_sequence: row.try_get("last_sequence")?,
+    })
+}
+
+fn archive_wire(format: Format, bytes: Vec<u8>) -> Result<Vec<u8>> {
+    if format == Format::Wire {
         return Ok(bytes);
     }
-    let value = archive_original_value(frame, &bytes)?;
+    let value = archive_original_value(format, &bytes)?;
     if value["encoding"] == "base64" {
         Ok(base64::engine::general_purpose::STANDARD
             .decode(value["body"].as_str().unwrap_or_default())?)
@@ -217,15 +360,9 @@ fn archive_wire(frame: &Value, bytes: Vec<u8>) -> Result<Vec<u8>> {
     }
 }
 
-fn is_legacy_json(frame: &Value) -> bool {
-    matches!(
-        frame["format"].as_str(),
-        Some("legacy_json" | "legacy_payload_json")
-    )
-}
-fn archive_original_value(frame: &Value, bytes: &[u8]) -> Result<Value> {
+fn archive_original_value(format: Format, bytes: &[u8]) -> Result<Value> {
     let original: Value = serde_json::from_slice(bytes)?;
-    if frame["format"] == "legacy_payload_json" {
+    if format == Format::LegacyPayloadJson {
         original
             .get("fact")
             .and_then(|f| f.get("value"))
