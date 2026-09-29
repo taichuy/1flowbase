@@ -88,7 +88,7 @@ async fn raw_blocks_terminal_only_concurrent_reentry_duplicate_oversize_and_casc
         .read_client_trajectory_archive(request, 0, 128)
         .await
         .unwrap();
-    let anchors: Vec<(Uuid, i64, i64, Vec<u8>, i64, Vec<u8>)> = sqlx::query_as("select part_id,first_sequence,last_sequence,frame_directory,raw_byte_length,raw_checksum from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
+    let anchors: Vec<(Uuid, i64, i64, i64, Vec<u8>)> = sqlx::query_as("select part_id,first_sequence,last_sequence,raw_byte_length,raw_checksum from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
         .bind(request).fetch_all(&pool).await.unwrap();
     terminal(&store, request).await;
     let reopened = PgControlPlaneStore::new(pool.clone());
@@ -108,7 +108,7 @@ async fn raw_blocks_terminal_only_concurrent_reentry_duplicate_oversize_and_casc
             .unwrap(),
         0
     );
-    let after: Vec<(Uuid, i64, i64, Vec<u8>, i64, Vec<u8>)> = sqlx::query_as("select part_id,first_sequence,last_sequence,frame_directory,raw_byte_length,raw_checksum from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
+    let after: Vec<(Uuid, i64, i64, i64, Vec<u8>)> = sqlx::query_as("select part_id,first_sequence,last_sequence,raw_byte_length,raw_checksum from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
         .bind(request).fetch_all(&pool).await.unwrap();
     assert_eq!(
         anchors, after,
@@ -121,8 +121,11 @@ async fn raw_blocks_terminal_only_concurrent_reentry_duplicate_oversize_and_casc
         3,
         "oversized original stands alone between bounded neighbors"
     );
-    assert_eq!(*sizes.last().unwrap(), 300 * 1024);
-    let compact: (i64, i64) = sqlx::query_as("select count(*),sum(octet_length(bytes))::bigint from client_trajectory_archive_parts where request_id=$1 and codec_version=2 and block_id is not null and block_offset>=0")
+    assert!(
+        *sizes.last().unwrap() > 300 * 1024,
+        "block also includes authenticated CAD1 directories"
+    );
+    let compact: (i64, i64) = sqlx::query_as("select count(*),sum(octet_length(bytes))::bigint from client_trajectory_archive_parts where request_id=$1 and codec_version=3 and block_id is not null and block_offset>=0")
         .bind(request).fetch_one(&pool).await.unwrap();
     assert_eq!(compact, (4, 0));
     exact(
@@ -203,7 +206,7 @@ async fn raw_blocks_atomic_publication_faults_preserve_inline_originals_and_rece
     for trigger in [
         "create trigger fixture_block_fault before insert on client_trajectory_archive_blocks for each row execute function fixture_fail_block()",
         "create trigger fixture_block_fault after insert on client_trajectory_archive_blocks for each row execute function fixture_fail_block()",
-        "create trigger fixture_block_fault before update on client_trajectory_archive_parts for each row when (new.codec_version=2 and old.first_sequence=2) execute function fixture_fail_block()",
+        "create trigger fixture_block_fault before update on client_trajectory_archive_parts for each row when (new.codec_version=3 and old.first_sequence=2) execute function fixture_fail_block()",
     ] {
         sqlx::raw_sql(trigger).execute(&pool).await.unwrap();
         let error = store.seal_client_trajectory_archive_request(request).await.err().unwrap();
@@ -388,7 +391,7 @@ async fn raw_blocks_mixed_legacy_inline_pages_and_corrupt_source_rejection() {
     let inline = part(&store, request, b"still inline".to_vec()).await;
     let versions: Vec<i16> = sqlx::query_scalar("select codec_version from client_trajectory_archive_parts where request_id=$1 order by first_sequence")
         .bind(request).fetch_all(&pool).await.unwrap();
-    assert_eq!(versions, [2, 2, 0, 1]);
+    assert_eq!(versions, [3, 3, 0, 1]);
     let page = store
         .client_trajectory_section(flow, None, request, "raw", Some(1), 2)
         .await
@@ -461,7 +464,7 @@ async fn raw_blocks_mixed_legacy_inline_pages_and_corrupt_source_rejection() {
         .read_client_trajectory_archive(request, 0, 1)
         .await
         .is_err());
-    sqlx::query("update client_trajectory_archive_blocks set codec_version=1 where request_id=$1")
+    sqlx::query("update client_trajectory_archive_blocks set codec_version=2 where request_id=$1")
         .bind(request)
         .execute(&pool)
         .await

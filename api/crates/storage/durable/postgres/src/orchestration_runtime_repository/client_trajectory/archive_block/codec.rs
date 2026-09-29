@@ -3,6 +3,7 @@ use sha2::{Digest, Sha256};
 use std::io::Read;
 
 pub(super) const VERSION: i16 = 1;
+pub(super) const PACKED_VERSION: i16 = 2;
 pub(super) const TARGET_RAW_BYTES: usize = 256 * 1024;
 
 pub(super) fn encode(raw: &[u8]) -> Result<Vec<u8>> {
@@ -15,7 +16,7 @@ pub(super) fn checksum(raw: &[u8]) -> Vec<u8> {
 
 pub(super) fn decode(version: i16, bytes: &[u8], length: i64, expected: &[u8]) -> Result<Vec<u8>> {
     ensure!(
-        version == VERSION,
+        matches!(version, VERSION | PACKED_VERSION),
         "unknown client archive block codec version {version}"
     );
     let length: usize = length

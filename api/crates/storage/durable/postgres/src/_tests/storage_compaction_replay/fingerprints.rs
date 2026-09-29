@@ -159,6 +159,23 @@ pub(super) async fn verify_upgrade_queue(
     )
 }
 
+/// Physical directory packing must retain every original anchor row and ID.
+/// Mutable storage locators/checksums are covered by exact raw readers instead.
+pub(super) async fn archive_anchors(
+    pool: &PgPool,
+    schema: &str,
+    runs: &[Uuid],
+) -> Result<Signature> {
+    let sql = format!("select jsonb_build_object('part_id',p.part_id,'request_id',p.request_id,'first_sequence',p.first_sequence,'last_sequence',p.last_sequence) anchor from {} p join {} h using(request_id) where h.flow_run_id=any({}) order by p.request_id,p.first_sequence,p.part_id",qualified(schema,"client_trajectory_archive_parts"),qualified(schema,"client_trajectory_archive_heads"),run_array(runs));
+    let mut stream = sqlx::query(&sql).fetch(pool);
+    let mut recorder = Recorder::default();
+    while let Some(row) = stream.try_next().await? {
+        let anchor: Value = row.try_get("anchor")?;
+        recorder.json(&anchor)?;
+    }
+    Ok(recorder.finish())
+}
+
 pub(super) async fn events(
     pool: &PgPool,
     schema: &str,

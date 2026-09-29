@@ -7,6 +7,8 @@ const AT: &str = "2026-09-22T00:00:00Z";
 mod archive_codec;
 mod block_sealing;
 mod compact_directory;
+mod dense_directory;
+mod packed_directory;
 mod semantic;
 async fn append(
     store: &PgControlPlaneStore,
@@ -928,6 +930,13 @@ async fn formal_archive_migration_retains_legacy_cursor_and_lossless_nul() {
     .next()
     .unwrap();
     sqlx::raw_sql(raw_forward).execute(&pool).await.unwrap();
+    let packed_forward = include_str!(
+        "../../../migrations/20260929143000_dense_metadata_and_packed_archive_directories.sql"
+    )
+    .split("\nalter table client_trajectory_steps")
+    .next()
+    .unwrap();
+    sqlx::raw_sql(packed_forward).execute(&pool).await.unwrap();
     let legacy = store
         .client_trajectory_section(flow, None, request, "raw", None, 1)
         .await

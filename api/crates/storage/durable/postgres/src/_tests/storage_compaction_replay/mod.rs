@@ -16,6 +16,8 @@ const PREFIX: i64 = 20260929100000;
 const EVENTS: i64 = 51081;
 const FRAMES: i64 = 85201;
 const CAPTURES: i64 = 96;
+const DENSE_PREFIX: i64 = 20260929143000;
+const CURRENT_PREFIX: i64 = 20260929143001;
 
 struct Input {
     runs: Vec<Uuid>,
@@ -24,6 +26,7 @@ struct Input {
     captures: i64,
     prefix_version: i64,
     finite_manifest: bool,
+    inventory: Option<Value>,
     receipt_hash: String,
     costs_hash: String,
     old_core_row_value_bytes: i64,
@@ -77,7 +80,8 @@ impl Input {
                 "approved finite baseline counts must be positive"
             );
             ensure!(
-                [20260929120000, 20260929120001].contains(&prefix_version),
+                [20260929120000, 20260929120001, DENSE_PREFIX, CURRENT_PREFIX]
+                    .contains(&prefix_version),
                 "finite sample requires approved prior or current schema prefix"
             );
             let candidate_sha = candidate_sha()?;
@@ -92,6 +96,7 @@ impl Input {
                 captures,
                 prefix_version,
                 finite_manifest: true,
+                inventory: source.get("inventory").cloned(),
                 receipt_hash: hash(&bytes),
                 costs_hash: String::new(),
                 old_core_row_value_bytes: 0,
@@ -141,6 +146,7 @@ impl Input {
             captures: CAPTURES,
             prefix_version: PREFIX,
             finite_manifest: false,
+            inventory: None,
             runs,
             receipt_hash,
             costs_hash: hash(&costs),
@@ -232,8 +238,8 @@ async fn empty_fixture(version: Option<i64>) -> Result<PgPool> {
 
 async fn sample_counts(pool: &PgPool, schema: &str, input: &Input) -> Result<Value> {
     let ids = run_array(&input.runs);
-    let sql = format!("select (select count(*) from {s}.flow_runs where id=any({ids})) runs,(select count(*) from {s}.runtime_events where flow_run_id=any({ids})) events,(select coalesce(sum(case when coalesce((to_jsonb(p)->>'codec_version')::int,0)=0 then jsonb_array_length(p.frames) when (to_jsonb(p)->>'codec_version')::int in (1,2) then p.last_sequence-p.first_sequence+1 else null end),0)::bigint from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids})) frames,(select count(*) from {s}.client_trajectory_captures where flow_run_id=any({ids})) captures", s=ident(schema));
-    let unknown: i64 = sqlx::query_scalar(&format!("select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and coalesce((to_jsonb(p)->>'codec_version')::int,0) not in (0,1,2)",s=ident(schema))).fetch_one(pool).await?;
+    let sql = format!("select (select count(*) from {s}.flow_runs where id=any({ids})) runs,(select count(*) from {s}.runtime_events where flow_run_id=any({ids})) events,(select coalesce(sum(case when coalesce((to_jsonb(p)->>'codec_version')::int,0)=0 then jsonb_array_length(p.frames) when (to_jsonb(p)->>'codec_version')::int in (1,2,3) then p.last_sequence-p.first_sequence+1 else null end),0)::bigint from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids})) frames,(select count(*) from {s}.client_trajectory_captures where flow_run_id=any({ids})) captures", s=ident(schema));
+    let unknown: i64 = sqlx::query_scalar(&format!("select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and coalesce((to_jsonb(p)->>'codec_version')::int,0) not in (0,1,2,3)",s=ident(schema))).fetch_one(pool).await?;
     ensure!(
         unknown == 0,
         "unknown archive encoding cannot enter frame counts"
@@ -261,16 +267,60 @@ async fn sample_counts(pool: &PgPool, schema: &str, input: &Input) -> Result<Val
         result["sections"] = json!(inventory.1);
         result["raw_parts"] = json!(inventory.2);
     }
-    if input.prefix_version == 20260929120001 {
-        let inventory: (i64, i64) = sqlx::query_as(&format!("select (select count(*) from {s}.client_trajectory_steps where flow_run_id=any({ids}) and metadata_compact),(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and p.codec_version=2)",s=ident(schema))).fetch_one(pool).await?;
+    if let Some(expected) = &input.inventory {
         ensure!(
-            inventory.0 > 0 && inventory.1 > 0,
-            "current sample must exercise compact metadata and sealed parts"
+            expected.as_object().is_some_and(|fields| fields.len() == 3)
+                && ["steps", "sections", "raw_parts"]
+                    .iter()
+                    .all(|key| expected[*key].as_i64().is_some_and(|n| n > 0)),
+            "manifest inventory must contain exact positive steps/sections/raw_parts counts"
         );
-        result["compact_steps"] = json!(inventory.0);
-        result["sealed_parts"] = json!(inventory.1);
+        let actual: (i64,i64,i64) = sqlx::query_as(&format!("select (select count(*) from {s}.client_trajectory_steps where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_sections where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}))",s=ident(schema))).fetch_one(pool).await?;
+        ensure!(
+            json!({"steps":actual.0,"sections":actual.1,"raw_parts":actual.2}) == *expected,
+            "approved finite inventory differs"
+        );
+        result["inventory"] = expected.clone();
+    }
+    if matches!(
+        input.prefix_version,
+        20260929120001 | DENSE_PREFIX | CURRENT_PREFIX
+    ) {
+        let layout = layout_inventory(pool, schema, &input.runs).await?;
+        if input.prefix_version == CURRENT_PREFIX {
+            ensure!(
+                layout["dense_steps"].as_i64().unwrap_or(0) > 0
+                    && layout["packed_parts"].as_i64().unwrap_or(0) > 0
+                    && layout["packed_blocks"].as_i64().unwrap_or(0) > 0,
+                "current sample must exercise dense metadata and packed CAD directories"
+            );
+        } else {
+            ensure!(
+                layout["compact_layout0_steps"].as_i64().unwrap_or(0) > 0
+                    && layout["sealed_inline_directory_parts"]
+                        .as_i64()
+                        .unwrap_or(0)
+                        > 0,
+                "C1 baseline must exercise compact layout0 and codec2 source parts"
+            );
+        }
+        result["layout_inventory"] = layout;
     }
     Ok(result)
+}
+
+async fn layout_inventory(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result<Value> {
+    let ids = run_array(runs);
+    // to_jsonb inspects only the new typed layout marker. Originals and bodies
+    // never pass through this inventory projection.
+    let row = sqlx::query(&format!("select (select count(*) from {s}.client_trajectory_steps t where flow_run_id=any({ids}) and metadata_compact and coalesce((to_jsonb(t)->>'metadata_layout')::int,0)=0) compact_layout0_steps,(select count(*) from {s}.client_trajectory_steps t where flow_run_id=any({ids}) and metadata_compact and (to_jsonb(t)->>'metadata_layout')::int=1) dense_steps,(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and p.codec_version=2) sealed_inline_directory_parts,(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and p.codec_version=3) packed_parts,(select count(*) from {s}.client_trajectory_archive_blocks b join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and b.codec_version=2) packed_blocks",s=ident(schema))).fetch_one(pool).await?;
+    Ok(
+        json!({"compact_layout0_steps":row.try_get::<i64,_>("compact_layout0_steps")?,
+        "dense_steps":row.try_get::<i64,_>("dense_steps")?,
+        "sealed_inline_directory_parts":row.try_get::<i64,_>("sealed_inline_directory_parts")?,
+        "packed_parts":row.try_get::<i64,_>("packed_parts")?,
+        "packed_blocks":row.try_get::<i64,_>("packed_blocks")?}),
+    )
 }
 
 async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
@@ -286,6 +336,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     let source_events = fingerprints::events(&pool, "public", &input.runs, input.events)
         .await
         .context("public original-event fingerprint")?;
+    let source_anchors = fingerprints::archive_anchors(&pool, "public", &input.runs).await?;
     *phase = "finite_copy_and_fk_audit";
     let copy = copy::copy_sample(&pool, &schema, &input.runs)
         .await
@@ -312,6 +363,11 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     ensure!(
         copied_events == source_events,
         "prefix copy original events differ"
+    );
+    let copied_anchors = fingerprints::archive_anchors(&pool, &schema, &input.runs).await?;
+    ensure!(
+        copied_anchors == source_anchors,
+        "finite copy changed original part anchors"
     );
     *phase = "old_gross_measurement";
     let before = measurement::snapshot(&pool, &schema, &copy.domain).await?;
@@ -382,13 +438,14 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         "legacy reader frame count differs"
     );
     let upgraded = measurement::snapshot(&pool, &schema, &copy.domain).await?;
+    let layout_before = layout_inventory(&pool, &schema, &input.runs).await?;
     *phase = "actual_mover";
     let moved = store
         .compact_retained_runtime_storage(&input.runs, 256)
         .await
         .context("actual retained-runtime mover")?;
     ensure!(
-        if input.prefix_version == 20260929120001 {
+        if input.prefix_version == CURRENT_PREFIX {
             true // This sample exercises the current writer, already compact at EOF.
         } else if input.finite_manifest {
             moved.compact_directory_records > 0 && moved.raw_archive_parts_sealed > 0
@@ -424,6 +481,20 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     copy::audit(&pool, &schema, &input.runs)
         .await
         .context("post-mover FK and owner audit")?;
+    let after_anchors = fingerprints::archive_anchors(&pool, &schema, &input.runs).await?;
+    ensure!(
+        after_anchors == source_anchors,
+        "compaction changed original part anchor rows/IDs"
+    );
+    let layout_after = layout_inventory(&pool, &schema, &input.runs).await?;
+    if input.finite_manifest {
+        ensure!(
+            layout_after["dense_steps"].as_i64().unwrap_or(0) > 0
+                && layout_after["packed_parts"].as_i64().unwrap_or(0) > 0
+                && layout_after["packed_blocks"].as_i64().unwrap_or(0) > 0,
+            "finite mover did not publish dense metadata and packed directories"
+        );
+    }
     *phase = "live_allocated_measurement";
     let live_after = measurement::snapshot(&pool, &schema, &copy.domain).await?;
     *phase = "actual_mover_reentry";
@@ -443,6 +514,11 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     ensure!(
         repeated_events == after_events,
         "mover reentry changes original events"
+    );
+    let repeated_anchors = fingerprints::archive_anchors(&pool, &schema, &input.runs).await?;
+    ensure!(
+        repeated_anchors == after_anchors,
+        "reentry changed original anchors"
     );
     *phase = "isolated_compact_layout";
     measurement::compact_isolated_layout(&pool, &schema, &copy.domain, &copy.copied)
@@ -475,13 +551,18 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         source_events_after == source_events,
         "public source event originals changed during replay"
     );
+    let source_anchors_after = fingerprints::archive_anchors(&pool, "public", &input.runs).await?;
+    ensure!(
+        source_anchors_after == source_anchors,
+        "public original anchors changed during replay"
+    );
     let compact_ab = measurement::compare(
         &before_compact,
         &prefix_empty,
         &compact_equivalent,
         &latest_empty,
     )?;
-    if input.prefix_version != 20260929120001 {
+    if input.prefix_version != CURRENT_PREFIX {
         ensure!(
             compact_ab["closure_saved_bytes"]
                 .as_i64()
@@ -490,11 +571,11 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
             "matched compact-layout closure gain must be positive"
         );
     }
-    let receipt = json!({"already_compacted":input.prefix_version == 20260929120001,"sample_prefix_version":input.prefix_version,"finite_manifest":input.finite_manifest,"compact_layout_ab":compact_ab,"status":"passed","candidate_sha":input.candidate_sha,
+    let receipt = json!({"already_compacted":input.prefix_version == CURRENT_PREFIX,"sample_prefix_version":input.prefix_version,"finite_manifest":input.finite_manifest,"physical_layout_inventory":{"before_mover":layout_before,"after_mover":layout_after},"compact_layout_ab":compact_ab,"status":"passed","candidate_sha":input.candidate_sha,
         "source_receipt_sha256":input.receipt_hash,"source_costs_sha256":input.costs_hash,
         "run_allowlist_sha256":hash(serde_json::to_string(&input.runs)?.as_bytes()),"source_counts":source_counts,"copied_counts":copied_counts,
         "old_receipt_core_row_values_bytes":input.old_core_row_value_bytes,
-        "copy":copy,"mover":moved,"reentry":repeated,"lossless_original_events":after_events,"lossless_readers":after_readers,"retained_business_rows":retained_after,"formal_upgrade_trace_queue_transition":queue_transition,"retained_stage_audit":"retained-stage-audit.json",
+        "copy":copy,"mover":moved,"reentry":repeated,"lossless_original_events":after_events,"lossless_readers":after_readers,"lossless_archive_anchors":after_anchors,"retained_business_rows":retained_after,"formal_upgrade_trace_queue_transition":queue_transition,"retained_stage_audit":"retained-stage-audit.json",
         "physical":{"prefix_empty":prefix_empty,"latest_empty":latest_empty,"old_gross":before,"before_compact_layout":before_compact,"formal_upgrade_before_mover":upgraded,"live_after_compaction_allocated":live_after,"isolated_compact_layout_equivalent":compact_equivalent},
         "notes":["Source public tables were selected only; all writes, migrations and VACUUM FULL targeted guarded isolated schemas.",
             "Legacy core-only costs are diagnostic context. Full finite closure includes client steps, conversation/recovery/Outbox/usage/billing, directory/header/item/ref/ownership/index/TOAST costs.",

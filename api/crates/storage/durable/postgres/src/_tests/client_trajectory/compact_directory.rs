@@ -45,11 +45,11 @@ async fn fixture() -> (PgControlPlaneStore, Uuid, Uuid) {
 
 async fn legacy_directories(store: &PgControlPlaneStore, request: Uuid) {
     // Restore old full metadata and text hash without changing logical values.
-    let original: Value = sqlx::query_scalar("select client_trajectory_step_original_metadata(metadata,raw_json_payloads,id,request_id,flow_run_id,node_run_id,metadata_compact) from client_trajectory_steps where id=$1")
+    let original: Value = sqlx::query_scalar("select client_trajectory_step_storage_body(id,flow_run_id) from client_trajectory_steps where id=$1")
         .bind(request).fetch_one(store.pool()).await.unwrap();
     let originals = json!({"metadata":serde_json::to_string(&original).unwrap()});
     // A safe JSONB projection is intentionally different from the original.
-    sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,metadata_compact=false where id=$1")
+    sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,metadata_compact=false,metadata_layout=0 where id=$1")
         .bind(request).bind(json!({"name":"safe projection"})).bind(originals).execute(store.pool()).await.unwrap();
     sqlx::query("update client_trajectory_sections set value_hash='sha256:'||encode(value_digest,'hex'),value_digest=NULL where step_id=$1")
         .bind(request).execute(store.pool()).await.unwrap();

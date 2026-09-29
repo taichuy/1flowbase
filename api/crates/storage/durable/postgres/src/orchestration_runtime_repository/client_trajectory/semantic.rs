@@ -29,12 +29,13 @@ pub(super) async fn write_step(
     step: &ClientTrajectoryStep,
     sequence: i64,
 ) -> Result<()> {
-    let metadata = compact_metadata(
+    let (metadata, layout) = compact_metadata(
         serde_json::to_value(step)?,
         step.id,
         input.request_id,
         input.flow_run_id,
         input.node_run_id,
+        &json!(input.observed_at),
     )?;
     let (projection, mut originals) = lossless_json_columns("metadata", &metadata);
     let (observed_at, at_originals) =
@@ -45,16 +46,17 @@ pub(super) async fn write_step(
         .extend(at_originals.as_object().expect("originals object").clone());
     sqlx::query(r#"
         insert into client_trajectory_steps(id,request_id,flow_run_id,node_run_id,event_sequence,metadata,
-            raw_json_payloads,observed_at,semantic_metadata_restored,metadata_compact)
-        values($1,$2,$3,$4,$5,$6,$7,($8::jsonb->>0),true,true)
+            raw_json_payloads,observed_at,semantic_metadata_restored,metadata_compact,metadata_layout)
+        values($1,$2,$3,$4,$5,$6,$7,($8::jsonb->>0),true,true,$9)
         on conflict(id) do update set metadata=excluded.metadata,raw_json_payloads=excluded.raw_json_payloads,
-            observed_at=excluded.observed_at,semantic_metadata_restored=true,metadata_compact=true
+            observed_at=excluded.observed_at,semantic_metadata_restored=true,metadata_compact=true,
+            metadata_layout=excluded.metadata_layout
         where client_trajectory_steps.request_id=excluded.request_id
             and client_trajectory_steps.flow_run_id=excluded.flow_run_id
             and client_trajectory_steps.node_run_id is not distinct from excluded.node_run_id
     "#).bind(step.id).bind(input.request_id).bind(input.flow_run_id).bind(input.node_run_id)
         .bind(sequence).bind(projection).bind(originals)
-        .bind(json!([observed_at])).execute(&mut **tx).await?;
+        .bind(json!([observed_at])).bind(layout).execute(&mut **tx).await?;
     Ok(())
 }
 
@@ -75,13 +77,41 @@ fn digest_bytes(hash: &str) -> Result<Vec<u8>> {
         .collect()
 }
 
+// Every DTO key must exist in the original before missing keys acquire dense defaults.
+const STEP_METADATA_KEYS: &[&str] = &[
+    "id",
+    "request_id",
+    "sequence",
+    "created_at",
+    "category",
+    "name",
+    "namespace",
+    "preview",
+    "parameters_preview",
+    "result_preview",
+    "status",
+    "origin",
+    "protocol",
+    "transport",
+    "flow_run_id",
+    "node_run_id",
+    "parent_id",
+    "call_id",
+    "item_id",
+    "response_id",
+    "turn_id",
+    "related_step_id",
+    "available_sections",
+];
+
 fn compact_metadata(
     mut metadata: Value,
     id: Uuid,
     request: Uuid,
     flow: Uuid,
     node: Option<Uuid>,
-) -> Result<Value> {
+    observed_at: &Value,
+) -> Result<(Value, i16)> {
     let expected = json!({"id":id,"request_id":request,"flow_run_id":flow,"node_run_id":node});
     let fields = metadata
         .as_object_mut()
@@ -92,10 +122,43 @@ fn compact_metadata(
             "client step metadata identity mismatch"
         );
     }
+    let dense = STEP_METADATA_KEYS
+        .iter()
+        .all(|key| fields.contains_key(*key));
     for key in ["id", "request_id", "flow_run_id", "node_run_id"] {
         fields.remove(key);
     }
-    Ok(metadata)
+    if dense {
+        // Snapshot all equality sources before removing anything: these relations
+        // concern the original values, including explicit nulls and unknown keys.
+        let category = fields["category"].clone();
+        let name = fields["name"].clone();
+        let preview = fields["preview"].clone();
+        let defaults = [
+            ("namespace", Value::Null),
+            ("parameters_preview", Value::Null),
+            ("call_id", Value::Null),
+            ("item_id", Value::Null),
+            ("response_id", Value::Null),
+            ("turn_id", Value::Null),
+            ("related_step_id", Value::Null),
+            ("sequence", json!(0)),
+            ("protocol", json!("responses")),
+            ("transport", json!("http")),
+            ("status", json!("submitted")),
+            ("created_at", observed_at.clone()),
+            ("parent_id", json!(request)),
+            ("name", category),
+            ("preview", name),
+            ("result_preview", preview),
+        ];
+        for (key, value) in defaults {
+            if fields.get(key) == Some(&value) {
+                fields.remove(key);
+            }
+        }
+    }
+    Ok((metadata, i16::from(dense)))
 }
 
 fn locate<'a>(body: &'a Value, path: &[String]) -> Result<&'a Value> {
@@ -317,20 +380,56 @@ impl PgControlPlaneStore {
                 "client directory compaction run unavailable"
             );
         }
-        let rows = sqlx::query(
-            r#"
-            select id,request_id,flow_run_id,node_run_id,
-                runtime_original_json(metadata,raw_json_payloads,'metadata') as original,
-                raw_json_payloads
-            from client_trajectory_steps
-            where flow_run_id=any($1) and semantic_metadata_restored and not metadata_compact
-            order by flow_run_id,event_sequence,id limit $2
-        "#,
-        )
-        .bind(&runs)
-        .bind(batch_size)
-        .fetch_all(&mut *tx)
-        .await?;
+        // Parse complete originals in Rust: PostgreSQL JSON key enumeration can
+        // reject unknown NUL keys. Keyset pages skip already compacted partial
+        // shapes without reporting progress or hiding eligible rows later in the run.
+        let mut rows = Vec::new();
+        let mut cursor: Option<(Uuid, i64, Uuid)> = None;
+        loop {
+            let candidates = sqlx::query(r#"
+                select id,request_id,flow_run_id,node_run_id,event_sequence,metadata_compact,
+                    client_trajectory_step_storage_body(id,flow_run_id) as original,
+                    runtime_original_json(to_jsonb(observed_at),raw_json_payloads,'observed_at') as original_observed_at,
+                    raw_json_payloads
+                from client_trajectory_steps
+                where flow_run_id=any($1) and semantic_metadata_restored and metadata_layout=0
+                    and ($3::uuid is null or (flow_run_id,event_sequence,id)>($3,$4,$5))
+                order by flow_run_id,event_sequence,id limit $2
+            "#)
+            .bind(&runs)
+            .bind(batch_size)
+            .bind(cursor.map(|value| value.0))
+            .bind(cursor.map(|value| value.1))
+            .bind(cursor.map(|value| value.2))
+            .fetch_all(&mut *tx)
+            .await?;
+            if candidates.is_empty() {
+                break;
+            }
+            for row in candidates {
+                cursor = Some((
+                    row.try_get("flow_run_id")?,
+                    row.try_get("event_sequence")?,
+                    row.try_get("id")?,
+                ));
+                let original: Value = row.try_get("original")?;
+                if !row.try_get::<bool, _>("metadata_compact")?
+                    || original.as_object().is_some_and(|fields| {
+                        STEP_METADATA_KEYS
+                            .iter()
+                            .all(|key| fields.contains_key(*key))
+                    })
+                {
+                    rows.push(row);
+                    if i64::try_from(rows.len())? == batch_size {
+                        break;
+                    }
+                }
+            }
+            if i64::try_from(rows.len())? == batch_size {
+                break;
+            }
+        }
         let mut count = u64::try_from(rows.len())?;
         for row in rows {
             let id: Uuid = row.try_get("id")?;
@@ -339,12 +438,13 @@ impl PgControlPlaneStore {
                 .bind(row.try_get::<Uuid,_>("request_id")?).bind(row.try_get::<Uuid,_>("flow_run_id")?)
                 .bind(row.try_get::<Option<Uuid>,_>("node_run_id")?).fetch_one(&mut *tx).await?;
             anyhow::ensure!(valid, "client compact step scope mismatch");
-            let compact = compact_metadata(
+            let (compact, layout) = compact_metadata(
                 original.clone(),
                 id,
                 row.try_get("request_id")?,
                 row.try_get("flow_run_id")?,
                 row.try_get("node_run_id")?,
+                &row.try_get::<Value, _>("original_observed_at")?,
             )?;
             let (projection, metadata_originals) = lossless_json_columns("metadata", &compact);
             let mut originals: Value = row.try_get("raw_json_payloads")?;
@@ -358,9 +458,9 @@ impl PgControlPlaneStore {
                     .expect("originals object")
                     .clone(),
             );
-            sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,metadata_compact=true where id=$1")
-                .bind(id).bind(projection).bind(originals).execute(&mut *tx).await?;
-            let restored: Value = sqlx::query_scalar("select client_trajectory_step_original_metadata(metadata,raw_json_payloads,id,request_id,flow_run_id,node_run_id,metadata_compact) from client_trajectory_steps where id=$1")
+            sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,metadata_compact=true,metadata_layout=$4 where id=$1 and metadata_layout=0")
+                .bind(id).bind(projection).bind(originals).bind(layout).execute(&mut *tx).await?;
+            let restored: Value = sqlx::query_scalar("select client_trajectory_step_storage_body(id,flow_run_id) from client_trajectory_steps where id=$1")
                 .bind(id).fetch_one(&mut *tx).await?;
             anyhow::ensure!(
                 restored == original,
@@ -468,25 +568,24 @@ impl PgControlPlaneStore {
                     && step.node_run_id == input.node_run_id,
                 "client historical step scope mismatch"
             );
-            let (metadata, mut originals) = lossless_json_columns(
-                "metadata",
-                &compact_metadata(
-                    payload["fact"]["step"].clone(),
-                    step.id,
-                    input.request_id,
-                    input.flow_run_id,
-                    input.node_run_id,
-                )?,
-            );
+            let (compact, layout) = compact_metadata(
+                payload["fact"]["step"].clone(),
+                step.id,
+                input.request_id,
+                input.flow_run_id,
+                input.node_run_id,
+                &json!(input.observed_at),
+            )?;
+            let (metadata, mut originals) = lossless_json_columns("metadata", &compact);
             let (_, at_originals) = lossless_json_columns("observed_at", &json!(input.observed_at));
             originals
                 .as_object_mut()
                 .expect("originals object")
                 .extend(at_originals.as_object().expect("originals object").clone());
-            sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,observed_at=($4::jsonb->>0),semantic_metadata_restored=true,metadata_compact=true where id=$1")
-                .bind(step.id).bind(metadata).bind(originals).bind(lossless_text_parameter(&input.observed_at))
+            sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,observed_at=($4::jsonb->>0),semantic_metadata_restored=true,metadata_compact=true,metadata_layout=$5 where id=$1")
+                .bind(step.id).bind(metadata).bind(originals).bind(lossless_text_parameter(&input.observed_at)).bind(layout)
                 .execute(&mut *tx).await?;
-            let restored: Value = sqlx::query_scalar("select client_trajectory_step_original_metadata(metadata,raw_json_payloads,id,request_id,flow_run_id,node_run_id,metadata_compact) from client_trajectory_steps where id=$1")
+            let restored: Value = sqlx::query_scalar("select client_trajectory_step_storage_body(id,flow_run_id) from client_trajectory_steps where id=$1")
                 .bind(step.id).fetch_one(&mut *tx).await?;
             anyhow::ensure!(
                 restored == payload["fact"]["step"],

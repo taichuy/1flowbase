@@ -55,7 +55,7 @@ async fn selective_application_backup_restores_sealed_raw_blocks_and_original_pa
     .fetch_one(&db)
     .await
     .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
     let repo = PgSelectiveBackupRepository::new(db.clone());
     let bytes = capture(&repo, select("applications", true, true)).await;
     repo.restore(reader(bytes.clone()), "key", "key", true)

@@ -175,7 +175,7 @@ pub(super) fn decompress_raw(part: &Part<'_>) -> Result<Vec<u8>> {
 }
 
 /// Authenticate and validate the entire original anchor even when only a page
-/// subset is materialized. Version 2 retains the version-1 CAD1 checksum.
+/// subset is materialized. Versions 2/3 retain the version-1 CAD1 checksum.
 pub(super) fn decode_raw(
     part: &Part<'_>,
     raw: &[u8],
@@ -183,7 +183,7 @@ pub(super) fn decode_raw(
     limit: usize,
 ) -> Result<Vec<DecodedFrame>> {
     ensure!(
-        matches!(part.version, VERSION | 2),
+        matches!(part.version, VERSION | 2 | 3),
         "unknown client archive codec version {}",
         part.version
     );
