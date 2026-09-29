@@ -104,6 +104,18 @@ const STEP_METADATA_KEYS: &[&str] = &[
     "available_sections",
 ];
 
+fn dense_metadata_eligible(metadata: &Value, observed_at: &Value) -> bool {
+    // PostgreSQL JSON field extraction rejects actual NUL anywhere in its input.
+    // Keep such originals in the existing text-preserving identity-only layout.
+    !contains_nul(metadata)
+        && !contains_nul(observed_at)
+        && metadata.as_object().is_some_and(|fields| {
+            STEP_METADATA_KEYS
+                .iter()
+                .all(|key| fields.contains_key(*key))
+        })
+}
+
 fn compact_metadata(
     mut metadata: Value,
     id: Uuid,
@@ -112,6 +124,7 @@ fn compact_metadata(
     node: Option<Uuid>,
     observed_at: &Value,
 ) -> Result<(Value, i16)> {
+    let dense = dense_metadata_eligible(&metadata, observed_at);
     let expected = json!({"id":id,"request_id":request,"flow_run_id":flow,"node_run_id":node});
     let fields = metadata
         .as_object_mut()
@@ -122,9 +135,6 @@ fn compact_metadata(
             "client step metadata identity mismatch"
         );
     }
-    let dense = STEP_METADATA_KEYS
-        .iter()
-        .all(|key| fields.contains_key(*key));
     for key in ["id", "request_id", "flow_run_id", "node_run_id"] {
         fields.remove(key);
     }
@@ -381,8 +391,8 @@ impl PgControlPlaneStore {
             );
         }
         // Parse complete originals in Rust: PostgreSQL JSON key enumeration can
-        // reject unknown NUL keys. Keyset pages skip already compacted partial
-        // shapes without reporting progress or hiding eligible rows later in the run.
+        // reject unknown NUL keys. Keyset pages skip already compacted partial or
+        // NUL-bearing shapes without hiding eligible rows later in the run.
         let mut rows = Vec::new();
         let mut cursor: Option<(Uuid, i64, Uuid)> = None;
         loop {
@@ -413,12 +423,9 @@ impl PgControlPlaneStore {
                     row.try_get("id")?,
                 ));
                 let original: Value = row.try_get("original")?;
+                let observed_at: Value = row.try_get("original_observed_at")?;
                 if !row.try_get::<bool, _>("metadata_compact")?
-                    || original.as_object().is_some_and(|fields| {
-                        STEP_METADATA_KEYS
-                            .iter()
-                            .all(|key| fields.contains_key(*key))
-                    })
+                    || dense_metadata_eligible(&original, &observed_at)
                 {
                     rows.push(row);
                     if i64::try_from(rows.len())? == batch_size {
