@@ -9,10 +9,10 @@ const COMPLETE_SUMMARY_BACKFILL_SQL: &str = include_str!(
     "../../../storage/durable/postgres/migrations/20260807130000_backfill_complete_application_run_log_summaries.sql"
 );
 
-fn before_complete_summary_backfill_migrator() -> Migrator {
+fn complete_summary_backfill_migrator_through(version: i64) -> Migrator {
     let migrations = sqlx::migrate!("../storage/durable/postgres/migrations")
         .iter()
-        .filter(|migration| migration.version != COMPLETE_SUMMARY_BACKFILL_VERSION)
+        .filter(|migration| migration.version <= version)
         .cloned()
         .collect::<Vec<_>>();
     Migrator {
@@ -150,57 +150,103 @@ external_user: Some("claude-code-user".to_string()),
 #[tokio::test]
 async fn complete_summary_backfill_restores_a_missing_internal_run_projection() {
     let pool = isolated_database().await.connect().await.unwrap();
-    before_complete_summary_backfill_migrator()
+    complete_summary_backfill_migrator_through(COMPLETE_SUMMARY_BACKFILL_VERSION - 1)
         .run(&pool)
         .await
         .unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
-    let seeded = seed_runtime_base(&store).await;
-    let compiled = seed_compiled_plan(&store, &seeded).await;
+    // Seed the pre-backfill schema directly: current repository writers also
+    // require tables and columns introduced after this historical migration.
+    let workspace_id = seed_workspace(&store, "Historical internal run").await;
+    let actor_user_id = seed_user(&store, workspace_id, "historical-internal-owner").await;
+    let application_id = Uuid::now_v7();
+    let run_id = Uuid::now_v7();
     let started_at = datetime!(2026-08-07 10:00:00 UTC);
-    let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
-        &store,
-        &CreateFlowRunInput {
-            application_run_log_context: None,
-            actor_user_id: seeded.actor_user_id,
-            application_id: seeded.application_id,
-            flow_id: seeded.flow_id,
-            flow_draft_id: seeded.draft_id,
-            compiled_plan_id: compiled.id,
-            debug_session_id: "missing-internal-summary-backfill".to_string(),
-            flow_schema_version: compiled.schema_version.clone(),
-            document_hash: compiled.document_hash.clone(),
-            run_mode: FlowRunMode::PublishedApiRun,
-            target_node_id: None,
-            title: "Backfilled internal run".to_string(),
-            status: FlowRunStatus::Running,
-            input_payload: json!({
-                "node-start": {
-                    "query": "Your task is to create a detailed summary of the conversation so far",
-                    "compatibility": {"claude_code_control": "compact_summary"}
-                }
-            }),
-            started_at,
-            api_key_id: None,
-            publication_version_id: Some(Uuid::now_v7()),
-            assistant_conversation_id: None,
-            external_user: Some("backfill-user".to_string()),
-            external_conversation_id: Some("backfill-conversation".to_string()),
-            external_trace_id: None,
-            compatibility_mode: Some("anthropic-messages-v1".to_string()),
-            idempotency_key: None,
-        },
+    sqlx::query(
+        r#"
+        with application as (
+            insert into applications (id, workspace_id, application_type, name, created_by)
+            values ($3, $1, 'agent_flow', 'Historical internal run', $2)
+            returning id
+        ), flow as (
+            insert into flows (id, application_id, scope_id, created_by, updated_by)
+            select $4, id, $1, $2, $2 from application
+            returning id
+        ), draft as (
+            insert into flow_drafts (
+                id, flow_id, scope_id, schema_version, document, created_by, updated_by
+            )
+            select $5, id, $1, '1flowbase.flow/v2', '{}'::jsonb, $2, $2 from flow
+            returning id, flow_id
+        ), compiled as (
+            insert into flow_compiled_plans (
+                id, flow_id, flow_draft_id, scope_id, schema_version, document_hash,
+                document_updated_at, plan, created_by
+            )
+            select $6, flow_id, id, $1, '1flowbase.flow/v2', 'test-document-hash',
+                $9, '{}'::jsonb, $2 from draft
+            returning id, flow_id, flow_draft_id
+        )
+        insert into flow_runs (
+            id, application_id, flow_id, flow_draft_id, compiled_plan_id, scope_id,
+            created_by, debug_session_id, flow_schema_version, document_hash,
+            run_mode, title, status, input_payload, started_at, publication_version_id,
+            external_user, external_conversation_id, compatibility_mode
+        )
+        select $7, $3, flow_id, flow_draft_id, id, $1, $2,
+            'missing-internal-summary-backfill', '1flowbase.flow/v2', 'test-document-hash',
+            'published_api_run', 'Backfilled internal run', 'running', $8, $9, $10,
+            'backfill-user', 'backfill-conversation', 'anthropic-messages-v1'
+        from compiled
+        "#,
     )
+    .bind(workspace_id)
+    .bind(actor_user_id)
+    .bind(application_id)
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .bind(run_id)
+    .bind(json!({
+        "node-start": {
+            "query": "Your task is to create a detailed summary of the conversation so far",
+            "compatibility": {"claude_code_control": "compact_summary"}
+        }
+    }))
+    .bind(started_at)
+    .bind(Uuid::now_v7())
+    .execute(&pool)
     .await
     .unwrap();
 
-    sqlx::query("delete from application_run_log_summaries where flow_run_id = $1")
-        .bind(run.id)
-        .execute(store.pool())
-        .await
-        .unwrap();
+    sqlx::query(
+        r#"
+        insert into node_runs (
+            id, flow_run_id, scope_id, node_id, node_type, node_alias,
+            status, metrics_payload, started_at, created_by
+        ) values ($1, $2, $5, 'node-llm', 'llm', 'LLM', 'running', $3, $4, $6)
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(run_id)
+    .bind(json!({"usage": {"input_tokens": 10, "output_tokens": 5}}))
+    .bind(started_at)
+    .bind(workspace_id)
+    .bind(actor_user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let missing_count: i64 = sqlx::query_scalar(
+        "select count(*)::bigint from application_run_log_summaries where flow_run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(missing_count, 0);
 
-    sqlx::migrate!("../storage/durable/postgres/migrations")
+    // Run and record the original formal migration before any later schema changes.
+    complete_summary_backfill_migrator_through(COMPLETE_SUMMARY_BACKFILL_VERSION)
         .run(&pool)
         .await
         .unwrap();
@@ -212,7 +258,7 @@ async fn complete_summary_backfill_restores_a_missing_internal_run_projection() 
         where flow_run_id = $1
         "#,
     )
-    .bind(run.id)
+    .bind(run_id)
     .fetch_one(store.pool())
     .await
     .unwrap();
@@ -227,11 +273,47 @@ async fn complete_summary_backfill_restores_a_missing_internal_run_projection() 
     let restored_count: i64 = sqlx::query_scalar(
         "select count(*)::bigint from application_run_log_summaries where flow_run_id = $1",
     )
-    .bind(run.id)
+    .bind(run_id)
     .fetch_one(store.pool())
     .await
     .unwrap();
     assert_eq!(restored_count, 1);
+    let tokens: (Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(
+        "select total_tokens, input_tokens, output_tokens from application_run_log_summaries where flow_run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(tokens, (Some(15), Some(10), Some(5)));
+
+    run_migrations(&pool).await.unwrap();
+    let upgraded_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_flow_run(
+        &store,
+        application_id,
+        run_id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(upgraded_run.title, "Backfilled internal run");
+    assert_eq!(upgraded_run.status, FlowRunStatus::Running);
+    let upgraded_summary: (String, String, Option<String>, Option<i64>) = sqlx::query_as(
+        "select title, status, compatibility_mode, total_tokens from application_run_log_summaries where flow_run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        upgraded_summary,
+        (
+            "Backfilled internal run".to_string(),
+            "running".to_string(),
+            Some("anthropic-messages-v1".to_string()),
+            Some(15),
+        )
+    );
 }
 
 #[tokio::test]

@@ -1,4 +1,25 @@
+use std::borrow::Cow;
+
+use sqlx::migrate::Migrator;
+
 use super::*;
+
+const SYSTEM_PROJECTION_REPAIR_VERSION: i64 = 20260630120000;
+const SYSTEM_PROJECTION_REPAIR_SQL: &str = include_str!(
+    "../../../../storage/durable/postgres/migrations/20260630120000_repair_run_conversation_projection_system.sql"
+);
+
+fn system_projection_migrator_through(version: i64) -> Migrator {
+    let migrations = sqlx::migrate!("../storage/durable/postgres/migrations")
+        .iter()
+        .filter(|migration| migration.version <= version)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
 
 #[tokio::test]
 async fn migration_creates_run_conversation_message_item_projection_table_and_indexes() {
@@ -421,63 +442,148 @@ async fn terminal_projection_reads_llm_node_system_prompt_when_run_input_has_no_
 #[tokio::test]
 async fn migration_repairs_missing_system_projection_without_rebuilding_history() {
     let pool = isolated_database().await.connect().await.unwrap();
-    run_migrations(&pool).await.unwrap();
-    let store = PgControlPlaneStore::new(pool);
-    let seeded = seed_runtime_base(&store).await;
-    let compiled = seed_compiled_plan(&store, &seeded).await;
+    system_projection_migrator_through(SYSTEM_PROJECTION_REPAIR_VERSION - 1)
+        .run(&pool)
+        .await
+        .unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    // This is the historical writer layout, not a projection produced by the
+    // modern adapter and then coerced into the old schema.
+    let workspace_id = seed_workspace(&store, "Historical system projection").await;
+    let actor_user_id = seed_user(&store, workspace_id, "historical-projection-owner").await;
+    let application_id = Uuid::now_v7();
+    let run_id = Uuid::now_v7();
     let started_at = datetime!(2026-06-25 10:40:00 UTC);
-    let run = seed_run_conversation_flow_run(
-        &store,
-        &seeded,
-        &compiled,
-        "run-conversation-repair-system",
-        started_at,
-        json!({
-            "node-start": {
-                "system": "Use the repaired system prompt.",
-                "query": "current question",
-                "model": "gpt-repair",
-                "history": [
-                    { "role": "user", "content": "old question" },
-                    { "role": "assistant", "content": "old answer" }
-                ]
-            }
-        }),
-    )
-    .await;
-
-    <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
-        &store,
-        &UpdateFlowRunInput {
-            flow_run_id: run.id,
-            status: FlowRunStatus::Succeeded,
-            output_payload: json!({ "answer": "current answer" }),
-            error_payload: None,
-            finished_at: Some(started_at + Duration::seconds(2)),
-        },
-    )
-    .await
-    .unwrap();
-
+    let input_payload = json!({
+        "node-start": {
+            "system": "Use the repaired system prompt.",
+            "query": "current question",
+            "model": "gpt-repair",
+            "history": [
+                { "role": "user", "content": "old question" },
+                { "role": "assistant", "content": "old answer" }
+            ]
+        }
+    });
     sqlx::query(
         r#"
-        delete from application_run_conversation_message_items
-        where flow_run_id = $1
-          and role = 'system'
+        with application as (
+            insert into applications (id, workspace_id, application_type, name, created_by)
+            values ($3, $1, 'agent_flow', 'Historical system projection', $2)
+            returning id
+        ), flow as (
+            insert into flows (id, application_id, scope_id, created_by, updated_by)
+            select $4, id, $1, $2, $2 from application
+            returning id
+        ), draft as (
+            insert into flow_drafts (
+                id, flow_id, scope_id, schema_version, document, created_by, updated_by
+            )
+            select $5, id, $1, '1flowbase.flow/v2', '{}'::jsonb, $2, $2 from flow
+            returning id, flow_id
+        ), compiled as (
+            insert into flow_compiled_plans (
+                id, flow_id, flow_draft_id, scope_id, schema_version, document_hash,
+                document_updated_at, plan, created_by
+            )
+            select $6, flow_id, id, $1, '1flowbase.flow/v2', 'test-document-hash',
+                $9, '{}'::jsonb, $2 from draft
+            returning id, flow_id, flow_draft_id
+        )
+        insert into flow_runs (
+            id, application_id, flow_id, flow_draft_id, compiled_plan_id, scope_id,
+            created_by, debug_session_id, flow_schema_version, document_hash,
+            run_mode, title, status, input_payload, output_payload, started_at, finished_at,
+            publication_version_id, external_user, external_conversation_id
+        )
+        select $7, $3, flow_id, flow_draft_id, id, $1, $2,
+            'run-conversation-repair-system', '1flowbase.flow/v2', 'test-document-hash',
+            'published_api_run', 'run conversation', 'succeeded', $8,
+            '{"answer":"current answer"}'::jsonb, $9, $10, $11,
+            'customer-1', 'run-conversation-repair-system'
+        from compiled
         "#,
     )
-    .bind(run.id)
-    .execute(store.pool())
+    .bind(workspace_id)
+    .bind(actor_user_id)
+    .bind(application_id)
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .bind(run_id)
+    .bind(&input_payload)
+    .bind(started_at)
+    .bind(started_at + Duration::seconds(2))
+    .bind(Uuid::now_v7())
+    .execute(&pool)
     .await
     .unwrap();
-    // The writer serves context beside the conversation stream, so deleting the
-    // system row leaves exactly the pre-repair layout the migration expects.
-    sqlx::raw_sql(include_str!(
-        "../../../../storage/durable/postgres/migrations/20260630120000_repair_run_conversation_projection_system.sql"
-    ))
-    .execute(store.pool())
+
+    let history_user_id = Uuid::now_v7();
+    let history_assistant_id = Uuid::now_v7();
+    let current_item_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into application_run_conversation_message_items (
+            id, scope_id, application_id, flow_run_id, display_sequence,
+            source_kind, role, content, query, model, answer, detail_run_id,
+            can_open_detail, is_current, status, started_at, finished_at
+        )
+        select item.id, $4, $5, $6, item.sequence, item.source_kind, item.role,
+            item.content, case when item.is_current then 'current question' end,
+            'gpt-repair', case when item.is_current then 'current answer' end,
+            case when item.is_current then $6 end, item.is_current, item.is_current,
+            'succeeded', $7, $8
+        from (values
+            ($1::uuid, 0::bigint, 'imported_context', 'user', 'old question', false),
+            ($2::uuid, 1::bigint, 'imported_context', 'assistant', 'old answer', false),
+            ($3::uuid, 2::bigint, 'current_run', null, null, true)
+        ) as item(id, sequence, source_kind, role, content, is_current)
+        "#,
+    )
+    .bind(history_user_id)
+    .bind(history_assistant_id)
+    .bind(current_item_id)
+    .bind(workspace_id)
+    .bind(application_id)
+    .bind(run_id)
+    .bind(started_at)
+    .bind(started_at + Duration::seconds(2))
+    .execute(&pool)
     .await
     .unwrap();
+    let historical_items: Vec<(Uuid, i64, Option<String>, Option<String>)> = sqlx::query_as(
+        "select id, display_sequence, role, content from application_run_conversation_message_items where flow_run_id = $1 order by display_sequence",
+    )
+    .bind(run_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        historical_items,
+        vec![
+            (
+                history_user_id,
+                0,
+                Some("user".into()),
+                Some("old question".into())
+            ),
+            (
+                history_assistant_id,
+                1,
+                Some("assistant".into()),
+                Some("old answer".into())
+            ),
+            (current_item_id, 2, None, None),
+        ]
+    );
+
+    // Execute the original migration at its matching schema and record it, so
+    // the subsequent latest-schema upgrade does not replay historical SQL.
+    system_projection_migrator_through(SYSTEM_PROJECTION_REPAIR_VERSION)
+        .run(&pool)
+        .await
+        .unwrap();
 
     let rows = sqlx::query_as::<_, (i64, Option<String>, Option<String>, bool)>(
         r#"
@@ -487,7 +593,7 @@ async fn migration_repairs_missing_system_projection_without_rebuilding_history(
         order by display_sequence asc
         "#,
     )
-    .bind(run.id)
+    .bind(run_id)
     .fetch_all(store.pool())
     .await
     .unwrap();
@@ -515,6 +621,66 @@ async fn migration_repairs_missing_system_projection_without_rebuilding_history(
             ),
             (3, None, None, true),
         ]
+    );
+
+    let expected_retained_items = vec![
+        (
+            history_user_id,
+            1,
+            Some("user".to_string()),
+            Some("old question".to_string()),
+        ),
+        (
+            history_assistant_id,
+            2,
+            Some("assistant".to_string()),
+            Some("old answer".to_string()),
+        ),
+        (current_item_id, 3, None, None),
+    ];
+    for upgrade in [false, true] {
+        if upgrade {
+            run_migrations(&pool).await.unwrap();
+        } else {
+            // Idempotence is tested before payload columns are split into details.
+            sqlx::raw_sql(SYSTEM_PROJECTION_REPAIR_SQL)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        let retained_items: Vec<(Uuid, i64, Option<String>, Option<String>)> = sqlx::query_as(
+            "select id, display_sequence, role, content from application_run_conversation_message_items where flow_run_id = $1 and role is distinct from 'system' order by display_sequence",
+        )
+        .bind(run_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(retained_items, expected_retained_items);
+        let retained_system: (i64, String) = sqlx::query_as(
+            "select display_sequence, content from application_run_conversation_message_items where flow_run_id = $1 and role = 'system'",
+        )
+        .bind(run_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            retained_system,
+            (0, "Use the repaired system prompt.".into())
+        );
+    }
+    let upgraded_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_flow_run(
+        &store,
+        application_id,
+        run_id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(upgraded_run.status, FlowRunStatus::Succeeded);
+    assert_eq!(upgraded_run.input_payload, input_payload);
+    assert_eq!(
+        upgraded_run.output_payload,
+        json!({"answer": "current answer"})
     );
 }
 
