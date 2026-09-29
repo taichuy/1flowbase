@@ -283,7 +283,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     let source_counts = sample_counts(&pool, "public", input)
         .await
         .context("public source sample count validation")?;
-    let source_events = fingerprints::events(&pool, "public", &input.runs)
+    let source_events = fingerprints::events(&pool, "public", &input.runs, input.events)
         .await
         .context("public original-event fingerprint")?;
     *phase = "finite_copy_and_fk_audit";
@@ -306,7 +306,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     let copied_counts = sample_counts(&pool, &schema, input)
         .await
         .context("copied sample count validation")?;
-    let copied_events = fingerprints::events(&pool, &schema, &input.runs)
+    let copied_events = fingerprints::events(&pool, &schema, &input.runs, input.events)
         .await
         .context("prefix original-event fingerprint")?;
     ensure!(
@@ -367,7 +367,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     );
     retained_audit["queue_transition"] = queue_transition.clone();
     std::fs::write(&audit_path, serde_json::to_vec_pretty(&retained_audit)?)?;
-    let upgrade_events = fingerprints::events(&pool, &schema, &input.runs).await?;
+    let upgrade_events = fingerprints::events(&pool, &schema, &input.runs, input.events).await?;
     ensure!(
         upgrade_events == source_events,
         "formal upgrade original events differ"
@@ -400,7 +400,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         "sample mover did not transform each requested domain"
     );
     *phase = "lossless_after_mover";
-    let after_events = fingerprints::events(&pool, &schema, &input.runs).await?;
+    let after_events = fingerprints::events(&pool, &schema, &input.runs, input.events).await?;
     let after_readers = fingerprints::readers(&store, &input.runs)
         .await
         .context("compacted reader fingerprint")?;
@@ -439,7 +439,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
             && repeated.compact_directory_records == 0,
         "mover reentry was not row-idempotent"
     );
-    let repeated_events = fingerprints::events(&pool, &schema, &input.runs).await?;
+    let repeated_events = fingerprints::events(&pool, &schema, &input.runs, input.events).await?;
     ensure!(
         repeated_events == after_events,
         "mover reentry changes original events"
@@ -469,7 +469,8 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         source_counts_after == source_counts,
         "public source changed during replay"
     );
-    let source_events_after = fingerprints::events(&pool, "public", &input.runs).await?;
+    let source_events_after =
+        fingerprints::events(&pool, "public", &input.runs, input.events).await?;
     ensure!(
         source_events_after == source_events,
         "public source event originals changed during replay"

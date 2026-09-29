@@ -159,7 +159,12 @@ pub(super) async fn verify_upgrade_queue(
     )
 }
 
-pub(super) async fn events(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result<Events> {
+pub(super) async fn events(
+    pool: &PgPool,
+    schema: &str,
+    runs: &[Uuid],
+    expected_events: i64,
+) -> Result<Events> {
     // Qualifying the resolver does not qualify its internal SQL. Bind the whole
     // read-only transaction to the source/destination schema, then restore the
     // pool connection's isolated search_path automatically at transaction end.
@@ -190,7 +195,7 @@ pub(super) async fn events(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result
     tx.commit().await?;
     let signature = originals.finish();
     ensure!(
-        signature.entries == super::EVENTS as u64,
+        signature.entries == u64::try_from(expected_events)?,
         "complete original event count differs"
     );
     Ok(Events {
