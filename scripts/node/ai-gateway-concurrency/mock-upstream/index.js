@@ -675,6 +675,7 @@ function createMockUpstream(options = {}) {
     }
     if (head.length > 0) socket.unshift(head);
     let requestTimeline;
+    let activePayload;
     let scenario = SCENARIO.NORMAL;
     let started = false;
     let cancelRequested = false;
@@ -698,6 +699,7 @@ function createMockUpstream(options = {}) {
       }
       if (body.type !== 'response.create' || started) return;
       started = true;
+      activePayload = body.response ?? body;
       scenario = scenarioFrom(body.response ?? body);
       requestTimeline = timeline.arrive(
         TRANSPORT.RESPONSES_WEBSOCKET,
@@ -757,33 +759,43 @@ function createMockUpstream(options = {}) {
         : clientText !== null
           ? responsesEvents(requestTimeline.nonce, ...textChunks)
           : responsesEvents(requestTimeline.nonce);
-      let visibleDeltaReleased = false;
-      for (const chunk of stream.chunks) {
-        if (cancelRequested || socket.destroyed) return;
-        sendJson(socket, chunk);
-        requestTimeline.record('chunk', { protocolEvent: chunk.type });
-        const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
-        const barrierEvent = stream.barrierEvent ?? chunk.type;
-        if (!visibleDeltaReleased && barrier.enabled && visibleMarker && chunk.type === barrierEvent) {
-          visibleDeltaReleased = true;
-          requestTimeline.record('barrier_waiting', { protocolEvent: chunk.type });
-          await barrier.wait();
-          requestTimeline.record('barrier_released', { protocolEvent: chunk.type });
+      const terminalBarrier = terminalBarriers.forRequest(payload, requestTimeline);
+      let terminalBarrierHeld = false;
+      try {
+        let visibleDeltaReleased = false;
+        for (const chunk of stream.chunks) {
+          if (cancelRequested || socket.destroyed) return;
+          sendJson(socket, chunk);
+          requestTimeline.record('chunk', { protocolEvent: chunk.type });
+          if (terminalBarrier && !terminalBarrierHeld && chunk.type === 'response.output_text.delta') {
+            terminalBarrierHeld = true;
+            await terminalBarrier();
+            if (cancelRequested || socket.destroyed) return;
+          }
+          const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
+          const barrierEvent = stream.barrierEvent ?? chunk.type;
+          if (!visibleDeltaReleased && barrier.enabled && visibleMarker && chunk.type === barrierEvent) {
+            visibleDeltaReleased = true;
+            requestTimeline.record('barrier_waiting', { protocolEvent: chunk.type });
+            await barrier.wait();
+            requestTimeline.record('barrier_released', { protocolEvent: chunk.type });
+          }
+          if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
         }
-        if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
-      }
-      if (scenario === SCENARIO.STREAM_INTERRUPTION) {
-        requestTimeline.record('stream_interrupted');
-        requestTimeline.finish('interrupted', { successTerminalCount: 0 });
-        socket.destroy();
-        return;
-      }
-      if (scenario === SCENARIO.CANCEL_OBSERVATION) return;
-      sendJson(socket, stream.terminal);
-      requestTimeline.record('chunk', { protocolEvent: stream.terminal.type });
-      requestTimeline.finish('completed', { successTerminalCount: 1 });
-      sendClose(socket);
+        if (scenario === SCENARIO.STREAM_INTERRUPTION) {
+          requestTimeline.record('stream_interrupted');
+          requestTimeline.finish('interrupted', { successTerminalCount: 0 });
+          socket.destroy();
+          return;
+        }
+        if (scenario === SCENARIO.CANCEL_OBSERVATION) return;
+        sendJson(socket, stream.terminal);
+        requestTimeline.record('chunk', { protocolEvent: stream.terminal.type });
+        requestTimeline.finish('completed', { successTerminalCount: 1 });
+        sendClose(socket);
+      } finally { terminalBarriers.completeRequest(payload); }
     }, (kind) => {
+      if (activePayload) terminalBarriers.completeRequest(activePayload);
       if (requestTimeline) requestTimeline.finish('disconnected', { kind, successTerminalCount: 0 });
     });
   });

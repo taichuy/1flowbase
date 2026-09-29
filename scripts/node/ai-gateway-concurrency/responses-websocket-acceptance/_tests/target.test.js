@@ -39,6 +39,8 @@ test('Root #1461 AC WebSocket target uses Gateway URL, key, model, and durable e
   assert.equal(target.evidence_role, 'gateway-support-target');
   assert.equal(target.url, 'ws://127.0.0.1:4100/v1/responses');
   assert.equal(target.model, 'published-model');
+  assert.equal(target.expected_upstream_transport, 'responses-websocket');
+  assert.equal(publicTarget(target).expected_upstream_transport, 'responses-websocket');
   assert.equal(target.upstream_model, 'upstream-model');
   assert.equal(publicTarget(target).upstream_model, 'upstream-model');
   assert.equal(target.connect_headers.authorization, 'Bearer application-secret');
