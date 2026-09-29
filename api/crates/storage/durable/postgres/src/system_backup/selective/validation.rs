@@ -435,7 +435,12 @@ pub(super) async fn validate(
         }
         if matches!(
             table.name.as_str(),
-            "runtime_canonical_contents" | "flow_run_recovery_history" | "i18n_catalog_releases"
+            "runtime_canonical_contents"
+                | "runtime_native_snapshot_items"
+                | "runtime_native_snapshot_manifests"
+                | "runtime_native_snapshot_references"
+                | "flow_run_recovery_history"
+                | "i18n_catalog_releases"
         ) {
             let condition = table
                 .primary_key

@@ -1,4 +1,5 @@
 mod fixes;
+mod native_storage;
 
 use super::*;
 use tokio::io::AsyncReadExt;
