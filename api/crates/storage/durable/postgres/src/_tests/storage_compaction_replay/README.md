@@ -54,3 +54,16 @@ credentials are never printed; failures expose a fixed phase, error digest and
 only PostgreSQL SQLSTATE/constraint/table metadata instead of a raw error chain.
 No fixture execution, build or service restart was performed when
 these files were authored.
+
+The retained-row audit records per-table full-row and per-column multiset hashes
+at the prefix, after the formal upgrade, and after the mover. Business/source
+rows remain exactly equal across the upgrade. The formal sequence high-water
+initialization updates each flow once and its existing trigger invalidates the
+trace refresh queue; the fixture verifies exact run membership, exactly one
+revision increment with every other existing queue field unchanged, and the
+lifecycle/timestamp window of any newly scheduled row. The mover must preserve
+all post-upgrade retained rows, including the entire queue. Queue allocation
+continues to contribute to every physical snapshot. Controlled negatives reject
+extra revisions, attempts, lease/time changes, missing owners and unrelated runs.
+`retained-stage-audit.json` is saved before each assertion, so a failure retains
+only table/column names, counts and hashes rather than exporting original values.

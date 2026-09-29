@@ -73,6 +73,92 @@ pub(super) struct Events {
     pub exact_native_body_strings: Signature,
 }
 
+#[derive(Serialize, PartialEq, Eq)]
+pub(super) struct RetainedTable {
+    pub full_rows: Signature,
+    pub columns: BTreeMap<String, Signature>,
+}
+
+pub(super) type Retained = BTreeMap<String, RetainedTable>;
+
+pub(super) fn retained_difference(before: &Retained, after: &Retained) -> Value {
+    let differences: BTreeMap<_, _> = before
+        .iter()
+        .filter_map(|(name, old)| {
+            let new = after.get(name);
+            if new == Some(old) {
+                return None;
+            }
+            let columns: Vec<_> = old
+                .columns
+                .iter()
+                .filter_map(|(column, signature)| {
+                    (new.and_then(|t| t.columns.get(column)) != Some(signature)).then_some(column)
+                })
+                .collect();
+            Some((
+                name,
+                json!({"before":old,"after":new,"different_columns":columns}),
+            ))
+        })
+        .collect();
+    json!(differences)
+}
+
+pub(super) async fn refresh_queue(pool: &PgPool) -> Result<BTreeMap<Uuid, Value>> {
+    sqlx::query("select flow_run_id,to_jsonb(q) value from application_run_trace_refresh_queue q order by flow_run_id")
+        .fetch_all(pool).await?.into_iter().map(|row| {
+            Ok((row.try_get("flow_run_id")?, row.try_get("value")?))
+        }).collect()
+}
+
+/// The formal high-water initialization updates each allowed flow once. Its
+/// existing AFTER UPDATE trigger invalidates the derived trace queue, without
+/// changing business/source records. Verify that exact transition, not a broad
+/// omission of queue columns or volatile timestamps.
+pub(super) async fn verify_upgrade_queue(
+    pool: &PgPool,
+    runs: &[Uuid],
+    before: &BTreeMap<Uuid, Value>,
+    after: &BTreeMap<Uuid, Value>,
+    started: time::OffsetDateTime,
+    finished: time::OffsetDateTime,
+) -> Result<Value> {
+    let allowed: BTreeSet<_> = runs.iter().copied().collect();
+    ensure!(
+        before.keys().all(|id| allowed.contains(id)),
+        "prefix queue has an unrelated owner"
+    );
+    ensure!(
+        after.keys().copied().collect::<BTreeSet<_>>() == allowed,
+        "formal upgrade queue membership differs from exact flow owners"
+    );
+    let mut existing = 0;
+    for id in runs {
+        let actual = &after[id];
+        if let Some(old) = before.get(id) {
+            let mut expected = old.clone();
+            let revision = old["revision"]
+                .as_i64()
+                .context("queue revision unavailable")?;
+            expected["revision"] =
+                json!(revision.checked_add(1).context("queue revision overflow")?);
+            ensure!(
+                actual == &expected,
+                "formal upgrade changed queue fields beyond one invalidation"
+            );
+            existing += 1;
+        } else {
+            let valid: bool = sqlx::query_scalar("select revision=1 and attempts=0 and lease_until is null and available_at >= $2 and available_at <= $3 from application_run_trace_refresh_queue where flow_run_id=$1")
+                .bind(id).bind(started).bind(finished).fetch_one(pool).await?;
+            ensure!(valid, "formal upgrade new queue row lifecycle mismatch");
+        }
+    }
+    Ok(
+        json!({"verified":true,"exact_owner_count":runs.len(),"existing_rows_invalidated_once":existing,"new_rows":runs.len()-existing}),
+    )
+}
+
 pub(super) async fn events(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result<Events> {
     // Qualifying the resolver does not qualify its internal SQL. Bind the whole
     // read-only transaction to the source/destination schema, then restore the
@@ -113,11 +199,7 @@ pub(super) async fn events(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result
     })
 }
 
-pub(super) async fn retained(
-    pool: &PgPool,
-    schema: &str,
-    tables: &[Table],
-) -> Result<BTreeMap<String, Signature>> {
+pub(super) async fn retained(pool: &PgPool, schema: &str, tables: &[Table]) -> Result<Retained> {
     let mut result = BTreeMap::new();
     for table in tables {
         if matches!(
@@ -143,9 +225,18 @@ pub(super) async fn retained(
         );
         let mut stream = sqlx::query(&sql).fetch(pool);
         let mut hashes = Vec::new();
+        let mut column_hashes: BTreeMap<String, Vec<Vec<u8>>> = table
+            .columns
+            .iter()
+            .map(|name| (name.clone(), Vec::new()))
+            .collect();
         while let Some(row) = stream.try_next().await? {
             let value: Value = row.try_get("value")?;
             hashes.push(Sha256::digest(serde_json::to_vec(&SortedValue(&value))?).to_vec());
+            for (name, hashes) in &mut column_hashes {
+                let field = value.get(name).context("retained column unavailable")?;
+                hashes.push(Sha256::digest(serde_json::to_vec(&SortedValue(field))?).to_vec());
+            }
         }
         // Tables without a primary key still compare as a full row multiset;
         // physical tuple order and VACUUM placement have no semantic meaning.
@@ -154,7 +245,22 @@ pub(super) async fn retained(
         for value in hashes {
             recorder.add(&value);
         }
-        result.insert(table.name.clone(), recorder.finish());
+        let mut columns = BTreeMap::new();
+        for (name, mut hashes) in column_hashes {
+            hashes.sort();
+            let mut column = Recorder::default();
+            for hash in hashes {
+                column.add(&hash);
+            }
+            columns.insert(name, column.finish());
+        }
+        result.insert(
+            table.name.clone(),
+            RetainedTable {
+                full_rows: recorder.finish(),
+                columns,
+            },
+        );
     }
     Ok(result)
 }
@@ -338,4 +444,65 @@ pub(super) async fn readers(store: &PgControlPlaneStore, runs: &[Uuid]) -> Resul
         frame_bytes_kind_time_sequence: frames.finish(),
         source_directory_references: references.finish(),
     })
+}
+
+#[tokio::test]
+async fn upgrade_queue_contract_rejects_unrelated_owners_and_extra_field_changes() {
+    let (pool, flow) = super::super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let before = refresh_queue(&pool).await.unwrap();
+    let started: time::OffsetDateTime =
+        sqlx::query_scalar("select min(available_at) from application_run_trace_refresh_queue")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let finished: time::OffsetDateTime = sqlx::query_scalar("select clock_timestamp()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(
+        verify_upgrade_queue(&pool, &[flow], &BTreeMap::new(), &before, started, finished)
+            .await
+            .is_ok()
+    );
+    sqlx::query(
+        "update application_run_trace_refresh_queue set revision=revision+1 where flow_run_id=$1",
+    )
+    .bind(flow)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let after = refresh_queue(&pool).await.unwrap();
+    assert!(
+        verify_upgrade_queue(&pool, &[flow], &before, &after, started, finished)
+            .await
+            .is_ok()
+    );
+    let old_revision = before[&flow]["revision"].as_i64().unwrap();
+    for (field, invalid) in [
+        ("revision", json!(old_revision + 2)),
+        ("attempts", json!(1)),
+        ("lease_until", json!("changed")),
+        ("available_at", json!("changed")),
+    ] {
+        let mut damaged = after.clone();
+        damaged.get_mut(&flow).unwrap()[field] = invalid;
+        assert!(
+            verify_upgrade_queue(&pool, &[flow], &before, &damaged, started, finished)
+                .await
+                .is_err(),
+            "accepted extra change to {field}"
+        );
+    }
+    let mut unrelated = after.clone();
+    unrelated.insert(Uuid::now_v7(), after[&flow].clone());
+    assert!(
+        verify_upgrade_queue(&pool, &[flow], &before, &unrelated, started, finished)
+            .await
+            .is_err()
+    );
+    assert!(
+        verify_upgrade_queue(&pool, &[flow], &before, &BTreeMap::new(), started, finished)
+            .await
+            .is_err()
+    );
 }

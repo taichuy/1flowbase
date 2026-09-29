@@ -209,11 +209,46 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
     *phase = "old_gross_measurement";
     let before = measurement::snapshot(&pool, &schema, &copy.domain).await?;
     let retained_before = fingerprints::retained(&pool, &schema, &copy.tables).await?;
+    let queue_before = fingerprints::refresh_queue(&pool).await?;
+    let mut retained_audit = json!({"prefix":&retained_before});
+    let audit_path = input.output.join("retained-stage-audit.json");
+    std::fs::write(&audit_path, serde_json::to_vec_pretty(&retained_audit)?)?;
 
     *phase = "formal_upgrade";
+    let upgrade_started: time::OffsetDateTime = sqlx::query_scalar("select clock_timestamp()")
+        .fetch_one(&pool)
+        .await?;
     run_migrations(&pool)
         .await
         .context("formal complete schema upgrade")?;
+    let upgrade_finished: time::OffsetDateTime = sqlx::query_scalar("select clock_timestamp()")
+        .fetch_one(&pool)
+        .await?;
+    let retained_upgraded = fingerprints::retained(&pool, &schema, &copy.tables).await?;
+    retained_audit["post_formal_upgrade"] = serde_json::to_value(&retained_upgraded)?;
+    retained_audit["upgrade_difference"] =
+        fingerprints::retained_difference(&retained_before, &retained_upgraded);
+    std::fs::write(&audit_path, serde_json::to_vec_pretty(&retained_audit)?)?;
+    let queue_after = fingerprints::refresh_queue(&pool).await?;
+    let queue_transition = fingerprints::verify_upgrade_queue(
+        &pool,
+        &input.runs,
+        &queue_before,
+        &queue_after,
+        upgrade_started,
+        upgrade_finished,
+    )
+    .await?;
+    ensure!(
+        retained_before.len() == retained_upgraded.len()
+            && retained_before
+                .iter()
+                .all(|(name, rows)| name == "application_run_trace_refresh_queue"
+                    || retained_upgraded.get(name) == Some(rows)),
+        "formal upgrade changed retained business/source-reference rows"
+    );
+    retained_audit["queue_transition"] = queue_transition.clone();
+    std::fs::write(&audit_path, serde_json::to_vec_pretty(&retained_audit)?)?;
     let upgrade_events = fingerprints::events(&pool, &schema, &input.runs).await?;
     ensure!(
         upgrade_events == source_events,
@@ -246,6 +281,10 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         .await
         .context("compacted reader fingerprint")?;
     let retained_after = fingerprints::retained(&pool, &schema, &copy.tables).await?;
+    retained_audit["post_mover"] = serde_json::to_value(&retained_after)?;
+    retained_audit["mover_difference"] =
+        fingerprints::retained_difference(&retained_upgraded, &retained_after);
+    std::fs::write(&audit_path, serde_json::to_vec_pretty(&retained_audit)?)?;
     ensure!(
         after_events == source_events,
         "compaction complete original events/Native strings differ"
@@ -255,7 +294,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         "compaction client pages/sections/cursors/filter/focus/raw frames differ"
     );
     ensure!(
-        retained_after == retained_before,
+        retained_after == retained_upgraded,
         "compaction retained business/source-reference rows differ"
     );
     copy::audit(&pool, &schema, &input.runs)
@@ -306,7 +345,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         "source_receipt_sha256":input.receipt_hash,"source_costs_sha256":input.costs_hash,
         "run_allowlist_sha256":hash(serde_json::to_string(&input.runs)?.as_bytes()),"source_counts":source_counts,"copied_counts":copied_counts,
         "old_receipt_core_row_values_bytes":input.old_core_row_value_bytes,
-        "copy":copy,"mover":moved,"reentry":repeated,"lossless_original_events":after_events,"lossless_readers":after_readers,"retained_business_rows":retained_after,
+        "copy":copy,"mover":moved,"reentry":repeated,"lossless_original_events":after_events,"lossless_readers":after_readers,"retained_business_rows":retained_after,"formal_upgrade_trace_queue_transition":queue_transition,"retained_stage_audit":"retained-stage-audit.json",
         "physical":{"prefix_empty":prefix_empty,"latest_empty":latest_empty,"old_gross":before,"formal_upgrade_before_mover":upgraded,"live_after_compaction_allocated":live_after,"isolated_compact_layout_equivalent":compact_equivalent},
         "notes":["Source public tables were selected only; all writes, migrations and VACUUM FULL targeted guarded isolated schemas.",
             "193046031-byte/184.103-MiB original core receipt excluded client steps and summary/conversation/recovery/Outbox/usage/billing costs; this replay lists them and every added directory/header/item/ref/ownership/index/TOAST cost.",
