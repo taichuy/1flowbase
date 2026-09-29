@@ -1,8 +1,10 @@
 ---
 title: Gateway 日志优化保留客户端轨迹与执行功能
-date: 2026-09-29 16
+date: 2026-09-29 22
 decision_policy: verify_before_decision
 ---
+
+2026-09-29 22 Root 已完成 #2169 用户要求的约30分钟真实验证，gpt-6-luna/max经7800/dev实际工作33分52.678秒、6task/run成功，完成排队执行与context compaction；截止日期未指定。动机是量化“默认精确统计摘要、按需逐事件诊断”对完整任务的真实收益。唯一fresh QA通过；同样本隔离PG压实布局任务域34,160,640→33,259,520 bytes，节省901,120 bytes（0.859375MiB，2.63789%），含共享支持为2.61345%，不能把计时组件字段缩减比例当整体收益。client_trajectory_archive_parts及协议/工具/恢复事实原样保留，源历史未重写；raw JSON sidecar重序列化存在空白/键序字节差异，非两次不同任务A/B或在线磁盘回收。7800已恢复默认summary并真实调用验证，测试key/session和两隔离schema已清理，7600未改。当前以Issue及 tmp/test-governance/stream-timing-long-20260929/report.md、table-storage.csv、qa-report.md为可复核入口。阶段为用户验收；该结果不授权扩展删减轨迹或历史。
 
 2026-09-29 21 用户明确批准 #2169 的计时粒度方案：正常供应商调用默认只保存精确统计摘要，逐事件性能计时改为执行前按需诊断；原始协议、工具调用、恢复与投递事实保持既有完整性。Root 负责实现和集成，storage_scout 实现在线累加器，唯一 fresh QA 集中验收；截止日期未指定。动机是消除对用户最终内容无贡献、且现有阶段统计只使用 min ingress/max append delay 的线性计时数组开销，而非压缩后继续永久存下所有过程。此授权只适用于计时采集与指标投影，不授权历史删除、schema/客户端协议变更、client_trajectory_archive_parts 语义改造或任意容量上限；三层边界与长期上下文按 DB locator 查的原则继续。开关为 FLOWBASE_PROVIDER_STREAM_TIMING_CAPTURE=1（调用前在 API 服务端启用），默认0。具体候选和验收取证以 Issue https://github.com/taichuy/1flowbase/issues/2169 及当前源码为准，不将计时字段缩减比例当整库磁盘收益。
 
