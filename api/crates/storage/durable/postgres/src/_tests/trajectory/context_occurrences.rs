@@ -9,7 +9,8 @@ async fn context_manifest_restores_external_results_order_paging_body_scope_and_
     sqlx::query("insert into node_runs(id,scope_id,flow_run_id,node_id,node_type,node_alias,status) select $1,scope_id,id,'llm','llm','LLM','running' from flow_runs where id=$2")
         .bind(node).bind(flow).execute(store.pool()).await.unwrap();
     let mut expected = Vec::new();
-    for version in ["first\0result", "retry result"] {
+    for (attempt, version) in ["first\0result", "retry result"].into_iter().enumerate() {
+        let invocation = format!("input-{attempt}");
         let key = Uuid::now_v7();
         // Same bytes, different fact identities; same call_id on another invocation
         // with a different result version. No locally produced completion is needed.
@@ -21,7 +22,7 @@ async fn context_manifest_restores_external_results_order_paging_body_scope_and_
                 "kind":"tool_result","status":"recorded","direction":"prepared","tool_call_id":if index==0 {"one"} else {"two"},
                 "preview":version,"body_ref":{"step_key":key,"pointer":format!("/messages/{index}")}}})
         }).collect();
-        native::append(&store,flow,node,"provider_semantic_step",json!({"source":"ai_native","invocation_id":version,"provider_attempt_index":0,
+        native::append(&store,flow,node,"provider_semantic_step",json!({"source":"ai_native","invocation_id":invocation,"provider_attempt_index":0,
             "step_key":key,"kind":"model_call","status":"recorded","direction":"prepared",
             "body":json!({"messages":messages}).to_string(),"_context_occurrences":{"version":1,"entries":entries}})).await;
         native::append(
@@ -29,7 +30,7 @@ async fn context_manifest_restores_external_results_order_paging_body_scope_and_
             flow,
             node,
             "native_trajectory_integrity",
-            json!({"invocation_id":version,"provider_attempt_index":0,
+            json!({"invocation_id":invocation,"provider_attempt_index":0,
             "status":"complete","observed_count":3,"persist_failed_count":0,"dropped_count":0}),
         )
         .await;
@@ -53,7 +54,7 @@ async fn context_manifest_restores_external_results_order_paging_body_scope_and_
     }
     assert_eq!(
         items.iter().map(|v| v.event_sequence).collect::<Vec<_>>(),
-        vec![1, 2, 3, 4, 5, 6]
+        vec![1, 2, 3, 5, 6, 7]
     );
     assert!(items
         .iter()
