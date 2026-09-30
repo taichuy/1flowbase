@@ -149,82 +149,78 @@ fn redact_metadata(value: &mut Value) {
     }
 }
 async fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
-    let detail = safe_input(input);
-    let gap = detail.is_none();
-    let snapshot_key = Uuid::now_v7().to_string();
-    let saved = sink
-        .step(
+    let Some(detail) = safe_input(input) else {
+        sink.step(
             "model_call",
-            &snapshot_key,
+            &Uuid::now_v7().to_string(),
             "prepared",
-            detail.unwrap_or_else(|| json!({"truncated":true})),
+            json!({"truncated":true}),
             None,
-            gap,
+            true,
         )
         .await;
+        return true;
+    };
+    let snapshot_key = Uuid::now_v7().to_string();
+    let mut entries = Vec::new();
     let mut submitted = BTreeSet::new();
+    let mut occurrence = |key: String, detail: &Value, tool: Option<&str>, pointer: String| {
+        entries.push(json!({"event_id":Uuid::now_v7(), "metadata": {
+            "step_key":key, "kind":"tool_result", "status":"recorded",
+            "direction":"prepared", "preview":native_preview("tool_result", detail),
+            "tool_call_id":tool, "body_ref":{"step_key":snapshot_key,"pointer":pointer}
+        }}));
+    };
     for (index, message) in input
         .messages
         .iter()
         .enumerate()
         .filter(|(_, message)| message.role == ProviderMessageRole::Tool)
     {
-        if let Some(detail) = snapshot_value(message) {
-            sink.referenced_step(
-                "tool_result",
-                &format!("submitted:{index}"),
-                "prepared",
-                detail,
-                message.tool_call_id.as_deref(),
-                (saved && !gap).then(|| (snapshot_key.as_str(), format!("/messages/{index}"))),
-            )
-            .await;
-            if let Some(id) = &message.tool_call_id {
-                submitted.insert(id.clone());
-            }
-        } else {
-            sink.dropped.fetch_add(1, Relaxed);
+        occurrence(
+            format!("submitted:{index}"),
+            &detail["messages"][index],
+            message.tool_call_id.as_deref(),
+            format!("/messages/{index}"),
+        );
+        if let Some(id) = &message.tool_call_id {
+            submitted.insert(id.clone());
         }
     }
-    // Responses is an explicit Native passthrough contract here, not supplier raw
-    // evidence. Only its declared function_call_output input is a submitted result.
-    if let Some(native) = input.native_transport.as_ref() {
-        for (index, item) in native
-            .wire_body
-            .get("input")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .enumerate()
-        {
-            if item["type"] != "function_call_output" {
-                continue;
-            }
+    if let Some(items) = detail["native_request"]["wire_body"]["input"].as_array() {
+        for (index, item) in items.iter().enumerate() {
             let id = item["call_id"].as_str();
-            if id.is_some_and(|id| submitted.contains(id)) {
-                continue;
-            }
-            if let Some(detail) = snapshot_value(item) {
-                sink.referenced_step(
-                    "tool_result",
-                    &format!("native-submitted:{index}"),
-                    "prepared",
-                    detail,
+            if item["type"] == "function_call_output"
+                && !id.is_some_and(|id| submitted.contains(id))
+            {
+                occurrence(
+                    format!("native-submitted:{index}"),
+                    item,
                     id,
-                    (saved && !gap).then(|| {
-                        (
-                            snapshot_key.as_str(),
-                            format!("/native_request/wire_body/input/{index}"),
-                        )
-                    }),
-                )
-                .await;
-            } else {
-                sink.dropped.fetch_add(1, Relaxed);
+                    format!("/native_request/wire_body/input/{index}"),
+                );
             }
         }
     }
-    gap
+    let count = entries.len() as u64;
+    let mut payload = sink.id.event(
+        "provider_semantic_step",
+        json!({
+            "step_key":snapshot_key,"kind":"model_call","status":"recorded",
+            "direction":"prepared","preview":native_preview("model_call", &detail),
+            "tool_call_id":null,"body":detail.to_string()
+        }),
+    );
+    if !entries.is_empty() {
+        payload.payload["_context_occurrences"] = json!({"version":1,"entries":entries});
+    }
+    // One durable record owns the exact input and all ordered occurrence identities.
+    // The repository reserves their cursor positions and projects the old list on reads.
+    let saved = sink.enqueue(payload).await;
+    if saved {
+        sink.observed.fetch_add(count, Relaxed);
+    }
+    !saved
 }
 
 #[derive(Default)]

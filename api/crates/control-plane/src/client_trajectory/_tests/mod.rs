@@ -1,6 +1,7 @@
 use super::*;
 use base64::Engine;
 use serde_json::json;
+mod batching;
 #[derive(Default)]
 struct MemoryWriter {
     records: Mutex<Vec<AppendClientTrajectoryInput>>,
@@ -9,6 +10,7 @@ struct MemoryWriter {
     fail_cleanup_once: AtomicBool,
     cleanup_count: AtomicU64,
     archived: Notify,
+    archive_calls: AtomicU64,
 }
 #[async_trait::async_trait]
 impl FactWriter for MemoryWriter {
@@ -23,6 +25,7 @@ impl FactWriter for MemoryWriter {
         &self,
         input: &AppendClientTrajectoryArchiveInput,
     ) -> anyhow::Result<ClientTrajectoryArchiveReceipt> {
+        self.archive_calls.fetch_add(1, Ordering::Relaxed);
         let mut archive = self.frames.lock().unwrap();
         for frame in &input.frames {
             let mut frame = frame.clone();

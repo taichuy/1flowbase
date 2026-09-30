@@ -1,7 +1,10 @@
 //! Store observation bodies as immutable, scoped content while retaining the
 //! producer's step identity and exact original body representation.
 use super::*;
+mod context_occurrences;
 mod native_snapshots;
+mod node_payloads;
+pub(super) use context_occurrences::occurrence_count;
 
 pub(super) async fn lock_native_batch(
     tx: &mut sqlx::Transaction<'_, Postgres>,
@@ -15,6 +18,36 @@ pub(super) async fn lock_native_batch(
                 .bind(input.flow_run_id)
                 .fetch_one(&mut **tx)
                 .await?;
+        let hashes: std::collections::BTreeSet<_> = inputs
+            .iter()
+            .filter(|input| {
+                input.payload["source"] == "ai_native" && input.payload["kind"] == "model_call"
+            })
+            .filter_map(|input| input.payload["body"].as_str())
+            .map(|body| native_snapshots::digest(body.as_bytes()))
+            .collect();
+        if !hashes.is_empty() {
+            // Release any partial key-share set before taking the application
+            // lock. Reclamation takes that lock before deleting owners.
+            sqlx::query("savepoint native_existing_owners")
+                .execute(&mut **tx)
+                .await?;
+            let existing: Vec<Uuid> = sqlx::query_scalar("select id from runtime_native_snapshot_manifests where application_id=$1 and content_hash=any($2) order by id for key share")
+                .bind(application).bind(hashes.iter().cloned().collect::<Vec<_>>())
+                .fetch_all(&mut **tx).await?;
+            if existing.len() == hashes.len() {
+                sqlx::query("release savepoint native_existing_owners")
+                    .execute(&mut **tx)
+                    .await?;
+                return Ok(());
+            }
+            sqlx::query("rollback to savepoint native_existing_owners")
+                .execute(&mut **tx)
+                .await?;
+            sqlx::query("release savepoint native_existing_owners")
+                .execute(&mut **tx)
+                .await?;
+        }
         sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
             .bind(format!("native-snapshots:{application}"))
             .execute(&mut **tx)
@@ -27,6 +60,10 @@ pub(super) async fn archive_payload(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     input: &AppendRuntimeEventInput,
 ) -> Result<(Value, Option<Uuid>, Option<Uuid>)> {
+    occurrence_count(input)?;
+    if matches!(input.event_type.as_str(), "node_started" | "node_finished") {
+        return node_payloads::archive(tx, input).await;
+    }
     if !matches!(
         input.event_type.as_str(),
         "provider_semantic_step" | "provider_protocol_observation"
@@ -67,6 +104,7 @@ pub(super) async fn archive_payload(
                     "_observation_body_ref".into(),
                     json!({"manifest_id":manifest_id,"application_id":application_id}),
                 );
+                context_occurrences::project_metadata(&mut payload);
                 return Ok((payload, None, Some(manifest_id)));
             }
         }
@@ -88,5 +126,6 @@ pub(super) async fn archive_payload(
         "_observation_body_ref".into(),
         json!({"content_id":content_id,"application_id":application_id}),
     );
+    context_occurrences::project_metadata(&mut payload);
     Ok((payload, Some(content_id), None))
 }

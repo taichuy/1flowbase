@@ -4,7 +4,9 @@ use anyhow::Context;
 use sqlx::postgres::PgRow;
 mod codec;
 mod directory;
+mod manifest;
 mod packing;
+mod segments;
 
 pub(super) const PART_VERSION: i16 = 2;
 pub(super) const PACKED_PART_VERSION: i16 = 3;
@@ -182,6 +184,9 @@ impl PageCache {
         limit: usize,
     ) -> Result<Vec<DecodedFrame>> {
         let version: i16 = row.try_get("codec_version")?;
+        if version == segments::ROW_VERSION {
+            return segments::decode_row(self, row, cursor, limit);
+        }
         if !matches!(version, PART_VERSION | PACKED_PART_VERSION) {
             if version == archive_codec::VERSION {
                 let frames: Value = row.try_get("frames")?;

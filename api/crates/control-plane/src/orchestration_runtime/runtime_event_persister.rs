@@ -13,7 +13,7 @@ use crate::ports::{
 };
 
 const RUNTIME_EVENT_BATCH_MAX_BYTES: usize = 64 * 1024;
-const RUNTIME_EVENT_BATCH_MAX_DELAY: Duration = Duration::from_millis(20);
+pub(crate) const RUNTIME_EVENT_BATCH_MAX_DELAY: Duration = Duration::from_millis(20);
 
 #[derive(Default)]
 struct RuntimeEventPersistenceBatch {

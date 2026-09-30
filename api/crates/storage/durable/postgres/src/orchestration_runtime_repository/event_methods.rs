@@ -285,7 +285,15 @@ impl PgControlPlaneStore {
         // PostgreSQL encodes the bind count as u16; each event binds 18 columns.
         const MAX_BATCH_ROWS: usize = u16::MAX as usize / 18;
         let mut records = Vec::with_capacity(inputs.len());
-        for (chunk_index, chunk) in inputs.chunks(MAX_BATCH_ROWS).enumerate() {
+        let mut sequence = first_sequence;
+        for chunk in inputs.chunks(MAX_BATCH_ROWS) {
+            let mut sequences = Vec::with_capacity(chunk.len());
+            for input in chunk {
+                sequences.push(sequence);
+                sequence = sequence
+                    .checked_add(1 + observation_bodies::occurrence_count(input)?)
+                    .ok_or_else(|| anyhow!("runtime event sequence overflow"))?;
+            }
             let mut builder = QueryBuilder::<Postgres>::new(
                 r#"
                 insert into runtime_events (
@@ -322,7 +330,7 @@ impl PgControlPlaneStore {
                         .push_bind(input.node_run_id)
                         .push_bind(input.span_id)
                         .push_bind(input.parent_span_id)
-                        .push_bind(first_sequence + (chunk_index * MAX_BATCH_ROWS + index) as i64)
+                        .push_bind(sequences[index])
                         .push_bind(&input.event_type)
                         .push_bind(input.layer.as_str())
                         .push_bind(input.source.as_str())

@@ -5,7 +5,7 @@
  s.flow_run_id,s.node_run_id,s.metadata->>'status' status,
  left(coalesce(s.metadata->>'preview',s.metadata->>'kind','provider_semantic_step'),240) preview,
  s.metadata || jsonb_build_object('source',coalesce(s.metadata->>'source','supplier_protocol'),'flow_run_id',s.flow_run_id,'node_run_id',s.node_run_id,'run_mode',r.run_mode,'purpose',coalesce(s.metadata->>'purpose','unknown')) metadata
- from scope_runs r join provider_semantic_trajectory_steps s on s.flow_run_id=r.id
+ from scope_runs r join provider_semantic_trajectory_read_steps s on s.flow_run_id=r.id
  join node_runs n on n.id=s.node_run_id and n.flow_run_id=s.flow_run_id
  union all
  select 'workflow:'||e.id,e.id,e.sequence,e.event_type,e.created_at,

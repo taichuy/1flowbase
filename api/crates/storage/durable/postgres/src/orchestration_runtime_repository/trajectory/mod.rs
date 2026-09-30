@@ -120,7 +120,7 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
             r#"
             select invocation_id,provider_attempt_index,event_sequence,metadata,body_event_id,
                 coalesce(metadata->>'source','supplier_protocol') as source,false as raw
-            from provider_semantic_trajectory_steps
+            from provider_semantic_trajectory_read_steps
             where flow_run_id=$1 and node_run_id=$2 and event_id=$3
             union all
             select metadata->>'invocation_id',(metadata->>'provider_attempt_index')::bigint,
@@ -146,7 +146,10 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
             let items = if cursor.is_some_and(|cursor| cursor >= sequence) {
                 vec![]
             } else {
-                let body = if native {
+                let body = if native && metadata.get("body_ref").is_some() {
+                    self.native_trajectory_body(flow_run_id, node_run_id, &metadata)
+                        .await?
+                } else if native {
                     let payload: Value = sqlx::query_scalar(
                         "select runtime_event_original_payload(payload,raw_json_payloads,flow_run_id) from runtime_events where id=$1 and flow_run_id=$2 and node_run_id=$3"
                     ).bind(scope.get::<Uuid,_>("body_event_id")).bind(flow_run_id).bind(node_run_id)
@@ -280,7 +283,7 @@ impl PgControlPlaneStore {
     ) -> Result<ProviderTrajectoryPage> {
         let cursor = if cursor.is_none() {
             if let Some(target) = selection.target_id {
-                let sequence: Option<i64> = sqlx::query_scalar("select event_sequence from provider_semantic_trajectory_steps where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and event_id=$3 and ($4::text is null or metadata->>'trigger_request_id'=$4)")
+                let sequence: Option<i64> = sqlx::query_scalar("select event_sequence from provider_semantic_trajectory_read_steps where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and event_id=$3 and ($4::text is null or metadata->>'trigger_request_id'=$4)")
                     .bind(flow_run_id).bind(node_run_id).bind(target).bind(selection.request_id.map(|id|id.to_string())).fetch_optional(self.pool()).await?;
                 Some(sequence.ok_or(control_plane_contracts::ports::TrajectoryTargetNotFound)? - 1)
             } else {

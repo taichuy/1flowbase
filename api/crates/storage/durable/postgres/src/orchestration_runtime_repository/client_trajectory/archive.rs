@@ -33,16 +33,23 @@ impl PgControlPlaneStore {
             row.get::<String, _>("transport") == transport,
             "client archive transport mismatch"
         );
-        let existing: Option<Uuid> = sqlx::query_scalar(
-            "select request_id from client_trajectory_archive_parts where part_id=$1",
+        // Original part identities move into sealed manifests. Serialize identity
+        // admission and inspect both layouts in one statement across publication.
+        sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
+            .bind(format!("client-archive-part:{}", input.part_id))
+            .execute(&mut *tx)
+            .await?;
+        let owners: Vec<Uuid> = sqlx::query_scalar(
+            "select request_id from client_trajectory_archive_parts where part_id=$1 union all select request_id from client_trajectory_archive_segments where part_ids @> array[$1]::uuid[]",
         )
         .bind(input.part_id)
-        .fetch_optional(&mut *tx)
+        .fetch_all(&mut *tx)
         .await?;
+        anyhow::ensure!(owners.len() <= 1, "client archive part identity duplicated");
         let persisted: i64 = row.get("persisted_through");
-        if let Some(owner) = existing {
+        if let Some(owner) = owners.first() {
             anyhow::ensure!(
-                owner == input.request_id,
+                *owner == input.request_id,
                 "client archive part scope mismatch"
             );
             tx.commit().await?;
@@ -132,19 +139,28 @@ impl PgControlPlaneStore {
         limit: usize,
     ) -> Result<Vec<DecodedFrame>> {
         let mut items = Vec::new();
-        let mut after_part: Option<i64> = None;
+        let mut after_sequence = cursor;
         let mut cache = archive_block::PageCache::default();
         while items.len() < limit {
-            // Fetch only one intersecting immutable part at a time. A page may
-            // cross old/new parts without materializing the request's full task.
-            let row = sqlx::query("select p.first_sequence,p.last_sequence,p.frames,p.bytes,p.codec_version,p.frame_directory,p.raw_byte_length,p.raw_checksum,p.block_id,p.block_offset,b.codec_version as block_codec_version,case when b.block_id=$4::uuid then null::bytea else b.bytes end as block_bytes,b.raw_byte_length as block_raw_length,b.raw_checksum as block_checksum from client_trajectory_archive_parts p left join client_trajectory_archive_blocks b on b.request_id=p.request_id and b.block_id=p.block_id where p.request_id=$1 and p.last_sequence>$2 and ($3::bigint is null or p.first_sequence>$3) order by p.first_sequence limit 1")
-                .bind(request).bind(cursor).bind(after_part).bind(cache.cached_block_id()).fetch_optional(self.pool()).await?;
+            // One intersecting segment/legacy part at a time; the whole request
+            // is never materialized. Page cursors survive directory publication.
+            let row = sqlx::query(include_str!("archive_page.sql"))
+                .bind(request)
+                .bind(cursor)
+                .bind(Some(after_sequence))
+                .bind(cache.cached_block_id())
+                .fetch_optional(self.pool())
+                .await?;
             let Some(row) = row else {
                 break;
             };
-            after_part = Some(row.get("first_sequence"));
-            for frame in cache.decode_row(&row, cursor, limit - items.len())? {
-                if frame.frame.sequence > cursor {
+            let frames = cache.decode_row(&row, after_sequence, limit - items.len())?;
+            if frames.is_empty() {
+                after_sequence = row.get("last_sequence");
+            }
+            for frame in frames {
+                if frame.frame.sequence > after_sequence {
+                    after_sequence = frame.frame.sequence;
                     items.push(frame);
                     if items.len() == limit {
                         break;

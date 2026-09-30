@@ -143,10 +143,7 @@ impl PgControlPlaneStore {
             let store = self.clone();
             let request_id = input.request_id;
             tokio::spawn(async move {
-                if let Err(error) = store
-                    .seal_client_trajectory_archive_request(request_id)
-                    .await
-                {
+                if let Err(error) = store.seal_and_publish_client_archive(request_id).await {
                     tracing::warn!(%request_id, %error, "client raw block sealing deferred to explicit maintenance");
                 }
             });

@@ -28,7 +28,7 @@ with observations as (
         coalesce(metadata->>'source','supplier_protocol') as source,
         sum(snapshot_count) as observed,
         bool_or(metadata->>'status' in ('incomplete','unavailable','pending')) as incomplete
-    from provider_semantic_trajectory_steps where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and ($3::text is null or metadata->>'trigger_request_id'=$3)
+    from provider_semantic_trajectory_read_steps where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and ($3::text is null or metadata->>'trigger_request_id'=$3)
     group by 1,2,3,4
 ), native as (
     select coalesce(s.node_run_id,i.node_run_id) as node_run_id,coalesce(s.invocation_id,i.invocation_id) as invocation_id,

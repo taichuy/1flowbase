@@ -9,6 +9,7 @@ mod block_sealing;
 mod compact_directory;
 mod dense_directory;
 mod packed_directory;
+mod segments;
 mod semantic;
 async fn append(
     store: &PgControlPlaneStore,
@@ -895,7 +896,7 @@ async fn formal_archive_migration_retains_legacy_cursor_and_lossless_nul() {
     // Build a pre-migration row using the actual legacy projection trigger, then
     // execute the unchanged formal migration against that isolated schema.
     sqlx::raw_sql(
-        "drop table client_trajectory_archive_parts; drop table client_trajectory_archive_blocks; drop table client_trajectory_archive_heads;",
+        "drop table client_trajectory_archive_segments; drop table client_trajectory_archive_parts; drop table client_trajectory_archive_blocks; drop table client_trajectory_archive_heads;",
     )
     .execute(&pool)
     .await
@@ -937,6 +938,12 @@ async fn formal_archive_migration_retains_legacy_cursor_and_lossless_nul() {
     .next()
     .unwrap();
     sqlx::raw_sql(packed_forward).execute(&pool).await.unwrap();
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/20260930222000_client_archive_segment_manifests.sql"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
     let legacy = store
         .client_trajectory_section(flow, None, request, "raw", None, 1)
         .await

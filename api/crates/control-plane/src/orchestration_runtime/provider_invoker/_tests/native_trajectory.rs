@@ -242,7 +242,17 @@ async fn native_continuation_keeps_sealed_request_and_tool_results_without_auth_
     assert!(!record_input(capture.sink.as_ref().unwrap(), &input).await);
     drop(capture);
     let records = records(receiver);
-    assert_eq!(records.len(), 2);
+    assert_eq!(records.len(), 1);
+    let entry = &records[0]["_context_occurrences"]["entries"][0];
+    assert_eq!(entry["metadata"]["kind"], "tool_result");
+    assert_eq!(
+        entry["metadata"]["body_ref"]["pointer"],
+        "/native_request/wire_body/input/0"
+    );
+    assert_eq!(
+        entry["metadata"]["body_ref"]["step_key"],
+        records[0]["step_key"]
+    );
     let input = body(&records[0]);
     assert!(input.get("provider_config").is_none());
     assert!(input.get("run_context").is_none());
@@ -257,15 +267,6 @@ async fn native_continuation_keeps_sealed_request_and_tool_results_without_auth_
     assert_eq!(
         input["tools"][0]["properties"]["authorship"]["type"],
         "string"
-    );
-    assert_eq!(records[1]["kind"], "tool_result");
-    assert_eq!(records[1]["direction"], "prepared");
-    assert_eq!(records[1]["tool_call_id"], "call-1");
-    assert!(records[1].get("body").is_none());
-    assert_eq!(records[1]["body_ref"]["step_key"], records[0]["step_key"]);
-    assert_eq!(
-        records[1]["body_ref"]["pointer"],
-        "/native_request/wire_body/input/0"
     );
 }
 #[tokio::test]
@@ -419,7 +420,7 @@ async fn preview_uses_native_content_and_tool_name_with_unicode_limit() {
 }
 
 #[tokio::test]
-async fn large_request_retains_full_input_and_referenced_tool_result() {
+async fn large_request_retains_full_input_and_tool_result_occurrence() {
     let input = ProviderInvocationInput {
         tools: vec![json!({"description":"x".repeat(CAPACITY)})],
         native_transport: Some(
@@ -436,7 +437,7 @@ async fn large_request_retains_full_input_and_referenced_tool_result() {
     assert!(!record_input(capture.sink.as_ref().unwrap(), &input).await);
     let records = records(receiver);
     assert_eq!(records[0]["status"], "recorded");
-    assert!(records[1].get("body_ref").is_some());
+    assert_eq!(records.len(), 1);
     assert_eq!(
         body(&records[0])["native_request"]["wire_body"]["input"][0]["output"],
         "kept"
@@ -781,4 +782,45 @@ async fn slow_admitted_body_completes_without_local_deadline_cancellation() {
     assert_eq!(integrity["status"], "complete");
     assert_eq!(integrity["persist_failed_count"], 0);
     assert_eq!(integrity["dropped_count"], 0);
+}
+
+#[tokio::test]
+async fn repeated_context_preserves_order_distinct_call_identities_and_result_versions() {
+    let inputs = [
+        json!([
+            {"type":"function_call_output","call_id":"branch-a","output":"same"},
+            {"type":"function_call_output","call_id":"branch-b","output":"same"},
+            {"role":"user","content":"between"},
+            {"type":"function_call_output","call_id":"branch-a","output":"updated"}
+        ]),
+        json!([
+            {"type":"function_call_output","call_id":"branch-b","output":"same"},
+            {"type":"function_call_output","call_id":"branch-a","output":"same"}
+        ]),
+    ];
+    for expected in inputs {
+        let input = ProviderInvocationInput {
+            native_transport: Some(
+                plugin_framework::provider_contract::ProviderNativeTransport {
+                    protocol: "openai.responses".into(),
+                    digest: "d".into(),
+                    size_bytes: 0,
+                    wire_body: json!({"input":expected}),
+                },
+            ),
+            ..Default::default()
+        };
+        let (capture, receiver, _) = fixture(16);
+        assert!(!record_input(capture.sink.as_ref().unwrap(), &input).await);
+        let records = records(receiver);
+        assert_eq!(
+            records.len(),
+            1,
+            "one journal owner must retain all context occurrences"
+        );
+        assert_eq!(
+            body(&records[0])["native_request"]["wire_body"]["input"],
+            expected
+        );
+    }
 }

@@ -73,7 +73,7 @@ impl PgControlPlaneStore {
                     .migrate_client_trajectory_archive_parts(*flow, request)
                     .await?;
                 receipt.raw_archive_parts_sealed +=
-                    self.seal_client_trajectory_archive_request(request).await?;
+                    self.seal_and_publish_client_archive(request).await?;
             }
         }
         Ok(receipt)

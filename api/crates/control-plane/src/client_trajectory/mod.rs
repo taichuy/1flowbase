@@ -1,6 +1,7 @@
 //! Lossless client capture: bounded transport backpressure and durable immutable parts.
 #[cfg(test)]
 mod _tests;
+mod batch;
 mod classify;
 mod decode;
 mod schemas;
@@ -33,6 +34,7 @@ struct Frame {
     at: String,
 }
 struct Shared {
+    flush_delay: std::time::Duration,
     scope: Mutex<Option<Scope>>,
     binding_closed: AtomicBool,
     node_links: Mutex<BTreeMap<Uuid, String>>,
@@ -104,11 +106,33 @@ impl ClientTrajectoryRecorder {
         repository: Arc<dyn OrchestrationRuntimeRepository>,
         transport: ClientTrajectoryTransport,
     ) -> Self {
-        Self::with_writer(Arc::new(RepositoryWriter(repository)), transport)
+        Self::new_with_flush_delay(repository, transport, batch::MAX_DELAY)
     }
+    /// Host-selected physical scheduling budget; zero requests immediate commits.
+    /// This changes no task/frame capacity or durable-completion contract.
+    pub fn new_with_flush_delay(
+        repository: Arc<dyn OrchestrationRuntimeRepository>,
+        transport: ClientTrajectoryTransport,
+        flush_delay: std::time::Duration,
+    ) -> Self {
+        Self::with_writer_and_flush_delay(
+            Arc::new(RepositoryWriter(repository)),
+            transport,
+            flush_delay,
+        )
+    }
+    #[cfg(test)]
     fn with_writer(repository: Arc<dyn FactWriter>, transport: ClientTrajectoryTransport) -> Self {
+        Self::with_writer_and_flush_delay(repository, transport, batch::MAX_DELAY)
+    }
+    fn with_writer_and_flush_delay(
+        repository: Arc<dyn FactWriter>,
+        transport: ClientTrajectoryTransport,
+        flush_delay: std::time::Duration,
+    ) -> Self {
         let (sender, receiver) = mpsc::channel(QUEUE_RECORDS);
         let state = Arc::new(Shared {
+            flush_delay,
             scope: Mutex::new(None),
             binding_closed: AtomicBool::new(false),
             node_links: Mutex::new(BTreeMap::new()),
@@ -355,27 +379,10 @@ async fn archive_worker(
         if state.finished.load(Ordering::Acquire) {
             receiver.close();
         }
-        let (next, eof) = tokio::select! {frame=receiver.recv()=>{let eof=frame.is_none();(frame,eof)},_=state.notify.notified()=>(None,false)};
+        let (next, mut eof) = tokio::select! {frame=receiver.recv()=>{let eof=frame.is_none();(frame,eof)},_=state.notify.notified()=>(None,false)};
         if let Some(frame) = next {
-            let mut frames = vec![ClientTrajectoryArchiveFrame {
-                sequence: 0,
-                kind: frame.kind,
-                observed_at: frame.at,
-                bytes: frame.bytes,
-            }];
-            let mut bytes = frames[0].bytes.len();
-            while bytes < FRAME_BYTES && frames.len() < 32 {
-                let Ok(frame) = receiver.try_recv() else {
-                    break;
-                };
-                bytes += frame.bytes.len();
-                frames.push(ClientTrajectoryArchiveFrame {
-                    sequence: 0,
-                    kind: frame.kind,
-                    observed_at: frame.at,
-                    bytes: frame.bytes,
-                });
-            }
+            let (frames, drained) = batch::collect(frame, state, receiver).await;
+            eof |= drained;
             receipt = repository
                 .archive(&AppendClientTrajectoryArchiveInput {
                     request_id: id,

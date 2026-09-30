@@ -182,6 +182,15 @@ pub(super) fn decode_raw(
     cursor: i64,
     limit: usize,
 ) -> Result<Vec<DecodedFrame>> {
+    decode_raw_with_count(part, raw, cursor, limit).map(|(frames, _)| frames)
+}
+
+pub(super) fn decode_raw_with_count(
+    part: &Part<'_>,
+    raw: &[u8],
+    cursor: i64,
+    limit: usize,
+) -> Result<(Vec<DecodedFrame>, usize)> {
     ensure!(
         matches!(part.version, VERSION | 2 | 3),
         "unknown client archive codec version {}",
@@ -270,7 +279,7 @@ pub(super) fn decode_raw(
         first_sequence == Some(part.first_sequence) && previous_sequence == part.last_sequence,
         "archive part sequence bounds mismatch"
     );
-    Ok(frames)
+    Ok((frames, count))
 }
 
 fn decode_original(directory: &Value, raw: &[u8]) -> Result<Vec<DecodedFrame>> {

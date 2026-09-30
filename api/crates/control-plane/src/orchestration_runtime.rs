@@ -60,6 +60,7 @@ mod persistence;
 mod provider_invoker;
 mod provider_transport;
 mod runtime_event_persister;
+pub(crate) use runtime_event_persister::RUNTIME_EVENT_BATCH_MAX_DELAY;
 pub mod scheduler_admission;
 mod stream_terminal_recovery;
 pub mod trace_projection;

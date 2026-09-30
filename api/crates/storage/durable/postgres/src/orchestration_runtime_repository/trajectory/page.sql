@@ -1,5 +1,5 @@
 with page as (
-    select s.* from provider_semantic_trajectory_steps s
+    select s.* from provider_semantic_trajectory_read_steps s
     where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2)
       and s.event_sequence>$3 and ($5::text is null or s.metadata->>'trigger_request_id'=$5)
     order by s.event_sequence limit $4

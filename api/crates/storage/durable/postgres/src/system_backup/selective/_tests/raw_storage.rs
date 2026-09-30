@@ -36,26 +36,27 @@ async fn selective_application_backup_restores_sealed_raw_blocks_and_original_pa
         .append_client_trajectory_archive(&input)
         .await
         .unwrap();
-    store
-        .append_client_trajectory(&integrity("complete"))
+    sqlx::query("update client_trajectory_captures set status='complete' where request_id=$1")
+        .bind(request)
+        .execute(&db)
         .await
         .unwrap();
     store
-        .seal_client_trajectory_archive_request(request)
+        .seal_and_publish_client_archive(request)
         .await
         .unwrap();
     let before = store
         .read_client_trajectory_archive(request, 0, 128)
         .await
         .unwrap();
-    let version: i16 = sqlx::query_scalar(
-        "select codec_version from client_trajectory_archive_parts where part_id=$1",
+    let count: i64 = sqlx::query_scalar(
+        "select count(*) from client_trajectory_archive_segments where request_id=$1",
     )
-    .bind(input.part_id)
+    .bind(request)
     .fetch_one(&db)
     .await
     .unwrap();
-    assert_eq!(version, 3);
+    assert_eq!(count, 1);
     let repo = PgSelectiveBackupRepository::new(db.clone());
     let bytes = capture(&repo, select("applications", true, true)).await;
     repo.restore(reader(bytes.clone()), "key", "key", true)

@@ -5,7 +5,7 @@ use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-fn digest(bytes: &[u8]) -> String {
+pub(super) fn digest(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
@@ -57,6 +57,23 @@ fn spans<'a>(body: &'a str) -> Option<Vec<(usize, &'a str)>> {
     (!result.is_empty()).then_some(result)
 }
 
+async fn existing(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    scope: Uuid,
+    application: Uuid,
+    flow: Uuid,
+    hash: &str,
+    body: &str,
+) -> Result<Option<Uuid>> {
+    if let Some((id,original)) = sqlx::query_as::<_,(Uuid,Value)>(
+        "select m.id,runtime_native_snapshot_body(m.id,$3) from runtime_native_snapshot_manifests m where m.scope_id=$1 and m.application_id=$2 and m.content_hash=$4 for key share of m")
+        .bind(scope).bind(application).bind(flow).bind(hash).fetch_optional(&mut **tx).await? {
+        anyhow::ensure!(original.as_str() == Some(body), "native snapshot hash collision");
+        return Ok(Some(id));
+    }
+    Ok(None)
+}
+
 pub(super) async fn archive(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     scope: Uuid,
@@ -68,16 +85,17 @@ pub(super) async fn archive(
         return Ok(None);
     };
     let hash = digest(body.as_bytes());
-    // One application owns sharing. This transaction lock also orders concurrent
-    // multi-snapshot batches, without retaining an unbounded in-memory cache.
+    // Existing immutable owners support concurrent sharing. Key-share protects
+    // the owner until the event FK is committed; byte equality still decides reuse.
+    if let Some(id) = existing(tx, scope, application, flow, &hash, body).await? {
+        return Ok(Some(id));
+    }
+    // New manifests keep the established application lock and recheck after it.
     sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(format!("native-snapshots:{application}"))
         .execute(&mut **tx)
         .await?;
-    if let Some((id, original)) = sqlx::query_as::<_,(Uuid,Value)>(
-        "select id,runtime_native_snapshot_body(id,$3) from runtime_native_snapshot_manifests where scope_id=$1 and application_id=$2 and content_hash=$4")
-        .bind(scope).bind(application).bind(flow).bind(&hash).fetch_optional(&mut **tx).await? {
-        anyhow::ensure!(original.as_str() == Some(body), "native snapshot hash collision");
+    if let Some(id) = existing(tx, scope, application, flow, &hash, body).await? {
         return Ok(Some(id));
     }
     let mut unique = BTreeMap::new();

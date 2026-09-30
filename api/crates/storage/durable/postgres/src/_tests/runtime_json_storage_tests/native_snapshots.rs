@@ -1,7 +1,7 @@
 use super::*;
 use sha2::{Digest, Sha256};
 
-fn event(run: Uuid, body: &str) -> AppendRuntimeEventInput {
+pub(super) fn event(run: Uuid, body: &str) -> AppendRuntimeEventInput {
     AppendRuntimeEventInput {
         flow_run_id: run,
         node_run_id: None,
