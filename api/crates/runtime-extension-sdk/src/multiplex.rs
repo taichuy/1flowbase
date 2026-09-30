@@ -16,7 +16,9 @@ use extension_contracts::{
 use serde_json::Value;
 use thiserror::Error;
 use tokio::{
-    io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
+    io::{
+        AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter,
+    },
     sync::{mpsc, oneshot, watch, OwnedSemaphorePermit, Semaphore},
     task::{JoinHandle, LocalSet},
 };
@@ -302,11 +304,21 @@ where
     let (panic_tx, mut panic_rx) = watch::channel(false);
     let (output_tx, mut output_rx) = mpsc::unbounded_channel::<QueuedFrame>();
     let writer = tokio::task::spawn_local(async move {
-        let mut output = output;
+        let mut output = BufWriter::new(output);
         while let Some(frame) = output_rx.recv().await {
-            output.write_all(&frame.bytes).await?;
+            // Drain only frames already ready. The existing shared byte permits
+            // bound this batch, and stay owned until every byte is flushed.
+            // A single idle frame is flushed immediately; there is no timer or
+            // additional stream/call count limit. FIFO and terminal order remain.
+            let mut batch = vec![frame];
+            while let Ok(frame) = output_rx.try_recv() {
+                batch.push(frame);
+            }
+            for frame in &batch {
+                output.write_all(&frame.bytes).await?;
+            }
             output.flush().await?;
-            drop(frame);
+            drop(batch);
         }
         Ok::<_, io::Error>(())
     });
