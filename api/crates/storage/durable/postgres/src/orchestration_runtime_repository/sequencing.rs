@@ -54,9 +54,23 @@ pub(super) async fn next_runtime_event_sequence(
         // The durable high-water also includes direct client directory writes.
         // Runtime insert's statement trigger advances it for every row of batches,
         // including callers which reserve one first_sequence then add offsets.
-        "update flow_runs set runtime_event_sequence_high_water = greatest(runtime_event_sequence_high_water, (select coalesce(max(sequence+reserved_sequence_count),0) from runtime_events where flow_run_id=$1)) + 1 where id=$1 returning runtime_event_sequence_high_water",
+        // Later physical rows follow previous reserved ranges. Read only the indexed
+        // tail for legacy/import counter repair; max(sequence + count) scans the run.
+        r#"
+        update flow_runs set runtime_event_sequence_high_water = greatest(
+            runtime_event_sequence_high_water,
+            coalesce((select sequence + reserved_sequence_count
+                from runtime_events where flow_run_id = $1
+                order by sequence desc limit 1), 0)
+        ) + 1
+        where id = $1 returning runtime_event_sequence_high_water
+        "#,
     )
     .bind(flow_run_id)
     .fetch_one(&mut **tx)
     .await?)
 }
+
+#[cfg(test)]
+#[path = "_tests/sequencing.rs"]
+mod tests;
