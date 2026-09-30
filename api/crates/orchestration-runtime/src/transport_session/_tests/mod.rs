@@ -13,6 +13,8 @@ use super::{
     TransportRuntimeTargetId, TransportSessionId, TransportSessionRegistry, TransportSessionState,
 };
 
+mod active_orphan;
+
 #[derive(Clone, Default)]
 struct FakeClock(Arc<AtomicU64>);
 

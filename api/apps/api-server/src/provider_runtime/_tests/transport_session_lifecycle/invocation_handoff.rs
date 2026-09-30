@@ -200,20 +200,74 @@ async fn ordinary_handoff_deadline_does_not_reset_after_notifications() {
 }
 
 #[test]
-fn handoff_budget_caps_long_requests_at_thirty_seconds() {
+fn handoff_budget_uses_request_deadline_or_existing_predecessor_deadline() {
     let now = TransportInstant::from_millis(2_000_000);
     for (deadline, expected_ms) in [
-        (None, 30_000),
-        (Some(2_100_000), 30_000),
+        (None, 100_000),
+        (Some(2_100_000), 100_000),
+        (Some(2_300_000), 300_000),
         (Some(2_030_000), 30_000),
         (Some(2_000_020), 20),
         (Some(1_999_999), 0),
     ] {
         assert_eq!(
-            handoff_wait_budget(now, deadline.map(TransportInstant::from_millis)),
+            handoff_wait_budget(
+                now,
+                deadline.map(TransportInstant::from_millis),
+                TransportInstant::from_millis(2_100_000),
+            ),
             Duration::from_millis(expected_ms),
         );
     }
+}
+
+#[tokio::test]
+async fn grace_expiry_does_not_close_active_orphan_before_successful_handoff() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([]));
+    let config = TransportRegistryConfig {
+        orphan_grace: Duration::from_secs(1),
+        physical_soft_drain_age: Duration::from_secs(150),
+        physical_max_age: Duration::from_secs(180),
+        ..TransportRegistryConfig::default()
+    };
+    let coordinator =
+        Arc::new(Coordinator::new_with_clock(runtime.clone(), config, clock.clone()).unwrap());
+    let old_scope = coordinator.open_connection_scope();
+    let first = coordinator
+        .prepare(
+            "runtime-a",
+            &mut scope_input(&old_scope, "model-a"),
+            &context(2_100_000),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let old = first.lease.clone();
+    coordinator.close_connection_scope(&old_scope).await;
+    let next_scope = coordinator.open_connection_scope();
+    let waiting = parked_waiter(&coordinator, &next_scope, 2_120_000).await;
+    clock.advance(Duration::from_secs(65));
+    coordinator.maintain_and_dispatch().await;
+    let retained = coordinator.safe_snapshot().await;
+    assert_eq!(retained.sessions.len(), 1);
+    assert_eq!(retained.sessions[0].fence, old.fence);
+    assert!(retained.sessions[0].inflight);
+    assert!(retained.tombstones.is_empty());
+    assert!(
+        runtime.commands().is_empty(),
+        "Close cannot contend with the admitted Generate"
+    );
+    assert!(!waiting.is_finished());
+
+    coordinator
+        .finish(first, &successful_output(old.fence.generation.get()))
+        .await
+        .unwrap();
+    let next = waiter_result(waiting).await.unwrap().unwrap();
+    assert_eq!(next.lease.fence, old.fence);
+    assert_eq!(next.lease.sequence(), old.sequence() + 1);
+    assert!(runtime.commands().is_empty());
 }
 
 #[tokio::test]
