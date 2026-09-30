@@ -305,3 +305,95 @@ async fn buffered_callback_flushes_and_keeps_call_identity() {
         })
         .await;
 }
+
+struct PrefixGateOutput {
+    inner: Output,
+    prefix: watch::Sender<bool>,
+    wrote_prefix: bool,
+    open: Rc<std::cell::Cell<bool>>,
+    blocked: Rc<RefCell<Option<std::task::Waker>>>,
+}
+impl AsyncWrite for PrefixGateOutput {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bytes: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        if self.wrote_prefix && !self.open.get() {
+            *self.blocked.borrow_mut() = Some(cx.waker().clone());
+            return Poll::Pending;
+        }
+        let result = Pin::new(&mut self.inner).poll_write(cx, bytes);
+        if let Poll::Ready(Ok(count)) = result {
+            if count > 0 && !self.wrote_prefix {
+                self.wrote_prefix = true;
+                self.prefix.send_replace(true);
+            }
+        }
+        result
+    }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.poll_flush(cx)
+    }
+}
+#[tokio::test(flavor = "current_thread")]
+async fn flushed_prefix_replenishes_byte_credit_before_slow_tail() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let (inner, state, _) = output(usize::MAX, false);
+            let (prefix, receiver) = watch::channel(false);
+            let open = Rc::new(std::cell::Cell::new(false));
+            let blocked = Rc::new(RefCell::new(None::<std::task::Waker>));
+            let writer = PrefixGateOutput {
+                inner,
+                prefix,
+                wrote_prefix: false,
+                open: open.clone(),
+                blocked: blocked.clone(),
+            };
+            let input = line(MultiplexHostMessage::Call {
+                call_id: "1".into(),
+                request: Value::Null,
+            });
+            let result = serve_io(std::io::Cursor::new(input), writer, move |_, emitter| {
+                let mut prefix = receiver.clone();
+                let open = open.clone();
+                let blocked = blocked.clone();
+                async move {
+                    let event = json!({"text":"x".repeat(4096)});
+                    let mut queued = 0;
+                    while emitter.try_event(event.clone()).is_ok() {
+                        queued += 1;
+                    }
+                    assert!(queued > 0);
+                    prefix.changed().await.unwrap();
+                    // The exact same encoded size cannot fit until written prefix
+                    // permits are released. Slow remaining output must not withhold it.
+                    let replenished = emitter.try_event(event).is_ok();
+                    open.set(true);
+                    if let Some(waker) = blocked.borrow_mut().take() {
+                        waker.wake();
+                    }
+                    json!({"queued":queued,"prefix_credit_replenished":replenished})
+                }
+            })
+            .await;
+            result.unwrap();
+            let messages = frames(&state);
+            let MultiplexWorkerMessage::Response { response, .. } = messages.last().unwrap() else {
+                panic!("terminal missing");
+            };
+            assert_eq!(
+                response["prefix_credit_replenished"], true,
+                "already written/flushed prefix must release byte credit while tail is blocked"
+            );
+            assert_eq!(
+                messages.len() as u64,
+                response["queued"].as_u64().unwrap() + 2
+            );
+        })
+        .await;
+}

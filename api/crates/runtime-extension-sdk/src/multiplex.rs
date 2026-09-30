@@ -23,6 +23,9 @@ use tokio::{
     task::{JoinHandle, LocalSet},
 };
 
+// Match Tokio BufWriter's standard physical I/O buffer, not a stream/call limit.
+const OUTPUT_WRITE_BUFFER_BYTES: usize = 8 * 1024;
+
 type PendingCallbacks =
     Rc<RefCell<HashMap<(String, String), oneshot::Sender<(Value, OwnedSemaphorePermit)>>>>;
 
@@ -304,14 +307,31 @@ where
     let (panic_tx, mut panic_rx) = watch::channel(false);
     let (output_tx, mut output_rx) = mpsc::unbounded_channel::<QueuedFrame>();
     let writer = tokio::task::spawn_local(async move {
-        let mut output = BufWriter::new(output);
-        while let Some(frame) = output_rx.recv().await {
-            // Drain only frames already ready. The existing shared byte permits
-            // bound this batch, and stay owned until every byte is flushed.
-            // A single idle frame is flushed immediately; there is no timer or
-            // additional stream/call count limit. FIFO and terminal order remain.
+        let mut output = BufWriter::with_capacity(OUTPUT_WRITE_BUFFER_BYTES, output);
+        let mut pending: Option<QueuedFrame> = None;
+        loop {
+            let frame = match pending.take() {
+                Some(frame) => frame,
+                None => match output_rx.recv().await {
+                    Some(frame) => frame,
+                    None => break,
+                },
+            };
+            // Coalesce ready frames within one physical buffer. Larger individual
+            // frames still pass whole. Flush and release prefix credit before a
+            // slow tail: draining the entire byte budget withholds that credit.
+            // No timer or stream/call count limit; FIFO and terminals stay intact.
+            let mut bytes = frame.bytes.len();
             let mut batch = vec![frame];
-            while let Ok(frame) = output_rx.try_recv() {
+            while bytes < OUTPUT_WRITE_BUFFER_BYTES {
+                let Ok(frame) = output_rx.try_recv() else {
+                    break;
+                };
+                if bytes + frame.bytes.len() > OUTPUT_WRITE_BUFFER_BYTES {
+                    pending = Some(frame);
+                    break;
+                }
+                bytes += frame.bytes.len();
                 batch.push(frame);
             }
             for frame in &batch {
