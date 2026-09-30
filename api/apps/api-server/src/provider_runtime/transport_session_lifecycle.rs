@@ -37,13 +37,17 @@ const CONTROL_DEADLINE: Duration = Duration::from_secs(5);
 const CONTROL_OVERALL_DEADLINE: Duration = Duration::from_secs(30);
 const CONTROL_MAX_ATTEMPTS: u8 = 5;
 const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(1);
-const HANDOFF_MAX_WAIT: Duration = Duration::from_secs(30);
-
-fn handoff_wait_budget(now: TransportInstant, deadline: Option<TransportInstant>) -> Duration {
-    deadline
-        .map(|deadline| Duration::from_millis(deadline.as_millis().saturating_sub(now.as_millis())))
-        .unwrap_or(HANDOFF_MAX_WAIT)
-        .min(HANDOFF_MAX_WAIT)
+fn handoff_wait_budget(
+    now: TransportInstant,
+    deadline: Option<TransportInstant>,
+    predecessor_deadline: TransportInstant,
+) -> Duration {
+    Duration::from_millis(
+        deadline
+            .unwrap_or(predecessor_deadline)
+            .as_millis()
+            .saturating_sub(now.as_millis()),
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -472,10 +476,18 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                         if registry.runtime_target_id(&fence)? == &target
                             && connection_scope.is_some()
                         {
+                            let predecessor_deadline = registry
+                                .invocation_deadline(&fence)?
+                                .expect("the registry lock preserves the inflight invocation");
                             let deadline = *handoff_deadline.get_or_insert_with(|| {
                                 let started_at = tokio::time::Instant::now();
                                 handoff_started_at = Some(started_at);
-                                started_at + handoff_wait_budget(now, invocation_deadline)
+                                started_at
+                                    + handoff_wait_budget(
+                                        now,
+                                        invocation_deadline,
+                                        predecessor_deadline,
+                                    )
                             });
                             drop(registry);
                             drop(_dispatcher);

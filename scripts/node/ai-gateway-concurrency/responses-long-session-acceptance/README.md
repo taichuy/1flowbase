@@ -1,0 +1,51 @@
+# Issue 2175: real Responses long-session fixture
+
+This is a fixture for the Root assembly's centralized QA batch. It launches one installed Codex app-server client with its own `CODEX_HOME` and logs, uses the fixed `/home/taichuy/git/1flowbase_latest` workspace and `http://127.0.0.1:7600/v1`, and keeps a single persistent root thread. It never starts, stops or kills the API/plugin supplier. The key is read at runtime from `/home/taichuy/git/1flowbase/tmp/test-tmp-kay.md`; its value is never placed in argv or `config.toml`. The target application is `01a08ebe-dcba-7ec1-a448-f466d9aa23f8`.
+
+Supply actual frozen candidate identities, not a version inherited from a previous issue. `RLS_CANDIDATE_ROOT` is the frozen assembly, separate from the read-only audit workspace. The runner checks its HEAD and full `git diff --binary HEAD` against `RLS_PATCH_FILE` and SHA256 (Root must intent-add new candidate files before freezing). It hashes live API/plugin executables through `/proc`, checks exact executable paths and whole argv tokens, and requires the plugin to be a direct API child at start. Do not substitute stale identities. The manifest records selected process fields, not full argv. The supplied existing model catalog is copied into the private client home; both requested slugs must be present and advertised by `model/list`.
+
+```bash
+RLS_BASELINE_SHA=<40-hex-git-commit> \
+RLS_CANDIDATE_ROOT=/absolute/path/to/frozen-assembly \
+RLS_PATCH_FILE=/absolute/path/to/frozen-candidate.patch \
+RLS_PATCH_SHA256=<64-hex-sha256> \
+RLS_API_PID=<live-7600-api-pid> \
+RLS_API_EXE=/absolute/path/to/api-server \
+RLS_API_ARG=<exact-whole-api-argv-token> \
+RLS_API_SHA256=<64-hex-sha256> \
+RLS_PLUGIN_PID=<live-plugin-child-pid> \
+RLS_PLUGIN_EXE=/absolute/path/to/plugin \
+RLS_PLUGIN_ARG=<exact-whole-plugin-argv-token> \
+RLS_PLUGIN_SHA256=<64-hex-sha256> \
+RLS_APP_ID=01a08ebe-dcba-7ec1-a448-f466d9aa23f8 \
+RLS_MODEL_CATALOG=/home/taichuy/.codex/models_cache.json \
+RLS_MODEL_CATALOG_SHA256=<64-hex-sha256-of-catalog> \
+RLS_CODEX_VERSION='codex-cli 0.159.0' \
+node scripts/node/ai-gateway-concurrency/responses-long-session-acceptance/run.cjs
+```
+
+Optional `RLS_CODEX` selects the already installed Codex binary; its observed version must equal `RLS_CODEX_VERSION` and its digest is recorded, with no version pinned in code. Optional `RLS_DEADLINE_MS` defaults to 7,200,000 as a finite **test stop condition**, not a product capacity limit. Do not set it below the one-hour minimum plus room for setup and final source work. Request and stream retry budgets use the installed Codex provider defaults: the fixture does not override either budget, including with zero. The root model is `gpt-6-luna` at `max`; the actual subagent spawn must report `gpt-6-sol` at `medium`. If `max` is rejected by the installed client or catalog, the run fails visibly. It is not silently lowered.
+
+The runner enables the installed client's official `supports_websockets` provider capability. Actual gateway WebSocket use and mailbox reconnection still require independent runtime evidence; requested configuration alone is not proof. The runner first reads a unique sentinel with a real tool and spawns one subagent to inspect one specified source file and only its direct callers. The parent continues its own inspection while the child works, then consumes the child's result. The first turn is marked as the mailbox evidence target. Current Codex `subAgentActivity` started/completed events must identify the same child, path, parent thread and turn. Its original rollout must independently confirm session lineage, `gpt-6-sol`/`medium` turn context and terminal completion. These prerequisites are checked immediately after the first turn, before spending an hour on a known-invalid scenario.
+
+Next it requests an explicit `thread/compact/start`, continues the same root thread, and steers that active turn after semantic output. Each work unit names an actual inventory file and a shell-quoted `sed | nl | head -c 12000` command that reads its first 180 lines with line numbers. Source inspection supplies real ongoing traffic, not a model-quality benchmark. There is no sleep or unbounded stdout to fill the hour. The loop deadline is measured from the first real source-tool completion, not process startup. The oracle requires a first-to-last successful source-tool span of at least 3,600,000 monotonic milliseconds, no useful-tool gap over 15 minutes, correlated successful root thread/turn/item events, completed real subagent with original model evidence, completed compaction followed by a successful same-thread continuation, correctly ordered steer request/acceptance/terminal, and no runtime `close_exhausted` or final error. It does not grade prose length, remembered values, reasoning quality or instruction paraphrases.
+
+The client log filter enables `codex_core=info` for parent thread/turn span identity, `codex_core::session::turn=trace` for the official `trace!` post-sampling records, `codex_api::endpoint::responses_websocket=debug` for WebSocket endpoint spans, `codex_otel.agent_communication=trace`, and `feedback_tags=info`. Stderr is decoded as UTF-8 and selected only on complete original lines, then redacted: all warnings/errors and plain setup/crash diagnostics, sampling/turn errors, communication records, post-sampling records, WebSocket new/close spans and connection records are retained. No request dumps or stream enter/exit noise are retained. A first-turn prerequisite checks the actual sample start/close, post-sampling and connected records before the long audit loop; missing logging cannot be reported as passing runtime evidence. `startedUtc` is captured alongside the monotonic origin before setup work, so client and DB timestamps share the timeline's actual origin.
+
+Codex emits typed `error` notifications with `willRetry=true` for intermediate stream retries. These are recorded as recovered only when the same thread and turn subsequently completes successfully, or the original correlated child rollout confirms that exact child turn completed without a final error. Unknown disposition, missing terminal, RPC errors and `willRetry=false` remain failures. Runtime `close_exhausted` remains a failure even if a client retry later succeeds. Source quotations of an error identifier are not runtime evidence. The verdict reports the number of recovered retry notifications; it never hides their original timeline entries.
+
+A forked child rollout may retain parent `session_meta` and `turn_context` history. The child model check owns only execution turns identified by typed `task_started`: `root_turn_id` matches the initiating parent turn and `turn_id` differs from that parent. Every such child turn requires matching model/effort/lineage and terminal evidence. Inherited parent context or errors neither prove nor invalidate child execution; a final `error` during a child turn still fails. The distinct `stream_error` retry notification does not imply a failed terminal.
+
+Artifacts are created under `tmp/test-governance/2175/<unique-run>/`: redacted `timeline.jsonl`, `manifest.json`, `progress.json`, `verdict.json`, private client home and sentinel. The runner reaps **only its own** app-server child in `finally`. If QA launches the runner inside tmux, QA owns and must close that tmux session after collecting artifacts; inspect child/client exit and remove orphaned fixture-owned clients only. Keep 7600 and 7800 and their suppliers running.
+
+Mailbox-triggered parent sampling interruption/resumption is **UNVERIFIED** unless Root/QA supplies an independently correlated client/gateway sequence. Preserve client rollout and gateway `runtime_events` originals. The collector uses the official `responses_websocket.stream_request` span, exact thread/turn identity, linked result communication, and the current typed Native `agent_message`: its author is the actual child path, recipient is its parent path, and plaintext content carries the matching `FINAL_ANSWER` envelope. It rejects quoted user prose, wrong senders/recipients, encrypted or missing content, prewarm spans and ordinary retry. Extract four JSONL records in monotonic order: `parent/native-sampling-before`, `mailbox/child-completed`, `gateway/websocket-reconnected`, `parent/native-sampling-after`. They share real `rootThreadId`, first `parentTurnId`, and `rolloutId`; the child record carries the actual spawned `childThreadId`. Parent before/after have distinct `parentSampleId`; their Native `flowRunId` may differ. Reconnect records `previousFlowRunId` and the new `flowRunId`, matching before/after, and includes `originalPayload` from `runtime_event_original_payload(payload,raw_json_payloads,flow_run_id)`. Every record needs a retained-log `sourceEventId` and `atMs` aligned with the timeline. Attach `{ "rawLogPath": "/absolute/path/to/extracted-mailbox.jsonl" }` to a manifest copy and re-evaluate. Pure spawn/wait, model prose or unverifiable sampling remains UNVERIFIED; do not hand-edit the verdict. Active-turn steer is separate evidence.
+
+The focused oracle suite is intentionally deferred to the Root's centralized batch:
+
+```bash
+node --test scripts/node/ai-gateway-concurrency/responses-long-session-acceptance/_tests/*.test.cjs
+```
+
+These tests cover a plausible positive core and adversarial cases for short duration, idle span, missing real load, missing compaction or successful protocol continuation, missing subagent evidence, reversed or late steer, and runtime errors. Legal counterexamples include short model replies and incorrect recalled values without transport errors. These tests do not replace the hour-long real-client run.
+
+Once the steered continuity turn completes, the final oracle checks its successful protocol continuation and steer lifecycle prerequisites before the hour-long loop. Exact post-compaction memory and response wording are not gateway acceptance criteria. A user-authorized scope correction may reuse retained live evidence when product, supplier, protocol and environment dependencies are unchanged. Keep every original manifest/verdict/report intact and write a separately named, candidate-bound gateway adjudication with the reused run and source digests; never relabel an earlier frozen verdict as PASS.

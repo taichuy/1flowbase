@@ -316,6 +316,18 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         Ok(self.record(fence)?.logical.invocation.is_some())
     }
 
+    pub fn invocation_deadline(
+        &self,
+        fence: &TransportFence,
+    ) -> Result<Option<TransportDeadline>, RegistryError> {
+        Ok(self
+            .record(fence)?
+            .logical
+            .invocation
+            .as_ref()
+            .map(|invocation| invocation.deadline))
+    }
+
     pub fn renew_state_lease(&mut self, fence: &TransportFence) -> Result<(), RegistryError> {
         let now = self.clock.now();
         self.maintain_at(now);
@@ -727,16 +739,20 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .iter()
             .filter_map(|(id, record)| {
                 let kind = expired_kind(record, now)?;
-                if kind == TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
-                    && record
-                        .logical
-                        .invocation
-                        .as_ref()
-                        .is_some_and(|invocation| now < invocation.deadline)
+                if matches!(
+                    kind,
+                    TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+                        | TerminationKind::OwnerOrphaned
+                ) && record
+                    .logical
+                    .invocation
+                    .as_ref()
+                    .is_some_and(|invocation| now < invocation.deadline)
                 {
-                    // The fixed session lifetime closes admission, while the
-                    // separate task deadline bounds the already admitted call.
-                    return None;
+                    // Delivery retention cannot retire an admitted execution.
+                    // The task deadline bounds it, but never masks physical expiry.
+                    return (now >= record.physical.hard_deadline)
+                        .then(|| (id.clone(), TerminationKind::ProviderHardMax));
                 }
                 Some((id.clone(), kind))
             })
