@@ -406,8 +406,8 @@ test('default config covers issue-required raw runtime payload tables', () => {
   for (const key of [
     'flow_runs.input_payload',
     'flow_runs.output_payload',
-    'node_runs.input_payload',
-    'node_runs.debug_payload',
+    'node_run_details.payload',
+    'node_run_details.raw_json_payloads',
     'flow_run_events.payload',
     'runtime_events.payload',
     'runtime_usage_ledger.raw_usage',
@@ -418,7 +418,7 @@ test('default config covers issue-required raw runtime payload tables', () => {
   }
 });
 
-test('default report includes storage read evidence for runtime raw payloads', () => {
+test('default report traces physical node payloads through the current read view', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const report = collectRawJsonbReport({
     repoRoot,
@@ -429,10 +429,8 @@ test('default report includes storage read evidence for runtime raw payloads', (
   assert.equal(report.summary.listRawRisks, 0);
 
   for (const key of [
-    'node_runs.input_payload',
-    'node_runs.output_payload',
-    'node_runs.error_payload',
-    'node_runs.debug_payload',
+    'node_run_details.payload',
+    'node_run_details.raw_json_payloads',
     'runtime_events.payload',
   ]) {
     const [table, column] = key.split('.');
@@ -450,4 +448,12 @@ test('default report includes storage read evidence for runtime raw payloads', (
       `${key} must keep storage read evidence`
     );
   }
+  const migration = fs.readFileSync(path.join(
+    repoRoot, 'api/crates/storage/durable/postgres/migrations/20260928190000_node_run_details.sql'
+  ), 'utf8');
+  const detailReader = fs.readFileSync(path.join(
+    repoRoot, 'api/crates/storage/durable/postgres/src/orchestration_runtime_repository/detail_queries.rs'
+  ), 'utf8');
+  assert.match(migration, /create view node_run_records as[\s\S]*left join node_run_details/u);
+  assert.match(detailReader, /async fn fetch_node_run[\s\S]*from node_run_records/u);
 });

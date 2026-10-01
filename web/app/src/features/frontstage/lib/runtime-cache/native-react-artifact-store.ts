@@ -204,12 +204,16 @@ export function createNativeReactArtifactStore(
             state.clock = Math.max(state.clock + 1, record.lastAccessedAt);
             state.totalBytes +=
               record.byteSize - (existing.result?.byteSize ?? 0);
-            const {
-              artifact: _artifact,
-              schemaVersion: _schema,
-              source_sha256: _source,
-              ...metadata
-            } = record;
+            const metadata: Metadata = {
+              key: record.key,
+              actorId: record.actorId,
+              workspaceId: record.workspaceId,
+              module_policy_sha256: record.module_policy_sha256,
+              compiler_abi: record.compiler_abi,
+              runtime_abi: record.runtime_abi,
+              byteSize: record.byteSize,
+              lastAccessedAt: record.lastAccessedAt
+            };
             tx.objectStore(RECORDS).put(record);
             tx.objectStore(METADATA).put({
               ...metadata,

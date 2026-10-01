@@ -379,7 +379,6 @@ function InputMappingInterfaceSection({
 
 function InputMappingLayerSection({
   mapping,
-  showCallParameters,
   addableOptions,
   pendingInterfaceParam,
   onPendingInterfaceParamChange,
@@ -389,7 +388,6 @@ function InputMappingLayerSection({
   onRemoveMapping
 }: {
   mapping: McpInputMappingValue;
-  showCallParameters: boolean;
   addableOptions: Array<{ label: string; value: string }>;
   pendingInterfaceParam: string | undefined;
   onPendingInterfaceParamChange: (value: string | undefined) => void;
@@ -753,7 +751,6 @@ export function McpInputMappingEditor({
             children: (
               <InputMappingLayerSection
                 mapping={mapping}
-                showCallParameters={showCallParameters}
                 addableOptions={addableOptions}
                 pendingInterfaceParam={pendingInterfaceParam}
                 onPendingInterfaceParamChange={setPendingInterfaceParam}
