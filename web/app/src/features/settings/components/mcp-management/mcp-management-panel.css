@@ -141,7 +141,8 @@
 }
 
 .mcp-input-mapping-editor__table {
-  min-width: 620px;
+  width: 100%;
+  overflow-x: auto;
 }
 
 .mcp-input-mapping-editor__head,
@@ -151,6 +152,7 @@
   display: grid;
   align-items: center;
   gap: 8px;
+  min-width: 620px;
 }
 
 .mcp-input-mapping-editor__head,

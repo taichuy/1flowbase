@@ -1,8 +1,8 @@
 {
   "auto": {
-    "call_parameters": "MCP 调用参数（不进入业务参数映射）",
     "return_budget": "默认返回长度（字符）",
     "return_budget_help": "留空沿用 4,000 字符；调用者可逐次覆盖。超出本次预算通过 result 续读，不提供不限长度返回。",
+    "return_budget_invalid": "请输入大于零的整数。",
     "return_fields": "默认返回字段白名单",
     "return_fields_help": "JSON Pointer 数组，例如 [\"/title\", \"/items/0/body\"]。留空沿用映射输出；[] 不返回业务字段。调用者可覆盖，但不能扩大权限。",
     "return_fields_invalid": "请输入有效的 JSON Pointer 字符串数组。",

@@ -1232,8 +1232,8 @@ describe('McpManagementPanel', () => {
           mcp_arguments: {
             appId: 'app-1'
           },
-          input_mapping: {
-            interface_parameters: [
+          input_mapping: expect.objectContaining({
+            interface_parameters: expect.arrayContaining([
               {
                 name: 'app_id',
                 field_type: 'string',
@@ -1248,7 +1248,7 @@ describe('McpManagementPanel', () => {
                 description: 'Display name',
                 required: false
               }
-            ],
+            ]),
             mappings: [
               {
                 interface_param: 'app_id',
@@ -1257,7 +1257,7 @@ describe('McpManagementPanel', () => {
                 required: true
               }
             ]
-          },
+          }),
           output_mapping: {
             type: 'object',
             properties: {
@@ -1292,8 +1292,8 @@ describe('McpManagementPanel', () => {
           mcp_arguments: {
             appId: 'app-1'
           },
-          input_mapping: {
-            interface_parameters: [
+          input_mapping: expect.objectContaining({
+            interface_parameters: expect.arrayContaining([
               {
                 name: 'app_id',
                 field_type: 'string',
@@ -1308,7 +1308,7 @@ describe('McpManagementPanel', () => {
                 description: 'Display name',
                 required: false
               }
-            ],
+            ]),
             mappings: [
               {
                 interface_param: 'app_id',
@@ -1317,7 +1317,7 @@ describe('McpManagementPanel', () => {
                 required: true
               }
             ]
-          },
+          }),
           output_mapping: {
             type: 'object',
             properties: {
@@ -1414,18 +1414,20 @@ describe('McpManagementPanel', () => {
     fireEvent.click(
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
-    const callParameters = within(dialog).getByRole('group', {
-      name: 'MCP 调用参数（不进入业务参数映射）'
-    });
-    expect(
-      within(callParameters).getByText('des_id · string')
-    ).toBeInTheDocument();
-    expect(
-      within(callParameters).getByText('max_inline_chars · integer')
-    ).toBeInTheDocument();
-    expect(
-      within(callParameters).getByText('response_fields · string[]')
-    ).toBeInTheDocument();
+    for (const [name, fieldType] of [
+      ['des_id', 'string'],
+      ['max_inline_chars', 'integer'],
+      ['response_fields', 'array<string>']
+    ]) {
+      const row = within(dialog).getByLabelText(`call_parameter ${name}`);
+      expect(within(row).getByLabelText(`field_type ${name}`)).toHaveValue(
+        fieldType
+      );
+      expect(within(row).getByLabelText(`parameter_type ${name}`)).toHaveValue(
+        'JSON 请求体'
+      );
+      expect(within(row).getByLabelText(`required ${name}`)).not.toBeChecked();
+    }
     expect(await within(dialog).findByText('接口层')).toBeInTheDocument();
     expect(within(dialog).getByText('映射层')).toBeInTheDocument();
     expect(within(dialog).getByDisplayValue('app_id')).toBeInTheDocument();
@@ -1462,8 +1464,8 @@ describe('McpManagementPanel', () => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
         expect.objectContaining({
           des_id: 'des12345',
-          input_mapping: {
-            interface_parameters: [
+          input_mapping: expect.objectContaining({
+            interface_parameters: expect.arrayContaining([
               {
                 name: 'app_id',
                 field_type: 'string',
@@ -1478,7 +1480,7 @@ describe('McpManagementPanel', () => {
                 description: 'Display name',
                 required: false
               }
-            ],
+            ]),
             mappings: [
               {
                 interface_param: 'app_id',
@@ -1493,7 +1495,7 @@ describe('McpManagementPanel', () => {
                 required: false
               }
             ]
-          }
+          })
         }),
         expect.any(String)
       );

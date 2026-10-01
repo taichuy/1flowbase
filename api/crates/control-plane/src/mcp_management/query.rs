@@ -102,54 +102,6 @@ pub(crate) fn normalize_des_id(value: Option<String>) -> String {
     }
 }
 
-pub(crate) fn input_mapping_requires_des_id(input_mapping: &serde_json::Value) -> bool {
-    const DES_ID: &str = "des_id";
-
-    let Some(mapping) = input_mapping.as_object() else {
-        return false;
-    };
-
-    let interface_parameter_required = mapping
-        .get("interface_parameters")
-        .and_then(serde_json::Value::as_array)
-        .and_then(|parameters| {
-            parameters.iter().find_map(|parameter| {
-                let parameter = parameter.as_object()?;
-                (parameter.get("name").and_then(serde_json::Value::as_str) == Some(DES_ID))
-                    .then(|| {
-                        parameter
-                            .get("required")
-                            .and_then(serde_json::Value::as_bool)
-                    })
-                    .flatten()
-            })
-        });
-
-    mapping
-        .get("mappings")
-        .and_then(serde_json::Value::as_array)
-        .and_then(|entries| {
-            entries.iter().find_map(|entry| {
-                let entry = entry.as_object()?;
-                let maps_des_id = entry
-                    .get("interface_param")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(DES_ID)
-                    || entry.get("mcp_param").and_then(serde_json::Value::as_str) == Some(DES_ID);
-                maps_des_id
-                    .then(|| {
-                        entry
-                            .get("required")
-                            .and_then(serde_json::Value::as_bool)
-                            .or(interface_parameter_required)
-                    })
-                    .flatten()
-            })
-        })
-        .or(interface_parameter_required)
-        .unwrap_or(false)
-}
-
 fn path_matches(base_path: &str, candidate: &str) -> bool {
     base_path == "/" || candidate == base_path || candidate.starts_with(&format!("{base_path}/"))
 }
@@ -252,56 +204,4 @@ pub(super) fn bindable_interface(
         return Err(ControlPlaneError::InvalidInput("interface_id").into());
     }
     Ok(entry)
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::input_mapping_requires_des_id;
-
-    #[test]
-    fn input_mapping_des_id_required_is_derived_from_parameter_mapping() {
-        assert!(!input_mapping_requires_des_id(&json!({})));
-
-        assert!(input_mapping_requires_des_id(&json!({
-            "interface_parameters": [
-                {
-                    "name": "des_id",
-                    "field_type": "string",
-                    "parameter_type": "json_body",
-                    "description": "des_id",
-                    "required": true
-                }
-            ],
-            "mappings": [
-                {
-                    "interface_param": "des_id",
-                    "mcp_param": "des_id",
-                    "description": "des_id",
-                    "required": true
-                }
-            ]
-        })));
-
-        assert!(!input_mapping_requires_des_id(&json!({
-            "interface_parameters": [
-                {
-                    "name": "des_id",
-                    "field_type": "string",
-                    "parameter_type": "json_body",
-                    "description": "des_id",
-                    "required": false
-                }
-            ],
-            "mappings": [
-                {
-                    "interface_param": "des_id",
-                    "mcp_param": "des_id",
-                    "description": "des_id",
-                    "required": false
-                }
-            ]
-        })));
-    }
 }

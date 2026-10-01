@@ -1,8 +1,8 @@
 {
   "auto": {
-    "call_parameters": "MCP call parameters (not mapped to business inputs)",
     "return_budget": "Default response budget (characters)",
     "return_budget_help": "Leave blank to use 4,000 characters. Callers may override each request. Read oversized results with result; unlimited responses are not supported.",
+    "return_budget_invalid": "Enter a positive integer.",
     "return_fields": "Default response field allowlist",
     "return_fields_help": "JSON Pointer array, e.g. [\"/title\", \"/items/0/body\"]. Blank keeps mapped fields; [] returns no business fields. Callers may override without expanding authorization.",
     "return_fields_invalid": "Enter a valid array of JSON Pointer strings.",

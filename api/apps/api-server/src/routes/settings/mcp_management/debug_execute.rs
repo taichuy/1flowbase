@@ -275,6 +275,12 @@ fn build_interface_arguments(
     let mut next_parameter_target = BTreeMap::<String, usize>::new();
 
     for mapping in input_mapping.mappings {
+        if matches!(
+            mapping.source.as_ref(),
+            Some(McpInputValueSource::McpCall { .. })
+        ) {
+            continue;
+        }
         if server_bound_parameters.contains(mapping.interface_param.as_str())
             && !matches!(
                 mapping.source.as_ref(),
@@ -323,6 +329,7 @@ fn build_interface_arguments(
                 }
                 _ => continue,
             },
+            Some(McpInputValueSource::McpCall { .. }) => continue,
         };
         let targets = parameter_targets(interface_entry, &mapping.interface_param)?;
         let target = targets
@@ -589,6 +596,36 @@ mod server_binding_tests {
     use super::*;
     use domain::mcp_management::{McpInterfaceCatalogSource, McpRiskLevel};
     use serde_json::json;
+
+    #[test]
+    fn mcp_call_mapping_does_not_reach_interface_arguments() {
+        let interface = domain::McpInterfaceCatalogEntry {
+            interface_id: "empty".into(),
+            source: McpInterfaceCatalogSource::StaticApi,
+            method: "POST".into(),
+            path: "/empty".into(),
+            name: "Empty".into(),
+            short_description: String::new(),
+            parameter_descriptors: vec![],
+            parameter_schema: json!({"type":"object","properties":{}}),
+            result_schema: json!({}),
+            permission_code: None,
+            security: json!({}),
+            risk_level: McpRiskLevel::Low,
+            bindable: true,
+            disabled_reason: None,
+        };
+        let mapped = build_interface_arguments(
+            &interface,
+            &json!({"mappings":[{"interface_param":"max_inline_chars","mcp_param":"max_inline_chars","required":false,"source":{"kind":"mcp_call","path":"max_inline_chars"}}]}),
+            &json!({"max_inline_chars":100}),
+            McpServerBoundInputs { workspace_id: Uuid::nil() },
+        ).unwrap();
+
+        assert!(mapped.path.is_empty());
+        assert!(mapped.query.is_empty());
+        assert!(mapped.body.is_empty());
+    }
 
     #[test]
     fn frontstage_workspace_scope_is_not_an_mcp_path_argument() {

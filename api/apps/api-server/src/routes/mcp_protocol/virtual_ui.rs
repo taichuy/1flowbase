@@ -903,6 +903,12 @@ fn get(
     let Some((_, tool)) = visible_tool(catalog, scope, tool_id, allow_assistant_client) else {
         return VirtualToolOutcome::invalid("Tool not visible");
     };
+    let call_parameters = ["des_id", "max_inline_chars", "response_fields"]
+        .into_iter()
+        .filter(|name| {
+            domain::mcp_management::mcp_call_parameter_is_open(&tool.input_mapping, name)
+        })
+        .collect::<Vec<_>>();
     VirtualToolOutcome::Success(result_delivery::tool_result(json!({
         "tool_id": tool.tool_id,
         "name": tool.name,
@@ -912,7 +918,8 @@ fn get(
         "result_schema": tool.result_schema,
         "risk_level": tool.risk_level,
         "des_id": tool.des_id,
-        "des_id_required": tool.des_id_required,
+        "des_id_required": false,
+        "call_parameters": call_parameters,
         "max_inline_chars": tool.max_inline_chars.unwrap_or(result_delivery::DEFAULT_INLINE_CHARS as i64),
         "response_fields": tool.response_fields
     })))
@@ -976,9 +983,8 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
     else {
         return Ok(VirtualToolOutcome::invalid("Tool not visible"));
     };
-    let des_id = arguments.get("des_id").and_then(Value::as_str);
-    if tool.des_id_required && des_id != Some(tool.des_id.as_str()) {
-        return Ok(VirtualToolOutcome::invalid("Invalid des_id"));
+    if let Err(message) = validate_tool_call_controls(arguments, tool) {
+        return Ok(VirtualToolOutcome::invalid(message));
     }
     let inline_chars = match result_delivery::tool_inline_limit(arguments, tool) {
         Ok(limit) => limit,
@@ -1185,6 +1191,27 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
     }
 }
 
+fn validate_tool_call_controls(
+    arguments: &Value,
+    tool: &domain::McpToolRecord,
+) -> Result<(), &'static str> {
+    for name in ["des_id", "max_inline_chars", "response_fields"] {
+        if arguments.get(name).is_some()
+            && !domain::mcp_management::mcp_call_parameter_is_open(&tool.input_mapping, name)
+        {
+            return Err("Call parameter not open for this tool");
+        }
+    }
+    let des_id = match arguments.get("des_id") {
+        Some(value) => value.as_str().ok_or("Invalid des_id")?,
+        None => &tool.des_id,
+    };
+    if tool.des_id_required && des_id != tool.des_id.as_str() {
+        return Err("Invalid des_id");
+    }
+    Ok(())
+}
+
 async fn target_interface_failure(response: Response) -> VirtualToolOutcome {
     let status = response.status();
     let payload = if matches!(
@@ -1349,6 +1376,50 @@ pub(crate) fn interface_error(error: &anyhow::Error) -> VirtualToolOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_call_controls_use_defaults_and_reject_closed_overrides() {
+        let mut catalog = catalog_with_server_bound_workspace();
+        let tool = &mut catalog.tools[0];
+        tool.des_id_required = true;
+        tool.input_mapping["interface_parameters"] = json!([
+            {"name":"des_id","required":false,"source":{"kind":"mcp_call"}},
+            {"name":"max_inline_chars","required":false,"source":{"kind":"mcp_call"}},
+            {"name":"response_fields","required":false,"source":{"kind":"mcp_call"}}
+        ]);
+        tool.input_mapping["mappings"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "interface_param":"response_fields", "mcp_param":"response_fields",
+                "required":false,"source":{"kind":"mcp_call","path":"response_fields"}
+            }));
+
+        assert!(validate_tool_call_controls(&json!({}), tool).is_ok());
+        assert!(validate_tool_call_controls(&json!({"response_fields": []}), tool).is_ok());
+        assert_eq!(
+            validate_tool_call_controls(&json!({"max_inline_chars": 100}), tool),
+            Err("Call parameter not open for this tool")
+        );
+        assert_eq!(
+            validate_tool_call_controls(&json!({"des_id": "revision"}), tool),
+            Err("Call parameter not open for this tool")
+        );
+
+        tool.input_mapping["mappings"].as_array_mut().unwrap().pop();
+        tool.input_mapping["mappings"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "interface_param":"des_id", "mcp_param":"des_id",
+                "required":false,"source":{"kind":"mcp_call","path":"des_id"}
+            }));
+        assert_eq!(
+            validate_tool_call_controls(&json!({"des_id": "stale"}), tool),
+            Err("Invalid des_id")
+        );
+        assert!(validate_tool_call_controls(&json!({"des_id": "revision"}), tool).is_ok());
+    }
 
     #[tokio::test]
     async fn target_interface_unauthorized_exposes_stable_authentication_code() {

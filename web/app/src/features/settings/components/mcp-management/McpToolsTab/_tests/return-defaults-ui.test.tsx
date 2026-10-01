@@ -129,4 +129,31 @@ describe('MCP return default editor', () => {
       )
     );
   });
+
+  it('keeps optional defaults blank and rejects malformed JSON Pointer fields', async () => {
+    const dialog = await openEditor();
+    const budget = within(dialog).getByRole('spinbutton', {
+      name: '默认返回长度（字符）'
+    });
+    const fields = within(dialog).getByLabelText('默认返回字段白名单');
+    fireEvent.change(budget, { target: { value: '' } });
+    fireEvent.change(fields, { target: { value: '["title"]' } });
+    fireEvent.click(within(dialog).getByText('OK'));
+    expect(
+      await within(dialog).findByText('请输入有效的 JSON Pointer 字符串数组。')
+    ).toBeInTheDocument();
+    expect(api.updateSettingsMcpTool).not.toHaveBeenCalled();
+    fireEvent.change(fields, { target: { value: '' } });
+    fireEvent.click(within(dialog).getByText('OK'));
+    await waitFor(() =>
+      expect(api.updateSettingsMcpTool).toHaveBeenCalledWith(
+        'read_tab',
+        expect.objectContaining({
+          max_inline_chars: null,
+          response_fields: null
+        }),
+        expect.any(String)
+      )
+    );
+  });
 });

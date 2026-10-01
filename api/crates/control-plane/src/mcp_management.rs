@@ -863,9 +863,11 @@ where
             command.response_fields.as_deref(),
         )
         .map_err(ControlPlaneError::InvalidInput)?;
+        domain::mcp_management::validate_mcp_call_parameters(&command.input_mapping)
+            .map_err(ControlPlaneError::InvalidInput)?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
-        let des_id_required = input_mapping_requires_des_id(&command.input_mapping);
+        let des_id_required = false;
         self.repository
             .create_mcp_tool(&CreateMcpToolInput {
                 id: Uuid::now_v7(),
@@ -912,13 +914,15 @@ where
             command.response_fields.as_deref(),
         )
         .map_err(ControlPlaneError::InvalidInput)?;
+        domain::mcp_management::validate_mcp_call_parameters(&command.input_mapping)
+            .map_err(ControlPlaneError::InvalidInput)?;
         self.repository
             .get_mcp_tool(actor.current_workspace_id, &command.tool_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
-        let des_id_required = input_mapping_requires_des_id(&command.input_mapping);
+        let des_id_required = false;
         self.repository
             .update_mcp_tool(&UpdateMcpToolInput {
                 actor_user_id: command.actor_user_id,
@@ -963,6 +967,8 @@ where
             command.response_fields.as_deref(),
         )
         .map_err(ControlPlaneError::InvalidInput)?;
+        domain::mcp_management::validate_mcp_call_parameters(&command.input_mapping)
+            .map_err(ControlPlaneError::InvalidInput)?;
         let existing = self
             .repository
             .get_mcp_tool(actor.current_workspace_id, &command.tool_id)
@@ -1454,7 +1460,4 @@ use query::{
     normalize_group_display_name, parent_group_path, path_matches_list_query, validate_group_path,
     validate_list_return_fields,
 };
-pub(crate) use query::{
-    input_mapping_requires_des_id, normalize_des_id, validate_identifier, validate_path,
-    validate_positive,
-};
+pub(crate) use query::{normalize_des_id, validate_identifier, validate_path, validate_positive};

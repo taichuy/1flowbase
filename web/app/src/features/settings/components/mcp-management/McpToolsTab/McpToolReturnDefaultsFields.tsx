@@ -9,6 +9,23 @@ export function McpToolReturnDefaultsFields() {
         name="max_inline_chars"
         label={i18nText('settingsMcpManagement', 'auto.return_budget')}
         extra={i18nText('settingsMcpManagement', 'auto.return_budget_help')}
+        rules={[
+          {
+            validator: async (_, value: number | null | undefined) => {
+              if (
+                value != null &&
+                (!Number.isSafeInteger(value) || value < 1)
+              ) {
+                throw new Error(
+                  i18nText(
+                    'settingsMcpManagement',
+                    'auto.return_budget_invalid'
+                  )
+                );
+              }
+            }
+          }
+        ]}
       >
         <InputNumber min={1} precision={0} style={{ width: '100%' }} />
       </Form.Item>

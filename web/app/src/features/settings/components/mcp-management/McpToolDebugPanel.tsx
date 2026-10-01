@@ -60,16 +60,18 @@ function setArgumentPathValue(
 }
 
 function buildDebugFields(inputMapping: McpInputMappingValue): DebugField[] {
-  return inputMapping.mappings.map((mapping) => {
-    const interfaceParameter = inputMapping.interface_parameters.find(
-      (parameter) => parameter.name === mapping.interface_param
-    );
+  return inputMapping.mappings
+    .filter((mapping) => mapping.source?.kind !== 'mcp_call')
+    .map((mapping) => {
+      const interfaceParameter = inputMapping.interface_parameters.find(
+        (parameter) => parameter.name === mapping.interface_param
+      );
 
-    return {
-      ...mapping,
-      field_type: interfaceParameter?.field_type ?? ''
-    };
-  });
+      return {
+        ...mapping,
+        field_type: interfaceParameter?.field_type ?? ''
+      };
+    });
 }
 
 function debugFieldExtra(field: DebugField) {

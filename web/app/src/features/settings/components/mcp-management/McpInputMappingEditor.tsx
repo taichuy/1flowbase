@@ -22,8 +22,6 @@ import {
   normalizeInputMapping
 } from './mcp-input-mapping-model';
 
-const DES_ID_PARAMETER_NAME = 'des_id';
-
 function stringifyMapping(value: McpInputMappingValue) {
   return JSON.stringify(value, null, 2);
 }
@@ -35,17 +33,10 @@ function mappingFromInterfaceParameter(
     interface_param: parameter.name,
     mcp_param: parameter.name,
     description: parameter.description,
-    required: parameter.required
-  };
-}
-
-function desIdInterfaceParameter(): McpInputInterfaceParameter {
-  return {
-    name: DES_ID_PARAMETER_NAME,
-    field_type: 'string',
-    parameter_type: 'json_body',
-    description: DES_ID_PARAMETER_NAME,
-    required: true
+    required: parameter.required,
+    ...(parameter.source?.kind === 'mcp_call'
+      ? { source: { kind: 'mcp_call' as const, path: parameter.name } }
+      : {})
   };
 }
 
@@ -287,21 +278,7 @@ function InputMappingInterfaceSection({
           {i18nText('settings', 'auto.add_new_field')}
         </Button>
       </Flex>
-      {showCallParameters ? (
-        <Space
-          role="group"
-          aria-label={i18nText('settingsMcpManagement', 'auto.call_parameters')}
-          orientation="vertical"
-        >
-          <Typography.Text strong>
-            {i18nText('settingsMcpManagement', 'auto.call_parameters')}
-          </Typography.Text>
-          <Typography.Text code>des_id · string</Typography.Text>
-          <Typography.Text code>max_inline_chars · integer</Typography.Text>
-          <Typography.Text code>response_fields · string[]</Typography.Text>
-        </Space>
-      ) : null}
-      {mapping.interface_parameters.length > 0 ? (
+      {showCallParameters || mapping.interface_parameters.length > 0 ? (
         <div className="mcp-input-mapping-editor__table">
           <div className="mcp-input-mapping-editor__head">
             <span>{i18nText('settings', 'auto.field_name')}</span>
@@ -317,12 +294,25 @@ function InputMappingInterfaceSection({
 
             const parameter = row.item;
             const index = row.index;
+            const isCallParameter = parameter.source?.kind === 'mcp_call';
+            if (isCallParameter && !showCallParameters) {
+              return null;
+            }
 
             return (
-              <div className="mcp-input-mapping-editor__row" key={row.key}>
+              <div
+                aria-label={
+                  isCallParameter
+                    ? `call_parameter ${parameter.name}`
+                    : undefined
+                }
+                className="mcp-input-mapping-editor__row"
+                key={row.key}
+              >
                 <ParameterNameCell
                   ariaLabel={`field_name ${index + 1}`}
                   name={parameter.name}
+                  readOnly={isCallParameter}
                   onChange={(name) =>
                     onUpdateInterfaceParameter(index, {
                       name
@@ -332,36 +322,50 @@ function InputMappingInterfaceSection({
                 <Input
                   aria-label={`field_type ${parameter.name || index + 1}`}
                   value={parameter.field_type}
+                  readOnly={isCallParameter}
                   onChange={(event) =>
                     onUpdateInterfaceParameter(index, {
                       field_type: event.target.value
                     })
                   }
                 />
-                <Select
-                  aria-label={`parameter_type ${parameter.name || index + 1}`}
-                  options={parameterTypeOptions()}
-                  value={parameter.parameter_type}
-                  onChange={(nextParameterType) =>
-                    onUpdateInterfaceParameter(index, {
-                      parameter_type: nextParameterType
-                    })
-                  }
-                />
+                {isCallParameter ? (
+                  <Input
+                    aria-label={`parameter_type ${parameter.name}`}
+                    readOnly
+                    value={i18nText('settings', 'auto.json_request_body')}
+                  />
+                ) : (
+                  <Select
+                    aria-label={`parameter_type ${parameter.name || index + 1}`}
+                    options={parameterTypeOptions()}
+                    value={parameter.parameter_type}
+                    onChange={(nextParameterType) =>
+                      onUpdateInterfaceParameter(index, {
+                        parameter_type: nextParameterType
+                      })
+                    }
+                  />
+                )}
                 <Checkbox
                   aria-label={`required ${parameter.name || index + 1}`}
                   checked={parameter.required}
+                  disabled={isCallParameter}
                   onChange={(event) =>
                     onUpdateInterfaceParameter(index, {
                       required: event.target.checked
                     })
                   }
                 />
-                <Button
-                  aria-label={`delete_field ${parameter.name || index + 1}`}
-                  icon={<DeleteOutlined />}
-                  onClick={() => onRemoveInterfaceParameter(index)}
-                />
+                {isCallParameter ? (
+                  <span />
+                ) : (
+                  <Button
+                    aria-label={`delete_field ${parameter.name || index + 1}`}
+                    icon={<DeleteOutlined />}
+                    onClick={() => onRemoveInterfaceParameter(index)}
+                  />
+                )}
               </div>
             );
           })}
@@ -375,6 +379,7 @@ function InputMappingInterfaceSection({
 
 function InputMappingLayerSection({
   mapping,
+  showCallParameters,
   addableOptions,
   pendingInterfaceParam,
   onPendingInterfaceParamChange,
@@ -384,6 +389,7 @@ function InputMappingLayerSection({
   onRemoveMapping
 }: {
   mapping: McpInputMappingValue;
+  showCallParameters: boolean;
   addableOptions: Array<{ label: string; value: string }>;
   pendingInterfaceParam: string | undefined;
   onPendingInterfaceParamChange: (value: string | undefined) => void;
@@ -465,6 +471,7 @@ function InputMappingLayerSection({
                 <Input
                   aria-label={`mcp_param ${entry.interface_param}`}
                   value={entry.mcp_param}
+                  readOnly={entry.source?.kind === 'mcp_call'}
                   onChange={(event) =>
                     onUpdateMapping(index, {
                       mcp_param: event.target.value
@@ -483,6 +490,7 @@ function InputMappingLayerSection({
                 <Checkbox
                   aria-label={`required ${entry.interface_param}`}
                   checked={entry.required}
+                  disabled={entry.source?.kind === 'mcp_call'}
                   onChange={(event) =>
                     onUpdateMapping(index, {
                       required: event.target.checked
@@ -614,6 +622,7 @@ export function McpInputMappingEditor({
           });
 
     emit({
+      ...mapping,
       interface_parameters: mapping.interface_parameters.map(
         (entry, entryIndex) => (entryIndex === index ? nextParameter : entry)
       ),
@@ -628,6 +637,7 @@ export function McpInputMappingEditor({
     }
 
     emit({
+      ...mapping,
       interface_parameters: mapping.interface_parameters.filter(
         (_, entryIndex) => entryIndex !== index
       ),
@@ -638,12 +648,6 @@ export function McpInputMappingEditor({
   }
 
   function addMapping(interfaceParam: string | undefined) {
-    if (interfaceParam === DES_ID_PARAMETER_NAME) {
-      addDesIdMapping();
-      setPendingInterfaceParam(undefined);
-      return;
-    }
-
     const parameter = mapping.interface_parameters.find(
       (entry) => entry.name === interfaceParam
     );
@@ -658,35 +662,15 @@ export function McpInputMappingEditor({
     setPendingInterfaceParam(undefined);
   }
 
-  function addDesIdMapping() {
-    if (mappedParameters.has(DES_ID_PARAMETER_NAME)) {
-      return;
-    }
-
-    const existingParameter = mapping.interface_parameters.find(
-      (entry) => entry.name === DES_ID_PARAMETER_NAME
-    );
-    const parameter = existingParameter ?? desIdInterfaceParameter();
-
-    emit({
-      interface_parameters: existingParameter
-        ? mapping.interface_parameters
-        : [...mapping.interface_parameters, parameter],
-      mappings: [...mapping.mappings, mappingFromInterfaceParameter(parameter)]
-    });
-  }
-
   function addAllMappings() {
     const nextMappedParameters = new Set(mappedParameters);
-    const nextInterfaceParameters = [...mapping.interface_parameters];
     const nextMappings = [...mapping.mappings];
 
     for (const parameter of mapping.interface_parameters) {
-      if (
-        !parameter.name ||
-        parameter.name === DES_ID_PARAMETER_NAME ||
-        nextMappedParameters.has(parameter.name)
-      ) {
+      if (parameter.source?.kind === 'mcp_call' && !showCallParameters) {
+        continue;
+      }
+      if (!parameter.name || nextMappedParameters.has(parameter.name)) {
         continue;
       }
 
@@ -694,19 +678,9 @@ export function McpInputMappingEditor({
       nextMappedParameters.add(parameter.name);
     }
 
-    if (!nextMappedParameters.has(DES_ID_PARAMETER_NAME)) {
-      const existingParameter = mapping.interface_parameters.find(
-        (entry) => entry.name === DES_ID_PARAMETER_NAME
-      );
-      const parameter = existingParameter ?? desIdInterfaceParameter();
-      if (!existingParameter) {
-        nextInterfaceParameters.push(parameter);
-      }
-      nextMappings.push(mappingFromInterfaceParameter(parameter));
-    }
-
     emit({
-      interface_parameters: nextInterfaceParameters,
+      ...mapping,
+      interface_parameters: mapping.interface_parameters,
       mappings: nextMappings
     });
     setPendingInterfaceParam(undefined);
@@ -744,25 +718,17 @@ export function McpInputMappingEditor({
   const mappedParameters = new Set(
     mapping.mappings.map((entry) => entry.interface_param)
   );
-  const addableOptions: Array<{ label: string; value: string }> = [];
-  for (const entry of mapping.interface_parameters) {
-    if (
-      entry.name &&
-      !mappedParameters.has(entry.name) &&
-      entry.name !== DES_ID_PARAMETER_NAME
-    ) {
-      addableOptions.push({
-        label: parameterOptionLabel(entry.name),
-        value: entry.name
-      });
-    }
-  }
-  if (!mappedParameters.has(DES_ID_PARAMETER_NAME)) {
-    addableOptions.push({
-      label: DES_ID_PARAMETER_NAME,
-      value: DES_ID_PARAMETER_NAME
-    });
-  }
+  const addableOptions = mapping.interface_parameters
+    .filter(
+      (entry) =>
+        entry.name &&
+        !mappedParameters.has(entry.name) &&
+        (showCallParameters || entry.source?.kind !== 'mcp_call')
+    )
+    .map((entry) => ({
+      label: parameterOptionLabel(entry.name),
+      value: entry.name
+    }));
 
   return (
     <div className="mcp-input-mapping-editor">
@@ -787,6 +753,7 @@ export function McpInputMappingEditor({
             children: (
               <InputMappingLayerSection
                 mapping={mapping}
+                showCallParameters={showCallParameters}
                 addableOptions={addableOptions}
                 pendingInterfaceParam={pendingInterfaceParam}
                 onPendingInterfaceParamChange={setPendingInterfaceParam}

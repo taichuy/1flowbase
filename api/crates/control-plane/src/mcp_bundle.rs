@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::{
     errors::ControlPlaneError,
     mcp_management::{
-        input_mapping_requires_des_id, normalize_des_id, validate_identifier, validate_path,
-        validate_positive, McpManagementService,
+        normalize_des_id, validate_identifier, validate_path, validate_positive,
+        McpManagementService,
     },
     ports::{
         CreateMcpToolInput, McpManagementRepository, ReplaceMcpBundleGraphInput,
@@ -245,7 +245,7 @@ where
                     permission_code: plan.permission_code,
                     risk_level: plan.risk_level,
                     des_id: normalize_des_id(None),
-                    des_id_required: input_mapping_requires_des_id(&tool.input_mapping),
+                    des_id_required: false,
                     status: plan.status,
                 }
             })
@@ -736,7 +736,7 @@ where
                     permission_code: plan.permission_code,
                     risk_level: plan.risk_level,
                     des_id: normalize_des_id(None),
-                    des_id_required: input_mapping_requires_des_id(&tool.input_mapping),
+                    des_id_required: false,
                     status: plan.status,
                 }
             })
@@ -1226,6 +1226,8 @@ fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
             tool.response_fields.as_deref(),
         )
         .map_err(ControlPlaneError::InvalidInput)?;
+        domain::mcp_management::validate_mcp_call_parameters(&tool.input_mapping)
+            .map_err(ControlPlaneError::InvalidInput)?;
         match &tool.execution_target {
             domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
                 validate_identifier(interface_id, "interface_id")?;

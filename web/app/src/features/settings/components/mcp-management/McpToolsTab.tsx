@@ -72,9 +72,11 @@ import {
   buildReadableToolId
 } from './mcp-management-view-model';
 import {
+  MCP_CALL_PARAMETERS,
   buildInputMappingFromInterface,
   inputMappingHasContent,
-  normalizeInputMapping
+  normalizeInputMapping,
+  withLegacyCallMappings
 } from './mcp-input-mapping-model';
 import { McpInputMappingEditor } from './McpInputMappingEditor';
 import { McpToolDebugPanel } from './McpToolDebugPanel';
@@ -613,7 +615,9 @@ export function McpToolsTab({
                   'input_mapping',
                   record.execution_target.kind === 'mcp_proxy'
                     ? record.input_mapping
-                    : normalizeInputMapping(record.input_mapping)
+                    : record.execution_target.kind === 'interface_wrapper'
+                      ? withLegacyCallMappings(record.input_mapping)
+                      : normalizeInputMapping(record.input_mapping)
                 );
                 form.setFieldValue(
                   'output_mapping',
@@ -861,7 +865,7 @@ export function McpToolsTab({
                   form.setFieldValue('parameter_schema', emptyObjectSchema());
                   form.setFieldValue('result_schema', emptyObjectSchema());
                   form.setFieldValue('input_mapping', {
-                    interface_parameters: [],
+                    interface_parameters: MCP_CALL_PARAMETERS,
                     mappings: []
                   });
                   form.setFieldValue('output_mapping', emptyObjectSchema());

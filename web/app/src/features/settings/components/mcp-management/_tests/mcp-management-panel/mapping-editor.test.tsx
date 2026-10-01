@@ -903,10 +903,6 @@ describe('McpManagementPanel', () => {
         target: { value: 'inputs.query' }
       }
     );
-    const desIdDebugFields = within(dialog).getAllByLabelText('des_id');
-    fireEvent.change(desIdDebugFields[desIdDebugFields.length - 1], {
-      target: { value: 'des-1' }
-    });
     fireEvent.click(within(dialog).getByRole('button', { name: '运行' }));
 
     const debugResult = await within(dialog).findByLabelText('返回值 JSON');
@@ -921,8 +917,8 @@ describe('McpManagementPanel', () => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
         expect.objectContaining({
           des_id: 'des12345',
-          input_mapping: {
-            interface_parameters: [
+          input_mapping: expect.objectContaining({
+            interface_parameters: expect.arrayContaining([
               {
                 name: 'application_id',
                 field_type: 'string',
@@ -957,16 +953,9 @@ describe('McpManagementPanel', () => {
                 parameter_type: 'json_body',
                 description: 'Answer selector',
                 required: false
-              },
-              {
-                name: 'des_id',
-                field_type: 'string',
-                parameter_type: 'json_body',
-                description: 'des_id',
-                required: true
               }
-            ],
-            mappings: [
+            ]),
+            mappings: expect.arrayContaining([
               {
                 interface_param: 'application_id',
                 mcp_param: 'application_id',
@@ -996,15 +985,9 @@ describe('McpManagementPanel', () => {
                 mcp_param: 'mapping.output.answer_selector',
                 description: 'Answer selector',
                 required: false
-              },
-              {
-                interface_param: 'des_id',
-                mcp_param: 'des_id',
-                description: 'des_id',
-                required: true
               }
-            ]
-          }
+            ])
+          })
         }),
         expect.any(String)
       );
@@ -1057,7 +1040,7 @@ describe('McpManagementPanel', () => {
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
   }, 30_000);
 
-  test('adds the des_id mapping from the mapping layer dropdown option', async () => {
+  test('shows optional MCP controls without synthesizing business mappings', async () => {
     renderPanel([
       {
         ...interfaceCapabilities[0],
@@ -1087,66 +1070,59 @@ describe('McpManagementPanel', () => {
     fireEvent.click(
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
-    const callParameters = within(dialog).getByRole('group', {
-      name: 'MCP 调用参数（不进入业务参数映射）'
-    });
-    expect(
-      within(callParameters).getByText('des_id · string')
-    ).toBeInTheDocument();
-    expect(
-      within(callParameters).getByText('max_inline_chars · integer')
-    ).toBeInTheDocument();
-    expect(
-      within(callParameters).getByText('response_fields · string[]')
-    ).toBeInTheDocument();
+    for (const name of ['des_id', 'max_inline_chars', 'response_fields']) {
+      const row = within(dialog).getByLabelText(`call_parameter ${name}`);
+      expect(row).toHaveClass('mcp-input-mapping-editor__row');
+      expect(within(row).getByLabelText(`required ${name}`)).not.toBeChecked();
+    }
     fireEvent.click(await within(dialog).findByText('映射层'));
     expect(
-      within(dialog).queryByRole('button', { name: /添加 des_id/ })
+      within(dialog).queryByLabelText('open_call_parameter max_inline_chars')
     ).not.toBeInTheDocument();
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_param' })
     );
-    await selectAntdOption('des_id');
+    await selectAntdOption('max_inline_chars');
     fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
-
     expect(
-      within(dialog).getAllByDisplayValue('des_id').length
-    ).toBeGreaterThan(1);
-    expect(within(dialog).getByLabelText('mcp_param des_id')).toHaveValue(
-      'des_id'
-    );
-    for (const checkbox of within(dialog).getAllByLabelText(
-      'required des_id'
-    )) {
-      expect(checkbox).toBeChecked();
-    }
+      within(dialog).getByLabelText('mcp_param max_inline_chars')
+    ).toHaveValue('max_inline_chars');
+    expect(
+      within(dialog).getByLabelText('description max_inline_chars')
+    ).toHaveValue('返回字符预算；正整数，留空使用 Tool 默认值，例如 4000。');
+    expect(
+      within(dialog).queryByLabelText('mcp_param des_id')
+    ).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: '添加' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: '全部' })).toBeEnabled();
 
     clickSegmentedOption(dialog, 'debug');
+    expect(
+      within(dialog).queryByLabelText('max_inline_chars')
+    ).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
         expect.objectContaining({
-          input_mapping: {
-            interface_parameters: [
-              {
-                name: 'des_id',
-                field_type: 'string',
-                parameter_type: 'json_body',
-                description: 'des_id',
-                required: true
-              }
-            ],
+          input_mapping: expect.objectContaining({
+            interface_parameters: expect.arrayContaining([
+              expect.objectContaining({
+                name: 'max_inline_chars',
+                source: { kind: 'mcp_call' }
+              })
+            ]),
             mappings: [
               {
-                interface_param: 'des_id',
-                mcp_param: 'des_id',
-                description: 'des_id',
-                required: true
+                interface_param: 'max_inline_chars',
+                mcp_param: 'max_inline_chars',
+                description:
+                  '返回字符预算；正整数，留空使用 Tool 默认值，例如 4000。',
+                required: false,
+                source: { kind: 'mcp_call', path: 'max_inline_chars' }
               }
             ]
-          }
+          })
         }),
         expect.any(String)
       );
@@ -1198,8 +1174,8 @@ describe('McpManagementPanel', () => {
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
         expect.objectContaining({
-          input_mapping: {
-            interface_parameters: [
+          input_mapping: expect.objectContaining({
+            interface_parameters: expect.arrayContaining([
               {
                 name: 'app_id',
                 field_type: 'string',
@@ -1213,16 +1189,9 @@ describe('McpManagementPanel', () => {
                 parameter_type: 'json_body',
                 description: 'Display name',
                 required: false
-              },
-              {
-                name: 'des_id',
-                field_type: 'string',
-                parameter_type: 'json_body',
-                description: 'des_id',
-                required: true
               }
-            ],
-            mappings: [
+            ]),
+            mappings: expect.arrayContaining([
               {
                 interface_param: 'app_id',
                 mcp_param: 'app_id',
@@ -1234,15 +1203,9 @@ describe('McpManagementPanel', () => {
                 mcp_param: 'display_name',
                 description: 'Display name',
                 required: false
-              },
-              {
-                interface_param: 'des_id',
-                mcp_param: 'des_id',
-                description: 'des_id',
-                required: true
               }
-            ]
-          }
+            ])
+          })
         }),
         expect.any(String)
       );
@@ -1361,7 +1324,7 @@ describe('McpManagementPanel', () => {
     ).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole('button', { name: /新增字段/ }));
-    fireEvent.change(await within(dialog).findByLabelText('field_name 1'), {
+    fireEvent.change(await within(dialog).findByLabelText('field_name 4'), {
       target: { value: 'user_id' }
     });
     fireEvent.change(within(dialog).getByLabelText('field_type user_id'), {
@@ -1392,8 +1355,8 @@ describe('McpManagementPanel', () => {
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
         expect.objectContaining({
-          input_mapping: {
-            interface_parameters: [
+          input_mapping: expect.objectContaining({
+            interface_parameters: expect.arrayContaining([
               {
                 name: 'user_id',
                 field_type: 'string',
@@ -1401,7 +1364,7 @@ describe('McpManagementPanel', () => {
                 description: '',
                 required: true
               }
-            ],
+            ]),
             mappings: [
               {
                 interface_param: 'user_id',
@@ -1410,7 +1373,7 @@ describe('McpManagementPanel', () => {
                 required: true
               }
             ]
-          }
+          })
         }),
         expect.any(String)
       );

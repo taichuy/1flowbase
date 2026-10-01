@@ -48,12 +48,13 @@ pub(super) fn mapped_schema(parameter_schema: &Value, input_mapping: &Value) -> 
 
 fn parameter_mapping(value: &Value) -> Option<ParameterMapping<'_>> {
     let value = value.as_object()?;
-    if value
-        .get("source")
-        .and_then(|source| source.get("kind"))
-        .and_then(Value::as_str)
-        == Some("server_binding")
-    {
+    if matches!(
+        value
+            .get("source")
+            .and_then(|source| source.get("kind"))
+            .and_then(Value::as_str),
+        Some("server_binding" | "mcp_call")
+    ) {
         return None;
     }
     let interface_param = value.get("interface_param")?.as_str()?.trim();
@@ -265,6 +266,22 @@ fn add_required_property(schema: &mut Value, property: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_call_mappings_do_not_appear_in_business_argument_schema() {
+        let schema = mapped_schema(
+            &json!({"type":"object","properties":{"body":{"type":"object","properties":{"title":{"type":"string"}}}}}),
+            &json!({"mappings":[
+                {"interface_param":"max_inline_chars","mcp_param":"max_inline_chars","required":false,"source":{"kind":"mcp_call","path":"max_inline_chars"}},
+                {"interface_param":"title","mcp_param":"body.title","required":false}
+            ]}),
+        );
+
+        assert!(schema.pointer("/properties/max_inline_chars").is_none());
+        assert!(schema
+            .pointer("/properties/body/properties/title")
+            .is_some());
+    }
 
     #[test]
     fn ac_001_mapped_schema_omits_server_bound_workspace_id() {
