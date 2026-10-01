@@ -9,7 +9,7 @@ keywords:
   - Responses
   - worker capacity
 created_at: 2026-09-26 01
-updated_at: 2026-09-26 10
+updated_at: 2026-10-01 09
 decision_policy: direct_reference
 scope:
   - 1flowbase AI Gateway
@@ -32,3 +32,11 @@ scope:
 ## 适用场景
 
 1flowbase AI Gateway 的 Responses 协议实现、provider worker 容量和内存诊断。
+
+## 2026-10-01 process attribution correction
+
+规则：Gateway性能诊断复用项目已有采集，优先核API、插件、测试DB进程CPU秒、RSS/PSS、存储和网络，单列采集器自耗。整机CPU波动通常仅作背景，不据此判定目标进程回归或无谓暂停普通有界取证；重型构建/多agent资源安全与受保护服务不干扰边界仍有效。
+
+原因：用户开发会重启7800；该生命周期中断按时间线归因，不能当网关缺陷，已捕获协议校验错误仍逐条取证。用户允许为验证单独起1flowbase实例及数据库，避免依赖开发服务重启。
+
+适用场景：性能采样、容量诊断和真实模型功能验证；复核原始监听PID/启动时间和私有测试资源，不把背景百分比替代目标服务需求。
