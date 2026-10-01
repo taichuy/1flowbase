@@ -114,7 +114,7 @@ enum CompatibleTurnAction {
 /// admission; a terminal fact carries the latest durable run snapshot.
 #[derive(Debug)]
 pub(crate) struct CompatibleProjectionInput {
-    run_snapshot: NativeRunResult,
+    run_snapshot: Arc<NativeRunResult>,
     envelope: RuntimeEventEnvelope,
     /// Present only for a committed tool delivery; the protocol writer settles it.
     delivery: Option<RuntimeEventDeliveryReceipt>,
@@ -129,7 +129,7 @@ impl CompatibleProjectionInput {
     pub(crate) fn into_parts(
         self,
     ) -> (
-        NativeRunResult,
+        Arc<NativeRunResult>,
         RuntimeEventEnvelope,
         Option<RuntimeEventDeliveryReceipt>,
     ) {

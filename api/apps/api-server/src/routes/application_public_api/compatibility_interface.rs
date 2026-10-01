@@ -115,7 +115,7 @@ pub(crate) struct CompatibilityBlockingOutput(pub(crate) NativeRunResult);
 pub(crate) struct CompatibilityBlockingTargetError(pub(crate) NativeApiError);
 
 pub(crate) struct CompatibilityStreamEvent {
-    run: NativeRunResult,
+    run: Arc<NativeRunResult>,
     envelope: RuntimeEventEnvelope,
     delivery: Option<RuntimeEventDeliveryReceipt>,
 }
@@ -146,19 +146,19 @@ impl CompatibilityStreamEvent {
     #[cfg(test)]
     pub(crate) fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
         Self {
-            run,
+            run: Arc::new(run),
             envelope,
             delivery: None,
         }
     }
 
     pub(crate) fn with_delivery(
-        run: NativeRunResult,
+        run: impl Into<Arc<NativeRunResult>>,
         envelope: RuntimeEventEnvelope,
         delivery: Option<RuntimeEventDeliveryReceipt>,
     ) -> Self {
         Self {
-            run,
+            run: run.into(),
             envelope,
             delivery,
         }
@@ -167,7 +167,7 @@ impl CompatibilityStreamEvent {
     pub(crate) fn into_parts(
         self,
     ) -> (
-        NativeRunResult,
+        Arc<NativeRunResult>,
         RuntimeEventEnvelope,
         Option<RuntimeEventDeliveryReceipt>,
     ) {
@@ -457,7 +457,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
             let (initial_run, mut events) = typed.into_parts();
             let (publisher, stream) = interface_runtime::interface_stream_channel(32);
             tokio::spawn(async move {
-                let mut terminal_run = initial_run;
+                let mut terminal_run = Arc::new(initial_run);
                 while let Some(event) = events.recv().await {
                     let (run, envelope, delivery) = event.into_parts();
                     terminal_run = run.clone();
@@ -473,7 +473,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 }
                 let _ = publisher
                     .finish(interface_runtime::InterfaceStreamTerminal::Completed(
-                        CompatibilityBlockingOutput(terminal_run),
+                        CompatibilityBlockingOutput(Arc::unwrap_or_clone(terminal_run)),
                     ))
                     .await;
             });
