@@ -15,10 +15,6 @@ use extension_package_runtime::{
 #[derive(Debug, Clone)]
 pub struct LoadedProviderPackage {
     #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "retained only for package loader fixture identity assertions"
-    )]
     pub package_root: PathBuf,
     pub runtime_executable: PathBuf,
     pub package: ProviderPackage,
