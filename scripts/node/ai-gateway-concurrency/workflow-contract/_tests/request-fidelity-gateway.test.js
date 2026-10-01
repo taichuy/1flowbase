@@ -4,7 +4,25 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { REQUEST_FIDELITY_VECTORS } = require('../../protocol-oracle/request-fidelity');
-const { requestPair } = require('../request-fidelity-gateway');
+const { requestPair, comparableRequestDigest } = require('../request-fidelity-gateway');
+
+test('Responses fidelity compares scoped session identity separately from the remaining wire', () => {
+  const direct = {
+    semantic_sha256: 'a'.repeat(64),
+    fidelity_fixture: {
+      method: 'POST', url_sha256: 'b'.repeat(64),
+      header_sha256: { accept: 'c'.repeat(64) },
+      body_sha256: 'd'.repeat(64), body_field_sha256: { input: 'e'.repeat(64) },
+    },
+  };
+  const gateway = structuredClone(direct);
+  gateway.semantic_sha256 = 'f'.repeat(64);
+  gateway.fidelity_fixture.header_sha256['session-id'] = '1'.repeat(64);
+  assert.equal(comparableRequestDigest(direct, 'openai_responses'), comparableRequestDigest(gateway, 'openai_responses'));
+  gateway.fidelity_fixture.body_field_sha256.input = '2'.repeat(64);
+  assert.notEqual(comparableRequestDigest(direct, 'openai_responses'), comparableRequestDigest(gateway, 'openai_responses'));
+  assert.notEqual(comparableRequestDigest(direct, 'openai_chat'), comparableRequestDigest(gateway, 'openai_chat'));
+});
 
 test('Root #1477 AC-001/005: live request pairs target protocol-matched providers', () => {
   const target = (code) => ({

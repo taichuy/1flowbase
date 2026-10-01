@@ -2,6 +2,6 @@
   "schema_version": "1flowbase.ai-gateway-paired-source/v1",
   "official_plugins": {
     "repository": "taichuy/1flowbase-official-plugins",
-    "revision": "d24a793185bac9c10fdfb10baba6a20044a2a62b"
+    "revision": "0e2d451c25a0ef3bd3ae2f56d008b882b95f739b"
   }
 }

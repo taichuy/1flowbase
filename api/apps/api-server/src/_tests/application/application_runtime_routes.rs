@@ -743,6 +743,7 @@ async fn wait_for_run_detail(
 ) -> Value {
     let mut last_status = String::new();
     let mut last_error = Value::Null;
+    let mut last_nodes = Value::Null;
     for _ in 0..200 {
         let response = app
             .clone()
@@ -765,6 +766,7 @@ async fn wait_for_run_detail(
             .unwrap_or_default();
         last_status = status.to_string();
         last_error = payload["data"]["flow_run"]["error_payload"].clone();
+        last_nodes = payload["data"]["nodes"].clone();
         if expected_statuses.contains(&status) {
             return payload["data"].clone();
         }
@@ -772,7 +774,7 @@ async fn wait_for_run_detail(
     }
 
     panic!(
-        "timed out waiting for run status: {expected_statuses:?}, last status: {last_status}, last error: {last_error}"
+        "timed out waiting for run status: {expected_statuses:?}, last status: {last_status}, last error: {last_error}, nodes: {last_nodes}"
     );
 }
 
