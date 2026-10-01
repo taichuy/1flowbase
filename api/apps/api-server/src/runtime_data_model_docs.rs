@@ -817,7 +817,8 @@ fn field_schema(field: &domain::ModelFieldRecord) -> Value {
         domain::ModelFieldKind::Datetime => {
             json!({ "type": "string", "format": "date-time" })
         }
-        domain::ModelFieldKind::Json => json!({ "type": "object" }),
+        // JSON fields may contain arrays or scalars as well as objects.
+        domain::ModelFieldKind::Json => Value::Bool(true),
         domain::ModelFieldKind::ManyToOne
         | domain::ModelFieldKind::OneToMany
         | domain::ModelFieldKind::ManyToMany => json!({
@@ -866,6 +867,19 @@ fn record_schema_name(code: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_field_contract_accepts_array_runtime_values() {
+        let field = writable_field(
+            Uuid::nil(),
+            "member_run_ids",
+            domain::ModelFieldKind::Json,
+            true,
+        );
+        let validator = jsonschema::validator_for(&record_field_schema(&field)).unwrap();
+        assert!(validator.is_valid(&json!([Uuid::nil().to_string()])));
+        assert!(validator.is_valid(&json!({ "source": "runtime" })));
+    }
 
     #[test]
     fn runtime_delete_response_contract_projects_json_result() {
