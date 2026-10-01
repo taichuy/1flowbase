@@ -101,6 +101,19 @@ const PAGE_SIZE = 20;
 const ARCHIVE_IMPORT_TARGET_KEY =
   '1flowbase.application.all-agent-flow.run_archive_import_target';
 const EMPTY_APPLICATIONS: Array<{ id: string; name: string }> = [];
+const ALL_AGENT_FLOW_DEFAULT_COLUMN_KEYS = new Set([
+  'title',
+  'application_id',
+  'requested_model_id',
+  'reasoning_effort',
+  'compatibility_mode',
+  'status',
+  'total_cost',
+  'total_tokens',
+  'input_cache_hit_rate',
+  'started_at',
+  'action'
+]);
 
 type ApplicationLogTimeRange = '1' | '7' | '28' | '90' | '365' | 'all';
 type ApplicationLogsFloatingWindowKind =
@@ -432,7 +445,14 @@ export function ApplicationLogsWorkspace({
           run.application_id
       });
     }
-    return columns;
+    return applicationIds
+      ? columns.map((column) => ({
+          ...column,
+          defaultVisibility: ALL_AGENT_FLOW_DEFAULT_COLUMN_KEYS.has(column.key)
+            ? ('visible' as const)
+            : ('hidden' as const)
+        }))
+      : columns;
   }, [applicationIds, applications, t]);
   const runsTableConfiguration = useApplicationRunsTableConfiguration(
     runsTableColumns,

@@ -1,6 +1,6 @@
 # Application Logs
 
-应用路由与 Frontstage 使用同一个 `ApplicationLogsWorkspace`，业务查询与详情加载仍归 applications feature。原路由保留原应用 scope 与表格偏好；总日志只查询当前可访问的 Agent Flow 应用，使用独立表格偏好。
+应用路由与 Frontstage 使用同一个 `ApplicationLogsWorkspace`，业务查询与详情加载仍归 applications feature。原路由保留原应用 scope 与表格偏好；总日志只查询当前可访问的 Agent Flow 应用，使用独立表格偏好。初始显示标题、应用、请求模型、推理强度、协议、状态、费用、总 tokens、缓存命中率、开始时间十列及操作列；其他字段仍可在列设置中选择，已保存的个人偏好优先。
 
 Frontstage native React module `@1flowbase/application-run-logs` 导出：
 
