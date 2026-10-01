@@ -35,40 +35,6 @@ export function collectTreeNodeIds(nodes: FrontStageTreeNode[]): Set<string> {
   return nodeIds;
 }
 
-function flattenNestedGroups(
-  nodes: FrontStageTreeNode[]
-): FrontStageTreeNode[] {
-  const flattened: FrontStageTreeNode[] = [];
-
-  for (const node of nodes) {
-    if (node.kind === 'page') {
-      flattened.push(node);
-      continue;
-    }
-
-    if (node.children && node.children.length > 0) {
-      flattened.push(...flattenNestedGroups(node.children));
-    }
-  }
-
-  return flattened;
-}
-
-export function normalizePageTree(
-  nodes: FrontStageTreeNode[]
-): FrontStageTreeNode[] {
-  return nodes.map((node) => {
-    if (node.kind !== 'group') {
-      return node;
-    }
-
-    return {
-      ...node,
-      children: flattenNestedGroups(node.children ?? [])
-    };
-  });
-}
-
 function generateNodeId(): string {
   if (
     typeof crypto !== 'undefined' &&

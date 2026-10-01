@@ -153,6 +153,12 @@ function moveNodeToTreePosition(
   targetNodeId: string,
   position: 'before' | 'inside' | 'after'
 ): FrontStageTreeNode[] {
+  if (
+    nodeId === targetNodeId ||
+    isNodeDescendantOf(nodes, nodeId, targetNodeId)
+  ) {
+    return nodes;
+  }
   const { nodes: nodesWithoutDragged, extractedNode } = extractNodeFromTree(
     nodes,
     nodeId
@@ -169,15 +175,7 @@ function moveNodeToTreePosition(
     return nodes;
   }
 
-  if (extractedNode.kind === 'group' && targetSiblingContext.parentId) {
-    return nodes;
-  }
-
   if (position === 'inside') {
-    if (extractedNode.kind !== 'page') {
-      return nodes;
-    }
-
     const targetNode = findNodeById(nodesWithoutDragged, targetNodeId);
     if (!targetNode || targetNode.kind !== 'group') {
       return nodes;
@@ -262,7 +260,7 @@ export type {
   PageTreeMutationResult,
   PageTreeOperationStatus,
   RenamePageTreeNodeInput,
-  UpdatePageTreeNodeMetadataInput,
+  UpdatePageTreeNodeMetadataInput
 };
 
 export {
@@ -271,5 +269,5 @@ export {
   isNodeDescendantOf,
   moveNodeToTreePosition,
   rankForMoveTarget,
-  updatePageTreeNode,
+  updatePageTreeNode
 };

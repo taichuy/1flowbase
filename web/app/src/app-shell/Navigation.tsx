@@ -80,6 +80,15 @@ function topbarNavigationItems({
     const path = `/${node.slug}`;
     items.push({
       key: node.id,
+      children:
+        node.kind === 'group' && node.children?.length
+          ? frontstagePageItems({
+              nodes: node.children,
+              slug: node.slug,
+              pathname,
+              useRouterLinks
+            })
+          : undefined,
       label:
         isDesignMode && workspaceId ? (
           <Suspense fallback={null}>
@@ -180,7 +189,7 @@ function frontstagePageItems({
   slug: string;
   pathname: string;
   useRouterLinks: boolean;
-  onNavigate: () => void;
+  onNavigate?: () => void;
 }): ItemType[] {
   return nodes.map((node) => {
     const title = node.title?.trim() || '未命名页面';

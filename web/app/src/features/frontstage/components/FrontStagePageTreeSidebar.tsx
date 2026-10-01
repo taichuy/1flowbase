@@ -37,7 +37,7 @@ type FrontStagePageTreeSidebarProps = {
   isOperationPending: boolean;
   onAddGroup: () => void;
   onAddPage: () => void;
-  onAddPageInGroup: (groupId: string) => void;
+  onAddPageInGroup: (groupId: string, kind?: 'page' | 'group') => void;
   onAddNodeAtPosition?: (
     kind: 'page' | 'group',
     targetNodeId: string,
@@ -105,6 +105,20 @@ function findParentId(
   return undefined;
 }
 
+function collectGroupOptions(
+  nodes: FrontStageTreeNode[],
+  ancestors: string[] = []
+): Array<{ label: string; value: string }> {
+  return nodes.flatMap((node) => {
+    if (node.kind !== 'group') return [];
+    const path = [...ancestors, getNodeTitle(node)];
+    return [
+      { label: path.join(' / '), value: node.id },
+      ...collectGroupOptions(node.children ?? [], path)
+    ];
+  });
+}
+
 function renderNodeIcon(node: FrontStageTreeNode) {
   return <PageTreeIcon name={node.icon} />;
 }
@@ -148,7 +162,7 @@ function renderTreeNode({
     input: { tooltip?: string | null; isHidden?: boolean }
   ) => void;
   onEditNodeTooltip: (nodeId: string, currentTooltip: string | null) => void;
-  onAddPageInGroup: (groupId: string) => void;
+  onAddPageInGroup: (groupId: string, kind?: 'page' | 'group') => void;
   onAddNodeAtPosition?: (
     kind: 'page' | 'group',
     targetNodeId: string,
@@ -175,7 +189,7 @@ function renderTreeNode({
 }) {
   const isPageNode = node.kind === 'page';
   const isSelected = selectedPageId === node.id;
-  const canAddPageToGroup = node.kind === 'group' && level === 0;
+  const canAddPageToGroup = node.kind === 'group';
   const isCollapsed = collapsedGroupIds.has(node.id);
   const isHidden = Boolean(node.is_hidden);
   const tooltipText = node.tooltip ?? '';
@@ -186,22 +200,20 @@ function renderTreeNode({
   const isInsideDropTarget =
     dropIndicator?.targetNodeId === node.id &&
     dropIndicator.position === 'inside';
-  const topLevelGroups = pageTree.filter(
-    (candidate) => candidate.kind === 'group'
-  );
+  const groupOptions =
+    isPageNode && isSelected && onMovePageToGroup
+      ? collectGroupOptions(pageTree)
+      : [];
   const currentParentId = findParentId(pageTree, node.id) ?? null;
   const canShowPageGroupSelect = Boolean(
-    isPageNode && isSelected && onMovePageToGroup && topLevelGroups.length > 0
+    isPageNode && isSelected && onMovePageToGroup && groupOptions.length > 0
   );
   const pageGroupOptions = [
     {
       label: i18nText('frontstage', 'auto.not_grouped'),
       value: ROOT_PAGE_GROUP_VALUE
     },
-    ...topLevelGroups.map((groupNode) => ({
-      label: groupNode.title || i18nText('frontstage', 'auto.unnamed_group'),
-      value: groupNode.id
-    }))
+    ...groupOptions
   ];
   const pageGroupMenuItems: NonNullable<MenuProps['items']> =
     canShowPageGroupSelect && onMovePageToGroup
@@ -242,9 +254,7 @@ function renderTreeNode({
       ? findNodeById(pageTree, activeDraggedNodeId)
       : null;
     const canDropInsideCurrentGroup =
-      node.kind === 'group' &&
-      level === 0 &&
-      activeDraggedNode?.kind === 'page';
+      node.kind === 'group' && Boolean(activeDraggedNode);
 
     if (
       canDropInsideCurrentGroup &&
@@ -411,7 +421,17 @@ function renderTreeNode({
             disabled: isOperationPending,
             onClick: ({ domEvent }: MenuClickInfo) => {
               domEvent.stopPropagation();
-              onAddPageInGroup(node.id);
+              onAddPageInGroup(node.id, 'page');
+            }
+          },
+          {
+            key: 'insert-group-inside',
+            label: `${i18nText('frontstage', 'auto.insert_inside')} · ${i18nText('frontstage', 'auto.group')}`,
+            icon: <FolderAddOutlined />,
+            disabled: isOperationPending,
+            onClick: ({ domEvent }: MenuClickInfo) => {
+              domEvent.stopPropagation();
+              onAddPageInGroup(node.id, 'group');
             }
           }
         ]
@@ -612,7 +632,7 @@ function renderTreeNode({
       </div>
       {(!isCollapsed || isInsideDropTarget) &&
       (childNodes.length > 0 ||
-        (canEdit && node.kind === 'group' && level === 0) ||
+        (canEdit && node.kind === 'group') ||
         isInsideDropTarget) ? (
         <ul className="frontstage-page-tree-sidebar__children">
           {childNodes.map((childNode) =>

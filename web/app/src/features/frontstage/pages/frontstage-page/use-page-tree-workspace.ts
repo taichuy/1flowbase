@@ -6,7 +6,6 @@ import {
   findNodeById,
   getDeleteConfirmMessage,
   moveNodeInTree,
-  normalizePageTree,
   removeNodeFromTree,
   resolveSelectedPageId
 } from '../../lib/page-tree';
@@ -64,15 +63,15 @@ export function usePageTreeWorkspace({
     useState<PageTreeFormDialog | null>(null);
   const [isPageTreeIconPickerOpen, setIsPageTreeIconPickerOpen] =
     useState(false);
-  const [pageTree, setPageTree] = useState<FrontStageTreeNode[]>(() =>
-    normalizePageTree(initialPageTree ?? [])
+  const [pageTree, setPageTree] = useState<FrontStageTreeNode[]>(
+    () => initialPageTree ?? []
   );
   const [selectedPageId, setSelectedPageId] = useState<string | null>(() =>
     !pageId && !autoSelectFirstPage
       ? null
       : resolveSelectedPageId({
           pageId,
-          pageTree: normalizePageTree(initialPageTree ?? [])
+          pageTree: initialPageTree ?? []
         }).selectedPageId
   );
   const selectedPageNode = selectedPageId
@@ -107,7 +106,7 @@ export function usePageTreeWorkspace({
       return;
     }
 
-    setPageTree(normalizePageTree(initialPageTree));
+    setPageTree(initialPageTree);
     setOperationStatus('idle');
   }, [initialPageTree]);
 
@@ -191,8 +190,11 @@ export function usePageTreeWorkspace({
     openCreateNodeDialog('page', null, getNodeAppendRank(pageTree, null));
   };
 
-  const handleAddPageInGroup = (groupId: string) => {
-    openCreateNodeDialog('page', groupId, getNodeAppendRank(pageTree, groupId));
+  const handleAddPageInGroup = (
+    groupId: string,
+    kind: 'page' | 'group' = 'page'
+  ) => {
+    openCreateNodeDialog(kind, groupId, getNodeAppendRank(pageTree, groupId));
   };
 
   const handleAddNodeAtPosition = (
@@ -407,19 +409,11 @@ export function usePageTreeWorkspace({
     const draggedNode = findNodeById(pageTree, nodeId);
     const targetNode = findNodeById(pageTree, targetNodeId);
     const targetSiblingContext = findSiblingContext(pageTree, targetNodeId);
-    if (
-      !draggedNode ||
-      !targetNode ||
-      !targetSiblingContext ||
-      (draggedNode.kind === 'group' && targetSiblingContext.parentId)
-    ) {
+    if (!draggedNode || !targetNode || !targetSiblingContext) {
       return;
     }
 
-    if (
-      position === 'inside' &&
-      (draggedNode.kind !== 'page' || targetNode.kind !== 'group')
-    ) {
+    if (position === 'inside' && targetNode.kind !== 'group') {
       return;
     }
 

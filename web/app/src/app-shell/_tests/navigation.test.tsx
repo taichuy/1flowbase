@@ -115,11 +115,20 @@ describe('Navigation', () => {
         slug: 'sales',
         children: [
           {
-            id: 'page-sales',
-            title: '销售看板',
-            kind: 'page',
+            id: 'group-reports',
+            title: '报表',
+            kind: 'group',
             placement: 'sidebar',
-            children: []
+            children: [
+              {
+                id: 'page-sales',
+                title: '销售看板',
+                kind: 'page',
+                placement: 'sidebar',
+                content_presentation: 'tabs',
+                children: []
+              }
+            ]
           }
         ]
       },
@@ -148,6 +157,11 @@ describe('Navigation', () => {
     expect(
       within(nav).queryByRole('link', { name: '内部页面' })
     ).not.toBeInTheDocument();
+    expect(
+      within(nav)
+        .getByRole('link', { name: '销售' })
+        .closest('.ant-menu-submenu-title')
+    ).toHaveAttribute('aria-haspopup', 'true');
     expect(
       within(nav).getByRole('link', { name: '工作台' })
     ).toBeInTheDocument();
@@ -219,7 +233,9 @@ describe('Navigation', () => {
     lessonLink.addEventListener('click', (event) => event.preventDefault());
     fireEvent.click(lessonLink);
     await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: '1flowbase' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: '1flowbase' })
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -388,9 +404,7 @@ describe('Navigation', () => {
         within(nav).queryByRole('link', { name: '工作台' })
       ).not.toBeInTheDocument();
     });
-    expect(
-      within(nav).getByRole('link', { name: '子系统' })
-    ).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: '子系统' })).toHaveAttribute(
       'href',
       '/embedded-apps'
     );

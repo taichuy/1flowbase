@@ -563,6 +563,46 @@ describe('FrontStagePage - page tree CRUD', () => {
   });
 
   test(
+    'creates a nested group under the selected sidebar group',
+    async () => {
+      authenticate(['frontstage.page.design']);
+      const onCreateGroupNode = vi.fn().mockResolvedValue({
+        id: 'nested-group',
+        kind: 'group'
+      });
+      render(
+        <AppProviders>
+          <FrontStagePage
+            workspaceId="workspace-1"
+            initialPageTree={[
+              {
+                id: 'parent-group',
+                title: '父分组',
+                kind: 'group',
+                children: []
+              }
+            ]}
+            onCreateGroupNode={onCreateGroupNode}
+          />
+        </AppProviders>
+      );
+
+      activateDesignMode();
+      const group = screen.getByTestId('frontstage-tree-node-group-父分组');
+      await clickPageTreeOperationMenuItemAndFlush(group, '在里面插入 · 分组');
+      fireEvent.change(await screen.findByLabelText('名称'), {
+        target: { value: '子分组' }
+      });
+      await clickLatestButtonAndFlush('确定');
+
+      expect(onCreateGroupNode).toHaveBeenCalledWith(
+        expect.objectContaining({ parentId: 'parent-group', title: '子分组' })
+      );
+    },
+    SLOW_FRONTSTAGE_TEST_TIMEOUT
+  );
+
+  test(
     'renames and deletes through page tree mutation callbacks',
     async () => {
       authenticate(['frontstage.page.design']);
@@ -787,7 +827,7 @@ describe('FrontStagePage - page tree CRUD', () => {
     expect(screen.getByText('分组 2')).toBeInTheDocument();
   });
 
-  test('only allows adding a page into top-level groups', async () => {
+  test('preserves nested groups and allows inserting into them', async () => {
     authenticate(['frontstage.page.design']);
 
     renderPageWithInitialTree([
@@ -818,8 +858,11 @@ describe('FrontStagePage - page tree CRUD', () => {
 
     await openPageTreeOperationMenuAndFlush(rootGroupItem);
     expect(await findLatestVisibleText('在里面插入')).toBeInTheDocument();
-    expect(screen.queryByText('分组 二级')).not.toBeInTheDocument();
+    expect(screen.getByText('分组 二级')).toBeInTheDocument();
     expect(screen.getAllByText('页面 嵌套').length).toBeGreaterThan(0);
+    const nestedGroupItem = getGroupTreeItem('分组 二级');
+    await openPageTreeOperationMenuAndFlush(nestedGroupItem);
+    expect(await findLatestVisibleText('在里面插入')).toBeInTheDocument();
   });
 
   test(

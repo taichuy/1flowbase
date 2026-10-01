@@ -5,7 +5,6 @@ import {
   createPageNode,
   getFirstPageId,
   getFirstTopLevelPageId,
-  normalizePageTree,
   removeNodeFromTree,
   resolveSelectedPageId
 } from '../lib/page-tree';
@@ -41,65 +40,6 @@ describe('frontstage page tree logic', () => {
 
     expect(getFirstTopLevelPageId(tree)).toBe('page-top-level-first');
     expect(getFirstTopLevelPageId(tree.slice(0, 1))).toBeNull();
-  });
-
-  test('normalizes nested groups by preserving root groups and flattening descendant pages', () => {
-    const tree: FrontStageTreeNode[] = [
-      {
-        id: 'group-root',
-        title: 'Root group',
-        kind: 'group',
-        children: [
-          {
-            id: 'group-nested',
-            title: 'Nested group',
-            kind: 'group',
-            children: [
-              {
-                id: 'page-nested',
-                title: 'Nested page',
-                kind: 'page'
-              }
-            ]
-          },
-          {
-            id: 'page-direct',
-            title: 'Direct page',
-            kind: 'page'
-          }
-        ]
-      },
-      {
-        id: 'page-root',
-        title: 'Root page',
-        kind: 'page'
-      }
-    ];
-
-    expect(normalizePageTree(tree)).toEqual([
-      {
-        id: 'group-root',
-        title: 'Root group',
-        kind: 'group',
-        children: [
-          {
-            id: 'page-nested',
-            title: 'Nested page',
-            kind: 'page'
-          },
-          {
-            id: 'page-direct',
-            title: 'Direct page',
-            kind: 'page'
-          }
-        ]
-      },
-      {
-        id: 'page-root',
-        title: 'Root page',
-        kind: 'page'
-      }
-    ]);
   });
 
   test('resolves missing pageId to the first backend page', () => {

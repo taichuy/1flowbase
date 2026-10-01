@@ -503,6 +503,26 @@ where
             .get_frontstage_page(command.workspace_id, command.page_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+        if let (domain::FrontstagePageKind::Group, Some(parent_id)) =
+            (existing.kind, command.parent_id)
+        {
+            let records = self
+                .repository
+                .list_frontstage_pages(command.workspace_id)
+                .await?;
+            let parent_by_id = records
+                .iter()
+                .map(|record| (record.id, record.parent_id))
+                .collect::<HashMap<_, _>>();
+            let mut cursor = Some(parent_id);
+            let mut visited = HashSet::new();
+            while let Some(id) = cursor {
+                if id == command.page_id || !visited.insert(id) {
+                    return Err(ControlPlaneError::InvalidInput("parent_id").into());
+                }
+                cursor = parent_by_id.get(&id).copied().flatten();
+            }
+        }
         match existing.kind {
             domain::FrontstagePageKind::Group if command.parent_id.is_some() => {
                 self.ensure_page_parent_placement(
@@ -1073,7 +1093,7 @@ fn build_frontstage_page_tree(
             .push(record);
     }
 
-    fn flatten_group_children(
+    fn build_children(
         group_id: Uuid,
         nodes_by_parent: &HashMap<Option<Uuid>, Vec<domain::FrontstagePageRecord>>,
         visiting_groups: &mut HashSet<Uuid>,
@@ -1086,19 +1106,18 @@ fn build_frontstage_page_tree(
         if let Some(children) = nodes_by_parent.get(&Some(group_id)) {
             output.reserve(children.len());
             for child in children {
-                if child.kind == domain::FrontstagePageKind::Page {
-                    output.push(domain::FrontstagePageTreeNode {
-                        page: child.clone(),
-                        children: vec![],
-                    });
+                if visiting_groups.contains(&child.id) {
                     continue;
                 }
-
-                output.extend(flatten_group_children(
-                    child.id,
-                    nodes_by_parent,
-                    visiting_groups,
-                ));
+                let descendants = if child.kind == domain::FrontstagePageKind::Group {
+                    build_children(child.id, nodes_by_parent, visiting_groups)
+                } else {
+                    vec![]
+                };
+                output.push(domain::FrontstagePageTreeNode {
+                    page: child.clone(),
+                    children: descendants,
+                });
             }
         }
 
@@ -1111,29 +1130,10 @@ fn build_frontstage_page_tree(
         .unwrap_or_default()
         .into_iter()
         .map(|record| {
-            let children = if record.kind != domain::FrontstagePageKind::Group {
-                vec![]
-            } else if record.placement == domain::frontstage::FrontstageNavigationPlacement::Topbar
-            {
-                nodes_by_parent
-                    .get(&Some(record.id))
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|child| {
-                        let children = if child.kind == domain::FrontstagePageKind::Group {
-                            flatten_group_children(child.id, &nodes_by_parent, &mut HashSet::new())
-                        } else {
-                            vec![]
-                        };
-                        domain::FrontstagePageTreeNode {
-                            page: child,
-                            children,
-                        }
-                    })
-                    .collect()
+            let children = if record.kind == domain::FrontstagePageKind::Group {
+                build_children(record.id, &nodes_by_parent, &mut HashSet::new())
             } else {
-                flatten_group_children(record.id, &nodes_by_parent, &mut HashSet::new())
+                vec![]
             };
 
             domain::FrontstagePageTreeNode {
@@ -1294,8 +1294,9 @@ mod tests {
     }
 
     #[test]
-    fn build_frontstage_page_tree_flattens_nested_groups_and_ignores_reentrant_group_edges() {
+    fn build_frontstage_page_tree_preserves_nested_groups_and_ignores_reentrant_group_edges() {
         let root_group_id = test_uuid(0x10);
+        let nested_group_id = test_uuid(0x20);
         let nested_page_id = test_uuid(0x30);
 
         let tree = build_frontstage_page_tree(vec![
@@ -1313,9 +1314,9 @@ mod tests {
                 .iter()
                 .map(|node| (node.page.id, node.page.kind))
                 .collect::<Vec<_>>(),
-            vec![(nested_page_id, FrontstagePageKind::Page)]
+            vec![(nested_group_id, FrontstagePageKind::Group)]
         );
-        assert!(tree[0].children.iter().all(|node| node.children.is_empty()));
+        assert_eq!(tree[0].children[0].children[0].page.id, nested_page_id);
     }
 
     #[test]
