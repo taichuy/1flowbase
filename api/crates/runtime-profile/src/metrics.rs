@@ -170,7 +170,9 @@ pub(crate) fn summarize_related_process_memory(
 impl RuntimeMetricSampler {
     pub(crate) fn new() -> Self {
         Self {
-            system: System::new_all(),
+            // The first collect refreshes the fields we expose. Avoid enumerating
+            // every visible process and task during collector construction.
+            system: System::new(),
             networks: Networks::new_with_refreshed_list(),
             disks: Disks::new_with_refreshed_list(),
             current_pid: sysinfo::get_current_pid().ok(),
@@ -198,7 +200,9 @@ impl RuntimeMetricSampler {
         self.system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::nothing().with_memory(),
+            // Memory and process ancestry are process-level facts; task records
+            // are discarded by the projection and duplicate procfs work.
+            ProcessRefreshKind::nothing().without_tasks().with_memory(),
         );
         self.networks.refresh(true);
         self.disks.refresh(true);
@@ -658,3 +662,7 @@ fn read_limit(path: &Path) -> Option<u64> {
     let value = value.trim();
     (value != "max").then(|| value.parse().ok()).flatten()
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "_tests/metrics_process_scope_tests.rs"]
+mod process_scope_tests;

@@ -111,7 +111,9 @@ impl RuntimeProcessSampler {
         inner.system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
+            // The console lists processes, not each process's threads.
             ProcessRefreshKind::nothing()
+                .without_tasks()
                 .with_cpu()
                 .with_memory()
                 .with_user(UpdateKind::OnlyIfNotSet)
@@ -194,7 +196,9 @@ impl RuntimeProcessSampler {
         inner.system.refresh_processes_specifics(
             ProcessesToUpdate::Some(&[target]),
             true,
-            ProcessRefreshKind::nothing().with_user(UpdateKind::OnlyIfNotSet),
+            ProcessRefreshKind::nothing()
+                .without_tasks()
+                .with_user(UpdateKind::OnlyIfNotSet),
         );
 
         let Some(current_pid) = sysinfo::get_current_pid().ok() else {
@@ -308,3 +312,7 @@ fn process_status_label(status: sysinfo::ProcessStatus) -> &'static str {
         Status::Unknown(_) => "unknown",
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "_tests/processes_scope_tests.rs"]
+mod process_scope_tests;
