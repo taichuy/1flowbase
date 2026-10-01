@@ -1,4 +1,4 @@
-name: Gateway Merged Source Paired Mock Experiment
+name: Gateway Source-bound Reuse Paired Mock Experiment
 permissions:
   contents: read
   actions: read
@@ -14,6 +14,7 @@ env:
   ANTHROPIC_AUTH_TOKEN: ''
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
+  PAIRED_VALIDATED_TEST_SOURCE: ${{ inputs.repair_sha }}
 jobs:
   paired-monitor-direct:
     runs-on: ubuntu-24.04
@@ -33,8 +34,9 @@ jobs:
     - name: Checkout frozen candidate
       uses: actions/checkout@v5
       with:
-        ref: 539e335204df667552c56faf4f13b323acb7320b
+        ref: ${{ inputs.repair_sha }}
         persist-credentials: false
+        fetch-depth: 0
     - name: Checkout matched user dev baseline
       uses: actions/checkout@v5
       with:
@@ -74,27 +76,26 @@ jobs:
           tmp/paired-official-source/runtime-extensions/@taichuy/openai -> target
           tmp/paired-official-source/runtime-extensions/@taichuy/anthropic -> target
           tmp/paired-official-source/runtime-extensions/@taichuy/openai_compatible -> target
-    - name: Build matched baseline and candidate plus one identical provider set
+    - name: Prove entire candidate delta is the approved test-only repair
+      run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/reuse-proof.js --source-only
+    - name: Download verified immutable paired release and identical provider artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: gateway-merged-paired-build-36893524316
+        run-id: 36893524316
+        github-token: ${{ github.token }}
+        path: tmp
+    - name: Verify runtime bytes and source binding; record current runner
       env:
         WORKFLOW_SHA: ${{ github.sha }}
-      run: |
+      run: |-
         set -euo pipefail
+        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/reuse-proof.js
         evidence=tmp/test-governance/gateway-monitor-paired/build
-        mkdir -p "$evidence"
-        test "$(git rev-parse HEAD)" = 539e335204df667552c56faf4f13b323acb7320b
-        test "$(git -C tmp/paired-baseline-source rev-parse HEAD)" = ed55f8fc73db24beac21ca4831659733ffac3adb
-        test "$(git -C tmp/paired-official-source rev-parse HEAD)" = 997c705b3c564c93d2fc49b973e0b5bbdb759cdc
-        node <<'NODE'
-        const b=require('./tmp/paired-baseline-source/scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json');
-        const c=require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json');
-        if(b.official_plugins.revision!==c.official_plugins.revision || c.official_plugins.revision!=='997c705b3c564c93d2fc49b973e0b5bbdb759cdc')throw Error('Paired provider source mismatch');
-        NODE
-        rustc --version --verbose > "$evidence/toolchain.txt"
-        cargo --version >> "$evidence/toolchain.txt"
-        printf '%s\n' 'baseline=ed55f8fc73db24beac21ca4831659733ffac3adb' 'candidate=539e335204df667552c56faf4f13b323acb7320b' "workflow=$WORKFLOW_SHA" 'profile=release' 'features=default' > "$evidence/sources.txt"
-        sha256sum api/Cargo.lock tmp/paired-baseline-source/api/Cargo.lock > "$evidence/lock.sha256"
+        for item in runner-cpu.txt runner-memory.txt runner-quota.json sources.txt; do mv "$evidence/$item" "$evidence/reused-original-$item"; done
         lscpu > "$evidence/runner-cpu.txt"
         cat /proc/meminfo > "$evidence/runner-memory.txt"
+        printf '%s\n' 'runtime_candidate=539e335204df667552c56faf4f13b323acb7320b' "test_candidate=$PAIRED_VALIDATED_TEST_SOURCE" "workflow=$WORKFLOW_SHA" 'reused_run=36893524316 artifact=11181109322' 'profile=release features=default' > "$evidence/sources.txt"
         python3 - <<'PYENV'
         import json,pathlib
         root=pathlib.Path('/sys/fs/cgroup');row={}
@@ -102,28 +103,6 @@ jobs:
          p=root/name;row[name]=p.read_text().strip() if p.exists() else 'unavailable'
         pathlib.Path('tmp/test-governance/gateway-monitor-paired/build/runner-quota.json').write_text(json.dumps(row,indent=2))
         PYENV
-        export CARGO_BUILD_JOBS=1
-        export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/api/target"
-        cargo build --manifest-path tmp/paired-baseline-source/api/Cargo.toml -p api-server --bin api-server --release --locked --jobs 1 > "$evidence/baseline-build.log" 2>&1
-        cp api/target/release/api-server "$evidence/baseline-release-api-server"
-        cargo build --manifest-path api/Cargo.toml -p api-server --bin api-server --release --locked --jobs 1 > "$evidence/candidate-build.log" 2>&1
-        cp api/target/release/api-server "$evidence/candidate-release-api-server"
-        node <<'NODE'
-        const fs=require('node:fs'),crypto=require('node:crypto');const d={};
-        for(const [kind,source]of [['baseline','ed55f8fc73db24beac21ca4831659733ffac3adb'],['candidate','539e335204df667552c56faf4f13b323acb7320b']]){const binary=`tmp/test-governance/gateway-monitor-paired/build/${kind}-release-api-server`;d[kind]={source,sha256:crypto.createHash('sha256').update(fs.readFileSync(binary)).digest('hex')};}
-        fs.writeFileSync('tmp/test-governance/gateway-monitor-paired/build/binaries.json',JSON.stringify(d,null,2));
-        NODE
-        unset CARGO_TARGET_DIR
-        for provider in openai anthropic openai_compatible; do
-         plugin_root="tmp/paired-official-source/runtime-extensions/@taichuy/$provider"
-         cargo build --manifest-path "$plugin_root/Cargo.toml" --release --locked --jobs 1 --target x86_64-unknown-linux-gnu > "$evidence/$provider-build.log" 2>&1
-         node scripts/node/plugin/cli.js package "$plugin_root" --out "tmp/protocol-reuse/ai-gateway-quality-gate/packages/$provider" --runtime-binary "$plugin_root/target/x86_64-unknown-linux-gnu/release/$provider-provider" --target x86_64-unknown-linux-gnu > "$evidence/$provider-package.log" 2>&1
-        done
-        node <<'NODE'
-        const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');const {singlePackage}=require('./scripts/node/ai-gateway-concurrency/workflow-contract/inputs');const d={official_source_sha:'997c705b3c564c93d2fc49b973e0b5bbdb759cdc',providers:{}};
-        for(const code of ['openai','anthropic','openai_compatible']){const p=singlePackage(`tmp/protocol-reuse/ai-gateway-quality-gate/packages/${code}`,code);d.providers[code]={validated_package_sha256:crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex')};}
-        fs.mkdirSync('tmp/protocol-reuse/ai-gateway-concurrency',{recursive:true});fs.writeFileSync('tmp/protocol-reuse/ai-gateway-concurrency/provider-provenance.json',JSON.stringify(d,null,2));
-        NODE
     - name: Upload immutable paired build and provider evidence before tests
       if: always()
       uses: actions/upload-artifact@v6
@@ -157,17 +136,18 @@ jobs:
         echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
         echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
     - name: Validate experiment statistics contracts
-      run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/_tests/metrics.test.js
+      run: node --test tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/_tests/*.test.js
     - name: Run affected runtime-profile and compatible-stream unit coverage
       run: |
         set -euo pipefail
         evidence=tmp/test-governance/gateway-monitor-paired/build
         cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p runtime-profile --lib > "$evidence/runtime-profile-tests.log" 2>&1
+        cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib api_profile_port_and_process_list_share_the_injected_observation -- --test-threads=1 > "$evidence/repaired-shared-source-tests.log" 2>&1
         cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib compat_sse::tests -- --test-threads=1 > "$evidence/compatible-stream-tests.log" 2>&1
         python3 - <<'PYTEST'
         import pathlib,re,json
         rows=[]
-        for name in ['runtime-profile-tests.log','compatible-stream-tests.log']:
+        for name in ['runtime-profile-tests.log','repaired-shared-source-tests.log','compatible-stream-tests.log']:
          text=(pathlib.Path('tmp/test-governance/gateway-monitor-paired/build')/name).read_text()
          matches=re.findall(r'test result: ok[.] (\d+) passed; (\d+) failed',text)
          if not matches or sum(int(m[0]) for m in matches)==0:raise SystemExit('No executed passing tests: '+name)
@@ -179,6 +159,7 @@ jobs:
         DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
         BOOTSTRAP_ROOT_ACCOUNT: root
         BOOTSTRAP_ROOT_PASSWORD: change-me
+        PAIRED_VALIDATED_TEST_SOURCE: ${{ inputs.repair_sha }}
     - name: Run bounded monitor and128-item8KiB512KiB direct/Gateway ABBA pairs
       run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/run.js
     - name: Upload all positive and negative raw experiment evidence
@@ -202,4 +183,9 @@ jobs:
         retention-days: 7
         if-no-files-found: warn
 'on':
-  workflow_dispatch: null
+  workflow_dispatch:
+    inputs:
+      repair_sha:
+        description: Frozen candidate test-only repair SHA; production changes reject artifact reuse
+        required: true
+        type: string

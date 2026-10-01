@@ -1,0 +1,5 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
+const {validateChangedPaths,verifyFiles,TEST}=require('../reuse-proof');
+test('Accepts exactly the approved test change; rejects production, rename and empty changes',()=>{assert.doesNotThrow(()=>validateChangedPaths([TEST]));for(const paths of [[],['api/Cargo.lock'],[TEST,'api/crates/runtime-profile/src/sampling.rs'],[TEST+'old']])assert.throws(()=>validateChangedPaths(paths));});
+test('Artifact reuse rejects corrupted or missing bytes',()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'gateway-reuse-proof-'));try{fs.writeFileSync(path.join(root,'binary'),'synthetic');const hash=crypto.createHash('sha256').update('synthetic').digest('hex');assert.equal(verifyFiles(root,{binary:hash}).binary,hash);fs.writeFileSync(path.join(root,'binary'),'corrupted');assert.throws(()=>verifyFiles(root,{binary:hash}));assert.throws(()=>verifyFiles(root,{missing:hash}));}finally{fs.rmSync(root,{recursive:true,force:true});}});
