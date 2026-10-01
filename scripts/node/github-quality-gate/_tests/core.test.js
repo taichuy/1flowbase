@@ -820,7 +820,7 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
     fs.mkdirSync(artifactDir, { recursive: true });
     fs.writeFileSync(
       path.join(artifactDir, 'quality-gate-report.json'),
-      `${JSON.stringify(report, null, 2)}\n`,
+      `${JSON.stringify({ commit: 'abcdef1234567890', ...report }, null, 2)}\n`,
       'utf8'
     );
     fs.writeFileSync(path.join(artifactDir, 'quality-gate.latest.log'), `${report.scope} log\n`, 'utf8');
@@ -968,7 +968,7 @@ test('runQualityGateAggregate keeps component warning logs advisory when compone
     fs.mkdirSync(artifactDir, { recursive: true });
     fs.writeFileSync(
       path.join(artifactDir, 'quality-gate-report.json'),
-      `${JSON.stringify(report, null, 2)}\n`,
+      `${JSON.stringify({ commit: 'abcdef1234567890', ...report }, null, 2)}\n`,
       'utf8'
     );
     fs.writeFileSync(path.join(artifactDir, 'quality-gate.latest.log'), `${report.scope} log\n`, 'utf8');
@@ -1071,6 +1071,7 @@ test('runQualityGateAggregate publishes one upserted pull request report comment
     path.join(artifactDir, 'quality-gate-report.json'),
     `${JSON.stringify({
       reportType: 'ci',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope: 'repo-tooling',
       exitCode: 0,

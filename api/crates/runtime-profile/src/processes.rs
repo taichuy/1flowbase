@@ -193,8 +193,7 @@ pub(crate) fn snapshot_from_system(
 
     let total = processes.len();
     processes.truncate(MAX_RUNTIME_PROCESS_SAMPLES);
-    let snapshot = RuntimeProcessSnapshot { total, processes };
-    snapshot
+    RuntimeProcessSnapshot { total, processes }
 }
 
 /// The primary observation owns PID, parent, status, CPU and memory. Optional

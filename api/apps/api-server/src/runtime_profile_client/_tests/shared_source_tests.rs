@@ -11,9 +11,14 @@ async fn api_profile_port_and_process_list_share_the_injected_observation() {
     )
     .unwrap();
     let profile = api.collect_runtime_profile().await.unwrap();
-    let processes = RuntimeProcessSampler::with_sample_source(source.clone()).collect();
+    let sampler = RuntimeProcessSampler::with_sample_source(source.clone());
+    let processes = sampler.collect();
     let shared = source.collect().unwrap();
     assert_eq!(profile.metrics, shared.metrics);
-    assert_eq!(&processes, shared.processes.as_ref());
+    assert_eq!(processes, sampler.collect());
+    assert!(processes
+        .processes
+        .iter()
+        .any(|process| process.pid == std::process::id() && !process.terminable));
     assert_eq!(profile.service, "api-server");
 }

@@ -1,12 +1,18 @@
 const BACKEND_SHARDS = [
   {
     key: 'core-libs',
-    packages: ['domain', 'access-control', 'observability', 'runtime-profile', 'plugin-framework'],
+    packages: [
+      'domain', 'access-control', 'observability', 'runtime-profile', 'plugin-framework',
+      'extension-contracts', 'extension-package-runtime', 'interface-runtime',
+      'control-plane-contracts', 'control-plane-test-support', 'postgres-test-support',
+    ],
   },
   {
     key: 'runtime-storage',
     packages: [
       'runtime-core',
+      'runtime-extension-host',
+      'runtime-extension-sdk',
       'orchestration-runtime',
       'storage-durable',
       'storage-ephemeral',
@@ -16,7 +22,7 @@ const BACKEND_SHARDS = [
   },
   {
     key: 'apps',
-    packages: ['control-plane', 'api-server'],
+    packages: ['control-plane', 'api-server', 'control-plane-postgres-tests'],
   },
 ];
 const BACKEND_APP_TEST_SHARDS = [
@@ -35,6 +41,8 @@ const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
     key: 'runtime-storage-fast',
     packages: [
       'runtime-core',
+      'runtime-extension-host',
+      'runtime-extension-sdk',
       'orchestration-runtime',
       'storage-durable',
       'storage-ephemeral',

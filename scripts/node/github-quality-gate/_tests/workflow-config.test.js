@@ -408,7 +408,7 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
   assert.match(singleScopeBlock, /REACT_DOCTOR_CANDIDATE_SOURCE: quality-gate-target-sha/u);
   assert.match(
     workflow,
-    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate/u,
+    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate/u,
   );
   assert.match(
     workflow,
@@ -858,7 +858,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   );
   assert.match(
     workflow,
-    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- backend-consistency-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
+    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- backend-consistency-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
   );
   assert.doesNotMatch(workflow, /- state-protocols-gate/u);
   assert.match(workflow, /- container-images-gate/u);

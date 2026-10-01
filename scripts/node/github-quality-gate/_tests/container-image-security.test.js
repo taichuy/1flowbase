@@ -119,6 +119,7 @@ test('runQualityGateAggregate includes container image security reports when pre
     path.join(artifactDir, 'quality-gate-report.json'),
     `${JSON.stringify({
       reportType: 'cd',
+      commit: 'abcdef1234567890',
       status: 'passed',
       scope: 'container-images',
       exitCode: 0,

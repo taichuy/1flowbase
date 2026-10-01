@@ -30,8 +30,27 @@ test('Delivery 1919 keeps Host Service outside RuntimeBackend and storage outsid
   assert.doesNotMatch(backend, /PluginDataPort/u);
   assert.doesNotMatch(hostCargo, /storage-durable|control-plane/u);
   assert.match(host, /plugin_data: Arc<dyn PluginDataPort>/u);
-  assert.match(boot, /new_with_artifact_resolver_and_plugin_data/u);
-  assert.match(boot, /Arc::new\(store\.clone\(\)\)/u);
+  assertPluginDataBoot(boot);
+});
+
+// Check the actual injection call, not an unrelated store clone elsewhere in boot.
+function assertPluginDataBoot(boot) {
+  const call = boot.match(
+    /RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source\(\s*process_started_at,\s*runtime_artifact_resolver,\s*Arc::new\(store\.clone\(\)\),\s*Arc::clone\(&runtime_sample_source\),\s*\)/u,
+  );
+  assert.ok(call, 'composition root must inject PluginData and the shared profile source');
+}
+
+test('PluginData boot gate rejects missing injection even with unrelated store clones', () => {
+  const boot = read('api/apps/api-server/src/lib.rs');
+  assert.throws(() => assertPluginDataBoot(boot.replace(
+    '            Arc::new(store.clone()),',
+    '            Arc::new(MissingPluginDataPort),',
+  )), /composition root must inject PluginData/u);
+  assert.throws(() => assertPluginDataBoot(boot.replace(
+    '            Arc::clone(&runtime_sample_source),',
+    '            Arc::new(RuntimeSampleSource::default()),',
+  )), /composition root must inject PluginData/u);
 });
 
 test('Delivery 1919 SDK has a contract-only internal dependency graph', () => {

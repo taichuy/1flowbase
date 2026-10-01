@@ -13,7 +13,7 @@
 
 ## Manager GitHub Flow
 
-默认从 `latest` 分支开始，除非用户明确指定其他分支。开始前读取 `AGENTS.md`、`.memory/AGENTS.md`、`.memory/user-memory.md`，并遵守 `qa-evaluation` 的证据规则。不要运行本地全量 quality gate 来替代 GitHub Actions；完整门禁以远端 Actions 和 artifact 为准。
+沿用任务启动分支；未指定候选时默认使用 `latest`。完整体检固定一个 full SHA，所有 component 与 aggregate 必须绑定该 SHA。开始前读取 `AGENTS.md`、`.memory/AGENTS.md`、`.memory/user-memory.md`，并遵守 `qa-evaluation` 的证据规则。不要运行本地全量 quality gate 来替代 GitHub Actions；完整门禁以远端 Actions 和 artifact 为准。
 
 检查顺序：
 
@@ -47,10 +47,14 @@
 
 当前仓库的质量门禁自动化入口：
 
-- `.github/workflows/verify.yml`：`pull_request`、`main` 和 `latest` push 触发，调用本地 quality-gate action。
-- `.github/workflows/quality-gate.yml`：手动 quality gate，`target_branch` 默认 `latest`，可选 `latest` / `main`。
+- `.github/workflows/verify.yml`：`pull_request`、`beta` / `main` / `latest` push 触发轻量合并门禁；`workflow_dispatch` 额外用 exact main / official source SHA 验证实际插件包。
+- `.github/workflows/quality-gate.yml`：每日 schedule 和手动完整 quality gate；`target_branch` 默认 `latest`，接受分支、tag 或 full SHA，`scope=ci` 执行全量体检。
 - `.github/actions/quality-gate/action.yml`：复用 action，实际执行 `node scripts/node/cli/github-quality-gate.js`。
 - `scripts/node/cli/github-quality-gate.js`：生成 `quality-gate.latest.log`、`quality-gate-report.md`、`quality-gate-report.json`，有 token 时发布 GitHub issue。
+
+## Upstream Lint Toolchain
+
+Rust 1.99 的 `double_must_use` 会命中 `async-trait` 生成方法（参见 [上游同症状](https://github.com/wildcard/caro/issues/1498)）；本项目 trait 未声明该属性。线上 Clippy 暂固定已通过的 1.98.1，保留 `-D warnings`；编译和行为测试继续使用 stable，不批量改写 trait 或忽略项目源码 lint。上游修复后，以完整线上 Clippy 证据更新该 pin。
 
 ## Hard Stops
 
