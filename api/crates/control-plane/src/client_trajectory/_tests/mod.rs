@@ -368,6 +368,7 @@ impl classify::Classifier {
     }
 }
 mod incremental;
+mod replay_watermark;
 
 #[tokio::test]
 async fn empty_prewarm_keeps_response_identity_without_fabricating_output() {
