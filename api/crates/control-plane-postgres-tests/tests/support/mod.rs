@@ -56,29 +56,3 @@ pub async fn seed_store() -> (
 
     (store, workspace, actor)
 }
-
-pub fn runtime_profile_interface() -> domain::McpInterfaceCatalogEntry {
-    domain::McpInterfaceCatalogEntry {
-        interface_id: "get_runtime_profile".into(),
-        source: domain::McpInterfaceCatalogSource::StaticApi,
-        method: "GET".into(),
-        path: "/api/console/system/runtime-profile".into(),
-        name: "Get runtime profile".into(),
-        short_description: "Read system runtime profile.".into(),
-        parameter_descriptors: vec![domain::mcp_management::McpParameterDescriptor {
-            name: "locale".into(),
-            field_type: "string".into(),
-            parameter_type: domain::mcp_management::McpParameterType::Url,
-            description: None,
-            required: false,
-            schema: serde_json::json!({"type":"string"}),
-        }],
-        parameter_schema: serde_json::json!({"type":"object"}),
-        result_schema: serde_json::json!({"type":"object"}),
-        permission_code: None,
-        security: serde_json::json!([]),
-        risk_level: domain::McpRiskLevel::Low,
-        bindable: true,
-        disabled_reason: None,
-    }
-}

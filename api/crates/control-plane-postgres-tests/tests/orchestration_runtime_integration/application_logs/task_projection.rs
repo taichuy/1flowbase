@@ -2,6 +2,21 @@ use super::*;
 use control_plane_contracts::application_public_runtime::ApplicationPublishedFlowRunRepository;
 use control_plane_contracts::ports::ApplicationRunLogContext;
 
+type TaskProjectionRow = (
+    Uuid,
+    Vec<Uuid>,
+    Option<Uuid>,
+    bool,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<Uuid>,
+    i64,
+    i64,
+    Option<i64>,
+);
+type RunSummaryRow = (Uuid, String, Option<i64>, Option<Uuid>, i64);
+
 fn task_fixture_input(
     seeded: &RuntimeSeedState,
     compiled: &domain::CompiledPlanRecord,
@@ -158,14 +173,14 @@ async fn issue_2035_task_projection_owns_list_and_converged_detail() {
     finish(&store, plain, 70).await;
 
     // AC-001: every run belongs to exactly one task row.
-    let rows: Vec<(Uuid, Vec<Uuid>, Option<Uuid>, bool, String, Option<String>, Option<String>, Option<Uuid>, i64, i64, Option<i64>)> = sqlx::query_as(
+    let rows: Vec<TaskProjectionRow> = sqlx::query_as(
         "select id,member_run_ids,parent_task_run_id,is_root,outcome,user_input,final_output,final_output_run_id,invocation_count,compaction_count,total_tokens from application_run_log_tasks where application_id=$1 order by id",
     )
     .bind(seeded.application_id)
     .fetch_all(store.pool())
     .await
     .unwrap();
-    let member_rows: Vec<(Uuid, String, Option<i64>, Option<Uuid>, i64)> = sqlx::query_as(
+    let member_rows: Vec<RunSummaryRow> = sqlx::query_as(
         "select flow_run_id,status,total_tokens,log_task_run_id,invocation_count from application_run_log_summaries where application_id=$1 order by flow_run_id",
     )
     .bind(seeded.application_id)
