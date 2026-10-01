@@ -84,6 +84,8 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
 
       - name: Resolve PostgreSQL 18 backup toolchain
         shell: bash
@@ -145,7 +147,7 @@ jobs:
           evidence_dir="$GITHUB_WORKSPACE/tmp/test-governance/gateway-cpu-release"
           mkdir -p "$evidence_dir"
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/api/target"
-          test "$(git rev-parse HEAD:api)" = "3467d353fba31728e4ee0387ffc9957cbb3a8a7b"
+          test "$(git rev-parse HEAD:api)" = "6b82a1cfbfee31714fac4066eef94a6d75bdf8b0"
           rustc --version > "$evidence_dir/toolchain.txt"
           cat /proc/meminfo > "$evidence_dir/runner-memory.txt"
           cargo build --manifest-path tmp/gateway-cpu-release-baseline/api/Cargo.toml \
@@ -156,7 +158,7 @@ jobs:
           cp api/target/release/api-server "$evidence_dir/candidate-release-api-server"
           sha256sum "$evidence_dir/"*-api-server > "$evidence_dir/sha256.txt"
           printf '%s\n' 'baseline=59ff883cd772df01e29a16ab1bf68962f758bb38' \
-            'candidate_product=3ffc567f1351db59635bcbe70367a17406031a65' \
+            'candidate_product=67a78a8828d79678d53e0551f8815b20447eddc2' \
             "workflow_source=$(git rev-parse HEAD)" > "$evidence_dir/sources.txt"
 
       - name: Upload paired release artifacts before protocol gate
