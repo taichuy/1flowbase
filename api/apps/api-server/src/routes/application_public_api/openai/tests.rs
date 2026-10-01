@@ -1003,3 +1003,65 @@ fn invalid_callback_tool_results_map_to_bad_request() {
     assert_eq!(error.status, StatusCode::BAD_REQUEST);
     assert_eq!(error.code, "tool_results");
 }
+
+#[tokio::test]
+async fn unary_openai_error_preserves_upstream_object_and_actual_status() {
+    use control_plane::application_public_api::native::NativeError;
+    for upstream in [
+        json!({"message":"rejected\nnext line","type":"vendor_refusal","code":"unknown_vendor_code","param":null,"extra":{"opaque":[null,1]}}),
+        json!({"message":null,"type":null,"code":null,"future":true}),
+        json!({"extra":[]}),
+        json!({"message":"","code":""}),
+    ] {
+        let mut run = blocking_run(NativeRunStatus::Failed);
+        run.error = Some(NativeError {
+            code: "unknown_vendor_code".into(),
+            message: "fallback".into(),
+            details: json!({"upstream_error":upstream,"status_code":422,"raw_body":"original body\n","semantic_terminal":true}),
+        });
+        let response =
+            OpenAiRouteError::from(native::blocking_run_projection_error(&run)).into_response();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload, json!({"error":upstream}));
+    }
+}
+
+#[tokio::test]
+async fn unary_gateway_error_keeps_existing_openai_fallback() {
+    let run = blocking_run(NativeRunStatus::Failed);
+    let response =
+        OpenAiRouteError::from(native::blocking_run_projection_error(&run)).into_response();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let payload: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        payload,
+        json!({"error":{"message":"published run failed","type":"invalid_request_error","param":null,"code":"runtime_error"}})
+    );
+}
+
+#[tokio::test]
+async fn unary_native_error_preserves_unknown_upstream_code_and_details() {
+    use control_plane::application_public_api::native::NativeError;
+    let upstream = json!({"message":"original\nmessage","code":"future_native_code","type":"vendor_error","extra":null});
+    let mut run = blocking_run(NativeRunStatus::Failed);
+    let error = NativeError {
+        code: "future_native_code".into(),
+        message: "original\nmessage".into(),
+        details: json!({"upstream_error":upstream,"status_code":409,"raw_body":"original body\n"}),
+    };
+    run.error = Some(error.clone());
+    let response = native::blocking_run_projection_error(&run).into_response();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let payload: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(payload, serde_json::to_value(error).unwrap());
+}

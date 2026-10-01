@@ -318,6 +318,9 @@ impl ResponsesWebSocketProjector {
                         .map(|error| error.code.as_str())
                         .unwrap_or("runtime_error"),
                 );
+                if let Some(upstream) = run.error.as_ref().and_then(|error| error.upstream_error()) {
+                    event["response"]["error"] = upstream.clone();
+                }
                 event["response"]["output"] =
                     Value::Array(std::mem::take(&mut self.completed_output_items));
                 vec![event]

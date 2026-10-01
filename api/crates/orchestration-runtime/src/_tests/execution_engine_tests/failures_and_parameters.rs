@@ -340,7 +340,14 @@ async fn provider_upstream_error_body_is_the_durable_message_and_event_message()
             );
             assert_eq!(failure.error_payload["status_code"], json!(400));
             assert!(failure.error_payload.get("provider_summary").is_none());
-            assert!(failure.error_payload.get("provider_details").is_none());
+            assert_eq!(
+                failure.error_payload["provider_details"]["raw_body"],
+                PROVIDER_UPSTREAM_ERROR_BODY
+            );
+            assert_eq!(
+                failure.error_payload["provider_details"]["upstream_error"],
+                json!({"message":"first line\nsecond line", "code":"future_code", "type":null,"extra":{"opaque":[null,1]}})
+            );
             assert_eq!(
                 outcome.node_traces[1].error_payload.as_ref(),
                 Some(&failure.error_payload)

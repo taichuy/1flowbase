@@ -1152,3 +1152,36 @@ fn failed_terminal_preserves_committed_output_and_absorbs_late_success() {
         .unwrap()
         .is_empty());
 }
+
+#[test]
+fn responses_websocket_preserves_full_upstream_error_object() {
+    for upstream in [
+        json!({"message":"rejected\nnext line","type":"vendor_refusal","code":"unknown_vendor_code","param":null,"extra":{"opaque":[null,1]}}),
+        json!({"message":null,"type":null,"code":null,"future":true}),
+        json!({"extra":[]}),
+        json!({"message":"","code":""}),
+    ] {
+        let mut run = native_run(2190);
+        run.status = NativeRunStatus::Failed;
+        run.error = Some(NativeError {
+            code: "unknown_vendor_code".into(),
+            message: "fallback".into(),
+            details: json!({"upstream_error":upstream,"semantic_terminal":true}),
+        });
+        let mut projector = transparent_projector("fixture", None);
+        let frames = decoded(
+            projector
+                .project(
+                    &run,
+                    RuntimeEventEnvelope::new(
+                        run.id,
+                        1,
+                        debug_stream_events::flow_failed(run.id, json!({})),
+                    ),
+                )
+                .unwrap(),
+        );
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0]["response"]["error"], upstream);
+    }
+}

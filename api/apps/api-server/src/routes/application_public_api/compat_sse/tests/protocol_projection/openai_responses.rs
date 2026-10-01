@@ -685,3 +685,44 @@ async fn semantic_responses_done_completed_and_blocking_preserve_presented_prefi
     assert_eq!(blocking["id"], format!("resp_{round}"));
     assert_eq!(blocking["previous_response_id"], "resp_parent");
 }
+
+#[tokio::test]
+async fn responses_sse_preserves_full_upstream_error_object() {
+    for upstream in [
+        json!({"message":"rejected\nnext line","type":"vendor_refusal","code":"unknown_vendor_code","param":null,"extra":{"opaque":[null,1]}}),
+        json!({"message":null,"type":null,"code":null,"future":true}),
+        json!({"extra":[]}),
+        json!({"message":"","code":""}),
+    ] {
+        let mut run = native_run();
+        run.status = NativeRunStatus::Failed;
+        run.error = Some(NativeError {
+            code: "unknown_vendor_code".into(),
+            message: "fallback".into(),
+            details: json!({"upstream_error":upstream,"semantic_terminal":true}),
+        });
+        let mut mapper = OpenAiResponseStreamMapper::new("fixture".into(), None);
+        let events = mapper.runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                1,
+                debug_stream_events::flow_failed(run.id, json!({})),
+            ),
+        );
+        let body = axum::body::to_bytes(
+            test_projected_events_response(events).into_body(),
+            usize::MAX,
+        )
+        .await
+        .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        let frames = body
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .map(|data| serde_json::from_str::<Value>(data).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0]["response"]["error"], upstream);
+    }
+}

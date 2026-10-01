@@ -618,6 +618,7 @@ pub struct NativeErrorBody {
 
 #[derive(Debug)]
 pub struct NativeApiError {
+    pub(crate) runtime_error: Option<control_plane::application_public_api::native::NativeError>,
     pub(crate) status: StatusCode,
     pub(crate) code: &'static str,
     pub(crate) message: String,
@@ -637,12 +638,16 @@ impl NativeApiError {
             status,
             code,
             message: message.into(),
+            runtime_error: None,
         }
     }
 }
 
 impl IntoResponse for NativeApiError {
     fn into_response(self) -> Response {
+        if let Some(error) = self.runtime_error {
+            return (self.status, Json(error)).into_response();
+        }
         (
             self.status,
             Json(NativeErrorBody {
@@ -980,21 +985,30 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
 pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiError {
     match run.status {
         NativeRunStatus::Failed => {
-            let code = match run
+            let code = if run
                 .error
                 .as_ref()
-                .map(|error| error.code.as_str())
-                .unwrap_or("runtime_error")
+                .and_then(|error| error.upstream_error())
+                .is_some()
             {
-                "auth_failed" => "auth_failed",
-                "endpoint_unreachable" => "endpoint_unreachable",
-                "model_not_found" => "model_not_found",
-                "provider_affinity_mismatch" => "provider_affinity_mismatch",
-                "provider_transport_unavailable" => "provider_transport_unavailable",
-                "rate_limited" => "rate_limited",
-                "provider_upstream_error" => "provider_upstream_error",
-                "provider_invalid_response" => "provider_invalid_response",
-                _ => "runtime_error",
+                "provider_upstream_error"
+            } else {
+                match run
+                    .error
+                    .as_ref()
+                    .map(|error| error.code.as_str())
+                    .unwrap_or("runtime_error")
+                {
+                    "auth_failed" => "auth_failed",
+                    "endpoint_unreachable" => "endpoint_unreachable",
+                    "model_not_found" => "model_not_found",
+                    "provider_affinity_mismatch" => "provider_affinity_mismatch",
+                    "provider_transport_unavailable" => "provider_transport_unavailable",
+                    "rate_limited" => "rate_limited",
+                    "provider_upstream_error" => "provider_upstream_error",
+                    "provider_invalid_response" => "provider_invalid_response",
+                    _ => "runtime_error",
+                }
             };
             let status = run
                 .error
@@ -1018,7 +1032,15 @@ pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiE
                 .as_ref()
                 .map(|error| error.message.as_str())
                 .unwrap_or("published run failed");
-            NativeApiError::new(status, code, message)
+            let mut error = NativeApiError::new(status, code, message);
+            error.runtime_error = run
+                .error
+                .as_ref()
+                .filter(|runtime| {
+                    runtime.upstream_error().is_some() || runtime.code == "provider_upstream_error"
+                })
+                .cloned();
+            error
         }
         NativeRunStatus::Cancelled => NativeApiError::new(
             StatusCode::CONFLICT,

@@ -1,5 +1,7 @@
 use super::*;
-use plugin_framework::provider_contract::{ProviderInvocationResult, ProviderToolCall};
+use plugin_framework::provider_contract::{
+    ProviderInvocationResult, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderToolCall,
+};
 
 fn fixture(
     capacity: usize,
@@ -823,4 +825,28 @@ async fn repeated_context_preserves_order_distinct_call_identities_and_result_ve
             expected
         );
     }
+}
+
+#[tokio::test]
+async fn upstream_error_observation_preserves_message_and_original_details() {
+    let (capture, receiver, _) = fixture(16);
+    let details = json!({"upstream_error":{"message":"rejected\nnext line","code":"unknown_vendor_code","type":null,"future":{"authorization":"vendor diagnostic"}},"raw_body":"original body\n","semantic_terminal":true});
+    let error = ProviderRuntimeError {
+        kind: ProviderRuntimeErrorKind::ProviderUpstreamError,
+        message: "rejected\nnext line".into(),
+        provider_summary: None,
+        provider_details: Some(details.clone()),
+    };
+    capture
+        .observer()
+        .observe(&ProviderStreamEvent::Error { error });
+    capture.finish(None, None, true).await;
+    let records = records(receiver);
+    let error_record = records
+        .iter()
+        .find(|record| record["kind"] == "error")
+        .unwrap();
+    let observed = body(error_record);
+    assert_eq!(observed["message"], "rejected\nnext line");
+    assert_eq!(observed["provider_details"], details);
 }

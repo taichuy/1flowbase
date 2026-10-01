@@ -103,7 +103,7 @@ fn native_result_does_not_rewrite_legacy_provider_error_messages() {
     assert!(error.details.get("provider_summary").is_none());
     assert!(error.details.get("provider_details").is_none());
     assert!(error.message.contains(raw_body));
-    assert!(!error.details.to_string().contains(raw_body));
+    assert_eq!(error.details["raw_body"], raw_body);
 }
 
 #[test]
@@ -135,7 +135,7 @@ fn d1_ac_001_failed_native_result_never_projects_an_answer_or_success_artifact()
         .error
         .expect("failed run should expose the provider error");
     assert_eq!(error.message, raw_provider_body);
-    assert!(!error.details.to_string().contains(raw_provider_body));
+    assert_eq!(error.details["raw_body"], raw_provider_body);
 }
 
 #[test]
@@ -266,4 +266,42 @@ fn native_result_from_stream_state_preserves_usage_and_pending_tool_callback_con
         result.tool_calls.as_ref().unwrap()[0]["id"],
         json!("toolu_latest")
     );
+}
+
+#[test]
+fn upstream_error_object_survives_durable_native_projection_exactly() {
+    for upstream in [
+        json!({"message":"first line\nsecond line", "type":"vendor_error", "code":"future_vendor_code", "param":null,"future":{"nested":[null,42]}}),
+        json!({"message":null,"code":null,"future":true}),
+        json!({"future":[]}),
+    ] {
+        let details = json!({"status_code":422,"upstream_error":upstream,"raw_body":"original wire body\n","semantic_terminal":true});
+        let mut internal_details = details.clone();
+        internal_details["native_inference_binding"] =
+            json!({"endpoint":"internal", "authorization":"host secret"});
+        internal_details["native_inference_configuration_digest"] = json!("internal digest");
+        let run = failed_published_flow_run(
+            json!({"error_code":"provider_upstream_error","message":"fallback transport message","provider_details":internal_details}),
+        );
+        let error = native_result_from_flow_run(&run, json!({})).error.unwrap();
+        assert_eq!(error.details, details);
+        assert_eq!(error.upstream_error(), Some(&upstream));
+        if upstream["code"].is_string() {
+            assert_eq!(error.code, "future_vendor_code");
+        }
+        if upstream["message"].is_string() {
+            assert_eq!(error.message, "first line\nsecond line");
+        }
+    }
+}
+
+#[test]
+fn gateway_error_keeps_existing_public_details_boundary() {
+    let run = failed_published_flow_run(
+        json!({"error_code":"provider_transport_unavailable","message":"transport unavailable","provider_details":{"internal":"private diagnostic","status":503}}),
+    );
+    let error = native_result_from_flow_run(&run, json!({})).error.unwrap();
+    assert_eq!(error.code, "provider_transport_unavailable");
+    assert_eq!(error.details, json!({"status_code":503}));
+    assert!(error.upstream_error().is_none());
 }

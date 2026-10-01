@@ -357,10 +357,10 @@ impl Aggregate {
                 }
             }
             ProviderStreamEvent::Error { error } => {
-                // Freeform runtime messages can quote transport credentials. Keep the
-                // typed failure identity and scrub structured diagnostics separately.
-                if let Some(value) = self.admit(&json!({"kind":error.kind,"message":"Native provider error","provider_details":error.provider_details})) {
+                if let Some(value) = snapshot_value(error) {
                     self.errors.push(value);
+                } else {
+                    self.gap = true;
                 }
             }
             ProviderStreamEvent::OutputProtocolFailure { failure } => {
