@@ -8,7 +8,7 @@ import FolderAddOutlined from '@ant-design/icons/es/icons/FolderAddOutlined';
 import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { App, Button, Dropdown, Form, Space } from 'antd';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import type { FrontstagePageTreeNode } from '../features/frontstage/api/page-tree';
 import { FrontstageNodeActionButton } from '../features/frontstage/components/FrontstageNodeActionButton';
@@ -48,16 +48,6 @@ export function TopbarNavigationItemLabel({
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const mutations = useFrontstagePageTreeMutations(workspaceId);
   const index = siblings.findIndex((candidate) => candidate.id === node.id);
-
-  useEffect(() => {
-    if (dialog?.kind !== 'rename') return;
-    form.setFieldsValue({
-      title: dialog.initialTitle,
-      slug: node.slug ?? '',
-      icon: dialog.initialIcon,
-      tooltip: dialog.initialTooltip
-    });
-  }, [dialog, form, node.slug]);
 
   const openEdit = () => {
     setDialog({
@@ -197,16 +187,6 @@ export function TopbarNavigationDesigner({
   const [pending, setPending] = useState(false);
   const mutations = useFrontstagePageTreeMutations(workspaceId);
   const topbarNodes = nodes.filter((node) => node.placement === 'topbar');
-
-  useEffect(() => {
-    if (dialog?.kind !== 'create') return;
-    form.setFieldsValue({
-      title: dialog.initialTitle,
-      slug: dialog.initialSlug,
-      icon: dialog.initialIcon,
-      tooltip: dialog.initialTooltip
-    });
-  }, [dialog, form]);
 
   const promptCreate = (nodeKind: 'group' | 'page') => {
     const initialSlug = randomSlug();

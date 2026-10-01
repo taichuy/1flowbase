@@ -113,23 +113,8 @@ export function usePageTreeWorkspace({
   useEffect(() => {
     if (!pageTreeFormDialog) {
       setIsPageTreeIconPickerOpen(false);
-      return;
     }
-
-    if (pageTreeFormDialog.kind === 'tooltip') {
-      pageTreeForm.setFieldsValue({
-        tooltip: pageTreeFormDialog.initialTooltip
-      });
-      return;
-    }
-
-    pageTreeForm.setFieldsValue({
-      title: pageTreeFormDialog.initialTitle,
-      icon: pageTreeFormDialog.initialIcon,
-      tooltip: pageTreeFormDialog.initialTooltip,
-      slug: pageTreeFormDialog.initialSlug
-    });
-  }, [pageTreeForm, pageTreeFormDialog]);
+  }, [pageTreeFormDialog]);
 
   const runPageTreeOperation = async (
     operation: () => Promise<unknown>

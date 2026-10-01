@@ -2,7 +2,7 @@ import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Form, Input, Modal, Popover, Space } from 'antd';
 import type { FormInstance } from 'antd';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { PageTreeIcon } from '../../lib/page-tree-icons/registry';
@@ -141,6 +141,110 @@ type PageTreeFormModalProps = {
   onSubmit: () => void;
 };
 
+function PageTreeForm({
+  dialog,
+  form,
+  iconPickerOpen,
+  onIconPickerOpenChange,
+  onRefreshSlug,
+  onSubmit
+}: Pick<
+  PageTreeFormModalProps,
+  | 'dialog'
+  | 'form'
+  | 'iconPickerOpen'
+  | 'onIconPickerOpenChange'
+  | 'onRefreshSlug'
+  | 'onSubmit'
+>) {
+  useEffect(() => {
+    if (dialog) {
+      // The modal mounts lazily; initialize only after its Form is connected.
+      form.resetFields();
+    }
+  }, [dialog, form]);
+
+  return (
+    <Form<PageTreeFormValues>
+      form={form}
+      initialValues={
+        dialog?.kind === 'tooltip'
+          ? { tooltip: dialog.initialTooltip }
+          : dialog
+            ? {
+                title: dialog.initialTitle,
+                icon: dialog.initialIcon,
+                tooltip: dialog.initialTooltip,
+                slug: dialog.initialSlug
+              }
+            : undefined
+      }
+      layout="vertical"
+      preserve={false}
+      onFinish={onSubmit}
+    >
+      {dialog?.kind === 'tooltip' ? (
+        <Form.Item
+          label={i18nText('frontstage', 'auto.description')}
+          name="tooltip"
+        >
+          <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} />
+        </Form.Item>
+      ) : (
+        <>
+          <Form.Item
+            label={i18nText('frontstage', 'auto.name')}
+            name="title"
+            rules={[
+              {
+                required: true,
+                whitespace: true,
+                message: i18nText('frontstage', 'auto.name_required')
+              }
+            ]}
+          >
+            <Input autoFocus />
+          </Form.Item>
+          {dialog?.kind === 'create' && dialog.showSlug ? (
+            <Form.Item label="访问路径" required>
+              <Space.Compact style={{ width: '100%' }}>
+                <Form.Item
+                  name="slug"
+                  noStyle
+                  rules={[
+                    {
+                      required: true,
+                      whitespace: true,
+                      message: '访问路径不能为空'
+                    }
+                  ]}
+                >
+                  <Input aria-label="访问路径" prefix="/" />
+                </Form.Item>
+                <Button aria-label="刷新访问路径" onClick={onRefreshSlug}>
+                  刷新
+                </Button>
+              </Space.Compact>
+            </Form.Item>
+          ) : null}
+          <Form.Item label={i18nText('frontstage', 'auto.icon')} name="icon">
+            <PageTreeIconPickerField
+              iconPickerOpen={iconPickerOpen}
+              onIconPickerOpenChange={onIconPickerOpenChange}
+            />
+          </Form.Item>
+          <Form.Item
+            label={i18nText('frontstage', 'auto.description')}
+            name="tooltip"
+          >
+            <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} />
+          </Form.Item>
+        </>
+      )}
+    </Form>
+  );
+}
+
 function PageTreeFormModal({
   dialog,
   form,
@@ -162,71 +266,14 @@ function PageTreeFormModal({
       onCancel={onCancel}
       onOk={() => form.submit()}
     >
-      <Form<PageTreeFormValues>
+      <PageTreeForm
+        dialog={dialog}
         form={form}
-        layout="vertical"
-        preserve={false}
-        onFinish={onSubmit}
-      >
-        {dialog?.kind === 'tooltip' ? (
-          <Form.Item
-            label={i18nText('frontstage', 'auto.description')}
-            name="tooltip"
-          >
-            <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} />
-          </Form.Item>
-        ) : (
-          <>
-            <Form.Item
-              label={i18nText('frontstage', 'auto.name')}
-              name="title"
-              rules={[
-                {
-                  required: true,
-                  whitespace: true,
-                  message: i18nText('frontstage', 'auto.name_required')
-                }
-              ]}
-            >
-              <Input autoFocus />
-            </Form.Item>
-            {dialog?.kind === 'create' && dialog.showSlug ? (
-              <Form.Item label="访问路径" required>
-                <Space.Compact style={{ width: '100%' }}>
-                  <Form.Item
-                    name="slug"
-                    noStyle
-                    rules={[
-                      {
-                        required: true,
-                        whitespace: true,
-                        message: '访问路径不能为空'
-                      }
-                    ]}
-                  >
-                    <Input aria-label="访问路径" prefix="/" />
-                  </Form.Item>
-                  <Button aria-label="刷新访问路径" onClick={onRefreshSlug}>
-                    刷新
-                  </Button>
-                </Space.Compact>
-              </Form.Item>
-            ) : null}
-            <Form.Item label={i18nText('frontstage', 'auto.icon')} name="icon">
-              <PageTreeIconPickerField
-                iconPickerOpen={iconPickerOpen}
-                onIconPickerOpenChange={onIconPickerOpenChange}
-              />
-            </Form.Item>
-            <Form.Item
-              label={i18nText('frontstage', 'auto.description')}
-              name="tooltip"
-            >
-              <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} />
-            </Form.Item>
-          </>
-        )}
-      </Form>
+        iconPickerOpen={iconPickerOpen}
+        onIconPickerOpenChange={onIconPickerOpenChange}
+        onRefreshSlug={onRefreshSlug}
+        onSubmit={onSubmit}
+      />
     </Modal>
   );
 }

@@ -39,9 +39,6 @@
   top: 50%;
   right: 12px;
   transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 150ms ease;
 }
 
 .frontstage-page-workspace__tabs-action {
@@ -58,14 +55,6 @@
   justify-content: space-between;
   gap: 16px;
   min-width: 208px;
-}
-
-.frontstage-page-workspace__header:hover
-  .frontstage-page-workspace__page-action,
-.frontstage-page-workspace__header:focus-within
-  .frontstage-page-workspace__page-action {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 .frontstage-page-workspace__body {
