@@ -233,4 +233,4 @@ async function collectMailboxEvidence({ events, meta, out, repositoryRoot }) {
   return { status: 'COLLECTED', rawLogPath, diagnosticPath, diagnostics: [] };
 }
 
-module.exports = { collectMailboxEvidence, buildMailboxEvidence, clientTraces };
+module.exports = { collectMailboxEvidence, buildMailboxEvidence, clientTraces, databaseRows };

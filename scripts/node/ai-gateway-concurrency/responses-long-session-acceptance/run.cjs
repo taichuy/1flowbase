@@ -10,11 +10,14 @@ const { Rpc } = require('../worker-lifecycle-acceptance/rpc.cjs');
 const { evaluate, validateSubagent, isUsefulTool, MIN_SPAN_MS } = require('./oracle.cjs');
 const { clientConfig, clientLogFilter, retainStderrLine } = require('./client-config.cjs');
 const { collectMailboxEvidence, clientTraces } = require('./mailbox-evidence.cjs');
+const { validateContextProbe } = require('./context-error.cjs');
+const { collectInstructionOrder } = require('./instruction-order.cjs');
 
-const WORKSPACE = '/home/taichuy/git/1flowbase_latest';
-const BASE_URL = 'http://127.0.0.1:7600/v1';
-const APP_ID = '01a08ebe-dcba-7ec1-a448-f466d9aa23f8';
-const KEY_FILE = '/home/taichuy/git/1flowbase/tmp/test-tmp-kay.md';
+const WORKSPACE = path.resolve(process.env.RLS_WORKSPACE || '/home/taichuy/git/1flowbase_latest');
+const BASE_URL = process.env.RLS_BASE_URL || 'http://127.0.0.1:7600/v1';
+const APP_ID = process.env.RLS_APP_ID || '01a08ebe-dcba-7ec1-a448-f466d9aa23f8';
+const KEY_FILE = process.env.RLS_KEY_FILE || '/home/taichuy/git/1flowbase/tmp/test-tmp-kay.md';
+const SUBAGENT_MODEL = process.env.RLS_SUBAGENT_MODEL || 'gpt-6-sol';
 let artifactDir;
 const required = (name) => { if (!process.env[name]) throw new Error(`Missing ${name}`); return process.env[name]; };
 const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
@@ -80,7 +83,7 @@ function auditInventory() {
 
 async function main() {
   const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID()}`;
-  const out = path.join(WORKSPACE, 'tmp/test-governance/2175', runId);
+  const out = path.join(process.env.RLS_ARTIFACT_ROOT || path.join(WORKSPACE, 'tmp/test-governance/2175'), runId);
   artifactDir = out;
   fs.mkdirSync(out, { recursive: true, mode: 0o700 });
   const candidate = identities();
@@ -90,7 +93,7 @@ async function main() {
   if (sha256(catalogText) !== required('RLS_MODEL_CATALOG_SHA256'))
     throw new Error('Model catalog digest differs from requested catalog');
   const catalog = JSON.parse(catalogText);
-  if (!['gpt-6-luna', 'gpt-6-sol'].every((id) => catalog.models?.some((m) => m.slug === id)))
+  if (!['gpt-6-luna', SUBAGENT_MODEL].every((id) => catalog.models?.some((m) => m.slug === id)))
     throw new Error('Model catalog lacks requested luna/sol slugs');
   const secret = credential();
   const codex = process.env.RLS_CODEX || 'codex';
@@ -111,6 +114,10 @@ async function main() {
   const at = () => Number(process.hrtime.bigint() - started) / 1e6;
   const events = [];
   const record = (value) => {
+    if (value.method === 'turn/start' && value.params?.input?.[0]?.text === contextInput) {
+      value = { ...value, params: { ...value.params, input: [{ type: 'text', text: '[context probe input recorded by digest]' }] },
+        contextProbeInput: { bytes: Buffer.byteLength(contextInput), sha256: sha256(contextInput) } };
+    }
     const safe = JSON.parse(redact({ atMs: at(), ...value }));
     events.push(safe);
     fs.appendFileSync(path.join(out, 'timeline.jsonl'), `${JSON.stringify(safe)}\n`, { mode: 0o600 });
@@ -118,6 +125,7 @@ async function main() {
   const save = (name, data) => fs.writeFileSync(path.join(out, name), `${redact(data)}\n`, { mode: 0o600 });
   const sentinel = `RLS_SENTINEL_${crypto.randomUUID()}`;
   const steerNonce = `RLS_STEER_${crypto.randomUUID()}`;
+  const steerNonces = [steerNonce, `RLS_STEER_${crypto.randomUUID()}`];
   const sentinelFile = path.join(out, 'sentinel.txt');
   fs.writeFileSync(sentinelFile, sentinel, { mode: 0o600 });
   const env = { PATH: process.env.PATH, HOME: home, CODEX_HOME: home, RLS_GATEWAY_KEY: secret,
@@ -125,16 +133,24 @@ async function main() {
     LANG: 'C.UTF-8', NO_PROXY: '127.0.0.1,localhost,::1', no_proxy: '127.0.0.1,localhost,::1' };
   fs.writeFileSync(path.join(home, 'config.toml'),
     clientConfig({ catalogPath: catalogCopy, baseUrl: BASE_URL }), { mode: 0o600 });
+  const minSpanMs = Number(process.env.RLS_MIN_SPAN_MS || MIN_SPAN_MS);
+  if (!Number.isSafeInteger(minSpanMs) || minSpanMs < 1_800_000)
+    throw new Error('RLS_MIN_SPAN_MS must require at least 30 minutes of useful source work');
+  const contextInput = process.env.RLS_CONTEXT_INPUT_FILE
+    ? fs.readFileSync(path.resolve(process.env.RLS_CONTEXT_INPUT_FILE), 'utf8') : null;
+  if (contextInput !== null && !contextInput.length) throw new Error('Context probe input is empty');
   const meta = { candidate, appId: APP_ID, baseUrl: BASE_URL, codexVersion,
     codexDigest: fileDigest(codexPath),
     modelCatalogPath: catalogPath, modelCatalogDigest: sha256(catalogText), workspace: WORKSPACE,
-    model: 'gpt-6-luna', reasoningEffort: 'max', subagentModel: 'gpt-6-sol', subagentEffort: 'medium',
+    model: 'gpt-6-luna', reasoningEffort: 'max', subagentModel: SUBAGENT_MODEL, subagentEffort: 'medium',
+    minSpanMs, contextProbeRequired: contextInput !== null,
+    contextProbeInput: contextInput === null ? null : { bytes: Buffer.byteLength(contextInput), sha256: sha256(contextInput) },
     requestedTransport: 'responses_websocket', retryPolicy: 'Codex provider defaults; no retry overrides',
-    sentinel, steerNonce, startedUtc,
-    fixtureDigests: Object.fromEntries(['run.cjs', 'oracle.cjs', 'client-config.cjs', 'mailbox-evidence.cjs', '../worker-lifecycle-acceptance/rpc.cjs']
+    sentinel, steerNonce, steerNonces, orderedSteerRequired: process.env.RLS_ORDERED_STEER === 'true', startedUtc,
+    fixtureDigests: Object.fromEntries(['run.cjs', 'oracle.cjs', 'client-config.cjs', 'mailbox-evidence.cjs', 'context-error.cjs', 'instruction-order.cjs', '../worker-lifecycle-acceptance/rpc.cjs']
       .map((name) => [name, fileDigest(path.resolve(__dirname, name))])) };
   const deadlineMs = Number(process.env.RLS_DEADLINE_MS || 7_200_000);
-  if (!Number.isSafeInteger(deadlineMs) || deadlineMs < MIN_SPAN_MS + 120_000)
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs < minSpanMs + 120_000)
     throw new Error('RLS_DEADLINE_MS must be a finite integer with time for the required work span');
   save('manifest.json', meta);
   const child = spawn(codex, ['app-server', '--stdio'], { cwd: WORKSPACE, env, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -181,16 +197,16 @@ async function main() {
       capabilities: { experimentalApi: true } }, remaining());
     rpc.send({ method: 'initialized', params: {} });
     const models = await rpc.request('model/list', {}, remaining());
-    for (const id of ['gpt-6-luna', 'gpt-6-sol']) {
+    for (const id of ['gpt-6-luna', SUBAGENT_MODEL]) {
       if (!models.data?.some((model) => model.id === id)) throw new Error(`Client model/list missing ${id}`);
     }
     const thread = await rpc.request('thread/start', { model: 'gpt-6-luna', modelProvider: 'candidate',
       cwd: WORKSPACE, approvalPolicy: 'never', sandbox: 'read-only', ephemeral: false,
-      developerInstructions: 'Authorized real read-only source audit. Use gpt-6-sol medium for one real bounded subagent and consume its completion notification before finishing. Keep doing substantive source work while it runs; do not poll or call wait_agent during that work. No nested subagents. Cap every tool output. Do not edit files.' }, remaining());
+      developerInstructions: `Authorized real read-only source audit. Use ${SUBAGENT_MODEL} medium for one real bounded subagent and consume its completion notification before finishing. Keep doing substantive source work while it runs; do not poll or call wait_agent during that work. No nested subagents. Cap every tool output. Do not edit files.` }, remaining());
     meta.threadId = thread.thread.id;
     save('manifest.json', meta);
     const subagentFile = scopes[1];
-    const first = await startTurn(workPrompt(0, `First cat ${sentinelFile} through a tool. Spawn exactly one real gpt-6-sol reasoning medium subagent with this bounded read-only task: inspect ${subagentFile} and only its direct callers, cite concrete lines, and return one state/error-path finding plus one counterexample. While it runs, continue your own substantive inspection of ${scopes[0]} and its direct callers, tracing ownership, cancellation and terminal propagation. Do not poll or call wait_agent: let its completion notify your parent mailbox during your ongoing source work, then consume its result before ending the turn. Do not delegate general exploration or spawn another agent.`));
+    const first = await startTurn(workPrompt(0, `First cat ${sentinelFile} through a tool. Spawn exactly one real ${SUBAGENT_MODEL} reasoning medium subagent with this bounded read-only task: inspect ${subagentFile} and only its direct callers, cite concrete lines, and return one state/error-path finding plus one counterexample. While it runs, continue your own substantive inspection of ${scopes[0]} and its direct callers, tracing ownership, cancellation and terminal propagation. Do not poll or call wait_agent: let its completion notify your parent mailbox during your ongoing source work, then consume its result before ending the turn. Do not delegate general exploration or spawn another agent.`));
     meta.mailboxTurnId = first;
     meta.subagentAuditFile = subagentFile;
     save('manifest.json', meta);
@@ -232,7 +248,12 @@ async function main() {
       && typeof e.params.delta === 'string' && e.params.delta.trim(), remaining(), semanticSince);
     await rpc.request('turn/steer', { threadId: meta.threadId, expectedTurnId: second,
       input: input(`Active-turn instruction ${steerNonce}: continue the same tool-backed source audit.`) }, remaining());
-    record({ kind: 'steer/accepted', turnId: second });
+    record({ kind: 'steer/accepted', turnId: second, ordinal: 1 });
+    if (meta.orderedSteerRequired) {
+      await rpc.request('turn/steer', { threadId: meta.threadId, expectedTurnId: second,
+        input: input(`Second active-turn instruction ${steerNonces[1]}: after the prior instruction, inspect one additional direct caller with a tool and finish the source audit.`) }, remaining());
+      record({ kind: 'steer/accepted', turnId: second, ordinal: 2 });
+    }
     if ((await terminal(second)).params.turn.status !== 'completed') throw new Error('Steered continuity turn failed');
     const continuity = evaluate(events, { ...meta, durationMs: at() });
     const prerequisiteError = continuity.errors.find(error => [
@@ -242,10 +263,10 @@ async function main() {
     record({ kind: 'scenario/continuity-verified' });
     const firstUsefulTool = events.find((e) => e.params?.threadId === meta.threadId && isUsefulTool(e));
     if (!firstUsefulTool) throw new Error('Initial scenarios lack a real source inspection');
-    const requiredLastToolAt = firstUsefulTool.atMs + MIN_SPAN_MS;
+    const requiredLastToolAt = firstUsefulTool.atMs + minSpanMs;
     let index = 2;
     while (at() < requiredLastToolAt) {
-      if (index >= scopes.length * 6) throw new Error('Real audit inventory exhausted before 60 minutes');
+      if (index >= scopes.length * 6) throw new Error('Real audit inventory exhausted before the required work span');
       const id = await startTurn(workPrompt(index++));
       if ((await terminal(id)).params.turn.status !== 'completed') throw new Error(`Audit turn ${id} failed`);
       save('progress.json', { threadId: meta.threadId, atMs: at(), workUnits: index, lastTurnId: id });
@@ -253,6 +274,15 @@ async function main() {
     // Ensure the final successful tool, not just wall time, is after the hour mark.
     const last = await startTurn(workPrompt(index++, 'Final source inspection and evidence summary for this same thread.'));
     if ((await terminal(last)).params.turn.status !== 'completed') throw new Error('Final audit turn failed');
+    if (contextInput !== null) {
+      meta.contextProbeAfterTurnId = last;
+      meta.contextProbeTurnId = await startTurn(contextInput);
+      save('manifest.json', meta);
+      await terminal(meta.contextProbeTurnId);
+      const context = validateContextProbe(events, meta);
+      if (context.errors.length) throw new Error(context.errors.join('; '));
+      record({ kind: 'scenario/context-window-exceeded-verified', turnId: meta.contextProbeTurnId });
+    }
   } catch (error) {
     failure = error.message;
     record({ kind: 'fixture/failure', error: failure });
@@ -261,7 +291,9 @@ async function main() {
     meta.finishedUtc = new Date().toISOString();
     meta.failure = failure || null;
     meta.mailboxEvidence = await collectMailboxEvidence({ events, meta, out,
-      repositoryRoot: '/home/taichuy/git/1flowbase_gateway' });
+      repositoryRoot: process.env.RLS_DATABASE_REPOSITORY || '/home/taichuy/git/1flowbase_gateway' });
+    meta.instructionOrderEvidence = collectInstructionOrder({ events, meta, out,
+      repositoryRoot: process.env.RLS_DATABASE_REPOSITORY || '/home/taichuy/git/1flowbase_gateway' });
     const verdict = evaluate(events, meta);
     save('manifest.json', meta);
     save('verdict.json', verdict);

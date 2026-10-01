@@ -1,5 +1,7 @@
 'use strict';
 const fs = require('node:fs');
+const { isExpectedContextError, validateContextProbe } = require('./context-error.cjs');
+const { validateInstructionOrder } = require('./instruction-order.cjs');
 
 const MIN_SPAN_MS = 3_600_000;
 const MAX_GAP_MS = 900_000;
@@ -38,8 +40,8 @@ function validateSubagent(events, meta) {
   if (!session || session.id !== childId || session.parent_thread_id !== meta.threadId
       || !childTurns.size || [...childTurns].some((id) => !contexts.some((c) => c.turn_id === id))
       || contexts.some((c) => c?.root_turn_id !== meta.mailboxTurnId
-        || c?.model !== 'gpt-6-sol' || c?.effort !== 'medium'))
-    errors.push('missing original subagent rollout lineage or gpt-6-sol/medium context');
+        || c?.model !== (meta.subagentModel || 'gpt-6-sol') || c?.effort !== 'medium'))
+    errors.push('missing original subagent rollout lineage or requested model/medium context');
   let activeTurn;
   let childError = false;
   for (const record of rollout) {
@@ -57,7 +59,7 @@ function validateSubagent(events, meta) {
   return { errors, start, completion, childId, successfulTurnIds };
 }
 
-function runtimeFailures(events, subagent) {
+function runtimeFailures(events, subagent, meta) {
   const fatal = [];
   const recovered = [];
   for (const event of events) {
@@ -68,6 +70,7 @@ function runtimeFailures(events, subagent) {
       continue;
     }
     if (event.method !== 'error') continue;
+    if (isExpectedContextError(event, meta)) continue;
     const { threadId, turnId, willRetry, error } = event.params || {};
     const completed = events.some((candidate) => candidate.method === 'turn/completed'
       && candidate.params?.threadId === threadId && candidate.params?.turn?.id === turnId
@@ -84,11 +87,14 @@ function evaluate(events, meta) {
   const errors = [];
   const unverified = [];
   const root = events.filter((e) => e.params?.threadId === meta.threadId);
+  const contextTurnId = meta.contextProbeRequired === true ? meta.contextProbeTurnId : undefined;
   const completed = root.filter((e) => e.method === 'turn/completed');
   const items = root.filter((e) => e.method === 'item/completed');
   const compactItem = items.find((e) => e.params.item.type === 'contextCompaction');
-  const workCompleted = completed.filter((e) => e.params.turn?.id !== compactItem?.params.turnId);
-  const invoked = events.filter((e) => e.kind === 'turn/invoked' && e.threadId === meta.threadId);
+  const workCompleted = completed.filter((e) => e.params.turn?.id !== compactItem?.params.turnId
+    && e.params.turn?.id !== contextTurnId);
+  const invoked = events.filter((e) => e.kind === 'turn/invoked' && e.threadId === meta.threadId
+    && e.turnId !== contextTurnId);
   const ids = invoked.map((e) => e.turnId);
   const good = workCompleted.filter((e) => e.params.turn?.status === 'completed' && ids.includes(e.params.turn.id));
   const sourceTools = items.filter(tool);
@@ -96,16 +102,24 @@ function evaluate(events, meta) {
   const lastTool = sourceTools.at(-1);
   if (!meta.threadId || new Set(ids).size !== ids.length || ids.length !== workCompleted.length
       || workCompleted.some((e) => !ids.includes(e.params.turn?.id))) errors.push('thread/turn correlation incomplete');
-  if (completed.some((e) => e.params.turn?.status !== 'completed')) errors.push('non-completed turn');
-  if (!Number.isFinite(meta.durationMs) || meta.durationMs < MIN_SPAN_MS) errors.push('duration below 60 minutes');
-  if (!firstTool || !lastTool || lastTool.atMs - firstTool.atMs < MIN_SPAN_MS)
-    errors.push('useful tool work span below 60 minutes');
+  if (completed.some((e) => e.params.turn?.id !== contextTurnId
+      && e.params.turn?.status !== 'completed')) errors.push('non-completed turn');
+  const requiredSpan = meta.minSpanMs ?? MIN_SPAN_MS;
+  if (!Number.isSafeInteger(requiredSpan) || requiredSpan < 1_800_000)
+    errors.push('invalid required work span (minimum 30 minutes)');
+  if (!Number.isFinite(meta.durationMs) || meta.durationMs < requiredSpan)
+    errors.push(`duration below ${requiredSpan / 60_000} minutes`);
+  if (!firstTool || !lastTool || lastTool.atMs - firstTool.atMs < requiredSpan)
+    errors.push(`useful tool work span below ${requiredSpan / 60_000} minutes`);
   if (good.length < 4) errors.push('insufficient useful turns');
   for (let i = 1; i < sourceTools.length; i++) {
     if (sourceTools[i].atMs - sourceTools[i - 1].atMs > MAX_GAP_MS) errors.push('idle useful-work gap exceeds 15 minutes');
   }
   const subagent = validateSubagent(events, meta);
-  const runtime = runtimeFailures(events, subagent);
+  const runtime = runtimeFailures(events, subagent, meta);
+  const context = validateContextProbe(events, meta);
+  errors.push(...context.errors);
+  errors.push(...validateInstructionOrder(events, meta));
   if (runtime.fatal.length)
     errors.push('runtime close_exhausted/error or fixture failure');
   if (events.some((e) => e.method === 'model/rerouted')) errors.push('model rerouting');
@@ -172,7 +186,8 @@ function evaluate(events, meta) {
   return { status: errors.length ? 'FAIL' : unverified.length ? 'UNVERIFIED' : 'PASS',
     pass: errors.length === 0 && unverified.length === 0, errors, unverified,
     usefulTurns: good.length, durationMs: meta.durationMs, recoveredRetryNotifications: runtime.recovered.length,
-    usefulWorkSpanMs: firstTool && lastTool ? lastTool.atMs - firstTool.atMs : 0 };
+    usefulWorkSpanMs: firstTool && lastTool ? lastTool.atMs - firstTool.atMs : 0,
+    requiredWorkSpanMs: requiredSpan, contextProbeVerified: context.verified };
 }
 
 module.exports = { evaluate, validateSubagent, isUsefulTool: tool, MIN_SPAN_MS };

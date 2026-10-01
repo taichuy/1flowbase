@@ -67,6 +67,30 @@ test('strong core evidence remains explicitly unverified without mailbox log', (
   assert.deepEqual(result.errors, []);
 });
 
+test('explicit 30-minute work requirement preserves actual useful-work and idle-gap checks', () => {
+  const f = fixture();
+  f.meta.minSpanMs = 1_800_000;
+  f.meta.durationMs = 1_800_400;
+  f.events = f.events.filter(e => e.atMs < 2_400_000);
+  assert.deepEqual(evaluate(f.events, f.meta).errors, []);
+  f.meta.durationMs = 1_799_999;
+  assert.ok(evaluate(f.events, f.meta).errors.some(e => e.includes('duration')));
+});
+
+test('minimum useful duration cannot be bypassed with an arbitrary test override', () => {
+  const f = fixture();
+  f.meta.minSpanMs = 1;
+  assert.ok(evaluate(f.events, f.meta).errors.some(e => e.includes('invalid required work span')));
+});
+
+test('subagent model is explicitly verified against its real execution context', () => {
+  const f = fixture();
+  f.meta.subagentModel = 'gpt-6.1-sol';
+  assert.ok(evaluate(f.events, f.meta).errors.some(e => e.includes('requested model')));
+  writeRollout(f.meta, records => { records[2].payload.model = 'gpt-6.1-sol'; return records; });
+  assert.deepEqual(evaluate(f.events, f.meta).errors, []);
+});
+
 for (const inheritedError of [false, true]) test(`permits inherited parent history (error=${inheritedError})`, () => {
   const { events, meta } = fixture();
   writeRollout(meta, (records) => {
