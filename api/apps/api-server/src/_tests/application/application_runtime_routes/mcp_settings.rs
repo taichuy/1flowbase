@@ -72,7 +72,24 @@ async fn preview_mcp_settings_freeze_selection_and_register_tools() {
         json!(["preview_mcp"])
     );
     let run_id = payload["data"]["flow_run"]["id"].as_str().unwrap();
-    wait_for_run_detail(&app, &cookie, &application_id, run_id, &["succeeded"]).await;
+    let detail = wait_for_run_detail(
+        &app,
+        &cookie,
+        &application_id,
+        run_id,
+        &["succeeded", "failed"],
+    )
+    .await;
+    if detail["flow_run"]["status"] != "succeeded" {
+        let events: Vec<(String, Value)> = sqlx::query_as(
+            "select event_type, payload from flow_run_events where flow_run_id=$1 order by sequence",
+        )
+        .bind(Uuid::parse_str(run_id).unwrap())
+        .fetch_all(state.store.pool())
+        .await
+        .unwrap();
+        panic!("MCP preview failed: flow={detail}, events={events:?}");
+    }
     let snapshot = app.clone().oneshot(Request::builder()
         .uri(format!("/api/console/applications/{application_id}/orchestration/runs/{run_id}/debug-snapshot"))
         .header("cookie", &cookie).body(Body::empty()).unwrap()).await.unwrap();

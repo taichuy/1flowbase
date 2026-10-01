@@ -704,6 +704,7 @@ function createMockUpstream(options = {}) {
         scenario,
         safeRequestSummary(request, body),
       );
+      const terminalBarrier = terminalBarriers.forRequest(body, requestTimeline);
       const errorFixture = errorFixtureFromBody(body.response ?? body);
       if (errorFixture) {
         sendJson(socket, {
@@ -757,32 +758,41 @@ function createMockUpstream(options = {}) {
         : clientText !== null
           ? responsesEvents(requestTimeline.nonce, ...textChunks)
           : responsesEvents(requestTimeline.nonce);
-      let visibleDeltaReleased = false;
-      for (const chunk of stream.chunks) {
-        if (cancelRequested || socket.destroyed) return;
-        sendJson(socket, chunk);
-        requestTimeline.record('chunk', { protocolEvent: chunk.type });
-        const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
-        const barrierEvent = stream.barrierEvent ?? chunk.type;
-        if (!visibleDeltaReleased && barrier.enabled && visibleMarker && chunk.type === barrierEvent) {
-          visibleDeltaReleased = true;
-          requestTimeline.record('barrier_waiting', { protocolEvent: chunk.type });
-          await barrier.wait();
-          requestTimeline.record('barrier_released', { protocolEvent: chunk.type });
+      try {
+        let visibleDeltaReleased = false;
+        let terminalBarrierHeld = false;
+        for (const chunk of stream.chunks) {
+          if (cancelRequested || socket.destroyed) return;
+          sendJson(socket, chunk);
+          requestTimeline.record('chunk', { protocolEvent: chunk.type });
+          if (!terminalBarrierHeld && chunk.type === 'response.output_text.delta' && terminalBarrier) {
+            terminalBarrierHeld = true;
+            await terminalBarrier();
+          }
+          const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
+          const barrierEvent = stream.barrierEvent ?? chunk.type;
+          if (!visibleDeltaReleased && barrier.enabled && visibleMarker && chunk.type === barrierEvent) {
+            visibleDeltaReleased = true;
+            requestTimeline.record('barrier_waiting', { protocolEvent: chunk.type });
+            await barrier.wait();
+            requestTimeline.record('barrier_released', { protocolEvent: chunk.type });
+          }
+          if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
         }
-        if (scenario === SCENARIO.SLOW) await delay(slowChunkDelayMs);
+        if (scenario === SCENARIO.STREAM_INTERRUPTION) {
+          requestTimeline.record('stream_interrupted');
+          requestTimeline.finish('interrupted', { successTerminalCount: 0 });
+          socket.destroy();
+          return;
+        }
+        if (scenario === SCENARIO.CANCEL_OBSERVATION) return;
+        sendJson(socket, stream.terminal);
+        requestTimeline.record('chunk', { protocolEvent: stream.terminal.type });
+        requestTimeline.finish('completed', { successTerminalCount: 1 });
+        sendClose(socket);
+      } finally {
+        terminalBarriers.completeRequest(body);
       }
-      if (scenario === SCENARIO.STREAM_INTERRUPTION) {
-        requestTimeline.record('stream_interrupted');
-        requestTimeline.finish('interrupted', { successTerminalCount: 0 });
-        socket.destroy();
-        return;
-      }
-      if (scenario === SCENARIO.CANCEL_OBSERVATION) return;
-      sendJson(socket, stream.terminal);
-      requestTimeline.record('chunk', { protocolEvent: stream.terminal.type });
-      requestTimeline.finish('completed', { successTerminalCount: 1 });
-      sendClose(socket);
     }, (kind) => {
       if (requestTimeline) requestTimeline.finish('disconnected', { kind, successTerminalCount: 0 });
     });

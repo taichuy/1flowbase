@@ -24,7 +24,7 @@ function target() {
   };
 }
 
-function evidence(transport = 'responses-sse') {
+function evidence(transport = 'responses-websocket') {
   return {
     upstreamBefore: {
       counters: { gatewayExecutorInvocations: 7, networkObserverOutbound: 3, providerExecutions: 2 },
@@ -74,10 +74,12 @@ test('Root #1461 AC WireAudit proves Gateway traversal, durable trace, redaction
   assert.equal(JSON.stringify(audit).includes('application-secret'), false);
 });
 
-test('Root #1461 authenticity negative: direct mock WebSocket arrival is not Gateway support evidence', () => {
+test('Root #1461 authenticity negative: direct mock model is not Gateway support evidence', () => {
+  const directProbe = auditInput();
+  directProbe.upstreamAfter.entries[1].request.body.model = 'mock-model';
   assert.throws(
-    () => createWireAudit(auditInput('responses-websocket')),
-    /Gateway-to-upstream Responses SSE arrival/u,
+    () => createWireAudit(directProbe),
+    /Gateway-to-upstream Responses WebSocket arrival/u,
   );
 });
 

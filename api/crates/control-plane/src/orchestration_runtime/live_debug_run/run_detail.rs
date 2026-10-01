@@ -103,6 +103,20 @@ where
 }
 
 fn serde_error_payload(error: &anyhow::Error) -> Value {
+    if let Some(original) = error.chain().find_map(|cause| {
+        let runtime = cause.downcast_ref::<plugin_framework::PluginFrameworkError>()?;
+        match runtime {
+            plugin_framework::PluginFrameworkError::RuntimeContract { error }
+                if error.kind
+                    == plugin_framework::ProviderRuntimeErrorKind::ProviderUpstreamError =>
+            {
+                Some(error.as_ref())
+            }
+            _ => None,
+        }
+    }) {
+        return json!({ "message": original.message });
+    }
     let text = error.to_string();
     let Ok(payload) = serde_json::from_str::<Value>(&text) else {
         return json!({ "message": text });
@@ -122,3 +136,7 @@ fn serde_error_payload(error: &anyhow::Error) -> Value {
 
     payload
 }
+
+#[cfg(test)]
+#[path = "../../_tests/orchestration_runtime/error_payload.rs"]
+mod error_payload_tests;
