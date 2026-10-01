@@ -1385,7 +1385,8 @@ fn issue_2046_responses_index_is_bounded_and_does_not_copy_opaque_content() {
     assert!(index.has_assistant_message_after_tool_outputs());
     assert_eq!(index.outputs_by_call_id()["call_1"], vec![2]);
     let mut continuing = input.as_array().unwrap().clone();
-    continuing.push(json!({"type":"custom_tool_call_output","call_id":"call_2","output":"new result"}));
+    continuing
+        .push(json!({"type":"custom_tool_call_output","call_id":"call_2","output":"new result"}));
     assert!(!ResponsesInputIndex::build(&json!(continuing))
         .unwrap()
         .has_assistant_message_after_tool_outputs());

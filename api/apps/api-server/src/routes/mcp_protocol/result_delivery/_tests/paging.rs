@@ -59,6 +59,28 @@ fn initial_selection_page_reserves_both_cursor_locations() {
 }
 
 #[test]
+fn page_budget_too_small_keeps_the_same_retry_cursor_in_both_locations() {
+    let leaves = ResultSelection::default()
+        .leaves(&json!({"body": "界".repeat(3000)}))
+        .unwrap();
+    let cursor = ContinuationCursor::default();
+    let page = bounded_page(
+        &leaves,
+        cursor,
+        1,
+        json!({"detail": {"result_ref": "test", "next_cursor": null}}),
+    );
+    assert_eq!(page["detail_status"], "page_budget_too_small");
+    assert_eq!(page["next_cursor"], json!(cursor.encode()));
+    assert_eq!(page["detail"]["next_cursor"], page["next_cursor"]);
+    assert!(
+        ContinuationCursor::parse(page["detail"]["next_cursor"].as_str().unwrap())
+            .unwrap()
+            .is_valid_for(&leaves)
+    );
+}
+
+#[test]
 fn empty_string_range_at_the_end_is_not_a_missing_or_invalid_field() {
     let selection = ResultSelection::parse(
         &json!({"string_ranges": {"/body": {"offset": 2, "length": 5}}}),

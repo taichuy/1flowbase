@@ -10,7 +10,7 @@ pub(crate) async fn load_node_run_error_payloads(
     let rows = sqlx::query(
         r#"
         select id, error_payload
-        from node_runs
+        from node_run_records
         where flow_run_id = $1
           and error_payload is not null
         "#,

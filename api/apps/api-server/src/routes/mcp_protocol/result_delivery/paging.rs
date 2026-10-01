@@ -46,6 +46,9 @@ pub(super) fn bounded_page(
         available.saturating_add(PAGE_ENVELOPE_RESERVE_CHARS),
     ) else {
         envelope["next_cursor"] = json!(cursor.encode());
+        if envelope.get("detail").is_some() {
+            envelope["detail"]["next_cursor"] = envelope["next_cursor"].clone();
+        }
         envelope["detail_status"] = json!("page_budget_too_small");
         return envelope;
     };

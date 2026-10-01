@@ -78,7 +78,8 @@ fn provider_tool_structure_receipt_keeps_only_wire_shape_metadata() {
 }
 
 #[tokio::test]
-async fn assistant_activity_canonical_provider_deltas_append_before_the_terminal_event() {
+async fn assistant_activity_canonical_provider_deltas_stream_in_order_without_durable_debug_writes()
+{
     let stream = Arc::new(crate::_tests::RecordingRuntimeEventStream::default());
     let flow_run_id = Uuid::nil();
     let node_run_id = Uuid::max();
@@ -96,10 +97,8 @@ async fn assistant_activity_canonical_provider_deltas_append_before_the_terminal
     )
     .await;
     assert_eq!(stream.events().len(), 1);
-    assert!(
-        stream.events()[0].persist_required,
-        "AC-002 canonical provider deltas must remain eligible for ordered durable persistence"
-    );
+    assert!(!stream.events()[0].persist_required);
+    assert_eq!(stream.events()[0].payload["text"], "first");
 
     project_canonical_provider_deltas(
         Some(&(stream.clone() as Arc<dyn RuntimeEventStream>)),
@@ -114,7 +113,8 @@ async fn assistant_activity_canonical_provider_deltas_append_before_the_terminal
     )
     .await;
     assert_eq!(stream.events().len(), 2);
-    assert!(stream.events()[1].persist_required);
+    assert!(!stream.events()[1].persist_required);
+    assert_eq!(stream.events()[1].payload["text"], "second");
 }
 
 #[test]

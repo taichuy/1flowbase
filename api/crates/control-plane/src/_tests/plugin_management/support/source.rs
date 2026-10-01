@@ -1,15 +1,17 @@
 use super::fixtures::build_openai_compatible_package_bytes;
 use super::*;
 
+type WorkerDemand = (Uuid, u64, Option<bool>);
+
 #[derive(Clone, Default)]
 pub(crate) struct MemoryProviderRuntime {
     loaded_installations: Arc<RwLock<Vec<Uuid>>>,
     unloaded_installations: Arc<RwLock<Vec<Uuid>>>,
-    worker_demands: Arc<RwLock<Vec<(Uuid, u64, Option<bool>)>>>,
+    worker_demands: Arc<RwLock<Vec<WorkerDemand>>>,
 }
 
 impl MemoryProviderRuntime {
-    pub(crate) async fn worker_demands(&self) -> Vec<(Uuid, u64, Option<bool>)> {
+    pub(crate) async fn worker_demands(&self) -> Vec<WorkerDemand> {
         self.worker_demands.read().await.clone()
     }
 

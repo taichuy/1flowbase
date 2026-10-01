@@ -464,7 +464,7 @@ async fn wait_for_node_run_error_code(
         let payload = sqlx::query_scalar::<_, Value>(
             r#"
             select coalesce(error_payload, 'null'::jsonb)
-            from node_runs
+            from node_run_records
             where id = $1
               and status = 'failed'
             "#,

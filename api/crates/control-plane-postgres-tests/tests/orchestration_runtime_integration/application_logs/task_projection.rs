@@ -443,7 +443,9 @@ async fn issue_2105_business_turn_pages_keep_facts_and_reads_do_not_lock_writers
     let mut ids = Vec::new();
     for index in 0..6 {
         let mut input = task_fixture_input(&seeded, &compiled, key, &format!("Question {index}"));
-        input.input_payload["system"] = json!(format!("System {index}"));
+        input.input_payload
+            [extension_contracts::provider_contract::NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY] =
+            json!({"system": [{"text": format!("System {index}")}]});
         input.application_run_log_context = Some(ApplicationRunLogContext {
             identity_status: "identified".into(),
             protocol: Some("openai_responses".into()),

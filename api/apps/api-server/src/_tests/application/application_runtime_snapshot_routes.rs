@@ -815,7 +815,7 @@ async fn debug_variable_snapshot_uses_durable_cache_instead_of_recomputing_node_
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
     sqlx::query(
         r#"
-        insert into node_runs (
+        insert into node_run_records (
             id,
             scope_id,
             flow_run_id,
@@ -942,7 +942,7 @@ async fn debug_variable_snapshot_ignores_waiting_and_non_output_payload_buckets(
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
     sqlx::query(
         r#"
-        insert into node_runs (
+        insert into node_run_records (
             id,
             scope_id,
             flow_run_id,

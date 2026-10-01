@@ -34,7 +34,7 @@ pub(super) async fn archive(
     for name in names {
         metadata.remove(name);
     }
-    if lossless_json_parameter(&Value::Object(metadata)).unwrap()[1].is_string() {
+    if lossless_json_value(&Value::Object(metadata))[1].is_string() {
         return Ok((input.payload.clone(), None, None));
     }
     let (scope, application) = sqlx::query_as::<_, (Uuid, Uuid)>(
