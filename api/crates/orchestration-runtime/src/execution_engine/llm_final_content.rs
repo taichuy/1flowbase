@@ -414,6 +414,11 @@ pub(crate) fn build_provider_error_payload(
     {
         payload["stream_termination"] = stream_termination;
     }
+    if error.kind == ProviderRuntimeErrorKind::ProviderUpstreamError {
+        if let Some(details) = &error.provider_details {
+            payload["provider_details"] = details.clone();
+        }
+    }
     recovery_diagnostics::attach(&mut payload, error.provider_details.as_ref());
     if let Some(binding) = error
         .provider_details
@@ -620,6 +625,15 @@ pub(super) fn build_output_protocol_failure_payload(
 }
 
 pub(super) fn provider_error_allows_retry(error: &ProviderRuntimeError) -> bool {
+    if error
+        .provider_details
+        .as_ref()
+        .and_then(|details| details.get("semantic_terminal"))
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        return false;
+    }
     match error.kind {
         ProviderRuntimeErrorKind::ProviderAffinityMismatch
         | ProviderRuntimeErrorKind::ProviderTransportUnavailable

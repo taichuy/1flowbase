@@ -48,17 +48,30 @@ pub fn native_result_from_flow_run(
 
 fn native_error_from_payload(payload: Option<&Value>) -> Option<native::NativeError> {
     payload.map(|payload| {
-        let message = payload
-            .get("message")
-            .or_else(|| payload.get("error"))
+        let upstream_error = payload
+            .get("provider_details")
+            .and_then(|details| details.get("upstream_error"));
+        let message = upstream_error
+            .and_then(|error| error.get("message"))
             .and_then(Value::as_str)
+            .or_else(|| {
+                payload
+                    .get("message")
+                    .or_else(|| payload.get("error"))
+                    .and_then(Value::as_str)
+            })
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| payload.to_string());
         native::NativeError {
-            code: payload
-                .get("error_code")
-                .or_else(|| payload.get("code"))
+            code: upstream_error
+                .and_then(|error| error.get("code"))
                 .and_then(Value::as_str)
+                .or_else(|| {
+                    payload
+                        .get("error_code")
+                        .or_else(|| payload.get("code"))
+                        .and_then(Value::as_str)
+                })
                 .unwrap_or("runtime_error")
                 .to_string(),
             message,
@@ -69,6 +82,23 @@ fn native_error_from_payload(payload: Option<&Value>) -> Option<native::NativeEr
 
 fn public_native_error_details(payload: &Value) -> Value {
     let mut details = serde_json::Map::new();
+    if let Some(provider_details) = payload.get("provider_details").filter(|details| {
+        payload.get("error_code").and_then(Value::as_str) == Some("provider_upstream_error")
+            || details.get("upstream_error").is_some()
+    }) {
+        // Preserve upstream wire facts. Host request/configuration diagnostics remain internal.
+        for key in [
+            "upstream_error",
+            "raw_body",
+            "semantic_terminal",
+            "status",
+            "status_code",
+        ] {
+            if let Some(value) = provider_details.get(key) {
+                details.insert(key.to_string(), value.clone());
+            }
+        }
+    }
     for key in ["provider_code", "node_id", "node_alias"] {
         if let Some(value) = payload.get(key) {
             details.insert(key.to_string(), value.clone());
@@ -80,7 +110,7 @@ fn public_native_error_details(payload: &Value) -> Value {
         .or_else(|| {
             payload
                 .get("provider_details")
-                .and_then(|details| details.get("status"))
+                .and_then(|details| details.get("status_code").or_else(|| details.get("status")))
                 .and_then(Value::as_u64)
         })
         .and_then(|status| u16::try_from(status).ok())

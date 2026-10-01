@@ -674,6 +674,13 @@ pub struct NativeError {
     pub details: Value,
 }
 
+impl NativeError {
+    /// The original upstream error object is protocol data, including unknown and null fields.
+    pub fn upstream_error(&self) -> Option<&Value> {
+        self.details.get("upstream_error")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NativeMappedInput {
     pub node_input_payload: Value,

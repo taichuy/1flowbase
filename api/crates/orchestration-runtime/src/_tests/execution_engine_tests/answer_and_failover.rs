@@ -1985,3 +1985,47 @@ async fn issue_2036_native_tool_turn_waits_on_original_node_with_formal_output()
         assert_eq!(llm.output_payload["tool_calls"][0]["id"], "call_native");
     }
 }
+
+#[tokio::test]
+async fn semantic_upstream_refusal_without_http_status_never_retries() {
+    let mut plan = base_plan();
+    let llm = plan.nodes.get_mut("node-llm").unwrap();
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
+    let upstream = json!({"message":"refused\nplease correct input", "code":"future_refusal", "type":null, "extra":true});
+    let rejected = ProviderInvocationOutput {
+        events: vec![ProviderStreamEvent::Error {
+            error: ProviderRuntimeError {
+                kind: ProviderRuntimeErrorKind::ProviderUpstreamError,
+                message: "refused\nplease correct input".into(),
+                provider_summary: None,
+                provider_details: Some(json!({"semantic_terminal":true,"upstream_error":upstream})),
+            },
+        }],
+        result: ProviderInvocationResult::default(),
+        first_token_at: None,
+        time_to_first_token_ms: None,
+    };
+    let (invoker, inputs) = sequential_tool_output_invoker(vec![
+        rejected,
+        final_provider_output("must not run".into()),
+    ]);
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
+        .await
+        .unwrap();
+    assert_eq!(inputs.lock().unwrap().len(), 1);
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(
+                failure.error_payload["provider_details"]["upstream_error"],
+                upstream
+            );
+            assert!(
+                failure.error_payload.get("status_code").is_none(),
+                "a WS rejection has no fabricated HTTP status"
+            );
+        }
+        other => panic!("expected semantic refusal, got {other:?}"),
+    }
+}

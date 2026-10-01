@@ -335,7 +335,10 @@ impl ProviderInvoker for ProviderUpstreamErrorInvoker {
                     provider_summary: Some(PROVIDER_UPSTREAM_ERROR_BODY.to_string()),
                     provider_details: Some(json!({
                         "status": 400,
-                        "request_id": "req_123"
+                        "request_id": "req_123",
+                        "raw_body": PROVIDER_UPSTREAM_ERROR_BODY,
+                        "upstream_error": {"message":"first line\nsecond line", "code":"future_code", "type":null,"extra":{"opaque":[null,1]}},
+                        "semantic_terminal": true
                     })),
                 },
             }],

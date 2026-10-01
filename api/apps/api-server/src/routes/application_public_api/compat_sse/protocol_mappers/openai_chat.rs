@@ -64,14 +64,20 @@ impl OpenAiChatStreamMapper {
             "flow_incomplete" => self.finish(initial_run, "length"),
             "flow_failed" => {
                 self.state = OpenAiChatStreamState::Terminal;
-                vec![json_sse(json!({
-                    "error": {
-                        "message": canonical_runtime_error_message(initial_run),
-                        "type": "server_error",
-                        "param": null,
-                        "code": canonical_runtime_error_code(initial_run)
-                    }
-                }))]
+                let error = initial_run
+                    .error
+                    .as_ref()
+                    .and_then(|error| error.upstream_error())
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        json!({
+                            "message": canonical_runtime_error_message(initial_run),
+                            "type": "server_error",
+                            "param": null,
+                            "code": canonical_runtime_error_code(initial_run)
+                        })
+                    });
+                vec![json_sse(json!({"error": error}))]
             }
             "flow_cancelled" => {
                 self.state = OpenAiChatStreamState::Terminal;

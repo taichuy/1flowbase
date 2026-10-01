@@ -45,6 +45,16 @@ impl From<native::NativeApiError> for OpenAiRouteError {
 
 impl IntoResponse for OpenAiRouteError {
     fn into_response(self) -> Response {
+        if let Self::Native(error) = &self {
+            if let Some(upstream) = error
+                .runtime_error
+                .as_ref()
+                .and_then(|error| error.upstream_error())
+            {
+                return (error.status, Json(serde_json::json!({"error": upstream})))
+                    .into_response();
+            }
+        }
         let (status, error) = match self {
             OpenAiRouteError::Compat(error) => (
                 StatusCode::BAD_REQUEST,
@@ -61,7 +71,10 @@ impl IntoResponse for OpenAiRouteError {
                     message: error.message,
                     error_type: "invalid_request_error".to_string(),
                     param: None,
-                    code: error.code.to_string(),
+                    code: error
+                        .runtime_error
+                        .map(|runtime| runtime.code)
+                        .unwrap_or_else(|| error.code.to_string()),
                 },
             ),
             OpenAiRouteError::RequiredAction => (

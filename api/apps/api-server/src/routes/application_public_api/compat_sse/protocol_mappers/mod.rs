@@ -131,6 +131,13 @@ fn openai_response_runtime_event_to_sse(
                 "server_error",
                 canonical_runtime_error_code(initial_run),
             );
+            if let Some(upstream) = initial_run
+                .error
+                .as_ref()
+                .and_then(|error| error.upstream_error())
+            {
+                response["error"] = upstream.clone();
+            }
             response["output"] = Value::Array(completed_output_items.to_vec());
             vec![named_sse_payload(
                 "response.failed",
