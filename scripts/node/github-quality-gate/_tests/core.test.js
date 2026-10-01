@@ -591,6 +591,16 @@ test('buildReport includes backend consistency target results for consistency sc
           passedCount: 2,
           failedCount: 1,
         },
+        {
+          label: 'consistency-storage-runtime-record',
+          packageName: 'control-plane-postgres-tests',
+          filter: '',
+          testTarget: 'runtime_record_integration',
+          status: 'passed',
+          exitCode: 0,
+          passedCount: 5,
+          failedCount: 0,
+        },
       ],
     }, null, 2)}\n`,
     'utf8'
@@ -619,17 +629,20 @@ test('buildReport includes backend consistency target results for consistency sc
   assert.match(report.markdown, /## Backend Consistency Targets/u);
   assert.match(report.markdown, /\| Label \| Package \| Rust test filter \| Status \| Duration \| Passed \| Failed \|/u);
   assert.match(report.markdown, /\| `consistency-storage-model-definition-repository` \| `storage-durable-postgres` \| `model_definition_repository_tests` \| failed \| 2\.30s \| 2 \| 1 \|/u);
-  assert.equal(report.json.backendConsistencyTargets.length, 2);
+  assert.equal(report.json.backendConsistencyTargets.length, 3);
   assert.deepEqual(report.json.backendConsistencyTargets[0], {
     label: 'consistency-control-plane-state-transitions',
     packageName: 'control-plane',
     filter: 'state_transition_tests',
+    testTarget: '',
     status: 'passed',
     exitCode: 0,
     durationMs: 1250,
     passedCount: 3,
     failedCount: 0,
   });
+  assert.equal(report.json.backendConsistencyTargets[2].testTarget, 'runtime_record_integration');
+  assert.match(report.markdown, /`--test runtime_record_integration`/u);
 });
 
 test('runQualityGate closes older open quality gate issues after publishing the latest report', async () => {
