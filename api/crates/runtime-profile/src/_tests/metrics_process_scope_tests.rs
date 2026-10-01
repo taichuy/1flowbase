@@ -4,14 +4,36 @@ use super::*;
 fn initialization_does_not_scan_processes_and_collection_excludes_tasks() {
     let mut sampler = RuntimeMetricSampler::new();
     assert!(sampler.system.processes().is_empty());
-    let snapshot = sampler.collect();
+    // Keep an owned user thread alive through collection so the scope check
+    // cannot pass merely because this test process happens to be single-threaded.
+    let barrier = std::sync::Barrier::new(2);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let (snapshot, thread_pid) = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let path = std::fs::read_link("/proc/thread-self").expect("owned thread PID");
+            let tid = path
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .parse::<u32>()
+                .unwrap();
+            sender.send(sysinfo::Pid::from_u32(tid)).unwrap();
+            barrier.wait();
+        });
+        let thread_pid = receiver.recv().unwrap();
+        let snapshot = sampler.collect();
+        barrier.wait();
+        (snapshot, thread_pid)
+    });
+    assert!(sampler.system.process(thread_pid).is_none());
     let pid = sysinfo::get_current_pid().expect("test process PID");
     assert!(sampler.system.process(pid).is_some());
     assert!(sampler
         .system
         .processes()
         .values()
-        .all(|p| p.thread_kind().is_none()));
+        .all(|p| p.thread_kind() != Some(sysinfo::ThreadKind::Userland)));
     assert!(snapshot.memory.process_bytes > 0);
     assert!(snapshot.memory.related_process_count >= 1);
     assert!(snapshot.cpu.logical_count > 0);

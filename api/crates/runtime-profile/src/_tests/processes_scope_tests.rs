@@ -17,5 +17,5 @@ fn console_sampler_retains_processes_without_enumerating_tasks() {
         .system
         .processes()
         .values()
-        .all(|p| p.thread_kind().is_none()));
+        .all(|p| p.thread_kind() != Some(sysinfo::ThreadKind::Userland)));
 }
