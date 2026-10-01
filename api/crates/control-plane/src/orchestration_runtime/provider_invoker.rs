@@ -22,7 +22,7 @@ mod protocol_context;
 mod protocol_observation;
 mod stream_timing;
 pub(super) use failover_queue::freeze_failover_queue_routes;
-use stream_timing::ProviderStreamTiming;
+use stream_timing::{serialized_frame_size, ProviderStreamTiming};
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 const RESPONSES_WEBSOCKET_PREWARM_MAX_MS: i64 = 30_000;
@@ -729,7 +729,7 @@ where
                     ingress_sequence += 1;
                     let ingress_ms = provider_invoke_started.elapsed().as_millis() as u64;
                     let event_kind = provider_stream_event_kind(&event);
-                    let size_bytes = serde_json::to_vec(&event).map_or(0, |payload| payload.len());
+                    let size_bytes = serialized_frame_size(&event);
                     orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
                             &mut event,
                             &canonical_tool_registry_for_task,

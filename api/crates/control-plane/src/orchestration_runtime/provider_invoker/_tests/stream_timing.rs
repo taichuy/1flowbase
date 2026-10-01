@@ -196,3 +196,66 @@ fn integer_receipts_keep_values_above_float_precision_exactly() {
     assert_eq!(details[0]["sequence"].as_u64(), Some(u64::MAX));
     assert_eq!(details[0]["size_bytes"].as_u64(), Some(size_bytes as u64));
 }
+
+#[test]
+fn serialized_frame_sizes_preserve_json_bytes_and_timing_modes() {
+    let frames = [
+        json!(null),
+        json!({"type": "text_delta", "text": "汉字 🦀 \n \t \\ \""}),
+        json!({"type": "output_item", "item": {"arguments": "{\"city\":\"北京\"}", "n": u64::MAX}}),
+        json!({"type": "usage", "input": 0, "output": 123, "ratio": 0.25}),
+        json!({"type": "finish", "data": [null, true, false, -123, ""]}),
+        json!({"type": "output_item", "item": {"text": "x".repeat(64 * 1024)}}),
+    ];
+    let mut summary = ProviderStreamTiming::new(false);
+    let mut detailed = ProviderStreamTiming::new(true);
+    let mut total = 0;
+    for (index, frame) in frames.iter().enumerate() {
+        let expected = serde_json::to_vec(frame).unwrap().len();
+        let measured = serialized_frame_size(frame);
+        assert_eq!(measured, expected);
+        total += expected;
+        for timing in [&mut summary, &mut detailed] {
+            timing
+                .observe(index as u64, "fixture", measured, 10, 11)
+                .unwrap();
+        }
+    }
+    assert_eq!(summary.summary()["total_size_bytes"], json!(total));
+    assert_eq!(detailed.summary()["total_size_bytes"], json!(total));
+    for (frame, detail) in frames
+        .iter()
+        .zip(detailed.into_details().unwrap().as_array().unwrap())
+    {
+        assert_eq!(
+            detail["size_bytes"],
+            json!(serde_json::to_vec(frame).unwrap().len())
+        );
+    }
+}
+
+#[test]
+fn failed_serialization_preserves_zero_size_after_partial_output() {
+    struct BrokenFrame;
+    impl serde::Serialize for BrokenFrame {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            use serde::ser::{Error, SerializeSeq};
+            let mut sequence = serializer.serialize_seq(Some(2))?;
+            sequence.serialize_element("already written")?;
+            Err(S::Error::custom("fixture serialization failure"))
+        }
+    }
+    assert!(serde_json::to_vec(&BrokenFrame).is_err());
+    assert_eq!(serialized_frame_size(&BrokenFrame), 0);
+}
+
+#[test]
+fn byte_counter_overflow_does_not_change_its_count() {
+    use std::io::Write;
+    let mut counter = JsonByteCounter { bytes: usize::MAX };
+    assert_eq!(
+        counter.write(b"x").unwrap_err().kind(),
+        std::io::ErrorKind::Other
+    );
+    assert_eq!(counter.bytes, usize::MAX);
+}

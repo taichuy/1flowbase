@@ -2,6 +2,32 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+/// Count the existing JSON representation without materializing diagnostic bytes.
+/// Serialization failures retain the previous zero-size timing fallback.
+pub(super) fn serialized_frame_size<T: serde::Serialize>(event: &T) -> usize {
+    let mut counter = JsonByteCounter::default();
+    serde_json::to_writer(&mut counter, event).map_or(0, |()| counter.bytes)
+}
+
+#[derive(Default)]
+struct JsonByteCounter {
+    bytes: usize,
+}
+
+impl std::io::Write for JsonByteCounter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.bytes = self
+            .bytes
+            .checked_add(buffer.len())
+            .ok_or_else(|| std::io::Error::other("serialized frame byte count overflow"))?;
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Online facts for one provider attempt. Detail capture is explicitly opt-in.
 pub(super) struct ProviderStreamTiming {
     event_count: u64,
