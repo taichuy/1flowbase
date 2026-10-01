@@ -618,7 +618,8 @@ pub struct NativeErrorBody {
 
 #[derive(Debug)]
 pub struct NativeApiError {
-    pub(crate) runtime_error: Option<control_plane::application_public_api::native::NativeError>,
+    pub(crate) runtime_error:
+        Option<Box<control_plane::application_public_api::native::NativeError>>,
     pub(crate) status: StatusCode,
     pub(crate) code: &'static str,
     pub(crate) message: String,
@@ -1039,7 +1040,8 @@ pub(crate) fn blocking_run_projection_error(run: &NativeRunResult) -> NativeApiE
                 .filter(|runtime| {
                     runtime.upstream_error().is_some() || runtime.code == "provider_upstream_error"
                 })
-                .cloned();
+                .cloned()
+                .map(Box::new);
             error
         }
         NativeRunStatus::Cancelled => NativeApiError::new(
