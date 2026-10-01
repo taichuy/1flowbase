@@ -24,6 +24,7 @@ function buildComponentReport({ commandOutcome, gateResult }) {
     status: passed ? 'passed' : 'failed',
     scope: COMPONENT_SCOPE,
     exitCode: passed ? 0 : 1,
+    commit: gateResult?.main_source_sha || '',
     mainSourceSha: gateResult?.main_source_sha || '',
     officialSourceSha: gateResult?.official_source_sha || '',
     failures,
