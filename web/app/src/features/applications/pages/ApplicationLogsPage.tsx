@@ -3,13 +3,7 @@ import {
   statisticsFilterKeys
 } from '../lib/statistics-log-filters';
 import type { ConsoleApplicationType } from '@1flowbase/api-client';
-import type { ConversationLogTraceLoader } from '../../agent-flow/components/debug-console/conversation-log-trace-model';
 import {
-  fetchWorkflowTrajectory,
-  fetchWorkflowTrajectoryBody,
-  fetchClientTrajectory,
-  fetchClientTrajectorySection,
-  fetchProviderTrajectoryBody,
   fetchRunPayload
 } from '../api/trajectory';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
@@ -49,11 +43,6 @@ import {
   createApplicationRunArchiveUploadSession,
   fetchApplicationRunArchiveImportJob,
   fetchApplicationRuns,
-  fetchApplicationRunTraceNodeChildren,
-  fetchApplicationRunTraceNodeContent,
-  fetchApplicationRunTraceNodeDetail,
-  fetchApplicationRunTraceToolCallbackContent,
-  fetchApplicationRunTraceTree,
   fetchApplicationRunOverview,
   exportApplicationRunTraceDump,
   exportSelectedApplicationRunsTraceDumpZip,
@@ -67,6 +56,10 @@ import {
   type ApplicationRunSummary
 } from '../api/runtime';
 import { ApplicationRunDetailPanel } from '../components/logs/ApplicationRunDetailPanel';
+import {
+  buildApplicationRunTraceMessage,
+  createApplicationLogTraceLoader
+} from '../components/logs/application-log-trace-loader';
 import { ApplicationLogsFloatingWindow } from '../components/logs/ApplicationLogsFloatingWindow';
 import { ApplicationRunResumeTimelinePanel } from '../components/logs/ApplicationRunResumeTimelinePanel';
 import {
@@ -228,20 +221,6 @@ function writeApplicationLogsSearchState(
   );
 }
 
-function buildTraceDeepLinkMessage(runId: string): AgentFlowDebugMessage {
-  return {
-    id: `application-log-trace:${runId}`,
-    role: 'assistant',
-    content: '',
-    status: 'completed',
-    runId,
-    detailRunId: runId,
-    canOpenDetail: true,
-    rawOutput: null,
-    traceSummary: []
-  };
-}
-
 function archiveImportStorageKey(applicationId: string) {
   return `1flowbase.application.${applicationId}.run_archive_import_job`;
 }
@@ -400,7 +379,7 @@ export function ApplicationLogsPage({
   const [openConversationLogMessage, setOpenConversationLogMessage] =
     useState<AgentFlowDebugMessage | null>(() =>
       initialSearchState.runId && initialSearchState.view === 'trace'
-        ? buildTraceDeepLinkMessage(initialSearchState.runId)
+        ? buildApplicationRunTraceMessage(initialSearchState.runId)
         : null
     );
   const [traceViewRequested, setTraceViewRequested] = useState(
@@ -554,7 +533,7 @@ export function ApplicationLogsPage({
       setExecutionTab('trace');
       setOpenConversationLogMessage(
         searchState.runId && searchState.view === 'trace'
-          ? buildTraceDeepLinkMessage(searchState.runId)
+          ? buildApplicationRunTraceMessage(searchState.runId)
           : null
       );
       setTraceViewRequested(searchState.view === 'trace');
@@ -1013,61 +992,7 @@ export function ApplicationLogsPage({
     </div>
   ) : null;
 
-  const traceLoader: ConversationLogTraceLoader = {
-    loadArtifact: (artifactRef) =>
-      fetchRuntimeDebugArtifact(applicationId, artifactRef),
-    loadArtifacts: (artifactRefs) =>
-      fetchRuntimeDebugArtifacts(applicationId, artifactRefs),
-    loadWorkflowTrajectory: (runId, cursor, options) =>
-      fetchWorkflowTrajectory(applicationId, runId, cursor, options),
-    loadWorkflowTrajectoryBody: (runId, eventId) =>
-      fetchWorkflowTrajectoryBody(applicationId, runId, eventId),
-    loadClientTrajectory: (runId, nodeRunId, cursor, options) =>
-      fetchClientTrajectory(applicationId, runId, nodeRunId, cursor, options),
-    loadClientTrajectorySection: (runId, stepId, section, nodeRunId, cursor) =>
-      fetchClientTrajectorySection(
-        applicationId,
-        runId,
-        stepId,
-        section,
-        nodeRunId,
-        cursor
-      ),
-    loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) =>
-      fetchProviderTrajectoryBody(
-        applicationId,
-        runId,
-        nodeRunId,
-        eventId,
-        cursor,
-        view
-      ),
-    loadTree: (runId) => fetchApplicationRunTraceTree(applicationId, runId),
-    loadChildren: (runId, traceNodeId, cursor) =>
-      fetchApplicationRunTraceNodeChildren(
-        applicationId,
-        runId,
-        traceNodeId,
-        cursor
-      ),
-    loadContent: (runId, traceNodeId) =>
-      fetchApplicationRunTraceNodeContent(applicationId, runId, traceNodeId),
-    loadDetail: (runId, traceNodeId, detailRefId, section) =>
-      fetchApplicationRunTraceNodeDetail(
-        applicationId,
-        runId,
-        traceNodeId,
-        detailRefId,
-        section
-      ),
-    loadToolCallbackDetail: (runId, traceNodeId, toolCallId) =>
-      fetchApplicationRunTraceToolCallbackContent(
-        applicationId,
-        runId,
-        traceNodeId,
-        toolCallId
-      )
-  };
+  const traceLoader = createApplicationLogTraceLoader(applicationId);
 
   const logsHeader = (
     <div className="application-logs-page__header">
@@ -1345,7 +1270,7 @@ export function ApplicationLogsPage({
                   changeLogTab(tab);
                 }}
                 defaultTraceToolsExpanded
-                message={buildTraceDeepLinkMessage(selectedRunId)}
+                message={buildApplicationRunTraceMessage(selectedRunId)}
                 onClose={() => selectRun(null)}
                 traceLoader={traceLoader}
                 overviewLoader={{
