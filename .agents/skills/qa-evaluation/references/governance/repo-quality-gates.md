@@ -58,6 +58,10 @@
 - 证据已经足够支撑当前任务 QA 结论时停止；不要为了显得全面继续叠加无新增覆盖面的门禁。
 - 基座失败先归因；已定位的产品 / fixture 问题且本地入口可承受时，可用 `run-fast --foundation <id>` 缩小反馈面。资源失败遵循共享停止规则，不机械重试；远端 Actions 沿用现有授权和资源边界。
 
+## Executed Test Evidence
+
+后端一致性与 Seed 的定向 gate 需要至少一个已执行通过的测试；编译成功、全部 ignored 或空 filter 选择均失败。测试移到跨层 host 后使用当前 Cargo integration target，报告保留 `testTarget`，不能继续用旧 module 名获得 0 用例绿灯。
+
 ## Quality Rule Changes
 
 新增、删除或调高/调低质量规则、repo hygiene 规则、AGENTS / skills 门禁时，先把规则本身当成可验收对象：

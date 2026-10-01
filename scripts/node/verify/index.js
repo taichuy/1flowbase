@@ -7,7 +7,6 @@ const { spawnSync } = require('node:child_process');
 const {
   buildCargoCommandEnv,
   getRepoRoot,
-  resolveOutputDir,
   runCommandSequence,
   runManagedCommandSequence,
 } = require('../testing/warning-capture.js');
@@ -27,6 +26,9 @@ const {
   IMAGE_LLM_VISION_GATE_TARGETS,
   OFFICIAL_I18N_SEED_GATE_TARGETS,
 } = require('./backend-targets.js');
+
+const { parseCargoTestCounts } = require('./cargo-test-results.js');
+const { buildBackendConsistencyCommands, runBackendConsistencyCommandSequence, runBackendConsistency } = require('./backend-consistency.js');
 
 const VALID_COVERAGE_TARGETS = new Set(['frontend', 'backend', 'all']);
 const VALID_REPO_TARGETS = new Set(['tooling', 'frontend', 'frontend-pr', 'backend', 'all']);
@@ -59,51 +61,8 @@ const VERIFY_COMMANDS = new Set([
 ]);
 const FRONTEND_METRICS = ['lines', 'functions', 'statements', 'branches'];
 const COVERAGE_SCOPE_LABEL = '1flowbase-verify-coverage';
-const BACKEND_CONSISTENCY_TARGET_REPORT_FILE = 'backend-consistency-targets.json';
 const BACKEND_SHARD_BY_KEY = new Map(BACKEND_TEST_SHARDS.map((shard) => [shard.key, shard]));
 const BACKEND_COVERAGE_ENTRY_BY_KEY = new Map(backendThresholds.map((entry) => [entry.key, entry]));
-
-function parseCargoTestCounts(output) {
-  const counts = {
-    passedCount: null,
-    failedCount: null,
-  };
-  const pattern = /test result:\s+(?:ok|FAILED)\.\s+(\d+) passed;\s+(\d+) failed;/gu;
-  let match = pattern.exec(output);
-
-  while (match) {
-    counts.passedCount = (counts.passedCount ?? 0) + Number.parseInt(match[1], 10);
-    counts.failedCount = (counts.failedCount ?? 0) + Number.parseInt(match[2], 10);
-    match = pattern.exec(output);
-  }
-
-  return counts;
-}
-
-function buildBackendConsistencyTargetResult(command) {
-  const target = BACKEND_CONSISTENCY_TARGETS.find((candidate) => candidate.label === command.label);
-
-  return {
-    label: command.label,
-    packageName: target?.packageName || command.args?.[2] || '',
-    filter: target?.filter || command.args?.[5] || '',
-    status: 'skipped',
-    exitCode: null,
-    durationMs: null,
-    passedCount: null,
-    failedCount: null,
-  };
-}
-
-function writeBackendConsistencyTargetReport({ repoRoot, env, targets }) {
-  const outputDir = resolveOutputDir(repoRoot, env);
-  fs.mkdirSync(outputDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(outputDir, BACKEND_CONSISTENCY_TARGET_REPORT_FILE),
-    `${JSON.stringify({ targets }, null, 2)}\n`,
-    'utf8'
-  );
-}
 
 function resolveScriptsNodeEntry(repoRoot, entryName) {
   return path.join(repoRoot, 'scripts', 'node', entryName);
@@ -400,105 +359,6 @@ async function runBackend(argv = [], deps = {}) {
         return status || (emptySelection ? 1 : 0);
       },
     } : {}),
-  });
-}
-
-function buildBackendConsistencyCommands({
-  cargoJobs,
-  cargoTestThreads,
-  incremental = false,
-  group = null,
-}) {
-  return BACKEND_CONSISTENCY_TARGETS
-    .filter((target) => group === null || target.group === group)
-    .map((target) => ({
-      label: target.label,
-      command: 'cargo',
-      args: [
-        'test',
-        '-p',
-        target.packageName,
-        '--jobs',
-        String(cargoJobs),
-        target.filter,
-        '--',
-        `--test-threads=${cargoTestThreads}`,
-      ],
-      cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
-    }));
-}
-
-function runBackendConsistencyCommandSequence(sequenceOptions) {
-  const targets = sequenceOptions.commands.map(buildBackendConsistencyTargetResult);
-  const targetByLabel = new Map(targets.map((target) => [target.label, target]));
-
-  const status = runCommandSequence({
-    ...sequenceOptions,
-    onCommandComplete({ command, result, startedAtMs, finishedAtMs }) {
-      const target = targetByLabel.get(command.label);
-
-      if (!target) {
-        return;
-      }
-
-      const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
-      target.status = result.status === 0 ? 'passed' : 'failed';
-      target.exitCode = result.status ?? 1;
-      target.durationMs = Math.max(0, finishedAtMs - startedAtMs);
-      target.passedCount = counts.passedCount;
-      target.failedCount = counts.failedCount;
-    },
-  });
-
-  writeBackendConsistencyTargetReport({
-    repoRoot: sequenceOptions.repoRoot,
-    env: sequenceOptions.env,
-    targets,
-  });
-
-  return status;
-}
-
-async function runBackendConsistency(argv = [], deps = {}) {
-  if (argv.includes('-h') || argv.includes('--help')) {
-    (deps.writeStdout || ((text) => process.stdout.write(text)))(
-      'Usage: node scripts/node/cli/verify-backend-consistency.js [control-runtime|storage|api]\n'
-        + 'Runs targeted backend Rust data/state consistency regression suites.\n'
-    );
-    return 0;
-  }
-
-  const [group = null, ...extraArgs] = argv;
-  if (extraArgs.length > 0 || (group !== null && !BACKEND_CONSISTENCY_GROUPS.includes(group))) {
-    throw new Error(`Unknown backend consistency group: ${argv.join(' ')}`);
-  }
-
-  const repoRoot = deps.repoRoot || getRepoRoot();
-  const env = deps.env || process.env;
-  const runtimeConfig = deps.runtimeConfig || loadVerifyRuntimeConfig({ repoRoot, env });
-  const managedRunner = deps.managedRunnerImpl || runManagedCommandSequence;
-
-  return managedRunner({
-    repoRoot,
-    env,
-    scope: group ? `verify-backend-consistency-${group}` : 'verify-backend-consistency',
-    lockMode: 'heavy',
-    commandDisplay: `node scripts/node/cli/verify-backend-consistency.js${group ? ` ${group}` : ''}`,
-    runtimeConfig,
-    commands: buildBackendConsistencyCommands({
-      cargoJobs: runtimeConfig.backend.cargoJobs,
-      cargoTestThreads: runtimeConfig.backend.cargoTestThreads,
-      incremental: runtimeConfig.backend.incremental,
-      group,
-    }),
-    spawnSyncImpl: deps.spawnSyncImpl,
-    writeStdout: deps.writeStdout,
-    writeStderr: deps.writeStderr,
-    runCommandSequenceImpl: (sequenceOptions) => runBackendConsistencyCommandSequence({
-      ...sequenceOptions,
-      nowImpl: deps.nowImpl,
-    }),
   });
 }
 

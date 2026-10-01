@@ -123,14 +123,16 @@ const BACKEND_CONSISTENCY_TARGETS = [
   {
     group: 'storage',
     label: 'consistency-storage-runtime-record-repository',
-    packageName: 'storage-durable-postgres',
-    filter: 'runtime_record_repository_tests',
+    packageName: 'control-plane-postgres-tests',
+    testTarget: 'runtime_record_integration',
+    filter: '',
   },
   {
     group: 'storage',
     label: 'consistency-storage-orchestration-runtime-repository',
-    packageName: 'storage-durable-postgres',
-    filter: 'orchestration_runtime_repository_tests',
+    packageName: 'control-plane-postgres-tests',
+    testTarget: 'orchestration_runtime_integration',
+    filter: '',
   },
   {
     group: 'storage',

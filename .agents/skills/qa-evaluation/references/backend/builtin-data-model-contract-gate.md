@@ -44,8 +44,8 @@ cargo test -p control-plane file_management_bootstrap_tests
 cargo test -p control-plane model_definition_service_tests
 cargo test -p runtime-core runtime_engine_rejects_record_writes_when_model_capability_is_read_only
 cargo test -p api-server model_definition_routes_
-cargo test -p storage-postgres model_definition_repository_binds_core_system_models_to_registered_tables
-cargo test -p storage-postgres runtime_record_repository_tests::read_models
+cargo test -p storage-durable-postgres model_definition_repository_binds_core_system_models_to_registered_tables
+cargo test -p control-plane-postgres-tests --test runtime_record_integration read_models::
 pnpm --dir web/packages/api-client test src/_tests/console-data-models.test.ts
 ```
 

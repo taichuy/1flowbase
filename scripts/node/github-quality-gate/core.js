@@ -364,6 +364,7 @@ function normalizeBackendConsistencyTarget(target) {
     label: target.label,
     packageName: target.packageName,
     filter: target.filter,
+    testTarget: target.testTarget || '',
     status: target.status || 'not_run',
     exitCode: Number.isFinite(target.exitCode) ? target.exitCode : null,
     durationMs: Number.isFinite(target.durationMs) ? target.durationMs : null,
@@ -403,7 +404,7 @@ function formatDurationMs(durationMs) {
 }
 
 function formatBackendConsistencyTargetLine(target) {
-  return `| \`${target.label}\` | \`${target.packageName}\` | \`${target.filter}\` | `
+  return `| \`${target.label}\` | \`${target.packageName}\` | \`${target.testTarget ? `--test ${target.testTarget}` : target.filter}\` | `
     + `${target.status} | ${formatDurationMs(target.durationMs)} | `
     + `${target.passedCount ?? 'n/a'} | ${target.failedCount ?? 'n/a'} |`;
 }
