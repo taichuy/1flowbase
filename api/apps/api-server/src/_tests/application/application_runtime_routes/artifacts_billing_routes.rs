@@ -245,8 +245,8 @@ async fn application_runtime_routes_start_debug_run_persists_gateway_billing_aud
             .fetch_one(&pool)
             .await
             .unwrap();
-    let (credit_count,): (i64,) =
-        sqlx::query_as("select count(*) from runtime_credit_ledger where flow_run_id = $1")
+    let (reserved_credit_count,): (i64,) =
+        sqlx::query_as("select count(*) from runtime_credit_ledger where flow_run_id = $1 and transaction_type = 'reserve' and reason = 'gateway_billing_session_reserved'")
             .bind(run_id)
             .fetch_one(&pool)
             .await
@@ -260,7 +260,7 @@ async fn application_runtime_routes_start_debug_run_persists_gateway_billing_aud
 
     assert_eq!(billing_count, 1);
     assert_eq!(cost_count, 1);
-    assert_eq!(credit_count, 1);
+    assert_eq!(reserved_credit_count, 1);
     assert_eq!(audit_count, 3);
 }
 

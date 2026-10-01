@@ -102,10 +102,19 @@ async function runGatewayErrorMatrix({ ready, mockSnapshot }, dependencies = {})
           const arrivals = upstream.filter((entry) => entry.event === 'arrival');
           row.attempts.push({ attempt, http_status: observed.http_status, client: projection, ...persisted, upstream_nonce: arrivals[0]?.nonce ?? null });
           const providerAttempts = persisted.durable.error_payload?.ai_native_recovery?.provider_attempts_consumed;
-          const expectedArrivals = surface === 'responses-websocket' && Number.isInteger(providerAttempts)
-            ? providerAttempts : 1;
+          // The mock WebSocket rejects every retry marker. Its HTTP fallback fails
+          // on the first client turn and succeeds on the second, so both turns
+          // consume one WebSocket and one HTTP request. Only failed runs persist
+          // the recovery receipt.
+          const expectedArrivals = surface === 'responses-websocket'
+            ? (Number.isInteger(providerAttempts) ? providerAttempts : fixture.id === 'retry' && success ? 2 : 1)
+            : 1;
           if (arrivals.length !== expectedArrivals) {
             throw new Error(`error matrix observed ${arrivals.length} controlled upstream requests, expected ${expectedArrivals} from the provider recovery receipt`);
+          }
+          if (surface === 'responses-websocket' && fixture.id === 'retry' && success
+            && (arrivals[0]?.transport !== 'responses-websocket' || arrivals[1]?.transport !== 'responses-sse')) {
+            throw new Error('retry recovery must use one WebSocket attempt followed by one HTTP fallback');
           }
           if (persisted.native.status !== (success ? 'succeeded' : 'failed')) throw new Error('error matrix wrong durable outcome');
           if (!success) {
