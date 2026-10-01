@@ -141,9 +141,25 @@ jobs:
       run: |
         set -euo pipefail
         evidence=tmp/test-governance/gateway-monitor-paired/build
-        cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p runtime-profile --lib > "$evidence/runtime-profile-tests.log" 2>&1
-        cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib api_profile_port_and_process_list_share_the_injected_observation -- --test-threads=1 > "$evidence/repaired-shared-source-tests.log" 2>&1
-        cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib compat_sse::tests -- --test-threads=1 > "$evidence/compatible-stream-tests.log" 2>&1
+        printf '[test-source] %s\n' "$(git rev-parse HEAD)"
+        rustc --version
+        cargo --version
+        run_logged() {
+          phase="$1"
+          logfile="$2"
+          shift 2
+          printf '[phase-start] %s %s\n' "$phase" "$(date -u +%FT%TZ)"
+          set +e
+          "$@" 2>&1 | tee "$logfile"
+          command_status=("${PIPESTATUS[@]}")
+          set -e
+          printf '[phase-end] %s %s command_exit=%s tee_exit=%s\n' "$phase" "$(date -u +%FT%TZ)" "${command_status[0]}" "${command_status[1]}"
+          if [ "${command_status[0]}" -ne 0 ]; then return "${command_status[0]}"; fi
+          if [ "${command_status[1]}" -ne 0 ]; then return "${command_status[1]}"; fi
+        }
+        run_logged runtime-profile "$evidence/runtime-profile-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p runtime-profile --lib
+        run_logged repaired-shared-source "$evidence/repaired-shared-source-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib api_profile_port_and_process_list_share_the_injected_observation -- --test-threads=1
+        run_logged compatible-stream "$evidence/compatible-stream-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib compat_sse::tests -- --test-threads=1
         python3 - <<'PYTEST'
         import pathlib,re,json
         rows=[]
