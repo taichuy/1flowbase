@@ -249,20 +249,100 @@ describe('ApplicationRunDetailPanel', () => {
     'waiting_human',
     'running',
     'failed',
-    'cancelled'
+    'cancelled',
+    'succeeded'
   ])(
-    '#2105 %s retains the user input without inventing an assistant answer',
+    '%s exposes a status-only item and its detail entry without inventing an answer',
     async (status) => {
       runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
         conversationPage([
           { status, query: 'Review this change', answer: null }
         ])
       );
-      renderPanel({});
+      const { onOpenMessageLog } = renderPanel({});
       expect(await screen.findByText('Review this change')).toBeInTheDocument();
-      expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
+      const statusItem = screen.getByTestId('message-assistant');
+      expect(
+        within(statusItem).getByTestId('message-content')
+      ).toBeEmptyDOMElement();
+      const statusMessage = debugConsoleState.latestMessages.find(
+        (message) => message.role === 'assistant'
+      );
+      expect(statusMessage).toMatchObject({
+        content: '',
+        presentation: 'status',
+        status: status === 'succeeded' ? 'completed' : status,
+        detailRunId: 'run-1',
+        canOpenDetail: true
+      });
+      fireEvent.click(within(statusItem).getByRole('button'));
+      expect(onOpenMessageLog).toHaveBeenCalledWith(statusMessage);
     }
   );
+
+  test('native user items get one status region per run, replaced when a real reply arrives', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } }
+    });
+    const nativeInputs = [
+      {
+        message_id: 'input-1',
+        role: 'user' as const,
+        content: 'first input',
+        status: 'cancelled'
+      },
+      {
+        message_id: 'input-2',
+        role: 'user' as const,
+        content: 'second input',
+        status: 'cancelled'
+      }
+    ];
+    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+      conversationPage(nativeInputs)
+    );
+    renderPanel({
+      children: (
+        <QueryClientProvider client={queryClient}>
+          <ApplicationRunDetailPanel
+            applicationId="app-1"
+            runId="run-1"
+            onClose={() => {}}
+          />
+        </QueryClientProvider>
+      )
+    });
+    expect(await screen.findByText('second input')).toBeInTheDocument();
+    expect(screen.getAllByTestId('message-assistant')).toHaveLength(1);
+    expect(
+      within(screen.getByTestId('message-assistant')).getByTestId(
+        'message-content'
+      )
+    ).toBeEmptyDOMElement();
+    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+      conversationPage([
+        ...nativeInputs,
+        {
+          message_id: 'reply',
+          role: 'assistant',
+          content: 'actual recorded reply',
+          status: 'succeeded'
+        }
+      ])
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(
+      await screen.findByText('actual recorded reply')
+    ).toBeInTheDocument();
+    expect(screen.getAllByTestId('message-assistant')).toHaveLength(1);
+    expect(
+      debugConsoleState.latestMessages.some((message) =>
+        message.id.startsWith('conversation-status-')
+      )
+    ).toBe(false);
+  });
 
   test.each([
     ['waiting_callback', 'waiting_callback'],
@@ -299,7 +379,7 @@ describe('ApplicationRunDetailPanel', () => {
     }
   );
 
-  test('AC-002 does not synthesize a bot message for succeeded runs without an answer', async () => {
+  test('a succeeded run without an answer shows status without invented answer content', async () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
       conversationPage([
         {
@@ -316,7 +396,16 @@ describe('ApplicationRunDetailPanel', () => {
     expect(
       screen.queryByText('运行中，暂时还没有输出。')
     ).not.toBeInTheDocument();
-    expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('message-assistant')).getByTestId(
+        'message-content'
+      )
+    ).toBeEmptyDOMElement();
+    expect(
+      debugConsoleState.latestMessages.find(
+        (message) => message.role === 'assistant'
+      )
+    ).toMatchObject({ status: 'completed', content: '' });
   });
 
   test('#2090 AC-001/AC-003 exposes the run system context beside the page with its source', async () => {
@@ -587,7 +676,7 @@ describe('ApplicationRunDetailPanel', () => {
     }
   });
 
-  test('#2105 a waiting turn preserves the input detail permission without a placeholder answer', async () => {
+  test('a status-only item preserves the backend detail permission', async () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
       conversationPage([
         {
@@ -600,7 +689,15 @@ describe('ApplicationRunDetailPanel', () => {
     );
     renderPanel({});
     expect(await screen.findByText('请人工审核')).toBeInTheDocument();
-    expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('message-assistant')).getByTestId(
+        'message-content'
+      )
+    ).toBeEmptyDOMElement();
+    expect(screen.getByTestId('message-assistant')).toHaveAttribute(
+      'data-can-open-detail',
+      'false'
+    );
     expect(screen.getByTestId('message-user')).toHaveAttribute(
       'data-can-open-detail',
       'false'

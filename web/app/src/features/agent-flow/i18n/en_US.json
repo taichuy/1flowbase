@@ -660,6 +660,8 @@
     "global_issues_draft_check_issues_panel_first_deal": "There are global issues with the current draft, please check the Issues panel first to deal with them.",
     "model_unavailable_parameter_form_rendered": "The current model is unavailable and the parameter form cannot be rendered.",
     "default_value": "Default value",
+    "cancelled_without_reply": "Run cancelled without a reply.",
+    "no_reply_yet": "No reply yet.",
     "no_output_yet": "No output yet.",
     "current_zoom": "Current zoom",
     "context_alt": "context",

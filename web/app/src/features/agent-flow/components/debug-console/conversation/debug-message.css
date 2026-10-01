@@ -583,3 +583,10 @@
   line-height: 1.7;
   box-shadow: none;
 }
+
+/* A missing reply still needs a discoverable detail entry, including on touch screens. */
+.agent-flow-editor__debug-message--status
+  .agent-flow-editor__debug-message-action-row {
+  opacity: 1;
+  pointer-events: auto;
+}

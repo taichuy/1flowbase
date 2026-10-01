@@ -31,7 +31,14 @@ import clientTrajectoryStyles from '../../../agent-flow/components/debug-console
 import runDetailStyles from './application-run-detail-panel.css?inline';
 import applicationLogsStyles from '../../pages/application-logs-page.css?inline';
 
+import jsonPreviewStyles from '../../../../shared/ui/json-preview/json-preview-block.css?inline';
+import collapseShellStyles from '../../../../shared/ui/collapse-shell/collapse-shell.css?inline';
+import monacoEditorStyles from 'monaco-editor/min/vs/editor/editor.main.css?inline';
+
 export const shadowViewerStyles = [
+  jsonPreviewStyles,
+  collapseShellStyles,
+  monacoEditorStyles,
   windowWorkspaceStyles,
   editorShellStyles,
   dockPanelStyles,

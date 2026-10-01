@@ -23,6 +23,56 @@ describe('DebugAssistantMessage', () => {
     vi.mocked(copy).mockResolvedValue(true);
   });
 
+  test.each([
+    ['cancelled', 'auto.cancelled_without_reply'],
+    ['completed', 'auto.no_reply_yet']
+  ] as const)(
+    'a %s status region opens details without showing a copy-answer action',
+    (status, labelKey) => {
+      const message: AgentFlowDebugMessage = {
+        id: 'status-run-1',
+        role: 'assistant',
+        status,
+        runId: 'run-1',
+        detailRunId: 'run-1',
+        canOpenDetail: true,
+        content: '',
+        rawOutput: null,
+        traceSummary: [],
+        presentation: 'status'
+      };
+      const onOpenLog = vi.fn();
+      const view = render(
+        <DebugAssistantMessage message={message} onOpenLog={onOpenLog} />
+      );
+      expect(
+        screen.getByText(i18nText('agentFlow', labelKey))
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', {
+          name: i18nText('agentFlow', 'auto.copy_output')
+        })
+      ).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: i18nText('agentFlow', 'auto.view_conversation_log')
+        })
+      );
+      expect(onOpenLog).toHaveBeenCalledWith(message);
+      view.rerender(
+        <DebugAssistantMessage
+          message={{ ...message, canOpenDetail: false }}
+          onOpenLog={onOpenLog}
+        />
+      );
+      expect(
+        screen.queryByRole('button', {
+          name: i18nText('agentFlow', 'auto.view_conversation_log')
+        })
+      ).not.toBeInTheDocument();
+    }
+  );
+
   test('renders streamed answer content as markdown and shows the current workflow node', () => {
     const message: AgentFlowDebugMessage = {
       id: 'assistant-1',

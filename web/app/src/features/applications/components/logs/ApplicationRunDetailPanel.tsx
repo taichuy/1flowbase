@@ -236,9 +236,46 @@ function buildConversationMessages(
     return [];
   }
 
-  return items.flatMap((item) =>
+  const messages = items.flatMap((item) =>
     mapConversationItemToMessages(item, outputState)
   );
+  if (outputState?.request_kind === 'prewarm') return messages;
+
+  const answeredRunIds = new Set(
+    messages
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.detailRunId ?? message.runId)
+  );
+  const lastUserMessageIds = new Map<string, string>();
+  for (const message of messages) {
+    const runId = message.detailRunId ?? message.runId;
+    if (message.role === 'user' && runId) {
+      lastUserMessageIds.set(runId, message.id);
+    }
+  }
+  return messages.flatMap((message) => {
+    const runId = message.detailRunId ?? message.runId;
+    if (
+      message.role !== 'user' ||
+      !runId ||
+      answeredRunIds.has(runId) ||
+      lastUserMessageIds.get(runId) !== message.id
+    ) {
+      return [message];
+    }
+    // This empty display item exposes the recorded run status, not a model answer.
+    // A real assistant item replaces it on the next conversation refresh.
+    return [
+      message,
+      {
+        ...message,
+        id: `conversation-status-${runId}`,
+        role: 'assistant' as const,
+        content: '',
+        presentation: 'status' as const
+      }
+    ];
+  });
 }
 
 function conversationSessionStatus(

@@ -122,7 +122,7 @@ export interface AgentFlowDebugMessage {
   rawOutput: Record<string, unknown> | null;
   statistics?: AgentFlowRunStatistics;
   traceSummary: AgentFlowTraceItem[];
-  presentation?: 'debug' | 'answer';
+  presentation?: 'debug' | 'answer' | 'status';
   activityEvents?: FlowDebugRunStreamEvent[];
 }
 

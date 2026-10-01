@@ -660,6 +660,8 @@
     "global_issues_draft_check_issues_panel_first_deal": "当前草稿存在全局问题，请先查看 Issues 面板处理。",
     "model_unavailable_parameter_form_rendered": "当前模型不可用，无法渲染参数表单。",
     "default_value": "默认值",
+    "cancelled_without_reply": "运行已取消，未收到回复。",
+    "no_reply_yet": "暂无回复。",
     "no_output_yet": "暂无输出。",
     "current_zoom": "当前缩放",
     "context_alt": "上下文",

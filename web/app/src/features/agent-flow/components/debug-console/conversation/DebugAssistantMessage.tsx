@@ -28,14 +28,18 @@ function fallbackContent(message: AgentFlowDebugMessage) {
   }
 
   if (message.status === 'cancelled') {
-    return i18nText('agentFlow', 'auto.stopped');
+    return message.presentation === 'status'
+      ? i18nText('agentFlow', 'auto.cancelled_without_reply')
+      : i18nText('agentFlow', 'auto.stopped');
   }
 
   if (message.status === 'failed') {
     return i18nText('agentFlow', 'auto.debug_run_failed_alt');
   }
 
-  return i18nText('agentFlow', 'auto.no_output_yet');
+  return message.presentation === 'status'
+    ? i18nText('agentFlow', 'auto.no_reply_yet')
+    : i18nText('agentFlow', 'auto.no_output_yet');
 }
 
 export function DebugAssistantMessage({
@@ -80,11 +84,21 @@ export function DebugAssistantMessage({
   }
 
   return (
-    <article className="agent-flow-editor__debug-message agent-flow-editor__debug-message--assistant">
+    <article
+      className={[
+        'agent-flow-editor__debug-message',
+        'agent-flow-editor__debug-message--assistant',
+        message.presentation === 'status' &&
+          'agent-flow-editor__debug-message--status'
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <div className="agent-flow-editor__debug-message-main">
         {messageMain ?? (
           <>
-            {message.presentation !== 'answer' ? (
+            {message.presentation !== 'answer' &&
+            message.presentation !== 'status' ? (
               <DebugWorkflowProcess
                 items={message.traceSummary}
                 reasoning={parsedContent.reasoningText}
@@ -116,17 +130,19 @@ export function DebugAssistantMessage({
           size={8}
           wrap
         >
-          <Tooltip title={i18nText('agentFlow', 'auto.copy_output')}>
-            <Button
-              aria-label={i18nText('agentFlow', 'auto.copy_output')}
-              disabled={!parsedFullContent.answerText}
-              icon={<CopyOutlined />}
-              size="small"
-              onClick={() => {
-                void handleCopyOutput();
-              }}
-            />
-          </Tooltip>
+          {message.presentation !== 'status' ? (
+            <Tooltip title={i18nText('agentFlow', 'auto.copy_output')}>
+              <Button
+                aria-label={i18nText('agentFlow', 'auto.copy_output')}
+                disabled={!parsedFullContent.answerText}
+                icon={<CopyOutlined />}
+                size="small"
+                onClick={() => {
+                  void handleCopyOutput();
+                }}
+              />
+            </Tooltip>
+          ) : null}
           {onOpenLog && canOpenLog ? (
             <Tooltip title={openLogLabel}>
               <Button
