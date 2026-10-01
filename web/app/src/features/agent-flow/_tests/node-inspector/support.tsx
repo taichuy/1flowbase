@@ -43,6 +43,10 @@ export const SLOW_NODE_INSPECTOR_TEST_TIMEOUT = 20_000;
 
 vi.setConfig({ testTimeout: SLOW_NODE_INSPECTOR_TEST_TIMEOUT });
 
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
 vi.mock('@monaco-editor/react', () => ({
   default: ({
     'aria-label': ariaLabel,
@@ -319,8 +323,12 @@ export function FocusIssueSeed() {
   return null;
 }
 
-export function renderWithProviders(ui: ReactNode) {
-  return render(<AppProviders>{ui}</AppProviders>);
+export async function renderWithProviders(ui: ReactNode) {
+  const view = render(<AppProviders>{ui}</AppProviders>);
+  await waitFor(() => {
+    expect(view.container.querySelector('.ant-app')?.childElementCount).toBeGreaterThan(0);
+  });
+  return view;
 }
 
 export function getLlmNodeConfig(

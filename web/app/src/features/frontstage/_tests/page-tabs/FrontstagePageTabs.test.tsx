@@ -367,7 +367,11 @@ describe('FrontstagePageTabs', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: /删除当前标签页/ })
     );
-    fireEvent.click(await screen.findByRole('button', { name: '确 定' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: (name) => name.replace(/\s/gu, '') === '确定'
+      })
+    );
 
     await waitFor(() => {
       expect(pageTabsApi.deleteFrontstagePageTab).toHaveBeenCalledWith(
@@ -447,7 +451,11 @@ describe('FrontstagePageTabs', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: /删除当前标签页/ })
     );
-    fireEvent.click(await screen.findByRole('button', { name: '确 定' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: (name) => name.replace(/\s/gu, '') === '确定'
+      })
+    );
     await waitFor(() => {
       expect(pageTabsApi.deleteFrontstagePageTab).toHaveBeenCalledWith(
         'workspace-1',

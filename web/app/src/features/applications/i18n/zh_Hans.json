@@ -1,5 +1,7 @@
 {
   "auto": {
+    "view_execution_trace": "查看执行轨迹",
+    "close": "关闭",
     "total_cost": "费用",
     "api_keys": "API Keys",
     "application_type_agent_flow": "AgentFlow",

@@ -174,11 +174,14 @@ async function openLlmDetailDock() {
     })
   );
 
-  return screen.findByTestId('agent-flow-editor-detail-dock');
+  const dock = await screen.findByTestId('agent-flow-editor-detail-dock');
+  await within(dock).findByTestId('node-detail-header', {}, { timeout: 10_000 });
+  return dock;
 }
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
@@ -411,11 +414,11 @@ describe('AgentFlowEditorShell', () => {
       .spyOn(HTMLAnchorElement.prototype, 'click')
       .mockImplementation(() => undefined);
 
-    vi.stubGlobal('URL', {
-      ...window.URL,
-      createObjectURL: createObjectUrl,
-      revokeObjectURL: revokeObjectUrl
-    });
+    class ExportURL extends URL {
+      static createObjectURL = createObjectUrl;
+      static revokeObjectURL = revokeObjectUrl;
+    }
+    vi.stubGlobal('URL', ExportURL);
 
     renderShell(
       <AgentFlowEditorShell
@@ -574,7 +577,7 @@ describe('AgentFlowEditorShell', () => {
     fireEvent.click(await screen.findByRole('button', { name: '历史版本' }));
 
     const dock = screen.getByTestId('agent-flow-editor-history-dock');
-    const panel = within(dock).getByLabelText('历史版本');
+    const panel = await within(dock).findByLabelText('历史版本');
 
     expect(panel).toBeInTheDocument();
     expect(
@@ -641,10 +644,10 @@ describe('AgentFlowEditorShell', () => {
 
     expect(runtimeApi.startFlowDebugRun).not.toHaveBeenCalled();
     expect(
-      screen.getByRole('complementary', { name: '预览' })
+      await screen.findByRole('complementary', { name: '预览' })
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('和 Bot 聊天'), {
+    fireEvent.change(await screen.findByPlaceholderText('和 Bot 聊天'), {
       target: { value: '请总结退款政策' }
     });
     fireEvent.click(screen.getByRole('button', { name: '发送调试消息' }));

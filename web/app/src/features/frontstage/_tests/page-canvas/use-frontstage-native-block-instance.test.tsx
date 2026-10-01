@@ -15,7 +15,7 @@ import {
   useState,
   type ComponentType
 } from 'react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContext } from '@1flowbase/page-protocol';
 
@@ -32,6 +32,21 @@ import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
 
 describe('PageCanvas declarative Native block lifecycle', () => {
+  beforeEach(() => {
+    // jsdom RAF uses its Window time origin; the host's measurement clock is
+    // global performance. Keep frame and measurement timestamps on one clock.
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) =>
+      window.setTimeout(() => callback(performance.now()), 16)
+    );
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation((id) =>
+      window.clearTimeout(id)
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test('I2005-AC-004 runtime hover does not re-render a ready Block for design-only feedback', async () => {
     let renders = 0;
     const Block = () => {
@@ -606,7 +621,8 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       );
       const firstPublish = contexts.at(-1)!.outputs.publish;
       const retry = await screen.findByRole('button', {
-        name: i18nText('frontstage', 'auto.retry')
+        name: (name) =>
+          name.replace(/\s/gu, '') === i18nText('frontstage', 'auto.retry')
       });
       shouldThrow = false;
       fireEvent.click(retry);

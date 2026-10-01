@@ -944,6 +944,8 @@ describe('ModelProvidersPage - instances modal', () => {
     expect(saveSpy).toHaveBeenCalledWith(
       primaryContractProviderModels[0].model_id,
       'retry_round_robin',
+      '1flowbase.provider-distribution-rule/v1',
+      {},
       ['provider-1', 'provider-2'],
       ['provider-2'],
       expect.any(Function)

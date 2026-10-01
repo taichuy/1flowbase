@@ -125,7 +125,7 @@ describe('Settings data models page', () => {
     expect(within(previewDrawer).getByText('gold')).toBeInTheDocument();
 
     fireEvent.click(
-      within(previewDrawer).getByRole('button', { name: '关闭' })
+      within(previewDrawer).getByRole('button', { name: 'Close' })
     );
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

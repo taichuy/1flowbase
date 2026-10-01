@@ -28,23 +28,25 @@ describe('@ant-design/icons native module inventory', () => {
     );
   });
 
-  test('I1953-AC-004 resolves only installed icon leaf virtual modules', () => {
+  test('I1953-AC-004 resolves only installed icon leaf virtual modules', async () => {
     const inventory = collectAntDesignIconModuleSources({
       projectRoot: process.cwd()
     });
     const plugin = nativeAntDesignIconsModulesPlugin({ inventory });
-    const resolveId = plugin.resolveId as (id: string) => string | undefined;
+    const resolveId = plugin.resolveId as (
+      id: string
+    ) => Promise<string | undefined>;
     const load = plugin.load as (id: string) => string | undefined;
     const leafId = `${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}ClockCircleOutlined`;
-    const resolvedLeafId = resolveId(leafId);
+    const resolvedLeafId = await resolveId(leafId);
 
     expect(resolvedLeafId).toBeTruthy();
     expect(load(resolvedLeafId!)).toContain(
       `export { default } from ${JSON.stringify('@ant-design/icons/ClockCircleOutlined')}`
     );
-    expect(() =>
+    await expect(
       resolveId(`${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}MissingOutlined`)
-    ).toThrow(/not installed or public/u);
+    ).rejects.toThrow(/not installed or public/u);
   });
 
   test('I1953-AC-001/003 keeps the dev loader import edge count independent from catalog size', () => {

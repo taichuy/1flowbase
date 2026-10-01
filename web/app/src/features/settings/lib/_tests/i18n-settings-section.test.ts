@@ -70,6 +70,7 @@ describe('multilingual settings section', () => {
       })
     ).toEqual([
       {
+        route_id: 'settings.i18n',
         key: 'i18n',
         label_key: 'auto.translation_catalog_title',
         to: '/settings/i18n'

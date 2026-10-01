@@ -76,6 +76,13 @@
 - `--file` 模式若提示“样式扩散失败”，视为文件影响面映射缺失，门禁未通过，先补场景映射
 - 若输出“样式边界失败”，视为声明边界属性被打坏；报告必须包含场景 ID、关键节点、样式属性、实际值、命中的 selector，以及 `uploads/` 中的截图
 
+## Gate 6: Fixture And Assertion Fidelity
+
+- 跨登录、退出或 session 状态切换的页面测试使用当前应用 runtime 装配；单独挂受保护 router 不能证明匿名路由与认证切换正常。
+- lazy 组件、翻译资源与 query 的断言先取得真实内容 ready；空 DOM 上的否定查询不能结算隐藏、权限或详情边界。配置行为测试可预载真实模块，冷启动行为另保留真实 lazy 路由证据。
+- 依赖 mock 接在当前 loader / transport owner；保留浏览器构造器并回收全局替换。测试中的 ESM / CommonJS Provider 与消费者须共享 Context，不能改语言预期掩盖两套模块实例。
+- schema / adapter 断言锁定选中对象与可见行为，不以重渲染次数代替 contract。源码门禁区分合法 hook / 类型引用与被禁止的真实调用，并用正反例证明识错边界。
+
 ## Default Severity Hints
 
 | 场景 | 建议严重度 |

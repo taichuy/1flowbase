@@ -16,8 +16,7 @@ vi.mock('../api/me', () => ({
   fetchMyProfile
 }));
 
-import { AppProviders } from '../../../app/AppProviders';
-import { AppRouterProvider } from '../../../app/router';
+import { ApplicationRuntimeBootstrap } from '../../../app/ApplicationRuntimeBootstrap';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 
@@ -56,9 +55,7 @@ function renderApp(pathname: string) {
   window.history.pushState({}, '', pathname);
 
   return render(
-    <AppProviders>
-      <AppRouterProvider />
-    </AppProviders>
+    <ApplicationRuntimeBootstrap />
   );
 }
 

@@ -1,5 +1,7 @@
 {
   "auto": {
+    "view_execution_trace": "View execution trace",
+    "close": "Close",
     "total_cost": "Cost",
     "api_keys": "API Keys",
     "application_type_agent_flow": "AgentFlow",

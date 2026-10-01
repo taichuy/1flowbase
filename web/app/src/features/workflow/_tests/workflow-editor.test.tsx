@@ -165,7 +165,7 @@ describe('WorkflowEditor assembly', () => {
     expect(screen.queryByText('执行此节点')).not.toBeInTheDocument();
   }, 20_000);
 
-  test('reuses the standard node detail shell without node preview actions', () => {
+  test('reuses the standard node detail shell without node preview actions', async () => {
     renderReactFlowScene(
       <WorkflowEditorAssembly
         applicationId="app-1"
@@ -177,7 +177,7 @@ describe('WorkflowEditor assembly', () => {
 
     fireEvent.click(screen.getByText('Workflow Start'));
 
-    expect(screen.getByTestId('node-detail-header')).toBeInTheDocument();
+    expect(await screen.findByTestId('node-detail-header')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '设置' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '上次运行' })).toBeInTheDocument();
     expect(

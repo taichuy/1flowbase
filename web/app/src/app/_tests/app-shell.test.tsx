@@ -128,7 +128,7 @@ describe('App shell', () => {
     async () => {
       render(<App />);
 
-      expect(await screen.findByRole('heading', { name: '1flowbase' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: '1flowbase' }, { timeout: 10_000 })).toBeInTheDocument();
 
       const header = screen.getByRole('banner');
       const primaryNavigation = screen.getByRole('navigation', { name: 'Primary' });

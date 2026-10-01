@@ -32,7 +32,7 @@ describe('NodeInspector code schema', () => {
       /\.agent-flow-templated-binding-row\s*\{[^}]*grid-template-columns:\s*minmax\(88px,\s*0\.7fr\)\s*minmax\(96px,\s*0\.65fr\)\s*minmax\(\s*168px,\s*1\.5fr\s*\)\s*28px;/su
     );
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithCustomCodeNode()}
       >
@@ -164,7 +164,7 @@ describe('NodeInspector code schema', () => {
     let latestDocument =
       createInitialStateWithStructuredCodeNode().draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={{
           flow_id: 'flow-1',
@@ -252,7 +252,7 @@ describe('NodeInspector code schema', () => {
     let latestDocument =
       createInitialStateWithStructuredCodeNode().draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={{
           flow_id: 'flow-1',
@@ -331,7 +331,7 @@ describe('NodeInspector code schema', () => {
     ];
     let latestDocument = initialState.draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={initialState}>
         <SelectionSeed nodeId="node-code" />
         <DocumentObserver
@@ -444,7 +444,7 @@ describe('NodeInspector code schema', () => {
       required: ['task']
     };
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={initialState}>
         <SelectionSeed nodeId="node-code" />
         <DocumentObserver
@@ -573,7 +573,7 @@ describe('NodeInspector code schema', () => {
     ];
     let latestDocument = initialState.draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={initialState}>
         <SelectionSeed nodeId="node-code" />
         <DocumentObserver

@@ -354,6 +354,15 @@ export default defineConfig(({ command, mode }) => {
       }
     },
     test: {
+      // Match browser ESM resolution so leaf providers and barrel consumers share context.
+      alias: [
+        {
+          find: /^antd$/,
+          replacement: fileURLToPath(
+            new URL('./node_modules/antd/es/index.js', import.meta.url)
+          )
+        }
+      ],
       environment: 'jsdom',
       globals: true,
       testTimeout: 15_000,

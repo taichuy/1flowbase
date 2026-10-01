@@ -21,7 +21,7 @@ beforeEach(setupNodeInspectorTest);
 
 describe('NodeInspector data model', () => {
   test('loads Data Model options from the feature API and disables unavailable models', async () => {
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode()}
       >
@@ -50,7 +50,7 @@ describe('NodeInspector data model', () => {
   test('updates selected Data Model metadata when the selected model changes', async () => {
     let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode()}
       >
@@ -112,7 +112,7 @@ describe('NodeInspector data model', () => {
   test('edits Data Model list query binding', async () => {
     let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode()}
       >
@@ -250,7 +250,7 @@ describe('NodeInspector data model', () => {
   test('keeps Data Model query pagination editable when selected model has no fields', async () => {
     let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode()}
       >
@@ -297,7 +297,7 @@ describe('NodeInspector data model', () => {
   }, 10000);
 
   test('renders Data Model create, update, and delete editors from fixed node types', async () => {
-    const { unmount: unmountCreate } = renderWithProviders(
+    const { unmount: unmountCreate } = await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode('data_model_create')}
       >
@@ -325,7 +325,7 @@ describe('NodeInspector data model', () => {
     ).toBeGreaterThan(0);
     unmountCreate();
 
-    const { unmount: unmountUpdate } = renderWithProviders(
+    const { unmount: unmountUpdate } = await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode('data_model_update')}
       >
@@ -345,7 +345,7 @@ describe('NodeInspector data model', () => {
     ).toBeInTheDocument();
     unmountUpdate();
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode('data_model_delete')}
       >
@@ -366,7 +366,7 @@ describe('NodeInspector data model', () => {
   }, 45000);
 
   test('keeps pagination unique to Data Model list query editors', async () => {
-    const { unmount } = renderWithProviders(
+    const { unmount } = await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode('data_model_get')}
       >
@@ -392,7 +392,7 @@ describe('NodeInspector data model', () => {
 
     unmount();
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithDataModelNode('data_model_list')}
       >

@@ -6,7 +6,7 @@ import {
   within
 } from '@testing-library/react';
 import { Grid } from 'antd';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => ({
   chart: {
@@ -466,6 +466,9 @@ function renderApp(pathname: string) {
 }
 
 describe('SettingsPage', () => {
+  // Configuration behavior starts after the real lazy section module is available.
+  beforeAll(() => import('../pages/settings-page/SettingsAuthCenterSection'));
+
   beforeEach(() => {
     echartsMock.init.mockReturnValue(echartsMock.chart);
     resetAuthStore();

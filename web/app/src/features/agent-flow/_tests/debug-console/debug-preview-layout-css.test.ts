@@ -17,6 +17,13 @@ const shellCss = readFileSync(
   ),
   'utf8'
 );
+const dockPanelCss = readFileSync(
+  join(
+    process.cwd(),
+    'src/features/agent-flow/components/editor/styles/dock-panel.css'
+  ),
+  'utf8'
+);
 const conversationLogCss = readFileSync(
   join(
     process.cwd(),
@@ -71,7 +78,7 @@ describe('debug preview responsive layout CSS', () => {
   });
 
   test('lets the preview shell expand inside the shared dock container', () => {
-    expect(cssBlock(shellCss, '.agent-flow-editor__dock-panel')).toMatch(
+    expect(cssBlock(dockPanelCss, '.agent-flow-editor__dock-panel')).toMatch(
       /flex:\s*1\b/
     );
   });
