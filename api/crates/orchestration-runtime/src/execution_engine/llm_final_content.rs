@@ -644,17 +644,18 @@ pub(super) fn recoverable_provider_error_message(error: &ProviderRuntimeError) -
 }
 
 pub(super) fn provider_runtime_error_from_anyhow(error: &anyhow::Error) -> ProviderRuntimeError {
+    let contract_error = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<ExtensionContractError>());
     if let Some(contract_error @ ExtensionContractError::InvalidProviderContract { .. }) =
-        error.downcast_ref::<ExtensionContractError>()
+        contract_error
     {
         return ProviderRuntimeError::new(
             ProviderRuntimeErrorKind::ProviderInvalidResponse,
             contract_error.to_string(),
         );
     }
-    if let Some(ExtensionContractError::RuntimeContract { error }) =
-        error.downcast_ref::<ExtensionContractError>()
-    {
+    if let Some(ExtensionContractError::RuntimeContract { error }) = contract_error {
         return normalize_runtime_contract_error(error);
     }
     if let Some(ProviderCompactError::Runtime { error }) =
@@ -694,6 +695,10 @@ pub(super) fn normalize_runtime_contract_error(
         normalized
     }
 }
+
+#[cfg(test)]
+#[path = "llm_final_content/_tests/provider_error_chain.rs"]
+mod provider_error_chain_tests;
 
 #[cfg(test)]
 #[path = "_tests/cache_write_usage.rs"]

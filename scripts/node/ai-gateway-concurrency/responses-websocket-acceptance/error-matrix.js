@@ -101,7 +101,12 @@ async function runGatewayErrorMatrix({ ready, mockSnapshot }, dependencies = {})
           const upstream = mockSnapshot().entries.filter((entry) => entry.sequence > before);
           const arrivals = upstream.filter((entry) => entry.event === 'arrival');
           row.attempts.push({ attempt, http_status: observed.http_status, client: projection, ...persisted, upstream_nonce: arrivals[0]?.nonce ?? null });
-          if (arrivals.length !== 1) throw new Error('error matrix attempt must reach exactly one controlled upstream request');
+          const providerAttempts = persisted.durable.error_payload?.ai_native_recovery?.provider_attempts_consumed;
+          const expectedArrivals = surface === 'responses-websocket' && Number.isInteger(providerAttempts)
+            ? providerAttempts : 1;
+          if (arrivals.length !== expectedArrivals) {
+            throw new Error(`error matrix observed ${arrivals.length} controlled upstream requests, expected ${expectedArrivals} from the provider recovery receipt`);
+          }
           if (persisted.native.status !== (success ? 'succeeded' : 'failed')) throw new Error('error matrix wrong durable outcome');
           if (!success) {
             if (!upstream.some((entry) => entry.errorFixture === fixture.id && entry.status === fixture.status)) throw new Error('error matrix omitted upstream fixture failure');

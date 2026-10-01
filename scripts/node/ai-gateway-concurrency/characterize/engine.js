@@ -537,12 +537,16 @@ function mockBatchEvidence(before, after, results) {
       (item.arrival.offsetMs - firstArrival) - (item.result.dispatchedOffsetMs - firstDispatch))));
   }
   const contractFailures = [];
-  if (arrivals.length !== results.length) contractFailures.push(`expected ${results.length} mock arrivals, received ${arrivals.length}`);
-  if (after.active !== before.active) contractFailures.push(`mock active count did not return to ${before.active}: ${after.active}`);
   const scenario = results[0]?.scenario;
+  const retriedInterruption = scenario === SCENARIO.STREAM_INTERRUPTION;
+  if (arrivals.length < results.length || (!retriedInterruption && arrivals.length !== results.length)) {
+    contractFailures.push(`expected ${results.length} mock arrivals, received ${arrivals.length}`);
+  }
+  if (after.active !== before.active) contractFailures.push(`mock active count did not return to ${before.active}: ${after.active}`);
   const observedScenarioCount = countMockScenarioObservations(scenario, entries, results);
-  if (observedScenarioCount !== results.length) {
-    contractFailures.push(`expected ${results.length} mock ${scenario} observations, received ${observedScenarioCount}`);
+  const expectedScenarioCount = retriedInterruption ? arrivals.length : results.length;
+  if (observedScenarioCount !== expectedScenarioCount) {
+    contractFailures.push(`expected ${expectedScenarioCount} mock ${scenario} observations, received ${observedScenarioCount}`);
   }
   return {
     available: true,
