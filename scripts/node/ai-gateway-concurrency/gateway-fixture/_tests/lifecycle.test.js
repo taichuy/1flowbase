@@ -391,3 +391,46 @@ test('injected service-log write failure still stops the Backend, removes scratc
     fs.rmSync(files.root, { recursive: true, force: true });
   }
 });
+
+test('readonly bootstrap errors retain diagnostics and redaction while cleanup still runs', async () => {
+  const aborted = new DOMException('controlled abort fixture-openai-token', 'AbortError');
+  aborted.cause = Object.assign(new Error('socket fixture-anthropic-token'), { code: 'ECONNRESET' });
+  class AbortedOwnerClient extends FakeOwnerClient {
+    async signIn() { throw aborted; }
+  }
+  const files = fixtureFiles();
+  const fake = fakeDependencies({ OwnerClient: AbortedOwnerClient });
+  try {
+    await assert.rejects(createGatewayFixture(files.options, fake.dependencies), (error) => {
+      assert.equal(error.name, 'AbortError');
+      assert.match(error.message, /controlled abort/u);
+      assert.equal(error.cause.code, 'ECONNRESET');
+      assert.match(error.message, /owned process output/u);
+      const diagnostic = require('node:util').inspect(error);
+      assert.doesNotMatch(diagnostic, /fixture-(?:openai|anthropic)-token/u);
+      assert.equal(aborted.message, 'controlled abort fixture-openai-token');
+      return true;
+    });
+    assert.deepEqual(fake.events, ['persist', 'stop:api-server', 'rm']);
+  } finally { fs.rmSync(files.root, { recursive: true, force: true }); }
+});
+
+test('readonly cleanup errors do not replace the original bootstrap failure or skip teardown', async () => {
+  class FailedOwnerClient extends FakeOwnerClient {
+    async signIn() { throw new Error('original bootstrap failure'); }
+  }
+  const files = fixtureFiles();
+  const fake = fakeDependencies({
+    OwnerClient: FailedOwnerClient,
+    persistLogs() { throw new DOMException('cleanup aborted fixture-openai-token', 'AbortError'); },
+  });
+  try {
+    await assert.rejects(createGatewayFixture(files.options, fake.dependencies), (error) => {
+      assert.match(error.message, /original bootstrap failure/u);
+      assert.match(error.message, /cleanup failed: cleanup aborted/u);
+      assert.doesNotMatch(error.stack, /fixture-openai-token/u);
+      return true;
+    });
+    assert.deepEqual(fake.events, ['persist', 'stop:api-server', 'rm']);
+  } finally { fs.rmSync(files.root, { recursive: true, force: true }); }
+});

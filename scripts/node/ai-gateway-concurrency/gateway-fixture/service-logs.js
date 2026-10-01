@@ -20,6 +20,27 @@ function redactServiceLog(value, secrets = []) {
     .replace(/\bfixture-(?:openai|anthropic)-token\b/gu, REDACTED);
 }
 
+// Fetch may throw DOMException with a readonly message; preserve safe diagnostics
+// in a new Error rather than mutating the original or retaining secret-bearing causes.
+function redactServiceError(source, secrets = [], notes = [], seen = new Set()) {
+  const object = source !== null && (typeof source === 'object' || typeof source === 'function');
+  if (object && seen.has(source)) return new Error('[circular error cause]');
+  if (object) seen.add(source);
+  const message = object && typeof source.message === 'string' ? source.message : String(source);
+  const safe = new Error(redactServiceLog([message, ...notes].join('; '), secrets));
+  if (object && typeof source.name === 'string') safe.name = redactServiceLog(source.name, secrets);
+  for (const key of ['code', 'status']) {
+    if (object && typeof source[key] === 'number') safe[key] = source[key];
+    else if (object && typeof source[key] === 'string') safe[key] = redactServiceLog(source[key], secrets);
+  }
+  if (object && typeof source.stack === 'string') {
+    const frames = redactServiceLog(source.stack, secrets).split('\n').slice(1).join('\n');
+    safe.stack = `${safe.name}: ${safe.message}\n${frames}`;
+  }
+  if (object && source.cause !== undefined) safe.cause = redactServiceError(source.cause, secrets, [], seen);
+  return safe;
+}
+
 function byteTail(value, cap) {
   const bytes = Buffer.from(value, 'utf8');
   if (bytes.length <= cap) return value;
@@ -63,5 +84,6 @@ module.exports = {
   byteTail,
   persistServiceLogs,
   redactServiceLog,
+  redactServiceError,
   serviceLogDocument,
 };
