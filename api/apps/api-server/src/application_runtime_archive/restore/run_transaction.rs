@@ -202,7 +202,7 @@ pub(crate) async fn restore_run_archive_v1(
                 .insert(source_node_run_id, target_node_run_id);
             sqlx::query(
                 r#"
-                insert into node_runs (
+                insert into node_run_records (
                     id,
                     scope_id,
                     flow_run_id,

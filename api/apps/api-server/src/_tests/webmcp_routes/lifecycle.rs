@@ -120,7 +120,7 @@ async fn root_1998_webmcp_outer_lifecycle_covers_all_operations_and_scope_reject
         (
             "result",
             json!({"result_ref":"00000000-0000-0000-0000-000000000001"}),
-            true,
+            false,
         ),
         (
             "call",
@@ -150,6 +150,12 @@ async fn root_1998_webmcp_outer_lifecycle_covers_all_operations_and_scope_reject
             json!(is_error),
             "{operation}: {body}"
         );
+        if operation == "result" {
+            assert_eq!(
+                body["data"]["content"]["structuredContent"]["detail_status"],
+                "detail_unavailable"
+            );
+        }
     }
     let invalid = post(
         &app,

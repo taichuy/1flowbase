@@ -25,16 +25,18 @@ impl<T: JsonParameter + ?Sized> JsonParameter for &T {
 }
 
 pub(super) fn lossless_json_parameter(value: &impl JsonParameter) -> Option<Value> {
-    value.json_value().map(|original| {
-        let mut projection = original.clone();
-        let changed = project(&mut projection);
-        let raw = changed.then(|| serde_json::to_string(original).expect("JSON Value serializes"));
-        json!([projection, raw])
-    })
+    value.json_value().map(lossless_json_value)
+}
+
+pub(super) fn lossless_json_value(original: &Value) -> Value {
+    let mut projection = original.clone();
+    let changed = project(&mut projection);
+    let raw = changed.then(|| serde_json::to_string(original).expect("JSON Value serializes"));
+    json!([projection, raw])
 }
 
 pub(super) fn lossless_json_columns(field: &str, value: &Value) -> (Value, Value) {
-    let packet = lossless_json_parameter(value).expect("required JSON value");
+    let packet = lossless_json_value(value);
     let mut originals = serde_json::Map::new();
     if !packet[1].is_null() {
         originals.insert(field.to_owned(), packet[1].clone());

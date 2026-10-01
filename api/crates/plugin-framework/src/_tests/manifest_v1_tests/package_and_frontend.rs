@@ -191,7 +191,7 @@ node_contributions: []
     assert_eq!(manifest.runtime.protocol, "stdio_json_worker");
 
     let multiplex_manifest = parse_plugin_manifest(
-        &r#"
+        r#"
 manifest_version: 1
 plugin_id: openai@0.1.0
 version: 0.1.0

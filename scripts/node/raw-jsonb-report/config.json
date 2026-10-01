@@ -83,54 +83,26 @@
       "protectedBy": ["application_id", "flow_run_id"]
     },
     {
-      "table": "node_runs",
-      "column": "input_payload",
-      "purpose": "node input truth",
+      "table": "node_run_details",
+      "column": "payload",
+      "purpose": "section-keyed input, output, error, metrics and debug node truth",
       "payloadKind": "raw",
-      "readContract": "detail_or_run_scope",
+      "readContract": "node_run_records view exposes sections only to node detail or run-scope readers",
       "listPolicy": "forbidden_raw",
-      "summaryOrPreview": "trace node summary uses node metadata; node payload is loaded through detail/content refs",
-      "protectedBy": ["flow_run_id", "node_run_id"]
+      "summaryOrPreview": "node_runs metadata and trace projections carry bounded list summaries",
+      "protectedBy": ["node_run_id", "section"],
+      "manualEntrypoints": [{"file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/detail_queries.rs", "functionName": "fetch_node_run", "operation": "read", "readBoundary": "read", "columnSource": "raw_column", "note": "node_run_records view joins node_run_details payload sections"}]
     },
     {
-      "table": "node_runs",
-      "column": "output_payload",
-      "purpose": "node output truth",
+      "table": "node_run_details",
+      "column": "raw_json_payloads",
+      "purpose": "lossless original JSON sidecars for each node payload section",
       "payloadKind": "raw",
-      "readContract": "detail_or_run_scope",
+      "readContract": "node_run_records view combines sidecars for node detail or run-scope readers",
       "listPolicy": "forbidden_raw",
-      "summaryOrPreview": "trace node summary uses status, alias, duration, metrics, and content refs",
-      "protectedBy": ["flow_run_id", "node_run_id"]
-    },
-    {
-      "table": "node_runs",
-      "column": "error_payload",
-      "purpose": "node error truth",
-      "payloadKind": "raw",
-      "readContract": "detail_or_run_scope",
-      "listPolicy": "forbidden_raw",
-      "summaryOrPreview": "node status and trace metadata are the list summary; raw error stays in detail",
-      "protectedBy": ["flow_run_id", "node_run_id"]
-    },
-    {
-      "table": "node_runs",
-      "column": "metrics_payload",
-      "purpose": "node metrics summary payload",
-      "payloadKind": "summary",
-      "readContract": "summary_or_detail",
-      "listPolicy": "allowed_summary",
-      "summaryOrPreview": "metrics_payload contains bounded token/duration counters used by trace summaries",
-      "protectedBy": ["flow_run_id", "node_run_id"]
-    },
-    {
-      "table": "node_runs",
-      "column": "debug_payload",
-      "purpose": "node debug truth and provider/tool trace evidence",
-      "payloadKind": "raw",
-      "readContract": "detail_or_run_scope",
-      "listPolicy": "forbidden_raw",
-      "summaryOrPreview": "debug artifact refs and trace node summaries carry preview metadata",
-      "protectedBy": ["flow_run_id", "node_run_id"]
+      "summaryOrPreview": "node_runs metadata and trace projections carry bounded list summaries",
+      "protectedBy": ["node_run_id", "section"],
+      "manualEntrypoints": [{"file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/detail_queries.rs", "functionName": "fetch_node_run", "operation": "read", "readBoundary": "read", "columnSource": "raw_column", "note": "node_run_records view combines node_run_details raw JSON sidecars"}]
     },
     {
       "table": "flow_run_events",

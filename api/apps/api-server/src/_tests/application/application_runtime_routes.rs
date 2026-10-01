@@ -78,6 +78,7 @@ const fs = require('node:fs');
 const request = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 
 let result = {};
+let streamed = false;
 switch (request.method) {
   case 'validate':
     result = { sanitized: { api_key: request.input?.api_key ? "***" : null } };
@@ -131,13 +132,14 @@ switch (request.method) {
       }
     ];
     process.stdout.write(lines.map((line) => JSON.stringify(line)).join("\n") + "\n");
-    process.exit(0);
+    streamed = true;
+    break;
   }
   default:
     result = {};
 }
 
-process.stdout.write(JSON.stringify({ ok: true, result }));
+if (!streamed) process.stdout.write(JSON.stringify({ ok: true, result }));
 "#,
     )
     .unwrap();
@@ -743,6 +745,7 @@ async fn wait_for_run_detail(
 ) -> Value {
     let mut last_status = String::new();
     let mut last_error = Value::Null;
+    let mut last_nodes = Value::Null;
     for _ in 0..200 {
         let response = app
             .clone()
@@ -765,6 +768,7 @@ async fn wait_for_run_detail(
             .unwrap_or_default();
         last_status = status.to_string();
         last_error = payload["data"]["flow_run"]["error_payload"].clone();
+        last_nodes = payload["data"]["nodes"].clone();
         if expected_statuses.contains(&status) {
             return payload["data"].clone();
         }
@@ -772,7 +776,7 @@ async fn wait_for_run_detail(
     }
 
     panic!(
-        "timed out waiting for run status: {expected_statuses:?}, last status: {last_status}, last error: {last_error}"
+        "timed out waiting for run status: {expected_statuses:?}, last status: {last_status}, last error: {last_error}, nodes: {last_nodes}"
     );
 }
 
@@ -846,7 +850,7 @@ async fn seed_node_run_history(
     let pool = sqlx::PgPool::connect(database_url).await?;
     sqlx::query(
         r#"
-        update node_runs
+        update node_run_records
         set status = $2,
             output_payload = $3,
             error_payload = $4,
@@ -878,7 +882,7 @@ async fn seed_node_run_history_record(
     let id = Uuid::now_v7();
     sqlx::query(
         r#"
-        insert into node_runs (
+        insert into node_run_records (
             id,
             scope_id,
             flow_run_id,

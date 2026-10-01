@@ -36,7 +36,7 @@
       "requiredColumns": ["id", "scope_id", "conversation_id", "application_id", "flow_run_id", "node_run_id", "role", "content", "sequence", "status", "started_at", "finished_at", "created_at", "updated_at"]
     },
     "node_runs": {
-      "requiredColumns": ["id", "flow_run_id", "node_id", "node_type", "node_alias", "status", "input_payload", "output_payload", "error_payload", "metrics_payload", "started_at", "finished_at", "debug_payload", "scope_id", "node_run_id", "created_at"]
+      "requiredColumns": ["id", "flow_run_id", "node_id", "node_type", "node_alias", "status", "started_at", "finished_at", "scope_id", "node_run_id", "created_at"]
     },
     "flow_run_events": {
       "requiredColumns": ["id", "flow_run_id", "node_run_id", "sequence", "event_type", "payload", "created_at", "scope_id"]
@@ -681,6 +681,51 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "client_trajectory_archive_blocks": {
+      "kind": "request_archive_child",
+      "reason": "immutable archive blocks use request and block identity and inherit scope through their capture owner",
+      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "client_trajectory_archive_heads": {
+      "kind": "request_archive_head",
+      "reason": "request identity owns the archive before optional flow run binding and cursor updates",
+      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "client_trajectory_archive_parts": {
+      "kind": "request_archive_child",
+      "reason": "archive parts use part identity and request foreign key for bounded cursor retrieval",
+      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "client_trajectory_archive_segments": {
+      "kind": "request_archive_child",
+      "reason": "sealed segment directories use block identity and request foreign key for cursor retrieval",
+      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "node_run_details": {
+      "kind": "node_run_payload_child",
+      "reason": "payload sections use node run and section composite identity with cascade ownership",
+      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "runtime_native_snapshot_items": {
+      "kind": "immutable_application_content",
+      "reason": "immutable snapshot items carry scope and application foreign key with content hash identity",
+      "skip": ["managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+    },
+    "runtime_native_snapshot_manifests": {
+      "kind": "immutable_application_content",
+      "reason": "immutable snapshot manifests carry scope and application foreign key with content hash identity",
+      "skip": ["managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+    },
+    "runtime_native_snapshot_references": {
+      "kind": "immutable_snapshot_child",
+      "reason": "manifest and item foreign keys form immutable composite identity for snapshot references",
+      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "runtime_observation_body_ownership": {
+      "kind": "canonical_content_child",
+      "reason": "content foreign key records ownership only and cascades with canonical content lifecycle",
+      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
     "console_permission_catalog_sync": {
       "kind": "system_permission_catalog_state",
       "reason": "one global singleton records catalog initialization with singleton identity and no workspace lifecycle columns",

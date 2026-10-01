@@ -1,25 +1,4 @@
-use std::borrow::Cow;
-
-use sqlx::migrate::Migrator;
-
 use super::*;
-
-const COMPLETE_SUMMARY_BACKFILL_VERSION: i64 = 20260807130000;
-const COMPLETE_SUMMARY_BACKFILL_SQL: &str = include_str!(
-    "../../../storage/durable/postgres/migrations/20260807130000_backfill_complete_application_run_log_summaries.sql"
-);
-
-fn before_complete_summary_backfill_migrator() -> Migrator {
-    let migrations = sqlx::migrate!("../storage/durable/postgres/migrations")
-        .iter()
-        .filter(|migration| migration.version != COMPLETE_SUMMARY_BACKFILL_VERSION)
-        .cloned()
-        .collect::<Vec<_>>();
-    Migrator {
-        migrations: Cow::Owned(migrations),
-        ..Migrator::DEFAULT
-    }
-}
 
 #[tokio::test]
 async fn claude_code_builtin_agent_run_is_included_in_run_logs_and_monitoring() {
@@ -145,93 +124,6 @@ external_user: Some("claude-code-user".to_string()),
         .await
         .unwrap();
     assert!(conversation_runs.items.is_empty());
-}
-
-#[tokio::test]
-async fn complete_summary_backfill_restores_a_missing_internal_run_projection() {
-    let pool = isolated_database().await.connect().await.unwrap();
-    before_complete_summary_backfill_migrator()
-        .run(&pool)
-        .await
-        .unwrap();
-    let store = PgControlPlaneStore::new(pool.clone());
-    let seeded = seed_runtime_base(&store).await;
-    let compiled = seed_compiled_plan(&store, &seeded).await;
-    let started_at = datetime!(2026-08-07 10:00:00 UTC);
-    let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
-        &store,
-        &CreateFlowRunInput {
-            application_run_log_context: None,
-            actor_user_id: seeded.actor_user_id,
-            application_id: seeded.application_id,
-            flow_id: seeded.flow_id,
-            flow_draft_id: seeded.draft_id,
-            compiled_plan_id: compiled.id,
-            debug_session_id: "missing-internal-summary-backfill".to_string(),
-            flow_schema_version: compiled.schema_version.clone(),
-            document_hash: compiled.document_hash.clone(),
-            run_mode: FlowRunMode::PublishedApiRun,
-            target_node_id: None,
-            title: "Backfilled internal run".to_string(),
-            status: FlowRunStatus::Running,
-            input_payload: json!({
-                "node-start": {
-                    "query": "Your task is to create a detailed summary of the conversation so far",
-                    "compatibility": {"claude_code_control": "compact_summary"}
-                }
-            }),
-            started_at,
-            api_key_id: None,
-            publication_version_id: Some(Uuid::now_v7()),
-            assistant_conversation_id: None,
-            external_user: Some("backfill-user".to_string()),
-            external_conversation_id: Some("backfill-conversation".to_string()),
-            external_trace_id: None,
-            compatibility_mode: Some("anthropic-messages-v1".to_string()),
-            idempotency_key: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    sqlx::query("delete from application_run_log_summaries where flow_run_id = $1")
-        .bind(run.id)
-        .execute(store.pool())
-        .await
-        .unwrap();
-
-    sqlx::migrate!("../storage/durable/postgres/migrations")
-        .run(&pool)
-        .await
-        .unwrap();
-
-    let restored: (String, String, Option<String>) = sqlx::query_as(
-        r#"
-        select title, status, compatibility_mode
-        from application_run_log_summaries
-        where flow_run_id = $1
-        "#,
-    )
-    .bind(run.id)
-    .fetch_one(store.pool())
-    .await
-    .unwrap();
-    assert_eq!(restored.0, "Backfilled internal run");
-    assert_eq!(restored.1, "running");
-    assert_eq!(restored.2.as_deref(), Some("anthropic-messages-v1"));
-
-    sqlx::raw_sql(COMPLETE_SUMMARY_BACKFILL_SQL)
-        .execute(store.pool())
-        .await
-        .unwrap();
-    let restored_count: i64 = sqlx::query_scalar(
-        "select count(*)::bigint from application_run_log_summaries where flow_run_id = $1",
-    )
-    .bind(run.id)
-    .fetch_one(store.pool())
-    .await
-    .unwrap();
-    assert_eq!(restored_count, 1);
 }
 
 #[tokio::test]

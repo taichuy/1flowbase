@@ -334,7 +334,9 @@ where
         let transport = command
             .native_transport
             .as_ref()
-            .ok_or_else(|| ControlPlaneError::Conflict("native_tool_output_round_invalid"))?;
+            .ok_or(ControlPlaneError::Conflict(
+                "native_tool_output_round_invalid",
+            ))?;
         let Some((correlated, tool_results)) =
             super::native_tool_resume::correlate_native_responses_callback(
                 &self.repository,

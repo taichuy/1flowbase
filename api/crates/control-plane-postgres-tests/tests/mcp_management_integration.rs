@@ -889,7 +889,7 @@ async fn mcp_management_refreshes_des_id_and_exports_configuration_only() {
         .unwrap();
     assert_ne!(refreshed.des_id, tool.des_id);
     assert!(
-        !service
+        service
             .description_check(actor.id, &tool.tool_id, Some(&tool.des_id))
             .await
             .unwrap()

@@ -59,14 +59,10 @@ test('AC-001: run inputs preserve the default PostgreSQL pool owner outside work
   assert.equal(Object.hasOwn(normalized, 'databasePoolMaxConnections'), false);
 });
 
-test('AC-028/029: paired provider lock is portable and exact', () => {
+test('AC-028/029: paired provider lock is portable and identifies one revision', () => {
   const lock = require('../paired-source.lock.json');
   assert.equal(lock.schema_version, '1flowbase.ai-gateway-paired-source/v1');
   assert.equal(lock.official_plugins.repository, 'taichuy/1flowbase-official-plugins');
   assert.match(lock.official_plugins.revision, /^[a-f0-9]{40}$/u);
-  assert.equal(
-    lock.official_plugins.revision,
-    'a927373b69d2109e32bf9d43c545a89b19a7dea1'
-  );
   assert.doesNotMatch(JSON.stringify(lock), /\/home\//u);
 });

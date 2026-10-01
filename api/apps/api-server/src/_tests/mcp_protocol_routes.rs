@@ -540,7 +540,7 @@ async fn ac_003_005_builtin_frontstage_tools_are_discoverable_and_callable() {
             "jsonrpc":"2.0",
             "id":209,
             "method":"tools/call",
-            "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_get_block_context_contract","arguments":{},"max_inline_chars":16001}}
+            "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_get_block_context_contract","arguments":{},"max_inline_chars":0}}
         }),
     )
     .await;
@@ -1320,7 +1320,7 @@ async fn mcp_call_routes_large_interface_catalog_with_boolean_schemas_to_continu
 }
 
 #[tokio::test]
-async fn mcp_call_rejects_stale_or_missing_required_des_id() {
+async fn mcp_call_rejects_invalid_explicit_des_id_without_requiring_it_by_default() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     create_mcp_instance(&app, &cookie, &csrf).await;
@@ -1366,7 +1366,7 @@ async fn mcp_call_rejects_stale_or_missing_required_des_id() {
         .unwrap();
     assert_eq!(create_tool_response.status(), StatusCode::CREATED);
     let tool_payload = response_json(create_tool_response).await;
-    assert_eq!(tool_payload["data"]["des_id_required"], json!(true));
+    assert_eq!(tool_payload["data"]["des_id_required"], json!(false));
 
     let create_binding_response = app
         .clone()
@@ -1393,28 +1393,26 @@ async fn mcp_call_rejects_stale_or_missing_required_des_id() {
         .unwrap();
     assert_eq!(create_binding_response.status(), StatusCode::CREATED);
 
-    for (id, des_id) in [(9, None), (10, Some("stale123"))] {
-        let payload = call_mcp(
-            &app,
-            &token,
-            json!({
-                "jsonrpc":"2.0",
-                "id":id,
-                "method":"tools/call",
-                "params":{
-                    "name":"mcp_call",
-                    "arguments":{
-                        "tool_id":"runtime_profile_guarded",
-                        "des_id":des_id,
-                        "arguments":{}
-                    }
+    let payload = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":9,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp_call",
+                "arguments":{
+                    "tool_id":"runtime_profile_guarded",
+                    "des_id":null,
+                    "arguments":{}
                 }
-            }),
-        )
-        .await;
-        assert_eq!(payload["error"]["code"], json!(-32602));
-        assert_eq!(payload["error"]["message"], json!("Invalid des_id"));
-    }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(payload["error"]["code"], json!(-32602));
+    assert_eq!(payload["error"]["message"], json!("Invalid des_id"));
 }
 
 #[tokio::test]
@@ -1983,7 +1981,7 @@ async fn root_1569_ac_007_ac_009_oversized_write_returns_durable_receipt_without
                         "status":"draft",
                         "default_entry_path":"/"
                     },
-                    "max_inline_chars":16001
+                    "max_inline_chars":0
                 }
             }
         }),

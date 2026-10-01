@@ -72,7 +72,7 @@ test('Root #1461 WP-14 connects Gateway WS trace to durable and WireAudit eviden
     { counters: {}, entries: [] },
     {
       counters: {},
-      entries: [{ sequence: 1, event: 'arrival', transport: 'responses-sse', nonce: 'mock-000001', request: { body: { model: 'upstream-model' } } }],
+      entries: [{ sequence: 1, event: 'arrival', transport: 'responses-websocket', nonce: 'mock-000001', request: { body: { model: 'upstream-model' } } }],
     },
   ];
   const result = await runGatewayWebSocketAcceptance({

@@ -4,7 +4,18 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { parseCliArgs, selectTestFiles, buildCommand, main } = require('../../test-scripts.js');
+const { parseCliArgs, listTestFiles, selectTestFiles, buildCommand, main } = require('../../test-scripts.js');
+
+test('listTestFiles skips executable fixtures below _tests', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-test-discovery-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const testsDir = path.join(repoRoot, 'scripts', 'node', 'example', '_tests');
+  fs.mkdirSync(path.join(testsDir, 'fixtures'), { recursive: true });
+  const testFile = path.join(testsDir, 'core.test.js');
+  fs.writeFileSync(testFile, '');
+  fs.writeFileSync(path.join(testsDir, 'fixtures', 'service.js'), '');
+  assert.deepEqual(listTestFiles(repoRoot), [testFile]);
+});
 
 test('parseCliArgs defaults to all script tests', () => {
   assert.deepEqual(parseCliArgs([]), {

@@ -96,7 +96,9 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
         .iter()
         .filter_map(|event| event["event_type"].as_str())
         .collect::<Vec<_>>();
-    assert!(event_types.contains(&"text_delta"));
+    // Presentation deltas are delivered live; the persisted preview keeps
+    // terminal/provider facts and the final output on the node run.
+    assert!(!event_types.contains(&"text_delta"));
     assert!(event_types.contains(&"usage_snapshot"));
     assert!(event_types.contains(&"finish"));
     assert!(event_types.contains(&"node_preview_completed"));

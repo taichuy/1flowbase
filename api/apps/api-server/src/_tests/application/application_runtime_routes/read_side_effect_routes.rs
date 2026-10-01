@@ -44,7 +44,7 @@ async fn runtime_read_payload_snapshot(
                         )
                         order by id
                     )
-                    from node_runs
+                    from node_run_records
                     where flow_run_id = $1
                 ),
                 '[]'::jsonb
@@ -139,7 +139,7 @@ async fn seed_large_runtime_read_payloads(
 
     sqlx::query(
         r#"
-        update node_runs
+        update node_run_records
         set input_payload = $2,
             output_payload = $3,
             error_payload = $4,

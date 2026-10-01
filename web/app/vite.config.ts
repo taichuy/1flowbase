@@ -198,6 +198,7 @@ export default defineConfig(({ command, mode }) => {
         'i18next',
         'lexical',
         'lodash',
+        'lru-cache',
         'monaco-editor',
         'react-easy-crop',
         'react-grid-layout',

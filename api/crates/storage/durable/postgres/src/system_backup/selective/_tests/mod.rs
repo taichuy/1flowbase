@@ -381,7 +381,7 @@ async fn selective_imports_required_plugin_identity_without_artifact_state() {
 }
 
 #[tokio::test]
-async fn selective_preflight_reports_missing_unselected_identity_parent() {
+async fn selective_preflight_allows_deleted_historical_actor() {
     let (db, actor) = fixture().await;
     let repo = PgSelectiveBackupRepository::new(db.clone());
     pool(&db, actor, Uuid::now_v7(), "Needs actor").await;
@@ -396,14 +396,7 @@ async fn selective_preflight_reports_missing_unselected_identity_parent() {
         .await
         .unwrap();
     let preview = repo.preflight(reader(bytes), "key", "key").await.unwrap();
-    assert!(
-        preview
-            .failures
-            .iter()
-            .any(|f| f.contains("network_egress_pools -> users")),
-        "{:?}",
-        preview.failures
-    );
+    assert!(preview.failures.is_empty(), "{:?}", preview.failures);
     assert_eq!(
         sqlx::query_scalar::<_, i64>("select count(*) from network_egress_pools")
             .fetch_one(&db)

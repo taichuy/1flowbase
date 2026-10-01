@@ -1168,6 +1168,36 @@ test('default schema hygiene validates flow-run-owned runtime tables by their re
   assert.equal(report.summary.errors, 0);
 });
 
+test('specialized archive and content tables retain physical owner keys', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const inventory = collectSchemaInventory({ repoRoot });
+  const config = loadConfig(repoRoot);
+  const expected = [
+    ['client_trajectory_archive_heads', ['request_id'], 'flow_runs', ['flow_run_id']],
+    ['client_trajectory_archive_parts', ['part_id'], 'client_trajectory_archive_heads', ['request_id']],
+    ['client_trajectory_archive_blocks', ['block_id'], 'client_trajectory_archive_heads', ['request_id']],
+    ['client_trajectory_archive_segments', ['block_id'], 'client_trajectory_archive_heads', ['request_id']],
+    ['node_run_details', ['node_run_id', 'section'], 'node_runs', ['node_run_id']],
+    ['runtime_native_snapshot_items', ['id'], 'applications', ['application_id', 'scope_id']],
+    ['runtime_native_snapshot_manifests', ['id'], 'applications', ['application_id', 'scope_id']],
+    ['runtime_native_snapshot_references', ['manifest_id', 'item_id'], 'runtime_native_snapshot_manifests', ['manifest_id']],
+    ['runtime_observation_body_ownership', ['content_id'], 'runtime_canonical_contents', ['content_id']],
+  ];
+
+  for (const [name, primaryKey, owner, ownerColumns] of expected) {
+    const table = inventory.tables.find((candidate) => candidate.name === name);
+    assert.ok(table, `${name} must remain a physical table`);
+    assert.deepEqual(table.primaryKey?.columns, primaryKey, `${name} identity changed`);
+    assert.ok(
+      table.foreignKeys.some((foreignKey) =>
+        foreignKey.references.table === owner
+        && ownerColumns.every((column) => foreignKey.columns.includes(column))),
+      `${name} must remain owned by ${owner}`
+    );
+    assert.ok(config.exemptions[name], `${name} needs a documented specialized shape`);
+  }
+});
+
 test('default schema hygiene preserves retired provider settings as a typed archive', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const inventory = collectSchemaInventory({ repoRoot });

@@ -568,7 +568,7 @@ async fn raw_codec_database_corruption_unknown_version_raw_length_checksum_and_t
         ("update client_trajectory_archive_parts set frame_directory=substring(frame_directory from 1 for octet_length(frame_directory)-1) where part_id=$1", "checksum mismatch"),
     ] {
         sqlx::query(sql).bind(part).execute(&pool).await.unwrap();
-        let error = store.read_client_trajectory_archive(request, 0, 1).await.err().expect("damaged part was accepted");
+        let error = store.read_client_trajectory_archive(request, 0, 1).await.expect_err("damaged part was accepted");
         assert!(format!("{error:#}").contains(expected), "{error:#}");
         sqlx::query("update client_trajectory_archive_parts set codec_version=1,bytes=$2,frame_directory=$3,raw_byte_length=$4,raw_checksum=$5 where part_id=$1")
             .bind(part).bind(&original.0).bind(&original.1).bind(original.2).bind(&original.3).execute(&pool).await.unwrap();

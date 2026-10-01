@@ -68,7 +68,7 @@ pub(super) fn project_metadata(payload: &mut Value) {
         .and_then(Value::as_array_mut)
     {
         for entry in entries {
-            let packet = lossless_json_parameter(&entry["metadata"]).unwrap();
+            let packet = lossless_json_value(&entry["metadata"]);
             if let Some(original) = packet[1].as_str() {
                 entry["metadata_original"] = Value::String(original.into());
                 entry["metadata"] = packet[0].clone();

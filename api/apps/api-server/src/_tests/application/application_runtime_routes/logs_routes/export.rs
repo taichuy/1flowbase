@@ -464,7 +464,7 @@ async fn wait_for_node_run_error_code(
         let payload = sqlx::query_scalar::<_, Value>(
             r#"
             select coalesce(error_payload, 'null'::jsonb)
-            from node_runs
+            from node_run_records
             where id = $1
               and status = 'failed'
             "#,
@@ -734,8 +734,25 @@ async fn application_runtime_routes_logs_archive_returns_v1_manifest_and_restore
     assert_eq!(multi_archive["entries"][0]["source_run_id"], json!(run_id));
     assert_eq!(
         multi_archive["manifest"]["entries"][0]["content_sha256"],
-        archive["manifest"]["entries"][0]["content_sha256"],
-        "single-run and multi-run archive endpoints must use the same entry builder"
+        multi_archive["entries"][0]["content_digest"],
+        "multi-run manifest must describe the exported entry"
+    );
+    assert_eq!(
+        multi_archive["content_digest"],
+        multi_archive["manifest"]["content_sha256"]
+    );
+    assert_eq!(
+        multi_archive["entries"][0]["flow_run"]["id"],
+        entry["flow_run"]["id"]
+    );
+    assert_eq!(
+        multi_archive["entries"][0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect::<Vec<_>>(),
+        entry.as_object().unwrap().keys().collect::<Vec<_>>(),
+        "single-run and multi-run archives must expose the same entry fields"
     );
 }
 

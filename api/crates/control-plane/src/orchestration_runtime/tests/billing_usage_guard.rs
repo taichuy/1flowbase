@@ -377,8 +377,13 @@ async fn billing_no_usage_with_billable_output_records_zero_and_succeeds_by_defa
     .expect("missing usage must fail open by default");
     assert_eq!(output.result.usage.input_tokens, Some(0));
     assert_eq!(output.result.usage.output_tokens, Some(0));
-    let details = &output.result.provider_metadata["_1flowbase_upstream_provider_metadata"]
-        ["_1flowbase_billing"];
+    let provider_metadata = &output.result.provider_metadata;
+    assert_eq!(
+        provider_metadata["_1flowbase_upstream_provider_metadata"]["_1flowbase_user_account"],
+        "billing-user"
+    );
+    let details = &provider_metadata["_1flowbase_upstream_provider_metadata"]
+        ["_1flowbase_upstream_provider_metadata"]["_1flowbase_billing"];
     assert_eq!(details["billing_status"], "reconciliation_failed");
     assert_eq!(details["billing_error_code"], "provider_usage_unavailable");
     assert_eq!(details["total_cost"], "0");

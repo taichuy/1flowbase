@@ -12,7 +12,7 @@ function records(surface, message, success) {
     : { type: 'error', error: { message } } }];
 }
 
-function fixtureDependencies(corrupt = false) {
+function fixtureDependencies(corrupt = false, websocketRecovery = false, omitSuccessfulWebsocketFallback = false) {
   const entries = [];
   const runs = new Map();
   const keys = new Map();
@@ -24,9 +24,12 @@ function fixtureDependencies(corrupt = false) {
         keys.set(retryKey, attempt);
         const success = fixture.id === 'retry' && attempt === 2;
         const message = fixture.body || 'upstream returned HTTP 503';
-        entries.push({ sequence: entries.length + 1, event: 'arrival', nonce: `mock-${String(entries.length + 1).padStart(6, '0')}` });
+        entries.push({ sequence: entries.length + 1, event: 'arrival', transport: surface, nonce: `mock-${String(entries.length + 1).padStart(6, '0')}` });
+        if (surface === 'responses-websocket' && (websocketRecovery || (success && !omitSuccessfulWebsocketFallback))) {
+          entries.push({ sequence: entries.length + 1, event: 'arrival', transport: 'responses-sse', nonce: `mock-${String(entries.length + 1).padStart(6, '0')}` });
+        }
         if (!success) entries.push({ sequence: entries.length + 1, event: 'settled', errorFixture: fixture.id, status: fixture.status });
-        runs.set(traceId, { run_id: traceId, native: { status: success ? 'succeeded' : 'failed', error: success ? null : { message } }, durable: { error_payload: success ? null : { message: corrupt ? message.trim() : message } } });
+        runs.set(traceId, { run_id: traceId, native: { status: success ? 'succeeded' : 'failed', error: success ? null : { message } }, durable: { error_payload: success ? null : { message: corrupt ? message.trim() : message, ...(websocketRecovery && surface === 'responses-websocket' ? { ai_native_recovery: { provider_attempts_consumed: 2 } } : {}) } } });
         return { http_status: 200, records: records(surface, message, success) };
       },
       async observeRun(_target, traceId) { return runs.get(traceId); },
@@ -42,6 +45,19 @@ test('Root #1998 P7: executes all 20 online rows and four separate failed/recove
   assert.equal(result.rows.reduce((sum, row) => sum + row.attempts.length, 0), 24);
   assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.run_id))).size, 24);
   assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.upstream_nonce))).size, 24);
+});
+
+test('WebSocket recovery counts controlled upstream attempts from the durable receipt', async () => {
+  const fixture = fixtureDependencies(false, true);
+  const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(result.rows.length, 20);
+});
+
+test('WebSocket retry success rejects a missing HTTP fallback', async () => {
+  const fixture = fixtureDependencies(false, false, true);
+  const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
+  assert.equal(result.rows.find((row) => row.id === 'retry/responses-websocket').verdict, 'FAIL');
 });
 
 test('Root #1998 P7 authenticity: durable whitespace loss fails rows while remaining online matrix still executes', async () => {

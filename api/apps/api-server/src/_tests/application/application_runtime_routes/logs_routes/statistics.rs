@@ -103,7 +103,7 @@ async fn application_runtime_routes_logs_report_run_statistics() {
     ] {
         sqlx::query(
             r#"
-            insert into node_runs (
+            insert into node_run_records (
                 id,
                 scope_id,
                 flow_run_id,

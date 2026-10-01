@@ -262,6 +262,9 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
     if (vector.name === 'mcp-list-call-approval') {
       const mcpStart = await readMcpApprovalStart(response);
       const continuation = mcpStart.continuation;
+      // The continuation is staged when the first response reaches its terminal
+      // event, so finish that response before starting the approval round.
+      const completedStart = await mcpStart.finish();
       const approvalResponse = await fetchImpl(`${inputs.manifest.gatewayBaseUrl}/v1/responses`, {
         method: 'POST',
         headers: {
@@ -280,7 +283,7 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
           `WireAudit mcp-approval-continuation ${continuation.previous_response_id} returned HTTP ${approvalResponse.status}: ${await approvalResponse.text()}`,
         );
       }
-      vector.capture = `${await mcpStart.finish()}\n${await approvalResponse.text()}`;
+      vector.capture = `${completedStart}\n${await approvalResponse.text()}`;
     } else {
       vector.capture = await response.text();
     }

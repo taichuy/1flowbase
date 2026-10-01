@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const { REQUEST_FIDELITY_VECTORS } = require('../protocol-oracle/request-fidelity');
 
 const PROMPT = 'Root #1477 request fidelity probe';
@@ -132,6 +133,16 @@ function firstDifference(left, right, path = '$') {
   return { path, direct: left, gateway: right };
 }
 
+function comparableRequestDigest(request, ingress) {
+  if (ingress !== 'openai_responses') return request.semantic_sha256;
+  const fixture = structuredClone(request.fidelity_fixture);
+  // Responses binds a new session identity to the authenticated application/key.
+  // The unauthenticated direct probe has no equivalent identity; compare every
+  // other normalized wire field and verify the gateway-only header separately.
+  delete fixture.header_sha256['session-id'];
+  return crypto.createHash('sha256').update(JSON.stringify(fixture)).digest('hex');
+}
+
 async function verifyGatewayRequestFidelity({ ready, upstreamBaseUrl, mockSnapshot }) {
   const rows = [];
   for (const vector of REQUEST_FIDELITY_VECTORS) {
@@ -154,10 +165,24 @@ async function verifyGatewayRequestFidelity({ ready, upstreamBaseUrl, mockSnapsh
       throw new Error(`${vector.id} produced ${arrivals.length} upstream arrivals instead of two`);
     }
     const [direct, gateway] = arrivals;
-    if (direct.request.semantic_sha256 !== gateway.request.semantic_sha256) {
+    if (vector.ingress === 'openai_responses') {
+      if (direct.request.fidelity_fixture.header_sha256['session-id'] !== undefined
+        || !/^[a-f0-9]{64}$/u.test(gateway.request.fidelity_fixture.header_sha256['session-id'] ?? '')) {
+        throw new Error(`${vector.id} must add a scoped Gateway session identity only`);
+      }
+    }
+    const directDigest = comparableRequestDigest(direct.request, vector.ingress);
+    const gatewayDigest = comparableRequestDigest(gateway.request, vector.ingress);
+    if (directDigest !== gatewayDigest) {
+      const directFixture = structuredClone(direct.request.fidelity_fixture);
+      const gatewayFixture = structuredClone(gateway.request.fidelity_fixture);
+      if (vector.ingress === 'openai_responses') {
+        delete directFixture.header_sha256['session-id'];
+        delete gatewayFixture.header_sha256['session-id'];
+      }
       const difference = firstDifference(
-        direct.request.fidelity_fixture,
-        gateway.request.fidelity_fixture,
+        directFixture,
+        gatewayFixture,
       );
       throw new Error(
         `${vector.id} normalized direct/Gateway request mismatch: ${JSON.stringify(difference)}`,
@@ -166,8 +191,8 @@ async function verifyGatewayRequestFidelity({ ready, upstreamBaseUrl, mockSnapsh
     rows.push({
       id: vector.id,
       ingress: vector.ingress,
-      direct_sha256: direct.request.semantic_sha256,
-      gateway_sha256: gateway.request.semantic_sha256,
+      direct_sha256: directDigest,
+      gateway_sha256: gatewayDigest,
       upstream_path: direct.request.path,
     });
   }
@@ -178,4 +203,4 @@ async function verifyGatewayRequestFidelity({ ready, upstreamBaseUrl, mockSnapsh
   };
 }
 
-module.exports = { requestPair, verifyGatewayRequestFidelity };
+module.exports = { requestPair, comparableRequestDigest, verifyGatewayRequestFidelity };
