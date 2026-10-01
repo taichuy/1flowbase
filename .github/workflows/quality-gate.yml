@@ -1113,7 +1113,9 @@ jobs:
           set -euo pipefail
           mkdir -p tmp/test-governance
           git rev-parse HEAD > tmp/test-governance/frontend-diagnostic-sha.txt
-          pnpm --dir web/app "$FRONTEND_TEST_SCRIPT" 2>&1 | tee tmp/test-governance/frontend-diagnostic.log
+          # Diagnostic isolation only: these two stalled files run separately locally.
+          # The final full gate retains both; this receipt is never acceptance evidence.
+          pnpm --dir web/app "$FRONTEND_TEST_SCRIPT" -- --exclude src/features/settings/_tests/settings-page/settings-sections.test.tsx --exclude src/features/me/_tests/me-page.test.tsx 2>&1 | tee tmp/test-governance/frontend-diagnostic.log
       - uses: actions/upload-artifact@v6
         if: always()
         with:
