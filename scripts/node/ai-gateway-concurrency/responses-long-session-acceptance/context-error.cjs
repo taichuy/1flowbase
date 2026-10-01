@@ -21,7 +21,11 @@ function validateContextProbe(events, meta) {
   const notice = selected.filter(e => e.method === 'error');
   const terminal = selected.filter(e => e.method === 'turn/completed');
   const request = events.find(e => e.kind === 'rpc/request' && e.method === 'turn/start'
-    && e.params?.threadId === meta.threadId && e.contextProbeInput);
+    && e.params?.threadId === meta.threadId
+    && e.contextProbeInput?.sha256 === meta.contextProbeInput?.sha256
+    && e.contextProbeInput?.bytes === meta.contextProbeInput?.bytes
+    && events.some(response => response.kind === 'rpc/receive' && response.id === e.id
+      && response.result?.turn?.id === id && response.atMs > e.atMs));
   if (!id || invoked.length !== 1 || !request
       || request.contextProbeInput.sha256 !== meta.contextProbeInput?.sha256
       || request.contextProbeInput.bytes !== meta.contextProbeInput?.bytes
