@@ -435,7 +435,7 @@
 }
 
 .app-shell-scrollable-menu-popup.ant-menu,
-.app-shell-scrollable-menu-popup .ant-menu {
+.app-shell-scrollable-menu-popup > .ant-menu {
   max-height: 60vh;
   overflow-y: auto;
   overflow-x: hidden;
