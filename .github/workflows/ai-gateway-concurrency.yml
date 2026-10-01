@@ -1,13 +1,14 @@
-name: Gateway Lifecycle Baseline Probe
+name: Gateway Finite Baseline Protocol Probe
 
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: gateway-lifecycle-baseline-${{ github.ref }}
+  group: gateway-finite-baseline-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -21,9 +22,11 @@ env:
   CLAUDE_CODE_OAUTH_TOKEN: ''
 
 jobs:
-  baseline-root-1998:
+  fidelity-wire:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    outputs:
+      binary_ready: ${{ steps.binary_upload.outcome }}
     services:
       postgres:
         image: postgres:18.4
@@ -37,35 +40,37 @@ jobs:
           --health-cmd "pg_isready -U postgres -d 1flowbase"
           --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - name: Checkout frozen baseline source
+      - name: Checkout frozen baseline
         uses: actions/checkout@v5
         with:
           ref: 59ff883cd772df01e29a16ab1bf68962f758bb38
           fetch-depth: 1
           persist-credentials: false
-      - name: Checkout same paired official source
-        uses: actions/checkout@v6
+      - name: Checkout finite adapter only from this workflow commit
+        uses: actions/checkout@v5
         with:
-          repository: taichuy/1flowbase-official-plugins
-          ref: a927373b69d2109e32bf9d43c545a89b19a7dea1
-          path: tmp/ai-gateway-concurrency/official-source
-          fetch-depth: 1
+          ref: ${{ github.sha }}
+          path: tmp/probe-control
+          sparse-checkout: scripts/node/ai-gateway-concurrency/finite-baseline-probe
           persist-credentials: false
       - name: Setup Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: Setup same Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Download exact existing paired provider packages
+        uses: actions/download-artifact@v6
         with:
-          toolchain: 1.98.1
-      - name: Restore existing dependency cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-        with:
-          shared-key: ai-gateway-protocol-conformance
-          key: codex/gateway-cpu-ci-20261001
-          save-if: false
-          workspaces: api -> target
+          github-token: ${{ github.token }}
+          run-id: 36837561449
+          name: test-governance-ai-gateway-protocol-conformance-67a78a8828d79678d53e0551f8815b20447eddc2
+          path: tmp/protocol-reuse
+      - name: Verify package source provenance
+        shell: bash
+        run: |
+          node <<'NODE'
+          const d = require('./tmp/protocol-reuse/ai-gateway-quality-gate/quality-gate.json');
+          if(d.main_source_sha !== '67a78a8828d79678d53e0551f8815b20447eddc2' || d.official_source_sha !== 'a927373b69d2109e32bf9d43c545a89b19a7dea1') throw new Error('Existing package artifact source mismatch');
+          NODE
       - name: Prepare same PostgreSQL 18 backup clients
         shell: bash
         run: |
@@ -81,67 +86,143 @@ jobs:
           done
           echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
           echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-      - name: Record source and environment
+      - name: Setup same Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+      - name: Restore existing test dependency cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ai-gateway-protocol-conformance
+          key: codex/gateway-cpu-ci-20261001
+          save-if: false
+          workspaces: api -> target
+      - name: Build only frozen baseline API with original test profile
+        id: baseline_build
         shell: bash
         env:
           WORKFLOW_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          evidence_dir=tmp/test-governance/gateway-lifecycle-baseline
+          evidence_dir=tmp/test-governance/gateway-finite-baseline/build
           mkdir -p "$evidence_dir"
           test "$(git rev-parse HEAD)" = 59ff883cd772df01e29a16ab1bf68962f758bb38
-          test "$(node -p "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")" = a927373b69d2109e32bf9d43c545a89b19a7dea1
-          test "$(git -C tmp/ai-gateway-concurrency/official-source rev-parse HEAD)" = a927373b69d2109e32bf9d43c545a89b19a7dea1
-          printf '%s\n' 'baseline=59ff883cd772df01e29a16ab1bf68962f758bb38' \
-            'candidate_comparison=67a78a8828d79678d53e0551f8815b20447eddc2' \
-            'candidate_run=36837561449' "workflow_source=$WORKFLOW_SHA" \
-            'official_plugins=a927373b69d2109e32bf9d43c545a89b19a7dea1' \
-            'profile=default-test-debug' 'filter=root_1998' > "$evidence_dir/sources.txt"
           rustc --version --verbose > "$evidence_dir/toolchain.txt"
           cargo --version >> "$evidence_dir/toolchain.txt"
+          printf '%s\n' 'baseline=59ff883cd772df01e29a16ab1bf68962f758bb38' \
+            'candidate_comparison=67a78a8828d79678d53e0551f8815b20447eddc2' \
+            "workflow_source=$WORKFLOW_SHA" 'profile=test' 'features=default' > "$evidence_dir/sources.txt"
           sha256sum api/Cargo.lock > "$evidence_dir/lock.sha256"
           lscpu > "$evidence_dir/runner-cpu.txt"
           cat /proc/meminfo > "$evidence_dir/runner-memory.txt"
-      - name: Run only original root_1998 invocation with original temporary DB owner
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const {spawnSync} = require('node:child_process');
-          const {createDatabase} = require('./scripts/node/ai-gateway-concurrency/local-acceptance/system');
-          const {conversationTestInvocations} = require('./scripts/node/ai-gateway-concurrency/quality-gate/cli');
-          (async () => {
-            const root = process.cwd();
-            const out = path.join(root, 'tmp/test-governance/gateway-lifecycle-baseline');
-            const found = spawnSync('docker', ['ps', '--filter', 'publish=5432', '--format', '{{.ID}}'], {encoding:'utf8'});
-            if (found.status !== 0) throw new Error('PostgreSQL inventory failed');
-            const ids = found.stdout.trim().split(/\s+/);
-            if (ids.length !== 1 || !ids[0]) throw new Error('Expected exactly one PostgreSQL service');
-            const db = createDatabase({container: ids[0], host:'127.0.0.1', port:5432});
-            try {
-              const i = conversationTestInvocations(root, db.url).find(x => x.name === 'api-server-interface-lifecycle-acceptance');
-              if (!i || i.args.at(-1) !== 'root_1998') throw new Error('Original finite invocation unavailable');
-              const started = Date.now();
-              const r = spawnSync('cargo', i.args, {cwd:root, env:{...process.env,...i.options.env},encoding:'utf8',maxBuffer:32*1024*1024});
-              const output = `${r.stdout || ''}${r.stderr || ''}`;
-              fs.writeFileSync(path.join(out,'root-1998.log'),output);
-              const matches = [...output.matchAll(/test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;/g)];
-              const executed = matches.reduce((n,m)=>n+Number(m[1])+Number(m[2]),0);
-              fs.writeFileSync(path.join(out,'result.json'),JSON.stringify({source:'59ff883cd772df01e29a16ab1bf68962f758bb38',command:'cargo test --manifest-path api/Cargo.toml -p api-server --lib root_1998',status:r.status,signal:r.signal,error:r.error?.message || null,executed,duration_ms:Date.now()-started,test_results:matches.map(m=>({passed:Number(m[1]),failed:Number(m[2]),ignored:Number(m[3])}))},null,2)+'\n');
-              if (r.error) throw r.error;
-              if (!executed) throw new Error('No tests executed; compilation is not acceptance');
-              process.exitCode = r.status === 0 ? 0 : 1;
-            } finally {
-              await db.close();
-            }
-          })().catch(e => {console.error(e);process.exitCode=1;});
-          NODE
-      - name: Upload original test output and provenance
+          cargo build --manifest-path api/Cargo.toml --profile test -p api-server --bin api-server > "$evidence_dir/build.log" 2>&1
+          cp api/target/debug/api-server "$evidence_dir/baseline-test-api-server"
+          (cd "$evidence_dir" && sha256sum baseline-test-api-server > sha256.txt)
+      - name: Upload shared baseline test binary before scenario checks
+        id: binary_upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: gateway-finite-baseline-test-binary-${{ github.run_id }}
+          path: tmp/test-governance/gateway-finite-baseline/build/**
+          if-no-files-found: error
+          retention-days: 3
+      - name: Run only fidelity and finite original wire audit
+        env:
+          PROBE_BINARY: tmp/test-governance/gateway-finite-baseline/build/baseline-test-api-server
+        run: node tmp/probe-control/scripts/node/ai-gateway-concurrency/finite-baseline-probe/run.js fidelity-wire
+      - name: Upload group one positive and negative evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: gateway-lifecycle-baseline-59ff883cd772df01e29a16ab1bf68962f758bb38
-          path: tmp/test-governance/gateway-lifecycle-baseline/**
-          if-no-files-found: error
+          name: gateway-finite-baseline-fidelity-wire-${{ github.run_id }}
+          path: tmp/test-governance/gateway-finite-baseline/fidelity-wire/**
+          if-no-files-found: warn
+          retention-days: 7
+  ws-json:
+    needs: fidelity-wire
+    if: ${{ always() && needs.fidelity-wire.outputs.binary_ready == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout frozen baseline
+        uses: actions/checkout@v5
+        with:
+          ref: 59ff883cd772df01e29a16ab1bf68962f758bb38
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout finite adapter only from this workflow commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: tmp/probe-control
+          sparse-checkout: scripts/node/ai-gateway-concurrency/finite-baseline-probe
+          persist-credentials: false
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Download exact existing paired provider packages
+        uses: actions/download-artifact@v6
+        with:
+          github-token: ${{ github.token }}
+          run-id: 36837561449
+          name: test-governance-ai-gateway-protocol-conformance-67a78a8828d79678d53e0551f8815b20447eddc2
+          path: tmp/protocol-reuse
+      - name: Verify package source provenance
+        shell: bash
+        run: |
+          node <<'NODE'
+          const d = require('./tmp/protocol-reuse/ai-gateway-quality-gate/quality-gate.json');
+          if(d.main_source_sha !== '67a78a8828d79678d53e0551f8815b20447eddc2' || d.official_source_sha !== 'a927373b69d2109e32bf9d43c545a89b19a7dea1') throw new Error('Existing package artifact source mismatch');
+          NODE
+      - name: Prepare same PostgreSQL 18 backup clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools_dir="$RUNNER_TEMP/postgresql-18-tools"
+          mkdir -p "$tools_dir"
+          for tool in pg_dump pg_restore; do
+            sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
+          #!/bin/sh
+          exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
+          SCRIPT
+            chmod +x "$tools_dir/$tool"
+          done
+          echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
+          echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
+      - name: Download exact shared baseline test binary
+        uses: actions/download-artifact@v6
+        with:
+          name: gateway-finite-baseline-test-binary-${{ github.run_id }}
+          path: tmp/test-governance/gateway-finite-baseline/shared-build
+      - name: Verify reused binary hash and restore executable permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd tmp/test-governance/gateway-finite-baseline/shared-build
+          sha256sum --check sha256.txt
+          chmod u+x baseline-test-api-server
+      - name: Run one WS acceptance and one original JSON SSE error row
+        env:
+          PROBE_BINARY: tmp/test-governance/gateway-finite-baseline/shared-build/baseline-test-api-server
+        run: node tmp/probe-control/scripts/node/ai-gateway-concurrency/finite-baseline-probe/run.js ws-json
+      - name: Upload group two positive and negative evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gateway-finite-baseline-ws-json-${{ github.run_id }}
+          path: tmp/test-governance/gateway-finite-baseline/ws-json/**
+          if-no-files-found: warn
           retention-days: 7
