@@ -78,6 +78,7 @@ const fs = require('node:fs');
 const request = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 
 let result = {};
+let streamed = false;
 switch (request.method) {
   case 'validate':
     result = { sanitized: { api_key: request.input?.api_key ? "***" : null } };
@@ -131,13 +132,14 @@ switch (request.method) {
       }
     ];
     process.stdout.write(lines.map((line) => JSON.stringify(line)).join("\n") + "\n");
-    process.exit(0);
+    streamed = true;
+    break;
   }
   default:
     result = {};
 }
 
-process.stdout.write(JSON.stringify({ ok: true, result }));
+if (!streamed) process.stdout.write(JSON.stringify({ ok: true, result }));
 "#,
     )
     .unwrap();
