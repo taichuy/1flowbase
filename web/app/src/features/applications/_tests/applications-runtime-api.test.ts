@@ -418,6 +418,35 @@ describe('applications runtime api', () => {
     ]);
   });
 
+  test('pages and sorts all selected applications on the backend, including an empty scope', async () => {
+    for (const applicationIds of [['app-1', 'app-2'], []]) {
+      await fetchApplicationRuns(applicationIds, {
+        page: 2,
+        pageSize: 20,
+        sortBy: 'finished_at',
+        sortOrder: 'asc',
+        titleIncludes: 'example'
+      });
+      expect(fetchConsoleRuntimeModelRecords).toHaveBeenLastCalledWith(
+        'application_run_log_tasks',
+        expect.objectContaining({
+          page: 2,
+          page_size: 20,
+          filter: {
+            application_id: { $in: applicationIds },
+            is_root: { $eq: true },
+            title: { $includes: 'example' }
+          },
+          sort: { field: 'finished_at', direction: 'asc' }
+        }),
+        'http://127.0.0.1:7800'
+      );
+    }
+    expect(applicationRunsQueryKey(['app-1'], {})).not.toEqual(
+      applicationRunsQueryKey('app-1', {})
+    );
+  });
+
   test('sends conjunctive root-task statistics filters with an exclusive end', async () => {
     await fetchApplicationRuns('app-1', {
       started_from: '2026-09-01T00:00:00Z',

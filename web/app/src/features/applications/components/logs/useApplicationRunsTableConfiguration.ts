@@ -8,10 +8,11 @@ const USER_PREFERENCE_KEY = 'applications.logs.runs';
 export type ApplicationRunsTableConfiguration = DataTableConfiguration;
 
 export function useApplicationRunsTableConfiguration(
-  columns: Array<DataTableColumn<ApplicationRunSummary>>
+  columns: Array<DataTableColumn<ApplicationRunSummary>>,
+  preferenceKey = USER_PREFERENCE_KEY
 ): ApplicationRunsTableConfiguration {
   return useUserPreferenceDataTableConfiguration<ApplicationRunSummary>({
     columns,
-    preferenceKey: USER_PREFERENCE_KEY
+    preferenceKey
   });
 }

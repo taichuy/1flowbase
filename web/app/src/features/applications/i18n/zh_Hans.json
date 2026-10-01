@@ -348,5 +348,10 @@
     "auto_bucket": "自动粒度",
     "no_metric_data": "当前指标暂无已记录的正值",
     "user_filter": "已按用户筛选"
+  },
+  "logs": {
+    "all_agent_flow_applications": "全部 Agent Flow 应用",
+    "import_target_application": "选择导入目标应用",
+    "application": "应用"
   }
 }

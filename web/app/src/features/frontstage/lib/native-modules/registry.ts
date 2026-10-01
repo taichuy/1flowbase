@@ -157,9 +157,22 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@1flowbase/block-sdk', ['blockSdkVersion'], async () => ({
     module: await import('@1flowbase/block-sdk')
   })),
-  registration('@1flowbase/application-run-logs', ['ApplicationRunLogViewer'], async () => ({
-    module: await import('../../../applications/components/logs/ApplicationRunLogViewer')
-  })),
+  registration(
+    '@1flowbase/application-run-logs',
+    ['ApplicationRunLogViewer', 'ApplicationLogs', 'AllAgentFlowLogs'],
+    async () => {
+      const [viewer, workspace] = await Promise.all([
+        import('../../../applications/components/logs/ApplicationRunLogViewer'),
+        import('../../../applications/components/logs/workspace/ApplicationLogs')
+      ]);
+      return {
+        module: {
+          ApplicationRunLogViewer: viewer.ApplicationRunLogViewer,
+          ...workspace
+        }
+      };
+    }
+  ),
   registration(
     '@1flowbase/native-components',
     ['ScrollableSurface', 'Surface'],

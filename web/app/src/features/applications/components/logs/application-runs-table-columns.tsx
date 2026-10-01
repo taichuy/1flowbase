@@ -82,7 +82,8 @@ function principalKindLabel(
 }
 
 export function getApplicationRunsTableColumns(
-  t: TFunction<'applications'>
+  t: TFunction<'applications'>,
+  includeApplicationId = false
 ): Array<DataTableColumn<ApplicationRunSummary>> {
   return [
     {
@@ -121,7 +122,7 @@ export function getApplicationRunsTableColumns(
           )}
           {record.parent_run_id && (
             <a
-              href={`?run_id=${encodeURIComponent(record.parent_run_id)}`}
+              href={`?run_id=${encodeURIComponent(record.parent_run_id)}${includeApplicationId ? `&application_id=${encodeURIComponent(record.application_id)}` : ''}`}
               onClick={(event) => event.stopPropagation()}
             >
               {t('auto.parent_task')}

@@ -31,7 +31,7 @@ import clientTrajectoryStyles from '../../../agent-flow/components/debug-console
 import runDetailStyles from './application-run-detail-panel.css?inline';
 import applicationLogsStyles from '../../pages/application-logs-page.css?inline';
 
-const shadowViewerStyles = [
+export const shadowViewerStyles = [
   windowWorkspaceStyles,
   editorShellStyles,
   dockPanelStyles,

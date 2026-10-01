@@ -1,0 +1,19 @@
+.application-logs-native {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.application-logs-native *,
+.application-logs-native *::before,
+.application-logs-native *::after,
+.application-logs-floating-window *,
+.application-logs-floating-window *::before,
+.application-logs-floating-window *::after {
+  box-sizing: border-box;
+}
+
+/* A native Block owns an allocated viewport, including at the mobile breakpoint. */
+.application-logs-native .application-logs-page {
+  height: 100%;
+}

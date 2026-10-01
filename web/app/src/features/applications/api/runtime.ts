@@ -242,7 +242,7 @@ export interface FetchApplicationRunsInput extends StatisticsLogFilters {
 }
 
 export const applicationRunsQueryKey = (
-  applicationId: string,
+  applicationId: string | string[],
   input: FetchApplicationRunsInput = {}
 ) =>
   [
@@ -465,7 +465,7 @@ export const applicationRuntimeActivityQueryKey = (applicationId: string) =>
   ] as const;
 
 export function fetchApplicationRuns(
-  applicationId: string,
+  applicationId: string | string[],
   input: FetchApplicationRunsInput = {}
 ) {
   const page = input.page ?? 1;
@@ -943,12 +943,15 @@ export function completeCallbackTask(
 }
 
 function applicationRunLogTaskFilter(
-  applicationId: string,
+  applicationId: string | string[],
   input: FetchApplicationRunsInput
 ) {
   // Child tasks (subagent threads) are shown inside their parent's trace tree.
   const filter: Record<string, unknown> = {
-    application_id: { $eq: applicationId },
+    application_id:
+      typeof applicationId === 'string'
+        ? { $eq: applicationId }
+        : { $in: applicationId },
     is_root: { $eq: true }
   };
   const titleIncludes = input.titleIncludes?.trim();

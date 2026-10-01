@@ -847,6 +847,7 @@
     "title": "Application Logs Page",
     "impactFiles": [
       "web/app/src/features/applications/pages/ApplicationLogsPage.tsx",
+      "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
       "web/app/src/app/AppProviders.tsx",
       "web/app/src/features/applications/pages/application-logs-page.css",
       "web/app/src/features/applications/components/logs/ApplicationRunsTable.tsx",

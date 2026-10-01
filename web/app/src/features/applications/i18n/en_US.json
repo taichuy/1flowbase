@@ -348,5 +348,10 @@
     "auto_bucket": "Auto bucket",
     "no_metric_data": "No recorded positive values for this metric",
     "user_filter": "User filter applied"
+  },
+  "logs": {
+    "all_agent_flow_applications": "All Agent Flow applications",
+    "import_target_application": "Select the import target application",
+    "application": "Application"
   }
 }
