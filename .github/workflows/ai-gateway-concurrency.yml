@@ -30,7 +30,7 @@ env:
 jobs:
   protocol-conformance:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:18.4
@@ -126,6 +126,47 @@ jobs:
           done
           echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
           echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
+
+      # Diagnostic branch only: retain the existing blocking command unchanged.
+      # Both release artifacts use one runner, toolchain and target cache serially.
+      - name: Checkout frozen release baseline
+        uses: actions/checkout@v5
+        with:
+          ref: 59ff883cd772df01e29a16ab1bf68962f758bb38
+          path: tmp/gateway-cpu-release-baseline
+          fetch-depth: 1
+
+      - name: Build paired release artifacts
+        shell: bash
+        env:
+          CARGO_BUILD_JOBS: '1'
+        run: |
+          set -euo pipefail
+          evidence_dir="$GITHUB_WORKSPACE/tmp/test-governance/gateway-cpu-release"
+          mkdir -p "$evidence_dir"
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/api/target"
+          test "$(git rev-parse HEAD:api)" = "3467d353fba31728e4ee0387ffc9957cbb3a8a7b"
+          rustc --version > "$evidence_dir/toolchain.txt"
+          cat /proc/meminfo > "$evidence_dir/runner-memory.txt"
+          cargo build --manifest-path tmp/gateway-cpu-release-baseline/api/Cargo.toml \
+            -p api-server --bin api-server --release --locked --jobs 1
+          cp api/target/release/api-server "$evidence_dir/baseline-release-api-server"
+          cargo build --manifest-path api/Cargo.toml \
+            -p api-server --bin api-server --release --locked --jobs 1
+          cp api/target/release/api-server "$evidence_dir/candidate-release-api-server"
+          sha256sum "$evidence_dir/"*-api-server > "$evidence_dir/sha256.txt"
+          printf '%s\n' 'baseline=59ff883cd772df01e29a16ab1bf68962f758bb38' \
+            'candidate_product=3ffc567f1351db59635bcbe70367a17406031a65' \
+            "workflow_source=$(git rev-parse HEAD)" > "$evidence_dir/sources.txt"
+
+      - name: Upload paired release artifacts before protocol gate
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gateway-cpu-paired-release-${{ steps.candidate_source.outputs.sha }}
+          path: tmp/test-governance/gateway-cpu-release/**
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run the single blocking AI Gateway quality command
         id: protocol_conformance
