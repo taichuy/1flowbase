@@ -1,4 +1,4 @@
-name: Gateway CPU Diagnostic Build
+name: Gateway Lifecycle Baseline Probe
 
 on:
   workflow_dispatch:
@@ -7,13 +7,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: gateway-cpu-diagnostic-${{ github.ref }}
+  group: gateway-lifecycle-baseline-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_INCREMENTAL: '0'
-  CARGO_BUILD_JOBS: '1'
   OPENAI_API_KEY: ''
   OPENAI_BASE_URL: ''
   ANTHROPIC_API_KEY: ''
@@ -22,69 +21,127 @@ env:
   CLAUDE_CODE_OAUTH_TOKEN: ''
 
 jobs:
-  diagnostic-release-build:
+  baseline-root-1998:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - name: Checkout frozen diagnostic source
+      - name: Checkout frozen baseline source
         uses: actions/checkout@v5
         with:
-          ref: b8139fa06c878b41cdc9f7aa942aa9303fc88c0d
+          ref: 59ff883cd772df01e29a16ab1bf68962f758bb38
           fetch-depth: 1
           persist-credentials: false
-      - name: Setup Rust toolchain
+      - name: Checkout same paired official source
+        uses: actions/checkout@v6
+        with:
+          repository: taichuy/1flowbase-official-plugins
+          ref: a927373b69d2109e32bf9d43c545a89b19a7dea1
+          path: tmp/ai-gateway-concurrency/official-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Setup same Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.1
-      - name: Restore existing release dependency cache
+      - name: Restore existing dependency cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: ai-gateway-protocol-conformance
           key: codex/gateway-cpu-ci-20261001
           save-if: false
           workspaces: api -> target
-      - name: Record frozen source and runner environment
+      - name: Prepare same PostgreSQL 18 backup clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools_dir="$RUNNER_TEMP/postgresql-18-tools"
+          mkdir -p "$tools_dir"
+          for tool in pg_dump pg_restore; do
+            sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
+          #!/bin/sh
+          exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
+          SCRIPT
+            chmod +x "$tools_dir/$tool"
+          done
+          echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
+          echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
+      - name: Record source and environment
         shell: bash
         env:
           WORKFLOW_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          evidence_dir=tmp/test-governance/gateway-cpu-diagnostic
+          evidence_dir=tmp/test-governance/gateway-lifecycle-baseline
           mkdir -p "$evidence_dir"
-          test "$(git rev-parse HEAD)" = b8139fa06c878b41cdc9f7aa942aa9303fc88c0d
-          test "$(git rev-parse HEAD:api)" = 5e7216fd1524afa0c6e3d8d63b51c6138990b7cf
-          printf '%s\n' 'artifact_role=diagnostic-only-not-product-candidate' \
-            'diagnostic_source=b8139fa06c878b41cdc9f7aa942aa9303fc88c0d' \
-            'formal_candidate=67a78a8828d79678d53e0551f8815b20447eddc2' \
-            "workflow_source=$WORKFLOW_SHA" \
-            'features=tikv-jemallocator/profiling,tikv-jemallocator/stats' \
-            'profile=release' 'cargo_jobs=1' > "$evidence_dir/sources.txt"
+          test "$(git rev-parse HEAD)" = 59ff883cd772df01e29a16ab1bf68962f758bb38
+          test "$(node -p "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")" = a927373b69d2109e32bf9d43c545a89b19a7dea1
+          test "$(git -C tmp/ai-gateway-concurrency/official-source rev-parse HEAD)" = a927373b69d2109e32bf9d43c545a89b19a7dea1
+          printf '%s\n' 'baseline=59ff883cd772df01e29a16ab1bf68962f758bb38' \
+            'candidate_comparison=67a78a8828d79678d53e0551f8815b20447eddc2' \
+            'candidate_run=36837561449' "workflow_source=$WORKFLOW_SHA" \
+            'official_plugins=a927373b69d2109e32bf9d43c545a89b19a7dea1' \
+            'profile=default-test-debug' 'filter=root_1998' > "$evidence_dir/sources.txt"
           rustc --version --verbose > "$evidence_dir/toolchain.txt"
           cargo --version >> "$evidence_dir/toolchain.txt"
           sha256sum api/Cargo.lock > "$evidence_dir/lock.sha256"
           lscpu > "$evidence_dir/runner-cpu.txt"
           cat /proc/meminfo > "$evidence_dir/runner-memory.txt"
-          for name in cpu.max memory.max; do
-            if test -f "/sys/fs/cgroup/$name"; then
-              cat "/sys/fs/cgroup/$name" > "$evidence_dir/cgroup-$name.txt"
-            fi
-          done
-      - name: Build diagnostic release with jemalloc profiling and stats
+      - name: Run only original root_1998 invocation with original temporary DB owner
         shell: bash
         run: |
-          set -euo pipefail
-          evidence_dir=tmp/test-governance/gateway-cpu-diagnostic
-          cargo build --manifest-path api/Cargo.toml -p api-server --bin api-server \
-            --release --locked --jobs 1 \
-            --features tikv-jemallocator/profiling,tikv-jemallocator/stats \
-            > "$evidence_dir/build.log" 2>&1
-          cp api/target/release/api-server "$evidence_dir/diagnostic-release-api-server"
-          (cd "$evidence_dir" && sha256sum diagnostic-release-api-server > sha256.txt)
-      - name: Upload diagnostic binary and provenance
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const {spawnSync} = require('node:child_process');
+          const {createDatabase} = require('./scripts/node/ai-gateway-concurrency/local-acceptance/system');
+          const {conversationTestInvocations} = require('./scripts/node/ai-gateway-concurrency/quality-gate/cli');
+          (async () => {
+            const root = process.cwd();
+            const out = path.join(root, 'tmp/test-governance/gateway-lifecycle-baseline');
+            const found = spawnSync('docker', ['ps', '--filter', 'publish=5432', '--format', '{{.ID}}'], {encoding:'utf8'});
+            if (found.status !== 0) throw new Error('PostgreSQL inventory failed');
+            const ids = found.stdout.trim().split(/\s+/);
+            if (ids.length !== 1 || !ids[0]) throw new Error('Expected exactly one PostgreSQL service');
+            const db = createDatabase({container: ids[0], host:'127.0.0.1', port:5432});
+            try {
+              const i = conversationTestInvocations(root, db.url).find(x => x.name === 'api-server-interface-lifecycle-acceptance');
+              if (!i || i.args.at(-1) !== 'root_1998') throw new Error('Original finite invocation unavailable');
+              const started = Date.now();
+              const r = spawnSync('cargo', i.args, {cwd:root, env:{...process.env,...i.options.env},encoding:'utf8',maxBuffer:32*1024*1024});
+              const output = `${r.stdout || ''}${r.stderr || ''}`;
+              fs.writeFileSync(path.join(out,'root-1998.log'),output);
+              const matches = [...output.matchAll(/test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;/g)];
+              const executed = matches.reduce((n,m)=>n+Number(m[1])+Number(m[2]),0);
+              fs.writeFileSync(path.join(out,'result.json'),JSON.stringify({source:'59ff883cd772df01e29a16ab1bf68962f758bb38',command:'cargo test --manifest-path api/Cargo.toml -p api-server --lib root_1998',status:r.status,signal:r.signal,error:r.error?.message || null,executed,duration_ms:Date.now()-started,test_results:matches.map(m=>({passed:Number(m[1]),failed:Number(m[2]),ignored:Number(m[3])}))},null,2)+'\n');
+              if (r.error) throw r.error;
+              if (!executed) throw new Error('No tests executed; compilation is not acceptance');
+              process.exitCode = r.status === 0 ? 0 : 1;
+            } finally {
+              await db.close();
+            }
+          })().catch(e => {console.error(e);process.exitCode=1;});
+          NODE
+      - name: Upload original test output and provenance
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: gateway-cpu-diagnostic-b8139fa06c878b41cdc9f7aa942aa9303fc88c0d
-          path: tmp/test-governance/gateway-cpu-diagnostic/**
+          name: gateway-lifecycle-baseline-59ff883cd772df01e29a16ab1bf68962f758bb38
+          path: tmp/test-governance/gateway-lifecycle-baseline/**
           if-no-files-found: error
           retention-days: 7
