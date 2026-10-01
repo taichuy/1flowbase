@@ -108,10 +108,10 @@ impl RuntimeProcessSampler {
             return inner.snapshot.as_ref().clone();
         }
 
-        let Ok(observation) = self.source.collect() else {
+        let Ok(snapshot) = self.source.collect_processes() else {
             return RuntimeProcessSnapshot::default();
         };
-        inner.snapshot = Arc::clone(&observation.processes);
+        inner.snapshot = snapshot;
         inner.previous_sampled_at = Some(sampled_at);
         inner.snapshot.as_ref().clone()
     }
@@ -123,7 +123,11 @@ impl RuntimeProcessSampler {
     }
 }
 
-pub(crate) fn snapshot_from_system(system: &System, users: &Users) -> RuntimeProcessSnapshot {
+pub(crate) fn snapshot_from_system(
+    system: &System,
+    metadata_system: &System,
+    users: &Users,
+) -> RuntimeProcessSnapshot {
     let current_pid = sysinfo::get_current_pid().ok();
     let protected_pids = current_pid
         .map(|pid| protected_process_pids(system, pid))
@@ -133,6 +137,7 @@ pub(crate) fn snapshot_from_system(system: &System, users: &Users) -> RuntimePro
         .unwrap_or_default();
     let current_uid = current_pid
         .and_then(|pid| system.process(pid))
+        .and_then(|process| matching_process_metadata(process, metadata_system))
         .and_then(|process| process.user_id())
         .cloned();
 
@@ -144,22 +149,25 @@ pub(crate) fn snapshot_from_system(system: &System, users: &Users) -> RuntimePro
         .values()
         .filter(|process| process.thread_kind().is_none())
         .map(|process| {
+            let metadata = matching_process_metadata(process, metadata_system);
             let (cpu_usage_percent, cpu_usage_single_core_percent) =
                 process_cpu_usage_percentages(process.cpu_usage(), logical_cpu_count);
             RuntimeProcessSample {
                 pid: process.pid().as_u32(),
                 parent_pid: process.parent().map(|pid| pid.as_u32()),
                 name: process.name().to_string_lossy().into_owned(),
-                command: (!process.cmd().is_empty()).then(|| {
-                    process
-                        .cmd()
-                        .iter()
-                        .map(|argument| argument.to_string_lossy())
-                        .collect::<Vec<_>>()
-                        .join(" ")
+                command: metadata.and_then(|metadata| {
+                    (!metadata.cmd().is_empty()).then(|| {
+                        metadata
+                            .cmd()
+                            .iter()
+                            .map(|argument| argument.to_string_lossy())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    })
                 }),
-                user: process
-                    .user_id()
+                user: metadata
+                    .and_then(|metadata| metadata.user_id())
                     .and_then(|user_id| users.get_user_by_id(user_id))
                     .map(|user| user.name().to_string()),
                 status: process_status_label(process.status()).to_string(),
@@ -169,7 +177,9 @@ pub(crate) fn snapshot_from_system(system: &System, users: &Users) -> RuntimePro
                 memory_usage_percent: (process.memory() as f64 / total_memory as f64 * 100.0)
                     as f32,
                 start_time_unix_seconds: process.start_time(),
-                terminable: is_terminable(process, &protected_pids, current_uid.as_ref()),
+                terminable: metadata.is_some_and(|metadata| {
+                    is_terminable(metadata, &protected_pids, current_uid.as_ref())
+                }),
                 backend_process: backend_pids.contains(&process.pid()),
             }
         })
@@ -185,6 +195,17 @@ pub(crate) fn snapshot_from_system(system: &System, users: &Users) -> RuntimePro
     processes.truncate(MAX_RUNTIME_PROCESS_SAMPLES);
     let snapshot = RuntimeProcessSnapshot { total, processes };
     snapshot
+}
+
+/// The primary observation owns PID, parent, status, CPU and memory. Optional
+/// fields may join only its public PID/start-time identity (seconds precision).
+fn matching_process_metadata<'a>(
+    process: &sysinfo::Process,
+    metadata_system: &'a System,
+) -> Option<&'a sysinfo::Process> {
+    metadata_system.process(process.pid()).filter(|metadata| {
+        metadata.pid() == process.pid() && metadata.start_time() == process.start_time()
+    })
 }
 
 pub(crate) fn terminate_from_system(

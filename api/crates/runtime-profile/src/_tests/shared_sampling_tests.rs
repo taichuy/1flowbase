@@ -21,7 +21,7 @@ fn source() -> Arc<RuntimeSampleSource> {
     Arc::new(RuntimeSampleSource::new(Duration::from_secs(1)))
 }
 #[test]
-fn no_consumers_do_not_refresh_the_os() {
+fn no_consumers_do_not_refresh_process_observations() {
     let source = source();
     let _api = profile(source.clone(), "api-server");
     let _host = profile(source.clone(), "runtime-extension-host");
@@ -36,6 +36,7 @@ fn profile_only_projects_two_services_from_one_observation() {
     let a = api.collect().unwrap();
     let h = host.collect().unwrap();
     assert_eq!(source.raw_refresh_count(), 1);
+    assert_eq!(source.process_projection_count(), 0);
     assert_eq!(a.metrics, h.metrics);
     assert_eq!(a.service, "api-server");
     assert_eq!(h.service, "runtime-extension-host");
@@ -54,10 +55,11 @@ fn process_only_reuses_the_process_projection_cache() {
         .processes
         .iter()
         .any(|p| p.pid == std::process::id() && !p.terminable));
-    assert_eq!(source.raw_refresh_count(), 1);
+    assert_eq!(source.metric_refresh_count(), 1);
+    assert_eq!(source.raw_refresh_count(), 2);
 }
 #[test]
-fn profiles_and_processes_share_one_real_os_refresh() {
+fn profiles_and_processes_share_metrics_and_initialize_optional_metadata_once() {
     let source = source();
     let api = profile(source.clone(), "api-server");
     let host = profile(source.clone(), "runtime-extension-host");
@@ -67,7 +69,10 @@ fn profiles_and_processes_share_one_real_os_refresh() {
     let h = host.collect().unwrap();
     assert!(!p.processes.is_empty());
     assert_eq!(a.metrics, h.metrics);
-    assert_eq!(source.raw_refresh_count(), 1);
+    assert_eq!(source.metric_refresh_count(), 1);
+    // One metric observation plus one first-demand optional metadata read.
+    assert_eq!(source.raw_refresh_count(), 2);
+    assert_eq!(source.process_projection_count(), 1);
 }
 #[test]
 fn concurrent_clients_share_one_observation_after_waiting_for_the_owner() {
@@ -92,7 +97,7 @@ fn concurrent_clients_share_one_observation_after_waiting_for_the_owner() {
     assert_eq!(source.raw_refresh_count(), 1);
 }
 #[test]
-fn independent_sources_control_reproduces_three_os_refreshes() {
+fn independent_sources_control_reproduces_three_metric_observations() {
     let sources = [source(), source(), source()];
     profile(sources[0].clone(), "api-server").collect().unwrap();
     profile(sources[1].clone(), "runtime-extension-host")
@@ -100,7 +105,10 @@ fn independent_sources_control_reproduces_three_os_refreshes() {
         .unwrap();
     RuntimeProcessSampler::with_sample_source(sources[2].clone()).collect();
     assert_eq!(
-        sources.iter().map(|s| s.raw_refresh_count()).sum::<usize>(),
+        sources
+            .iter()
+            .map(|s| s.metric_refresh_count())
+            .sum::<usize>(),
         3
     );
 }
@@ -124,4 +132,67 @@ fn a_new_shared_sample_reports_a_real_delta_after_warmup() {
         .metrics
         .sample_interval_milliseconds
         .is_some_and(|n| n >= 1000));
+}
+
+#[test]
+fn process_first_demand_keeps_cpu_and_metadata_observations_separate() {
+    let source = source();
+    let processes = RuntimeProcessSampler::with_sample_source(source.clone());
+    let first = processes.collect();
+    let api = profile(source.clone(), "api-server");
+    api.collect().unwrap();
+    assert_eq!(first, processes.collect());
+    assert_eq!(source.metric_refresh_count(), 1);
+    assert_eq!(source.raw_refresh_count(), 2);
+    assert_eq!(source.process_projection_count(), 1);
+    let own = first
+        .processes
+        .iter()
+        .find(|p| p.pid == std::process::id())
+        .unwrap();
+    assert!(own.command.is_some());
+    assert!(own.user.is_some());
+    assert!(!own.terminable);
+}
+
+#[test]
+fn mixed_concurrent_demand_shares_observation_and_initializes_rows_once() {
+    let source = source();
+    let barrier = Arc::new(Barrier::new(8));
+    thread::scope(|scope| {
+        let handles: Vec<_> = (0..8)
+            .map(|index| {
+                let source = source.clone();
+                let barrier = barrier.clone();
+                scope.spawn(move || {
+                    barrier.wait();
+                    if index % 2 == 0 {
+                        source.collect().unwrap();
+                    } else {
+                        assert!(!source.collect_processes().unwrap().processes.is_empty());
+                    }
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    });
+    assert_eq!(source.metric_refresh_count(), 1);
+    assert_eq!(source.raw_refresh_count(), 2);
+    assert_eq!(source.process_projection_count(), 1);
+}
+
+#[test]
+fn terminal_control_freezes_lazy_projection_before_live_validation() {
+    let source = source();
+    let snapshot = source.collect().unwrap();
+    assert_eq!(source.process_projection_count(), 0);
+    assert_eq!(
+        source.terminate(u32::MAX),
+        runtime_profile::RuntimeProcessTerminationOutcome::NotObservable
+    );
+    assert!(Arc::ptr_eq(&snapshot, &source.collect().unwrap()));
+    assert_eq!(source.process_projection_count(), 1);
+    assert_eq!(source.metric_refresh_count(), 1);
 }

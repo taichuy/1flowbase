@@ -64,3 +64,39 @@ fn process_only_collection_preserves_child_memory_and_ancestry() {
         std::panic::resume_unwind(error);
     }
 }
+
+#[test]
+fn late_process_metadata_does_not_shorten_the_cpu_measurement_interval() {
+    let mut child = std::process::Command::new("sh")
+        .args(["-c", "while :; do :; done"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("owned CPU probe");
+    let result = std::panic::catch_unwind(|| {
+        let pid = sysinfo::Pid::from_u32(child.id());
+        // A zero-tick newly spawned process legitimately warms up on its next
+        // observation. Start both controls after the owned probe has run.
+        std::thread::sleep(Duration::from_millis(100));
+        let mut subject = RuntimeMetricSampler::new();
+        let mut control = RuntimeMetricSampler::new();
+        subject.collect();
+        control.collect();
+        std::thread::sleep(Duration::from_millis(230));
+        subject.request_process_metadata();
+        subject.ensure_process_metadata();
+        std::thread::sleep(Duration::from_millis(230));
+        subject.collect();
+        control.collect();
+        let subject_cpu = subject.system.process(pid).unwrap().cpu_usage();
+        let control_cpu = control.system.process(pid).unwrap().cpu_usage();
+        assert!(control_cpu > 0.0, "owned probe must consume CPU");
+        assert!(subject_cpu >= control_cpu * 0.8,
+            "late metadata must retain the full CPU interval: subject={subject_cpu}, control={control_cpu}");
+    });
+    let _ = child.kill();
+    let _ = child.wait();
+    if let Err(error) = result {
+        std::panic::resume_unwind(error);
+    }
+}
