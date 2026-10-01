@@ -130,7 +130,8 @@ async fn project_observed_turn(
     let completion = tokio::spawn(completion.complete());
     let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
     heartbeat.set_missed_tick_behavior(MissedTickBehavior::Delay);
-    let mut last_run = None;
+    let mut last_run: Option<Arc<control_plane::application_public_api::native::NativeRunResult>> =
+        None;
     loop {
         let input = tokio::select! {
             input = events.recv() => match input {

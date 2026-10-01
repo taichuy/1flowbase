@@ -1177,7 +1177,7 @@ fn typed_projection_input_keeps_runtime_identity_and_canonical_envelope() {
         debug_stream_events::flow_finished(run.id, json!({ "answer": "done" })),
     );
     let input = CompatibleProjectionInput {
-        run_snapshot: run.clone(),
+        run_snapshot: Arc::new(run.clone()),
         envelope: envelope.clone(),
         delivery: None,
     };
@@ -2251,3 +2251,6 @@ mod live_delivery_batch;
 
 #[path = "forwarding/_tests/terminal_generation.rs"]
 mod terminal_generation;
+
+#[path = "forwarding/_tests/snapshot_ownership.rs"]
+mod snapshot_ownership;

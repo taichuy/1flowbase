@@ -15,7 +15,7 @@ const {
   stopOwned,
   waitForHealth,
 } = require('./process-owner');
-const { persistServiceLogs, redactServiceLog } = require('./service-logs');
+const { persistServiceLogs, redactServiceError } = require('./service-logs');
 const { assertNoArtifactSecrets } = require('../cli-smoke/artifact-scan');
 
 function sha256File(filePath) {
@@ -128,8 +128,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       firstError ||= error;
     }
     if (firstError) {
-      firstError.message = redactServiceLog(firstError.message, fixtureSecrets());
-      throw firstError;
+      throw redactServiceError(firstError, fixtureSecrets());
     }
   };
   try {
@@ -233,15 +232,15 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       },
     };
   } catch (error) {
+    const notes = [];
     try {
       await cleanup();
     } catch (cleanupError) {
-      error.message = `${error.message}; cleanup failed: ${cleanupError.message}`;
+      notes.push(`cleanup failed: ${cleanupError.message}`);
     }
     const output = `${apiProcess?.output?.() || ''}`.trim();
-    if (output) error.message = `${error.message}; owned process output: ${output.slice(-4000)}`;
-    error.message = redactServiceLog(error.message, fixtureSecrets());
-    throw error;
+    if (output) notes.push(`owned process output: ${output.slice(-4000)}`);
+    throw redactServiceError(error, fixtureSecrets(), notes);
   }
 }
 

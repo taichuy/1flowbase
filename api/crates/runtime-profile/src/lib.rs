@@ -5,12 +5,14 @@ pub mod locale;
 pub mod metrics;
 pub mod processes;
 pub mod profile;
+pub mod sampling;
 
 pub use fingerprint::*;
 pub use locale::*;
 pub use metrics::*;
 pub use processes::*;
 pub use profile::*;
+pub use sampling::*;
 
 pub fn crate_name() -> &'static str {
     "runtime-profile"

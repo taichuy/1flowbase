@@ -6,7 +6,9 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{Disks, NetworkData, Networks, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{
+    Disks, NetworkData, Networks, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind, Users,
+};
 use time::OffsetDateTime;
 
 const MAX_FRESH_SAMPLE_INTERVAL: Duration = Duration::from_secs(10);
@@ -99,6 +101,10 @@ pub struct RuntimeMetricsSnapshot {
 #[derive(Debug)]
 pub(crate) struct RuntimeMetricSampler {
     system: System,
+    metadata_system: System,
+    users: Users,
+    include_process_metadata: bool,
+    process_metadata_current: bool,
     networks: Networks,
     disks: Disks,
     current_pid: Option<sysinfo::Pid>,
@@ -170,7 +176,13 @@ pub(crate) fn summarize_related_process_memory(
 impl RuntimeMetricSampler {
     pub(crate) fn new() -> Self {
         Self {
-            system: System::new_all(),
+            // The first collect refreshes the fields we expose. Avoid enumerating
+            // every visible process and task during collector construction.
+            system: System::new(),
+            metadata_system: System::new(),
+            users: Users::new(),
+            include_process_metadata: false,
+            process_metadata_current: false,
             networks: Networks::new_with_refreshed_list(),
             disks: Disks::new_with_refreshed_list(),
             current_pid: sysinfo::get_current_pid().ok(),
@@ -179,6 +191,46 @@ impl RuntimeMetricSampler {
             previous_cgroup_cpu_usage_micros: None,
             last_snapshot: None,
         }
+    }
+
+    pub(crate) fn request_process_metadata(&mut self) {
+        if !self.include_process_metadata {
+            self.include_process_metadata = true;
+            self.users.refresh();
+        }
+    }
+
+    /// Read optional fields separately: sysinfo updates internal CPU ticks even
+    /// without_cpu, so metadata must never refresh the primary observation.
+    pub(crate) fn ensure_process_metadata(&mut self) -> bool {
+        if self.process_metadata_current {
+            return false;
+        }
+        let pids = self.system.processes().keys().copied().collect::<Vec<_>>();
+        self.metadata_system.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&pids),
+            true,
+            ProcessRefreshKind::nothing()
+                .without_tasks()
+                .with_user(UpdateKind::OnlyIfNotSet)
+                .with_cmd(UpdateKind::OnlyIfNotSet),
+        );
+        self.process_metadata_current = true;
+        true
+    }
+
+    pub(crate) fn process_snapshot(&self) -> crate::RuntimeProcessSnapshot {
+        crate::processes::snapshot_from_system(&self.system, &self.metadata_system, &self.users)
+    }
+    pub(crate) fn terminate(&mut self, pid: u32) -> crate::RuntimeProcessTerminationOutcome {
+        crate::processes::terminate_from_system(&mut self.metadata_system, pid)
+    }
+    #[cfg(test)]
+    pub(crate) fn contains_userland_tasks(&self) -> bool {
+        self.system
+            .processes()
+            .values()
+            .any(|p| p.thread_kind() == Some(sysinfo::ThreadKind::Userland))
     }
 
     pub(crate) fn collect(&mut self) -> RuntimeMetricsSnapshot {
@@ -195,11 +247,17 @@ impl RuntimeMetricSampler {
 
         self.system.refresh_cpu_usage();
         self.system.refresh_memory();
+        // Only this System owns the CPU/memory interval. Optional metadata
+        // uses its own System because even without_cpu mutates sysinfo ticks.
         self.system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::nothing().with_memory(),
+            ProcessRefreshKind::nothing()
+                .without_tasks()
+                .with_cpu()
+                .with_memory(),
         );
+        self.process_metadata_current = false;
         self.networks.refresh(true);
         self.disks.refresh(true);
 
@@ -658,3 +716,7 @@ fn read_limit(path: &Path) -> Option<u64> {
     let value = value.trim();
     (value != "max").then(|| value.parse().ok()).flatten()
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "_tests/metrics_process_scope_tests.rs"]
+mod process_scope_tests;

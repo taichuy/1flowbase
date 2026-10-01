@@ -425,7 +425,8 @@ async fn archive_worker(
             }
             persist_node_links(repository, scope, id, state, &mut linked, &mut failed).await;
             let classifier = classifier.as_mut().expect("classifier initialized");
-            loop {
+            // This owner is the sole archive writer; its receipt is the committed watermark.
+            while replay_cursor < receipt.persisted_through {
                 let frames = repository.replay(id, replay_cursor).await?;
                 if frames.is_empty() {
                     break;

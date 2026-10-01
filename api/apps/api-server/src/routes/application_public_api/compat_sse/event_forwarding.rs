@@ -26,7 +26,7 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
 
 struct TypedForwarding<'a> {
     terminal_dependencies: &'a NativeRunTerminalDependencies,
-    initial_run: &'a NativeRunResult,
+    initial_run: &'a Arc<NativeRunResult>,
     sender: &'a mpsc::Sender<CompatibleProjectionInput>,
     settler: &'a RuntimeEventDeliverySettler,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
@@ -49,6 +49,7 @@ async fn forward_subscribed_typed_events(
         mut subscription,
         sender,
     } = stream;
+    let initial_run = Arc::new(initial_run);
     let mut forwarding = TypedForwarding {
         terminal_dependencies: &terminal_dependencies,
         initial_run: &initial_run,
@@ -242,10 +243,7 @@ async fn forward_pending_delivery_claims(
     while !deliveries.is_empty() {
         let delivery = deliveries.remove(0);
         let envelope = durable_record_to_runtime_event_envelope(delivery.event.clone());
-        let mut run = forwarding.initial_run.clone();
-        if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
-            run.metadata["response_round_id"] = round_id.clone();
-        }
+        let run = Arc::clone(forwarding.initial_run);
         delivered_claim_events.push((
             delivery.event.event_type.clone(),
             delivery.event.payload.clone(),
@@ -288,8 +286,8 @@ async fn forward_ordered_typed_events(
             continue;
         };
         let terminal = is_public_terminal_runtime_event(&event.event_type);
-        let mut run = if terminal {
-            let run = match load_durable_native_run_for_terminal_projection_with_dependencies(
+        let run = if terminal {
+            let mut run = match load_durable_native_run_for_terminal_projection_with_dependencies(
                 forwarding.terminal_dependencies,
                 forwarding.initial_run,
             )
@@ -315,6 +313,11 @@ async fn forward_ordered_typed_events(
                 );
                 continue;
             }
+            // Reload terminal state once, then share the immutable durable snapshot.
+            if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
+                run.metadata["response_round_id"] = round_id.clone();
+            }
+            let run = Arc::new(run);
             if !forwarding.emitted_answer_delta {
                 for answer_event in durable_canonical_partial_runtime_events_from_native_run(&run) {
                     if forwarding
@@ -334,11 +337,8 @@ async fn forward_ordered_typed_events(
             }
             run
         } else {
-            forwarding.initial_run.clone()
+            Arc::clone(forwarding.initial_run)
         };
-        if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
-            run.metadata["response_round_id"] = round_id.clone();
-        }
         forwarding.emitted_answer_delta |= is_answer_presentation_delta(&event);
         if forwarding
             .sender

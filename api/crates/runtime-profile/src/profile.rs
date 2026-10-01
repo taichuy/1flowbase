@@ -1,12 +1,12 @@
-use std::sync::Mutex;
+use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use extension_contracts::RuntimeTarget;
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use time::OffsetDateTime;
 
-use crate::{detect_host_fingerprint, RuntimeMetricSampler, RuntimeMetricsSnapshot};
+use crate::{detect_host_fingerprint, RuntimeMetricsSnapshot, RuntimeSampleSource};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimePlatform {
@@ -78,7 +78,7 @@ pub struct RuntimeProfileCollector {
     service_version: String,
     process_start: OffsetDateTime,
     service_status: String,
-    sampler: Mutex<RuntimeMetricSampler>,
+    sample_source: Arc<RuntimeSampleSource>,
 }
 
 impl RuntimeProfileCollector {
@@ -88,6 +88,22 @@ impl RuntimeProfileCollector {
         process_start: OffsetDateTime,
         service_status: impl Into<String>,
     ) -> Result<Self> {
+        Self::new_with_sample_source(
+            service,
+            service_version,
+            process_start,
+            service_status,
+            Arc::new(RuntimeSampleSource::default()),
+        )
+    }
+
+    pub fn new_with_sample_source(
+        service: impl Into<String>,
+        service_version: impl Into<String>,
+        process_start: OffsetDateTime,
+        service_status: impl Into<String>,
+        sample_source: Arc<RuntimeSampleSource>,
+    ) -> Result<Self> {
         let target = RuntimeTarget::current_host()?;
         Ok(Self {
             host_fingerprint: detect_host_fingerprint()?,
@@ -96,16 +112,12 @@ impl RuntimeProfileCollector {
             service_version: service_version.into(),
             process_start,
             service_status: service_status.into(),
-            sampler: Mutex::new(RuntimeMetricSampler::new()),
+            sample_source,
         })
     }
 
     pub fn collect(&self) -> Result<RuntimeProfile> {
-        let metrics = self
-            .sampler
-            .lock()
-            .map_err(|_| anyhow!("runtime metric sampler lock poisoned"))?
-            .collect();
+        let metrics = self.sample_source.collect()?.metrics.clone();
         Ok(RuntimeProfile {
             host_fingerprint: self.host_fingerprint.clone(),
             platform: self.platform.clone(),
