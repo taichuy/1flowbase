@@ -429,8 +429,16 @@
   max-width: calc(100vw - 32px);
 }
 
-/* This popup owns its wheel boundary; reaching either end must not scroll the page. */
-.app-shell-settings-popup {
+/* Header menus own their wheel boundary and keep long lists inside the viewport. */
+.app-shell-scrollable-menu-popup {
+  overscroll-behavior-y: contain;
+}
+
+.app-shell-scrollable-menu-popup.ant-menu,
+.app-shell-scrollable-menu-popup .ant-menu {
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior-y: contain;
 }
 
@@ -443,14 +451,6 @@
   border-radius: 8px;
   padding-block: 12px;
   box-shadow: var(--shadow-float);
-}
-
-.app-shell-settings-popup.ant-menu {
-  max-height: 60vh;
-}
-
-.app-shell-settings-popup.ant-menu > .ant-menu {
-  max-height: none;
 }
 
 .app-shell-help-popup.ant-menu,

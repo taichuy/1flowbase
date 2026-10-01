@@ -80,6 +80,8 @@ function topbarNavigationItems({
     const path = `/${node.slug}`;
     items.push({
       key: node.id,
+      popupClassName:
+        node.kind === 'group' ? 'app-shell-scrollable-menu-popup' : undefined,
       children:
         node.kind === 'group' && node.children?.length
           ? frontstagePageItems({
@@ -197,6 +199,7 @@ function frontstagePageItems({
       return {
         key: node.id,
         label: title,
+        popupClassName: 'app-shell-scrollable-menu-popup',
         children: frontstagePageItems({
           nodes: node.children ?? [],
           slug,

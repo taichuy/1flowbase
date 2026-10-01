@@ -137,7 +137,8 @@ describe('createSettingsChromeMenuItems', () => {
 
     expect(settingsItem).toMatchObject({
       key: 'settings',
-      popupClassName: 'app-shell-settings-popup'
+      popupClassName:
+        'app-shell-settings-popup app-shell-scrollable-menu-popup'
     });
     expect(children).toHaveLength(settingsSectionDefinitions.length);
     expect(
@@ -183,7 +184,7 @@ describe('createSettingsChromeMenuItems', () => {
     );
 
     expect(appShellCss).toMatch(
-      /\.app-shell-settings-popup\.ant-menu \{\s*max-height: 60vh;/
+      /\.app-shell-scrollable-menu-popup \.ant-menu \{\s*max-height: 60vh;/
     );
     expect(appShellCss).toContain('overflow-y: auto;');
   });

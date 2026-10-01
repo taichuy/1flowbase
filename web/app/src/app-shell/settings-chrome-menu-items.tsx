@@ -94,7 +94,8 @@ export function createSettingsChromeMenuItems({
           <SettingOutlined />
         </span>
       ),
-      popupClassName: 'app-shell-settings-popup',
+      popupClassName:
+        'app-shell-settings-popup app-shell-scrollable-menu-popup',
       children
     }
   ];
