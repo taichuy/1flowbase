@@ -943,7 +943,7 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   assert.doesNotMatch(workflow, /test-binar(?:y|ies)/u);
 });
 
-test("API-server quality-gate shards build and export the real SDK worker fixtures", () => {
+test("API-server and Host quality-gate shards build and export the real SDK worker fixtures", () => {
   const workflow = readQualityGateWorkflow();
   const singleScope = workflow.slice(
     workflow.indexOf("  single-scope-gate:\n"),
@@ -967,7 +967,7 @@ test("API-server quality-gate shards build and export the real SDK worker fixtur
 
     const step = job.slice(stepStart, actionStart);
     assert.ok(
-      step.includes("if: ${{ startsWith(" + scope + ", 'repo-backend-test-api-server-') }}"),
+      step.includes("if: ${{ startsWith(" + scope + ", 'repo-backend-test-api-server-') || " + scope + " == 'repo-backend-test-runtime-storage-fast' }}"),
     );
     assert.ok(
       step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target),

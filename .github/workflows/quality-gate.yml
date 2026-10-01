@@ -207,7 +207,7 @@ jobs:
             rust-quality-gate-v2-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-${{ inputs.scope }}-${{ hashFiles('api/Cargo.lock') }}-
             rust-quality-gate-v2-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-${{ inputs.scope }}-
       - name: Build API server worker fixtures
-        if: ${{ startsWith(inputs.scope, 'repo-backend-test-api-server-') }}
+        if: ${{ startsWith(inputs.scope, 'repo-backend-test-api-server-') || inputs.scope == 'repo-backend-test-runtime-storage-fast' }}
         shell: bash
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-single-backend/${{ inputs.scope }}/target
@@ -609,7 +609,7 @@ jobs:
             rust-quality-gate-backend-v2-${{ runner.os }}-${{ matrix.scope }}-
             rust-quality-gate-backend-v2-${{ runner.os }}-
       - name: Build API server worker fixtures
-        if: ${{ startsWith(matrix.scope, 'repo-backend-test-api-server-') }}
+        if: ${{ startsWith(matrix.scope, 'repo-backend-test-api-server-') || matrix.scope == 'repo-backend-test-runtime-storage-fast' }}
         shell: bash
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-backend/${{ matrix.scope }}/target
