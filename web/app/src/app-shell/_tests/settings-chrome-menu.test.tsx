@@ -184,10 +184,10 @@ describe('createSettingsChromeMenuItems', () => {
     );
 
     expect(appShellCss).toMatch(
-      /\.app-shell-scrollable-menu-popup > \.ant-menu \{\s*max-height: 60vh;/
+      /\.app-shell-scrollable-menu-popup\.ant-menu \{\s*max-height: none;\s*overflow: visible;/
     );
-    expect(appShellCss).not.toMatch(
-      /\.app-shell-scrollable-menu-popup \.ant-menu \{/
+    expect(appShellCss).toMatch(
+      /\.app-shell-scrollable-menu-popup\.ant-menu > \.ant-menu \{\s*max-height: 60vh;\s*overflow-y: auto;/
     );
     expect(appShellCss).toContain('overflow-y: auto;');
   });

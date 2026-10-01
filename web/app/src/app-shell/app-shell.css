@@ -434,8 +434,12 @@
   overscroll-behavior-y: contain;
 }
 
-.app-shell-scrollable-menu-popup.ant-menu,
-.app-shell-scrollable-menu-popup > .ant-menu {
+.app-shell-scrollable-menu-popup.ant-menu {
+  max-height: none;
+  overflow: visible;
+}
+
+.app-shell-scrollable-menu-popup.ant-menu > .ant-menu {
   max-height: 60vh;
   overflow-y: auto;
   overflow-x: hidden;
