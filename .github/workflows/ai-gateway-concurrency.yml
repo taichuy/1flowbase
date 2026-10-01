@@ -1,22 +1,12 @@
-name: AI Gateway Protocol Conformance Gate
-
+name: Gateway Paired Monitor and Direct Mock Experiment
 on:
-  workflow_call:
-    inputs:
-      target_ref:
-        description: Candidate branch, tag, or SHA to validate
-        type: string
-        required: false
-        default: ''
   workflow_dispatch:
-
 permissions:
   contents: read
-
+  actions: read
 concurrency:
-  group: ai-gateway-protocol-conformance-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: gateway-paired-monitor-${{ github.ref }}
+  cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_INCREMENTAL: '0'
@@ -26,11 +16,10 @@ env:
   ANTHROPIC_AUTH_TOKEN: ''
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
-
 jobs:
-  protocol-conformance:
+  paired-monitor-direct:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:18.4
@@ -42,79 +31,99 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres -d 1flowbase"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - name: Checkout candidate source
+      - name: Checkout frozen candidate
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.target_ref || github.sha }}
-          fetch-depth: 1
-
-      - name: Resolve candidate source SHA
-        id: candidate_source
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # The candidate's paired-source lock is the single source of truth for the
-      # official provider revision. Hardcoding a ref here made cross-ref runs
-      # (workflow file from main, candidate from another branch) pair a stale
-      # official source with the candidate's fixtures.
-      - name: Resolve paired official provider revision
-        id: paired_official
-        shell: bash
-        run: >-
-          echo "revision=$(node -p
-          "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")"
-          >> "$GITHUB_OUTPUT"
-
-      - name: Checkout paired official provider source
-        uses: actions/checkout@v6
+          ref: 638f494fdbb399fbf4df07a204f79db4af719a50
+          persist-credentials: false
+      - name: Checkout isolated experiment controls
+        uses: actions/checkout@v5
         with:
-          repository: taichuy/1flowbase-official-plugins
-          ref: ${{ steps.paired_official.outputs.revision }}
-          path: tmp/ai-gateway-concurrency/official-source
-          fetch-depth: 1
-
-      - name: Setup Node.js 24
+          ref: ${{ github.sha }}
+          path: tmp/experiment-control
+          sparse-checkout: scripts/node/ai-gateway-concurrency/cloud-monitor-probe
+          persist-credentials: false
+      - name: Setup Node 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-
-      - name: Setup Rust toolchain
+      - name: Setup identical release toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Resolve PostgreSQL 18 backup toolchain
-        shell: bash
-        run: |
-          set -o pipefail
-          node scripts/node/postgres-toolchain/cli.js \
-            | grep -E '^API_POSTGRES_PG_(DUMP|RESTORE)_PATH=' \
-            >> "$GITHUB_ENV"
-
-      # Cache only compiler dependency state. Gate evidence and runtime provenance
-      # are still rebuilt and emitted by the repository-owned command below.
-      - name: Restore Rust dependency cache
+        with:
+          toolchain: 1.98.1
+      - name: Download existing baseline release artifact
+        uses: actions/download-artifact@v6
+        with:
+          github-token: ${{ github.token }}
+          run-id: 36837561449
+          name: gateway-cpu-paired-release-67a78a8828d79678d53e0551f8815b20447eddc2
+          path: tmp/release-reuse
+      - name: Download exact existing synthetic provider packages
+        uses: actions/download-artifact@v6
+        with:
+          github-token: ${{ github.token }}
+          run-id: 36837561449
+          name: test-governance-ai-gateway-protocol-conformance-67a78a8828d79678d53e0551f8815b20447eddc2
+          path: tmp/protocol-reuse
+      - name: Restore existing dependency cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: ai-gateway-protocol-conformance
-          key: ${{ github.ref_name }}
-          save-if: true
-          cache-on-failure: true
-          cache-workspace-crates: true
-          workspaces: |
-            api -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/aliyun_bailian -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/anthropic -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/deepseek -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/gemini -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai_compatible -> target
-
-      - name: Prepare PostgreSQL 18 backup clients
-        shell: bash
+          key: codex/gateway-cpu-ci-20261001
+          save-if: false
+          workspaces: api -> target
+      - name: Verify frozen inputs and build only new candidate release
+        env:
+          WORKFLOW_SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/gateway-monitor-paired/build
+          mkdir -p "$evidence"
+          test "$(git rev-parse HEAD)" = 638f494fdbb399fbf4df07a204f79db4af719a50
+          grep -Fx 'candidate_product=67a78a8828d79678d53e0551f8815b20447eddc2' tmp/release-reuse/sources.txt
+          grep -E '^rustc 1[.]98[.]1 ' tmp/release-reuse/toolchain.txt
+          echo '746d9bacb2b2da169495cc9c03e91b13a2af663c4d09a11f9a0c88f92f4be362  tmp/release-reuse/candidate-release-api-server' | sha256sum --check
+          rustc --version --verbose > "$evidence/toolchain.txt"
+          cargo --version >> "$evidence/toolchain.txt"
+          printf '%s\n' 'baseline=67a78a8828d79678d53e0551f8815b20447eddc2' 'candidate=638f494fdbb399fbf4df07a204f79db4af719a50' "workflow=$WORKFLOW_SHA" 'profile=release' 'features=default' > "$evidence/sources.txt"
+          sha256sum api/Cargo.lock > "$evidence/lock.sha256"
+          lscpu > "$evidence/runner-cpu.txt"
+          cat /proc/meminfo > "$evidence/runner-memory.txt"
+          python3 - <<'PY'
+          import json,pathlib
+          rows=[]
+          for root in [pathlib.Path('/sys/fs/cgroup')]:
+            row={}
+            for name in ['cpu.max','cpuset.cpus.effective','memory.max','memory.high','cpu.stat']:
+              p=root/name
+              row[name]=p.read_text().strip() if p.exists() else 'unavailable'
+            rows.append(row)
+          pathlib.Path('tmp/test-governance/gateway-monitor-paired/build/runner-quota.json').write_text(json.dumps(rows,indent=2))
+          PY
+          cargo build --manifest-path api/Cargo.toml -p api-server --bin api-server --release --locked --jobs 1 > "$evidence/build.log" 2>&1
+          cp api/target/release/api-server "$evidence/candidate-release-api-server"
+          sha256sum "$evidence/candidate-release-api-server" > "$evidence/sha256.txt"
+      - name: Upload immutable candidate build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gateway-monitor-release-build-${{ github.run_id }}
+          path: tmp/test-governance/gateway-monitor-paired/build/**
+          retention-days: 7
+          if-no-files-found: error
+      - name: Configure only owned CI PostgreSQL observation and backup tools
+        run: |
+          set -euo pipefail
+          pg_container="$(docker ps --filter publish=5432 --format '{{.ID}}')"
+          test -n "$pg_container"
+          docker exec "$pg_container" psql -U postgres -c "ALTER SYSTEM SET shared_preload_libraries='pg_stat_statements'"
+          docker restart "$pg_container"
+          for attempt in $(seq 1 30); do
+            if docker exec "$pg_container" pg_isready -U postgres -d 1flowbase; then break; fi
+            sleep 1
+          done
           tools_dir="$RUNNER_TEMP/postgresql-18-tools"
           mkdir -p "$tools_dir"
           for tool in pg_dump pg_restore; do
@@ -126,34 +135,19 @@ jobs:
           done
           echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
           echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-
-      - name: Run the single blocking AI Gateway quality command
-        id: protocol_conformance
-        shell: bash
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/cli.js run
-          --repo-root "$GITHUB_WORKSPACE"
-          --official-source-root "$GITHUB_WORKSPACE/tmp/ai-gateway-concurrency/official-source"
-          --database-url "postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase"
-
-      - name: Write aggregate-compatible AI Gateway report
-        if: always()
-        shell: bash
-        env:
-          AI_GATEWAY_COMMAND_OUTCOME: ${{ steps.protocol_conformance.outcome }}
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/component-report.js
-          --repo-root "$GITHUB_WORKSPACE"
-          --command-outcome "$AI_GATEWAY_COMMAND_OUTCOME"
-
-      - name: Upload bounded protocol evidence
+      - name: Validate experiment statistics contracts
+        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/_tests/metrics.test.js
+      - name: Run bounded ABBA monitor and direct mock pairs on one runner
+        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/run.js
+      - name: Upload all positive and negative raw experiment evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: test-governance-ai-gateway-protocol-conformance-${{ steps.candidate_source.outputs.sha }}
+          name: gateway-monitor-direct-paired-${{ github.run_id }}
           path: |
-            tmp/test-governance/ai-gateway-quality-gate/**
-            tmp/test-governance/ai-gateway-concurrency/**
-            tmp/test-governance/ai-gateway-protocol-conformance/**
-          if-no-files-found: error
+            tmp/test-governance/gateway-monitor-paired/manifest.json
+            tmp/test-governance/gateway-monitor-paired/summary.json
+            tmp/test-governance/gateway-monitor-paired/A*/**
+            tmp/test-governance/gateway-monitor-paired/B*/**
           retention-days: 14
+          if-no-files-found: warn
