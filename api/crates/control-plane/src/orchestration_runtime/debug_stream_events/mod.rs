@@ -352,6 +352,7 @@ pub fn usage_snapshot(
     }
 }
 
+#[tracing::instrument(name="gateway_cost.logs.context_snapshot", target="gateway_cost", level="trace", skip_all)]
 pub fn context_snapshot(
     node_id: &str,
     node_run_id: Uuid,

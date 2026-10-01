@@ -30,6 +30,7 @@ where
             .ok_or_else(|| anyhow!("flow run detail not found"))
     }
 
+    #[tracing::instrument(name="gateway_cost.context.resume", target="gateway_cost", level="trace", skip_all)]
     pub(crate) async fn complete_callback_task_run(
         &self,
         mut command: CompleteCallbackTaskCommand,

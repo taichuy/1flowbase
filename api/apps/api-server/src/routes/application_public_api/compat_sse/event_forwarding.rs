@@ -270,6 +270,7 @@ async fn forward_pending_delivery_claims(
     false
 }
 
+#[tracing::instrument(name="gateway_cost.stream.forward", target="gateway_cost", level="trace", skip_all)]
 async fn forward_ordered_typed_events(
     forwarding: &mut TypedForwarding<'_>,
     events: Vec<(RuntimeEventEnvelope, Option<RuntimeEventDeliveryReceipt>)>,
@@ -334,7 +335,7 @@ async fn forward_ordered_typed_events(
             }
             run
         } else {
-            forwarding.initial_run.clone()
+            { let _cost = tracing::trace_span!(target: "gateway_cost", "gateway_cost.stream.snapshot_clone").entered(); forwarding.initial_run.clone() }
         };
         if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
             run.metadata["response_round_id"] = round_id.clone();

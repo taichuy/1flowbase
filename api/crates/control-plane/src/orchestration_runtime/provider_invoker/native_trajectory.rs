@@ -915,6 +915,7 @@ pub(super) async fn start<
         writer: Some(writer),
     }
 }
+#[tracing::instrument(name="gateway_cost.logs.native_archive", target="gateway_cost", level="trace", skip_all)]
 async fn write<F, Fut>(
     id: Identity,
     mut receiver: mpsc::Receiver<Record>,

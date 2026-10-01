@@ -169,6 +169,7 @@ impl MultiplexProviderWorker {
         &self.limits
     }
 
+    #[tracing::instrument(name="gateway_cost.ipc.call", target="gateway_cost", level="trace", skip_all)]
     pub(crate) async fn call(
         &self,
         request: &ProviderStdioRequest,
@@ -422,6 +423,7 @@ async fn read_frame(
     }
 }
 
+#[tracing::instrument(name="gateway_cost.ipc.writer", target="gateway_cost", level="trace", skip_all)]
 async fn writer(
     mut stdin: ChildStdin,
     mut writes: mpsc::UnboundedReceiver<WriteFrame>,
@@ -458,6 +460,7 @@ async fn writer(
     }
 }
 
+#[tracing::instrument(name="gateway_cost.ipc.reader", target="gateway_cost", level="trace", skip_all)]
 async fn run_reader(
     stdout: ChildStdout,
     mut commands: mpsc::Receiver<CommandMessage>,

@@ -63,6 +63,7 @@ where
         .map(|_| ())
 }
 
+#[tracing::instrument(name="gateway_cost.reliable.persist", target="gateway_cost", level="trace", skip_all)]
 pub async fn persist_runtime_event_payload_with_after_commit<R>(
     repository: &R,
     flow_run_id: Uuid,
@@ -326,6 +327,7 @@ where
     false
 }
 
+#[tracing::instrument(name="gateway_cost.logs.debug_flush", target="gateway_cost", level="trace", skip_all)]
 async fn flush_debug_event_batch<R>(
     repository: &R,
     after_commit: &RuntimeEventAfterCommitLane,

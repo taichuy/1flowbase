@@ -2,6 +2,7 @@
 
 extern crate self as api_server;
 
+mod gateway_cost;
 pub mod app_state;
 pub mod application_public_docs;
 pub mod config;
@@ -235,6 +236,7 @@ fn cors_layer(config: &ApiConfig) -> CorsLayer {
 
 fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
     let router = Router::new().route("/health", get(health));
+    let router = if gateway_cost::enabled() { router.route("/__diagnostics/gateway-stage-cost", get(gateway_cost::snapshot)) } else { router };
 
     if include_docs_ui && static_openapi {
         router.merge(SwaggerUi::new("/docs").url("/openapi.json", openapi::ApiDoc::openapi()))
@@ -1067,9 +1069,14 @@ pub async fn shutdown_signal() {
 }
 
 pub fn init_tracing() {
+    use tracing_subscriber::Layer;
+    let enabled = gateway_cost::enabled();
+    let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    if enabled { filter = filter.add_directive("gateway_cost=trace".parse().unwrap()); }
     let _ = tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
+        .with(enabled.then_some(gateway_cost::CostLayer))
+        .with(tracing_subscriber::fmt::layer().with_filter(tracing_subscriber::filter::filter_fn(|m|m.target()!="gateway_cost")))
         .try_init();
 }
 

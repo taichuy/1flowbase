@@ -85,6 +85,7 @@ impl<R, H> RuntimeProviderInvoker<R, H> {
         Ok(())
     }
 
+    #[tracing::instrument(name="gateway_cost.context.protocol", target="gateway_cost", level="trace", skip_all)]
     async fn open_protocol_context(
         &self,
         locator: &ProviderProtocolContextLocator,

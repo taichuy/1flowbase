@@ -359,6 +359,7 @@ async fn worker(
     state.stopped.store(true, Ordering::Release);
     state.stopped_notify.notify_waiters();
 }
+#[tracing::instrument(name="gateway_cost.logs.client_archive", target="gateway_cost", level="trace", skip_all)]
 async fn archive_worker(
     repository: &dyn FactWriter,
     transport: ClientTrajectoryTransport,

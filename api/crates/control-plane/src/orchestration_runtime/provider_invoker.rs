@@ -343,6 +343,7 @@ where
             .await
     }
 
+    #[tracing::instrument(name="gateway_cost.protocol.provider_input", target="gateway_cost", level="trace", skip_all)]
     async fn pipeline_provider_input(
         &self,
         mut input: ProviderInvocationInput,

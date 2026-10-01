@@ -460,7 +460,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 let mut terminal_run = initial_run;
                 while let Some(event) = events.recv().await {
                     let (run, envelope, delivery) = event.into_parts();
-                    terminal_run = run.clone();
+                    terminal_run = { let _cost = tracing::trace_span!(target: "gateway_cost", "gateway_cost.stream.interface_clone").entered(); run.clone() };
                     if publisher
                         .emit(CompatibilityStreamEvent::with_delivery(
                             run, envelope, delivery,

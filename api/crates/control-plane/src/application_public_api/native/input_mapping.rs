@@ -13,6 +13,7 @@ pub enum NativeInputMappingError {
 pub struct NativeInputMapper;
 
 impl NativeInputMapper {
+    #[tracing::instrument(name="gateway_cost.protocol.input", target="gateway_cost", level="trace", skip_all)]
     pub fn map(
         request: &NativeRunRequest,
         mapping: &ApplicationApiMappingConfig,
