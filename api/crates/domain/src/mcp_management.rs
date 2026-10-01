@@ -530,6 +530,8 @@ pub struct McpToolRecord {
     pub result_schema: serde_json::Value,
     pub input_mapping: serde_json::Value,
     pub output_mapping: serde_json::Value,
+    pub max_inline_chars: Option<i64>,
+    pub response_fields: Option<Vec<String>>,
     pub permission_code: Option<String>,
     pub risk_level: McpRiskLevel,
     pub des_id: String,
@@ -541,6 +543,59 @@ pub struct McpToolRecord {
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+}
+
+pub fn validate_mcp_return_defaults(
+    max_inline_chars: Option<i64>,
+    response_fields: Option<&[String]>,
+) -> Result<(), &'static str> {
+    if max_inline_chars.is_some_and(|value| value <= 0) {
+        return Err("max_inline_chars");
+    }
+    if response_fields
+        .is_some_and(|fields| fields.iter().any(|field| !is_mcp_result_pointer(field)))
+    {
+        return Err("response_fields");
+    }
+    Ok(())
+}
+
+pub fn is_mcp_result_pointer(pointer: &str) -> bool {
+    if !pointer.is_empty() && !pointer.starts_with('/') {
+        return false;
+    }
+    let mut characters = pointer.chars();
+    while let Some(character) = characters.next() {
+        if character == '~' && !matches!(characters.next(), Some('0' | '1')) {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn mcp_return_control_properties() -> serde_json::Map<String, serde_json::Value> {
+    serde_json::json!({
+        "max_inline_chars": {
+            "type": "integer", "minimum": 1,
+            "description": "Finite serialized JSON character budget for this response. Overrides the tool default when supplied. Omit to use the configured budget; there is no unlimited mode."
+        },
+        "response_fields": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Select mapped result fields by JSON Pointer, e.g. /title or /items/0/body. A parent selects its descendants. Omit to use the tool default; [] selects no business fields. This is not an authorization override."
+        },
+        "string_ranges": {
+            "type": "object",
+            "description": "Read specific string fields by JSON Pointer and Unicode character offset/length, within the overall response budget. Use mcp_result on the cached result to read other ranges without executing the original tool again.",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "offset": {"type": "integer", "minimum": 0, "default": 0},
+                    "length": {"type": "integer", "minimum": 1}
+                },
+                "required": ["length"], "additionalProperties": false
+            }
+        }
+    }).as_object().expect("return control properties are an object").clone()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

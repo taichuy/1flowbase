@@ -90,6 +90,8 @@ export const styleBoundaryMcpCatalog = {
         additionalProperties: false
       },
       result_schema: { type: 'object' },
+      max_inline_chars: null,
+      response_fields: null,
       input_mapping: {
         type: 'object',
         properties: {

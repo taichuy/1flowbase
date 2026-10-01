@@ -48,6 +48,8 @@ fn tool(
     execution_target: domain::McpToolExecutionTarget,
 ) -> domain::McpToolRecord {
     domain::McpToolRecord {
+        max_inline_chars: None,
+        response_fields: None,
         id: Uuid::from_u128(id),
         workspace_id: Uuid::nil(),
         tool_id: tool_id.into(),
@@ -613,6 +615,8 @@ impl McpManagementRepository for McpBundleFixtureRepository {
 
 fn managed_frontstage_package(version: &str) -> domain::McpBundlePackage {
     let tool = |capability_code: &str| domain::McpBundleTool {
+        max_inline_chars: None,
+        response_fields: None,
         tool_id: format!("frontstage_{capability_code}"),
         name: capability_code.into(),
         short_description: capability_code.into(),

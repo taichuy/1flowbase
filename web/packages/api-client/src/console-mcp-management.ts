@@ -111,6 +111,8 @@ export interface ConsoleMcpTool {
   result_schema: unknown;
   input_mapping: unknown;
   output_mapping: unknown;
+  max_inline_chars: number | null;
+  response_fields: string[] | null;
   permission_code: string | null;
   risk_level: string;
   des_id: string;
@@ -366,6 +368,8 @@ export interface MoveConsoleMcpGroupBody {
 }
 
 interface SaveConsoleMcpToolBodyBase {
+  max_inline_chars?: number | null;
+  response_fields?: string[] | null;
   tool_id: string;
   des_id: string;
   name: string;

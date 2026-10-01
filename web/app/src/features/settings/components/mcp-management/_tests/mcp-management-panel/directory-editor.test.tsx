@@ -572,6 +572,8 @@ function renderPanelWithMountedTool({
               operation,
               parameter_schema: {},
               result_schema: {},
+              max_inline_chars: null,
+              response_fields: null,
               input_mapping: proxy
                 ? {
                     mappings: [

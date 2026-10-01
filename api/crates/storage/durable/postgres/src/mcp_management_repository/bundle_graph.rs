@@ -64,10 +64,11 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                     source_schema_hash, assistant_client_capability_code, parameter_schema,
                     result_schema, input_mapping, output_mapping, permission_code, risk_level,
                     des_id, des_id_required, status, managed_bundle_organization,
-                    managed_bundle_id, managed_bundle_version, created_by, updated_by
+                    managed_bundle_id, managed_bundle_version, created_by, updated_by,
+                    max_inline_chars, response_fields
                 ) values (
                     $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-                    $19,$20,$21,$22,$23,$24,$25,$25
+                    $19,$20,$21,$22,$23,$24,$25,$25,$26,$27
                 )
                 on conflict (workspace_id, tool_id) do update set
                     name=excluded.name,
@@ -83,6 +84,8 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                     result_schema=excluded.result_schema,
                     input_mapping=excluded.input_mapping,
                     output_mapping=excluded.output_mapping,
+                    max_inline_chars=excluded.max_inline_chars,
+                    response_fields=excluded.response_fields,
                     permission_code=excluded.permission_code,
                     risk_level=excluded.risk_level,
                     des_id_required=excluded.des_id_required,
@@ -124,6 +127,13 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
         .bind(&input.source.bundle_id)
         .bind(&input.source.bundle_version)
         .bind(tool.actor_user_id)
+        .bind(tool.max_inline_chars)
+        .bind(
+            tool.response_fields
+                .as_ref()
+                .map(serde_json::to_value)
+                .transpose()?,
+        )
         .execute(&mut *transaction)
         .await?;
     }

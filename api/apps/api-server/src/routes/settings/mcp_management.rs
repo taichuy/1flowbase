@@ -1022,6 +1022,8 @@ fn to_create_tool_command(
         interface_entry,
         input_mapping: body.input_mapping,
         output_mapping: body.output_mapping,
+        max_inline_chars: body.max_inline_chars,
+        response_fields: body.response_fields,
         status: parse_tool_status(&body.status)?,
     })
 }
@@ -1042,6 +1044,8 @@ fn to_update_tool_command(
         interface_entry,
         input_mapping: body.input_mapping,
         output_mapping: body.output_mapping,
+        max_inline_chars: body.max_inline_chars,
+        response_fields: body.response_fields,
         status: parse_tool_status(&body.status)?,
     })
 }

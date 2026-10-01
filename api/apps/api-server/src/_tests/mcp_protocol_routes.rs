@@ -1694,7 +1694,10 @@ fn root_1569_ac_006_inline_budget_counts_unicode_and_valid_json_without_truncati
         inline_limit(&json!({"max_inline_chars": MAX_INLINE_CHARS})),
         Ok(MAX_INLINE_CHARS)
     );
-    assert!(inline_limit(&json!({"max_inline_chars": MAX_INLINE_CHARS + 1})).is_err());
+    assert_eq!(
+        inline_limit(&json!({"max_inline_chars": 80_000})),
+        Ok(80_000)
+    );
     assert!(inline_limit(&json!({"max_inline_chars": 0})).is_err());
 }
 
@@ -1758,8 +1761,10 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
         }),
     )
     .await;
-    assert_eq!(missing_cursor["error"]["code"], json!(-32602));
-    assert_eq!(missing_cursor["error"]["message"], json!("Invalid cursor"));
+    assert_eq!(
+        missing_cursor["result"]["structuredContent"]["detail_status"],
+        json!("available")
+    );
 
     let first_page = call_mcp(
         &app,
@@ -2264,3 +2269,5 @@ async fn root_1569_ac_003_ac_007_ac_009_bundle_import_uses_domain_summary_and_du
         json!(false)
     );
 }
+
+mod return_controls;

@@ -1564,6 +1564,8 @@ mod tests {
             updated_at: now,
         };
         let tool = domain::McpToolRecord {
+            max_inline_chars: None,
+            response_fields: None,
             id: tool_id,
             workspace_id,
             tool_id: "lookup".to_string(),

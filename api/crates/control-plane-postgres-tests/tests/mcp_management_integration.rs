@@ -196,6 +196,9 @@ use control_plane::ports::{
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use time::OffsetDateTime;
 
+#[path = "mcp_management_integration/return_defaults.rs"]
+mod return_defaults;
+
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
@@ -296,6 +299,8 @@ fn runtime_profile_interface() -> domain::McpInterfaceCatalogEntry {
 
 fn managed_frontstage_package(version: &str) -> domain::McpBundlePackage {
     let tool = |capability_code: &str| domain::McpBundleTool {
+        max_inline_chars: None,
+        response_fields: None,
         tool_id: format!("frontstage_{capability_code}"),
         name: capability_code.into(),
         short_description: capability_code.into(),
@@ -375,6 +380,8 @@ fn managed_frontstage_seed_input(
         .tools
         .into_iter()
         .map(|tool| CreateMcpToolInput {
+            max_inline_chars: None,
+            response_fields: None,
             id: uuid::Uuid::now_v7(),
             actor_user_id,
             workspace_id,
@@ -521,6 +528,8 @@ async fn mcp_proxy_graph_records_preserve_connection_and_binding_associations() 
             .unwrap();
         let tool = store
             .create_mcp_tool(&CreateMcpToolInput {
+                max_inline_chars: None,
+                response_fields: None,
                 id: uuid::Uuid::now_v7(),
                 actor_user_id: actor.id,
                 workspace_id: workspace.id,
@@ -627,6 +636,8 @@ async fn mcp_bundle_graph_replace_is_atomic_and_preserves_credentials_and_other_
         .await
         .unwrap();
     let replacement_tool = CreateMcpToolInput {
+        max_inline_chars: None,
+        response_fields: None,
         id: uuid::Uuid::now_v7(),
         actor_user_id: actor.id,
         workspace_id: workspace.id,
@@ -844,6 +855,8 @@ async fn mcp_management_refreshes_des_id_and_exports_configuration_only() {
 
     let tool = service
         .create_tool(CreateMcpToolCommand {
+            max_inline_chars: None,
+            response_fields: None,
             actor_user_id: actor.id,
             tool_id: "restart_worker".into(),
             name: "Restart Worker".into(),
@@ -959,6 +972,8 @@ async fn mcp_tool_binding_write_scope_is_limited_to_actor_workspace() {
         .unwrap();
     let tool = service
         .create_tool(CreateMcpToolCommand {
+            max_inline_chars: None,
+            response_fields: None,
             actor_user_id: actor.id,
             tool_id: "runtime_profile".into(),
             name: "Runtime Profile".into(),
@@ -1055,6 +1070,8 @@ async fn mcp_group_delete_removes_binding_only_instance_subtree_without_touching
         .unwrap();
     let tool = service
         .create_tool(CreateMcpToolCommand {
+            max_inline_chars: None,
+            response_fields: None,
             actor_user_id: actor.id,
             tool_id: "runtime_profile".into(),
             name: "Runtime Profile".into(),
@@ -1168,6 +1185,8 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
 
     let tool = service
         .create_tool(CreateMcpToolCommand {
+            max_inline_chars: None,
+            response_fields: None,
             actor_user_id: actor.id,
             tool_id: "runtime_profile".into(),
             name: "Runtime Profile".into(),
@@ -1183,6 +1202,8 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
         .unwrap();
     let disabled_tool = service
         .create_tool(CreateMcpToolCommand {
+            max_inline_chars: None,
+            response_fields: None,
             actor_user_id: actor.id,
             tool_id: "disabled_runtime".into(),
             name: "Disabled Runtime".into(),

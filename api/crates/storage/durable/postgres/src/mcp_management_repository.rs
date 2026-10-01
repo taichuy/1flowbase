@@ -963,11 +963,13 @@ impl McpManagementRepository for PgControlPlaneStore {
                 des_id_required,
                 status,
                 created_by,
-                updated_by
+                updated_by,
+                max_inline_chars,
+                response_fields
             ) values (
                 $1, $2, $3, $4, $5, $6, $7, $8,
                 $9, $10, $11, $12, $13, $14, $15, $16,
-                $17, $18, $19, $20, $21, $22, $22
+                $17, $18, $19, $20, $21, $22, $22, $23, $24
             )
             returning *
             "#,
@@ -998,6 +1000,14 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(input.des_id_required)
         .bind(input.status.as_str())
         .bind(input.actor_user_id)
+        .bind(input.max_inline_chars)
+        .bind(
+            input
+                .response_fields
+                .as_ref()
+                .map(serde_json::to_value)
+                .transpose()?,
+        )
         .fetch_one(self.pool())
         .await?;
 
@@ -1029,7 +1039,9 @@ impl McpManagementRepository for PgControlPlaneStore {
                 status = $20,
                 revision = revision + 1,
                 updated_by = $21,
-                updated_at = now()
+                updated_at = now(),
+                max_inline_chars = $22,
+                response_fields = $23
             where workspace_id = $1 and tool_id = $2
             returning *
             "#,
@@ -1059,6 +1071,14 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(input.des_id_required)
         .bind(input.status.as_str())
         .bind(input.actor_user_id)
+        .bind(input.max_inline_chars)
+        .bind(
+            input
+                .response_fields
+                .as_ref()
+                .map(serde_json::to_value)
+                .transpose()?,
+        )
         .fetch_one(self.pool())
         .await?;
 

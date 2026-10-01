@@ -49,6 +49,8 @@ pub struct McpBundleTool {
     pub input_mapping: serde_json::Value,
     #[serde(default)]
     pub output_mapping: serde_json::Value,
+    pub max_inline_chars: Option<i64>,
+    pub response_fields: Option<Vec<String>>,
     pub permission_code_snapshot: Option<String>,
     pub risk_level_snapshot: McpRiskLevel,
     pub status: McpToolStatus,
@@ -76,6 +78,10 @@ impl<'de> Deserialize<'de> for McpBundleTool {
             input_mapping: serde_json::Value,
             #[serde(default)]
             output_mapping: serde_json::Value,
+            #[serde(default)]
+            max_inline_chars: Option<i64>,
+            #[serde(default)]
+            response_fields: Option<Vec<String>>,
             permission_code_snapshot: Option<String>,
             risk_level_snapshot: McpRiskLevel,
             status: McpToolStatus,
@@ -100,6 +106,8 @@ impl<'de> Deserialize<'de> for McpBundleTool {
             result_schema_snapshot: wire.result_schema_snapshot,
             input_mapping: wire.input_mapping,
             output_mapping: wire.output_mapping,
+            max_inline_chars: wire.max_inline_chars,
+            response_fields: wire.response_fields,
             permission_code_snapshot: wire.permission_code_snapshot,
             risk_level_snapshot: wire.risk_level_snapshot,
             status: wire.status,

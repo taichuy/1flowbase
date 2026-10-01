@@ -11,6 +11,21 @@ use uuid::Uuid;
 
 use crate::host_infrastructure::CacheStore;
 
+#[path = "result_delivery/selection.rs"]
+mod selection;
+pub(crate) use selection::ResultSelection;
+
+#[path = "result_delivery/paging.rs"]
+mod paging;
+#[cfg(test)]
+use paging::page_leaves;
+use paging::{bounded_page, json_leaves, serialized, JsonLeaf};
+pub(crate) use paging::{inline_limit, ContinuationCursor, DEFAULT_INLINE_CHARS};
+
+#[cfg(test)]
+#[path = "result_delivery/_tests/cache.rs"]
+mod cache_tests;
+
 /// Storage dependencies for MCP result continuation and receipt delivery.
 ///
 /// The result-delivery core intentionally has no dependency on API state or
@@ -28,12 +43,11 @@ impl McpResultDeliveryDependencies {
     }
 }
 
-pub(crate) const DEFAULT_INLINE_CHARS: usize = 4_000;
+#[cfg(test)]
 pub(crate) const MAX_INLINE_CHARS: usize = 16_000;
 pub(crate) const DETAIL_TTL_SECONDS: i64 = 10 * 60;
 
 const CACHE_KEY_PREFIX: &str = "mcp-result";
-const PAGE_ENVELOPE_RESERVE_CHARS: usize = 768;
 // The chunk admission check is against the actual JSON value written to the
 // CacheStore. Raw serialized-detail bytes are not a safe proxy because the
 // chunk itself is stored as a JSON string and may add escaping overhead.
@@ -61,28 +75,150 @@ impl<'a> CompletedOperation<'a> {
     }
 }
 
-pub(crate) fn inline_limit(arguments: &Value) -> Result<usize, &'static str> {
-    let Some(value) = arguments.get("max_inline_chars") else {
-        return Ok(DEFAULT_INLINE_CHARS);
-    };
-    let Some(value) = value.as_u64().and_then(|value| usize::try_from(value).ok()) else {
-        return Err("Invalid max_inline_chars");
-    };
-    if value == 0 || value > MAX_INLINE_CHARS {
-        return Err("Invalid max_inline_chars");
-    }
-    Ok(value)
-}
-
 pub(crate) fn exceeds_inline_limit(detail: &Value, inline_chars: usize) -> bool {
     contains_base64_like(detail, None) || serialized(detail).chars().count() > inline_chars
 }
 
+pub(crate) fn tool_inline_limit(
+    arguments: &Value,
+    tool: &domain::McpToolRecord,
+) -> Result<usize, &'static str> {
+    if arguments.get("max_inline_chars").is_some() {
+        return inline_limit(arguments);
+    }
+    tool.max_inline_chars
+        .map(|value| {
+            usize::try_from(value)
+                .ok()
+                .filter(|value| *value > 0)
+                .ok_or("Invalid tool max_inline_chars")
+        })
+        .unwrap_or(Ok(DEFAULT_INLINE_CHARS))
+}
+
+pub(crate) async fn deliver_result(
+    dependencies: &McpResultDeliveryDependencies,
+    actor: &ActorContext,
+    operation: CompletedOperation<'_>,
+    detail: Value,
+    inline_chars: usize,
+    selection: &ResultSelection,
+    tool: &domain::McpToolRecord,
+) -> Value {
+    if selection.is_default() && !exceeds_inline_limit(&detail, inline_chars) {
+        return tool_result(detail);
+    }
+    let defaults = json!({
+        "max_inline_chars": tool.max_inline_chars.unwrap_or(DEFAULT_INLINE_CHARS as i64),
+        "response_fields": tool.response_fields
+    });
+    let mut delivered = deliver_cached_result(
+        dependencies,
+        actor,
+        operation,
+        detail.clone(),
+        Some(&defaults),
+    )
+    .await;
+    let compact = delivered
+        .get_mut("structuredContent")
+        .expect("delivery has structured content");
+    let result_ref = compact
+        .pointer("/detail/result_ref")
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok());
+    let Some(result_ref) = result_ref else {
+        if selection.is_default() {
+            return delivered;
+        }
+        let leaves = match selection.leaves(&detail) {
+            Ok(leaves) => leaves,
+            Err(error) => {
+                compact["selection_error"] = error;
+                return tool_result(compact.clone());
+            }
+        };
+        let mut page = bounded_page(
+            &leaves,
+            ContinuationCursor::default(),
+            inline_chars,
+            compact.clone(),
+        );
+        page["next_cursor"] = Value::Null;
+        return tool_result(page);
+    };
+    if selection.is_default() && serialized(compact).chars().count() <= inline_chars {
+        return tool_result(compact.clone());
+    }
+    if !save_selection(
+        dependencies,
+        actor.current_workspace_id,
+        result_ref,
+        selection,
+    )
+    .await
+    {
+        compact["detail"] =
+            json!({"status": "detail_unavailable", "reason": "selection_cache_unavailable"});
+        return tool_result(compact.clone());
+    }
+    let leaves = match selection.leaves(&detail) {
+        Ok(leaves) => leaves,
+        Err(error) => {
+            compact["selection_error"] = error;
+            return tool_result(compact.clone());
+        }
+    };
+    let cursor = ContinuationCursor {
+        selection_id: selection.identity(),
+        ..Default::default()
+    };
+    compact["detail"]["next_cursor"] = Value::Null;
+    tool_result(bounded_page(&leaves, cursor, inline_chars, compact.clone()))
+}
+
+fn selection_key(workspace_id: Uuid, result_ref: Uuid, selection_id: u64) -> String {
+    format!("{CACHE_KEY_PREFIX}-selection:{workspace_id}:{result_ref}:{selection_id:016x}")
+}
+
+async fn save_selection(
+    dependencies: &McpResultDeliveryDependencies,
+    workspace_id: Uuid,
+    result_ref: Uuid,
+    selection: &ResultSelection,
+) -> bool {
+    let Some(selection_id) = selection.identity() else {
+        return true;
+    };
+    matches!(
+        store_cache_value(
+            dependencies,
+            workspace_id,
+            result_ref,
+            &selection_key(workspace_id, result_ref, selection_id),
+            serde_json::to_value(selection).expect("selection serializes")
+        )
+        .await,
+        DetailCacheStatus::Available
+    )
+}
+
+#[cfg(test)]
 pub(crate) async fn deliver_oversized_result(
     dependencies: &McpResultDeliveryDependencies,
     actor: &ActorContext,
     operation: CompletedOperation<'_>,
     detail: Value,
+) -> Value {
+    deliver_cached_result(dependencies, actor, operation, detail, None).await
+}
+
+async fn deliver_cached_result(
+    dependencies: &McpResultDeliveryDependencies,
+    actor: &ActorContext,
+    operation: CompletedOperation<'_>,
+    detail: Value,
+    return_defaults: Option<&Value>,
 ) -> Value {
     let result_ref = Uuid::now_v7();
     let summary = compact_summary(operation.operation_id_ref(), &detail);
@@ -91,6 +227,7 @@ pub(crate) async fn deliver_oversized_result(
         actor.current_workspace_id,
         result_ref,
         &detail,
+        return_defaults,
     )
     .await;
 
@@ -150,13 +287,96 @@ pub(crate) async fn deliver_oversized_result(
     tool_result(compact)
 }
 
-pub(crate) async fn read_continuation(
+pub(crate) async fn read_result(
     dependencies: &McpResultDeliveryDependencies,
     actor: &ActorContext,
     result_ref: Uuid,
-    cursor: ContinuationCursor,
-    inline_chars: usize,
+    arguments: &Value,
 ) -> Value {
+    let cached = dependencies
+        .cache_store
+        .get_json(&cache_key(actor.current_workspace_id, result_ref))
+        .await
+        .ok()
+        .flatten();
+    let policy = cached
+        .as_ref()
+        .and_then(|manifest| manifest.get("return_defaults"))
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let inline_chars = if arguments.get("max_inline_chars").is_some() {
+        inline_limit(arguments)
+    } else {
+        inline_limit(&policy)
+    };
+    let inline_chars = match inline_chars {
+        Ok(value) => value,
+        Err(reason) => {
+            return tool_result(
+                json!({"detail_status": "invalid_request", "reason": reason, "retry_original": false}),
+            )
+        }
+    };
+    let requested_cursor = match arguments.get("cursor") {
+        None => None,
+        Some(Value::String(value)) => match ContinuationCursor::parse(value) {
+            Some(cursor) => Some(cursor),
+            None => {
+                return tool_result(
+                    json!({"detail_status": "invalid_cursor", "retry_original": false}),
+                )
+            }
+        },
+        _ => {
+            return tool_result(json!({"detail_status": "invalid_cursor", "retry_original": false}))
+        }
+    };
+    let default_fields = policy
+        .get("response_fields")
+        .filter(|value| !value.is_null())
+        .and_then(|value| serde_json::from_value::<Vec<String>>(value.clone()).ok());
+    let has_selection =
+        arguments.get("response_fields").is_some() || arguments.get("string_ranges").is_some();
+    let selection = if !has_selection
+        && requested_cursor
+            .and_then(|cursor| cursor.selection_id)
+            .is_some()
+    {
+        let selection_id = requested_cursor
+            .and_then(|cursor| cursor.selection_id)
+            .expect("selection cursor");
+        dependencies
+            .cache_store
+            .get_json(&selection_key(
+                actor.current_workspace_id,
+                result_ref,
+                selection_id,
+            ))
+            .await
+            .ok()
+            .flatten()
+            .and_then(|value| serde_json::from_value::<ResultSelection>(value).ok())
+            .ok_or("Selection expired or unavailable")
+    } else {
+        ResultSelection::parse(arguments, default_fields.as_deref())
+    };
+    let selection = match selection {
+        Ok(selection) => selection,
+        Err(reason) => {
+            return tool_result(
+                json!({"detail_status": "invalid_selection", "reason": reason, "retry_original": false}),
+            )
+        }
+    };
+    let cursor = requested_cursor.unwrap_or(ContinuationCursor {
+        selection_id: selection.identity(),
+        ..Default::default()
+    });
+    if cursor.selection_id != selection.identity() {
+        return tool_result(
+            json!({"detail_status": "invalid_cursor", "reason": "cursor_selection_mismatch", "retry_original": false}),
+        );
+    }
     let receipt = dependencies
         .store
         .get_mcp_result_receipt(actor.current_workspace_id, result_ref)
@@ -167,21 +387,6 @@ pub(crate) async fn read_continuation(
                 result_ref = %result_ref,
                 error = %error,
                 "failed to read MCP result receipt"
-            );
-            error
-        })
-        .ok()
-        .flatten();
-    let cached = dependencies
-        .cache_store
-        .get_json(&cache_key(actor.current_workspace_id, result_ref))
-        .await
-        .map_err(|error| {
-            tracing::warn!(
-                workspace_id = %actor.current_workspace_id,
-                result_ref = %result_ref,
-                error = %error,
-                "failed to read cached MCP result detail"
             );
             error
         })
@@ -212,7 +417,26 @@ pub(crate) async fn read_continuation(
         return tool_result(unavailable);
     };
 
-    let leaves = json_leaves(&detail);
+    let leaves = match selection.leaves(&detail) {
+        Ok(leaves) => leaves,
+        Err(error) => {
+            return tool_result(
+                json!({"result_ref": result_ref, "detail_status": "invalid_selection", "error": error, "retry_original": false}),
+            )
+        }
+    };
+    if !save_selection(
+        dependencies,
+        actor.current_workspace_id,
+        result_ref,
+        &selection,
+    )
+    .await
+    {
+        return tool_result(
+            json!({"result_ref": result_ref, "detail_status": "detail_unavailable", "reason": "selection_cache_unavailable", "retry_original": false}),
+        );
+    }
     if !cursor.is_valid_for(&leaves) {
         return tool_result(json!({
             "result_ref": result_ref,
@@ -220,26 +444,15 @@ pub(crate) async fn read_continuation(
             "retry_original": false
         }));
     }
-    let Some((entries, next_cursor)) = page_leaves(&leaves, cursor, inline_chars) else {
-        return tool_result(json!({
-            "result_ref": result_ref,
-            "detail_status": "page_budget_too_small",
-            "max_inline_chars": MAX_INLINE_CHARS,
-            "retry_original": false
-        }));
-    };
-
     let mut page = json!({
         "result_ref": result_ref,
         "detail_status": "available",
-        "entries": entries,
-        "next_cursor": next_cursor.map(ContinuationCursor::encode),
         "retry_original": false
     });
     if let Some(receipt) = receipt {
         page["receipt"] = receipt_projection(&receipt);
     }
-    tool_result(page)
+    tool_result(bounded_page(&leaves, cursor, inline_chars, page))
 }
 
 pub(crate) fn tool_result(value: Value) -> Value {
@@ -249,6 +462,25 @@ pub(crate) fn tool_result(value: Value) -> Value {
         "structuredContent": value,
         "isError": false
     })
+}
+
+#[cfg(test)]
+pub(crate) async fn read_continuation(
+    dependencies: &McpResultDeliveryDependencies,
+    actor: &ActorContext,
+    result_ref: Uuid,
+    cursor: ContinuationCursor,
+    inline_chars: usize,
+) -> Value {
+    read_result(
+        dependencies,
+        actor,
+        result_ref,
+        &json!({
+            "cursor": cursor.encode(), "max_inline_chars": inline_chars
+        }),
+    )
+    .await
 }
 
 fn receipt_projection(receipt: &control_plane::ports::McpResultReceipt) -> Value {
@@ -271,6 +503,7 @@ async fn cache_detail(
     workspace_id: Uuid,
     result_ref: Uuid,
     detail: &Value,
+    return_defaults: Option<&Value>,
 ) -> DetailCacheStatus {
     if contains_base64_like(detail, None) {
         return DetailCacheStatus::Unavailable("binary_or_base64_content");
@@ -279,7 +512,10 @@ async fn cache_detail(
         Ok(serialized_detail) => serialized_detail,
         Err(_) => return DetailCacheStatus::Unavailable("serialization_failed"),
     };
-    let inline_value = inline_cache_value(detail);
+    let mut inline_value = inline_cache_value(detail);
+    if let Some(defaults) = return_defaults {
+        inline_value["return_defaults"] = defaults.clone();
+    }
     if serialized(&inline_value).len() <= DETAIL_CHUNK_MAX_BYTES {
         return store_cache_value(
             dependencies,
@@ -316,12 +552,16 @@ async fn cache_detail(
     }
     // The manifest is written last so a reader never observes it before all
     // chunks are in place.
+    let mut manifest = json!({ "format": "chunked", "chunk_count": chunks.len() });
+    if let Some(defaults) = return_defaults {
+        manifest["return_defaults"] = defaults.clone();
+    }
     store_cache_value(
         dependencies,
         workspace_id,
         result_ref,
         &cache_key(workspace_id, result_ref),
-        json!({ "format": "chunked", "chunk_count": chunks.len() }),
+        manifest,
     )
     .await
 }
@@ -454,188 +694,6 @@ fn compact_summary(operation_id: &str, value: &Value) -> Value {
     }
 }
 
-#[derive(Clone)]
-struct JsonLeaf {
-    path: String,
-    value: Value,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ContinuationCursor {
-    leaf_index: usize,
-    char_offset: usize,
-}
-
-impl ContinuationCursor {
-    pub(crate) fn parse(value: &str) -> Option<Self> {
-        if let Some(encoded) = value.strip_prefix("v2:") {
-            let (leaf_index, char_offset) = encoded.split_once(':')?;
-            return Some(Self {
-                leaf_index: leaf_index.parse().ok()?,
-                char_offset: char_offset.parse().ok()?,
-            });
-        }
-        Some(Self {
-            leaf_index: value.parse().ok()?,
-            char_offset: 0,
-        })
-    }
-
-    fn encode(self) -> String {
-        if self.char_offset == 0 {
-            self.leaf_index.to_string()
-        } else {
-            format!("v2:{}:{}", self.leaf_index, self.char_offset)
-        }
-    }
-
-    fn is_valid_for(self, leaves: &[JsonLeaf]) -> bool {
-        if self.leaf_index == leaves.len() {
-            return self.char_offset == 0;
-        }
-        let Some(leaf) = leaves.get(self.leaf_index) else {
-            return false;
-        };
-        match &leaf.value {
-            Value::String(value) => self.char_offset < value.chars().count(),
-            _ => self.char_offset == 0,
-        }
-    }
-}
-
-fn json_leaves(value: &Value) -> Vec<JsonLeaf> {
-    let mut leaves = Vec::new();
-    collect_json_leaves(value, String::new(), &mut leaves);
-    leaves
-}
-
-fn collect_json_leaves(value: &Value, path: String, leaves: &mut Vec<JsonLeaf>) {
-    match value {
-        Value::Object(values) if !values.is_empty() => {
-            let mut fields = values.iter().collect::<Vec<_>>();
-            fields.sort_by_key(|(field, _)| *field);
-            for (field, value) in fields {
-                collect_json_leaves(
-                    value,
-                    format!("{path}/{}", escape_json_pointer(field)),
-                    leaves,
-                );
-            }
-        }
-        Value::Array(values) if !values.is_empty() => {
-            for (index, value) in values.iter().enumerate() {
-                collect_json_leaves(value, format!("{path}/{index}"), leaves);
-            }
-        }
-        _ => leaves.push(JsonLeaf {
-            path,
-            value: value.clone(),
-        }),
-    }
-}
-
-fn escape_json_pointer(segment: &str) -> String {
-    segment.replace('~', "~0").replace('/', "~1")
-}
-
-fn page_leaves(
-    leaves: &[JsonLeaf],
-    cursor: ContinuationCursor,
-    inline_chars: usize,
-) -> Option<(Vec<Value>, Option<ContinuationCursor>)> {
-    if cursor.leaf_index == leaves.len() {
-        return Some((Vec::new(), None));
-    }
-    let entry_budget = inline_chars.saturating_sub(PAGE_ENVELOPE_RESERVE_CHARS);
-    let mut entries = Vec::new();
-    let mut used = 2;
-    let mut next = cursor;
-    while let Some(leaf) = leaves.get(next.leaf_index) {
-        let entry = json!({ "path": leaf.path, "value": leaf.value });
-        let entry_chars = serialized(&entry).chars().count() + usize::from(!entries.is_empty());
-        if next.char_offset == 0 && used + entry_chars <= entry_budget {
-            used += entry_chars;
-            entries.push(entry);
-            next.leaf_index += 1;
-            continue;
-        }
-
-        let largest_regular_entry = entry_budget.saturating_sub(2);
-        if next.char_offset == 0 && serialized(&entry).chars().count() <= largest_regular_entry {
-            break;
-        }
-
-        let Value::String(value) = &leaf.value else {
-            break;
-        };
-        let separator_chars = usize::from(!entries.is_empty());
-        let available = entry_budget.saturating_sub(used + separator_chars);
-        let Some((chunk, chunk_chars)) =
-            fitting_string_chunk(leaf, value, next.char_offset, available)
-        else {
-            break;
-        };
-        used += serialized(&chunk).chars().count() + separator_chars;
-        entries.push(chunk);
-        next.char_offset += chunk_chars;
-        if next.char_offset == value.chars().count() {
-            next.leaf_index += 1;
-            next.char_offset = 0;
-        }
-    }
-    if entries.is_empty() {
-        return None;
-    }
-    Some((entries, (next.leaf_index < leaves.len()).then_some(next)))
-}
-
-fn fitting_string_chunk(
-    leaf: &JsonLeaf,
-    value: &str,
-    char_offset: usize,
-    available_chars: usize,
-) -> Option<(Value, usize)> {
-    let total_chars = value.chars().count();
-    let remaining_chars = total_chars.checked_sub(char_offset)?;
-    let mut low = 1;
-    let mut high = remaining_chars;
-    let mut best = None;
-    while low <= high {
-        let candidate_chars = low + (high - low) / 2;
-        let candidate = string_chunk_entry(leaf, value, char_offset, candidate_chars, total_chars);
-        if serialized(&candidate).chars().count() <= available_chars {
-            best = Some((candidate, candidate_chars));
-            low = candidate_chars + 1;
-        } else {
-            high = candidate_chars.saturating_sub(1);
-        }
-    }
-    best
-}
-
-fn string_chunk_entry(
-    leaf: &JsonLeaf,
-    value: &str,
-    char_offset: usize,
-    char_count: usize,
-    total_chars: usize,
-) -> Value {
-    let chunk = value
-        .chars()
-        .skip(char_offset)
-        .take(char_count)
-        .collect::<String>();
-    json!({
-        "path": leaf.path,
-        "value_type": "string_chunk",
-        "value": chunk,
-        "char_offset": char_offset,
-        "char_count": char_count,
-        "total_chars": total_chars,
-        "complete": char_offset + char_count == total_chars
-    })
-}
-
 fn contains_base64_like(value: &Value, field_name: Option<&str>) -> bool {
     match value {
         Value::String(value) => {
@@ -659,10 +717,6 @@ fn contains_base64_like(value: &Value, field_name: Option<&str>) -> bool {
             .any(|(field, value)| contains_base64_like(value, Some(field))),
         _ => false,
     }
-}
-
-fn serialized(value: &Value) -> String {
-    serde_json::to_string(value).expect("serde_json::Value serialization must be infallible")
 }
 
 #[cfg(test)]
@@ -799,6 +853,7 @@ mod assistant_mcp_tests {
             Some(ContinuationCursor {
                 leaf_index: 3,
                 char_offset: 0,
+                selection_id: None,
             })
         );
         assert_eq!(
@@ -806,6 +861,7 @@ mod assistant_mcp_tests {
             Some(ContinuationCursor {
                 leaf_index: 3,
                 char_offset: 12_000,
+                selection_id: None,
             })
         );
         assert_eq!(ContinuationCursor::parse("v2:bad:cursor"), None);

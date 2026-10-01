@@ -585,7 +585,7 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
             json!({"type": "string", "minLength": 1}),
         );
     }
-    [
+    let mut tools = [
         json!({
             "name": MCP_LIST,
             "title": "Browse MCP directory",
@@ -610,7 +610,7 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
         json!({
             "name": MCP_RESULT,
             "title": "Continue MCP result detail",
-            "description": "Read a cached page of result detail after mcp_call returns continuation_available. Copy detail.result_ref and detail.next_cursor into result_ref and cursor for the first request, then copy each returned next_cursor until it is null. String_chunk entries are reassembled by path and char_offset. Missing detail never authorizes retrying the original operation.",
+            "description": "Read bounded cached result detail without re-executing the tool. Continue using result_ref and next_cursor, or omit cursor to select response_fields and string_ranges for a new view. Never combine a cursor with changed selectors. String chunks include Unicode offsets and next_offset. Missing detail never authorizes retrying the original operation.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -618,11 +618,10 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
                     "cursor": {"type": "string"},
                     "max_inline_chars": {
                         "type": "integer",
-                        "minimum": 1,
-                        "maximum": result_delivery::MAX_INLINE_CHARS
+                        "minimum": 1
                     }
                 },
-                "required": ["result_ref", "cursor"],
+                "required": ["result_ref"],
                 "additionalProperties": false
             }
         }),
@@ -638,16 +637,21 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
                     "arguments": {"type": "object"},
                     "max_inline_chars": {
                         "type": "integer",
-                        "minimum": 1,
-                        "maximum": result_delivery::MAX_INLINE_CHARS,
-                        "default": result_delivery::DEFAULT_INLINE_CHARS
+                        "minimum": 1
                     }
                 },
                 "required": ["tool_id", "arguments"],
                 "additionalProperties": false
             }
         }),
-    ]
+    ];
+    for tool in &mut tools[2..] {
+        tool["inputSchema"]["properties"]
+            .as_object_mut()
+            .expect("tool properties")
+            .extend(domain::mcp_management::mcp_return_control_properties());
+    }
+    tools
 }
 
 #[cfg(test)]
@@ -908,7 +912,9 @@ fn get(
         "result_schema": tool.result_schema,
         "risk_level": tool.risk_level,
         "des_id": tool.des_id,
-        "des_id_required": tool.des_id_required
+        "des_id_required": tool.des_id_required,
+        "max_inline_chars": tool.max_inline_chars.unwrap_or(result_delivery::DEFAULT_INLINE_CHARS as i64),
+        "response_fields": tool.response_fields
     })))
 }
 
@@ -922,21 +928,16 @@ async fn result(
     else {
         return Ok(VirtualToolOutcome::invalid("Invalid result_ref"));
     };
-    let cursor = match arguments.get("cursor") {
-        Some(Value::String(value)) => match result_delivery::ContinuationCursor::parse(value) {
-            Some(cursor) => cursor,
-            None => return Ok(VirtualToolOutcome::invalid("Invalid cursor")),
-        },
-        None => return Ok(VirtualToolOutcome::invalid("Invalid cursor")),
-        Some(_) => return Ok(VirtualToolOutcome::invalid("Invalid cursor")),
-    };
-    let inline_chars = match result_delivery::inline_limit(arguments) {
-        Ok(limit) => limit,
-        Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
-    };
+    if let Err(message) = result_delivery::ResultSelection::parse(arguments, None) {
+        return Ok(VirtualToolOutcome::invalid(message));
+    }
+    if arguments.get("max_inline_chars").is_some() {
+        if let Err(message) = result_delivery::inline_limit(arguments) {
+            return Ok(VirtualToolOutcome::invalid(message));
+        }
+    }
     Ok(VirtualToolOutcome::Success(
-        result_delivery::read_continuation(dependencies, actor, result_ref, cursor, inline_chars)
-            .await,
+        result_delivery::read_result(dependencies, actor, result_ref, arguments).await,
     ))
 }
 
@@ -979,10 +980,15 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
     if tool.des_id_required && des_id != Some(tool.des_id.as_str()) {
         return Ok(VirtualToolOutcome::invalid("Invalid des_id"));
     }
-    let inline_chars = match result_delivery::inline_limit(arguments) {
+    let inline_chars = match result_delivery::tool_inline_limit(arguments, tool) {
         Ok(limit) => limit,
         Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
     };
+    let selection =
+        match result_delivery::ResultSelection::parse(arguments, tool.response_fields.as_deref()) {
+            Ok(selection) => selection,
+            Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
+        };
     let tool_arguments = arguments
         .get("arguments")
         .cloned()
@@ -1005,7 +1011,18 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
                     value,
                 )),
                 Ok((value, false)) => Ok(VirtualToolOutcome::Success(
-                    result_delivery::tool_result(value),
+                    result_delivery::deliver_result(
+                        &dependencies.result_delivery,
+                        actor,
+                        result_delivery::CompletedOperation::Write {
+                            operation_id: &tool.tool_id,
+                        },
+                        value,
+                        inline_chars,
+                        &selection,
+                        tool,
+                    )
+                    .await,
                 )),
                 Err(error) => Ok(VirtualToolOutcome::failed(
                     "Assistant client unavailable",
@@ -1046,20 +1063,18 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
                 )
                 .await
             {
-                Ok(value) if result_delivery::exceeds_inline_limit(&value, inline_chars) => {
-                    Ok(VirtualToolOutcome::Success(
-                        result_delivery::deliver_oversized_result(
-                            &dependencies.result_delivery,
-                            actor,
-                            operation,
-                            value,
-                        )
-                        .await,
-                    ))
-                }
-                Ok(value) => Ok(VirtualToolOutcome::Success(result_delivery::tool_result(
-                    value,
-                ))),
+                Ok(value) => Ok(VirtualToolOutcome::Success(
+                    result_delivery::deliver_result(
+                        &dependencies.result_delivery,
+                        actor,
+                        operation,
+                        value,
+                        inline_chars,
+                        &selection,
+                        tool,
+                    )
+                    .await,
+                )),
                 Err(debug_execute::McpDebugExecuteError::Api(error)) => Ok(interface_error(&error)),
                 Err(debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
                     Ok(target_interface_failure(response).await)
@@ -1146,20 +1161,25 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
                 .get("structuredContent")
                 .cloned()
                 .unwrap_or_else(|| value.clone());
-            if result_delivery::exceeds_inline_limit(&detail, inline_chars) {
+            if selection.is_default()
+                && !result_delivery::exceeds_inline_limit(&detail, inline_chars)
+            {
+                Ok(VirtualToolOutcome::Success(value))
+            } else {
                 Ok(VirtualToolOutcome::Success(
-                    result_delivery::deliver_oversized_result(
+                    result_delivery::deliver_result(
                         &dependencies.result_delivery,
                         actor,
                         result_delivery::CompletedOperation::Write {
                             operation_id: &tool.tool_id,
                         },
                         detail,
+                        inline_chars,
+                        &selection,
+                        tool,
                     )
                     .await,
                 ))
-            } else {
-                Ok(VirtualToolOutcome::Success(value))
             }
         }
     }
@@ -1401,6 +1421,8 @@ mod tests {
                 updated_at: now,
             }],
             tools: vec![domain::McpToolRecord {
+                max_inline_chars: None,
+                response_fields: None,
                 id: tool_id,
                 workspace_id,
                 tool_id: "lookup".to_string(),

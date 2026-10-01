@@ -83,6 +83,8 @@ fn instance(instance_id: &str, tool_id: &str) -> McpBundleInstance {
 
 fn proxy_tool(tool_id: &str, upstream_connection_id: Uuid) -> McpBundleTool {
     McpBundleTool {
+        max_inline_chars: None,
+        response_fields: None,
         tool_id: tool_id.to_string(),
         name: tool_id.to_string(),
         short_description: tool_id.to_string(),
@@ -100,6 +102,23 @@ fn proxy_tool(tool_id: &str, upstream_connection_id: Uuid) -> McpBundleTool {
         risk_level_snapshot: McpRiskLevel::Low,
         status: McpToolStatus::Enabled,
     }
+}
+
+#[test]
+fn issue_2176_bundle_return_defaults_round_trip_and_legacy_defaults_remain_unset() {
+    let mut tool = proxy_tool("selected", Uuid::now_v7());
+    tool.max_inline_chars = Some(80_000);
+    tool.response_fields = Some(vec!["/items/0/body".into()]);
+    let mut value = serde_json::to_value(&tool).unwrap();
+    assert_eq!(
+        serde_json::from_value::<McpBundleTool>(value.clone()).unwrap(),
+        tool
+    );
+    value.as_object_mut().unwrap().remove("max_inline_chars");
+    value.as_object_mut().unwrap().remove("response_fields");
+    let legacy = serde_json::from_value::<McpBundleTool>(value).unwrap();
+    assert_eq!(legacy.max_inline_chars, None);
+    assert_eq!(legacy.response_fields, None);
 }
 
 fn connection(connection_id: Uuid, name: &str) -> McpBundleUpstreamConnection {

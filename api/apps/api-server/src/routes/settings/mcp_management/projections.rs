@@ -212,6 +212,8 @@ pub(super) fn to_tool_response_with_operation(
         result_schema: record.result_schema,
         input_mapping: record.input_mapping,
         output_mapping: record.output_mapping,
+        max_inline_chars: record.max_inline_chars,
+        response_fields: record.response_fields,
         permission_code: record.permission_code,
         risk_level: record.risk_level.as_str().into(),
         des_id: record.des_id,

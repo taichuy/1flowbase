@@ -16,6 +16,8 @@ export type ToolFormValues = {
   name: string;
   short_description: string;
   full_description?: string;
+  max_inline_chars?: number | null;
+  response_fields?: string;
   execution_target_kind: 'interface_wrapper' | 'mcp_proxy' | 'assistant_client';
   interface_id?: string;
   upstream_connection_id?: string;
@@ -52,6 +54,25 @@ export function emptyObjectSchema(): Record<string, unknown> {
 
 export function schemaRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : emptyObjectSchema();
+}
+
+export function parseResponseFields(
+  value: string | undefined
+): string[] | null {
+  if (!value?.trim()) return null;
+  const fields: unknown = JSON.parse(value);
+  if (
+    !Array.isArray(fields) ||
+    fields.some(
+      (field: unknown) =>
+        typeof field !== 'string' ||
+        (field !== '' && !field.startsWith('/')) ||
+        /~(?:[^01]|$)/.test(field)
+    )
+  ) {
+    throw new Error('response_fields');
+  }
+  return fields as string[];
 }
 
 export function toUpdateToolBody(

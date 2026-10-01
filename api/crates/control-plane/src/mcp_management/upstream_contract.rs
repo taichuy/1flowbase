@@ -15,6 +15,8 @@ pub struct UpdateMcpProxyToolCommand {
     pub result_schema: serde_json::Value,
     pub input_mapping: serde_json::Value,
     pub output_mapping: serde_json::Value,
+    pub max_inline_chars: Option<i64>,
+    pub response_fields: Option<Vec<String>>,
     pub risk_level: domain::McpRiskLevel,
     pub status: domain::McpToolStatus,
 }

@@ -96,11 +96,13 @@ import {
   interfaceOptionLabel,
   schemaMappingHasContent,
   schemaRecord,
+  parseResponseFields,
   toUpdateToolBody,
   toolSourceLabel,
   toolTypeLabel,
   type ToolFormValues
 } from './McpToolsTab/tool-editor-model';
+import { McpToolReturnDefaultsFields } from './McpToolsTab/McpToolReturnDefaultsFields';
 import {
   MCP_TOOLS_PAGE_SIZE,
   readMcpToolsRouteState,
@@ -178,6 +180,7 @@ export function McpToolsTab({
     (value: number) => value + 1,
     0
   );
+  const [callParametersVisible, setCallParametersVisible] = useState(false);
   const setInputMappingValue = useCallback(
     (mapping: ToolFormValues['input_mapping']) =>
       form.setFieldValue('input_mapping', mapping),
@@ -309,6 +312,10 @@ export function McpToolsTab({
         name: values.name,
         short_description: values.short_description,
         full_description: values.full_description,
+        max_inline_chars: form.getFieldValue('max_inline_chars') ?? null,
+        response_fields: parseResponseFields(
+          form.getFieldValue('response_fields')
+        ),
         status: values.status
       };
       let body: SaveConsoleMcpToolBody;
@@ -455,6 +462,7 @@ export function McpToolsTab({
       form.setFieldValue(field, nextMapping);
       if (field === 'input_mapping') {
         inputMappingValidRef.current = true;
+        setCallParametersVisible(true);
       } else {
         outputMappingValidRef.current = true;
       }
@@ -554,12 +562,20 @@ export function McpToolsTab({
                 parameterSchemaValidRef.current = true;
                 resultSchemaValidRef.current = true;
                 setEditingTool(record);
+                setCallParametersVisible(
+                  record.execution_target.kind === 'interface_wrapper'
+                );
                 setStep('basic');
                 form.setFieldsValue({
                   tool_id: record.tool_id,
                   name: record.name,
                   short_description: record.short_description,
                   full_description: record.full_description,
+                  max_inline_chars: record.max_inline_chars,
+                  response_fields:
+                    record.response_fields === null
+                      ? undefined
+                      : JSON.stringify(record.response_fields),
                   des_id: record.des_id,
                   execution_target_kind: record.execution_target.kind,
                   interface_id:
@@ -827,12 +843,15 @@ export function McpToolsTab({
                   parameterSchemaValidRef.current = true;
                   resultSchemaValidRef.current = true;
                   setEditingTool(null);
+                  setCallParametersVisible(false);
                   setStep('basic');
                   form.setFieldsValue({
                     tool_id: '',
                     name: '',
                     short_description: '',
                     full_description: '',
+                    max_inline_chars: undefined,
+                    response_fields: undefined,
                     des_id: buildRandomToolIdSeed(),
                     execution_target_kind: 'interface_wrapper',
                     interface_id: undefined,
@@ -1028,6 +1047,7 @@ export function McpToolsTab({
                 </Tooltip>
               </Space.Compact>
             </Form.Item>
+            <McpToolReturnDefaultsFields />
             <Form.Item
               name="status"
               label="status"
@@ -1264,6 +1284,7 @@ export function McpToolsTab({
                       <div className="mcp-management__input-mapping-editor">
                         <McpInputMappingEditor
                           resetKey={`input:${schemaEditorRevision}`}
+                          showCallParameters={callParametersVisible}
                           value={getFieldValue('input_mapping')}
                           onChange={setInputMappingValue}
                           onValidityChange={setInputMappingValidity}

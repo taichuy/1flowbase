@@ -240,6 +240,8 @@ where
                     result_schema: plan.result_schema,
                     input_mapping: tool.input_mapping.clone(),
                     output_mapping: tool.output_mapping.clone(),
+                    max_inline_chars: tool.max_inline_chars,
+                    response_fields: tool.response_fields.clone(),
                     permission_code: plan.permission_code,
                     risk_level: plan.risk_level,
                     des_id: normalize_des_id(None),
@@ -402,6 +404,8 @@ where
                 result_schema_snapshot: tool.result_schema,
                 input_mapping: tool.input_mapping,
                 output_mapping: tool.output_mapping,
+                max_inline_chars: tool.max_inline_chars,
+                response_fields: tool.response_fields,
                 permission_code_snapshot: tool.permission_code,
                 risk_level_snapshot: tool.risk_level,
                 status: tool.status,
@@ -727,6 +731,8 @@ where
                     result_schema: plan.result_schema,
                     input_mapping: tool.input_mapping.clone(),
                     output_mapping: tool.output_mapping.clone(),
+                    max_inline_chars: tool.max_inline_chars,
+                    response_fields: tool.response_fields.clone(),
                     permission_code: plan.permission_code,
                     risk_level: plan.risk_level,
                     des_id: normalize_des_id(None),
@@ -944,6 +950,8 @@ fn bundle_tool_is_already_present(
         && existing.result_schema == plan.result_schema
         && existing.input_mapping == bundle.input_mapping
         && existing.output_mapping == bundle.output_mapping
+        && existing.max_inline_chars == bundle.max_inline_chars
+        && existing.response_fields == bundle.response_fields
         && existing.permission_code == plan.permission_code
         && existing.risk_level == plan.risk_level
 }
@@ -1213,6 +1221,11 @@ fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
     let mut tool_ids = BTreeSet::new();
     for tool in &package.tools {
         validate_identifier(&tool.tool_id, "tool_id")?;
+        domain::mcp_management::validate_mcp_return_defaults(
+            tool.max_inline_chars,
+            tool.response_fields.as_deref(),
+        )
+        .map_err(ControlPlaneError::InvalidInput)?;
         match &tool.execution_target {
             domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
                 validate_identifier(interface_id, "interface_id")?;

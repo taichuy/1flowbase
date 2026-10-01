@@ -24,6 +24,8 @@ async fn mcp_instance_copy_reuses_tools_and_excludes_client_credentials() {
         .unwrap();
     let tool = service
         .create_tool(CreateMcpToolCommand {
+            max_inline_chars: None,
+            response_fields: None,
             actor_user_id: actor.id,
             tool_id: "runtime_profile_copy_source".into(),
             name: "Runtime Profile".into(),

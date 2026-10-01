@@ -77,6 +77,8 @@ pub struct McpToolResponse {
     pub input_mapping: serde_json::Value,
     #[schema(value_type = Object)]
     pub output_mapping: serde_json::Value,
+    pub max_inline_chars: Option<i64>,
+    pub response_fields: Option<Vec<String>>,
     pub permission_code: Option<String>,
     pub risk_level: String,
     pub des_id: String,
@@ -282,6 +284,8 @@ pub struct CreateMcpToolBody {
     pub input_mapping: serde_json::Value,
     #[schema(value_type = Object)]
     pub output_mapping: serde_json::Value,
+    pub max_inline_chars: Option<i64>,
+    pub response_fields: Option<Vec<String>>,
     pub permission_code: Option<String>,
     pub risk_level: String,
     pub status: String,
@@ -302,6 +306,8 @@ pub struct UpdateMcpToolBody {
     pub input_mapping: serde_json::Value,
     #[schema(value_type = Object)]
     pub output_mapping: serde_json::Value,
+    pub max_inline_chars: Option<i64>,
+    pub response_fields: Option<Vec<String>>,
     pub permission_code: Option<String>,
     pub risk_level: String,
     pub status: String,

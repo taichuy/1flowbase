@@ -257,11 +257,13 @@ function jsonDraftState(
 
 function InputMappingInterfaceSection({
   mapping,
+  showCallParameters,
   onAddInterfaceParameter,
   onUpdateInterfaceParameter,
   onRemoveInterfaceParameter
 }: {
   mapping: McpInputMappingValue;
+  showCallParameters: boolean;
   onAddInterfaceParameter: () => void;
   onUpdateInterfaceParameter: (
     index: number,
@@ -285,6 +287,20 @@ function InputMappingInterfaceSection({
           {i18nText('settings', 'auto.add_new_field')}
         </Button>
       </Flex>
+      {showCallParameters ? (
+        <Space
+          role="group"
+          aria-label={i18nText('settingsMcpManagement', 'auto.call_parameters')}
+          orientation="vertical"
+        >
+          <Typography.Text strong>
+            {i18nText('settingsMcpManagement', 'auto.call_parameters')}
+          </Typography.Text>
+          <Typography.Text code>des_id · string</Typography.Text>
+          <Typography.Text code>max_inline_chars · integer</Typography.Text>
+          <Typography.Text code>response_fields · string[]</Typography.Text>
+        </Space>
+      ) : null}
       {mapping.interface_parameters.length > 0 ? (
         <div className="mcp-input-mapping-editor__table">
           <div className="mcp-input-mapping-editor__head">
@@ -514,11 +530,13 @@ function InputMappingJsonSection({
 export function McpInputMappingEditor({
   value,
   resetKey,
+  showCallParameters = false,
   onChange,
   onValidityChange
 }: {
   value: unknown;
   resetKey?: string | number | null;
+  showCallParameters?: boolean;
   onChange: (value: McpInputMappingValue) => void;
   onValidityChange?: (valid: boolean) => void;
 }) {
@@ -756,6 +774,7 @@ export function McpInputMappingEditor({
             children: (
               <InputMappingInterfaceSection
                 mapping={mapping}
+                showCallParameters={showCallParameters}
                 onAddInterfaceParameter={addInterfaceParameter}
                 onUpdateInterfaceParameter={updateInterfaceParameter}
                 onRemoveInterfaceParameter={removeInterfaceParameter}

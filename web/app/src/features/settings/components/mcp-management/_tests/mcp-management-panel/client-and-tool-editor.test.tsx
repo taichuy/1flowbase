@@ -536,6 +536,8 @@ function renderPanelWithMountedTool({
               operation,
               parameter_schema: {},
               result_schema: {},
+              max_inline_chars: null,
+              response_fields: null,
               input_mapping: proxy
                 ? {
                     mappings: [
@@ -1412,6 +1414,18 @@ describe('McpManagementPanel', () => {
     fireEvent.click(
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
+    const callParameters = within(dialog).getByRole('group', {
+      name: 'MCP 调用参数（不进入业务参数映射）'
+    });
+    expect(
+      within(callParameters).getByText('des_id · string')
+    ).toBeInTheDocument();
+    expect(
+      within(callParameters).getByText('max_inline_chars · integer')
+    ).toBeInTheDocument();
+    expect(
+      within(callParameters).getByText('response_fields · string[]')
+    ).toBeInTheDocument();
     expect(await within(dialog).findByText('接口层')).toBeInTheDocument();
     expect(within(dialog).getByText('映射层')).toBeInTheDocument();
     expect(within(dialog).getByDisplayValue('app_id')).toBeInTheDocument();

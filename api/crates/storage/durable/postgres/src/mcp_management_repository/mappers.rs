@@ -204,6 +204,11 @@ pub(super) fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolReco
         result_schema: row.get("result_schema"),
         input_mapping: row.get("input_mapping"),
         output_mapping: row.get("output_mapping"),
+        max_inline_chars: row.get("max_inline_chars"),
+        response_fields: row
+            .get::<Option<serde_json::Value>, _>("response_fields")
+            .map(serde_json::from_value)
+            .transpose()?,
         permission_code: row.get("permission_code"),
         risk_level: parse_risk_level(row.get::<String, _>("risk_level").as_str())?,
         des_id: row.get("des_id"),

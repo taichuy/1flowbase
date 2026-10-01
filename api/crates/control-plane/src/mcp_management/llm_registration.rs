@@ -6,8 +6,6 @@ use sha2::{Digest, Sha256};
 
 const MAX_PROVIDER_NAME_BYTES: usize = 64;
 const MAX_PREFIX_BYTES: usize = 53;
-const MAX_INLINE_CHARS: usize = 16_000;
-const DEFAULT_INLINE_CHARS: usize = 4_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -151,7 +149,7 @@ fn is_provider_name_byte(byte: u8) -> bool {
 }
 
 fn provider_tool(name: &str, operation: McpLlmOperation) -> Value {
-    let (description, parameters) = match operation {
+    let (description, mut parameters) = match operation {
         McpLlmOperation::List => (
             "Browse this MCP instance by path before requesting full tool details.",
             json!({
@@ -176,13 +174,13 @@ fn provider_tool(name: &str, operation: McpLlmOperation) -> Value {
             }),
         ),
         McpLlmOperation::Result => (
-            "Read a cached page after a call returns continuation_available. Reuse result_ref and next_cursor until next_cursor is null; reassemble string_chunk entries by path and char_offset. Never retry the original operation to recover missing detail.",
+            "Read bounded cached detail. Continue with result_ref and next_cursor, or omit cursor to select response_fields/string_ranges for a new view. Changed selectors cannot reuse an old cursor. Reassemble string chunks by path and Unicode char_offset. Never retry the original operation to recover missing detail.",
             json!({
                 "type": "object",
                 "properties": {
                     "result_ref": {"type": "string", "format": "uuid"},
                     "cursor": {"type": "string"},
-                    "max_inline_chars": {"type": "integer", "minimum": 1, "maximum": MAX_INLINE_CHARS}
+                    "max_inline_chars": {"type": "integer", "minimum": 1}
                 },
                 "required": ["result_ref"],
                 "additionalProperties": false
@@ -196,13 +194,19 @@ fn provider_tool(name: &str, operation: McpLlmOperation) -> Value {
                     "tool_id": {"type": "string"},
                     "des_id": {"type": "string"},
                     "arguments": {"type": "object"},
-                    "max_inline_chars": {"type": "integer", "minimum": 1, "maximum": MAX_INLINE_CHARS, "default": DEFAULT_INLINE_CHARS}
+                    "max_inline_chars": {"type": "integer", "minimum": 1}
                 },
                 "required": ["tool_id", "arguments"],
                 "additionalProperties": false
             }),
         ),
     };
+    if matches!(operation, McpLlmOperation::Call | McpLlmOperation::Result) {
+        parameters["properties"]
+            .as_object_mut()
+            .expect("provider properties")
+            .extend(domain::mcp_management::mcp_return_control_properties());
+    }
     json!({"type": "function", "function": {
         "name": name,
         "description": description,
