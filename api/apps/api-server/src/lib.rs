@@ -638,11 +638,17 @@ async fn app_and_runtime_host_from_config(
         config.api_node_id.clone(),
         config.provider_install_root.clone(),
     ));
+    // Both logical profiles and the process list observe this one OS source.
+    // Match the existing console profile freshness without a background timer.
+    let runtime_sample_source = Arc::new(runtime_profile::RuntimeSampleSource::new(
+        std::time::Duration::from_secs(1),
+    ));
     let runtime_extension_host = Arc::new(
-        runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver_and_plugin_data(
+        runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source(
             process_started_at,
             runtime_artifact_resolver,
             Arc::new(store.clone()),
+            Arc::clone(&runtime_sample_source),
         )?,
     );
     runtime_extension_host
@@ -832,8 +838,13 @@ async fn app_and_runtime_host_from_config(
         .await
         .map(Arc::new),
     )?;
-    let api_runtime_profile = Arc::new(HostApiRuntimeProfileCollector::new(process_started_at)?);
-    let runtime_process_sampler = Arc::new(runtime_profile::RuntimeProcessSampler::new());
+    let api_runtime_profile = Arc::new(HostApiRuntimeProfileCollector::new_with_sample_source(
+        process_started_at,
+        Arc::clone(&runtime_sample_source),
+    )?);
+    let runtime_process_sampler = Arc::new(runtime_profile::RuntimeProcessSampler::with_sample_source(
+        runtime_sample_source,
+    ));
     if !provider_runtime
         .model_provider_extension_graph()
         .is_some_and(|graph| Arc::ptr_eq(graph, extension_boot_snapshot.graph_arc()))

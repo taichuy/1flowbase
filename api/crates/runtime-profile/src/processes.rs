@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -62,10 +62,8 @@ pub enum RuntimeProcessTerminationOutcome {
 }
 
 struct RuntimeProcessSamplerInner {
-    system: System,
-    users: Users,
     previous_sampled_at: Option<Instant>,
-    snapshot: RuntimeProcessSnapshot,
+    snapshot: Arc<RuntimeProcessSnapshot>,
 }
 
 /// Enumerates every process the current process can see through the OS, using
@@ -73,6 +71,7 @@ struct RuntimeProcessSamplerInner {
 /// runtime PID namespace, not by this sampler. Termination is limited to
 /// processes this user may actually signal.
 pub struct RuntimeProcessSampler {
+    source: Arc<crate::RuntimeSampleSource>,
     inner: Mutex<RuntimeProcessSamplerInner>,
 }
 
@@ -84,12 +83,14 @@ impl Default for RuntimeProcessSampler {
 
 impl RuntimeProcessSampler {
     pub fn new() -> Self {
+        Self::with_sample_source(Arc::new(crate::RuntimeSampleSource::default()))
+    }
+    pub fn with_sample_source(source: Arc<crate::RuntimeSampleSource>) -> Self {
         Self {
+            source,
             inner: Mutex::new(RuntimeProcessSamplerInner {
-                system: System::new(),
-                users: Users::new_with_refreshed_list(),
                 previous_sampled_at: None,
-                snapshot: RuntimeProcessSnapshot::default(),
+                snapshot: Arc::new(RuntimeProcessSnapshot::default()),
             }),
         }
     }
@@ -104,122 +105,118 @@ impl RuntimeProcessSampler {
             .previous_sampled_at
             .is_some_and(|previous| sampled_at.duration_since(previous) < refresh_floor)
         {
-            return inner.snapshot.clone();
+            return inner.snapshot.as_ref().clone();
         }
 
-        inner.system.refresh_memory();
-        inner.system.refresh_processes_specifics(
-            ProcessesToUpdate::All,
-            true,
-            // The console lists processes, not each process's threads.
-            ProcessRefreshKind::nothing()
-                .without_tasks()
-                .with_cpu()
-                .with_memory()
-                .with_user(UpdateKind::OnlyIfNotSet)
-                .with_cmd(UpdateKind::OnlyIfNotSet),
-        );
-
-        let current_pid = sysinfo::get_current_pid().ok();
-        let protected_pids = current_pid
-            .map(|pid| protected_process_pids(&inner.system, pid))
-            .unwrap_or_default();
-        let backend_pids = current_pid
-            .map(|pid| descendant_process_pids(&inner.system, pid))
-            .unwrap_or_default();
-        let current_uid = current_pid
-            .and_then(|pid| inner.system.process(pid))
-            .and_then(|process| process.user_id())
-            .cloned();
-
-        let total_memory = inner.system.total_memory().max(1);
-        // sysinfo reports process CPU per logical core (one busy core == 100%).
-        let logical_cpu_count = inner.system.cpus().len().max(1) as f32;
-        let mut processes = inner
-            .system
-            .processes()
-            .values()
-            .filter(|process| process.thread_kind().is_none())
-            .map(|process| {
-                let (cpu_usage_percent, cpu_usage_single_core_percent) =
-                    process_cpu_usage_percentages(process.cpu_usage(), logical_cpu_count);
-                RuntimeProcessSample {
-                    pid: process.pid().as_u32(),
-                    parent_pid: process.parent().map(|pid| pid.as_u32()),
-                    name: process.name().to_string_lossy().into_owned(),
-                    command: (!process.cmd().is_empty()).then(|| {
-                        process
-                            .cmd()
-                            .iter()
-                            .map(|argument| argument.to_string_lossy())
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    }),
-                    user: process
-                        .user_id()
-                        .and_then(|user_id| inner.users.get_user_by_id(user_id))
-                        .map(|user| user.name().to_string()),
-                    status: process_status_label(process.status()).to_string(),
-                    cpu_usage_percent,
-                    cpu_usage_single_core_percent,
-                    memory_bytes: process.memory(),
-                    memory_usage_percent: (process.memory() as f64 / total_memory as f64 * 100.0)
-                        as f32,
-                    start_time_unix_seconds: process.start_time(),
-                    terminable: is_terminable(process, &protected_pids, current_uid.as_ref()),
-                    backend_process: backend_pids.contains(&process.pid()),
-                }
-            })
-            .collect::<Vec<_>>();
-        processes.sort_by(|left, right| {
-            right
-                .memory_bytes
-                .cmp(&left.memory_bytes)
-                .then_with(|| left.pid.cmp(&right.pid))
-        });
-
-        let total = processes.len();
-        processes.truncate(MAX_RUNTIME_PROCESS_SAMPLES);
-        let snapshot = RuntimeProcessSnapshot { total, processes };
-        inner.snapshot = snapshot.clone();
+        let Ok(observation) = self.source.collect() else {
+            return RuntimeProcessSnapshot::default();
+        };
+        inner.snapshot = Arc::clone(&observation.processes);
         inner.previous_sampled_at = Some(sampled_at);
-        snapshot
+        inner.snapshot.as_ref().clone()
     }
 
     /// Sends `SIGTERM` to one process after re-applying the same guards used
     /// for the `terminable` projection.
     pub fn terminate(&self, pid: u32) -> RuntimeProcessTerminationOutcome {
-        let Ok(mut inner) = self.inner.lock() else {
-            return RuntimeProcessTerminationOutcome::Failed;
-        };
-        let target = Pid::from_u32(pid);
-        inner.system.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&[target]),
-            true,
-            ProcessRefreshKind::nothing()
-                .without_tasks()
-                .with_user(UpdateKind::OnlyIfNotSet),
-        );
+        self.source.terminate(pid)
+    }
+}
 
-        let Some(current_pid) = sysinfo::get_current_pid().ok() else {
-            return RuntimeProcessTerminationOutcome::Failed;
-        };
-        let protected_pids = protected_process_pids(&inner.system, current_pid);
-        let current_uid = inner
-            .system
-            .process(current_pid)
-            .and_then(|process| process.user_id())
-            .cloned();
-        let Some(process) = inner.system.process(target) else {
-            return RuntimeProcessTerminationOutcome::NotObservable;
-        };
-        if !is_terminable(process, &protected_pids, current_uid.as_ref()) {
-            return RuntimeProcessTerminationOutcome::Forbidden;
-        }
-        match process.kill_with(Signal::Term) {
-            Some(true) => RuntimeProcessTerminationOutcome::Signalled,
-            Some(false) | None => RuntimeProcessTerminationOutcome::Failed,
-        }
+pub(crate) fn snapshot_from_system(system: &System, users: &Users) -> RuntimeProcessSnapshot {
+    let current_pid = sysinfo::get_current_pid().ok();
+    let protected_pids = current_pid
+        .map(|pid| protected_process_pids(system, pid))
+        .unwrap_or_default();
+    let backend_pids = current_pid
+        .map(|pid| descendant_process_pids(system, pid))
+        .unwrap_or_default();
+    let current_uid = current_pid
+        .and_then(|pid| system.process(pid))
+        .and_then(|process| process.user_id())
+        .cloned();
+
+    let total_memory = system.total_memory().max(1);
+    // sysinfo reports process CPU per logical core (one busy core == 100%).
+    let logical_cpu_count = system.cpus().len().max(1) as f32;
+    let mut processes = system
+        .processes()
+        .values()
+        .filter(|process| process.thread_kind().is_none())
+        .map(|process| {
+            let (cpu_usage_percent, cpu_usage_single_core_percent) =
+                process_cpu_usage_percentages(process.cpu_usage(), logical_cpu_count);
+            RuntimeProcessSample {
+                pid: process.pid().as_u32(),
+                parent_pid: process.parent().map(|pid| pid.as_u32()),
+                name: process.name().to_string_lossy().into_owned(),
+                command: (!process.cmd().is_empty()).then(|| {
+                    process
+                        .cmd()
+                        .iter()
+                        .map(|argument| argument.to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                }),
+                user: process
+                    .user_id()
+                    .and_then(|user_id| users.get_user_by_id(user_id))
+                    .map(|user| user.name().to_string()),
+                status: process_status_label(process.status()).to_string(),
+                cpu_usage_percent,
+                cpu_usage_single_core_percent,
+                memory_bytes: process.memory(),
+                memory_usage_percent: (process.memory() as f64 / total_memory as f64 * 100.0)
+                    as f32,
+                start_time_unix_seconds: process.start_time(),
+                terminable: is_terminable(process, &protected_pids, current_uid.as_ref()),
+                backend_process: backend_pids.contains(&process.pid()),
+            }
+        })
+        .collect::<Vec<_>>();
+    processes.sort_by(|left, right| {
+        right
+            .memory_bytes
+            .cmp(&left.memory_bytes)
+            .then_with(|| left.pid.cmp(&right.pid))
+    });
+
+    let total = processes.len();
+    processes.truncate(MAX_RUNTIME_PROCESS_SAMPLES);
+    let snapshot = RuntimeProcessSnapshot { total, processes };
+    snapshot
+}
+
+pub(crate) fn terminate_from_system(
+    system: &mut System,
+    pid: u32,
+) -> RuntimeProcessTerminationOutcome {
+    let target = Pid::from_u32(pid);
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[target]),
+        true,
+        ProcessRefreshKind::nothing()
+            .without_tasks()
+            .with_user(UpdateKind::OnlyIfNotSet),
+    );
+
+    let Some(current_pid) = sysinfo::get_current_pid().ok() else {
+        return RuntimeProcessTerminationOutcome::Failed;
+    };
+    let protected_pids = protected_process_pids(system, current_pid);
+    let current_uid = system
+        .process(current_pid)
+        .and_then(|process| process.user_id())
+        .cloned();
+    let Some(process) = system.process(target) else {
+        return RuntimeProcessTerminationOutcome::NotObservable;
+    };
+    if !is_terminable(process, &protected_pids, current_uid.as_ref()) {
+        return RuntimeProcessTerminationOutcome::Forbidden;
+    }
+    match process.kill_with(Signal::Term) {
+        Some(true) => RuntimeProcessTerminationOutcome::Signalled,
+        Some(false) | None => RuntimeProcessTerminationOutcome::Failed,
     }
 }
 

@@ -12,10 +12,5 @@ fn console_sampler_retains_processes_without_enumerating_tasks() {
         .expect("current process");
     assert!(current.backend_process);
     assert!(!current.terminable);
-    let inner = sampler.inner.lock().expect("sampler lock");
-    assert!(inner
-        .system
-        .processes()
-        .values()
-        .all(|p| p.thread_kind() != Some(sysinfo::ThreadKind::Userland)));
+    assert!(!sampler.source.contains_userland_tasks());
 }

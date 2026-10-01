@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use control_plane::ports::{CacheStore, DistributedLock};
-use runtime_profile::{RuntimeProfile, RuntimeProfileCollector};
+use runtime_profile::{RuntimeProfile, RuntimeProfileCollector, RuntimeSampleSource};
 use serde::{Deserialize, Serialize};
 use std::{
     sync::Arc,
@@ -30,12 +30,14 @@ pub struct HostApiRuntimeProfileCollector {
 
 impl HostApiRuntimeProfileCollector {
     pub fn new(process_started_at: OffsetDateTime) -> Result<Self> {
+        Self::new_with_sample_source(process_started_at, Arc::new(RuntimeSampleSource::default()))
+    }
+    pub fn new_with_sample_source(
+        process_started_at: OffsetDateTime, sample_source: Arc<RuntimeSampleSource>,
+    ) -> Result<Self> {
         Ok(Self {
-            collector: Arc::new(RuntimeProfileCollector::new(
-                "api-server",
-                env!("CARGO_PKG_VERSION"),
-                process_started_at,
-                "ok",
+            collector: Arc::new(RuntimeProfileCollector::new_with_sample_source(
+                "api-server", env!("CARGO_PKG_VERSION"), process_started_at, "ok", sample_source,
             )?),
         })
     }

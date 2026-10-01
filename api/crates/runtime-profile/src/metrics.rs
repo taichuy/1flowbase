@@ -6,7 +6,9 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{Disks, NetworkData, Networks, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{
+    Disks, NetworkData, Networks, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind, Users,
+};
 use time::OffsetDateTime;
 
 const MAX_FRESH_SAMPLE_INTERVAL: Duration = Duration::from_secs(10);
@@ -99,6 +101,7 @@ pub struct RuntimeMetricsSnapshot {
 #[derive(Debug)]
 pub(crate) struct RuntimeMetricSampler {
     system: System,
+    users: Users,
     networks: Networks,
     disks: Disks,
     current_pid: Option<sysinfo::Pid>,
@@ -173,6 +176,7 @@ impl RuntimeMetricSampler {
             // The first collect refreshes the fields we expose. Avoid enumerating
             // every visible process and task during collector construction.
             system: System::new(),
+            users: Users::new_with_refreshed_list(),
             networks: Networks::new_with_refreshed_list(),
             disks: Disks::new_with_refreshed_list(),
             current_pid: sysinfo::get_current_pid().ok(),
@@ -181,6 +185,20 @@ impl RuntimeMetricSampler {
             previous_cgroup_cpu_usage_micros: None,
             last_snapshot: None,
         }
+    }
+
+    pub(crate) fn process_snapshot(&self) -> crate::RuntimeProcessSnapshot {
+        crate::processes::snapshot_from_system(&self.system, &self.users)
+    }
+    pub(crate) fn terminate(&mut self, pid: u32) -> crate::RuntimeProcessTerminationOutcome {
+        crate::processes::terminate_from_system(&mut self.system, pid)
+    }
+    #[cfg(test)]
+    pub(crate) fn contains_userland_tasks(&self) -> bool {
+        self.system
+            .processes()
+            .values()
+            .any(|p| p.thread_kind() == Some(sysinfo::ThreadKind::Userland))
     }
 
     pub(crate) fn collect(&mut self) -> RuntimeMetricsSnapshot {
@@ -202,7 +220,12 @@ impl RuntimeMetricSampler {
             true,
             // Memory and process ancestry are process-level facts; task records
             // are discarded by the projection and duplicate procfs work.
-            ProcessRefreshKind::nothing().without_tasks().with_memory(),
+            ProcessRefreshKind::nothing()
+                .without_tasks()
+                .with_cpu()
+                .with_memory()
+                .with_user(UpdateKind::OnlyIfNotSet)
+                .with_cmd(UpdateKind::OnlyIfNotSet),
         );
         self.networks.refresh(true);
         self.disks.refresh(true);

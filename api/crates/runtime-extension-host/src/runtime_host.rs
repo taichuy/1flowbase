@@ -60,7 +60,7 @@ impl PluginDataPort for MissingPluginDataPort {
         })
     }
 }
-use runtime_profile::{RuntimeProfile, RuntimeProfileCollector};
+use runtime_profile::{RuntimeProfile, RuntimeProfileCollector, RuntimeSampleSource};
 use time::OffsetDateTime;
 use tokio::{
     sync::{mpsc, Mutex, RwLock},
@@ -117,6 +117,7 @@ impl RuntimeExtensionHost {
             Arc::new(RwLock::new(DataSourceHost::default())),
             artifact_resolver,
             Arc::new(MissingPluginDataPort),
+            Arc::new(RuntimeSampleSource::default()),
         )
     }
 
@@ -125,6 +126,20 @@ impl RuntimeExtensionHost {
         artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
         plugin_data: Arc<dyn PluginDataPort>,
     ) -> Result<Self, RuntimeBackendError> {
+        Self::new_with_artifact_resolver_plugin_data_and_profile_source(
+            process_started_at,
+            artifact_resolver,
+            plugin_data,
+            Arc::new(RuntimeSampleSource::default()),
+        )
+    }
+
+    pub fn new_with_artifact_resolver_plugin_data_and_profile_source(
+        process_started_at: OffsetDateTime,
+        artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
+        plugin_data: Arc<dyn PluginDataPort>,
+        sample_source: Arc<RuntimeSampleSource>,
+    ) -> Result<Self, RuntimeBackendError> {
         Self::from_shared_registries_with_artifact_resolver(
             process_started_at,
             Arc::new(RwLock::new(ProviderHost::default())),
@@ -132,6 +147,7 @@ impl RuntimeExtensionHost {
             Arc::new(RwLock::new(DataSourceHost::default())),
             artifact_resolver,
             plugin_data,
+            sample_source,
         )
     }
 
@@ -142,12 +158,14 @@ impl RuntimeExtensionHost {
         data_source_host: Arc<RwLock<DataSourceHost>>,
         artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
         plugin_data: Arc<dyn PluginDataPort>,
+        sample_source: Arc<RuntimeSampleSource>,
     ) -> Result<Self, RuntimeBackendError> {
-        let profile = RuntimeProfileCollector::new(
+        let profile = RuntimeProfileCollector::new_with_sample_source(
             "runtime-extension-host",
             env!("CARGO_PKG_VERSION"),
             process_started_at,
             "ok",
+            sample_source,
         )
         .map_err(|error| RuntimeBackendError::Execution {
             target_id: "runtime-extension-host".to_string(),
@@ -1384,3 +1402,7 @@ impl RuntimeObservationPort for RuntimeExtensionHost {
 #[cfg(test)]
 #[path = "_tests/managed_hash_budget.rs"]
 mod managed_hash_budget_tests;
+
+#[cfg(test)]
+#[path = "_tests/shared_profile_source.rs"]
+mod shared_profile_source_tests;
