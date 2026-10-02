@@ -12,7 +12,7 @@ const {runGatewayWebSocketLifecycle}=require('../../responses-websocket-acceptan
 const {runGatewayErrorMatrix,observeClient}=require('../../responses-websocket-acceptance/error-matrix');
 const {collectGatewayFrames}=require('../../workflow-contract/gateway-websocket');
 const {createGatewayTarget}=require('../../responses-websocket-acceptance/target');
-const {assertUniqueProjection}=require('./protocol-checks');
+const {assertUniqueProjection,FINAL_TOOL_TEXT}=require('./protocol-checks');
 const command=(bin,args)=>execFileSync(bin,args,{encoding:'utf8',maxBuffer:1024*1024}).trim(),sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 fs.mkdirSync(OUT,{recursive:true});assert.equal(command('git',['rev-parse','HEAD']),CANDIDATE);
 const build=path.join(REUSE,'test-governance/gateway-duplicate-run-lock/build'),bins={},packages={};
@@ -21,20 +21,23 @@ for(const k of ['openai','anthropic','openai_compatible']){packages[k]=singlePac
 const source=JSON.parse(fs.readFileSync(path.join(build,'binaries.json')));assert.equal(source.baseline.source,BASELINE);assert.equal(source.candidate.source,CANDIDATE);
 const provider=JSON.parse(fs.readFileSync(path.join(REUSE,'protocol-reuse/ai-gateway-concurrency/provider-provenance.json')));assert.equal(provider.official_source_sha,PROVIDER);
 const container=command('docker',['ps','--filter','publish=5432','--format','{{.ID}}']);assert.match(container,/^[a-f0-9]+$/);
-const lifecycleIds=['client-disconnect','native-cancel','upstream-interruption'];
-fs.writeFileSync(path.join(OUT,'manifest.json'),JSON.stringify({baseline:BASELINE,candidate:CANDIDATE,provider:PROVIDER,workflow:process.env.GITHUB_SHA,release_artifact_run:36967545246,release_artifact_id:11211672582,release_artifact_digest:'47b028e1d51a791c4c136dc6b6529f4c7965458f9d3d039721a7e9a29947302b',hashes:expected,sequence:['baseline','candidate'],lifecycleIds,errorRows:['retry/responses-websocket'],concurrency:1,performance_measurement:false,limits:['No real CLI client or model','Synthetic tool executes once; resume submits full history on a fresh WebSocket','No assertion of all async backlog flush']},null,2));
-async function toolRecovery(ready){
+const lifecycleIds=['client-disconnect','native-cancel','upstream-interruption'];const toolOnly=process.env.GATE_SELECTION==='tool-only';assert.ok(['all','tool-only'].includes(process.env.GATE_SELECTION||'all'));
+const{reuseVerifiedGates}=require('./reuse-gates');const reused=toolOnly?reuseVerifiedGates(path.join(ROOT,'tmp/previous-functional')):null;
+fs.writeFileSync(path.join(OUT,'manifest.json'),JSON.stringify({baseline:BASELINE,candidate:CANDIDATE,provider:PROVIDER,workflow:process.env.GITHUB_SHA,release_artifact_run:36967545246,release_artifact_id:11211672582,release_artifact_digest:'47b028e1d51a791c4c136dc6b6529f4c7965458f9d3d039721a7e9a29947302b',hashes:expected,sequence:['baseline','candidate'],lifecycleIds,errorRows:['retry/responses-websocket'],concurrency:1,performance_measurement:false,reused_gate_receipts:reused,limits:['No real CLI client or model','Synthetic tool executes once; resume submits full history on a fresh WebSocket','No assertion of all async backlog flush']},null,2));
+async function toolRecovery(ready,receipt){
  const target=createGatewayTarget(ready),input=[{role:'user',content:[{type:'input_text',text:'1flowbase-client-tool-vector TOOL_VECTOR_PATH=synthetic-fixture.txt'}]}],tools=[{type:'function',name:'fixture_command',description:'Synthetic read-only fixture',parameters:{type:'object',properties:{command:{type:'string'}},required:['command']}}];
  const firstObs={},firstFrames=await collectGatewayFrames(target,'tool-first-'+crypto.randomUUID(),{inputItems:input,requestFields:{tools},observation:firstObs});
- const first=firstFrames.map(x=>JSON.parse(Buffer.concat(x).toString())),projection=assertUniqueProjection(first);
+ receipt.first=firstObs;const first=firstFrames.map(x=>JSON.parse(Buffer.concat(x).toString())),projection=assertUniqueProjection(first);receipt.first_projection=projection;
  assert.equal(projection.completed_tool_calls,1,'Exactly one tool from first turn');
  const call=first.find(x=>x.type==='response.output_item.done'&&x.item?.type==='function_call')?.item;assert.ok(call);
  // Collector closes the first socket before callback submission. Do not retry
  // the synthetic tool; reconnect once with the original completed pair/history.
- const execution={call_id:call.call_id,executions:1,result:'1flowbase-client-tool-result',at_ns:process.hrtime.bigint().toString()};
- const history=[...input,call,{type:'function_call_output',call_id:call.call_id,output:execution.result}],nextObs={};
+ const args=JSON.parse(call.arguments);assert.ok(args.command.includes('synthetic-fixture.txt'),'Controlled fixture tool argument');
+ const toolFile=path.join(OUT,'synthetic-tool-'+crypto.randomUUID()+'.txt');fs.writeFileSync(toolFile,'1flowbase-client-tool-result');let executions=0;const executeTool=()=>{executions++;return fs.readFileSync(toolFile,'utf8');};let toolResult;try{toolResult=executeTool();}finally{fs.unlinkSync(toolFile);}
+ const execution={call_id:call.call_id,executions,result:toolResult,at_ns:process.hrtime.bigint().toString()};assert.equal(executions,1);
+ receipt.execution=execution;const history=[...input,call,{type:'function_call_output',call_id:call.call_id,output:execution.result}],nextObs={};
  const nextFrames=await collectGatewayFrames(target,'tool-recovery-'+crypto.randomUUID(),{inputItems:history,requestFields:{tools},observation:nextObs});
- const next=nextFrames.map(x=>JSON.parse(Buffer.concat(x).toString())),final=assertUniqueProjection(next,{text:'1flowbase gateway tool sentinel ok'});assert.equal(final.completed_tool_calls,0,'No repeated tool after full-history resume');
+ receipt.recovered=nextObs;const next=nextFrames.map(x=>JSON.parse(Buffer.concat(x).toString())),final=assertUniqueProjection(next,{text:FINAL_TOOL_TEXT});receipt.recovered_projection=final;assert.equal(final.completed_tool_calls,0,'No repeated tool after full-history resume');
  assert.ok(BigInt(firstObs.closed_ns)<BigInt(nextObs.opened_ns),'Closed socket precedes fresh connection');
  return {verdict:'PASS',mode:'socket closed between tool response and result; explicit fresh WS full-history resume, not real CLI automatic retry',execution,first:firstObs,recovered:nextObs,first_projection:projection,recovered_projection:final};
 }
@@ -46,9 +49,11 @@ async function run(arm){
   db=createDatabase({container,host:'127.0.0.1',port:5432});secrets.push(db.url,new URL(db.url).password);mock=createMockUpstream({slowChunkDelayMs:25});const endpoints=await mock.start();
   fixture=await createGatewayFixture({databaseUrl:db.url,apiServerBin:bins[arm],openaiPackage:packages.openai,anthropicPackage:packages.anthropic,openaiCompatiblePackage:packages.openai_compatible,upstreamBaseUrl:endpoints.httpBaseUrl,artifactRoot:path.join(out,'service')},{OwnerHttpClient:Client,spawnOwned});
   const ready=fixture.result;assert.notEqual(new URL(ready.gateway_base_url).port,'7600');for(const t of Object.values(ready.targets))secrets.push(t.api_key,t.durable.list_runs.headers.cookie);secrets.push(...sessions.map(x=>x.cookie));
+  if(toolOnly){result.lifecycle=reused[arm].lifecycle;result.retry=reused[arm].retry;result.reused_from_run=36975125248;}else{
   result.lifecycle=await runGatewayWebSocketLifecycle({ready,mockSnapshot:mock.snapshot,terminalBarriers:mock.terminalBarriers,selectedRows:lifecycleIds});save();assert.equal(result.lifecycle.verdict,'PASS');assert.deepEqual(result.lifecycle.rows.map(x=>x.id),lifecycleIds);
   result.retry=await runGatewayErrorMatrix({ready,mockSnapshot:mock.snapshot,selectedRows:['retry/responses-websocket']},{observeClient:async(...args)=>{const x=await observeClient(...args);const success=x.records.some(r=>r.data?.type==='response.completed');assertUniqueProjection(x.records.map(r=>r.data).filter(Boolean),{terminal:success?'response.completed':'response.failed'});return x;}});save();assert.equal(result.retry.verdict,'PASS');assert.equal(result.retry.rows.length,1);assert.equal(result.retry.rows[0].attempts.length,2);
-  result.tool_recovery=await toolRecovery(ready);save();result.mock=mock.snapshot();result.status='PASS';
+  }
+  result.tool_recovery={verdict:'FAIL'};result.tool_recovery=await toolRecovery(ready,result.tool_recovery);save();result.mock=mock.snapshot();result.status='PASS';
  }catch(e){result.error=redactServiceLog(e.stack||e.message,secrets);}finally{
   for(const s of sessions)try{await s.dispose();result.cleanup.push('session-disposed');}catch{result.status='FAIL';result.cleanup.push('session-failed');}
   for(const[name,close]of[['fixture',()=>fixture?.close()],['mock',()=>mock?.stop()],['database',()=>db?.close()]])try{await close();result.cleanup.push(name+'-closed');}catch{result.status='FAIL';result.cleanup.push(name+'-failed');}

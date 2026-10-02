@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  GATE_SELECTION: tool-only
   OPENAI_API_KEY: ''
   OPENAI_BASE_URL: ''
   ANTHROPIC_API_KEY: ''
@@ -58,6 +59,13 @@ jobs:
           run-id: 36967545246
           github-token: ${{ github.token }}
           path: tmp/reused-release
+      - name: Download previously verified cancel disconnect and retry receipts
+        uses: actions/download-artifact@v8
+        with:
+          name: gateway-fixed-functional-raw-36975125248
+          run-id: 36975125248
+          github-token: ${{ github.token }}
+          path: tmp/previous-functional
       - name: Configure only owned CI backup tools
         run: |
           set -euo pipefail
@@ -76,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/duplicate-lock/_tests/whole-counter.test.js tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/functional/_tests/protocol-checks.test.js tmp/experiment-control/scripts/node/ai-gateway-concurrency/responses-websocket-acceptance/_tests/error-matrix.test.js
-      - name: Execute real cancel disconnect WS-to-SSE and tool full-history recovery
+      - name: Execute corrected tool recovery and reuse unchanged passing protocol gates
         run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/functional/run.js
         timeout-minutes: 15
       - name: Preserve all functional positive and negative evidence
