@@ -287,7 +287,10 @@ describe('JsxStudioRunPanel Native React run revision', () => {
       nativeCompiler: createCompiler()
     });
 
-    await waitFor(() => expect(trialShadowRoot(view.container)).not.toBeNull(), { timeout: 10_000 });
+    await waitFor(
+      () => expect(trialShadowRoot(view.container)).not.toBeNull(),
+      { timeout: 10_000 }
+    );
     const shadowRoot = trialShadowRoot(view.container);
     const output = await within(
       shadowRoot as unknown as HTMLElement
@@ -494,9 +497,8 @@ describe('JsxStudioRunPanel Native React run revision', () => {
 
     // Provider updates may legitimately render the same revision more than
     // once. Every captured render log must remain visible in its owning pane.
-    const initialRenderLogs = await within(consolePane).findAllByText(
-      'render count 0'
-    );
+    const initialRenderLogs =
+      await within(consolePane).findAllByText('render count 0');
     initialRenderLogs.forEach((entry) => expect(entry).toBeVisible());
     expect(initialRenderLogs).toHaveLength(
       browserLog.mock.calls.filter(
@@ -512,9 +514,8 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(
       await within(consolePane).findByText('button clicked {"count": 0}')
     ).toBeVisible();
-    const updatedRenderLogs = await within(consolePane).findAllByText(
-      'render count 1'
-    );
+    const updatedRenderLogs =
+      await within(consolePane).findAllByText('render count 1');
     updatedRenderLogs.forEach((entry) => expect(entry).toBeVisible());
     expect(updatedRenderLogs).toHaveLength(
       browserLog.mock.calls.filter(
@@ -558,12 +559,16 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     secondLogs.forEach((entry) => expect(entry).toBeVisible());
     expect(within(panes[1]!).queryByText('first only')).not.toBeInTheDocument();
     expect(firstLogs).toHaveLength(
-      browserInfo.mock.calls.filter(([message]) => message === 'first only').length
+      browserInfo.mock.calls.filter(([message]) => message === 'first only')
+        .length
     );
     expect(secondLogs).toHaveLength(
-      browserInfo.mock.calls.filter(([message]) => message === 'second only').length
+      browserInfo.mock.calls.filter(([message]) => message === 'second only')
+        .length
     );
-    expect(browserInfo).toHaveBeenCalledTimes(firstLogs.length + secondLogs.length);
+    expect(browserInfo).toHaveBeenCalledTimes(
+      firstLogs.length + secondLogs.length
+    );
   });
 
   test('R6-AC-002 keeps the resizable Console inside the editor run surface', async () => {

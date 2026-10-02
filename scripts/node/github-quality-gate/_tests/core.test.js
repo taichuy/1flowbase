@@ -69,6 +69,12 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
     cwd: repoRoot,
   });
 
+  assert.deepEqual(buildGateCommand({ repoRoot, scope: 'coverage-backend-api-server-merge' }), {
+    command: process.execPath,
+    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow.js'), 'merge', 'api-server', '4'],
+    cwd: repoRoot,
+  });
+
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'repo-tooling' }), {
     command: process.execPath,
     args: [path.join(repoRoot, 'scripts', 'node', 'verify-repo.js'), 'tooling'],
@@ -927,6 +933,14 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
     });
   }
 
+  for (const scope of ['repo-frontend-react-doctor', 'coverage-backend-api-server-merge',
+    'container-images', 'ai-gateway-protocol-conformance', 'foundation-contracts']) {
+    writeArtifact(`test-governance-${scope}`, {
+      reportType: 'ci', status: 'passed', scope, exitCode: 0,
+      coverageSummaries: [], backendConsistencyTargets: [], warningFiles: [],
+    });
+  }
+
   const result = await runQualityGateAggregate({
     repoRoot,
     artifactRoot: path.join('tmp', 'test-governance', 'parallel'),
@@ -960,7 +974,7 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
   assert.match(createdIssues[0].body, /\| `repo-backend-static` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `repo-backend-test-api-server-1-of-4` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `coverage-frontend` \| passed \| 0 \|/u);
-  assert.match(createdIssues[0].body, /\| `coverage-backend-api-server` \| passed \| 0 \|/u);
+  assert.match(createdIssues[0].body, /\| `coverage-backend-api-server-merge` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /## Security Risk/u);
   assert.match(createdIssues[0].body, /repo-tooling: review_required, findings 2 \(high 1, medium 1\), changed files 2/u);
   assert.match(createdIssues[0].body, /Security risk report: tmp\/test-governance\/security-risk\.json/u);

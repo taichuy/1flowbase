@@ -327,7 +327,9 @@ export async function renderWithProviders(ui: ReactNode) {
   const view = render(<AppProviders>{ui}</AppProviders>);
   await waitFor(
     () => {
-      expect(view.container.querySelector('.ant-app')?.firstElementChild).toBeInTheDocument();
+      expect(
+        view.container.querySelector('.ant-app')?.firstElementChild
+      ).toBeInTheDocument();
     },
     { timeout: SLOW_NODE_INSPECTOR_TEST_TIMEOUT }
   );

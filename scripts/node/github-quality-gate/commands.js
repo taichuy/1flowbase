@@ -32,10 +32,15 @@ const BACKEND_CONSISTENCY_COMPONENT_SCOPES = BACKEND_CONSISTENCY_GROUPS
 const DEFAULT_AGGREGATE_SCOPES = [
   'repo-tooling',
   'repo-frontend',
+  'repo-frontend-react-doctor',
   ...REPO_BACKEND_COMPONENT_SCOPES,
   ...BACKEND_CONSISTENCY_COMPONENT_SCOPES,
   'coverage-frontend',
-  ...COVERAGE_BACKEND_COMPONENT_SCOPES,
+  ...COVERAGE_BACKEND_COMPONENT_SCOPES.filter((scope) => scope !== 'coverage-backend-api-server'),
+  'coverage-backend-api-server-merge',
+  'container-images',
+  'ai-gateway-protocol-conformance',
+  'foundation-contracts',
 ];
 const VALID_SCOPES = new Set([
   'plugin-composition-2007',

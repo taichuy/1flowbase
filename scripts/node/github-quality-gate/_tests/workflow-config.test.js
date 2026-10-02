@@ -1157,3 +1157,12 @@ test("quality gate action isolates middleware postgres per gate scope", () => {
     /\$\{POSTGRES_DATA_DIR:-\.\/volumes\/postgres\}:\/var\/lib\/postgresql/u,
   );
 });
+
+
+test('default aggregate requires exactly the current full online component inventory', () => {
+  const { DEFAULT_AGGREGATE_SCOPES } = require('../commands.js');
+  const workflow = readQualityGateWorkflow();
+  const scopes = workflow.match(/INPUT_EXPECTED_SCOPES: '([^']+)'/u)?.[1].split(',');
+  assert.ok(scopes, 'full online gate must declare its component inventory');
+  assert.deepEqual([...DEFAULT_AGGREGATE_SCOPES].sort(), scopes.sort());
+});
