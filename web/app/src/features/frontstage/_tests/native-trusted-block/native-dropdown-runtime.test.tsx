@@ -1,4 +1,10 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { createRef, useEffect, type ComponentType } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -20,7 +26,13 @@ describe('native block Dropdown runtime adapter', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (vi.isFakeTimers()) {
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+      vi.useRealTimers();
+    }
     document.body.replaceChildren();
     showPopover.mockReset();
     hidePopover.mockReset();
@@ -181,7 +193,8 @@ describe('native block Dropdown runtime adapter', () => {
     );
   });
 
-  test('I1924-AC-002/004 keeps a cascading submenu inside the Block top-layer surface', async () => {
+  test('honors authored hover delay before opening the native surface', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const registry = createFrontstageNativeReactModuleRegistry();
     const antdModule = await registry.load('antd');
     const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
@@ -190,56 +203,127 @@ describe('native block Dropdown runtime adapter', () => {
     render(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
-        renderEpoch="dropdown:cascading"
+        renderEpoch="dropdown:authored-delay"
         plan={createPlan()}
-        // Top-layer ownership and logical close are tested here; jsdom does
-        // not deliver the browser CSS animation completion event.
         component={() => (
-          <ConfigProvider theme={{ token: { motion: false } }}>
-            <Dropdown
-              menu={{
-                subMenuOpenDelay: 0,
-                items: [
-                  {
-                    key: 'sub',
-                    label: 'sub menu',
-                    children: [{ key: 'child', label: 'child menu item' }]
-                  }
-                ]
-              }}
-            >
-              <button type="button">Cascading menu</button>
-            </Dropdown>
-          </ConfigProvider>
+          <Dropdown
+            mouseEnterDelay={0.3}
+            menu={{ items: [{ key: 'profile', label: 'Profile' }] }}
+          >
+            <button type="button">Delayed menu</button>
+          </Dropdown>
         )}
         ctx={createContext()}
       />
     );
-    const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
-    const queries = within(shadowRoot as unknown as HTMLElement);
-
+    const queries = within(root.shadowRoot as unknown as HTMLElement);
     fireEvent.pointerOver(
-      queries.getByRole('button', { name: 'Cascading menu' })
+      queries.getByRole('button', { name: 'Delayed menu' })
     );
-    const submenuTitle = await queries.findByText('sub menu');
-    fireEvent.mouseEnter(
-      submenuTitle.closest('[role="menuitem"]') as HTMLElement
-    );
-
-    const child = await queries.findByText('child menu item');
-    const layer = shadowRoot.querySelector<HTMLElement>(
-      '[data-flowbase-native-overlay-layer]'
-    );
-    expect(child.closest('[data-flowbase-native-overlay-layer]')).toBe(layer);
-
-    fireEvent.click(child);
-    await waitFor(() =>
-      expect(layer).toHaveAttribute(
-        'data-flowbase-native-overlay-state',
-        'closed'
-      )
-    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(queries.queryByText('Profile')).not.toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(await queries.findByText('Profile')).toBeVisible();
   });
+
+  test.each(['hover', 'click', 'keyboard'] as const)(
+    'I1924-AC-002/004 keeps a cascading submenu inside the Block top-layer surface and reopens by %s',
+    async (reopenBy) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const onOpenChange = vi.fn();
+      const registry = createFrontstageNativeReactModuleRegistry();
+      const antdModule = await registry.load('antd');
+      const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
+      const root = document.createElement('div');
+      document.body.append(root);
+      render(
+        <FrontstageNativeTrustedBlockPortalHost
+          root={root}
+          renderEpoch="dropdown:cascading"
+          plan={createPlan()}
+          // jsdom does not animate CSS; hover timers still execute below.
+          component={() => (
+            <ConfigProvider theme={{ token: { motion: false } }}>
+              <Dropdown
+                trigger={['hover', 'click']}
+                onOpenChange={onOpenChange}
+                menu={{
+                  subMenuOpenDelay: 0,
+                  items: [
+                    {
+                      key: 'sub',
+                      label: 'sub menu',
+                      children: [{ key: 'child', label: 'child menu item' }]
+                    }
+                  ]
+                }}
+              >
+                <button type="button">Cascading menu</button>
+              </Dropdown>
+            </ConfigProvider>
+          )}
+          ctx={createContext()}
+        />
+      );
+      const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
+      const queries = within(shadowRoot as unknown as HTMLElement);
+
+      const trigger = queries.getByRole('button', { name: 'Cascading menu' });
+      fireEvent.pointerOver(trigger);
+      const submenuTitle = await queries.findByText('sub menu');
+      fireEvent.mouseEnter(
+        submenuTitle.closest('[role="menuitem"]') as HTMLElement
+      );
+
+      const child = await queries.findByText('child menu item');
+      const layer = shadowRoot.querySelector<HTMLElement>(
+        '[data-flowbase-native-overlay-layer]'
+      );
+      expect(child.closest('[data-flowbase-native-overlay-layer]')).toBe(layer);
+
+      fireEvent.click(child);
+      // Flush the pending default hover delay: closure must remain stable.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      await waitFor(() =>
+        expect(layer).toHaveAttribute(
+          'data-flowbase-native-overlay-state',
+          'closed'
+        )
+      );
+      expect(onOpenChange.mock.calls).toEqual([
+        [true, { source: 'trigger' }],
+        [false, { source: 'menu' }]
+      ]);
+      expect(queries.getByRole('button', { name: 'Cascading menu' })).toBe(
+        trigger
+      );
+      if (reopenBy === 'hover') {
+        fireEvent.pointerOver(trigger);
+      } else {
+        if (reopenBy === 'keyboard') {
+          fireEvent.keyDown(trigger, { key: 'Enter' });
+        } else {
+          fireEvent.pointerDown(trigger);
+        }
+        fireEvent.click(trigger);
+      }
+      await waitFor(() =>
+        expect(layer).toHaveAttribute(
+          'data-flowbase-native-overlay-state',
+          'open'
+        )
+      );
+      expect(onOpenChange).toHaveBeenLastCalledWith(true, {
+        source: 'trigger'
+      });
+    }
+  );
 
   test('I1915-AC-006 keeps a controlled open Dropdown in one Top Layer across a layout epoch change', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
