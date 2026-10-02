@@ -258,11 +258,12 @@ pub(super) fn is_full_context_continuation(
     Ok(true)
 }
 
-/// A terminal Responses response cannot be resumed. A later create request may
-/// sample again from the same proven input without replaying the consumed tool
-/// callback or reopening the failed provider attempt. This is a protocol-level
-/// new response, not an AI Native recovery disposition.
-pub(super) fn is_terminal_transport_reissue(
+/// A later Responses create is a new lifecycle, not permission to replay the
+/// failed provider invocation. The already consumed callback supplies ownership
+/// and accepted outputs; complete history and configuration must still match.
+/// Provider recovery receipts authorize internal retries only. Their absence or
+/// exhausted budget cannot prevent a client from creating a new response.
+pub(super) fn is_failed_response_reissue(
     flow: &domain::FlowRunRecord,
     callback: &domain::CallbackTaskRecord,
     command: &ResumePublishedCallbackCommand,
@@ -273,36 +274,107 @@ pub(super) fn is_terminal_transport_reissue(
     {
         return Ok(false);
     }
-    let Some(error) = flow.error_payload.as_ref() else {
-        return Ok(false);
-    };
-    let audit = &error["ai_native_recovery"];
-    if error["error_code"] != "provider_transport_unavailable"
-        || audit["decision"] != "semantic_terminal"
-        || audit["provider_final_commit"] != "terminal"
-    {
-        return Ok(false);
-    }
-    let reject = || {
-        anyhow::Error::from(ControlPlaneError::Conflict(
-            "native_recovery_invalid_receipt",
-        ))
-    };
-    let directive: ProviderRecoveryDirective =
-        serde_json::from_value(audit["provider_directive"].clone()).map_err(|_| reject())?;
-    let receipt: ProviderRecoveryReceipt =
-        serde_json::from_value(audit["provider_inner_receipt"].clone()).map_err(|_| reject())?;
-    receipt.validate_against(&directive).map_err(|_| reject())?;
-    if receipt.commit_level != CommitLevel::Terminal
-        || receipt.disposition != RecoveryDisposition::TerminalInterruption
-    {
-        return Ok(false);
-    }
-    // The receipt terminates the old provider invocation. Its reason does not
-    // prohibit a new Responses sample from proven input and already accepted
-    // tool outputs; this path never issues an internal recovery grant.
-    validate_context(flow, callback, command)?;
+    validate_reissue_context(flow, callback, command)?;
     Ok(true)
+}
+
+/// New requests can prove either full history or an owned incremental cursor.
+/// This also lets duplicate requests attach an already admitted successor.
+pub(super) fn validate_reissue_context(
+    flow: &domain::FlowRunRecord,
+    callback: &domain::CallbackTaskRecord,
+    command: &ResumePublishedCallbackCommand,
+) -> Result<()> {
+    let transport = command
+        .native_transport
+        .as_ref()
+        .ok_or(ControlPlaneError::Conflict(
+            "native_recovery_full_context_required",
+        ))?;
+    let body = transport.wire_body();
+    if let Some(previous) = body.get("previous_response_id") {
+        // Standard incremental create: the owned completed round supplies the
+        // predecessor proof. Never accept a client-selected foreign cursor.
+        let metadata = callback
+            .request_payload
+            .pointer("/provider_metadata/native_response")
+            .ok_or(ControlPlaneError::Conflict(
+                "native_recovery_history_missing",
+            ))?;
+        if previous.as_str().is_none() || previous.as_str() != metadata["response_id"].as_str() {
+            return Err(ControlPlaneError::Conflict("native_tool_output_response_mismatch").into());
+        }
+        validate_configuration(flow, metadata, transport)?;
+        let outputs = body["input"].as_array().ok_or(ControlPlaneError::Conflict(
+            "native_recovery_tool_output_mismatch",
+        ))?;
+        let accepted = command.response_payload["tool_results"].as_array().ok_or(
+            ControlPlaneError::Conflict("native_recovery_tool_output_mismatch"),
+        )?;
+        let mut remaining: std::collections::BTreeSet<_> =
+            callback_call_ids(callback)?.into_iter().collect();
+        if remaining.is_empty()
+            || outputs.len() != remaining.len()
+            || accepted.len() != remaining.len()
+        {
+            return Err(ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into());
+        }
+        for output in outputs {
+            if !matches!(
+                output["type"].as_str(),
+                Some("function_call_output" | "custom_tool_call_output")
+            ) {
+                return Err(
+                    ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into(),
+                );
+            }
+            let id = output["call_id"]
+                .as_str()
+                .ok_or(ControlPlaneError::Conflict(
+                    "native_recovery_tool_output_mismatch",
+                ))?;
+            if !remaining.remove(id)
+                || !accepted.iter().any(|result| {
+                    result["tool_call_id"].as_str() == Some(id)
+                        && result.get("content") == output.get("output")
+                })
+            {
+                return Err(
+                    ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into(),
+                );
+            }
+        }
+        if !remaining.is_empty() {
+            return Err(ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into());
+        }
+    } else {
+        validate_context(flow, callback, command)?;
+    }
+    Ok(())
+}
+
+fn validate_configuration(
+    flow: &domain::FlowRunRecord,
+    metadata: &Value,
+    transport: &crate::ports::ProviderTransportPayload,
+) -> Result<()> {
+    let sealed =
+        super::super::native::NativeExecutionModelParameters::seal_published_reasoning_default(
+            &flow.input_payload,
+            transport.clone(),
+        )?;
+    let expected = match flow
+        .error_payload
+        .as_ref()
+        .and_then(|error| error.get("native_inference_configuration_digest"))
+    {
+        Some(digest) => digest.as_str(),
+        None => metadata["configuration_digest"].as_str(),
+    };
+    if expected != Some(sealed.configuration_digest()?.as_str()) {
+        return Err(ControlPlaneError::Conflict("native_recovery_configuration_mismatch").into());
+    }
+    Ok(())
 }
 
 /// Duplicates retain their original budget, but must still match the admitted context.
@@ -323,25 +395,9 @@ pub(super) fn validate_context(
         .request_payload
         .pointer("/provider_metadata/native_response")
         .ok_or_else(|| reject("native_recovery_history_missing"))?;
-    let sealed =
-        super::super::native::NativeExecutionModelParameters::seal_published_reasoning_default(
-            &flow.input_payload,
-            transport.clone(),
-        )?;
-    // A normal full-context continuation may change request configuration. Recovery
-    // must replay the failed invocation exactly, not the preceding successful round.
-    // Older host records have no invocation digest and retain their original strict proof.
-    let expected_configuration = match flow
-        .error_payload
-        .as_ref()
-        .and_then(|error| error.get("native_inference_configuration_digest"))
-    {
-        Some(digest) => digest.as_str(),
-        None => metadata["configuration_digest"].as_str(),
-    };
-    if expected_configuration != Some(sealed.configuration_digest()?.as_str()) {
-        return Err(reject("native_recovery_configuration_mismatch"));
-    }
+    // Internal recovery and a new response both retain the failed request's
+    // configuration identity, while their retry budgets remain independent.
+    validate_configuration(flow, metadata, transport)?;
     let ids = callback_call_ids(callback)?;
     super::super::compat::openai::history::validate_full_retry_input(
         &transport.wire_body()["input"],
