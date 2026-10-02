@@ -1,6 +1,7 @@
+use sha2::{Digest, Sha256};
+
 fn canonical_runtime_json_identity(value: &Value) -> Result<(String, i64)> {
-    let prepared = PreparedCanonicalRuntimeJson::new(value)?;
-    Ok((prepared.hash().to_owned(), prepared.byte_size()))
+    Ok(PreparedCanonicalRuntimeJson::new(value)?.into_identity())
 }
 
 async fn put_canonical_runtime_content_in_transaction(
@@ -21,7 +22,7 @@ async fn put_canonical_runtime_content_with_creation(
     content: &Value,
 ) -> Result<(Uuid, String, i64, bool)> {
     let prepared = PreparedCanonicalRuntimeJson::new(content)?;
-    put_prepared_canonical_runtime_content_with_creation(tx, scope_id, application_id, &prepared)
+    put_prepared_canonical_runtime_content_with_creation(tx, scope_id, application_id, prepared)
         .await
 }
 
@@ -29,7 +30,7 @@ async fn put_prepared_canonical_runtime_content_with_creation(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     scope_id: Uuid,
     application_id: Uuid,
-    prepared: &PreparedCanonicalRuntimeJson<'_>,
+    prepared: PreparedCanonicalRuntimeJson<'_>,
 ) -> Result<(Uuid, String, i64, bool)> {
     // Both the write and the collision check use the Value bound at preparation.
     // This interface cannot accept a second Value beside its precomputed identity.
@@ -82,7 +83,8 @@ async fn put_prepared_canonical_runtime_content_with_creation(
             "canonical runtime content hash collision for application {application_id}"
         ));
     }
-    Ok((content_id, content_hash.to_owned(), byte_size, created))
+    let (content_hash, byte_size) = prepared.into_identity();
+    Ok((content_id, content_hash, byte_size, created))
 }
 
 fn recovery_state_for_flow_status(

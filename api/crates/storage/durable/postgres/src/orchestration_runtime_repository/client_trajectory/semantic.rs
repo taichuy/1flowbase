@@ -266,7 +266,7 @@ pub(super) async fn write_section(
                     tx,
                     scope_id,
                     application_id,
-                    &prepared,
+                    prepared,
                 )
                 .await?;
             if created {

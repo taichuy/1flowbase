@@ -91,3 +91,15 @@ fn prepared_identity_handles_empty_values_without_body_or_history_cache() {
         check_golden(&value, canonical);
     }
 }
+
+#[test]
+fn prepared_identity_can_move_digest_without_another_hash_or_value_clone() {
+    let value = json!({"content": "same immutable value"});
+    let prepared = PreparedCanonicalRuntimeJson::new(&value).unwrap();
+    let expected = prepared.hash().to_owned();
+    let expected_size = prepared.byte_size();
+    let (hash, size) = prepared.into_identity();
+    assert_eq!(hash, expected);
+    assert_eq!(size, expected_size);
+    assert_eq!(value["content"], "same immutable value");
+}

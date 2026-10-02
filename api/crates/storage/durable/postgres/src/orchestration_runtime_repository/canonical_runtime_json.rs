@@ -30,6 +30,10 @@ impl<'a> PreparedCanonicalRuntimeJson<'a> {
     pub(super) fn byte_size(&self) -> i64 {
         self.byte_size
     }
+
+    pub(super) fn into_identity(self) -> (String, i64) {
+        (self.hash, self.byte_size)
+    }
 }
 
 fn write_canonical_runtime_json<W: std::io::Write>(
