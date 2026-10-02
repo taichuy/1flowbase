@@ -1086,6 +1086,13 @@ where
             Ok(output) => (Some(output), None),
             Err(error) => (None, Some(error)),
         };
+        // Validate the provider-owned typed receipt before any host metadata wrapping.
+        // Keep the validation result until settlement completes so invalid metadata does
+        // not skip accounting for upstream usage that has already occurred.
+        let recovery_receipt = match invocation_output.as_ref() {
+            Some(output) => output.result.recovery_receipt().map_err(anyhow::Error::msg),
+            None => Ok(None),
+        };
         if let Some(error) = forwarding_error {
             invocation_error.get_or_insert(error);
         }
@@ -1206,12 +1213,9 @@ where
             runtime_stream_timing.first_ingress_ms(),
             runtime_stream_timing.max_append_delay_ms(),
         )?;
-        // Keep the typed recovery receipt at the Host-owned metadata surface while wrapping
-        // upstream diagnostics. AI Native must not parse nested Provider Close/cursor payloads.
-        let recovery_receipt = invocation_output
-            .result
-            .recovery_receipt()
-            .map_err(anyhow::Error::msg)?;
+        // Restore the validated receipt at the host-owned metadata surface after wrapping.
+        // AI Native must not parse nested Provider Close/cursor payloads.
+        let recovery_receipt = recovery_receipt?;
         if let Some(account) = self
             .flow_execution_context
             .as_ref()
