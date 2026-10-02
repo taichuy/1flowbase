@@ -10,13 +10,15 @@ async fn runtime_json_tool_arguments_survive_callback_privacy_and_stream_reads()
             "key\0tail": "real key", "key\\u0000tail": "literal key"
         }
     }]);
+    let baseline = json!({"prompt_tokens":7995,"completion_tokens":93,"total_tokens":8088,"reasoning_tokens":24,"input_cache_hit_tokens":7936,"cache_read_tokens":7936});
     let request = json!({
         "tool_calls": calls,
+        "native_usage_baseline": baseline,
         "provider_metadata": {"private": "provider\0metadata"},
         "internal_context": "must stay private"
     });
     let external = json!({"private": "external\0context"});
-    let summary = json!({"tool_calls": calls});
+    let summary = json!({"tool_calls": calls,"native_usage_baseline":baseline});
     let node = store
         .create_node_run(&CreateNodeRunInput {
             flow_run_id: run,
@@ -66,6 +68,40 @@ async fn runtime_json_tool_arguments_survive_callback_privacy_and_stream_reads()
         .unwrap();
     assert_eq!(published.request_payload, summary);
     assert_eq!(published.external_ref_payload, None);
+    // Older tasks stay distinguishable from an explicitly recorded empty boundary.
+    for empty_boundary in [None, Some(Value::Null)] {
+        let mut old_request = json!({"tool_calls":calls,"internal_context":"private"});
+        let mut old_summary = json!({"tool_calls":calls});
+        if let Some(boundary) = empty_boundary {
+            old_request["native_usage_baseline"] = boundary.clone();
+            old_summary["native_usage_baseline"] = boundary;
+        }
+        let old = store
+            .create_callback_task(&CreateCallbackTaskInput {
+                flow_run_id: run,
+                node_run_id: node.id,
+                callback_kind: "llm_tool_calls".into(),
+                request_payload: old_request,
+                external_ref_payload: Some(external.clone()),
+            })
+            .await
+            .unwrap();
+        let published_old = store
+            .get_published_callback_task(old.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(published_old.request_payload, old_summary);
+        assert_eq!(published_old.external_ref_payload, None);
+        store
+            .complete_callback_task(&CompleteCallbackTaskInput {
+                callback_task_id: old.id,
+                response_payload: json!({}),
+                completed_at: OffsetDateTime::now_utc(),
+            })
+            .await
+            .unwrap();
+    }
     let context = store
         .get_callback_resume_context(app, callback.id)
         .await
