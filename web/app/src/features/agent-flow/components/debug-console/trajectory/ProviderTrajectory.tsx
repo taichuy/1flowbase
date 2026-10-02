@@ -6,6 +6,7 @@ import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
 import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
+import { useNativeBlockSurface } from '../../../../frontstage/lib/native-modules/native-block-surface-context';
 import {
   WindowWorkspaceWindow,
   useWindowWorkspaceOverlayZIndex
@@ -36,6 +37,7 @@ export function ProviderTrajectory({
   buttonType?: 'text' | 'default';
   loader: ConversationLogTraceLoader;
 }) {
+  const blockSurface = useNativeBlockSurface();
   const zIndex = useWindowWorkspaceOverlayZIndex();
   const initialSource = nodeRunId ? 'native' : 'client';
   const [views, setViews] = useState<View[]>([
@@ -194,7 +196,7 @@ export function ProviderTrajectory({
                 </>
               ) : null}
             </WindowWorkspaceWindow>,
-            document.body
+            blockSurface?.overlayHost.container ?? document.body
           )
         : null}
     </>
