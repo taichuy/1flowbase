@@ -47,7 +47,9 @@ export interface UpdateFrontstageNodeMetadataInput {
 
 export interface MoveFrontstageNodeInput {
   parentId: string | null;
-  rank: string;
+  rank?: string;
+  before_id?: string;
+  after_id?: string;
 }
 
 export const frontstagePageTreeQueryKey = (
@@ -176,7 +178,9 @@ export function moveFrontstageNode(
     pageNodeId,
     {
       parent_id: input.parentId,
-      rank: input.rank
+      rank: input.rank,
+      before_id: input.before_id,
+      after_id: input.after_id
     },
     csrfToken,
     getFrontstageApiBaseUrl()

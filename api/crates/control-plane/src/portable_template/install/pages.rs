@@ -89,6 +89,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         page_id: existing.id,
                         parent_id,
                         rank: Some(page.rank.clone()),
+                        before_id: None,
+                        after_id: None,
                     })
                     .await?;
                 owner

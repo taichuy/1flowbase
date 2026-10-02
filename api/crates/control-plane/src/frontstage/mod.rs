@@ -65,6 +65,8 @@ pub struct MoveFrontstagePageCommand {
     pub page_id: Uuid,
     pub parent_id: Option<Uuid>,
     pub rank: Option<String>,
+    pub before_id: Option<Uuid>,
+    pub after_id: Option<Uuid>,
 }
 
 pub struct DeleteFrontstagePageCommand {
@@ -523,6 +525,25 @@ where
                 cursor = parent_by_id.get(&id).copied().flatten();
             }
         }
+        if command.before_id.is_some() && command.after_id.is_some()
+            || (command.before_id.is_some() || command.after_id.is_some()) && command.rank.is_some()
+        {
+            return Err(ControlPlaneError::InvalidInput("move_position").into());
+        }
+        if let Some(target_id) = command.before_id.or(command.after_id) {
+            let target = self
+                .repository
+                .get_frontstage_page(command.workspace_id, target_id)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+            if target_id == existing.id
+                || target.parent_id != existing.parent_id
+                || command.parent_id != existing.parent_id
+                || target.placement != existing.placement
+            {
+                return Err(ControlPlaneError::InvalidInput("move_position").into());
+            }
+        }
         match existing.kind {
             domain::FrontstagePageKind::Group if command.parent_id.is_some() => {
                 self.ensure_page_parent_placement(
@@ -551,6 +572,8 @@ where
                 page_id: command.page_id,
                 parent_id: command.parent_id,
                 rank: normalize_rank(command.rank),
+                before_id: command.before_id,
+                after_id: command.after_id,
             })
             .await?;
         self.invalidate_navigation(command.workspace_id).await;

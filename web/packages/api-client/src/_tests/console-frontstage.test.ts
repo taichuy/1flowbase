@@ -362,6 +362,21 @@ describe('console-frontstage client', () => {
       }
     },
     {
+      name: 'relative node move',
+      request: () =>
+        moveFrontstagePageNode(
+          'page-1',
+          { parent_id: null, after_id: 'page-2' },
+          'csrf-123'
+        ),
+      expected: {
+        path: '/api/console/frontstage/pages/page-1/move',
+        method: 'POST',
+        body: { parent_id: null, after_id: 'page-2' },
+        csrfToken: 'csrf-123'
+      }
+    },
+    {
       name: 'node deletion',
       request: () => deleteFrontstagePageNode('page-1', 'csrf-123'),
       expected: {

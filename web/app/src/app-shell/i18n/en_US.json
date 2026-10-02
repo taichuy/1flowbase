@@ -1,4 +1,8 @@
 {
+  "drag_projection": {
+    "before": "Before",
+    "after": "After"
+  },
   "auto": {
     "console_navigation_load_failed": "Console navigation failed to load",
     "console_navigation_loading": "Loading console navigation",

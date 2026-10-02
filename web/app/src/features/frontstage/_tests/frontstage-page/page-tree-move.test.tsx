@@ -599,6 +599,7 @@ describe('FrontStagePage - page tree move', () => {
     });
     const dataTransfer = {
       data: new Map<string, string>(),
+      setDragImage: vi.fn(),
       effectAllowed: '',
       dropEffect: '',
       setData(format: string, value: string) {
@@ -610,7 +611,12 @@ describe('FrontStagePage - page tree move', () => {
     };
 
     fireEvent.dragStart(dragHandle, { dataTransfer });
-    fireEvent.dragOver(groupItem, { clientY: 50, dataTransfer });
+    const over = new Event('dragover', { bubbles: true, cancelable: true });
+    Object.defineProperties(over, {
+      clientY: { value: 50 },
+      dataTransfer: { value: dataTransfer }
+    });
+    fireEvent(groupItem, over);
     fireEvent.drop(groupItem, { clientY: 50, dataTransfer });
 
     await waitFor(() => {

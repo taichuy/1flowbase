@@ -6,7 +6,9 @@ import FolderAddOutlined from '@ant-design/icons/es/icons/FolderAddOutlined';
 import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { App, Button, Dropdown, Form, Space } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { i18nText } from '../shared/i18n/text';
 
 import type { FrontstagePageTreeNode } from '../features/frontstage/api/page-tree';
 import { FrontstageNodeActionButton } from '../features/frontstage/components/FrontstageNodeActionButton';
@@ -16,6 +18,9 @@ import {
   type PageTreeFormDialog,
   type PageTreeFormValues
 } from '../features/frontstage/pages/frontstage-page/page-tree-form-modal';
+import { projectNavigationPosition } from '../features/frontstage/lib/navigation-drag/projection';
+import { useTopbarDragStore } from '../features/frontstage/lib/navigation-drag/topbar-drag-store';
+import './navigation-drag.css';
 import '../features/frontstage/components/frontstage-add-action.css';
 import '../features/frontstage/pages/frontstage-page.css';
 
@@ -45,7 +50,25 @@ export function TopbarNavigationItemLabel({
   const [dialog, setDialog] = useState<PageTreeFormDialog | null>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const mutations = useFrontstagePageTreeMutations(workspaceId);
-  const index = siblings.findIndex((candidate) => candidate.id === node.id);
+  const [projectionRect, setProjectionRect] = useState<DOMRect | null>(null);
+  const drag = useTopbarDragStore((state) => state.drag);
+  const activeDrag = drag?.workspaceId === workspaceId ? drag : null;
+  const projection =
+    !mutations.isPending && activeDrag?.target?.nodeId === node.id
+      ? activeDrag.target
+      : null;
+  const source = siblings.find(
+    (candidate) => candidate.id === activeDrag?.nodeId
+  );
+  const clearDrag = () => useTopbarDragStore.setState({ drag: null });
+  useEffect(
+    () => () => {
+      const current = useTopbarDragStore.getState().drag;
+      if (current?.workspaceId === workspaceId && current.nodeId === node.id)
+        clearDrag();
+    },
+    [workspaceId, node.id]
+  );
 
   const openEdit = () => {
     setDialog({
@@ -75,44 +98,102 @@ export function TopbarNavigationItemLabel({
 
   const dragDataType = `application/x-frontstage-topbar-${workspaceId}`;
   const move = (nodeId: string, direction: -1 | 1) => {
-    const rank =
-      direction < 0
-        ? index === 0
-          ? '000000'
-          : String(index * 1000 + 500).padStart(6, '0')
-        : String((index + 1) * 1000 + 500).padStart(6, '0');
-    void mutations.moveNode(nodeId, { parentId: null, rank }).catch(() => {
-      void message.error('栏目排序失败，请重试');
-    });
+    void mutations
+      .moveNode(nodeId, {
+        parentId: null,
+        ...(direction < 0 ? { before_id: node.id } : { after_id: node.id })
+      })
+      .catch(() => {
+        void message.error('栏目排序失败，请重试');
+      });
   };
 
   return (
     <span
-      className="app-shell-dynamic-nav-item"
+      className={`app-shell-dynamic-nav-item${activeDrag?.nodeId === node.id ? ' app-shell-dynamic-nav-item--dragging' : ''}`}
+      onDragLeave={(event) => {
+        if (
+          !event.currentTarget.contains(event.relatedTarget as Node | null) &&
+          projection &&
+          activeDrag
+        ) {
+          useTopbarDragStore.setState({
+            drag: { ...activeDrag, target: null }
+          });
+        }
+      }}
       onDragOver={(event) => {
         if (
           mutations.isPending ||
+          !activeDrag ||
+          !source ||
+          source.id === node.id ||
           !event.dataTransfer.types.includes(dragDataType)
         )
           return;
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'move';
+        const rect = event.currentTarget.getBoundingClientRect();
+        setProjectionRect(rect);
+        const position = projectNavigationPosition(
+          event.clientX,
+          rect.left,
+          rect.width,
+          false
+        );
+        if (position && position !== 'inside') {
+          useTopbarDragStore.setState({
+            drag: { ...activeDrag, target: { nodeId: node.id, position } }
+          });
+        }
       }}
       onDrop={(event) => {
         const nodeId = event.dataTransfer.getData(dragDataType);
-        if (
-          mutations.isPending ||
-          !siblings.some((candidate) => candidate.id === nodeId)
-        )
-          return;
         event.preventDefault();
         event.stopPropagation();
-        if (nodeId === node.id) return;
-        const rect = event.currentTarget.getBoundingClientRect();
-        move(nodeId, event.clientX < rect.left + rect.width / 2 ? -1 : 1);
+        clearDrag();
+        if (
+          mutations.isPending ||
+          !projection ||
+          nodeId !== source?.id ||
+          nodeId === node.id
+        )
+          return;
+        move(nodeId, projection.position === 'before' ? -1 : 1);
       }}
     >
+      {projection && source && projectionRect ? (
+        <>
+          <span
+            className={`app-shell-nav-projection app-shell-nav-projection--${projection.position}`}
+            aria-hidden
+          />
+          {createPortal(
+            <span
+              className="app-shell-nav-projection__caption"
+              role="status"
+              style={{
+                left:
+                  projection.position === 'before'
+                    ? projectionRect.left
+                    : projectionRect.right,
+                top: projectionRect.bottom,
+                transform:
+                  projection.position === 'after'
+                    ? 'translateX(-100%)'
+                    : undefined
+              }}
+            >
+              {source.title} → {node.title} ·{' '}
+              {projection.position === 'before'
+                ? i18nText('appShell', 'drag_projection.before')
+                : i18nText('appShell', 'drag_projection.after')}
+            </span>,
+            document.body
+          )}
+        </>
+      ) : null}
       {children}
       <span className="app-shell-dynamic-nav-item__actions">
         <FrontstageNodeActionButton
@@ -121,10 +202,29 @@ export function TopbarNavigationItemLabel({
           disabled={mutations.isPending}
           draggable={!mutations.isPending}
           onDragStart={(event) => {
+            if (mutations.isPending) {
+              event.preventDefault();
+              return;
+            }
             event.stopPropagation();
             event.dataTransfer.effectAllowed = 'move';
             event.dataTransfer.setData(dragDataType, node.id);
+            const label = event.currentTarget.closest(
+              '.app-shell-dynamic-nav-item'
+            ) as HTMLElement | null;
+            if (label) {
+              const rect = label.getBoundingClientRect();
+              event.dataTransfer.setDragImage(
+                label,
+                event.clientX - rect.left,
+                event.clientY - rect.top
+              );
+            }
+            useTopbarDragStore.setState({
+              drag: { workspaceId, nodeId: node.id, target: null }
+            });
           }}
+          onDragEnd={clearDrag}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();

@@ -1,4 +1,9 @@
 {
+  "drag_projection": {
+    "before": "之前",
+    "inside": "放入分组",
+    "after": "之后"
+  },
   "auto": {
     "save_as_page_template": "保存为页面模板",
     "save_template_draft": "保存模板草稿",

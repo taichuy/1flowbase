@@ -1,0 +1,45 @@
+.app-shell-dynamic-nav-item {
+  position: relative;
+}
+
+.app-shell-dynamic-nav-item--dragging {
+  opacity: 0.55;
+}
+
+.app-shell-nav-projection {
+  position: absolute;
+  top: 50%;
+  height: 32px;
+  width: 16px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 8px;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.08),
+    rgba(59, 130, 246, 0.18)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.app-shell-nav-projection--before {
+  left: -8px;
+}
+.app-shell-nav-projection--after {
+  right: -8px;
+}
+
+.app-shell-nav-projection__caption {
+  position: fixed;
+  /* Keep the destination announcement available without a floating text badge. */
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
