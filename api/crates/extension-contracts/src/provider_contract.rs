@@ -14,6 +14,8 @@ pub use media::*;
 pub const CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY: &str = "__client_protocol_envelope";
 pub const NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY: &str = "__native_model_prompt_context";
 pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
+/// Host-owned protocol-independent model tools, separate from mapped business inputs.
+pub const NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY: &str = "__native_model_tool_context";
 pub const CURRENT_PROVIDER_CONTRACT: &str = "1flowbase.provider/v2";
 /// Host-owned outer stdio request field. Never copied into typed input or supplier bodies.
 pub const PROVIDER_HOST_CAPABILITIES_FIELD: &str = "host_capabilities";

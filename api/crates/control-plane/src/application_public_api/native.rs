@@ -10,6 +10,7 @@ use plugin_framework::provider_contract::{
     NativeModelPromptContext, NativeModelRequestContext, NativePromptBlock,
     ProtocolContextEnvelope, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
     NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
+    NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
