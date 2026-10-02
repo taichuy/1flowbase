@@ -17,6 +17,7 @@ const {
   runQualityGateAggregate,
   runQualityGate,
 } = require('../core.js');
+const { DEFAULT_AGGREGATE_SCOPES } = require('../commands.js');
 
 test('quality gate bounds GitHub Issue bodies while preserving the report summary', () => {
   const body = `# Quality Gate Report\n\n## Result Summary\n\n${'错误🙂\n'.repeat(30_000)}`;
@@ -1001,25 +1002,7 @@ test('runQualityGateAggregate keeps component warning logs advisory when compone
     fs.writeFileSync(path.join(artifactDir, 'quality-gate.latest.log'), `${report.scope} log\n`, 'utf8');
   };
 
-  writeArtifact('test-governance-repo-tooling', {
-    reportType: 'ci',
-    status: 'passed',
-    scope: 'repo-tooling',
-    exitCode: 0,
-    coverageSummaries: [],
-    backendConsistencyTargets: [],
-    warningFiles: ['tmp/test-governance/repo-tooling.warnings.log'],
-  });
-  writeArtifact('test-governance-repo-frontend', {
-    reportType: 'ci',
-    status: 'passed',
-    scope: 'repo-frontend',
-    exitCode: 0,
-    coverageSummaries: [],
-    backendConsistencyTargets: [],
-    warningFiles: [],
-  });
-  for (const scope of REPO_BACKEND_COMPONENT_SCOPES) {
+  for (const scope of DEFAULT_AGGREGATE_SCOPES) {
     writeArtifact(`test-governance-${scope}`, {
       reportType: 'ci',
       status: 'passed',
@@ -1027,38 +1010,9 @@ test('runQualityGateAggregate keeps component warning logs advisory when compone
       exitCode: 0,
       coverageSummaries: [],
       backendConsistencyTargets: [],
-      warningFiles: [],
-    });
-  }
-  for (const scope of BACKEND_CONSISTENCY_COMPONENT_SCOPES) {
-    writeArtifact(`test-governance-${scope}`, {
-      reportType: 'ci',
-      status: 'passed',
-      scope,
-      exitCode: 0,
-      coverageSummaries: [],
-      backendConsistencyTargets: [],
-      warningFiles: [],
-    });
-  }
-  writeArtifact('test-governance-coverage-frontend', {
-    reportType: 'ci',
-    status: 'passed',
-    scope: 'coverage-frontend',
-    exitCode: 0,
-    coverageSummaries: [],
-    backendConsistencyTargets: [],
-    warningFiles: [],
-  });
-  for (const scope of COVERAGE_BACKEND_COMPONENT_SCOPES) {
-    writeArtifact(`test-governance-${scope}`, {
-      reportType: 'ci',
-      status: 'passed',
-      scope,
-      exitCode: 0,
-      coverageSummaries: [],
-      backendConsistencyTargets: [],
-      warningFiles: [],
+      warningFiles: scope === 'repo-tooling'
+        ? ['tmp/test-governance/repo-tooling.warnings.log']
+        : [],
     });
   }
 

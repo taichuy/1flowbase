@@ -3,7 +3,6 @@ import { FrontstageNativePreparationScheduler } from '../../lib/page-canvas/nati
 import { createNativePreparationSource } from './fixtures/native-preparation-source';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -33,21 +32,29 @@ import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
 
 describe('PageCanvas declarative Native block lifecycle', () => {
+  const frameTimers = new Set<number>();
   beforeEach(() => {
     // jsdom RAF uses its Window time origin; the host's measurement clock is
     // global performance. Keep frame and measurement timestamps on one clock.
-    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) =>
-      window.setTimeout(() => callback(performance.now()), 16)
-    );
-    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation((id) =>
-      window.clearTimeout(id)
-    );
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+      const id = window.setTimeout(() => {
+        frameTimers.delete(id);
+        callback(performance.now());
+      }, 16);
+      frameTimers.add(id);
+      return id;
+    });
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation((id) => {
+      frameTimers.delete(id);
+      window.clearTimeout(id);
+    });
   });
 
   afterEach(() => {
-    // Unmount while RAF still uses the fixture's timer handles so the host
-    // cancels its queued frame through the matching cancel implementation.
-    cleanup();
+    // The fixture owns these timers; reclaim them before restoring RAF mocks.
+    // React Testing Library retains ownership of automatic component cleanup.
+    for (const id of frameTimers) window.clearTimeout(id);
+    frameTimers.clear();
     vi.restoreAllMocks();
   });
 
