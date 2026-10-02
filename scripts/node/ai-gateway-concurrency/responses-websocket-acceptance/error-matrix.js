@@ -81,12 +81,15 @@ async function observeRun(target, traceId) {
   }
 }
 
-async function runGatewayErrorMatrix({ ready, mockSnapshot }, dependencies = {}) {
+async function runGatewayErrorMatrix({ ready, mockSnapshot, selectedRows }, dependencies = {}) {
   const client = dependencies.observeClient ?? observeClient;
   const run = dependencies.observeRun ?? observeRun;
   const rows = [];
+  const allowed=UPSTREAM_ERROR_FIXTURES.flatMap(f=>ERROR_SURFACES.map(s=>`${f.id}/${s}`));
+  if(selectedRows&&(!selectedRows.length||selectedRows.some(id=>!allowed.includes(id))))throw new Error('Unknown/empty error matrix selection');
   for (const fixture of UPSTREAM_ERROR_FIXTURES) {
     for (const surface of ERROR_SURFACES) {
+      if(selectedRows&&!selectedRows.includes(`${fixture.id}/${surface}`))continue;
       const row = { id: `${fixture.id}/${surface}`, fixture: fixture.id, surface, verdict: 'FAIL', attempts: [] };
       try {
         const target = ready.targets[surface === 'openai-chat-sse' ? 'openai_compatible' : surface === 'anthropic-sse' ? 'anthropic' : 'openai'];

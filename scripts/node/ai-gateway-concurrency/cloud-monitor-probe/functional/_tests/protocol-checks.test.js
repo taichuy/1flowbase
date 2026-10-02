@@ -1,0 +1,5 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');const{assertUniqueProjection}=require('../protocol-checks');
+const base=()=>[{type:'response.output_text.delta',delta:'first'},{type:'response.output_text.delta',delta:'second'},{type:'response.output_item.done',item:{type:'function_call',call_id:'synthetic-call'}},{type:'response.completed',response:{output:[{type:'message',content:[{type:'output_text',text:'firstsecond'}]}]}}];
+test('Real projection oracle rejects duplicate text, tools and terminals',()=>{assert.doesNotThrow(()=>assertUniqueProjection(base()));for(const extra of [base()[0],base()[2],base()[3]])assert.throws(()=>assertUniqueProjection([...base(),extra]));});
+test('Expected terminal type and exact final content are required',()=>{assert.throws(()=>assertUniqueProjection(base(),{terminal:'response.failed'}));assert.throws(()=>assertUniqueProjection(base(),{text:'other'}));assert.doesNotThrow(()=>assertUniqueProjection(base(),{text:'firstsecond'}));});

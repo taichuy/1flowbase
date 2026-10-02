@@ -1,13 +1,14 @@
-name: Gateway80b8ec Duplicate Held Run Lock Validation
+name: Gateway80b8ec Minimal Protocol Recovery Gate
+'on':
+  workflow_dispatch:
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: gateway-duplicate-run-lock-${{ github.ref }}
+  group: gateway-fixed-functional-${{ github.ref }}
   cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  CARGO_INCREMENTAL: '0'
   OPENAI_API_KEY: ''
   OPENAI_BASE_URL: ''
   ANTHROPIC_API_KEY: ''
@@ -15,9 +16,9 @@ env:
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
 jobs:
-  paired-monitor-direct:
+  fixed-functional:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:18.4
@@ -26,193 +27,63 @@ jobs:
           POSTGRES_PASSWORD: 1flowbase
           POSTGRES_DB: 1flowbase
         ports:
-        - 5432:5432
-        options: --health-cmd "pg_isready -U postgres -d 1flowbase" --health-interval 5s --health-timeout 5s --health-retries
-          12
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-    - name: Checkout frozen candidate
-      uses: actions/checkout@v5
-      with:
-        ref: 8ec70687f4b2ec74e79f69bef0e15fe3f12aae7d
-        persist-credentials: false
-        fetch-depth: 0
-    - name: Checkout identical locked official providers
-      uses: actions/checkout@v5
-      with:
-        repository: taichuy/1flowbase-official-plugins
-        ref: 997c705b3c564c93d2fc49b973e0b5bbdb759cdc
-        path: tmp/paired-official-source
-        persist-credentials: false
-    - name: Checkout isolated experiment controls
-      uses: actions/checkout@v5
-      with:
-        ref: ${{ github.sha }}
-        path: tmp/experiment-control
-        sparse-checkout: scripts/node/ai-gateway-concurrency/cloud-monitor-probe
-        persist-credentials: false
-    - name: Setup Node 24
-      uses: actions/setup-node@v5
-      with:
-        node-version: 24
-    - name: Setup identical release toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: 1.98.1
-    - name: Restore existing dependency cache
-      uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-      with:
-        shared-key: ai-gateway-protocol-conformance
-        key: codex/gateway-cpu-ci-20261001
-        save-if: false
-        workspaces: |-
-          api -> target
-          tmp/paired-official-source/runtime-extensions/@taichuy/openai -> target
-          tmp/paired-official-source/runtime-extensions/@taichuy/anthropic -> target
-          tmp/paired-official-source/runtime-extensions/@taichuy/openai_compatible -> target
-    - name: Prove exact80b parent and independent8ec source before any build
-      run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/duplicate-lock/source-proof.js
-        --source-only
-    - name: Download verified immutable paired release and identical provider artifact
-      uses: actions/download-artifact@v8
-      with:
-        name: gateway-merged-paired-build-36893524316
-        run-id: 36893524316
-        github-token: ${{ github.token }}
-        path: tmp
-    - name: Verify reused80b release/providers and current runner
-      env:
-        WORKFLOW_SHA: ${{ github.sha }}
-      run: |
-        set -euo pipefail
-        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/duplicate-lock/source-proof.js
-        evidence=tmp/test-governance/gateway-duplicate-run-lock/build
-        lscpu > "$evidence/runner-cpu.txt"
-        cat /proc/meminfo > "$evidence/runner-memory.txt"
-        printf '%s\n' 'baseline_equivalent=80b4e635e1738e1e2df1a22f94dfd7a6bc9a31af baseline_compiled_from=539e335204df667552c56faf4f13b323acb7320b' 'candidate=8ec70687f4b2ec74e79f69bef0e15fe3f12aae7d' "workflow=$WORKFLOW_SHA" 'reused_run=36893524316 artifact=11181109322' 'profile=release features=default' > "$evidence/sources.txt"
-        python3 - <<'PYENV'
-        import json,pathlib
-        root=pathlib.Path('/sys/fs/cgroup');row={}
-        for name in ['cpu.max','cpuset.cpus.effective','memory.max','memory.high','cpu.stat']:
-         p=root/name;row[name]=p.read_text().strip() if p.exists() else 'unavailable'
-        pathlib.Path('tmp/test-governance/gateway-duplicate-run-lock/build/runner-quota.json').write_text(json.dumps(row,indent=2))
-        PYENV
-        cp tmp/test-governance/gateway-monitor-paired/build/candidate-release-api-server "$evidence/baseline-release-api-server"
-        cp tmp/test-governance/gateway-monitor-paired/build/toolchain.txt "$evidence/reused-toolchain.txt"
-        node <<'JSREUSE'
-        const fs=require('node:fs'),crypto=require('node:crypto');const p='tmp/test-governance/gateway-duplicate-run-lock/build/binaries.json';fs.writeFileSync(p,JSON.stringify({baseline:{source:'80b4e635e1738e1e2df1a22f94dfd7a6bc9a31af',compiled_from:'539e335204df667552c56faf4f13b323acb7320b',sha256:crypto.createHash('sha256').update(fs.readFileSync('tmp/test-governance/gateway-duplicate-run-lock/build/baseline-release-api-server')).digest('hex')}},null,2));
-        JSREUSE
-    - name: Configure only owned CI PostgreSQL observation and backup tools
-      run: |
-        set -euo pipefail
-        pg_container="$(docker ps --filter publish=5432 --format '{{.ID}}')"
-        test -n "$pg_container"
-        docker exec "$pg_container" psql -U postgres -c "ALTER SYSTEM SET shared_preload_libraries='pg_stat_statements'"
-        docker restart "$pg_container"
-        for attempt in $(seq 1 30); do
-          if docker exec "$pg_container" pg_isready -U postgres -d 1flowbase; then break; fi
-          sleep 1
-        done
-        tools_dir="$RUNNER_TEMP/postgresql-18-tools"
-        mkdir -p "$tools_dir"
-        for tool in pg_dump pg_restore; do
-          sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
-        #!/bin/sh
-        exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
-        SCRIPT
-          chmod +x "$tools_dir/$tool"
-        done
-        echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
-        echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-    - name: Validate experiment statistics contracts
-      run: |
-        set -euo pipefail
-        node --test tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/_tests/*.test.js tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/lock-scope/_tests/*.test.js tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/duplicate-lock/_tests/*.test.js
-        python3 -m unittest discover -s tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/lock-scope/_tests -p 'test_*.py'
-    - name: Execute actual PostgreSQL trajectory and sequencing gates
-      run: |
-        set -euo pipefail
-        evidence=tmp/test-governance/gateway-duplicate-run-lock/build
-        printf '[pg-test-source] %s profile=release DATABASE_URL=owned-CI-PG18.4\n' "$(git rev-parse HEAD)"
-        pg_container="$(docker ps --filter publish=5432 --format '{{.ID}}')"
-        docker exec "$pg_container" psql -U postgres -d 1flowbase -v ON_ERROR_STOP=1 -c "SELECT version(),current_user,pg_backend_pid()" > "$evidence/pg-session-receipt.txt"
-        run_logged() {
-         phase="$1"; logfile="$2"; shift 2
-         printf '[phase-start] %s %s\n' "$phase" "$(date -u +%FT%TZ)"
-         set +e
-         "$@" 2>&1 | tee "$logfile"
-         command_status=("${PIPESTATUS[@]}")
-         set -e
-         printf '[phase-end] %s %s command_exit=%s tee_exit=%s\n' "$phase" "$(date -u +%FT%TZ)" "${command_status[0]}" "${command_status[1]}"
-         if [ "${command_status[0]}" -ne 0 ]; then return "${command_status[0]}"; fi
-         if [ "${command_status[1]}" -ne 0 ]; then return "${command_status[1]}"; fi
-        }
-        run_logged candidate-pg-trajectory "$evidence/pg-trajectory-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p storage-durable-postgres --lib client_trajectory -- --test-threads=1
-        run_logged candidate-pg-sequencing "$evidence/pg-sequencing-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p storage-durable-postgres --lib orchestration_runtime_repository::sequencing::tests -- --test-threads=1
-        python3 - <<'PGTEST'
-        import pathlib,re,json
-        root=pathlib.Path('tmp/test-governance/gateway-duplicate-run-lock/build');rows=[]
-        required={'pg-trajectory-tests.log':['client_trajectory_held_run_lock_serializes_nonraw_facts_and_allows_fk_reader','client_trajectory_held_run_lock_rolls_back_failed_section_and_reuses_sequence','client_trajectory_scoped_pages_sections_originals_terminal_append_and_capture_links','client_semantic_directories_share_only_complete_original_values_and_preserve_occurrences'],'pg-sequencing-tests.log':['rolled_back_and_failed_appends_do_not_commit_a_reservation','sequence_overflow_is_an_error_and_preserves_committed_rows','concurrent_batches_and_direct_reservations_have_disjoint_monotonic_ranges']}
-        for name,names in required.items():
-         text=(root/name).read_text();matches=re.findall(r'test result: ok[.] (\d+) passed; (\d+) failed',text)
-         if not matches or sum(int(m[0]) for m in matches)==0:raise SystemExit('No executed PG tests: '+name)
-         for test in names:
-          if not re.search(r'test [^\n]*'+re.escape(test)+r' [.]{3} ok',text):raise SystemExit('Missing executed passing PG case '+test)
-         rows.append({'log':name,'source':'8ec70687f4b2ec74e79f69bef0e15fe3f12aae7d','profile':'release','passed':sum(int(m[0]) for m in matches),'failed':sum(int(m[1]) for m in matches),'required_cases':names,'real_PG':'isolated schemas and official migrations, explicit DATABASE_URL'})
-        (root/'pg-test-counts.json').write_text(json.dumps(rows,indent=2))
-        PGTEST
-      env:
-        API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-        DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-        BOOTSTRAP_ROOT_ACCOUNT: root
-        BOOTSTRAP_ROOT_PASSWORD: change-me
-      timeout-minutes: 40
-    - name: Build only exact8ec API release after real PG gates
-      run: |
-        set -euo pipefail
-        evidence=tmp/test-governance/gateway-duplicate-run-lock/build
-        run_logged() {
-         phase="$1"; logfile="$2"; shift 2
-         printf '[phase-start] %s %s\n' "$phase" "$(date -u +%FT%TZ)"
-         set +e
-         "$@" 2>&1 | tee "$logfile"
-         command_status=("${PIPESTATUS[@]}")
-         set -e
-         printf '[phase-end] %s %s command_exit=%s tee_exit=%s\n' "$phase" "$(date -u +%FT%TZ)" "${command_status[0]}" "${command_status[1]}"
-         if [ "${command_status[0]}" -ne 0 ]; then return "${command_status[0]}"; fi
-         if [ "${command_status[1]}" -ne 0 ]; then return "${command_status[1]}"; fi
-        }
-        rustc --version --verbose
-        cargo --version
-        printf '[build-source] %s profile=release features=default RUSTFLAGS=%s\n' "$(git rev-parse HEAD)" "${RUSTFLAGS:-}"
-        run_logged candidate-release "$evidence/candidate-build.log" cargo build --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --bin api-server
-        cp api/target/release/api-server "$evidence/candidate-release-api-server"
-        node <<'JSBUILD'
-        const fs=require('node:fs'),crypto=require('node:crypto'),p='tmp/test-governance/gateway-duplicate-run-lock/build/binaries.json';const b=JSON.parse(fs.readFileSync(p));b.candidate={source:'8ec70687f4b2ec74e79f69bef0e15fe3f12aae7d',sha256:crypto.createHash('sha256').update(fs.readFileSync('tmp/test-governance/gateway-duplicate-run-lock/build/candidate-release-api-server')).digest('hex')};fs.writeFileSync(p,JSON.stringify(b,null,2));
-        JSBUILD
-      timeout-minutes: 50
-    - name: Run fixed512KiB C8 same-app80b8ec ABBA only after PG gates
-      run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/duplicate-lock/run.js
-    - name: Upload all positive and negative raw experiment evidence
-      if: always()
-      uses: actions/upload-artifact@v6
-      with:
-        name: gateway-duplicate-run-lock-raw-${{ github.run_id }}
-        path: |-
-          tmp/test-governance/gateway-duplicate-run-lock/manifest.json
-          tmp/test-governance/gateway-duplicate-run-lock/summary.json
-          tmp/test-governance/gateway-duplicate-run-lock/A*/**
-          tmp/test-governance/gateway-duplicate-run-lock/B*/**
-        retention-days: 14
-        if-no-files-found: warn
-    - name: Upload complete final build and unit logs
-      if: always()
-      uses: actions/upload-artifact@v6
-      with:
-        name: gateway-duplicate-run-lock-build-${{ github.run_id }}
-        path: |-
-          tmp/test-governance/gateway-duplicate-run-lock/build/**
-          tmp/protocol-reuse/**
-        retention-days: 7
-        if-no-files-found: warn
-'on':
-  workflow_dispatch: {}
+      - name: Checkout frozen8ec runtime source only
+        uses: actions/checkout@v5
+        with:
+          ref: 8ec70687f4b2ec74e79f69bef0e15fe3f12aae7d
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout isolated functional controls
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: tmp/experiment-control
+          sparse-checkout: scripts/node/ai-gateway-concurrency
+          persist-credentials: false
+      - name: Setup Node24 without Cargo build
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Prove exact frozen source and parent
+        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/duplicate-lock/source-proof.js --source-only
+      - name: Download existing immutable80b8ec releases and identical providers
+        uses: actions/download-artifact@v8
+        with:
+          name: gateway-duplicate-run-lock-build-36967545246
+          run-id: 36967545246
+          github-token: ${{ github.token }}
+          path: tmp/reused-release
+      - name: Configure only owned CI backup tools
+        run: |
+          set -euo pipefail
+          tools_dir="$RUNNER_TEMP/postgresql-18-tools"
+          mkdir -p "$tools_dir"
+          for tool in pg_dump pg_restore; do
+            sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
+          #!/bin/sh
+          exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
+          SCRIPT
+            chmod +x "$tools_dir/$tool"
+          done
+          echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
+          echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
+      - name: Validate counter and protocol negative oracles
+        run: |
+          set -euo pipefail
+          node --test tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/duplicate-lock/_tests/whole-counter.test.js tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/functional/_tests/protocol-checks.test.js tmp/experiment-control/scripts/node/ai-gateway-concurrency/responses-websocket-acceptance/_tests/error-matrix.test.js
+      - name: Execute real cancel disconnect WS-to-SSE and tool full-history recovery
+        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/functional/run.js
+        timeout-minutes: 15
+      - name: Preserve all functional positive and negative evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gateway-fixed-functional-raw-${{ github.run_id }}
+          path: tmp/test-governance/gateway-fixed-functional
+          if-no-files-found: warn
+          retention-days: 14

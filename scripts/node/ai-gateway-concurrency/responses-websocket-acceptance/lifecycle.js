@@ -124,14 +124,17 @@ function assertBarrierOrdering(row, expectedStatus) {
   if (expectedStatus === 'succeeded' && settled[0].successTerminalCount !== 1) throw new Error('delivery disconnect did not preserve one successful upstream terminal');
 }
 
-async function runGatewayWebSocketLifecycle({ ready, mockSnapshot, terminalBarriers }, dependencies = {}) {
+async function runGatewayWebSocketLifecycle({ ready, mockSnapshot, terminalBarriers, selectedRows }, dependencies = {}) {
   const { collectGatewayFrames } = require('../workflow-contract/gateway-websocket');
   const collect = dependencies.collectGatewayFrames ?? collectGatewayFrames;
   const read = dependencies.readJson ?? readJson;
   const provider = ready.targets.openai;
   const target = createGatewayTarget(ready);
   const rows = [];
+  const allowed=['slow-concurrency','client-disconnect',...CLOSE_PROBES.map(p=>p.id),'native-cancel','upstream-interruption'];
+  if(selectedRows&&(!selectedRows.length||selectedRows.some(id=>!allowed.includes(id))))throw new Error('Unknown/empty lifecycle selection');
   async function execute(id, work) {
+    if(selectedRows&&!selectedRows.includes(id))return;
     const row = { id, verdict: 'FAIL', wire: { events: [] } };
     const before = mockSnapshot().entries.at(-1)?.sequence ?? 0;
     rows.push(row);

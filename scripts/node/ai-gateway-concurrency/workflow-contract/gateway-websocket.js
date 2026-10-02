@@ -49,7 +49,7 @@ function consumeServerFrames(buffer, onFrame) {
 }
 
 function collectGatewayFrames(target, clientTraceId, {
-  timeoutMs = 10_000, inputText, requestFields = {}, probe, onOpen, onFirstDelta, observation = {},
+  timeoutMs = 10_000, inputText, inputItems, requestFields = {}, probe, onOpen, onFirstDelta, observation = {},
 } = {}) {
   const url = new URL(target.url);
   if (url.protocol !== 'ws:') throw new Error('quality gate Gateway WebSocket must use loopback ws:');
@@ -144,7 +144,7 @@ function collectGatewayFrames(target, clientTraceId, {
         socket.write(clientFrame(JSON.stringify({
           ...requestFields, type: 'response.create', model: target.model, stream: true,
           metadata: { trace_id: clientTraceId },
-          input: [{ role: 'user', content: [{ type: 'input_text', text: inputText ?? `gateway websocket ${clientTraceId}` }] }],
+          input: inputItems ?? [{ role: 'user', content: [{ type: 'input_text', text: inputText ?? `gateway websocket ${clientTraceId}` }] }],
         })));
       }).catch(finish);
     });

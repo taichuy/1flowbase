@@ -129,3 +129,5 @@ test('error matrix reads persisted error payload from trace export, not metadata
   assert.ok(calls.every(({ url }) => !url.endsWith('/overview')));
   assert.deepEqual(calls.find(({ url }) => url.endsWith(`/${runId}/export`)).options.headers, target.durable.list_runs.headers);
 });
+
+test('Minimal cloud gate reuses only the real WS retry row and rejects unknown selection',async()=>{const fixture=fixtureDependencies(false,true);const args={ready:{targets:{}},mockSnapshot:fixture.mockSnapshot,selectedRows:['retry/responses-websocket']};const result=await runGatewayErrorMatrix(args,fixture.dependencies);assert.equal(result.verdict,'PASS');assert.deepEqual(result.rows.map(r=>r.id),['retry/responses-websocket']);assert.equal(result.rows[0].attempts.length,2);await assert.rejects(()=>runGatewayErrorMatrix({...args,selectedRows:['typo']},fixture.dependencies),/Unknown/);});
