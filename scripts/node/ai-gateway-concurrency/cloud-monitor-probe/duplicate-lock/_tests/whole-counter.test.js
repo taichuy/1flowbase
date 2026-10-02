@@ -1,0 +1,6 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const{wholeCounterEvidence}=require('../whole-counter');
+const row=(id,wal)=>({userid:'synthetic',queryid:id,toplevel:true,calls:1,total_exec_time:1,rows:1,wal_bytes:wal,normalized_sql:'select synthetic',query_fingerprint:id});
+test('Warmup eviction makes positive whole cumulative WAL difference unavailable',()=>{const b={info:{stats_reset:'same',dealloc:0},rows:[row('old',100)]},a={info:{stats_reset:'same',dealloc:1},rows:[row('new',120)]};const x=wholeCounterEvidence(b,a,{sql_wal_bytes:20});assert.equal(x.guard.valid,false);assert.equal(x.raw_database_delta.sql_wal_bytes,20);assert.equal(x.validated_database_delta,null);assert.ok(x.guard.missing_after_keys.length);});
+test('Unchanged counters retain valid whole evidence; reset or incomplete endpoints fail closed',()=>{const b={info:{stats_reset:'same',dealloc:0},rows:[row('one',1)]},a={info:b.info,rows:[{...row('one',2),calls:2,rows:2,total_exec_time:2}]};assert.equal(wholeCounterEvidence(b,a,{sql_wal_bytes:1}).validated_database_delta.sql_wal_bytes,1);assert.equal(wholeCounterEvidence(b,{...a,info:{...a.info,stats_reset:'new'}},{}).guard.valid,false);assert.equal(wholeCounterEvidence(null,a,{}).guard.valid,false);});

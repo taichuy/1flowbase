@@ -1,0 +1,37 @@
+{
+  "user_dev": "5c522085548872202f6c6eeacc8b087f7220e3a6",
+  "common_baseline": "a4fdc6cf32d5f9bbc958ba18db300674822ff1ae",
+  "candidate": "b57800bd5dbfd5756f111c5faaac2d3434c85c87",
+  "candidate_diff_sha256": "71daac59a2b673335d128b56dcae5a88bfb6f9a86d967872ab99e84486a277f7",
+  "changed_paths": [
+    "api/crates/control-plane-contracts/src/_tests/runtime_persistence_contract_tests.rs",
+    "api/crates/control-plane-contracts/src/ports/runtime/repository.rs",
+    "api/crates/control-plane/src/client_trajectory/_tests/batching.rs",
+    "api/crates/control-plane/src/client_trajectory/classify.rs",
+    "api/crates/control-plane/src/client_trajectory/mod.rs",
+    "api/crates/storage/durable/postgres/src/_tests/client_trajectory/atomic_step_batch.rs",
+    "api/crates/storage/durable/postgres/src/_tests/client_trajectory/mod.rs",
+    "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/_tests/sequencing.rs",
+    "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/client_trajectory.rs",
+    "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/mod.rs",
+    "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/sequencing.rs"
+  ],
+  "baseline_web_tree": "abcfed4f87359c5c65092ce9f3adbf580cc3de58",
+  "candidate_web_tree": "abcfed4f87359c5c65092ce9f3adbf580cc3de58",
+  "provider_sha": "997c705b3c564c93d2fc49b973e0b5bbdb759cdc",
+  "profile": "release",
+  "toolchain": "1.98.1",
+  "levels": [
+    1,
+    8
+  ],
+  "order": [
+    "A1",
+    "B1",
+    "B2",
+    "A2"
+  ],
+  "old_binary_reuse": false,
+  "provider_reuse_run": 36967545246,
+  "provider_reuse_artifact": "gateway-duplicate-run-lock-build-36967545246"
+}
