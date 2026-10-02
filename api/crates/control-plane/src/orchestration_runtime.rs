@@ -1039,13 +1039,13 @@ where
     where
         R: BillingRepository + crate::ports::FileManagementRepository,
     {
-        self.start_published_flow_run_inner(
+        Box::pin(self.start_published_flow_run_inner(
             command.application_id,
             command.flow_run_id,
             command.provider_transport_slot,
             command.transport_connection_scope,
             command.observation_context,
-        )
+        ))
         .await
     }
 
