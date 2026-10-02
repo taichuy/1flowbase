@@ -68,6 +68,18 @@ Run the same targeted test executables with explicit mode0 and mode1:
   schema/tool/result semantics, pre-bind/drop, partial failure, committed replay
   watermarks and bounded admission
 
+The first frozen run37060500298 compiled/executed38 OFF cases:37 passed,
+including all12 new diagnostics cases; the existing burst comparator failed1->1.
+No ON/API/build/resource phase ran. Its original fixture bytes exactly match the
+historical739c.../92a62c6f3 source. Reuse that cfg(test)-only immediate-control
+synchronization:0ms control waits for MemoryWriter archive notification before
+next frame;20ms burst still yields. Keep every original strict comparative,
+receipt256, original-byte/kind/order/sequence predicate. This defines the immediate
+control's arrival-after-commit boundary, not a same-arrival performance experiment.
+It does not change production zero/20ms behavior. On success or failed gates EXIT,
+restore the exact original test source and require a clean product tree before
+release build. Overlay/recovery hashes and diff are retained as artifact receipts.
+
 Source contracts preserve21 original awaits and one worker spawn. These source
 checks do not substitute for Rust compilation/behavior. Existing unaffected
 storage evidence is reused only for unchanged storage owners. This diagnostic

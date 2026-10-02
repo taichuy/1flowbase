@@ -59,6 +59,7 @@ jobs:
           mkdir -p "$out"
           node --test "$controls/admission-diag/_tests/"*.test.js "$controls/_tests/"*.test.js "$controls/duplicate-lock/_tests/"*.test.js "$controls/lock-scope/_tests/"*.test.js > "$out/pure-node-tests.log" 2>&1
           python3 "$controls/_tests/sampler.test.py" > "$out/pure-sampler-tests.log" 2>&1
+          python3 "$controls/admission-diag/_tests/test_fixture_overlay.py" > "$out/pure-fixture-overlay-tests.log" 2>&1
           node --check "$controls/admission-diag/run.js"
           node --check "$controls/admission-diag/prepare-packages.js"
       - name: Setup exact Rust toolchain on Actions only

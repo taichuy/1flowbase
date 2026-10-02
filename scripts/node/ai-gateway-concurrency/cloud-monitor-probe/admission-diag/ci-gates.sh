@@ -20,6 +20,18 @@ cargo --version >> "$out/toolchain.txt"
 node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/cargo-jobs.txt"
 export CARGO_BUILD_JOBS="$(cat "$out/cargo-jobs.txt")"
 node "$controls/source-proof.js" > "$out/source-proof.json"
+# Existing exact-source cfg(test) synchronization, never part of the release source.
+# EXIT restoration also covers a failing test command without changing its exit code.
+overlay_active=0
+restore_test_fixture() {
+ if test "$overlay_active" -eq 1;then
+  python3 "$controls/test-fixture-overlay.py" --restore
+  overlay_active=0
+ fi
+}
+trap 'code=$?;restore_test_fixture || exit 99;exit "$code"' EXIT
+overlay_active=1
+python3 "$controls/test-fixture-overlay.py"
 # Same target/toolchain; tests execute once per explicit OFF/ON process.
 # No extra target builds in either measurement fixture, no Cargo on dot cloud.
 for mode in 0 1;do
@@ -28,6 +40,8 @@ for mode in 0 1;do
  run_logged "api-observer-mode$mode" cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --lib 'client_observer::_tests'
 done
 node "$controls/check-gates.js" "$out" > "$out/gate-counts.json"
+restore_test_fixture
+test -z "$(git status --porcelain --untracked-files=no)"
 export FLOWBASE_CLIENT_TRAJECTORY_DIAGNOSTICS=0
 run_logged diagnostic-release-build cargo build --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server
 cp api/target/release/api-server "$out/diagnostic-release-api-server"
