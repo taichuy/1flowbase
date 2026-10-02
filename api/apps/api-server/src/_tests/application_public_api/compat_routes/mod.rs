@@ -35,15 +35,15 @@ use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
 
 const COMPAT_ROUTE_PROVIDER_MODEL: &str = "fixture_chat";
-const COMPAT_ROUTE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
+const COMPAT_ROUTE_TEST_STACK_BYTES: usize = 2 * 1024 * 1024;
 
 fn run_compat_route_test<F, Fut>(test: F)
 where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future<Output = ()> + 'static,
 {
-    // Debug Axum service futures for this integration module exceed libtest's default stack.
-    // Keep the larger stack local instead of requiring a global RUST_MIN_STACK.
+    // Match the default Tokio worker stack to catch oversized inline execution futures.
+    // Keep the regression independent of a developer's RUST_MIN_STACK override.
     std::thread::Builder::new()
         .name("application-public-compat-route".to_owned())
         .stack_size(COMPAT_ROUTE_TEST_STACK_BYTES)

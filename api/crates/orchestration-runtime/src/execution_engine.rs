@@ -548,7 +548,8 @@ where
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
     let runtime_context = ExecutionRuntimeContext::from_plan_input(plan, &variable_pool)?;
 
-    execute_from(
+    // Keep the graph future on the heap across start/resume wrappers while awaiting in place.
+    Box::pin(execute_from(
         plan,
         0,
         variable_pool,
@@ -556,7 +557,7 @@ where
         &runtime_context,
         invoker,
         &NoopExecutionLifecycle,
-    )
+    ))
     .await
 }
 
@@ -574,7 +575,7 @@ where
         .cloned()
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
 
-    execute_from(
+    Box::pin(execute_from(
         plan,
         0,
         variable_pool,
@@ -582,7 +583,7 @@ where
         &runtime_context,
         invoker,
         &NoopExecutionLifecycle,
-    )
+    ))
     .await
 }
 
@@ -601,7 +602,7 @@ where
         .cloned()
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
 
-    execute_from(
+    Box::pin(execute_from(
         plan,
         0,
         variable_pool,
@@ -609,7 +610,7 @@ where
         &runtime_context,
         invoker,
         lifecycle,
-    )
+    ))
     .await
 }
 
@@ -690,7 +691,7 @@ where
             .await?
             {
                 VisibleInternalLlmToolResume::Ready(variable_pool) => {
-                    return execute_from(
+                    return Box::pin(execute_from(
                         plan,
                         checkpoint.next_node_index,
                         variable_pool,
@@ -698,7 +699,7 @@ where
                         &runtime_context,
                         invoker,
                         lifecycle,
-                    )
+                    ))
                     .await;
                 }
                 VisibleInternalLlmToolResume::Waiting(wait) => {
@@ -746,7 +747,7 @@ where
                 }
             }
         }
-        return execute_from(
+        return Box::pin(execute_from(
             plan,
             checkpoint.next_node_index,
             variable_pool,
@@ -754,7 +755,7 @@ where
             &runtime_context,
             invoker,
             lifecycle,
-        )
+        ))
         .await;
     }
 
@@ -775,7 +776,7 @@ where
     }
     variable_pool.insert(waiting_node_id.to_string(), Value::Object(patch.clone()));
 
-    execute_from(
+    Box::pin(execute_from(
         plan,
         checkpoint.next_node_index,
         variable_pool,
@@ -783,7 +784,7 @@ where
         &runtime_context,
         invoker,
         lifecycle,
-    )
+    ))
     .await
 }
 
