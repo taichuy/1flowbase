@@ -83,6 +83,8 @@
 - 依赖 mock 接在当前 loader / transport owner；保留浏览器构造器并回收全局替换。测试中的 ESM / CommonJS Provider 与消费者须共享 Context，不能改语言预期掩盖两套模块实例。
 - schema / adapter 断言锁定选中对象与可见行为，不以重渲染次数代替 contract。源码门禁区分合法 hook / 类型引用与被禁止的真实调用，并用正反例证明识错边界。
 
+- 性能预算保留未采样 `run` lane 的断言；`coverage` 运行相同功能样本并记录耗时，但采样开销不能用于结算未采样延迟。标准 Vitest wrapper 绑定实际测量模式，不接受继承环境伪装；超预算采样作为 warning 留存，不能宣称性能通过。
+
 ## Default Severity Hints
 
 | 场景 | 建议严重度 |

@@ -1166,3 +1166,22 @@ test('default aggregate requires exactly the current full online component inven
   assert.ok(scopes, 'full online gate must declare its component inventory');
   assert.deepEqual([...DEFAULT_AGGREGATE_SCOPES].sort(), scopes.sort());
 });
+
+
+test("Host coverage lanes prepare real SDK executable fixtures before running transport tests", () => {
+  const workflow = readQualityGateWorkflow();
+  for (const jobName of ["single-scope-gate", "coverage-backend-gate"]) {
+    const jobStart = workflow.indexOf(`  ${jobName}:`);
+    const fixtureStart = workflow.indexOf("      - name: Build Host coverage worker fixtures\n", jobStart);
+    const gateStart = workflow.indexOf("      - uses: ./.github/actions/quality-gate", jobStart);
+    assert.ok(fixtureStart > jobStart && fixtureStart < gateStart, `${jobName} must prepare fixtures before tests`);
+    const fixture = workflow.slice(fixtureStart, gateStart);
+    assert.match(fixture, /coverage-backend-runtime-extension-host/u);
+    assert.match(fixture, /CARGO_TARGET_DIR: .*rust-(?:single-coverage|coverage)\//u);
+    for (const kind of ["hook", "event"]) {
+      assert.ok(fixture.includes(`--example managed_${kind}_worker`));
+      assert.ok(fixture.includes(`strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker"`));
+      assert.ok(fixture.includes(`MANAGED_${kind.toUpperCase()}_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker`));
+    }
+  }
+});

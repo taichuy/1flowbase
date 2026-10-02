@@ -61,7 +61,7 @@ function main(argv = [], deps = {}) {
 
   const result = spawnSyncImpl(command.command, command.args, {
     cwd: repoRoot,
-    env: commandEnv,
+    env: { ...commandEnv, ONEFLOWBASE_VITEST_MODE: options.mode },
     stdio: "inherit",
   });
 

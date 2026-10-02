@@ -220,6 +220,19 @@ jobs:
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
           echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
+      - name: Build Host coverage worker fixtures
+        if: ${{ inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || inputs.scope == 'coverage-backend-api-server' || inputs.scope == 'coverage-backend-runtime-extension-host' }}
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-single-coverage/${{ inputs.scope }}/target
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
+          echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
+          echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
         env:
           RUSTUP_TOOLCHAIN: ${{ startsWith(inputs.scope, 'repo-backend-clippy-') && '1.98.1' || 'stable' }}
@@ -826,6 +839,19 @@ jobs:
             rust-quality-gate-coverage-v2-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock') }}-
             rust-quality-gate-coverage-v2-${{ runner.os }}-${{ matrix.scope }}-
             rust-quality-gate-coverage-v2-${{ runner.os }}-
+      - name: Build Host coverage worker fixtures
+        if: ${{ matrix.scope == 'coverage-backend-runtime-extension-host' }}
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-coverage/${{ matrix.scope }}/target
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
+          echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
+          echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/${{ matrix.scope }}/target

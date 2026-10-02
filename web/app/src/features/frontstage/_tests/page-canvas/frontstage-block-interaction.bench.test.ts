@@ -20,7 +20,7 @@ function percentile95(values: number[]): number {
 }
 
 describe('frontstage block interaction performance', () => {
-  test('keeps the 100-block solver p95 within the interaction budget', () => {
+  test('preserves solver output and reports the interaction budget in its measurement mode', () => {
     const results: Record<string, { p95Ms: number; samples: number }> = {};
 
     for (const size of [20, 100, 500]) {
@@ -45,6 +45,20 @@ describe('frontstage block interaction performance', () => {
     }
 
     console.info('FRONTSTAGE_INTERACTION_BENCHMARK', JSON.stringify(results));
-    expect(results['100']!.p95Ms).toBeLessThanOrEqual(4);
+    // Coverage sampling adds overhead and cannot certify the uninstrumented latency budget.
+    // Keep the same solver samples/assertions; enforce the budget in the regular run lane.
+    if (process.env.ONEFLOWBASE_VITEST_MODE === 'coverage') {
+      if (results['100']!.p95Ms > 4) {
+        console.warn(
+          'FRONTSTAGE_INTERACTION_COVERAGE_OVERHEAD',
+          JSON.stringify({
+            p95Ms: results['100']!.p95Ms,
+            uninstrumentedBudgetMs: 4
+          })
+        );
+      }
+    } else {
+      expect(results['100']!.p95Ms).toBeLessThanOrEqual(4);
+    }
   });
 });

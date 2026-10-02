@@ -152,3 +152,19 @@ test("main prepends pnpm sibling node binary to PATH before spawning vitest", ()
   );
   assert.equal(captured.options.env.NODE, path.join(binDir, "node"));
 });
+
+for (const mode of ["run", "coverage"]) {
+  test(`main binds measurement mode to ${mode} instead of inherited environment`, () => {
+    let capturedEnv;
+    main([mode], {
+      repoRoot: "/repo-root",
+      env: { ONEFLOWBASE_VITEST_MODE: mode === "run" ? "coverage" : "run" },
+      runtimeConfig: { frontend: { vitestMaxWorkers: 1 } },
+      spawnSyncImpl(_command, _args, options) {
+        capturedEnv = options.env;
+        return { status: 0 };
+      },
+    });
+    assert.equal(capturedEnv.ONEFLOWBASE_VITEST_MODE, mode);
+  });
+}

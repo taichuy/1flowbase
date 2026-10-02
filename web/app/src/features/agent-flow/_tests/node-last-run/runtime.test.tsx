@@ -292,7 +292,13 @@ function expectNodePreviewRequest(
 }
 
 describe('node last run runtime', () => {
-  beforeAll(() => loadApplicationI18nResources());
+  beforeAll(async () => {
+    // This fixture verifies preview contracts; cold lazy readiness has its own route tests.
+    await Promise.all([
+      loadApplicationI18nResources(),
+      import('../../components/detail/NodeDetailPanel')
+    ]);
+  });
 
   beforeEach(async () => {
     vi.clearAllMocks();
