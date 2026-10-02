@@ -105,7 +105,9 @@ impl PgControlPlaneStore {
                 .bind(step_id).bind(input.request_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
             anyhow::ensure!(valid, "client trajectory section scope mismatch");
         }
-        lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
+        // This private append owns tx and acquired this run's NO KEY UPDATE lock
+        // before scope validation above. No savepoint rollback releases it; keep
+        // sequence reservation under that first lock without a second SQL roundtrip.
         let sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
         match &input.fact {
             ClientTrajectoryFact::Step { step } => {
