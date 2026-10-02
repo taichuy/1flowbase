@@ -274,6 +274,17 @@ pub(super) fn is_failed_response_reissue(
     {
         return Ok(false);
     }
+    validate_reissue_context(flow, callback, command)?;
+    Ok(true)
+}
+
+/// New requests can prove either full history or an owned incremental cursor.
+/// This also lets duplicate requests attach an already admitted successor.
+pub(super) fn validate_reissue_context(
+    flow: &domain::FlowRunRecord,
+    callback: &domain::CallbackTaskRecord,
+    command: &ResumePublishedCallbackCommand,
+) -> Result<()> {
     let transport = command
         .native_transport
         .as_ref()
@@ -302,6 +313,12 @@ pub(super) fn is_failed_response_reissue(
         )?;
         let mut remaining: std::collections::BTreeSet<_> =
             callback_call_ids(callback)?.into_iter().collect();
+        if remaining.is_empty()
+            || outputs.len() != remaining.len()
+            || accepted.len() != remaining.len()
+        {
+            return Err(ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into());
+        }
         for output in outputs {
             if !matches!(
                 output["type"].as_str(),
@@ -333,7 +350,7 @@ pub(super) fn is_failed_response_reissue(
     } else {
         validate_context(flow, callback, command)?;
     }
-    Ok(true)
+    Ok(())
 }
 
 fn validate_configuration(

@@ -994,3 +994,53 @@ async fn incremental_reissue_uses_owned_predecessor_without_reconsuming_tool_res
     }
     f.assert_receipt_unchanged();
 }
+
+#[tokio::test]
+async fn failed_recovery_successor_allows_new_full_and_incremental_responses() {
+    let f = fixture(Some(transport_failure())).await;
+    let PreparedPublishedCallbackResume::RecoverInference { grant } =
+        f.prepare(&f.command).await.unwrap()
+    else {
+        panic!("recovery grant");
+    };
+    let mut request: NativeRunRequest =
+        serde_json::from_value(json!({"query":"reconstructed"})).unwrap();
+    request.metadata.set_inference_recovery(*grant);
+    let actor = ApplicationApiKeyService::new(f.repository.clone())
+        .authenticate_bearer_token(&f.command.bearer_token)
+        .await
+        .unwrap();
+    let successor = ApplicationNativeRunService::new(f.repository.clone())
+        .create_native_run_for_actor(actor, request, TranslationProtocol::Native)
+        .await
+        .unwrap();
+    let mut incremental = f.command.clone();
+    let mut body = incremental
+        .native_transport
+        .take()
+        .unwrap()
+        .into_wire_body();
+    body["previous_response_id"] = json!(format!("resp_{}", f.flow_run_id));
+    body["input"] = json!([{"type":"function_call_output","call_id":"call_1","output":"done"}]);
+    incremental.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+    let PreparedPublishedCallbackResume::Resume { initial_run } =
+        f.prepare(&incremental).await.unwrap()
+    else {
+        panic!("active successor must retain its single execution owner");
+    };
+    assert_eq!(initial_run.id, successor.id);
+    f.repository
+        .set_flow_run_status_for_test(successor.id, domain::FlowRunStatus::Failed);
+    for command in [&f.command, &incremental] {
+        assert!(matches!(
+            f.prepare(command).await.unwrap(),
+            PreparedPublishedCallbackResume::StartNewTurnFromHistory
+        ));
+    }
+    assert_eq!(
+        f.repository.flow_run_count(),
+        2,
+        "admission does not reexecute tools or start a concurrent run"
+    );
+    f.assert_receipt_unchanged();
+}

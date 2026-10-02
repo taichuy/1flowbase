@@ -278,11 +278,16 @@ where
                     )
                     .await?
                 {
-                    inference_recovery::validate_context(
+                    inference_recovery::validate_reissue_context(
                         &context.flow_run,
                         &recovery_callback,
                         command,
                     )?;
+                    if successor.status == domain::FlowRunStatus::Failed {
+                        // The internal successor has its own terminal lifecycle.
+                        // Do not pin a later client create to that failed result.
+                        return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
+                    }
                     let mut replay = self.native_result_for_flow_run(&successor).await?;
                     replay.metadata["native_inference_recovery_replay"] = json!(true);
                     replay.metadata["response_round_id"] = json!(successor.id);
