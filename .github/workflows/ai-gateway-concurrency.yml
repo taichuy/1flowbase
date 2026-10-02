@@ -1,11 +1,11 @@
-name: Gateway Observer Calibration and Conditional CPU Attribution
+name: Gateway API-only Zero-load Capability Gate
 'on':
   workflow_dispatch: {}
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: gateway-observer-diagnostic-${{ github.ref }}
+  group: gateway-api-capability-${{ github.ref }}
   cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -17,9 +17,9 @@ env:
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
 jobs:
-  observer-diagnostic:
+  api-capability:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:18.4
@@ -54,14 +54,14 @@ jobs:
 
         controls=tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe
 
-        mkdir -p tmp/test-governance/gateway-observer-diagnostic/build
+        mkdir -p tmp/test-governance/gateway-api-capability/build
 
-        node --test "$controls/observer-diagnostic/_tests/contract.test.js" "$controls/_tests/metrics.test.js" "$controls/_tests/observation.test.js"
-        > tmp/test-governance/gateway-observer-diagnostic/build/harness-tests.log 2>&1
+        node --test "$controls/api-capability/_tests/gate.test.js" "$controls/_tests/metrics.test.js" "$controls/_tests/observation.test.js"
+        > tmp/test-governance/gateway-api-capability/build/harness-tests.log 2>&1
 
-        node --check "$controls/observer-diagnostic/run.js"
+        node --check "$controls/api-capability/run.js"
 
-        node --check "$controls/observer-diagnostic/profile.js"
+        node --check "$controls/api-capability/gate.js"
 
         python3 - "$controls/sampler.py" <<''PYCODE''
 
@@ -85,11 +85,11 @@ jobs:
     - name: Verify immutable artifact metadata before reuse
       run: 'set -euo pipefail
 
-        mkdir -p tmp/test-governance/gateway-observer-diagnostic/build
+        mkdir -p tmp/test-governance/gateway-api-capability/build
 
-        gh api repos/taichuy/1flowbase/actions/artifacts/11221429445 > tmp/test-governance/gateway-observer-diagnostic/build/reused-artifact-metadata.json
+        gh api repos/taichuy/1flowbase/actions/artifacts/11221429445 > tmp/test-governance/gateway-api-capability/build/reused-artifact-metadata.json
 
-        node -e "const a=require(''./tmp/test-governance/gateway-observer-diagnostic/build/reused-artifact-metadata.json'');if(a.id!==11221429445||a.expired||a.workflow_run.id!==36992344470||a.digest!==''sha256:ac699d8a43379055c065e2c067218134d4f9e2341464f00dfdfb53a854720351'')throw
+        node -e "const a=require(''./tmp/test-governance/gateway-api-capability/build/reused-artifact-metadata.json'');if(a.id!==11221429445||a.expired||a.workflow_run.id!==36992344470||a.digest!==''sha256:ac699d8a43379055c065e2c067218134d4f9e2341464f00dfdfb53a854720351'')throw
         Error(''wrong immutable artifact'')"
 
         '
@@ -103,30 +103,19 @@ jobs:
         github-token: ${{ github.token }}
         path: tmp/diagnostic-reuse
     - name: Independently verify source tree, baseline binary and all packages
-      run: 'set -euo pipefail
-
-        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/observer-diagnostic/prepare.js
-
-        pg_container="$(docker ps --filter publish=5432 --format ''{{.ID}}'')"
-
-        docker exec "$pg_container" psql -U postgres -d 1flowbase -v ON_ERROR_STOP=1 -c ''CREATE EXTENSION IF NOT
-        EXISTS pg_stat_statements; SELECT pg_stat_statements_reset();'' > tmp/test-governance/gateway-observer-diagnostic/build/pre-series-stat-reset.txt
-
-        uname -a > tmp/test-governance/gateway-observer-diagnostic/build/kernel.txt
-
-        lscpu > tmp/test-governance/gateway-observer-diagnostic/build/cpu.txt
-
-        cat /proc/meminfo > tmp/test-governance/gateway-observer-diagnostic/build/memory.txt
-
-        '
+      run: "set -euo pipefail\nnode tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/api-capability/prepare.js\n\
+        uname -a > tmp/test-governance/gateway-api-capability/build/kernel.txt\nlscpu > tmp/test-governance/gateway-api-capability/build/cpu.txt\n\
+        cat /proc/meminfo > tmp/test-governance/gateway-api-capability/build/memory.txt\nfor quota in cpu.max memory.max;\
+        \ do\n if test -r \"/sys/fs/cgroup/$quota\"; then cat \"/sys/fs/cgroup/$quota\" > \"tmp/test-governance/gateway-api-capability/build/cgroup-$quota.txt\"\
+        ; fi\ndone\n"
       env:
         WORKFLOW_SHA: ${{ github.sha }}
-    - name: Stage1 SQL observer calibration; conditional Stage2 existing-perf only
-      timeout-minutes: 35
+    - name: API-only ordinary-identity capability; zero business requests
+      timeout-minutes: 10
       run: 'set -euo pipefail
 
-        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/observer-diagnostic/run.js
-        > tmp/test-governance/gateway-observer-diagnostic/build/diagnostic-run.log 2>&1
+        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/api-capability/run.js
+        > tmp/test-governance/gateway-api-capability/build/diagnostic-run.log 2>&1
 
         '
       env:
@@ -135,21 +124,21 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: gateway-observer-diagnostic-raw-${{ github.run_id }}
-        path: 'tmp/test-governance/gateway-observer-diagnostic/manifest.json
+        name: gateway-api-capability-raw-${{ github.run_id }}
+        path: 'tmp/test-governance/gateway-api-capability/manifest.json
 
-          tmp/test-governance/gateway-observer-diagnostic/summary.json
+          tmp/test-governance/gateway-api-capability/summary.json
 
-          tmp/test-governance/gateway-observer-diagnostic/SQL*/**
+          tmp/test-governance/gateway-api-capability/capability/**
 
-          tmp/test-governance/gateway-observer-diagnostic/PROFILE*/**'
+          tmp/test-governance/gateway-api-capability/service/**'
         retention-days: 14
         if-no-files-found: warn
     - name: Upload exact reused input and harness gate receipts
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: gateway-observer-diagnostic-build-${{ github.run_id }}
-        path: tmp/test-governance/gateway-observer-diagnostic/build/**
+        name: gateway-api-capability-build-${{ github.run_id }}
+        path: tmp/test-governance/gateway-api-capability/build/**
         retention-days: 7
         if-no-files-found: warn
