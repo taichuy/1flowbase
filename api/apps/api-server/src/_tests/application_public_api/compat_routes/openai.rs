@@ -685,27 +685,36 @@ async fn chat_capture_raw_bytes(
 ) -> Vec<u8> {
     use base64::Engine;
     use control_plane::ports::OrchestrationRuntimeRepository;
-    let section = store
-        .client_trajectory_section(flow, None, request, "raw", None, 100)
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(section.next_cursor.is_none());
     let mut bytes = Vec::new();
-    for item in section.items {
-        let value = item.value;
-        if value["direction"] != direction {
-            continue;
+    let mut cursor = None;
+    loop {
+        let section = store
+            .client_trajectory_section(flow, None, request, "raw", cursor, 100)
+            .await
+            .unwrap()
+            .unwrap();
+        for item in section.items {
+            let value = item.value;
+            if value["direction"] != direction {
+                continue;
+            }
+            let body = value["body"].as_str().unwrap();
+            if value["encoding"] == "base64" {
+                bytes.extend(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(body)
+                        .unwrap(),
+                );
+            } else {
+                bytes.extend(body.as_bytes());
+            }
         }
-        let body = value["body"].as_str().unwrap();
-        if value["encoding"] == "base64" {
-            bytes.extend(
-                base64::engine::general_purpose::STANDARD
-                    .decode(body)
-                    .unwrap(),
-            );
-        } else {
-            bytes.extend(body.as_bytes());
+        match section.next_cursor {
+            Some(next) => {
+                assert!(cursor.is_none_or(|previous| next > previous));
+                cursor = Some(next);
+            }
+            None => break,
         }
     }
     bytes
