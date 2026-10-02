@@ -129,9 +129,27 @@ impl PgControlPlaneStore {
                     .bind(lossless_json_parameter(&payload)).execute(&mut *tx).await?;
             }
         }
-        // Binding moves the pre-bound durable capture into the run deletion scope.
-        sqlx::query("update client_trajectory_archive_heads set flow_run_id=$2 where request_id=$1 and (flow_run_id is null or flow_run_id=$2)")
-            .bind(input.request_id).bind(input.flow_run_id).execute(&mut *tx).await?;
+        // Retain the bound-head mutex without rewriting the same flow ID per fact.
+        // The final SELECT consumes locked_head even when the conditional UPDATE
+        // has no rows; using only `where flow_run_id is null` would skip this lock.
+        sqlx::query(
+            r#"
+            with locked_head as materialized (
+                select request_id,flow_run_id from client_trajectory_archive_heads
+                where request_id=$1 and (flow_run_id is null or flow_run_id=$2)
+                for no key update
+            ), bound as (
+                update client_trajectory_archive_heads h set flow_run_id=$2
+                from locked_head l where h.request_id=l.request_id and l.flow_run_id is null
+                returning h.request_id
+            )
+            select 1 from locked_head
+        "#,
+        )
+        .bind(input.request_id)
+        .bind(input.flow_run_id)
+        .execute(&mut *tx)
+        .await?;
         if matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "result")
         {
             sqlx::query("update application_run_log_tasks set projection_output=projection_output where id=(select coalesce(log_task_run_id,flow_run_id) from application_run_log_summaries where flow_run_id=$1) and projection_settled_at is not null")
