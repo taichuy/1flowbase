@@ -1,0 +1,21 @@
+{
+  "run": 36989641502,
+  "artifact_id": 11218873876,
+  "artifact_sha256": "a373f98940cdeeebb5c97c23cc368a67b000132fa50918125c9d3ce7eb6b408e",
+  "source_candidate": "cac4d299495f25eccce69ac248e29653db5a8b5b",
+  "hashes": {
+    "source-proof.json": "873776291c59e02787b7b6c7f364f829d17eab17f56b84d73fb420d8079b13b5",
+    "harness-sha.txt": "ecff1596a073d83c0170952ad7c13d8ef479b034369523c795aa65a7ccf02670",
+    "toolchain.txt": "dc52abd2089428b1484b91d88ffb3221d4fd3c513cb6f5a451f1143588397444",
+    "contracts-tests.log": "f91faa30db6b60d62ea0a14c571027da071d28c009c9ffbfda7892d59b3ed82d",
+    "contracts-boundary.json": "cb1d499bc62de4b08d517770825591db63fa18fa8628cd8a0b1c9e0ea7d37e79",
+    "pg-trajectory-tests.log": "1875a4c2cdda9303416865f6608be8d2420cdb0cb26b88d95e4536d53e3e8463",
+    "pg-sequencing-tests.log": "9d0d4bd6e008d0d4b4f21112980f32f684461f995190cc69bcdda9d9c53b33d0",
+    "adapter-test-compile.log": "e4242cd7a849cb9a6df8c55ef8dce0636e3214fe38e4d0c30361419599b2daeb"
+  },
+  "contracts_passed": 29,
+  "PG_trajectory_passed": 58,
+  "PG_sequencing_passed": 6,
+  "failed_test_fixture_sha256": "739c8fff67dc8ac3356936389bbb4f77b9c3a5a4cb4db945fbfee3080ab58461",
+  "reuse_scope": "No source/toolchain/provider/PG test fixture changes; corrected fixture only cfg(test) control-plane batching helper; prior failed classifier gate not reused."
+}

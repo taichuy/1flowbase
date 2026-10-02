@@ -82,7 +82,14 @@ jobs:
         #!/bin/sh\nexec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ \"$@\"\nSCRIPT\n\
         \ chmod +x \"$tools_dir/$tool\"\ndone\necho \"API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump\" >> \"$GITHUB_ENV\"\n\
         echo \"API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore\" >> \"$GITHUB_ENV\"\n"
-    - name: Real safe-head PG and flow gates then fresh paired releases
+    - name: Download exact unaffected PG/contracts receipts; failed classifier not reused
+      uses: actions/download-artifact@v8
+      with:
+        name: gateway-resource-safe-build-36989641502
+        run-id: 36989641502
+        github-token: ${{ github.token }}
+        path: tmp/prior-safe-gates
+    - name: Verify reused PG receipts and corrected classifier then fresh paired releases
       run: bash tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/resource-safe/ci-gates.sh tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/resource-safe
       env:
         API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase

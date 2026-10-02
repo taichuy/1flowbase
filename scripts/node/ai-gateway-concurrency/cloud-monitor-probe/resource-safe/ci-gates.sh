@@ -32,17 +32,9 @@ for name in names:
  except OSError as e:out[name]={'unavailable':e.__class__.__name__}
 pathlib.Path('tmp/test-governance/gateway-resource-safe/build/runner-quota.json').write_text(json.dumps(out,indent=2))
 FACTS
-# Frozen contracts compilation is separate from behavioral adapter/PG evidence.
-run_logged contracts "$evidence/contracts-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked -p control-plane-contracts
-run_logged dependency-metadata "$evidence/dependency-metadata.json" cargo metadata --manifest-path api/Cargo.toml --locked --no-deps --format-version 1
-python3 - <<'BOUNDARY'
-import json,pathlib
-p=pathlib.Path('tmp/test-governance/gateway-resource-safe/build');meta=json.loads((p/'dependency-metadata.json').read_text());package=next(x for x in meta['packages'] if x['name']=='control-plane-contracts');deps=[x['name'] for x in package['dependencies']];forbidden={'control-plane','storage-durable-postgres','api-server','runtime-extension-host'};assert not forbidden.intersection(deps),deps
-(p/'contracts-boundary.json').write_text(json.dumps({'direct_dependencies':deps,'forbidden_dependencies_absent':True,'scope':'Cargo direct dependency metadata only, not runtime ownership proof'},indent=2))
-BOUNDARY
-run_logged adapter-compile "$evidence/adapter-test-compile.log" cargo test --manifest-path api/Cargo.toml --release --locked -p storage-durable-postgres --lib --no-run
-run_logged candidate-pg-trajectory "$evidence/pg-trajectory-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked -p storage-durable-postgres --lib client_trajectory
-run_logged candidate-pg-sequencing "$evidence/pg-sequencing-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked -p storage-durable-postgres --lib orchestration_runtime_repository::sequencing::tests
+# Reuse exact unaffected source/toolchain-bound receipts; never reuse the failed classifier gate.
+node "$controls/reuse-gates.js"
+python3 "$controls/test-fixture-overlay.py"
 run_logged candidate-classifier "$evidence/control-plane-trajectory-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked -p control-plane --lib client_trajectory
 python3 - "$controls/freeze.json" <<'GATES'
 import pathlib,re,json,sys
@@ -58,6 +50,9 @@ for name,cases in required.items():
 (root/'gate-counts.json').write_text(json.dumps(rows,indent=2))
 (root/'gate-boundaries.json').write_text(json.dumps({'required_pg_cases_executed':True,'resource_stage':'allowed_after_fresh_builds','commit_ack_loss_injection':'not executed; no unchanged per-fact COMMIT guarantee inferred','UI_scope':'repository page/section/raw read assertions, no sealed frontend render'},indent=2))
 GATES
+# Restore the sole cfg(test) overlay; production binary source remains exact frozen candidate.
+git checkout -- api/crates/control-plane/src/client_trajectory/_tests/batching.rs
+test -z "$(git status --porcelain --untracked-files=no)"
 # Both updated-dev arms are compiled fresh on this runner, using the same target/toolchain/profile.
 for arm in baseline candidate; do
  frozen_sha="$(node -p "const p=require('./'+process.argv[1]);p[process.argv[2]==='baseline'?'common_baseline':'candidate']" "$controls/freeze.json" "$arm")"
