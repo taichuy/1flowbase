@@ -53,7 +53,7 @@ const tool: ClientTrajectoryStep = {
   origin: 'emitted',
   available_sections: ['overview', 'parameters', 'schema', 'timing', 'raw']
 };
-function fixture(namespace: string | null = null) {
+function fixture(namespace: string | null = null, protocol = 'responses') {
   const loadClientTrajectory = vi
     .fn()
     .mockImplementation((_run, _node, cursor) =>
@@ -72,7 +72,7 @@ function fixture(namespace: string | null = null) {
                 available_sections: ['result']
               }
             ]
-          : [root, { ...tool, namespace }],
+          : [{ ...root, protocol }, { ...tool, namespace, protocol }],
         next_cursor: cursor ? null : 2,
         integrity: 'complete'
       })
@@ -231,4 +231,15 @@ test('shows and searches actual protocol namespace without replacing the origina
   expect(
     within(inspector).getByText('mcp__codex_apps__github')
   ).toBeInTheDocument();
+});
+
+test('Chat toolbar uses backend protocol classification', async () => {
+  fixture(null, 'chat_completions');
+  fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  expect(await screen.findByText('Chat Completions')).toBeInTheDocument();
+  expect(
+    screen.queryByText('Responses', {
+      selector: '.client-trajectory__protocol'
+    })
+  ).not.toBeInTheDocument();
 });

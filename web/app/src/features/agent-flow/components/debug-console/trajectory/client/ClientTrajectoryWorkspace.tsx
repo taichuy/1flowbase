@@ -184,7 +184,17 @@ export function ClientTrajectoryWorkspace({
     <div className="provider-trajectory client-trajectory">
       <div className="provider-trajectory__toolbar">
         <div className="provider-trajectory__controls">
-          <span className="client-trajectory__protocol">Responses</span>
+          <span className="client-trajectory__protocol">
+            {[...new Set(items.map((step) => step.protocol))]
+              .map((protocol) =>
+                protocol === 'chat_completions'
+                  ? 'Chat Completions'
+                  : protocol === 'responses'
+                    ? 'Responses'
+                    : protocol
+              )
+              .join(' · ')}
+          </span>
           <Button
             size="small"
             type="text"

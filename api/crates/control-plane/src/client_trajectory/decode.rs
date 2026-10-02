@@ -63,7 +63,9 @@ impl Decoder {
                         if self.data.last() == Some(&b'\n') {
                             self.data.pop();
                         }
-                        if self.data != b"[DONE]" {
+                        if self.data == b"[DONE]" {
+                            values.push(serde_json::json!({"__client_sse_done":true}));
+                        } else {
                             match serde_json::from_slice(&self.data) {
                                 Ok(value) => values.push(value),
                                 Err(_) => self.incomplete = true,

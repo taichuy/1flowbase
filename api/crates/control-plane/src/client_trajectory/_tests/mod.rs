@@ -398,3 +398,5 @@ async fn empty_prewarm_keeps_response_identity_without_fabricating_output() {
         .iter()
         .any(|r| matches!(&r.fact,ClientTrajectoryFact::Step{step} if step.origin=="emitted")));
 }
+
+mod chat;

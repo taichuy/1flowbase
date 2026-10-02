@@ -584,3 +584,129 @@ fn openai_chat_accepts_tools_and_creates_a_run() {
         assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
     });
 }
+
+#[test]
+fn chat_route_captures_exact_unary_and_sse_with_actual_node_links() {
+    run_compat_route_test(|| async {
+        use control_plane::ports::{ProviderTrajectoryRepository, TrajectorySelection};
+        let (app, state) = test_app_with_state().await;
+        let token = setup_published_app(&app, "Chat Capture Route App").await;
+        for streaming in [false, true] {
+            let body = format!(" \n{}\n ", openai_body(streaming));
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/chat/completions")
+                        .header("authorization", format!("Bearer {token}"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(body.clone()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            let flow: uuid::Uuid = sqlx::query_scalar(
+                "select id from flow_runs order by created_at desc,id desc limit 1",
+            )
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+            // The transport owner completes durable evidence asynchronously after EOF.
+            let mut status = String::new();
+            for _ in 0..100 {
+                if let Some(value) = sqlx::query_scalar::<_, String>(
+                    "select status from client_trajectory_captures where flow_run_id=$1",
+                )
+                .bind(flow)
+                .fetch_optional(state.store.pool())
+                .await
+                .unwrap()
+                {
+                    status = value;
+                    if status != "pending" {
+                        break;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert_eq!(status, "complete");
+            let page = state
+                .store
+                .client_trajectory_filtered_page(
+                    flow,
+                    None,
+                    None,
+                    100,
+                    TrajectorySelection::default(),
+                )
+                .await
+                .unwrap();
+            assert!(page
+                .items
+                .iter()
+                .any(|step| step.category == "request" && step.protocol == "chat_completions"));
+            assert!(page.items.iter().any(|step| step.category == "user"));
+            assert!(page
+                .items
+                .iter()
+                .any(|step| step.category == "assistant" && step.origin == "emitted"));
+            let links: i64 = sqlx::query_scalar(
+                "select count(*) from client_trajectory_node_links where flow_run_id=$1",
+            )
+            .bind(flow)
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+            assert!(links > 0, "Chat capture must bind actual provider nodes");
+            let request = page
+                .items
+                .iter()
+                .find(|step| step.category == "request")
+                .unwrap()
+                .request_id;
+            let submitted = chat_capture_raw_bytes(&state.store, flow, request, "submitted").await;
+            let emitted = chat_capture_raw_bytes(&state.store, flow, request, "emitted").await;
+            assert_eq!(submitted, body.as_bytes());
+            assert_eq!(emitted, bytes);
+        }
+    });
+}
+
+async fn chat_capture_raw_bytes(
+    store: &storage_durable_postgres::PgControlPlaneStore,
+    flow: uuid::Uuid,
+    request: uuid::Uuid,
+    direction: &str,
+) -> Vec<u8> {
+    use base64::Engine;
+    use control_plane::ports::OrchestrationRuntimeRepository;
+    let section = store
+        .client_trajectory_section(flow, None, request, "raw", None, 100)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(section.next_cursor.is_none());
+    let mut bytes = Vec::new();
+    for item in section.items {
+        let value = item.value;
+        if value["direction"] != direction {
+            continue;
+        }
+        let body = value["body"].as_str().unwrap();
+        if value["encoding"] == "base64" {
+            bytes.extend(
+                base64::engine::general_purpose::STANDARD
+                    .decode(body)
+                    .unwrap(),
+            );
+        } else {
+            bytes.extend(body.as_bytes());
+        }
+    }
+    bytes
+}
