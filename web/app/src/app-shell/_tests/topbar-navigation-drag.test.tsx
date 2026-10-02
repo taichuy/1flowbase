@@ -83,11 +83,11 @@ test('clicking the drag handle opens no ordering menu or mutation', () => {
 });
 
 test.each([
-  [0, 1, 100, '002500'],
-  [1, 0, -1, '000000']
+  [0, 1, 100, 'after_id'],
+  [1, 0, -1, 'before_id']
 ])(
   'dragging item %s to item %s persists its insertion position',
-  async (source, target, clientX, rank) => {
+  async (source, target, clientX, positionField) => {
     renderLabels();
     const dataTransfer = transfer();
     fireEvent.dragStart(
@@ -117,7 +117,7 @@ test.each([
     await waitFor(() =>
       expect(mutations.moveNode).toHaveBeenCalledWith(nodes[source].id, {
         parentId: null,
-        rank
+        [positionField]: nodes[target].id
       })
     );
   }

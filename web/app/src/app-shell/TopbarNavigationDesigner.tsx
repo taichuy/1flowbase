@@ -69,7 +69,6 @@ export function TopbarNavigationItemLabel({
     },
     [workspaceId, node.id]
   );
-  const index = siblings.findIndex((candidate) => candidate.id === node.id);
 
   const openEdit = () => {
     setDialog({
@@ -99,15 +98,14 @@ export function TopbarNavigationItemLabel({
 
   const dragDataType = `application/x-frontstage-topbar-${workspaceId}`;
   const move = (nodeId: string, direction: -1 | 1) => {
-    const rank =
-      direction < 0
-        ? index === 0
-          ? '000000'
-          : String(index * 1000 + 500).padStart(6, '0')
-        : String((index + 1) * 1000 + 500).padStart(6, '0');
-    void mutations.moveNode(nodeId, { parentId: null, rank }).catch(() => {
-      void message.error('栏目排序失败，请重试');
-    });
+    void mutations
+      .moveNode(nodeId, {
+        parentId: null,
+        ...(direction < 0 ? { before_id: node.id } : { after_id: node.id })
+      })
+      .catch(() => {
+        void message.error('栏目排序失败，请重试');
+      });
   };
 
   return (

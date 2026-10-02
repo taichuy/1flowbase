@@ -779,6 +779,64 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         input: &MoveFrontstagePageInput,
     ) -> Result<domain::FrontstagePageRecord> {
         let mut tx = self.pool().begin().await?;
+        // Serialize rank changes in the workspace, including legacy explicit-rank moves.
+        sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!("frontstage-page-order:{}", input.workspace_id))
+            .execute(&mut *tx)
+            .await?;
+        let mut rank = input.rank.clone();
+        if let Some(target_id) = input.before_id.or(input.after_id) {
+            if input.before_id.is_some() && input.after_id.is_some() {
+                return Err(ControlPlaneError::InvalidInput("move_position").into());
+            }
+            // Lock before sorting so repeated moves do not depend on stale client indexes.
+            let rows = sqlx::query(
+                r#"select id, rank from frontstage_pages
+                   where workspace_id = $1
+                     and parent_id is not distinct from $2
+                     and placement = (select placement from frontstage_pages
+                                      where workspace_id = $1 and id = $3)
+                   order by id for update"#,
+            )
+            .bind(input.workspace_id)
+            .bind(input.parent_id)
+            .bind(input.page_id)
+            .fetch_all(&mut *tx)
+            .await?;
+            let mut siblings = rows
+                .iter()
+                .map(|row| (row.get::<Uuid, _>("id"), row.get::<String, _>("rank")))
+                .collect::<Vec<_>>();
+            siblings.sort_by(|left, right| left.1.cmp(&right.1).then(left.0.cmp(&right.0)));
+            let source_index = siblings
+                .iter()
+                .position(|(id, _)| *id == input.page_id)
+                .ok_or(ControlPlaneError::InvalidInput("move_position"))?;
+            let source = siblings.remove(source_index);
+            let target_index = siblings
+                .iter()
+                .position(|(id, _)| *id == target_id)
+                .ok_or(ControlPlaneError::InvalidInput("move_position"))?;
+            siblings.insert(target_index + usize::from(input.after_id.is_some()), source);
+            // Existing rank rebalance handles equal and legacy ranks with strict byte order.
+            let ranks = crate::ordered_tree::rank::rebalance(siblings.len())?;
+            let ids = siblings.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+            let values = ranks
+                .iter()
+                .map(|rank| rank.as_str().to_owned())
+                .collect::<Vec<_>>();
+            rank = values[ids.iter().position(|id| *id == input.page_id).unwrap()].clone();
+            sqlx::query(
+                r#"update frontstage_pages as page set rank = ordered.rank, updated_at = now()
+                   from unnest($2::uuid[], $3::text[]) as ordered(id, rank)
+                   where page.workspace_id = $1 and page.id = ordered.id"#,
+            )
+            .bind(input.workspace_id)
+            .bind(&ids)
+            .bind(&values)
+            .execute(&mut *tx)
+            .await?;
+        }
         let row = sqlx::query(
             r#"
             update frontstage_pages
@@ -806,7 +864,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(input.parent_id)
-        .bind(&input.rank)
+        .bind(&rank)
         .fetch_optional(&mut *tx)
         .await
         .map_err(map_frontstage_placement_error)?;

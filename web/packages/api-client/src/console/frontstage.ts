@@ -77,6 +77,8 @@ export interface UpdateFrontstagePageNodeTitleInput {
 }
 
 export interface MoveFrontstagePageNodeInput {
+  before_id?: string;
+  after_id?: string;
   parent_id?: string | null;
   rank?: string | null;
 }

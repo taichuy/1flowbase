@@ -51,6 +51,8 @@ pub struct MoveFrontstagePageInput {
     pub page_id: Uuid,
     pub parent_id: Option<Uuid>,
     pub rank: String,
+    pub before_id: Option<Uuid>,
+    pub after_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone)]

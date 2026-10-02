@@ -12,6 +12,7 @@ fn base_database_url() -> String {
 
 mod atomic_operations;
 mod block_nodes;
+mod page_order;
 mod page_tab_ownership;
 mod page_tabs_migration;
 mod placement_integrity;

@@ -191,6 +191,8 @@ pub struct UpdateFrontstagePageMetadataBody {
 pub struct MoveFrontstagePageBody {
     pub parent_id: Option<String>,
     pub rank: Option<String>,
+    pub before_id: Option<String>,
+    pub after_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

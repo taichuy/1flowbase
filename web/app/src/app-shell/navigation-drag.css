@@ -8,36 +8,38 @@
 
 .app-shell-nav-projection {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: #2563eb;
-  color: var(--text-primary);
-  font-size: 12px;
-  white-space: nowrap;
+  top: 50%;
+  height: 32px;
+  width: 16px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 8px;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.08),
+    rgba(59, 130, 246, 0.18)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   z-index: 2;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .app-shell-nav-projection--before {
-  left: -3px;
+  left: -8px;
 }
 .app-shell-nav-projection--after {
-  right: -3px;
+  right: -8px;
 }
 
 .app-shell-nav-projection__caption {
   position: fixed;
-  font-size: 12px;
-  max-width: calc(100vw - 16px);
+  /* Keep the destination announcement available without a floating text badge. */
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  clip-path: inset(50%);
   white-space: nowrap;
-  z-index: 1100;
   pointer-events: none;
-  padding: 4px 8px;
-  border: 1px dashed #2563eb;
-  border-radius: 4px;
-  background: var(--bg-surface, #fff);
-  color: #2563eb;
 }
