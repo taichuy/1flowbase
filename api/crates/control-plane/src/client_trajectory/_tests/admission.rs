@@ -165,3 +165,37 @@ async fn late_binding_during_admitted_frame_drain_preserves_exact_bound_archive(
     assert_eq!(writer.inner.frames.lock().unwrap()[0].bytes, bytes);
     assert_eq!(writer.inner.cleanup_count.load(Ordering::Relaxed), 0);
 }
+
+#[tokio::test]
+async fn cumulative_diagnostics_keeps_admission_backpressure_and_durable_complete_wait() {
+    use super::super::diagnostics::Stage;
+    let writer = Arc::new(SlowFactWriter::default());
+    let recorder = ClientTrajectoryRecorder::with_writer_and_diagnostics(
+        writer.clone(), ClientTrajectoryTransport::Http, std::time::Duration::ZERO, true,
+    );
+    let metrics = recorder.owner.state.diagnostics.clone().unwrap();
+    recorder.bind_run(Uuid::now_v7(), None);
+    recorder.record(ClientTrajectoryFrameKind::Request, b"{}").await.unwrap();
+    writer.entered.notified().await;
+    let producer = recorder.clone();
+    let task = tokio::spawn(async move {
+        for byte in 0..64u8 {
+            producer.record(ClientTrajectoryFrameKind::ResponseJson, &[byte]).await.unwrap();
+        }
+        producer.complete().await
+    });
+    tokio::task::yield_now().await;
+    assert!(!task.is_finished(), "diagnostics must not bypass the original bounded admission");
+    writer.release.notify_one();
+    assert_eq!(task.await.unwrap().unwrap().persisted_through, 65);
+    let frames = writer.inner.frames.lock().unwrap();
+    assert_eq!(frames.len(), 65);
+    for (index, frame) in frames.iter().skip(1).enumerate() {
+        assert_eq!(frame.bytes, vec![index as u8]);
+        assert_eq!(frame.sequence, index as i64 + 2);
+    }
+    assert_eq!(metrics.stage_snapshot(Stage::ResponseJsonAdmission).count, 64);
+    assert_eq!(metrics.stage_snapshot(Stage::CompleteWait).count, 1);
+    assert_eq!(metrics.stage_snapshot(Stage::ArchiveCommit).count, writer.inner.archive_calls.load(Ordering::Relaxed));
+    assert_eq!(metrics.stage_snapshot(Stage::ArchiveCommit).failures, 0);
+}

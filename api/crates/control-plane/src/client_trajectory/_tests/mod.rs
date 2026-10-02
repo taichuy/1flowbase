@@ -2,6 +2,7 @@ use super::*;
 use base64::Engine;
 use serde_json::json;
 mod batching;
+mod diagnostics;
 #[derive(Default)]
 struct MemoryWriter {
     records: Mutex<Vec<AppendClientTrajectoryInput>>,
