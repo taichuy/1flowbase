@@ -12,7 +12,7 @@ def procs():
   raw=text('/proc/'+name+'/stat')
   if not raw:continue
   fields=raw[raw.rfind(')')+2:].split()
-  rows.append({'pid':int(name),'ppid':int(fields[1]),'start_ticks':int(fields[19]),'cpu_ticks':int(fields[11])+int(fields[12]),'rss_bytes':int(fields[21])*os.sysconf('SC_PAGE_SIZE')})
+  rows.append({'pid':int(name),'ppid':int(fields[1]),'start_ticks':int(fields[19]),'cpu_ticks':int(fields[11])+int(fields[12]),'cpu_user_ticks':int(fields[11]),'cpu_system_ticks':int(fields[12]),'rss_bytes':int(fields[21])*os.sysconf('SC_PAGE_SIZE')})
  return rows
 def descendants(rows,parent):
  found={parent}
@@ -21,9 +21,9 @@ def descendants(rows,parent):
   if new==found:return new
   found=new
 def snapshot(mark=None):
- rows=procs(); a=descendants(rows,api); d=descendants(rows,pg); selected=[]
+ rows=procs(); a=descendants(rows,api); d=descendants(rows,pg); helpers=descendants(rows,driver); selected=[]
  for p in rows:
-  pid=p['pid']; group='api' if pid==api else 'plugins' if pid in a else 'postgres' if pid in d else 'driver' if pid==driver else 'mock' if pid==mock else 'sampler' if pid==os.getpid() else None
+  pid=p['pid']; group='api' if pid==api else 'plugins' if pid in a else 'postgres' if pid in d else 'driver' if pid==driver else 'mock' if pid==mock else 'sampler' if pid==os.getpid() else 'observer_helpers' if pid in helpers else None
   if not group:continue
   p['comm']=(text('/proc/'+str(pid)+'/comm') or '').strip() or None
   try:p['exe_basename']=os.path.basename(os.readlink('/proc/'+str(pid)+'/exe'))

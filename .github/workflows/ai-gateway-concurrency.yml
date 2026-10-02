@@ -1,11 +1,11 @@
-name: Gateway Safe Head Correctness and Paired Resources
+name: Gateway Observer Calibration and Conditional CPU Attribution
 'on':
   workflow_dispatch: {}
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: gateway-resource-safe-${{ github.ref }}
+  group: gateway-observer-diagnostic-${{ github.ref }}
   cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -17,9 +17,9 @@ env:
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
 jobs:
-  paired-safe-head:
+  observer-diagnostic:
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:18.4
@@ -32,112 +32,124 @@ jobs:
         options: --health-cmd "pg_isready -U postgres -d 1flowbase" --health-interval 5s --health-timeout 5s --health-retries
           12
     steps:
-    - name: Checkout exact frozen candidate
+    - name: Checkout frozen diagnostic product baseline
       uses: actions/checkout@v5
       with:
-        ref: cac4d299495f25eccce69ac248e29653db5a8b5b
+        ref: ad8f5821878caf8717d787b718c26cbc3837e904
         persist-credentials: false
-        fetch-depth: 0
-    - name: Checkout isolated experiment controls
+        fetch-depth: 1
+    - name: Checkout exact isolated diagnostic controls
       uses: actions/checkout@v5
       with:
         ref: ${{ github.sha }}
         path: tmp/experiment-control
         sparse-checkout: scripts/node/ai-gateway-concurrency/cloud-monitor-probe
         persist-credentials: false
-    - name: Setup Node 24
+    - name: Setup same Node24
       uses: actions/setup-node@v5
       with:
         node-version: 24
-    - name: Setup identical Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: 1.98.1
-    - name: Restore existing dependency cache
-      uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-      with:
-        shared-key: ai-gateway-protocol-conformance
-        key: codex/gateway-cpu-ci-20261001
-        save-if: false
-        workspaces: api -> target
-    - name: Verify bounded synthetic controls
+    - name: Pure diagnostic harness gates
       run: 'set -euo pipefail
 
         controls=tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe
 
-        node --test "$controls/_tests/metrics.test.js" "$controls/_tests/observation.test.js" "$controls/resource-safe/_tests/packet.test.js"
-        "$controls/duplicate-lock/_tests/whole-counter.test.js" "$controls/lock-scope/_tests/scope-contract.test.js"
+        mkdir -p tmp/test-governance/gateway-observer-diagnostic/build
 
-        node "$controls/resource-safe/source-proof.js" --source-only
+        node --test "$controls/observer-diagnostic/_tests/contract.test.js" "$controls/_tests/metrics.test.js" "$controls/_tests/observation.test.js"
+        > tmp/test-governance/gateway-observer-diagnostic/build/harness-tests.log 2>&1
 
-        bash -n "$controls/resource-safe/ci-gates.sh"
+        node --check "$controls/observer-diagnostic/run.js"
+
+        node --check "$controls/observer-diagnostic/profile.js"
+
+        python3 - "$controls/sampler.py" <<''PYCODE''
+
+        import ast,pathlib,sys
+
+        ast.parse(pathlib.Path(sys.argv[1]).read_text())
+
+        PYCODE
 
         '
     - name: Configure owned CI PostgreSQL observation and backup tools
-      run: "set -euo pipefail\npg_container=\"$(docker ps --filter publish=5432 --format '{{.ID}}')\"\ntest -n \"$pg_container\"\
-        \ndocker exec \"$pg_container\" psql -U postgres -v ON_ERROR_STOP=1 -c \"ALTER SYSTEM SET shared_preload_libraries='pg_stat_statements'\"\
-        \ndocker restart \"$pg_container\"\nfor attempt in $(seq 1 30); do\n if docker exec \"$pg_container\" pg_isready -U\
-        \ postgres -d 1flowbase; then break; fi\n sleep 1\ndone\ntools_dir=\"$RUNNER_TEMP/postgresql-18-tools\"\nmkdir -p\
-        \ \"$tools_dir\"\nfor tool in pg_dump pg_restore; do\n sed \"s/__TOOL__/$tool/g\" > \"$tools_dir/$tool\" <<'SCRIPT'\n\
-        #!/bin/sh\nexec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ \"$@\"\nSCRIPT\n\
-        \ chmod +x \"$tools_dir/$tool\"\ndone\necho \"API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump\" >> \"$GITHUB_ENV\"\n\
-        echo \"API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore\" >> \"$GITHUB_ENV\"\n"
-    - name: Download exact unaffected PG/contracts receipts; failed classifier not reused
-      uses: actions/download-artifact@v8
-      with:
-        name: gateway-resource-safe-build-36989641502
-        run-id: 36989641502
-        github-token: ${{ github.token }}
-        path: tmp/prior-safe-gates
-    - name: Verify reused PG receipts and corrected classifier then fresh paired releases
-      run: bash tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/resource-safe/ci-gates.sh tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/resource-safe
-      env:
-        API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-        DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-        BOOTSTRAP_ROOT_ACCOUNT: root
-        BOOTSTRAP_ROOT_PASSWORD: change-me
-        WORKFLOW_SHA: ${{ github.sha }}
-      timeout-minutes: 125
-    - name: Download immutable provider packages only; API binaries are freshly built
-      uses: actions/download-artifact@v8
-      with:
-        name: gateway-duplicate-run-lock-build-36967545246
-        run-id: 36967545246
-        github-token: ${{ github.token }}
-        path: tmp/provider-artifact
-    - name: Verify locked provider hashes and isolate pair from PG gate counters
+      run: "set -euo pipefail\npg_container=\"$(docker ps --filter publish=5432 --format '{{.ID}}')\"\ntest -n \"\
+        $pg_container\"\ndocker exec \"$pg_container\" psql -U postgres -v ON_ERROR_STOP=1 -c \"ALTER SYSTEM SET\
+        \ shared_preload_libraries='pg_stat_statements'\"\ndocker restart \"$pg_container\"\nfor attempt in $(seq\
+        \ 1 30); do\n if docker exec \"$pg_container\" pg_isready -U postgres -d 1flowbase; then break; fi\n sleep\
+        \ 1\ndone\ntools_dir=\"$RUNNER_TEMP/postgresql-18-tools\"\nmkdir -p \"$tools_dir\"\nfor tool in pg_dump\
+        \ pg_restore; do\n sed \"s/__TOOL__/$tool/g\" > \"$tools_dir/$tool\" <<'SCRIPT'\n#!/bin/sh\nexec docker\
+        \ run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ \"$@\"\nSCRIPT\n chmod\
+        \ +x \"$tools_dir/$tool\"\ndone\necho \"API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump\" >> \"$GITHUB_ENV\"\
+        \necho \"API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore\" >> \"$GITHUB_ENV\"\n"
+    - name: Verify immutable artifact metadata before reuse
       run: 'set -euo pipefail
 
-        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/resource-safe/prepare-provider.js
+        mkdir -p tmp/test-governance/gateway-observer-diagnostic/build
+
+        gh api repos/taichuy/1flowbase/actions/artifacts/11221429445 > tmp/test-governance/gateway-observer-diagnostic/build/reused-artifact-metadata.json
+
+        node -e "const a=require(''./tmp/test-governance/gateway-observer-diagnostic/build/reused-artifact-metadata.json'');if(a.id!==11221429445||a.expired||a.workflow_run.id!==36992344470||a.digest!==''sha256:ac699d8a43379055c065e2c067218134d4f9e2341464f00dfdfb53a854720351'')throw
+        Error(''wrong immutable artifact'')"
+
+        '
+      env:
+        GH_TOKEN: ${{ github.token }}
+    - name: Download sealed baseline release and provider bytes; no product build
+      uses: actions/download-artifact@v8
+      with:
+        name: gateway-resource-safe-build-36992344470
+        run-id: 36992344470
+        github-token: ${{ github.token }}
+        path: tmp/diagnostic-reuse
+    - name: Independently verify source tree, baseline binary and all packages
+      run: 'set -euo pipefail
+
+        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/observer-diagnostic/prepare.js
 
         pg_container="$(docker ps --filter publish=5432 --format ''{{.ID}}'')"
 
-        docker exec "$pg_container" psql -U postgres -d 1flowbase -v ON_ERROR_STOP=1 -c ''CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
-        SELECT pg_stat_statements_reset();'' > tmp/test-governance/gateway-resource-safe/build/pre-series-stat-reset.txt
+        docker exec "$pg_container" psql -U postgres -d 1flowbase -v ON_ERROR_STOP=1 -c ''CREATE EXTENSION IF NOT
+        EXISTS pg_stat_statements; SELECT pg_stat_statements_reset();'' > tmp/test-governance/gateway-observer-diagnostic/build/pre-series-stat-reset.txt
+
+        uname -a > tmp/test-governance/gateway-observer-diagnostic/build/kernel.txt
+
+        lscpu > tmp/test-governance/gateway-observer-diagnostic/build/cpu.txt
+
+        cat /proc/meminfo > tmp/test-governance/gateway-observer-diagnostic/build/memory.txt
 
         '
-    - name: Run finite same-runner fixed-history C1 C8 ABBA only after correctness gates
-      timeout-minutes: 20
-      run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/resource-safe/run.js
-    - name: Upload all successful and failed paired raw evidence
+      env:
+        WORKFLOW_SHA: ${{ github.sha }}
+    - name: Stage1 SQL observer calibration; conditional Stage2 existing-perf only
+      timeout-minutes: 35
+      run: 'set -euo pipefail
+
+        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/observer-diagnostic/run.js
+        > tmp/test-governance/gateway-observer-diagnostic/build/diagnostic-run.log 2>&1
+
+        '
+      env:
+        WORKFLOW_SHA: ${{ github.sha }}
+    - name: Upload all diagnostic positive and negative raw evidence
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: gateway-resource-safe-raw-${{ github.run_id }}
-        path: 'tmp/test-governance/gateway-resource-safe/manifest.json
+        name: gateway-observer-diagnostic-raw-${{ github.run_id }}
+        path: 'tmp/test-governance/gateway-observer-diagnostic/manifest.json
 
-          tmp/test-governance/gateway-resource-safe/summary.json
+          tmp/test-governance/gateway-observer-diagnostic/summary.json
 
-          tmp/test-governance/gateway-resource-safe/C*/**'
+          tmp/test-governance/gateway-observer-diagnostic/SQL*/**
+
+          tmp/test-governance/gateway-observer-diagnostic/PROFILE*/**'
         retention-days: 14
         if-no-files-found: warn
-    - name: Upload complete positive and negative gate/build evidence
+    - name: Upload exact reused input and harness gate receipts
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: gateway-resource-safe-build-${{ github.run_id }}
-        path: 'tmp/test-governance/gateway-resource-safe/build/**
-
-          tmp/protocol-reuse/**'
+        name: gateway-observer-diagnostic-build-${{ github.run_id }}
+        path: tmp/test-governance/gateway-observer-diagnostic/build/**
         retention-days: 7
         if-no-files-found: warn

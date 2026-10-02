@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "status": "ready_for_CI_harness_implementation; no_dispatch_this_turn",
+  "purpose": "calibrate SQL export observer first, then conditional low-frequency on-CPU attribution; not product A/B",
+  "product_source": "ad8f5821878caf8717d787b718c26cbc3837e904",
+  "product_api_tree": "80cbdfaac9be25bcee62b05944cdb00d9b9beafe",
+  "baseline_binary_sha256": "228da30bf5b8d9fe996e321a35158b1128817cb9ae0adbc21ccc0eebf1aac84b",
+  "binary_reuse": "explicitly authorized identical diagnostic baseline artifact 11221429445; no codegen/profile changes",
+  "build_artifact": 11221429445,
+  "build_artifact_sha256": "ac699d8a43379055c065e2c067218134d4f9e2341464f00dfdfb53a854720351",
+  "toolchain": "Rust1.98.1",
+  "profile": "release",
+  "features": "default",
+  "allocator": "unchanged original default (jemalloc on linux-gnu per source)",
+  "provider_source": "997c705b3c564c93d2fc49b973e0b5bbdb759cdc",
+  "provider_packages_sha256": {
+    "openai": "8d5a338447566d8ac26a2572c2d536fad37838e766572df4dd23686965b57b3e",
+    "anthropic": "07af38ee7aff8ebd59894f5884a1c5cb7861248a87710e1437d13db429b79642",
+    "openai_compatible": "33c99266767d7d8cbe8b27c639065d5eeda854453dc8c9cc04c7ac8f64db0516"
+  },
+  "harness_base": "92a62c6f3a2eb4f946c610db06e6be85a803a20e",
+  "harness_scripts_tree": "686fb20995d34e2b27116012dd23d8c26a3c61cf",
+  "diagnostic_harness_sha": null,
+  "diagnostic_harness_sha_rule": "CI owner must commit isolated harness and return exact SHA/diff/hash receipt before dispatch; no mutable branch HEAD substitute",
+  "current_user_dev": "60308d4fe3b85b6317653d5c6bda834609f4ad3a",
+  "baseline_scope": "explicit prior common experimental baseline to isolate observer in reported PG share; not claimed current user dev or running binary",
+  "source_change_allowed": false,
+  "stage1": {
+    "order": [
+      "SQL_ON1",
+      "SQL_OFF1",
+      "SQL_OFF2",
+      "SQL_ON2"
+    ],
+    "profiler": false,
+    "windows": 4,
+    "measured_gateway_per_window": 8,
+    "warmup_gateway_per_window": 8,
+    "concurrency": 8
+  },
+  "stage2": {
+    "conditional": "stage1 correct and profiler capability/symbol coverage permitted; otherwise STOP",
+    "order": [
+      "PROFILE_OFF1",
+      "PROFILE_ON1",
+      "PROFILE_ON2",
+      "PROFILE_OFF2"
+    ],
+    "sql_observer": false,
+    "windows": 4,
+    "measured_gateway_per_window": 8,
+    "warmup_gateway_per_window": 8,
+    "concurrency": 8,
+    "profiler": "existing perf cpu-clock 49Hz owned-process on-CPU only; no fallback automatically approved",
+    "perf_command_mode": "cpu-clock 49Hz --call-graph fp; address-only callchain; no DWARF stack dump/mode fallback"
+  },
+  "max_gateway_budget": {
+    "stage1_measured": 32,
+    "stage1_warmup": 32,
+    "conditional_stage2_measured": 32,
+    "conditional_stage2_warmup": 32,
+    "total_max": 128
+  },
+  "real_model_requests": 0,
+  "kernel_security_changes": false
+}
