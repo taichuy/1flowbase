@@ -200,6 +200,27 @@ async fn cumulative_diagnostics_keeps_admission_backpressure_and_durable_complet
     assert_eq!(metrics.stage_snapshot(Stage::ArchiveCommit).failures, 0);
 }
 
+// Send the handshake only after the real inner future has been polled Pending.
+// A scheduler yield alone would not prove that the diagnostic span exists.
+async fn signal_first_pending<F: std::future::Future>(
+    future: F,
+    started: tokio::sync::oneshot::Sender<()>,
+) -> F::Output {
+    use std::future::Future;
+    tokio::pin!(future);
+    let mut started = Some(started);
+    std::future::poll_fn(move |context| {
+        let result = future.as_mut().poll(context);
+        if result.is_pending() {
+            if let Some(started) = started.take() {
+                let _ = started.send(());
+            }
+        }
+        result
+    })
+    .await
+}
+
 #[tokio::test]
 async fn cumulative_diagnostics_cancelling_pending_record_keeps_only_admitted_frames() {
     use super::super::diagnostics::Stage;
@@ -215,10 +236,15 @@ async fn cumulative_diagnostics_cancelling_pending_record_keeps_only_admitted_fr
         recorder.record(ClientTrajectoryFrameKind::ResponseSse, b"x").await.unwrap();
     }
     let producer = recorder.clone();
+    let (started, ready) = tokio::sync::oneshot::channel();
     let pending = tokio::spawn(async move {
-        producer.record(ClientTrajectoryFrameKind::ResponseSse, b"not admitted").await
+        signal_first_pending(
+            producer.record(ClientTrajectoryFrameKind::ResponseSse, b"not admitted"),
+            started,
+        )
+        .await
     });
-    tokio::task::yield_now().await;
+    ready.await.expect("record future was polled Pending");
     assert!(!pending.is_finished());
     pending.abort();
     assert!(pending.await.unwrap_err().is_cancelled());
@@ -242,8 +268,11 @@ async fn cumulative_diagnostics_cancelling_complete_does_not_cancel_durable_work
     recorder.record(ClientTrajectoryFrameKind::Request, b"{}").await.unwrap();
     writer.entered.notified().await;
     let owner = recorder.clone();
-    let pending = tokio::spawn(async move { owner.complete().await });
-    tokio::task::yield_now().await;
+    let (started, ready) = tokio::sync::oneshot::channel();
+    let pending = tokio::spawn(async move {
+        signal_first_pending(owner.complete(), started).await
+    });
+    ready.await.expect("complete future was polled Pending");
     assert!(!pending.is_finished());
     pending.abort();
     assert!(pending.await.unwrap_err().is_cancelled());
