@@ -33,3 +33,15 @@ fn runtime_persistence_contracts_keep_canonical_values_and_ports() {
     fn accepts_orchestration_runtime_repository(_: Option<&dyn OrchestrationRuntimeRepository>) {}
     accepts_orchestration_runtime_repository(None);
 }
+
+#[test]
+fn atomic_client_trajectory_port_accepts_existing_dto_and_remains_object_safe() {
+    // Compile the adapter-facing contract without a control-plane implementation dependency.
+    async fn append(
+        repository: &dyn OrchestrationRuntimeRepository,
+        inputs: &[crate::ports::AppendClientTrajectoryInput],
+    ) -> anyhow::Result<bool> {
+        repository.append_client_trajectory_batch(inputs).await
+    }
+    let _adapter_call = append;
+}

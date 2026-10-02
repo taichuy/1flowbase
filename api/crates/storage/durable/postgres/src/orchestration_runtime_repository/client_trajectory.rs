@@ -17,18 +17,42 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendClientTrajectoryInput,
     ) -> Result<()> {
-        if let ClientTrajectoryFact::Step { step } = &input.fact {
-            anyhow::ensure!(
-                step.flow_run_id == input.flow_run_id
-                    && step.node_run_id == input.node_run_id
-                    && step.request_id == input.request_id,
-                "client trajectory scope mismatch"
-            );
-        }
         if let ClientTrajectoryFact::Section { section, value, .. } = &input.fact {
             if section == "raw" {
                 // Legacy adapter callers use the same archive; no raw event is appended.
                 return self.append_legacy_client_raw(input, value).await;
+            }
+        }
+        self.append_client_trajectory_facts(std::slice::from_ref(input))
+            .await
+    }
+
+    pub(super) async fn append_client_trajectory_facts(
+        &self,
+        inputs: &[AppendClientTrajectoryInput],
+    ) -> Result<()> {
+        let Some(first) = inputs.first() else {
+            return Ok(());
+        };
+        let count = i64::try_from(inputs.len())?;
+        for input in inputs {
+            anyhow::ensure!(
+                input.flow_run_id == first.flow_run_id
+                    && input.node_run_id == first.node_run_id
+                    && input.request_id == first.request_id,
+                "client trajectory batch scope mismatch"
+            );
+            anyhow::ensure!(
+                !matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "raw"),
+                "client raw archive cannot enter a semantic batch"
+            );
+            if let ClientTrajectoryFact::Step { step } = &input.fact {
+                anyhow::ensure!(
+                    step.flow_run_id == input.flow_run_id
+                        && step.node_run_id == input.node_run_id
+                        && step.request_id == input.request_id,
+                    "client trajectory scope mismatch"
+                );
             }
         }
         let mut tx = self.pool().begin().await?;
@@ -36,119 +60,127 @@ impl PgControlPlaneStore {
         // observational append does not reopen a run or relax the execution append fence.
         let exists: Option<Uuid> =
             sqlx::query_scalar("select id from flow_runs where id=$1 for no key update")
-                .bind(input.flow_run_id)
+                .bind(first.flow_run_id)
                 .fetch_optional(&mut *tx)
                 .await?;
         anyhow::ensure!(exists.is_some(), "client trajectory flow missing");
-        if let Some(node) = input.node_run_id {
-            let valid: bool = sqlx::query_scalar(
-                "select exists(select 1 from node_runs where id=$1 and flow_run_id=$2)",
-            )
-            .bind(node)
-            .bind(input.flow_run_id)
-            .fetch_one(&mut *tx)
-            .await?;
-            anyhow::ensure!(valid, "client trajectory node scope mismatch");
-        }
-        if let ClientTrajectoryFact::NodeLink { node_run_id } = &input.fact {
-            let valid: bool = sqlx::query_scalar("select exists(select 1 from node_runs where id=$1 and flow_run_id=$2 and node_type='llm')")
+        let first_sequence =
+            reserve_runtime_event_sequences(&mut tx, first.flow_run_id, count).await?;
+        for (offset, input) in inputs.iter().enumerate() {
+            if let Some(node) = input.node_run_id {
+                let valid: bool = sqlx::query_scalar(
+                    "select exists(select 1 from node_runs where id=$1 and flow_run_id=$2)",
+                )
+                .bind(node)
+                .bind(input.flow_run_id)
+                .fetch_one(&mut *tx)
+                .await?;
+                anyhow::ensure!(valid, "client trajectory node scope mismatch");
+            }
+            if let ClientTrajectoryFact::NodeLink { node_run_id } = &input.fact {
+                let valid: bool = sqlx::query_scalar("select exists(select 1 from node_runs where id=$1 and flow_run_id=$2 and node_type='llm')")
                 .bind(node_run_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(valid, "client trajectory node scope mismatch");
-        }
-        let scope = sqlx::query(
+                anyhow::ensure!(valid, "client trajectory node scope mismatch");
+            }
+            let scope = sqlx::query(
             "select flow_run_id,node_run_id from client_trajectory_captures where request_id=$1",
         )
         .bind(input.request_id)
         .fetch_optional(&mut *tx)
         .await?;
-        if let Some(scope) = scope {
-            anyhow::ensure!(
-                scope.get::<Uuid, _>("flow_run_id") == input.flow_run_id
-                    && scope.get::<Option<Uuid>, _>("node_run_id") == input.node_run_id,
-                "client trajectory capture scope mismatch"
-            );
-        } else {
-            anyhow::ensure!(
-                matches!(input.fact, ClientTrajectoryFact::Integrity { .. }),
-                "client trajectory capture missing"
-            );
-        }
-        if let ClientTrajectoryFact::Step { step } = &input.fact {
-            let owner: Option<Uuid> =
-                sqlx::query_scalar("select request_id from client_trajectory_steps where id=$1")
-                    .bind(step.id)
-                    .fetch_optional(&mut *tx)
-                    .await?;
-            anyhow::ensure!(
-                owner.is_none_or(|owner| owner == input.request_id),
-                "client trajectory step scope mismatch"
-            );
-        }
-        if let ClientTrajectoryFact::Section {
-            step_id, section, ..
-        } = &input.fact
-        {
-            anyhow::ensure!(
-                [
-                    "overview",
-                    "parameters",
-                    "result",
-                    "schema",
-                    "timing",
-                    "usage"
-                ]
-                .contains(&section.as_str()),
-                "client trajectory section invalid"
-            );
-            // Raw callers have already entered their archive path above.
-            let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_steps where id=$1 and request_id=$2 and flow_run_id=$3)")
+            if let Some(scope) = scope {
+                anyhow::ensure!(
+                    scope.get::<Uuid, _>("flow_run_id") == input.flow_run_id
+                        && scope.get::<Option<Uuid>, _>("node_run_id") == input.node_run_id,
+                    "client trajectory capture scope mismatch"
+                );
+            } else {
+                anyhow::ensure!(
+                    matches!(input.fact, ClientTrajectoryFact::Integrity { .. }),
+                    "client trajectory capture missing"
+                );
+            }
+            if let ClientTrajectoryFact::Step { step } = &input.fact {
+                let owner: Option<Uuid> = sqlx::query_scalar(
+                    "select request_id from client_trajectory_steps where id=$1",
+                )
+                .bind(step.id)
+                .fetch_optional(&mut *tx)
+                .await?;
+                anyhow::ensure!(
+                    owner.is_none_or(|owner| owner == input.request_id),
+                    "client trajectory step scope mismatch"
+                );
+            }
+            if let ClientTrajectoryFact::Section {
+                step_id, section, ..
+            } = &input.fact
+            {
+                anyhow::ensure!(
+                    [
+                        "overview",
+                        "parameters",
+                        "result",
+                        "schema",
+                        "timing",
+                        "usage"
+                    ]
+                    .contains(&section.as_str()),
+                    "client trajectory section invalid"
+                );
+                // Raw callers have already entered their archive path above.
+                let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_steps where id=$1 and request_id=$2 and flow_run_id=$3)")
                 .bind(step_id).bind(input.request_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(valid, "client trajectory section scope mismatch");
-        }
-        // This private append owns tx and acquired this run's NO KEY UPDATE lock
-        // before scope validation above. No savepoint rollback releases it; keep
-        // sequence reservation under that first lock without a second SQL roundtrip.
-        let sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
-        match &input.fact {
-            ClientTrajectoryFact::Step { step } => {
-                semantic::write_step(&mut tx, input, step, sequence).await?;
+                anyhow::ensure!(valid, "client trajectory section scope mismatch");
             }
-            ClientTrajectoryFact::Section {
-                step_id,
-                section,
-                value,
-            } => {
-                semantic::write_section(&mut tx, input, *step_id, section, value, sequence, None)
+            let sequence = first_sequence + offset as i64;
+            match &input.fact {
+                ClientTrajectoryFact::Step { step } => {
+                    semantic::write_step(&mut tx, input, step, sequence).await?;
+                }
+                ClientTrajectoryFact::Section {
+                    step_id,
+                    section,
+                    value,
+                } => {
+                    semantic::write_section(
+                        &mut tx, input, *step_id, section, value, sequence, None,
+                    )
                     .await?;
-            }
-            // Integrity, node correlation and response identity are real events.
-            _ => {
-                let payload = serde_json::to_value(input)?;
-                sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) values($1,$2,$3,$4,'client_protocol_trajectory','runtime_item','host','host_fact',($5::jsonb->0),jsonb_strip_nulls(jsonb_build_object('payload',($5::jsonb->1))),'internal','durable')")
+                }
+                // Integrity, node correlation and response identity are real events.
+                _ => {
+                    let payload = serde_json::to_value(input)?;
+                    sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) values($1,$2,$3,$4,'client_protocol_trajectory','runtime_item','host','host_fact',($5::jsonb->0),jsonb_strip_nulls(jsonb_build_object('payload',($5::jsonb->1))),'internal','durable')")
                     .bind(Uuid::now_v7()).bind(input.flow_run_id).bind(input.node_run_id).bind(sequence)
                     .bind(lossless_json_parameter(&payload)).execute(&mut *tx).await?;
+                }
+            }
+            if offset == 0 {
+                // Bind and retain the archive-head mutex until this whole batch commits.
+                sqlx::query("update client_trajectory_archive_heads set flow_run_id=$2 where request_id=$1 and (flow_run_id is null or flow_run_id=$2)")
+                .bind(input.request_id).bind(input.flow_run_id).execute(&mut *tx).await?;
+            }
+            if matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "result")
+            {
+                sqlx::query("update application_run_log_tasks set projection_output=projection_output where id=(select coalesce(log_task_run_id,flow_run_id) from application_run_log_summaries where flow_run_id=$1) and projection_settled_at is not null")
+                .bind(input.flow_run_id).execute(&mut *tx).await?;
             }
         }
-        // Binding moves the pre-bound durable capture into the run deletion scope.
-        sqlx::query("update client_trajectory_archive_heads set flow_run_id=$2 where request_id=$1 and (flow_run_id is null or flow_run_id=$2)")
-            .bind(input.request_id).bind(input.flow_run_id).execute(&mut *tx).await?;
-        if matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "result")
-        {
-            sqlx::query("update application_run_log_tasks set projection_output=projection_output where id=(select coalesce(log_task_run_id,flow_run_id) from application_run_log_summaries where flow_run_id=$1) and projection_settled_at is not null")
-                .bind(input.flow_run_id).execute(&mut *tx).await?;
-        }
         tx.commit().await?;
-        if matches!(&input.fact, ClientTrajectoryFact::Integrity { status, .. } if status != "pending")
-        {
-            // Physical sealing begins after the observational commit; it never
-            // changes receipt, capture integrity, or the durable ACK boundary.
-            let store = self.clone();
-            let request_id = input.request_id;
-            tokio::spawn(async move {
-                if let Err(error) = store.seal_and_publish_client_archive(request_id).await {
-                    tracing::warn!(%request_id, %error, "client raw block sealing deferred to explicit maintenance");
-                }
-            });
+        for input in inputs {
+            if matches!(&input.fact, ClientTrajectoryFact::Integrity { status, .. } if status != "pending")
+            {
+                // Physical sealing begins after the observational commit; it never
+                // changes receipt, capture integrity, or the durable ACK boundary.
+                let store = self.clone();
+                let request_id = input.request_id;
+                tokio::spawn(async move {
+                    if let Err(error) = store.seal_and_publish_client_archive(request_id).await {
+                        tracing::warn!(%request_id, %error, "client raw block sealing deferred to explicit maintenance");
+                    }
+                });
+            }
         }
         Ok(())
     }

@@ -63,6 +63,9 @@ pub struct ClientTrajectoryRecorder {
 #[async_trait::async_trait]
 trait FactWriter: Send + Sync {
     async fn append(&self, input: &AppendClientTrajectoryInput) -> anyhow::Result<()>;
+    async fn append_batch(&self, _inputs: &[AppendClientTrajectoryInput]) -> anyhow::Result<bool> {
+        Ok(false)
+    }
     async fn archive(
         &self,
         input: &AppendClientTrajectoryArchiveInput,
@@ -79,6 +82,9 @@ struct RepositoryWriter(Arc<dyn OrchestrationRuntimeRepository>);
 impl FactWriter for RepositoryWriter {
     async fn append(&self, input: &AppendClientTrajectoryInput) -> anyhow::Result<()> {
         self.0.append_client_trajectory(input).await
+    }
+    async fn append_batch(&self, inputs: &[AppendClientTrajectoryInput]) -> anyhow::Result<bool> {
+        self.0.append_client_trajectory_batch(inputs).await
     }
     async fn archive(
         &self,
@@ -295,6 +301,32 @@ struct PersistenceSink<'a> {
 }
 #[async_trait::async_trait]
 impl classify::FactSink for PersistenceSink<'_> {
+    async fn push_many(&mut self, facts: Vec<ClientTrajectoryFact>) {
+        let inputs: Vec<_> = facts
+            .into_iter()
+            .map(|fact| AppendClientTrajectoryInput {
+                flow_run_id: self.scope.flow,
+                node_run_id: self.scope.node,
+                request_id: self.id,
+                observed_at: self.at.to_owned(),
+                fact,
+            })
+            .collect();
+        match self.repository.append_batch(&inputs).await {
+            Ok(true) => {}
+            Ok(false) => {
+                // Adapters without atomic batching retain individual ACK/failure accounting.
+                for input in inputs {
+                    self.push(input.fact).await;
+                }
+            }
+            Err(_) => {
+                *self.failed = self.failed.saturating_add(inputs.len() as u64);
+                tracing::warn!(request_id = %self.id, flow_run_id = %self.scope.flow,
+                    fact_count = inputs.len(), "client trajectory atomic batch persistence failed");
+            }
+        }
+    }
     async fn push(&mut self, fact: ClientTrajectoryFact) {
         persist(
             self.repository,

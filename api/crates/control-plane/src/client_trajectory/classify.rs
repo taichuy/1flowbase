@@ -10,6 +10,11 @@ use uuid::Uuid;
 #[async_trait::async_trait]
 pub(super) trait FactSink: Send {
     async fn push(&mut self, fact: Fact);
+    async fn push_many(&mut self, facts: Vec<Fact>) {
+        for fact in facts {
+            self.push(fact).await;
+        }
+    }
 }
 
 pub(super) struct Classifier {
@@ -483,27 +488,24 @@ impl Classifier {
             .chain(["timing".into(), "raw".into()])
             .collect();
         let id = step.id;
-        facts
-            .push(Fact::Step {
-                step: Box::new(step),
-            })
-            .await;
+        // The step already owns these sections; persist this natural unit atomically.
+        let mut batch = Vec::with_capacity(sections.len() + 2);
+        batch.push(Fact::Step {
+            step: Box::new(step),
+        });
         for (name, value) in sections {
-            facts
-                .push(Fact::Section {
-                    step_id: id,
-                    section: name.into(),
-                    value,
-                })
-                .await;
-        }
-        facts
-            .push(Fact::Section {
+            batch.push(Fact::Section {
                 step_id: id,
-                section: "timing".into(),
-                value: json!({"observed_at":at}),
-            })
-            .await;
+                section: name.into(),
+                value,
+            });
+        }
+        batch.push(Fact::Section {
+            step_id: id,
+            section: "timing".into(),
+            value: json!({"observed_at":at}),
+        });
+        facts.push_many(batch).await;
     }
 }
 pub(super) fn bounded_id(value: &str) -> Option<String> {

@@ -50,7 +50,16 @@ pub(super) async fn next_runtime_event_sequence(
     tx: &mut Transaction<'_, Postgres>,
     flow_run_id: Uuid,
 ) -> Result<i64> {
-    Ok(sqlx::query_scalar::<_, i64>(
+    reserve_runtime_event_sequences(tx, flow_run_id, 1).await
+}
+
+pub(super) async fn reserve_runtime_event_sequences(
+    tx: &mut Transaction<'_, Postgres>,
+    flow_run_id: Uuid,
+    count: i64,
+) -> Result<i64> {
+    anyhow::ensure!(count > 0, "runtime sequence reservation must be positive");
+    let last = sqlx::query_scalar::<_, i64>(
         // The durable high-water also includes direct client directory writes.
         // Runtime insert's statement trigger advances it for every row of batches,
         // including callers which reserve one first_sequence then add offsets.
@@ -62,13 +71,15 @@ pub(super) async fn next_runtime_event_sequence(
             coalesce((select sequence + reserved_sequence_count
                 from runtime_events where flow_run_id = $1
                 order by sequence desc limit 1), 0)
-        ) + 1
+        ) + $2
         where id = $1 returning runtime_event_sequence_high_water
         "#,
     )
     .bind(flow_run_id)
+    .bind(count)
     .fetch_one(&mut **tx)
-    .await?)
+    .await?;
+    Ok(last - count + 1)
 }
 
 #[cfg(test)]

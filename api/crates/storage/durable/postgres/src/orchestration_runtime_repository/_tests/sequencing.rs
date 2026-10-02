@@ -220,3 +220,37 @@ async fn concurrent_batches_and_direct_reservations_have_disjoint_monotonic_rang
     let final_event = store.append_runtime_event(&event(flow)).await.unwrap();
     assert_eq!(final_event.sequence, 113);
 }
+
+#[tokio::test]
+async fn atomic_range_reservation_repairs_reserved_tail_and_rolls_back_without_gaps() {
+    let (store, flow, node) = seed().await;
+    let root = store
+        .append_runtime_event(&model_call(flow, node, 4))
+        .await
+        .unwrap();
+    sqlx::query("update flow_runs set runtime_event_sequence_high_water=0 where id=$1")
+        .bind(flow)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let mut tx = store.pool().begin().await.unwrap();
+    lock_flow_run_event_sequence(&mut tx, flow).await.unwrap();
+    assert_eq!(
+        reserve_runtime_event_sequences(&mut tx, flow, 4)
+            .await
+            .unwrap(),
+        root.sequence + 5
+    );
+    tx.rollback().await.unwrap();
+    assert_eq!(high_water(&store, flow).await, 0);
+    let mut tx = store.pool().begin().await.unwrap();
+    lock_flow_run_event_sequence(&mut tx, flow).await.unwrap();
+    assert_eq!(
+        reserve_runtime_event_sequences(&mut tx, flow, 4)
+            .await
+            .unwrap(),
+        root.sequence + 5
+    );
+    tx.commit().await.unwrap();
+    assert_eq!(reserve(&store, flow).await, root.sequence + 9);
+}

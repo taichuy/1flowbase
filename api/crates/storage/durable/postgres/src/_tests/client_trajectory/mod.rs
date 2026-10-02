@@ -5,6 +5,7 @@ use storage_durable_postgres::PgControlPlaneStore;
 use uuid::Uuid;
 const AT: &str = "2026-09-22T00:00:00Z";
 mod archive_codec;
+mod atomic_step_batch;
 mod block_sealing;
 mod compact_directory;
 mod dense_directory;

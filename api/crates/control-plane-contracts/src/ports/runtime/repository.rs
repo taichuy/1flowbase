@@ -14,6 +14,15 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<()> {
         anyhow::bail!("append_client_trajectory not implemented")
     }
+    /// Optional atomic append of ordered facts sharing one capture scope.
+    /// `true` means all facts committed; `false` means unsupported and no writes.
+    /// Errors must leave every fact and sequence reservation uncommitted.
+    async fn append_client_trajectory_batch(
+        &self,
+        _inputs: &[AppendClientTrajectoryInput],
+    ) -> anyhow::Result<bool> {
+        Ok(false)
+    }
     /// Internal writer: unbound captures are durable but unavailable to public readers.
     async fn append_client_trajectory_archive(
         &self,
