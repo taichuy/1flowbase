@@ -199,3 +199,59 @@ async fn cumulative_diagnostics_keeps_admission_backpressure_and_durable_complet
     assert_eq!(metrics.stage_snapshot(Stage::ArchiveCommit).count, writer.inner.archive_calls.load(Ordering::Relaxed));
     assert_eq!(metrics.stage_snapshot(Stage::ArchiveCommit).failures, 0);
 }
+
+#[tokio::test]
+async fn cumulative_diagnostics_cancelling_pending_record_keeps_only_admitted_frames() {
+    use super::super::diagnostics::Stage;
+    let writer = Arc::new(SlowFactWriter::default());
+    let recorder = ClientTrajectoryRecorder::with_writer_and_diagnostics(
+        writer.clone(), ClientTrajectoryTransport::Http, std::time::Duration::ZERO, true,
+    );
+    let metrics = recorder.owner.state.diagnostics.clone().unwrap();
+    recorder.bind_run(Uuid::now_v7(), None);
+    recorder.record(ClientTrajectoryFrameKind::Request, b"{}").await.unwrap();
+    writer.entered.notified().await;
+    for _ in 0..QUEUE_RECORDS {
+        recorder.record(ClientTrajectoryFrameKind::ResponseSse, b"x").await.unwrap();
+    }
+    let producer = recorder.clone();
+    let pending = tokio::spawn(async move {
+        producer.record(ClientTrajectoryFrameKind::ResponseSse, b"not admitted").await
+    });
+    tokio::task::yield_now().await;
+    assert!(!pending.is_finished());
+    pending.abort();
+    assert!(pending.await.unwrap_err().is_cancelled());
+    assert_eq!(metrics.stage_snapshot(Stage::ResponseSseAdmission).cancelled, 1);
+    writer.release.notify_one();
+    assert_eq!(recorder.complete().await.unwrap().persisted_through, QUEUE_RECORDS as i64 + 1);
+    let frames = writer.inner.frames.lock().unwrap();
+    assert_eq!(frames.len(), QUEUE_RECORDS + 1);
+    assert!(frames.iter().all(|frame| frame.bytes != b"not admitted"));
+}
+
+#[tokio::test]
+async fn cumulative_diagnostics_cancelling_complete_does_not_cancel_durable_worker() {
+    use super::super::diagnostics::Stage;
+    let writer = Arc::new(SlowFactWriter::default());
+    let recorder = ClientTrajectoryRecorder::with_writer_and_diagnostics(
+        writer.clone(), ClientTrajectoryTransport::Http, std::time::Duration::ZERO, true,
+    );
+    let metrics = recorder.owner.state.diagnostics.clone().unwrap();
+    recorder.bind_run(Uuid::now_v7(), None);
+    recorder.record(ClientTrajectoryFrameKind::Request, b"{}").await.unwrap();
+    writer.entered.notified().await;
+    let owner = recorder.clone();
+    let pending = tokio::spawn(async move { owner.complete().await });
+    tokio::task::yield_now().await;
+    assert!(!pending.is_finished());
+    pending.abort();
+    assert!(pending.await.unwrap_err().is_cancelled());
+    assert_eq!(metrics.stage_snapshot(Stage::CompleteWait).cancelled, 1);
+    assert!(!recorder.owner.state.stopped.load(Ordering::Acquire));
+    writer.release.notify_one();
+    assert_eq!(recorder.complete().await.unwrap().persisted_through, 1);
+    assert_eq!(writer.inner.frames.lock().unwrap()[0].bytes, b"{}");
+    assert_eq!(metrics.stage_snapshot(Stage::CompleteWait).count, 2);
+    assert_eq!(metrics.stage_snapshot(Stage::WorkerTotal).cancelled, 0);
+}
