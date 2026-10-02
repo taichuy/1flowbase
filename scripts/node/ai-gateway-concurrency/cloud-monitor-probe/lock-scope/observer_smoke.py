@@ -50,6 +50,7 @@ def main():
   if created:
    try:sql('DROP DATABASE '+db+' WITH (FORCE)');result['cleanup']='owned DB dropped'
    except Exception as e:result['cleanup_error']=str(e);result['status']='fail'
+  (out/'samples.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in rows))
   result['snapshots']=len(rows);(out/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result),flush=True)
  return 0 if result['status']=='pass' else 1
 if __name__=='__main__':raise SystemExit(main())
