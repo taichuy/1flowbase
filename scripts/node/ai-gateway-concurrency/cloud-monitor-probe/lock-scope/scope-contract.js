@@ -1,0 +1,9 @@
+'use strict';
+const assert=require('node:assert/strict'),crypto=require('node:crypto');
+function validateTargets(targets,kind){assert.equal(targets.length,kind==='same_app'?1:8);assert.equal(new Set(targets.map(t=>t.application_id)).size,targets.length);assert.equal(new Set(targets.map(t=>t.provider_instance_id)).size,1);assert.equal(new Set(targets.map(t=>t.model)).size,1);assert.equal(new Set(targets.map(t=>t.upstream_model)).size,1);}
+function semanticDraft(d){const graph=d?.graph,nodes=graph?.nodes;assert.ok(Array.isArray(nodes));const counts={},ids=new Map(nodes.map(n=>[n.id,n.type+':'+(counts[n.type]=(counts[n.type]||0)+1)]));const normalize=value=>{if(typeof value==='string')return ids.get(value)||value;if(Array.isArray(value))return value.map(normalize);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,normalize(v)]));return value;};const edges=(graph.edges||[]).map(({id,...e})=>normalize(e));return JSON.stringify({nodes:nodes.map(n=>({type:n.type,config:normalize(n.config)})).sort((a,b)=>a.type.localeCompare(b.type)),edges,settings:normalize(d.settings||graph.settings||{})});}
+
+function distinctRuns(rows,expected=8){assert.ok([1,8].includes(expected));assert.equal(rows.length,expected);assert.ok(rows.every(r=>r.ok&&r.response_id));assert.equal(new Set(rows.map(r=>r.response_id)).size,expected);}
+function sqlGuard(before,after,delta){return{valid:before?.stats_reset===after?.stats_reset&&Number.isFinite(before?.dealloc)&&after?.dealloc===before.dealloc&&!delta.missing_after_keys.length&&!delta.rows.some(r=>r.counter_reset_suspected),before,after,missing_after_keys:delta.missing_after_keys};}
+function anonymousKey(salt,value){return crypto.createHmac('sha256',salt).update(JSON.stringify(value)).digest('hex');}
+module.exports={validateTargets,semanticDraft,distinctRuns,sqlGuard,anonymousKey};

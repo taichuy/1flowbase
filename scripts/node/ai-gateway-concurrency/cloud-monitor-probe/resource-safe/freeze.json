@@ -1,0 +1,39 @@
+{
+  "user_dev": "fbd1bf12c70028f86b9ad997816f6159eaa5215c",
+  "common_baseline": "ad8f5821878caf8717d787b718c26cbc3837e904",
+  "candidate": "cac4d299495f25eccce69ac248e29653db5a8b5b",
+  "changed_paths": [
+    "api/crates/storage/durable/postgres/src/_tests/client_trajectory/head_binding.rs",
+    "api/crates/storage/durable/postgres/src/_tests/client_trajectory/mod.rs",
+    "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/client_trajectory.rs"
+  ],
+  "baseline_web_tree": "4def963024ff4b71376e34c7abd1737497b0e33a",
+  "candidate_web_tree": "4def963024ff4b71376e34c7abd1737497b0e33a",
+  "candidate_diff_sha256": "503c419eafd8815a64f024a213c299151ca7e5a21c3c268d649f24bf8dbc7233",
+  "product_patch_sha256": "7a7e7d91bccca479c806a05156eb87feb16a21c3ce02db2a8ce8e3f9252e5491",
+  "provider_sha": "997c705b3c564c93d2fc49b973e0b5bbdb759cdc",
+  "profile": "release",
+  "toolchain": "1.98.1",
+  "levels": [
+    1,
+    8
+  ],
+  "order": [
+    "A1",
+    "B1",
+    "B2",
+    "A2"
+  ],
+  "old_binary_reuse": false,
+  "provider_reuse_run": 36967545246,
+  "provider_reuse_artifact": "gateway-duplicate-run-lock-build-36967545246",
+  "unchanged_paths": [
+    "api/crates/control-plane",
+    "api/crates/control-plane-contracts",
+    "web",
+    ".github",
+    "scripts",
+    "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/sequencing.rs"
+  ],
+  "production_path": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/client_trajectory.rs"
+}
