@@ -1,5 +1,3 @@
-import ArrowDownOutlined from '@ant-design/icons/es/icons/ArrowDownOutlined';
-import ArrowUpOutlined from '@ant-design/icons/es/icons/ArrowUpOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
 import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
@@ -42,7 +40,7 @@ export function TopbarNavigationItemLabel({
   siblings: FrontstagePageTreeNode[];
   children: ReactNode;
 }) {
-  const { modal } = App.useApp();
+  const { modal, message } = App.useApp();
   const [form] = Form.useForm<PageTreeFormValues>();
   const [dialog, setDialog] = useState<PageTreeFormDialog | null>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
@@ -75,50 +73,63 @@ export function TopbarNavigationItemLabel({
     setDialog(null);
   };
 
-  const move = (direction: -1 | 1) => {
+  const dragDataType = `application/x-frontstage-topbar-${workspaceId}`;
+  const move = (nodeId: string, direction: -1 | 1) => {
     const rank =
       direction < 0
         ? index === 0
           ? '000000'
           : String(index * 1000 + 500).padStart(6, '0')
         : String((index + 1) * 1000 + 500).padStart(6, '0');
-    void mutations.moveNode(node.id, { parentId: null, rank });
+    void mutations.moveNode(nodeId, { parentId: null, rank }).catch(() => {
+      void message.error('栏目排序失败，请重试');
+    });
   };
 
   return (
-    <span className="app-shell-dynamic-nav-item">
+    <span
+      className="app-shell-dynamic-nav-item"
+      onDragOver={(event) => {
+        if (
+          mutations.isPending ||
+          !event.dataTransfer.types.includes(dragDataType)
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'move';
+      }}
+      onDrop={(event) => {
+        const nodeId = event.dataTransfer.getData(dragDataType);
+        if (
+          mutations.isPending ||
+          !siblings.some((candidate) => candidate.id === nodeId)
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (nodeId === node.id) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        move(nodeId, event.clientX < rect.left + rect.width / 2 ? -1 : 1);
+      }}
+    >
       {children}
       <span className="app-shell-dynamic-nav-item__actions">
-        <Dropdown
-          menu={{
-            items: [
-              {
-                key: 'up',
-                label: '上移',
-                icon: <ArrowUpOutlined />,
-                disabled: index <= 0,
-                onClick: () => move(-1)
-              },
-              {
-                key: 'down',
-                label: '下移',
-                icon: <ArrowDownOutlined />,
-                disabled: index >= siblings.length - 1,
-                onClick: () => move(1)
-              }
-            ]
+        <FrontstageNodeActionButton
+          aria-label={`拖拽排序${node.title ?? '顶部栏目'}`}
+          icon={<DragOutlined />}
+          disabled={mutations.isPending}
+          draggable={!mutations.isPending}
+          onDragStart={(event) => {
+            event.stopPropagation();
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData(dragDataType, node.id);
           }}
-          trigger={['click']}
-        >
-          <FrontstageNodeActionButton
-            aria-label={`排序${node.title ?? '顶部栏目'}`}
-            icon={<DragOutlined />}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-          />
-        </Dropdown>
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        />
         <Dropdown
           menu={{
             items: [
