@@ -341,10 +341,10 @@ async fn chat_resume_sse_usage_is_turn_local_and_missing_boundary_is_omitted() {
             let envelope = RuntimeEventEnvelope::new(
                 run.id,
                 1,
-                crate::ports::RuntimeEventPayload {
+                control_plane::ports::RuntimeEventPayload {
                     event_type: event_type.into(),
-                    source: crate::ports::RuntimeEventSource::Runtime,
-                    durability: crate::ports::RuntimeEventDurability::DurableRequired,
+                    source: control_plane::ports::RuntimeEventSource::Runtime,
+                    durability: control_plane::ports::RuntimeEventDurability::DurableRequired,
                     persist_required: true,
                     trace_visible: true,
                     payload,
