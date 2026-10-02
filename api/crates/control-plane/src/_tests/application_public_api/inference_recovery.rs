@@ -1029,6 +1029,12 @@ async fn failed_recovery_successor_allows_new_full_and_incremental_responses() {
         panic!("active successor must retain its single execution owner");
     };
     assert_eq!(initial_run.id, successor.id);
+    let duplicate = f
+        .service
+        .resume_callback(incremental.clone())
+        .await
+        .unwrap();
+    assert_eq!(duplicate.run.id, successor.id);
     f.repository
         .set_flow_run_status_for_test(successor.id, domain::FlowRunStatus::Failed);
     for command in [&f.command, &incremental] {

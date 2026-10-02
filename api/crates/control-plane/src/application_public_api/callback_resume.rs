@@ -894,8 +894,11 @@ where
             let recovery_callback =
                 inference_recovery::load_owned_evidence(&self.repository, actor, callback_task)
                     .await?;
-            inference_recovery::validate_context(&flow_run, &recovery_callback, command)?;
+            inference_recovery::validate_reissue_context(&flow_run, &recovery_callback, command)?;
         }
+        // This is the callback duplicate result, not a new Responses admission.
+        // If an attached successor fails meanwhile, retain its terminal result;
+        // the next create is classified by prepare_callback_resume_for_actor.
         let mut run = self
             .native_result_for_flow_run(successor.as_ref().unwrap_or(&flow_run))
             .await?;
