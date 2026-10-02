@@ -40,6 +40,50 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
 }
 
 #[test]
+fn chat_usage_details_unary_preserves_totals_zero_and_unknown() {
+    for (cache_read, cache_hit, reasoning, expected_details) in [
+        (Some(4096), Some(3000), Some(80), Some(4096)),
+        (Some(0), Some(4096), Some(0), Some(0)),
+        (None, Some(4096), None, Some(4096)),
+        (None, None, None, None),
+    ] {
+        let mut run = blocking_run(NativeRunStatus::Succeeded);
+        run.usage = Some(NativeUsage {
+            prompt_tokens: Some(4107),
+            completion_tokens: Some(120),
+            total_tokens: Some(4227),
+            cache_read_tokens: cache_read,
+            input_cache_hit_tokens: cache_hit,
+            reasoning_tokens: reasoning,
+            ..NativeUsage::default()
+        });
+        let response = serde_json::to_value(
+            to_openai_response(run, "deepseek-flash".into(), "test".into()).unwrap(),
+        )
+        .unwrap();
+        let usage = &response["usage"];
+        assert_eq!(usage["prompt_tokens"], 4107);
+        assert_eq!(usage["completion_tokens"], 120);
+        assert_eq!(usage["total_tokens"], 4227);
+        match expected_details {
+            Some(cached) => assert_eq!(usage["prompt_tokens_details"]["cached_tokens"], cached),
+            None => assert!(usage.get("prompt_tokens_details").is_none()),
+        }
+        match reasoning {
+            Some(tokens) => assert_eq!(
+                usage["completion_tokens_details"]["reasoning_tokens"],
+                tokens
+            ),
+            None => assert!(usage.get("completion_tokens_details").is_none()),
+        }
+    }
+    assert_eq!(
+        serde_json::to_value(openai_usage(None)).unwrap(),
+        json!({"prompt_tokens":0,"completion_tokens":0,"total_tokens":0})
+    );
+}
+
+#[test]
 fn responses_usage_details_unary_preserves_totals_and_default() {
     let mut run = blocking_run(NativeRunStatus::Succeeded);
     run.usage = Some(NativeUsage {

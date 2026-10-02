@@ -235,19 +235,9 @@ pub(in crate::routes::application_public_api::compat_sse) fn openai_finish_chunk
 }
 
 fn openai_chat_usage_payload(usage: Option<&NativeUsage>) -> Value {
-    let Some(usage) = usage else {
-        return json!({
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0
-        });
-    };
-
-    json!({
-        "prompt_tokens": usage.prompt_tokens.unwrap_or_default(),
-        "completion_tokens": usage.completion_tokens.unwrap_or_default(),
-        "total_tokens": usage.total_tokens.unwrap_or_default()
-    })
+    json!(crate::routes::application_public_api::openai::openai_usage(
+        usage
+    ))
 }
 
 fn required_action_not_supported_sse() -> Vec<Result<Event, Infallible>> {

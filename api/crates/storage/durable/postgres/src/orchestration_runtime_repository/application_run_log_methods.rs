@@ -182,19 +182,7 @@ impl PgControlPlaneStore {
                         where node_run_records.flow_run_id = $1
                     )
                 ),
-                coalesce(
-                    (
-                        select sum(runtime_usage_ledger.input_tokens)::bigint
-                        from runtime_usage_ledger
-                        where runtime_usage_ledger.flow_run_id = $1
-                    ),
-                    (
-                        select sum((node_run_records.metrics_payload #>> '{usage,input_tokens}')::bigint)::bigint
-                        from node_run_records
-                        where node_run_records.flow_run_id = $1
-                          and node_run_records.metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
-                    )
-                ),
+                application_run_log_input_tokens($1),
                 coalesce(
                     (
                         select sum(runtime_usage_ledger.output_tokens)::bigint
@@ -379,18 +367,18 @@ impl PgControlPlaneStore {
             update application_run_log_summaries
             set input_cache_hit_rate = case
                     when input_cache_hit_tokens is not null
-                     and coalesce(input_tokens, 0) + input_cache_hit_tokens > 0
+                     and input_tokens > 0
                     then input_cache_hit_tokens::double precision
-                       / (coalesce(input_tokens, 0) + input_cache_hit_tokens)::double precision
+                       / input_tokens::double precision
                     else null
                 end,
                 log_updated_at = now()
             where flow_run_id = $1
               and input_cache_hit_rate is distinct from case
                     when input_cache_hit_tokens is not null
-                     and coalesce(input_tokens, 0) + input_cache_hit_tokens > 0
+                     and input_tokens > 0
                     then input_cache_hit_tokens::double precision
-                       / (coalesce(input_tokens, 0) + input_cache_hit_tokens)::double precision
+                       / input_tokens::double precision
                     else null
                 end
             "#,

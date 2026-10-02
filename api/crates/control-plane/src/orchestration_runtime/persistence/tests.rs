@@ -729,8 +729,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
             "cache_read_tokens": 9,
             "cache_write_tokens": 5000,
             "cache_write_by_ttl_seconds": {"300": 3000, "3600": 2000},
-            "output_tokens": 0,
-            "total_tokens": 12
+            "output_tokens": 8,
+            "total_tokens": 20
         }
     });
 
@@ -763,8 +763,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.plugin_id.as_deref(), Some("gemini@0.1.20"));
     assert_eq!(task.status, "empty_response");
     assert_eq!(task.input_tokens, Some(12));
-    assert_eq!(task.output_tokens, Some(0));
-    assert_eq!(task.total_tokens, Some(12));
+    assert_eq!(task.output_tokens, Some(8));
+    assert_eq!(task.total_tokens, Some(20));
     assert_eq!(task.input_cache_hit_tokens, Some(9));
     assert_eq!(task.input_cache_hit_rate, Some(0.75));
     assert_eq!(task.pricing_provider_code.as_deref(), Some("zero"));
@@ -776,6 +776,43 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.total_duration_ms, Some(7426));
     assert_eq!(task.provider_timing_receipt, None);
     serde_json::to_value(task).unwrap();
+}
+
+#[test]
+fn provider_request_cache_rate_handles_explicit_misses_zero_and_unknown() {
+    for (usage, expected) in [
+        (
+            json!({"input_tokens":13,"input_cache_miss_tokens":13,"cache_read_tokens":250,"cache_write_tokens":37,"output_tokens":100}),
+            Some(0.8333),
+        ),
+        (
+            json!({"input_tokens":4107,"input_cache_miss_tokens":11,"input_cache_hit_tokens":4096,"output_tokens":100}),
+            Some(0.9973),
+        ),
+        (
+            json!({"input_tokens":100,"input_cache_hit_tokens":0}),
+            Some(0.0),
+        ),
+        (json!({"input_tokens":0,"input_cache_hit_tokens":0}), None),
+        (json!({"input_tokens":100}), None),
+        (json!({"input_cache_hit_tokens":100}), None),
+    ] {
+        let attempt = json!({"usage":usage});
+        let task = super::model_attempts::provider_request_log_task_from_attempt(
+            Uuid::nil(),
+            Uuid::nil(),
+            Uuid::nil(),
+            Uuid::nil(),
+            Uuid::nil(),
+            None,
+            None,
+            "cache fixture",
+            OffsetDateTime::UNIX_EPOCH,
+            OffsetDateTime::UNIX_EPOCH,
+            &attempt,
+        );
+        assert_eq!(task.input_cache_hit_rate, expected);
+    }
 }
 
 #[test]

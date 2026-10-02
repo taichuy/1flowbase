@@ -70,8 +70,9 @@ use model_list::{
     is_codex_model_list_request, to_codex_model_list_response, to_openai_model_list_response,
 };
 pub use types::{
-    OpenAiChatCompletionChoice, OpenAiChatCompletionResponse, OpenAiChatMessage, OpenAiErrorBody,
-    OpenAiErrorObject, OpenAiModelListQuery, OpenAiModelListResponse, OpenAiModelObject,
+    OpenAiChatCompletionChoice, OpenAiChatCompletionResponse, OpenAiChatMessage,
+    OpenAiCompletionTokensDetails, OpenAiErrorBody, OpenAiErrorObject, OpenAiModelListQuery,
+    OpenAiModelListResponse, OpenAiModelObject, OpenAiPromptTokensDetails,
     OpenAiResponsesIncompleteDetails, OpenAiResponsesInputTokensDetails, OpenAiResponsesObject,
     OpenAiResponsesOutputTokensDetails, OpenAiResponsesUsage, OpenAiRouteError, OpenAiToolCall,
     OpenAiToolCallFunction, OpenAiUsage,
@@ -1567,7 +1568,7 @@ fn to_openai_response(
             },
             finish_reason,
         }],
-        usage: openai_usage(run.usage),
+        usage: openai_usage(run.usage.as_ref()),
     })
 }
 
@@ -1845,8 +1846,8 @@ fn callback_task_id_from_required_action(run: &NativeRunResult) -> Option<Uuid> 
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
-fn openai_usage(
-    usage: Option<control_plane::application_public_api::native::NativeUsage>,
+pub(super) fn openai_usage(
+    usage: Option<&control_plane::application_public_api::native::NativeUsage>,
 ) -> OpenAiUsage {
     let Some(usage) = usage else {
         return OpenAiUsage::default();
@@ -1855,6 +1856,13 @@ fn openai_usage(
         prompt_tokens: usage.prompt_tokens.unwrap_or_default(),
         completion_tokens: usage.completion_tokens.unwrap_or_default(),
         total_tokens: usage.total_tokens.unwrap_or_default(),
+        prompt_tokens_details: usage
+            .cache_read_tokens
+            .or(usage.input_cache_hit_tokens)
+            .map(|cached_tokens| OpenAiPromptTokensDetails { cached_tokens }),
+        completion_tokens_details: usage
+            .reasoning_tokens
+            .map(|reasoning_tokens| OpenAiCompletionTokensDetails { reasoning_tokens }),
     }
 }
 

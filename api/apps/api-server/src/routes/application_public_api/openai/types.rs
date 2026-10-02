@@ -135,6 +135,20 @@ pub struct OpenAiUsage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<OpenAiCompletionTokensDetails>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenAiPromptTokensDetails {
+    pub cached_tokens: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenAiCompletionTokensDetails {
+    pub reasoning_tokens: u64,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

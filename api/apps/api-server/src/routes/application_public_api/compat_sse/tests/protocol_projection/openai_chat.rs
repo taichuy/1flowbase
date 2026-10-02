@@ -262,3 +262,54 @@ async fn chat_sse_preserves_full_upstream_error_object() {
         assert_eq!(frames[0]["error"], upstream);
     }
 }
+
+#[tokio::test]
+async fn chat_usage_details_stream_preserves_cache_and_reasoning() {
+    for cached in [Some(4096), Some(0), None] {
+        let mut run = native_run();
+        run.status = NativeRunStatus::Succeeded;
+        run.usage = Some(NativeUsage {
+            prompt_tokens: Some(4107),
+            completion_tokens: Some(120),
+            total_tokens: Some(4227),
+            cache_read_tokens: cached,
+            reasoning_tokens: Some(80),
+            ..NativeUsage::default()
+        });
+        let mut mapper = OpenAiChatStreamMapper::new("deepseek-flash".into(), "test".into());
+        let events = mapper.runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                1,
+                debug_stream_events::flow_finished(run.id, json!({"answer":"OK"})),
+            ),
+        );
+        let response = test_projected_events_response(events);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        let terminal: Value = body
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .filter_map(|data| serde_json::from_str::<Value>(data).ok())
+            .find(|event| event.get("usage").is_some())
+            .unwrap();
+        assert_eq!(terminal["usage"]["prompt_tokens"], 4107);
+        assert_eq!(terminal["usage"]["completion_tokens"], 120);
+        assert_eq!(terminal["usage"]["total_tokens"], 4227);
+        assert_eq!(
+            terminal["usage"]["completion_tokens_details"]["reasoning_tokens"],
+            80
+        );
+        match cached {
+            Some(tokens) => assert_eq!(
+                terminal["usage"]["prompt_tokens_details"]["cached_tokens"],
+                tokens
+            ),
+            None => assert!(terminal["usage"].get("prompt_tokens_details").is_none()),
+        }
+        assert_eq!(decode_openai_chat_sse(&body).done_count, 1);
+    }
+}

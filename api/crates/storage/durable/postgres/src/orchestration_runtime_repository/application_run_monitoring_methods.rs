@@ -453,7 +453,7 @@ impl PgControlPlaneStore {
                 coalesce(sum(coalesce(output_tokens, 0)), 0)::bigint as output_tokens,
                 coalesce(sum(coalesce(input_cache_hit_tokens, 0)), 0)::bigint as input_cache_hit_tokens,
                 sum(input_cache_hit_tokens)::double precision
-                    / nullif(sum(coalesce(input_tokens, 0) + coalesce(input_cache_hit_tokens, 0)), 0)::double precision
+                    / nullif(sum(input_tokens), 0)::double precision
                     as input_cache_hit_rate
             from monitoring_logs
             group by bucket_start, bucket_end

@@ -7,6 +7,7 @@ mod run_conversation_message_items;
 mod run_conversation_native_projection;
 mod run_detail_summary;
 
+mod cache_rates;
 mod call_kind;
 mod local_summary_successor;
 mod rework;
