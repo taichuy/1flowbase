@@ -101,7 +101,7 @@ include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");
 mod canonical_runtime_json;
-use canonical_runtime_json::PreparedCanonicalRuntimeJson;
+use canonical_runtime_json::{write_canonical_runtime_json, PreparedCanonicalRuntimeJson};
 
 include!("storage_foundation_methods.rs");
 include!("legacy_shadow_methods.rs");

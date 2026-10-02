@@ -36,7 +36,7 @@ impl<'a> PreparedCanonicalRuntimeJson<'a> {
     }
 }
 
-fn write_canonical_runtime_json<W: std::io::Write>(
+pub(super) fn write_canonical_runtime_json<W: std::io::Write>(
     value: &serde_json::Value,
     output: &mut W,
 ) -> serde_json::Result<()> {
