@@ -100,6 +100,9 @@ include!("application_run_logs/monitoring_usage.rs");
 include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");
+mod canonical_runtime_json;
+use canonical_runtime_json::PreparedCanonicalRuntimeJson;
+
 include!("storage_foundation_methods.rs");
 include!("legacy_shadow_methods.rs");
 include!("waiting_state_methods.rs");

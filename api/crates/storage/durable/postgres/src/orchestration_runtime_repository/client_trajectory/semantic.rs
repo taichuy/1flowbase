@@ -240,8 +240,9 @@ pub(super) async fn write_section(
     historical_id: Option<Uuid>,
 ) -> Result<Uuid> {
     let id = historical_id.unwrap_or_else(Uuid::now_v7);
-    let (value_hash, value_byte_size) = value_identity(value)?;
-    let value_digest = digest_bytes(&value_hash)?;
+    let prepared = PreparedCanonicalRuntimeJson::new(value)?;
+    let value_byte_size = prepared.byte_size();
+    let value_digest = digest_bytes(prepared.hash())?;
     let mut content_id = None;
     let mut content_path = Vec::<String>::new();
     let body_kind = if section == "timing" && *value == json!({"observed_at":input.observed_at}) {
@@ -261,8 +262,13 @@ pub(super) async fn write_section(
             .fetch_one(&mut **tx)
             .await?;
             let (id, _, _, created) =
-                put_canonical_runtime_content_with_creation(tx, scope_id, application_id, value)
-                    .await?;
+                put_prepared_canonical_runtime_content_with_creation(
+                    tx,
+                    scope_id,
+                    application_id,
+                    &prepared,
+                )
+                .await?;
             if created {
                 sqlx::query(
                     "insert into runtime_observation_body_ownership(content_id) values($1)",

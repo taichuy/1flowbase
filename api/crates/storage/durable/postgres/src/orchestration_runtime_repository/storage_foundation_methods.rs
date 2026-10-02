@@ -1,67 +1,6 @@
-use sha2::{Digest, Sha256};
-
-fn write_canonical_runtime_json<W: std::io::Write>(
-    value: &serde_json::Value,
-    output: &mut W,
-) -> serde_json::Result<()> {
-    let write = |out: &mut W, bytes: &[u8]| out.write_all(bytes).map_err(serde_json::Error::io);
-    match value {
-        Value::Object(object) => {
-            write(output, b"{")?;
-            let mut keys = object.keys().collect::<Vec<_>>();
-            keys.sort_unstable();
-            for (index, key) in keys.into_iter().enumerate() {
-                if index > 0 {
-                    write(output, b",")?;
-                }
-                serde_json::to_writer(&mut *output, key)?;
-                write(output, b":")?;
-                write_canonical_runtime_json(&object[key], output)?;
-            }
-            write(output, b"}")?;
-        }
-        Value::Array(items) => {
-            write(output, b"[")?;
-            for (index, item) in items.iter().enumerate() {
-                if index > 0 {
-                    write(output, b",")?;
-                }
-                write_canonical_runtime_json(item, output)?;
-            }
-            write(output, b"]")?;
-        }
-        scalar => serde_json::to_writer(output, scalar)?,
-    }
-    Ok(())
-}
-
 fn canonical_runtime_json_identity(value: &Value) -> Result<(String, i64)> {
-    struct HashWriter {
-        hash: Sha256,
-        length: i64,
-    }
-    impl std::io::Write for HashWriter {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.length = self
-                .length
-                .checked_add(i64::try_from(bytes.len()).map_err(std::io::Error::other)?)
-                .ok_or_else(|| std::io::Error::other("canonical JSON length overflow"))?;
-            self.hash.update(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let mut output = HashWriter {
-        hash: Sha256::new(),
-        length: 0,
-    };
-    write_canonical_runtime_json(value, &mut output)?;
-    Ok((
-        format!("sha256:{:x}", output.hash.finalize()),
-        output.length,
-    ))
+    let prepared = PreparedCanonicalRuntimeJson::new(value)?;
+    Ok((prepared.hash().to_owned(), prepared.byte_size()))
 }
 
 async fn put_canonical_runtime_content_in_transaction(
@@ -81,7 +20,22 @@ async fn put_canonical_runtime_content_with_creation(
     application_id: Uuid,
     content: &Value,
 ) -> Result<(Uuid, String, i64, bool)> {
-    let (content_hash, byte_size) = canonical_runtime_json_identity(content)?;
+    let prepared = PreparedCanonicalRuntimeJson::new(content)?;
+    put_prepared_canonical_runtime_content_with_creation(tx, scope_id, application_id, &prepared)
+        .await
+}
+
+async fn put_prepared_canonical_runtime_content_with_creation(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    scope_id: Uuid,
+    application_id: Uuid,
+    prepared: &PreparedCanonicalRuntimeJson<'_>,
+) -> Result<(Uuid, String, i64, bool)> {
+    // Both the write and the collision check use the Value bound at preparation.
+    // This interface cannot accept a second Value beside its precomputed identity.
+    let content = prepared.value();
+    let content_hash = prepared.hash();
+    let byte_size = prepared.byte_size();
     sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(format!("canonical-runtime:{application_id}:{content_hash}"))
         .execute(&mut **tx)
@@ -99,7 +53,7 @@ async fn put_canonical_runtime_content_with_creation(
     )
     .bind(Uuid::now_v7())
     .bind(scope_id)
-    .bind(&content_hash)
+    .bind(content_hash)
     .bind(lossless_json_parameter(&(content)))
     .bind(byte_size)
     .bind(application_id)
@@ -118,7 +72,7 @@ async fn put_canonical_runtime_content_with_creation(
             )
             .bind(scope_id)
             .bind(application_id)
-            .bind(&content_hash)
+            .bind(content_hash)
             .fetch_one(&mut **tx)
             .await?
         }
@@ -128,7 +82,7 @@ async fn put_canonical_runtime_content_with_creation(
             "canonical runtime content hash collision for application {application_id}"
         ));
     }
-    Ok((content_id, content_hash, byte_size, created))
+    Ok((content_id, content_hash.to_owned(), byte_size, created))
 }
 
 fn recovery_state_for_flow_status(
