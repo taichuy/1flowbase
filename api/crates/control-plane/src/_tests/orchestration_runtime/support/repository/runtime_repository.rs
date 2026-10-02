@@ -14,6 +14,24 @@ use async_trait::async_trait;
 
 #[async_trait]
 impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
+    async fn get_flow_run_node_usages(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<control_plane_contracts::application_public_runtime::PublishedRunNodeUsage>>
+    {
+        let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        Ok(inner
+            .node_runs_by_id
+            .values()
+            .filter(|node| node.flow_run_id == flow_run_id)
+            .map(|node| {
+                control_plane_contracts::application_public_runtime::PublishedRunNodeUsage {
+                    metrics_usage: node.metrics_payload.get("usage").cloned(),
+                    output_usage: node.output_payload.get("usage").cloned(),
+                }
+            })
+            .collect())
+    }
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,

@@ -59,6 +59,7 @@ use crate::{
     },
 };
 
+pub(crate) mod chat_usage;
 mod compact;
 mod model_list;
 mod session_context;
@@ -244,6 +245,7 @@ async fn dispatch_chat_completion(
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
                 if response_mode.as_deref() == Some("streaming") =>
             {
+                let usage_baseline = load_chat_usage_baseline(&state, callback_task_id).await?;
                 let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
                     plan.initial_run.id,
                     callback_task_id,
@@ -259,12 +261,17 @@ async fn dispatch_chat_completion(
                         },
                     },
                     Some(recorder.clone()),
-                    compat_sse::openai_chat_resume_interface_projection(model, completion_id),
+                    compat_sse::openai_chat_resume_interface_projection(
+                        model,
+                        completion_id,
+                        usage_baseline,
+                    ),
                 )
                 .await
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
+                let usage_baseline = load_chat_usage_baseline(&state, callback_task_id).await?;
                 let run = compatibility_interface::invoke_blocking_with_principal(
                     state.clone(),
                     resume_binding_id,
@@ -282,7 +289,13 @@ async fn dispatch_chat_completion(
                     run.id,
                     callback_task_id,
                 );
-                return Ok(Json(to_openai_response(run, model, completion_id)?).into_response());
+                return Ok(Json(chat_usage::to_chat_response_for_round(
+                    run,
+                    model,
+                    completion_id,
+                    &usage_baseline,
+                )?)
+                .into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
                 // The callback delivery is complete; re-admit its full history as a new turn.
@@ -404,6 +417,27 @@ async fn dispatch_chat_completion(
 
     let completion_id = compat_sse::openai_chat_completion_id_from_run_id(run.id);
     Ok(Json(to_openai_response(run, model, completion_id)?).into_response())
+}
+
+async fn load_chat_usage_baseline(
+    state: &ApiState,
+    callback_task_id: Uuid,
+) -> Result<chat_usage::ChatUsageBaseline, OpenAiRouteError> {
+    // Admission already verified the callback's application/API actor ownership.
+    let callback = state
+        .store
+        .get_published_callback_task(callback_task_id)
+        .await
+        .map_err(|error| {
+            native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "chat_usage_boundary_failed",
+                error.to_string(),
+            )
+        })?;
+    Ok(callback
+        .map(|task| chat_usage::ChatUsageBaseline::from_callback_payload(&task.request_payload))
+        .unwrap_or(chat_usage::ChatUsageBaseline::Unavailable))
 }
 
 /// Blocking execution already persisted provider observations. Read their request-scoped
@@ -1661,7 +1695,7 @@ fn to_openai_response(
             },
             finish_reason,
         }],
-        usage: openai_usage(run.usage.as_ref()),
+        usage: Some(openai_usage(run.usage.as_ref())),
     })
 }
 

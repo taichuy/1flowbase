@@ -11,6 +11,7 @@ pub(crate) struct OpenAiChatStreamMapper {
     model: String,
     chat_completion_id: String,
     state: OpenAiChatStreamState,
+    usage_baseline: crate::routes::application_public_api::openai::chat_usage::ChatUsageBaseline,
 }
 
 impl OpenAiChatStreamMapper {
@@ -22,7 +23,28 @@ impl OpenAiChatStreamMapper {
             model,
             chat_completion_id,
             state: OpenAiChatStreamState::Streaming,
+            usage_baseline: Default::default(),
         }
+    }
+
+    pub(in crate::routes::application_public_api::compat_sse) fn with_usage_baseline(
+        mut self,
+        baseline: crate::routes::application_public_api::openai::chat_usage::ChatUsageBaseline,
+    ) -> Self {
+        self.usage_baseline = baseline;
+        self
+    }
+
+    fn finish_payload(&self, run: &NativeRunResult, reason: &'static str) -> Value {
+        let mut payload =
+            openai_finish_chunk_payload(run, &self.model, &self.chat_completion_id, reason);
+        match self.usage_baseline.project(run.usage.as_ref()) {
+            Some(usage) => payload["usage"] = json!(usage),
+            None => {
+                payload.as_object_mut().unwrap().remove("usage");
+            }
+        }
+        payload
     }
 
     pub(in crate::routes::application_public_api::compat_sse) fn runtime_event_to_sse(
@@ -100,12 +122,7 @@ impl OpenAiChatStreamMapper {
                 ) {
                     vec![
                         json_sse(payload),
-                        json_sse(openai_finish_chunk_payload(
-                            initial_run,
-                            &self.model,
-                            &self.chat_completion_id,
-                            "tool_calls",
-                        )),
+                        json_sse(self.finish_payload(initial_run, "tool_calls")),
                         done_sse(),
                     ]
                 } else {
@@ -127,12 +144,7 @@ impl OpenAiChatStreamMapper {
     ) -> Vec<Result<Event, Infallible>> {
         self.state = OpenAiChatStreamState::Terminal;
         vec![
-            json_sse(openai_finish_chunk_payload(
-                initial_run,
-                &self.model,
-                &self.chat_completion_id,
-                finish_reason,
-            )),
+            json_sse(self.finish_payload(initial_run, finish_reason)),
             done_sse(),
         ]
     }

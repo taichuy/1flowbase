@@ -130,6 +130,18 @@ async fn node_details_keep_identity_sections_and_callback_output_lossless() {
         .list_application_run_trace_node_run_details(run, vec![node.id])
         .await
         .is_err());
+    // Usage reads stay narrow even with a corrupt unrequested context body,
+    // and remain available to debug callback persistence.
+    sqlx::query("update flow_runs set run_mode='debug_flow_run' where id=$1")
+        .bind(run)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let usages = store.get_flow_run_node_usages(run).await.unwrap();
+    assert_eq!(usages.len(), 1);
+    assert_eq!(usages[0].metrics_usage, stream.node_usages[0].metrics_usage);
+    assert_eq!(usages[0].output_usage, stream.node_usages[0].output_usage);
+
     let queued: bool = sqlx::query_scalar(
         "select exists(select 1 from application_run_trace_refresh_queue where flow_run_id=$1)",
     )

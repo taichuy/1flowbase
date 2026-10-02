@@ -112,6 +112,12 @@ include!("side_effect_receipt_methods.rs");
 
 #[async_trait]
 impl OrchestrationRuntimeRepository for PgControlPlaneStore {
+    async fn get_flow_run_node_usages(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<PublishedRunNodeUsage>> {
+        self.read_flow_run_node_usages(flow_run_id).await
+    }
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,
@@ -1824,26 +1830,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         let Some(row) = row else {
             return Ok(None);
         };
-        let node_usage_rows = sqlx::query(
-            r#"
-            select
-                metrics_payload -> 'usage' as metrics_usage,
-                output_payload -> 'usage' as output_usage
-            from node_run_records
-            where flow_run_id = $1
-            order by started_at asc, id asc
-            "#,
-        )
-        .bind(flow_run_id)
-        .fetch_all(self.pool())
-        .await?;
-        let node_usages = node_usage_rows
-            .into_iter()
-            .map(|row| PublishedRunNodeUsage {
-                metrics_usage: row.get("metrics_usage"),
-                output_usage: row.get("output_usage"),
-            })
-            .collect();
+        let node_usages = self.read_flow_run_node_usages(flow_run_id).await?;
         let latest_pending_callback = sqlx::query(
             r#"
             select

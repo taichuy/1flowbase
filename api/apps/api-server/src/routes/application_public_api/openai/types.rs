@@ -98,7 +98,8 @@ pub struct OpenAiChatCompletionResponse {
     pub created: i64,
     pub model: String,
     pub choices: Vec<OpenAiChatCompletionChoice>,
-    pub usage: OpenAiUsage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<OpenAiUsage>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

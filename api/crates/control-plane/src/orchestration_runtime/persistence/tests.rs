@@ -908,6 +908,8 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
     for index in 0..3 {
         let payload =
             json!({"tool_calls":[{"id":format!("call-{index}"),"name":"read","arguments":{}}]});
+        let mut node_trace = trace(&node.node_id, payload.clone(), None);
+        node_trace.metrics_payload = json!({"usage":{"input_tokens":(index+1)*11,"output_tokens":(index+1)*3,"input_cache_hit_tokens":index*2}});
         let outcome = FlowDebugExecutionOutcome {
             stop_reason: ExecutionStopReason::WaitingCallback(PendingCallbackTask {
                 node_id: node.node_id.clone(),
@@ -922,7 +924,7 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
                 active_node_ids: vec![node.node_id.clone()],
             }),
             operation_terminal: None,
-            node_traces: vec![trace(&node.node_id, payload, None)],
+            node_traces: vec![node_trace],
         };
         let prepared = [(node.node_id.clone(), node.clone())].into_iter().collect();
         run = super::persist_flow_debug_outcome(
@@ -964,6 +966,18 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
     assert_eq!(detail.node_runs.len(), 1);
     assert_eq!(detail.callback_tasks.len(), 3);
     assert_eq!(detail.checkpoints.len(), 3);
+    for task in &detail.callback_tasks {
+        let call = task.request_payload["tool_calls"][0]["id"]
+            .as_str()
+            .unwrap();
+        let index: u64 = call.strip_prefix("call-").unwrap().parse().unwrap();
+        let baseline = &task.request_payload["native_usage_baseline"];
+        assert_eq!(baseline["prompt_tokens"], (index + 1) * 11);
+        assert_eq!(baseline["completion_tokens"], (index + 1) * 3);
+        assert_eq!(baseline["total_tokens"], (index + 1) * 14);
+        assert_eq!(baseline["input_cache_hit_tokens"], index * 2);
+    }
+
     assert!(detail
         .callback_tasks
         .iter()

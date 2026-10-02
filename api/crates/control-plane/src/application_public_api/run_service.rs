@@ -45,6 +45,7 @@ pub use control_plane_contracts::application_public_runtime::{
 };
 use conversation_history::application_public_conversation_messages_to_native_history;
 pub use conversation_history::assistant_conversation_native_history_to_values;
+pub(crate) use native_results::native_usage_for_output_and_nodes;
 pub use native_results::{
     native_result_from_flow_run, native_result_from_run_detail, native_result_from_run_stream_state,
 };

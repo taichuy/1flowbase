@@ -1109,3 +1109,80 @@ async fn unary_native_error_preserves_unknown_upstream_code_and_details() {
     let payload: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(payload, serde_json::to_value(error).unwrap());
 }
+
+#[test]
+fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks() {
+    use super::chat_usage::{to_chat_response_for_round, ChatUsageBaseline};
+    let baseline = json!({"native_usage_baseline":{"prompt_tokens":7995,"completion_tokens":132,"total_tokens":8127,"input_cache_hit_tokens":512,"cache_read_tokens":512,"reasoning_tokens":100}});
+    let cumulative = NativeUsage {
+        prompt_tokens: Some(16212),
+        completion_tokens: Some(157),
+        total_tokens: Some(16369),
+        input_cache_hit_tokens: Some(8448),
+        cache_read_tokens: Some(8448),
+        reasoning_tokens: Some(110),
+        ..NativeUsage::default()
+    };
+    // Fresh admission, attachment and replay all read the same persisted task boundary,
+    // even if the current Native snapshot already contains resumed usage.
+    for _ in 0..3 {
+        let mut run = blocking_run(NativeRunStatus::Succeeded);
+        run.usage = Some(cumulative.clone());
+        let response = to_chat_response_for_round(
+            run.clone(),
+            "deepseek-flash".into(),
+            "turn".into(),
+            &ChatUsageBaseline::from_callback_payload(&baseline),
+        )
+        .unwrap();
+        let wire = serde_json::to_value(response).unwrap();
+        assert_eq!(wire["usage"]["prompt_tokens"], 8217);
+        assert_eq!(wire["usage"]["completion_tokens"], 25);
+        assert_eq!(wire["usage"]["total_tokens"], 8242);
+        assert_eq!(
+            wire["usage"]["prompt_tokens_details"]["cached_tokens"],
+            7936
+        );
+        assert_eq!(
+            wire["usage"]["completion_tokens_details"]["reasoning_tokens"],
+            10
+        );
+        assert_eq!(run.usage.unwrap().prompt_tokens, Some(16212));
+    }
+    for payload in [
+        json!({}),
+        json!({"native_usage_baseline":"invalid"}),
+        json!({"native_usage_baseline":{}}),
+        json!({"native_usage_baseline":{"unknown":1}}),
+    ] {
+        let mut run = blocking_run(NativeRunStatus::Succeeded);
+        run.usage = Some(cumulative.clone());
+        let response = to_chat_response_for_round(
+            run,
+            "deepseek-flash".into(),
+            "old".into(),
+            &ChatUsageBaseline::from_callback_payload(&payload),
+        )
+        .unwrap();
+        assert!(serde_json::to_value(response)
+            .unwrap()
+            .get("usage")
+            .is_none());
+    }
+    let known_empty =
+        ChatUsageBaseline::from_callback_payload(&json!({"native_usage_baseline":null}));
+    assert_eq!(
+        known_empty
+            .project(Some(&cumulative))
+            .unwrap()
+            .prompt_tokens,
+        16212
+    );
+    let regressed = NativeUsage {
+        prompt_tokens: Some(1),
+        ..cumulative
+    };
+    assert!(ChatUsageBaseline::from_callback_payload(&baseline)
+        .project(Some(&regressed))
+        .is_none());
+}
