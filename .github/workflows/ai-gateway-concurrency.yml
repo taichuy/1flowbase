@@ -1,11 +1,11 @@
-name: Gateway Same-Binary Terminal Timeline A/A
+name: Gateway Capture Admission Cumulative Timing OFF-ON
 'on':
   workflow_dispatch: {}
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: gateway-terminal-aa-${{ github.ref }}
+  group: gateway-admission-diag-${{ github.ref }}
   cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -17,9 +17,9 @@ env:
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
 jobs:
-  terminal-aa:
+  admission-diag:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 110
     services:
       postgres:
         image: postgres:18.4
@@ -32,10 +32,10 @@ jobs:
           --health-cmd "pg_isready -U postgres -d 1flowbase"
           --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - name: Checkout exact candidate product source
+      - name: Checkout exact baseline-semantic diagnostic source
         uses: actions/checkout@v5
         with:
-          ref: 60308d4fe3b85b6317653d5c6bda834609f4ad3a
+          ref: 5e3afcefd5cf6c3e09b345496b5956e30426cc40
           persist-credentials: false
           fetch-depth: 0
       - name: Checkout immutable isolated controls
@@ -55,12 +55,23 @@ jobs:
         run: |
           set -euo pipefail
           controls=tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe
-          out=tmp/test-governance/gateway-terminal-aa/build
+          out=tmp/test-governance/gateway-admission-diag/build
           mkdir -p "$out"
-          node --test "$controls/terminal-aa/_tests/"*.test.js "$controls/_tests/"*.test.js "$controls/duplicate-lock/_tests/"*.test.js "$controls/lock-scope/_tests/"*.test.js > "$out/pure-node-tests.log" 2>&1
+          node --test "$controls/admission-diag/_tests/"*.test.js "$controls/_tests/"*.test.js "$controls/duplicate-lock/_tests/"*.test.js "$controls/lock-scope/_tests/"*.test.js > "$out/pure-node-tests.log" 2>&1
           python3 "$controls/_tests/sampler.test.py" > "$out/pure-sampler-tests.log" 2>&1
-          node --check "$controls/terminal-aa/run.js"
-          node --check "$controls/terminal-aa/prepare-reuse.js"
+          node --check "$controls/admission-diag/run.js"
+          node --check "$controls/admission-diag/prepare-packages.js"
+      - name: Setup exact Rust toolchain on Actions only
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+      - name: Restore existing compiler dependency cache, do not create cache policy
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ai-gateway-protocol-conformance
+          key: codex/gateway-cpu-ci-20261001
+          save-if: false
+          workspaces: api -> target
       - name: Configure only owned ephemeral PostgreSQL SQL statistics and backup clients
         run: |
           set -euo pipefail
@@ -83,49 +94,57 @@ jobs:
           done
           echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
           echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-      - name: Verify immutable previously compiled binary artifact metadata
+      - name: Verify immutable official package artifact metadata
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          out=tmp/test-governance/gateway-terminal-aa/build
-          gh api repos/taichuy/1flowbase/actions/artifacts/11242053254 > "$out/reuse-artifact-metadata.json"
-          node -e "const a=require('./$out/reuse-artifact-metadata.json');if(a.id!==11242053254||a.expired||a.workflow_run.id!==37036697535||a.digest!=='sha256:9bb7a475d85f4c5f4af3660e3bb47a6149dc4edc4a5984cacb911ceda1169489')throw Error('immutable compiled artifact mismatch')"
-      - name: Download previous compiled baseline and packages, do not build Rust
+          out=tmp/test-governance/gateway-admission-diag/build
+          gh api repos/taichuy/1flowbase/actions/artifacts/11242053254 > "$out/package-artifact-metadata.json"
+          node -e "const a=require('./$out/package-artifact-metadata.json');if(a.id!==11242053254||a.expired||a.workflow_run.id!==37036697535||a.workflow_run.head_sha!=='e6f04ad83441a0c5b9baa0f03b9eae235b8c9058'||a.digest!=='sha256:9bb7a475d85f4c5f4af3660e3bb47a6149dc4edc4a5984cacb911ceda1169489')throw Error('immutable package archive mismatch')"
+      - name: Download official package archive; previous API binaries never reused
         uses: actions/download-artifact@v8
         with:
           name: gateway-identity-reuse-build-37036697535
           run-id: 37036697535
           github-token: ${{ github.token }}
-          path: tmp/terminal-aa-reuse
-      - name: Exact binary source API tree package provenance and baseline byte verification
+          path: tmp/admission-package-reuse
+      - name: Verify package bytes only, gate OFF and ON, compile one fresh release binary
+        timeout-minutes: 90
         env:
+          API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+          DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+          BOOTSTRAP_ROOT_ACCOUNT: root
+          BOOTSTRAP_ROOT_PASSWORD: change-me
           WORKFLOW_SHA: ${{ github.sha }}
-        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/terminal-aa/prepare-reuse.js
-      - name: Same60308 same binary C8 AA1 AA2 client terminal and existing timing facts
+        run: |
+          set -euo pipefail
+          controls=tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/admission-diag
+          node "$controls/prepare-packages.js"
+          bash "$controls/ci-gates.sh" "$controls"
+      - name: Same diagnostic binary C8 OFF1 ON1 ON2 OFF2, ordinary counters only
         timeout-minutes: 12
         env:
           WORKFLOW_SHA: ${{ github.sha }}
-        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/terminal-aa/run.js
+        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/admission-diag/run.js
       - name: Upload every successful or failed synthetic result
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: gateway-terminal-aa-raw-${{ github.run_id }}
+          name: gateway-admission-diag-raw-${{ github.run_id }}
           path: |
-            tmp/test-governance/gateway-terminal-aa/manifest.json
-            tmp/test-governance/gateway-terminal-aa/summary.json
-            tmp/test-governance/gateway-terminal-aa/AA*/**
+            tmp/test-governance/gateway-admission-diag/manifest.json
+            tmp/test-governance/gateway-admission-diag/summary.json
+            tmp/test-governance/gateway-admission-diag/O*/**
           retention-days: 14
           if-no-files-found: warn
-      - name: Upload gate and reused binary provenance without duplicate binary archive
+      - name: Upload source gates and one fresh binary reuse receipt
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: gateway-terminal-aa-proof-${{ github.run_id }}
+          name: gateway-admission-diag-build-${{ github.run_id }}
           path: |
-            tmp/test-governance/gateway-terminal-aa/build/*.json
-            tmp/test-governance/gateway-terminal-aa/build/*.txt
-            tmp/test-governance/gateway-terminal-aa/build/*.log
+            tmp/test-governance/gateway-admission-diag/build/**
+            tmp/protocol-reuse/**
           retention-days: 7
           if-no-files-found: warn

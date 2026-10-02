@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "purpose": "single diagnostic binary OFF/ON ABBA; cumulative capture admission/archive/classification elapsed time and observer self-cost, no optimization claim",
+  "protected_baseline": "60308d4fe3b85b6317653d5c6bda834609f4ad3a",
+  "protected_baseline_api_tree": "95fba71501566f77f45a3c9da7f54ebeb6f41154",
+  "product_source": "5e3afcefd5cf6c3e09b345496b5956e30426cc40",
+  "product_api_tree": "e571d1545ffec8ac957aa2abecc55c029901d36e",
+  "provider_source": "997c705b3c564c93d2fc49b973e0b5bbdb759cdc",
+  "provider_packages_sha256": {
+    "openai": "8d5a338447566d8ac26a2572c2d536fad37838e766572df4dd23686965b57b3e",
+    "anthropic": "07af38ee7aff8ebd59894f5884a1c5cb7861248a87710e1437d13db429b79642",
+    "openai_compatible": "33c99266767d7d8cbe8b27c639065d5eeda854453dc8c9cc04c7ac8f64db0516"
+  },
+  "package_artifact_id": 11242053254,
+  "package_artifact_run": 37036697535,
+  "package_artifact_name": "gateway-identity-reuse-build-37036697535",
+  "package_artifact_sha256": "9bb7a475d85f4c5f4af3660e3bb47a6149dc4edc4a5984cacb911ceda1169489",
+  "package_artifact_controls_sha": "e6f04ad83441a0c5b9baa0f03b9eae235b8c9058",
+  "rust_toolchain": "1.98.1",
+  "profile": "release",
+  "features": "default",
+  "allocator": "unchanged",
+  "codegen": "unchanged; no RUSTFLAGS override",
+  "binary_strategy": "one fresh Actions release API build from exact diagnostic product; same file/hash for OFF1/ON1/ON2/OFF2; previous baseline/candidate API binaries forbidden",
+  "security": {
+    "sudo": false,
+    "capabilities": false,
+    "perf": false,
+    "maps": false,
+    "PG_permissions_changed": false,
+    "timing_detail_capture": 0,
+    "ordinary_sampler": "unchanged; denied fields null"
+  },
+  "sampling": {
+    "interval_ms": 500,
+    "root_identity": "owned root PID/start ticks pinned before snapshots",
+    "CPU_average": "100%=one core; seconds/request plus exact window/peak interval",
+    "incomplete_identity": "null and separately labelled captured lower bound; no missing-to-zero conversion",
+    "PG_PSS_IO": "ordinary permission denial=>null, no alternate identity/tool",
+    "whole_fixture_denominator": null
+  },
+  "protocol_fixture": {
+    "text_bytes": 524288,
+    "history_items": 128,
+    "history_boundary": "synthetic fixture only; not all requests or any product cap",
+    "response_deltas": 256,
+    "gap_ms": 10,
+    "api_pool_max": 5,
+    "concurrency": 8,
+    "wire_capture": false,
+    "provider_detail_capture": 0,
+    "live_lock_watch": false,
+    "real_model_requests": 0
+  },
+  "order": [
+    "OFF1",
+    "ON1",
+    "ON2",
+    "OFF2"
+  ],
+  "requests": {
+    "fixtures": 4,
+    "per_fixture_gateway_warm": 8,
+    "per_fixture_gateway_measured": 8,
+    "per_fixture_direct_before": 8,
+    "per_fixture_direct_after": 8,
+    "per_fixture_native_warm_status": 8,
+    "per_fixture_native_measured_status": 8,
+    "total_gateway_measured": 32,
+    "per_mode_gateway_measured": 16,
+    "total_gateway_warm": 32,
+    "total_direct_mock": 64,
+    "total_native_status_reads": 64,
+    "total_stream_and_native_http": 192,
+    "extra_readonly_timing_queries": 4,
+    "implicit_model_retry": 0,
+    "implicit_native_status_retry": 0,
+    "scope_excludes": "owned fixture bootstrap/setup/cleanup HTTP; all synthetic"
+  },
+  "diagnostics": {
+    "env": "FLOWBASE_CLIENT_TRAJECTORY_DIAGNOSTICS",
+    "OFF": "0",
+    "ON": "1",
+    "selection": "boot environment latched once at first capture; new API process per fixture",
+    "stages": [
+      "request_admission",
+      "response_sse_admission",
+      "response_json_admission",
+      "archive_collect",
+      "archive_commit",
+      "replay_read",
+      "decode",
+      "request_classify_inclusive",
+      "response_classify_inclusive",
+      "fact_append",
+      "unbound_discard",
+      "complete_wait",
+      "worker_total"
+    ],
+    "units": "cumulative monotonic elapsed ns; count/total/max/failures/cancelled; never CPU",
+    "overlap": "classifier includes nested fact DB awaits; worker includes collect/replay/classifier/facts; admission/complete wait occur concurrently with worker; do not add stages or call sum CPU",
+    "admission_boundary": "starts after original frame copy/timestamp; measures send.await scheduling/admission, not durable DB ACK or isolated queue wait",
+    "complete_boundary": "finish through wait_finished/result; emit after timer; first complete_end log not exact socket/body EOF",
+    "logging": "at most worker_end and first complete_end per capture; no per-frame log or retained payload; stage snapshots not jointly atomic; normal body Drop repeats complete, so later complete-wait calls are not all included in first complete_end",
+    "OFF_clock_reads": 0,
+    "collector": "attached only to owned synthetic API pipes; retain fixed whitelist diagnostic lines, discard unrelated text; export exactly measured flow UUIDs/capture IDs after whole:end",
+    "collector_event_limit": 128,
+    "collector_line_byte_limit": 8192,
+    "collector_payload_byte_limit": 4096,
+    "limits": "diagnostic safety bounds, not product business caps"
+  },
+  "existing_timing_query": {
+    "after": "whole:end only",
+    "scope": "current qadb/current app/exact8 measured UUIDs per fixture",
+    "fields": "attempt timestamp + existing host timing summary/receipt whitelist only",
+    "SQL_timeout_ms": 3000,
+    "command_timeout_ms": 5000,
+    "export_byte_limit": 524288,
+    "missing": "null/unavailable and diagnostic gate fails; no fabricated EOF/recorder/dispatcher span"
+  },
+  "functional_gates": {
+    "new_Rust_cases": 12,
+    "control_plane_filter": "client_trajectory::",
+    "control_plane_expected_per_mode": 38,
+    "api_server_filter": "client_observer::_tests",
+    "api_server_expected_per_mode": 3,
+    "modes": [
+      "0",
+      "1"
+    ],
+    "expected_total_Rust_cases": 82,
+    "requirements": "all exact test names/nonzero counts/failure zero; slow writer backpressure and complete barrier, raw bytes/cursors/prebind/drop/partial-failure semantics; OFF and ON same source with no source/SQL/queue/watermark/projection delta",
+    "full_protocol_merge_gate": "not replaced by this diagnostic; no PR/merge/deploy"
+  },
+  "acceptance": {
+    "primary": "locate elapsed admission/worker/fact/complete wait only after same-binary self-cost controls",
+    "observer_cost": "show CPU/request, driver CPU, TTFT/total/first-last/terminal-EOF, logs/clock reads/bytes per mode and individual ABBA fixtures; N16/mode only two fixture clusters, no precise overhead bound or production gain inferred",
+    "interpretation": "same provider/driver/SQL sampler in both modes; stage dominance may localize owner but does not prove DB/lock/scheduler CPU causality or make stages mutually exclusive",
+    "suspicion": "large or inconsistent ON/OFF CPU/latency shift means instrumented timings perturb workload/inconclusive, not optimization or automatic new run",
+    "next_candidate": "only after measured waits and self-cost, propose one semantic-preserving scheduling change; do not enlarge queue, remove await, batch Step+sections, or add concurrency now"
+  },
+  "stop": [
+    "source/hash/package/input/output mismatch",
+    "failed or zero-case gate",
+    "foreign/missing/duplicate diagnostic measured capture",
+    "missing existing provider summary",
+    "resource guard90%",
+    "any permission/policy denial",
+    "need new capabilities/maps/mem/stack/perf/sudo/sysctl",
+    "would change queue/concurrency/ACK/replay/SQL/UI/product cap"
+  ]
+}

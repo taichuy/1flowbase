@@ -1,0 +1,4 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');const{check,NEW_CASES}=require('../check-gates'),freeze=require('../freeze.json');
+test('Rust gate requires exact positive count and every named success',()=>{const text='test x::a ... ok\ntest x::b ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 9 filtered out;\n';assert.equal(check(text,2,['a','b']).passed,2);for(const bad of [text.replace('2 passed','0 passed'),text.replace('0 failed','1 failed'),text.replace('0 ignored','1 ignored'),text.replace('x::a ... ok','x::missing ... ok'),text.replace('test x::b ... ok\n','')])assert.throws(()=>check(bad,2,['a','b']));});
+test('all declared new Rust diagnostics cases are in exact gate list',()=>{assert.equal(NEW_CASES.length,12);assert.equal(NEW_CASES.length,freeze.functional_gates.new_Rust_cases);assert.equal(freeze.functional_gates.expected_total_Rust_cases,82);});
