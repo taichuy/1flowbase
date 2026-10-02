@@ -255,6 +255,9 @@ function mergeApiServerShadow({
     evidence.comparison = compareCoverageSummaries(readJson(monolithicPath), mergedSummary);
   }
   fs.writeFileSync(path.join(root, 'equivalence.json'), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
+  const coverageDir = path.join(repoRoot, 'tmp', 'test-governance', 'coverage', 'backend');
+  fs.mkdirSync(coverageDir, { recursive: true });
+  fs.copyFileSync(mergedPath, path.join(coverageDir, 'api-server.json'));
 }
 
 module.exports = {

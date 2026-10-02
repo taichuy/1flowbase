@@ -431,7 +431,8 @@ test("API coverage sharding is enforced after structural equivalence is proven",
   assert.match(workflow, /options:[\s\S]*?- coverage-backend-api-server\n/u);
   assert.match(workflow, /timeout-minutes: 30/u);
   assert.match(workflow, /coverage-shadow-api-server-profraw-\$\{\{ matrix\.shard \}\}/u);
-  assert.match(workflow, /node scripts\/node\/coverage-shadow\.js merge api-server 4/u);
+  assert.match(workflow, /INPUT_SCOPE: coverage-backend-api-server-merge/u);
+  assert.match(workflow, /name: test-governance-coverage-backend-api-server-merge/u);
   assert.match(workflow, /resolve-quality-gate-target:\n[\s\S]*?target_sha: \$\{\{ steps\.target\.outputs\.sha \}\}/u);
   assert.match(workflow, /coverage-backend-gate:\n[\s\S]*?needs: resolve-quality-gate-target/u);
   assert.match(workflow, /ref: \$\{\{ needs\.resolve-quality-gate-target\.outputs\.target_sha \}\}/u);
@@ -439,7 +440,7 @@ test("API coverage sharding is enforced after structural equivalence is proven",
   assert.match(workflow, /coverage-shadow\/api-server\/api-server-merged\.json/u);
   assert.match(workflow, /coverage-shadow\/api-server\/equivalence\.json/u);
   assert.match(workflow, /aggregate:\n[\s\S]*?- coverage-backend-api-server-sharded-merge/u);
-  assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server(?:,|')/u);
+  assert.match(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server-merge(?:,|')/u);
 });
 
 test("React Doctor keeps current debt as a narrow baseline", () => {

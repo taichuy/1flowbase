@@ -734,7 +734,7 @@ describe('ApplicationStatisticsPage', () => {
     expect(
       document.querySelector('.application-statistics__data')
     ).toHaveAttribute('inert');
-    expect(screen.getByText('Updating report…')).toBeInTheDocument();
+    expect(await screen.findByText('Updating report…')).toBeInTheDocument();
     expect(echartsMock.chart.dispose).not.toHaveBeenCalled();
     const updated = monitoringReport();
     updated.overview.total_count = 99;

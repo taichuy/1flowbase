@@ -310,7 +310,6 @@
   "archive_import": {
     "path_conflict": "The application path is already in use. Import failed.",
     "entry_failed": "Application import did not finish. Check the archive and try again.",
-    "close": "Close",
     "preview_summary": "{{count}} applications. Confirm their names to import them as drafts.",
     "result_summary": "Imported: {{succeeded_count}}, failed: {{failed_count}}, incomplete: {{partial_count}}",
     "partial_help": "Some applications were created but their configuration was not fully saved. Review them before importing again.",

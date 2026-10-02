@@ -206,7 +206,7 @@ describe('ThirdPartyMcpTab', () => {
     const dialog = await screen.findByRole('dialog', { name: '连接测试' });
     expect(await within(dialog).findByText('Acme Server')).toBeInTheDocument();
     expect(within(dialog).getByText('2025-03-26')).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /关\s*闭/u }));
     await waitFor(() => {
       expect(
         screen.queryByRole('dialog', { name: '连接测试' })

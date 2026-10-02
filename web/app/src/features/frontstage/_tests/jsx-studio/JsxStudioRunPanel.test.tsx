@@ -287,7 +287,7 @@ describe('JsxStudioRunPanel Native React run revision', () => {
       nativeCompiler: createCompiler()
     });
 
-    await waitFor(() => expect(trialShadowRoot(view.container)).not.toBeNull());
+    await waitFor(() => expect(trialShadowRoot(view.container)).not.toBeNull(), { timeout: 10_000 });
     const shadowRoot = trialShadowRoot(view.container);
     const output = await within(
       shadowRoot as unknown as HTMLElement

@@ -1027,7 +1027,7 @@ describe('McpManagementPanel', () => {
     expect(webMcpSwitch).not.toBeChecked();
 
     fireEvent.click(webMcpSwitch);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /确\s*定/u }));
 
     await waitFor(() => {
       expect(mcpManagementApi.updateSettingsMcpInstance).toHaveBeenCalledWith(

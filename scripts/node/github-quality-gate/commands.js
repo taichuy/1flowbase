@@ -57,6 +57,7 @@ const VALID_SCOPES = new Set([
   ...REPO_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_API_SERVER_SHARDED_SCOPES,
+  'coverage-backend-api-server-merge',
   ...BACKEND_CONSISTENCY_COMPONENT_SCOPES,
 ]);
 const PACKED_CLI_ENTRIES = new Set(['container-image-security', 'verify-backend-consistency']);
@@ -98,6 +99,14 @@ function buildGateCommand({ repoRoot, scope }) {
     return {
       command,
       args: [resolveCliEntry(repoRoot, 'verify-coverage'), 'backend'],
+      cwd: repoRoot,
+    };
+  }
+
+  if (scope === 'coverage-backend-api-server-merge') {
+    return {
+      command,
+      args: [resolveCliEntry(repoRoot, 'coverage-shadow'), 'merge', 'api-server', '4'],
       cwd: repoRoot,
     };
   }

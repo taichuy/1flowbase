@@ -18,13 +18,14 @@
 检查顺序：
 
 1. 运行 `git status --short --branch` 和 `git log -1 --oneline --decorate`，确认本地分支与提交。
-2. 查找最新相关 quality-gate issue，优先 `latest` 分支报告；如果旧 issue 仍 open，等新的有效通过报告出现后再处理。
-3. 检查 `latest` 分支的 GitHub Actions，重点看 `verify` 和手动 `manual quality gate` workflow。
-4. 下载或读取 `tmp/test-governance/quality-gate-report.json`。通过条件必须同时满足：workflow conclusion 为 `success`、artifact `status=passed`、`exitCode=0`。`warningFiles` 可以非空，必须展示和解释，但不会自动把 passed 改成 failed；只有报告显式升级为 error/blocker 才失败。
-5. 如果 gate 没有在 `latest` 上运行，先修 workflow/action，再补聚焦测试。重点文件通常是 `.github/actions/quality-gate/action.yml`、`.github/workflows/verify.yml`、`.github/workflows/quality-gate.yml`。
-6. workflow/action 变化要用 `node scripts/node/test-scripts.js github-quality-gate` 或等价定向测试验证；不要靠肉眼检查。
-7. 推送到目标分支后等待 GitHub Actions 完成，再下载 artifact 复核 JSON，最后再说 pass/fail。
-8. 通过后，在最新 quality issue 评论证据并关闭；旧 open issue 在新有效 pass 出现后关闭。
+2. 查找最新相关 quality-gate issue，优先本次候选分支 / SHA 报告；如果旧 issue 仍 open，等新的有效通过报告出现后再处理。
+3. 检查本次候选分支 / SHA 的 GitHub Actions，重点看 `verify` 和手动 `manual quality gate` workflow。
+4. API coverage 的四个分片必须经过 `coverage-backend-api-server-merge`，其标准 component receipt 和 coverage summary 一并进入 aggregate；仅 merge job 绿色或缺失 receipt 不算覆盖证据。
+5. 下载或读取 `tmp/test-governance/quality-gate-report.json`。通过条件必须同时满足：workflow conclusion 为 `success`、artifact `status=passed`、`exitCode=0`。`warningFiles` 可以非空，必须展示和解释，但不会自动把 passed 改成 failed；只有报告显式升级为 error/blocker 才失败。
+6. 如果 gate 没有在本次候选上运行，先修 workflow/action，再补聚焦测试。重点文件通常是 `.github/actions/quality-gate/action.yml`、`.github/workflows/verify.yml`、`.github/workflows/quality-gate.yml`。
+7. workflow/action 变化要用 `node scripts/node/test-scripts.js github-quality-gate` 或等价定向测试验证；不要靠肉眼检查。
+8. 推送到目标分支后等待 GitHub Actions 完成，再下载 artifact 复核 JSON，最后再说 pass/fail。
+9. 通过后，在最新 quality issue 评论证据并关闭；旧 open issue 在新有效 pass 出现后关闭。
 
 评论证据至少包含：run URL 或 run id、workflow、branch、commit、issue number、run conclusion、artifact `status`、`exitCode`、`warningFiles`。
 

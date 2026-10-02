@@ -1,5 +1,4 @@
 import {
-  act,
   fireEvent,
   render,
   screen,
@@ -137,9 +136,7 @@ function SelectionSeed({ nodeId }: { nodeId: string }) {
 }
 
 async function renderWithProviders(ui: ReactNode) {
-  await act(async () => {
-    render(<AppProviders>{ui}</AppProviders>);
-  });
+  render(<AppProviders>{ui}</AppProviders>);
   await waitFor(() => {
     expect(
       document.querySelector(
