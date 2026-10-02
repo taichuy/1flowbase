@@ -41,8 +41,7 @@ pub(super) fn request_log(
         total_tokens: output_tokens.map(|v| v + 120),
         input_cache_hit_tokens: Some(60),
         cache_write_tokens: Some(5000),
-        input_cache_hit_rate: output_tokens
-            .map(|v| ((60.0 / (v + 120) as f64) * 10_000.0_f64).round() / 10_000.0),
+        input_cache_hit_rate: Some(0.5),
         started_at,
         first_token_at: output_tokens
             .filter(|v| *v > 0)

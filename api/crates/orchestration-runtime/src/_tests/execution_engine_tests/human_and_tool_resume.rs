@@ -1347,3 +1347,61 @@ async fn runtime_internal_tool_mixed_round_exposes_only_external_callback() {
     assert_eq!(calls[0]["id"], json!("call_external"));
     assert_eq!(internal.calls.lock().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn canonical_run_tools_reach_provider_when_business_inputs_are_nested() {
+    let plan = llm_answer_plan();
+    let tools: Vec<_> = (0..24).map(|index|json!({"name":format!("tool_{index}"),"input_schema":{"type":"object","properties":{"query":{"type":"string"}}},"source":"client"})).collect();
+    use extension_contracts::provider_contract::NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY;
+    let mut input = json!({
+        "tools":[{"name":"legacy_should_not_win","input_schema":{"type":"object"}}],
+        "tool_choice":{"type":"auto"},
+        "node-start":{"query":"Use a client tool","inputs":{"tools":tools,"tool_choice":{"type":"required"}},"tool_choice":{"type":"auto"}}
+    });
+    input[NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY] =
+        json!({"tools":tools,"tool_choice":{"type":"required"}});
+    let (provider, captured) = sequential_tool_invoker(vec![final_llm_response("done")]);
+    let context =
+        ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap()).unwrap();
+    start_flow_debug_run_with_runtime_context_and_lifecycle(
+        &plan,
+        &input,
+        context,
+        &provider,
+        &RecordingExecutionLifecycle::default(),
+    )
+    .await
+    .unwrap();
+    let calls = captured.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].tools.len(), 24);
+    for (index, tool) in calls[0].tools.iter().enumerate() {
+        assert_eq!(tool["function"]["name"], tools[index]["name"]);
+        assert_eq!(tool["function"]["parameters"], tools[index]["input_schema"]);
+    }
+    assert_eq!(
+        calls[0].model_parameters["tool_choice"],
+        json!({"type":"required"})
+    );
+}
+
+#[tokio::test]
+async fn empty_canonical_run_tools_do_not_restore_legacy_run_catalog() {
+    use extension_contracts::provider_contract::NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY;
+    let plan = llm_answer_plan();
+    let mut input = json!({"tools":[{"name":"legacy","input_schema":{"type":"object"}}],"node-start":{"query":"hello"}});
+    input[NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY] = json!({"tools":[]});
+    let (provider, captured) = sequential_tool_invoker(vec![final_llm_response("done")]);
+    let context =
+        ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap()).unwrap();
+    start_flow_debug_run_with_runtime_context_and_lifecycle(
+        &plan,
+        &input,
+        context,
+        &provider,
+        &RecordingExecutionLifecycle::default(),
+    )
+    .await
+    .unwrap();
+    assert!(captured.lock().unwrap()[0].tools.is_empty());
+}

@@ -59,6 +59,7 @@ use crate::{
     },
 };
 
+pub(crate) mod chat_usage;
 mod compact;
 mod model_list;
 mod session_context;
@@ -70,8 +71,9 @@ use model_list::{
     is_codex_model_list_request, to_codex_model_list_response, to_openai_model_list_response,
 };
 pub use types::{
-    OpenAiChatCompletionChoice, OpenAiChatCompletionResponse, OpenAiChatMessage, OpenAiErrorBody,
-    OpenAiErrorObject, OpenAiModelListQuery, OpenAiModelListResponse, OpenAiModelObject,
+    OpenAiChatCompletionChoice, OpenAiChatCompletionResponse, OpenAiChatMessage,
+    OpenAiCompletionTokensDetails, OpenAiErrorBody, OpenAiErrorObject, OpenAiModelListQuery,
+    OpenAiModelListResponse, OpenAiModelObject, OpenAiPromptTokensDetails,
     OpenAiResponsesIncompleteDetails, OpenAiResponsesInputTokensDetails, OpenAiResponsesObject,
     OpenAiResponsesOutputTokensDetails, OpenAiResponsesUsage, OpenAiRouteError, OpenAiToolCall,
     OpenAiToolCallFunction, OpenAiUsage,
@@ -146,6 +148,29 @@ pub async fn create_chat_completion(
     uri: Uri,
     body: Bytes,
 ) -> Result<Response, OpenAiRouteError> {
+    let recorder = client_observer::recorder(&state, ClientTrajectoryTransport::Http);
+    if recorder
+        .record(ClientTrajectoryFrameKind::Request, &body)
+        .await
+        .is_err()
+    {
+        recorder.mark_incomplete();
+    }
+    let capture = CaptureGuard::new(recorder.clone());
+    let response = match dispatch_chat_completion(state, headers, uri, body, recorder).await {
+        Ok(response) => response,
+        Err(error) => error.into_response(),
+    };
+    Ok(client_observer::observe_response(response, capture))
+}
+
+async fn dispatch_chat_completion(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    uri: Uri,
+    body: Bytes,
+    recorder: ClientTrajectoryRecorder,
+) -> Result<Response, OpenAiRouteError> {
     let credential = match openai_credential(&headers) {
         Ok(credential) => credential,
         Err(error) => {
@@ -202,22 +227,30 @@ pub async fn create_chat_completion(
         )
         .await?;
         let actor = compatibility_interface::application_actor(principal.principal());
-        let command = openai_resume_command(
+        let mut command = openai_resume_command(
             "",
             callback_task_id,
             PublishedCallbackResumeSource::OpenAiChat,
             resume.tool_results,
             response_mode.clone(),
         );
+        command.observation_context =
+            Some(control_plane_contracts::ports::WorkflowObservationContext {
+                client_request_id: recorder.capture_id(),
+                context_flow_run_id: None,
+                context_response_id: None,
+                is_resume: true,
+            });
         match compat_sse::prepare_compatible_resume_for_actor(state.clone(), actor, command).await {
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
                 if response_mode.as_deref() == Some("streaming") =>
             {
+                let usage_baseline = load_chat_usage_baseline(&state, callback_task_id).await?;
                 let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
                     plan.initial_run.id,
                     callback_task_id,
                 );
-                return compatibility_interface::invoke_stream_with_principal(
+                return compatibility_interface::invoke_client_stream_with_principal(
                     state,
                     resume_binding_id,
                     principal,
@@ -227,14 +260,20 @@ pub async fn create_chat_completion(
                             command: plan.command,
                         },
                     },
-                    compat_sse::openai_chat_resume_interface_projection(model, completion_id),
+                    Some(recorder.clone()),
+                    compat_sse::openai_chat_resume_interface_projection(
+                        model,
+                        completion_id,
+                        usage_baseline,
+                    ),
                 )
                 .await
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
+                let usage_baseline = load_chat_usage_baseline(&state, callback_task_id).await?;
                 let run = compatibility_interface::invoke_blocking_with_principal(
-                    state,
+                    state.clone(),
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
@@ -245,11 +284,18 @@ pub async fn create_chat_completion(
                     },
                 )
                 .await?;
+                correlate_blocking_chat_capture(&state, &recorder, run.id).await;
                 let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
                     run.id,
                     callback_task_id,
                 );
-                return Ok(Json(to_openai_response(run, model, completion_id)?).into_response());
+                return Ok(Json(chat_usage::to_chat_response_for_round(
+                    run,
+                    model,
+                    completion_id,
+                    &usage_baseline,
+                )?)
+                .into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
                 // The callback delivery is complete; re-admit its full history as a new turn.
@@ -277,6 +323,14 @@ pub async fn create_chat_completion(
     };
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
+    request.metadata.set_observation_context(Some(
+        control_plane_contracts::ports::WorkflowObservationContext {
+            client_request_id: recorder.capture_id(),
+            context_flow_run_id: None,
+            context_response_id: None,
+            is_resume: false,
+        },
+    ));
     request.client_protocol_envelope = openai_protocol_context_from_ingress(
         ClientProtocolIngressPolicy::OpenAiChat,
         uri.query(),
@@ -317,7 +371,7 @@ pub async fn create_chat_completion(
         } else {
             compatibility_interface::OPENAI_CHAT_STREAM_BINDING_ID
         };
-        return compatibility_interface::invoke_stream_with_principal(
+        return compatibility_interface::invoke_client_stream_with_principal(
             state,
             stream_binding_id,
             principal,
@@ -328,6 +382,7 @@ pub async fn create_chat_completion(
                     provider_transport: None,
                 },
             },
+            Some(recorder.clone()),
             compat_sse::openai_chat_interface_projection(model),
         )
         .await
@@ -335,7 +390,7 @@ pub async fn create_chat_completion(
     }
 
     let run = compatibility_interface::invoke_blocking_with_principal(
-        state,
+        state.clone(),
         binding_id,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
@@ -348,6 +403,7 @@ pub async fn create_chat_completion(
     )
     .await?;
 
+    correlate_blocking_chat_capture(&state, &recorder, run.id).await;
     info!(
         route = "chat_completions",
         auth_source = credential.source,
@@ -361,6 +417,78 @@ pub async fn create_chat_completion(
 
     let completion_id = compat_sse::openai_chat_completion_id_from_run_id(run.id);
     Ok(Json(to_openai_response(run, model, completion_id)?).into_response())
+}
+
+async fn load_chat_usage_baseline(
+    state: &ApiState,
+    callback_task_id: Uuid,
+) -> Result<chat_usage::ChatUsageBaseline, OpenAiRouteError> {
+    // Admission already verified the callback's application/API actor ownership.
+    let callback = state
+        .store
+        .get_published_callback_task(callback_task_id)
+        .await
+        .map_err(|error| {
+            native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "chat_usage_boundary_failed",
+                error.to_string(),
+            )
+        })?;
+    Ok(callback
+        .map(|task| chat_usage::ChatUsageBaseline::from_callback_payload(&task.request_payload))
+        .unwrap_or(chat_usage::ChatUsageBaseline::Unavailable))
+}
+
+/// Blocking execution already persisted provider observations. Read their request-scoped
+/// identities without changing the execution mode or protocol projection.
+async fn correlate_blocking_chat_capture(
+    state: &ApiState,
+    recorder: &ClientTrajectoryRecorder,
+    flow_run_id: Uuid,
+) {
+    use control_plane::ports::{ProviderTrajectoryRepository, TrajectorySelection};
+    recorder.bind_run(flow_run_id, None);
+    let mut cursor = None;
+    loop {
+        let page = match state
+            .store
+            .provider_trajectory_filtered_page(
+                flow_run_id,
+                None,
+                cursor,
+                100,
+                TrajectorySelection {
+                    request_id: Some(recorder.capture_id()),
+                    target_id: None,
+                },
+            )
+            .await
+        {
+            Ok(page) => page,
+            Err(error) => {
+                recorder.mark_incomplete();
+                warn!(%flow_run_id, %error, "blocking Chat client node correlation failed");
+                return;
+            }
+        };
+        for item in page.items {
+            if let Some(node_run_id) = item.metadata["node_run_id"]
+                .as_str()
+                .and_then(|id| Uuid::parse_str(id).ok())
+            {
+                recorder.link_llm_node(flow_run_id, node_run_id);
+            }
+        }
+        match page.next_cursor {
+            Some(next) if cursor.is_none_or(|previous| next > previous) => cursor = Some(next),
+            Some(_) => {
+                recorder.mark_incomplete();
+                return;
+            }
+            None => return,
+        }
+    }
 }
 
 #[utoipa::path(
@@ -1567,7 +1695,7 @@ fn to_openai_response(
             },
             finish_reason,
         }],
-        usage: openai_usage(run.usage),
+        usage: Some(openai_usage(run.usage.as_ref())),
     })
 }
 
@@ -1845,8 +1973,8 @@ fn callback_task_id_from_required_action(run: &NativeRunResult) -> Option<Uuid> 
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
-fn openai_usage(
-    usage: Option<control_plane::application_public_api::native::NativeUsage>,
+pub(super) fn openai_usage(
+    usage: Option<&control_plane::application_public_api::native::NativeUsage>,
 ) -> OpenAiUsage {
     let Some(usage) = usage else {
         return OpenAiUsage::default();
@@ -1855,6 +1983,13 @@ fn openai_usage(
         prompt_tokens: usage.prompt_tokens.unwrap_or_default(),
         completion_tokens: usage.completion_tokens.unwrap_or_default(),
         total_tokens: usage.total_tokens.unwrap_or_default(),
+        prompt_tokens_details: usage
+            .cache_read_tokens
+            .or(usage.input_cache_hit_tokens)
+            .map(|cached_tokens| OpenAiPromptTokensDetails { cached_tokens }),
+        completion_tokens_details: usage
+            .reasoning_tokens
+            .map(|reasoning_tokens| OpenAiCompletionTokensDetails { reasoning_tokens }),
     }
 }
 

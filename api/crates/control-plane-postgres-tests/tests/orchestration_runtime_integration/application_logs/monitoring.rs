@@ -878,8 +878,8 @@ async fn application_run_monitoring_report_aggregates_root_tasks_by_started_at()
     assert_eq!(report.tokens_trend[0].input_tokens, 380);
     assert_eq!(report.tokens_trend[0].output_tokens, 120);
     assert_eq!(report.tokens_trend[0].input_cache_hit_tokens, 60);
-    // Ratio of summed input usage, not the mean of per-task ratios (10/90 and 50/350).
-    assert!((report.tokens_trend[0].input_cache_hit_rate.unwrap() - 60.0 / 440.0).abs() < 1e-9);
+    // Ratio of summed input usage, not the mean of per-task ratios (10/80 and 50/300).
+    assert!((report.tokens_trend[0].input_cache_hit_rate.unwrap() - 60.0 / 380.0).abs() < 1e-9);
     assert_eq!(report.protocols[0].protocol, "default");
     assert_eq!(report.protocols[1].protocol, "openai-responses-v1");
     assert_eq!(report.sources[0].invocation_source, "agent_flow_api");

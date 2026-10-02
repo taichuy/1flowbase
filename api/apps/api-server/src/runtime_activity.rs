@@ -29,11 +29,16 @@ tokio::task_local! {
     static CURRENT_APPLICATION_ID: Uuid;
 }
 
-pub async fn scope_application_activity<F, T>(application_id: Uuid, future: F) -> T
+pub fn scope_application_activity<F, T>(
+    application_id: Uuid,
+    future: F,
+) -> impl std::future::Future<Output = T>
 where
     F: std::future::Future<Output = T>,
 {
-    CURRENT_APPLICATION_ID.scope(application_id, future).await
+    // Box before constructing the task-local future so large execution state is not
+    // replicated in every enclosing async frame. Awaiting keeps task context and cancellation.
+    CURRENT_APPLICATION_ID.scope(application_id, Box::pin(future))
 }
 
 pub fn current_application_id() -> Option<Uuid> {
@@ -638,6 +643,38 @@ fn process_rss_bytes() -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn application_scope_survives_yields_nesting_and_cancellation() {
+        let outer = Uuid::new_v4();
+        let inner = Uuid::new_v4();
+        assert_eq!(current_application_id(), None);
+        scope_application_activity(outer, async {
+            tokio::task::yield_now().await;
+            assert_eq!(current_application_id(), Some(outer));
+            scope_application_activity(inner, async {
+                tokio::task::yield_now().await;
+                assert_eq!(current_application_id(), Some(inner));
+            })
+            .await;
+            assert_eq!(current_application_id(), Some(outer));
+            let cancelled = scope_application_activity(inner, async {
+                assert_eq!(current_application_id(), Some(inner));
+                std::future::pending::<()>().await;
+            });
+            tokio::pin!(cancelled);
+            assert!(
+                std::future::poll_fn(|cx| {
+                    assert!(std::future::Future::poll(cancelled.as_mut(), cx).is_pending());
+                    std::task::Poll::Ready(true)
+                })
+                .await
+            );
+            assert_eq!(current_application_id(), Some(outer));
+        })
+        .await;
+        assert_eq!(current_application_id(), None);
+    }
 
     #[test]
     fn tracker_reports_active_counts_peaks_and_recent_outcomes_without_payloads() {

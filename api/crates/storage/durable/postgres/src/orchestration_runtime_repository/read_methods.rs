@@ -1,4 +1,29 @@
 impl PgControlPlaneStore {
+    async fn read_flow_run_node_usages(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<PublishedRunNodeUsage>> {
+        let node_usage_rows = sqlx::query(
+            r#"
+            select
+                metrics_payload -> 'usage' as metrics_usage,
+                output_payload -> 'usage' as output_usage
+            from node_run_records
+            where flow_run_id = $1
+            order by started_at asc, id asc
+            "#,
+        )
+        .bind(flow_run_id)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(node_usage_rows
+            .into_iter()
+            .map(|row| PublishedRunNodeUsage {
+                metrics_usage: row.get("metrics_usage"),
+                output_usage: row.get("output_usage"),
+            })
+            .collect())
+    }
     async fn get_callback_resume_context(
         &self,
         application_id: Uuid,

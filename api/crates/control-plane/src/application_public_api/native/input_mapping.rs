@@ -105,6 +105,25 @@ impl NativeInputMapper {
             )?;
         }
 
+        // Model tools are run-level AI Native context, independent of the application's
+        // business input selector and its user-defined namespaces.
+        let model_tools: Map<String, Value> = ["tools", "tool_choice"]
+            .into_iter()
+            .filter_map(|field| {
+                request
+                    .inputs
+                    .get(field)
+                    .map(|value| (field.into(), value.clone()))
+            })
+            .collect();
+        if !model_tools.is_empty() {
+            write_selector(
+                &mut node_input_payload,
+                NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY,
+                Value::Object(model_tools),
+            )?;
+        }
+
         Ok(NativeMappedInput {
             node_input_payload,
             metadata: build_run_metadata(request),

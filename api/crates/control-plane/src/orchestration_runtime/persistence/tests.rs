@@ -729,8 +729,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
             "cache_read_tokens": 9,
             "cache_write_tokens": 5000,
             "cache_write_by_ttl_seconds": {"300": 3000, "3600": 2000},
-            "output_tokens": 0,
-            "total_tokens": 12
+            "output_tokens": 8,
+            "total_tokens": 20
         }
     });
 
@@ -763,8 +763,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.plugin_id.as_deref(), Some("gemini@0.1.20"));
     assert_eq!(task.status, "empty_response");
     assert_eq!(task.input_tokens, Some(12));
-    assert_eq!(task.output_tokens, Some(0));
-    assert_eq!(task.total_tokens, Some(12));
+    assert_eq!(task.output_tokens, Some(8));
+    assert_eq!(task.total_tokens, Some(20));
     assert_eq!(task.input_cache_hit_tokens, Some(9));
     assert_eq!(task.input_cache_hit_rate, Some(0.75));
     assert_eq!(task.pricing_provider_code.as_deref(), Some("zero"));
@@ -776,6 +776,43 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.total_duration_ms, Some(7426));
     assert_eq!(task.provider_timing_receipt, None);
     serde_json::to_value(task).unwrap();
+}
+
+#[test]
+fn provider_request_cache_rate_handles_explicit_misses_zero_and_unknown() {
+    for (usage, expected) in [
+        (
+            json!({"input_tokens":13,"input_cache_miss_tokens":13,"cache_read_tokens":250,"cache_write_tokens":37,"output_tokens":100}),
+            Some(0.8333),
+        ),
+        (
+            json!({"input_tokens":4107,"input_cache_miss_tokens":11,"input_cache_hit_tokens":4096,"output_tokens":100}),
+            Some(0.9973),
+        ),
+        (
+            json!({"input_tokens":100,"input_cache_hit_tokens":0}),
+            Some(0.0),
+        ),
+        (json!({"input_tokens":0,"input_cache_hit_tokens":0}), None),
+        (json!({"input_tokens":100}), None),
+        (json!({"input_cache_hit_tokens":100}), None),
+    ] {
+        let attempt = json!({"usage":usage});
+        let task = super::model_attempts::provider_request_log_task_from_attempt(
+            Uuid::nil(),
+            Uuid::nil(),
+            Uuid::nil(),
+            Uuid::nil(),
+            Uuid::nil(),
+            None,
+            None,
+            "cache fixture",
+            OffsetDateTime::UNIX_EPOCH,
+            OffsetDateTime::UNIX_EPOCH,
+            &attempt,
+        );
+        assert_eq!(task.input_cache_hit_rate, expected);
+    }
 }
 
 #[test]
@@ -871,6 +908,8 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
     for index in 0..3 {
         let payload =
             json!({"tool_calls":[{"id":format!("call-{index}"),"name":"read","arguments":{}}]});
+        let mut node_trace = trace(&node.node_id, payload.clone(), None);
+        node_trace.metrics_payload = json!({"usage":{"input_tokens":(index+1)*11,"output_tokens":(index+1)*3,"input_cache_hit_tokens":index*2}});
         let outcome = FlowDebugExecutionOutcome {
             stop_reason: ExecutionStopReason::WaitingCallback(PendingCallbackTask {
                 node_id: node.node_id.clone(),
@@ -885,7 +924,7 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
                 active_node_ids: vec![node.node_id.clone()],
             }),
             operation_terminal: None,
-            node_traces: vec![trace(&node.node_id, payload, None)],
+            node_traces: vec![node_trace],
         };
         let prepared = [(node.node_id.clone(), node.clone())].into_iter().collect();
         run = super::persist_flow_debug_outcome(
@@ -927,6 +966,18 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
     assert_eq!(detail.node_runs.len(), 1);
     assert_eq!(detail.callback_tasks.len(), 3);
     assert_eq!(detail.checkpoints.len(), 3);
+    for task in &detail.callback_tasks {
+        let call = task.request_payload["tool_calls"][0]["id"]
+            .as_str()
+            .unwrap();
+        let index: u64 = call.strip_prefix("call-").unwrap().parse().unwrap();
+        let baseline = &task.request_payload["native_usage_baseline"];
+        assert_eq!(baseline["prompt_tokens"], (index + 1) * 11);
+        assert_eq!(baseline["completion_tokens"], (index + 1) * 3);
+        assert_eq!(baseline["total_tokens"], (index + 1) * 14);
+        assert_eq!(baseline["input_cache_hit_tokens"], index * 2);
+    }
+
     assert!(detail
         .callback_tasks
         .iter()

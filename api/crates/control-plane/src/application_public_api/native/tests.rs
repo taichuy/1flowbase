@@ -284,3 +284,6 @@ fn mapper_rebuilds_history_without_unknown_raw_fields() {
         .expect("mapped Native input should serialize")
         .contains(sentinel));
 }
+
+#[path = "_tests/tool_mounting.rs"]
+mod tool_mounting;

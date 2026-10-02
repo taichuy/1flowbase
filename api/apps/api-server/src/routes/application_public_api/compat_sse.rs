@@ -279,8 +279,11 @@ pub(crate) fn openai_chat_interface_projection(model: String) -> CompatibleProto
 pub(crate) fn openai_chat_resume_interface_projection(
     model: String,
     completion_id: String,
+    usage_baseline: super::openai::chat_usage::ChatUsageBaseline,
 ) -> CompatibleProtocolProjection {
-    CompatibleProtocolProjection::OpenAiChat(OpenAiChatStreamMapper::new(model, completion_id))
+    CompatibleProtocolProjection::OpenAiChat(
+        OpenAiChatStreamMapper::new(model, completion_id).with_usage_baseline(usage_baseline),
+    )
 }
 
 #[cfg(test)]

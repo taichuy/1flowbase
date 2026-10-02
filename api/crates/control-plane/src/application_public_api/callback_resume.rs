@@ -263,13 +263,6 @@ where
                 )? {
                     return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
                 }
-                if inference_recovery::is_terminal_transport_reissue(
-                    &context.flow_run,
-                    &recovery_callback,
-                    command,
-                )? {
-                    return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
-                }
                 if context.flow_run.status != domain::FlowRunStatus::Failed {
                     let initial_run = self.native_result_for_flow_run(&context.flow_run).await?;
                     return Ok(PreparedPublishedCallbackResume::Resume {
@@ -285,11 +278,16 @@ where
                     )
                     .await?
                 {
-                    inference_recovery::validate_context(
+                    inference_recovery::validate_reissue_context(
                         &context.flow_run,
                         &recovery_callback,
                         command,
                     )?;
+                    if successor.status == domain::FlowRunStatus::Failed {
+                        // The internal successor has its own terminal lifecycle.
+                        // Do not pin a later client create to that failed result.
+                        return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
+                    }
                     let mut replay = self.native_result_for_flow_run(&successor).await?;
                     replay.metadata["native_inference_recovery_replay"] = json!(true);
                     replay.metadata["response_round_id"] = json!(successor.id);
@@ -297,15 +295,31 @@ where
                         initial_run: Box::new(replay),
                     });
                 }
-                let grant = inference_recovery::qualify(
+                match inference_recovery::qualify(
                     &context.flow_run,
                     &recovery_callback,
                     command,
                     (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64,
-                )?;
-                return Ok(PreparedPublishedCallbackResume::RecoverInference {
-                    grant: Box::new(grant),
-                });
+                ) {
+                    Ok(grant) => {
+                        return Ok(PreparedPublishedCallbackResume::RecoverInference {
+                            grant: Box::new(grant),
+                        });
+                    }
+                    Err(recovery_error) => {
+                        // No internal replay grant is available. A proven new
+                        // Responses request may still sample from the accepted
+                        // input; it never reopens or splices the failed stream.
+                        if inference_recovery::is_failed_response_reissue(
+                            &context.flow_run,
+                            &recovery_callback,
+                            command,
+                        )? {
+                            return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
+                        }
+                        return Err(recovery_error);
+                    }
+                }
             }
             if command.source != PublishedCallbackResumeSource::OpenAiResponses
                 && callback_failure_allows_new_turn(&context.flow_run)
@@ -880,8 +894,11 @@ where
             let recovery_callback =
                 inference_recovery::load_owned_evidence(&self.repository, actor, callback_task)
                     .await?;
-            inference_recovery::validate_context(&flow_run, &recovery_callback, command)?;
+            inference_recovery::validate_reissue_context(&flow_run, &recovery_callback, command)?;
         }
+        // This is the callback duplicate result, not a new Responses admission.
+        // If an attached successor fails meanwhile, retain its terminal result;
+        // the next create is classified by prepare_callback_resume_for_actor.
         let mut run = self
             .native_result_for_flow_run(successor.as_ref().unwrap_or(&flow_run))
             .await?;

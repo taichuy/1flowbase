@@ -262,3 +262,118 @@ async fn chat_sse_preserves_full_upstream_error_object() {
         assert_eq!(frames[0]["error"], upstream);
     }
 }
+
+#[tokio::test]
+async fn chat_usage_details_stream_preserves_cache_and_reasoning() {
+    for cached in [Some(4096), Some(0), None] {
+        let mut run = native_run();
+        run.status = NativeRunStatus::Succeeded;
+        run.usage = Some(NativeUsage {
+            prompt_tokens: Some(4107),
+            completion_tokens: Some(120),
+            total_tokens: Some(4227),
+            cache_read_tokens: cached,
+            reasoning_tokens: Some(80),
+            ..NativeUsage::default()
+        });
+        let mut mapper = OpenAiChatStreamMapper::new("deepseek-flash".into(), "test".into());
+        let events = mapper.runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                1,
+                debug_stream_events::flow_finished(run.id, json!({"answer":"OK"})),
+            ),
+        );
+        let response = test_projected_events_response(events);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        let terminal: Value = body
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .filter_map(|data| serde_json::from_str::<Value>(data).ok())
+            .find(|event| event.get("usage").is_some())
+            .unwrap();
+        assert_eq!(terminal["usage"]["prompt_tokens"], 4107);
+        assert_eq!(terminal["usage"]["completion_tokens"], 120);
+        assert_eq!(terminal["usage"]["total_tokens"], 4227);
+        assert_eq!(
+            terminal["usage"]["completion_tokens_details"]["reasoning_tokens"],
+            80
+        );
+        match cached {
+            Some(tokens) => assert_eq!(
+                terminal["usage"]["prompt_tokens_details"]["cached_tokens"],
+                tokens
+            ),
+            None => assert!(terminal["usage"].get("prompt_tokens_details").is_none()),
+        }
+        assert_eq!(decode_openai_chat_sse(&body).done_count, 1);
+    }
+}
+
+#[tokio::test]
+async fn chat_resume_sse_usage_is_turn_local_and_missing_boundary_is_omitted() {
+    use crate::routes::application_public_api::openai::chat_usage::ChatUsageBaseline;
+    let mut run = native_run();
+    run.usage = Some(NativeUsage {
+        prompt_tokens: Some(16212),
+        completion_tokens: Some(157),
+        total_tokens: Some(16369),
+        input_cache_hit_tokens: Some(8448),
+        ..NativeUsage::default()
+    });
+    for baseline_payload in [
+        json!({"native_usage_baseline":{"prompt_tokens":7995,"completion_tokens":132,"total_tokens":8127,"input_cache_hit_tokens":512}}),
+        json!({}),
+    ] {
+        for event_type in ["flow_finished", "flow_incomplete", "waiting_callback"] {
+            let baseline = ChatUsageBaseline::from_callback_payload(&baseline_payload);
+            let mut mapper = OpenAiChatStreamMapper::new("deepseek-flash".into(), "turn".into())
+                .with_usage_baseline(baseline);
+            let payload = if event_type == "waiting_callback" {
+                json!({"callback_task_id":Uuid::now_v7(),"callback_kind":"llm_tool_calls","required_action":{"action_type":"submit_tool_outputs","payload":{"tool_calls":[{"id":"call-1","name":"read","arguments":{}}]}}})
+            } else {
+                json!({})
+            };
+            let envelope = RuntimeEventEnvelope::new(
+                run.id,
+                1,
+                control_plane::ports::RuntimeEventPayload {
+                    event_type: event_type.into(),
+                    source: control_plane::ports::RuntimeEventSource::Runtime,
+                    durability: control_plane::ports::RuntimeEventDurability::DurableRequired,
+                    persist_required: true,
+                    trace_visible: true,
+                    payload,
+                },
+            );
+            let response =
+                test_projected_events_response(mapper.runtime_event_to_sse(&run, envelope));
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let body = String::from_utf8(body.to_vec()).unwrap();
+            let terminal: Value = body
+                .lines()
+                .filter_map(|line| line.strip_prefix("data: "))
+                .filter_map(|value| serde_json::from_str::<Value>(value).ok())
+                .find(|value| value["choices"][0]["finish_reason"].is_string())
+                .unwrap();
+            if baseline_payload.get("native_usage_baseline").is_some() {
+                assert_eq!(terminal["usage"]["prompt_tokens"], 8217);
+                assert_eq!(terminal["usage"]["completion_tokens"], 25);
+                assert_eq!(
+                    terminal["usage"]["prompt_tokens_details"]["cached_tokens"],
+                    7936
+                );
+            } else {
+                assert!(terminal.get("usage").is_none());
+            }
+            assert_eq!(decode_openai_chat_sse(&body).done_count, 1);
+        }
+    }
+    assert_eq!(run.usage.unwrap().prompt_tokens, Some(16212));
+}

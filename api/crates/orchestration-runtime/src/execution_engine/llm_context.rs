@@ -1,3 +1,4 @@
+use extension_contracts::provider_contract::NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY;
 use std::collections::HashSet;
 
 use super::*;
@@ -966,6 +967,13 @@ pub(super) fn run_level_provider_tools(
     plan: &CompiledPlan,
     variable_pool: &Map<String, Value>,
 ) -> Vec<Value> {
+    if let Some(tools) = variable_pool
+        .get(NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY)
+        .and_then(|context| context.get("tools"))
+        .and_then(Value::as_array)
+    {
+        return provider_tool_payloads(tools);
+    }
     for candidate in [
         variable_pool.get("tools"),
         variable_pool
@@ -1018,6 +1026,12 @@ pub(super) fn run_level_tool_choice(
     plan: &CompiledPlan,
     variable_pool: &Map<String, Value>,
 ) -> Option<Value> {
+    if let Some(choice) = variable_pool
+        .get(NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY)
+        .and_then(|context| context.get("tool_choice"))
+    {
+        return Some(choice.clone());
+    }
     if let Some(tool_choice) = variable_pool.get("tool_choice") {
         return Some(tool_choice.clone());
     }

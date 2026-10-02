@@ -222,9 +222,18 @@ pub(super) fn provider_request_log_task_from_attempt(
     let input_cache_hit_tokens = usage_i64(&usage, "input_cache_hit_tokens")
         .or_else(|| usage_i64(&usage, "cache_read_tokens"))
         .or_else(|| usage_i64(&usage, "cached_input_tokens"));
-    let input_cache_hit_rate = match (total_tokens, input_cache_hit_tokens) {
-        (Some(total), Some(hit)) if total > 0 => {
-            Some(((hit as f64 / total as f64) * 10_000.0).round() / 10_000.0)
+    // Explicit cache misses identify providers whose input count excludes cached reads/writes.
+    let cache_input_tokens = match usage_i64(&usage, "input_cache_miss_tokens") {
+        Some(miss) => miss
+            .checked_add(input_cache_hit_tokens.unwrap_or_default())
+            .and_then(|input| {
+                input.checked_add(usage_i64(&usage, "cache_write_tokens").unwrap_or_default())
+            }),
+        None => input_tokens,
+    };
+    let input_cache_hit_rate = match (cache_input_tokens, input_cache_hit_tokens) {
+        (Some(input), Some(hit)) if input > 0 => {
+            Some(((hit as f64 / input as f64) * 10_000.0).round() / 10_000.0)
         }
         _ => None,
     };

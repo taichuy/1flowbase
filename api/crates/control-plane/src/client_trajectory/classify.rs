@@ -1,3 +1,5 @@
+#[path = "chat.rs"]
+mod chat;
 use crate::ports::{
     ClientTrajectoryFact as Fact, ClientTrajectoryFrameKind, ClientTrajectoryStep,
     ClientTrajectoryTransport,
@@ -15,6 +17,9 @@ pub(super) struct Classifier {
     flow: Uuid,
     node: Option<Uuid>,
     transport: ClientTrajectoryTransport,
+    protocol: &'static str,
+    chat_choices: BTreeMap<u64, Value>,
+    chat_finished: BTreeSet<u64>,
     response_id: Option<String>,
     turn_id: Option<String>,
     pub request_seen: bool,
@@ -39,6 +44,9 @@ impl Classifier {
             flow,
             node,
             transport,
+            protocol: "responses",
+            chat_choices: BTreeMap::new(),
+            chat_finished: BTreeSet::new(),
             response_id: None,
             turn_id: None,
             request_seen: false,
@@ -87,6 +95,15 @@ impl Classifier {
         if kind == ClientTrajectoryFrameKind::Request {
             self.request(value, at, facts).await;
             return;
+        }
+        if self.protocol == "chat_completions"
+            && (value.get("choices").is_some() || value.get("__client_sse_done").is_some())
+        {
+            self.chat_response(kind, value, at, facts).await;
+            return;
+        }
+        if self.protocol == "chat_completions" && value.get("error").is_some() {
+            self.incomplete |= !self.chat_choices.is_empty();
         }
         let event_type = value["type"].as_str().unwrap_or("");
         if let Some(id) = value["response"]["id"].as_str() {
@@ -159,6 +176,10 @@ impl Classifier {
         let Some(map) = value.as_object_mut() else {
             return;
         };
+        if map.contains_key("messages") {
+            self.protocol = "chat_completions";
+        }
+        let messages = map.remove("messages");
         let instructions = map.remove("instructions");
         let input = map.remove("input");
         let tools = map.remove("tools");
@@ -166,7 +187,11 @@ impl Classifier {
         let mut root = self.step(
             self.request,
             "request",
-            "Responses request",
+            if self.protocol == "chat_completions" {
+                "Chat Completions request"
+            } else {
+                "Responses request"
+            },
             "submitted",
             &root_at,
             &Value::Null,
@@ -213,6 +238,11 @@ impl Classifier {
                     &tool,
                 );
                 self.emit(step, vec![("schema", tool)], at, facts).await;
+            }
+        }
+        if let Some(Value::Array(messages)) = messages {
+            for message in messages {
+                self.chat_message(message, "submitted", at, facts).await;
             }
         }
         match input {
@@ -423,7 +453,7 @@ impl Classifier {
             }
             .into(),
             origin: origin.into(),
-            protocol: "responses".into(),
+            protocol: self.protocol.into(),
             transport: self.transport,
             flow_run_id: self.flow,
             node_run_id: self.node,

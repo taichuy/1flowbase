@@ -2,6 +2,11 @@ use super::*;
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    /// Narrow current-node usage read; no context bodies or published-mode restriction.
+    async fn get_flow_run_node_usages(
+        &self,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Vec<crate::application_public_runtime::PublishedRunNodeUsage>>;
     /// Observational append only: may record client delivery after business terminal.
     async fn append_client_trajectory(
         &self,
