@@ -121,16 +121,6 @@
   line-height: 1.4;
 }
 
-.agent-flow-editor__inspector-field-label-tag.ant-tag {
-  margin-inline-end: 0;
-  border-radius: 6px;
-  background: #edf4ff;
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 20px;
-}
-
 .agent-flow-editor__inspector-field-help {
   flex: none;
   color: #7b8982;

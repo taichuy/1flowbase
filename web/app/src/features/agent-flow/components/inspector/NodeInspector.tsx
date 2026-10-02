@@ -8,7 +8,7 @@ import { SchemaRenderer } from '../../../../shared/schema-ui/v1/runtime/SchemaRe
 import { evaluateSchemaRule } from '../../../../shared/schema-ui/v1/runtime/rule-evaluator';
 import type { SchemaAdapter } from '../../../../shared/schema-ui/v1/registry/create-renderer-registry';
 import { useEffect, useRef } from 'react';
-import { Button, Tag, Tooltip, Typography } from 'antd';
+import { Button, Tooltip, Typography } from 'antd';
 
 import { agentFlowRendererRegistry } from '../../schema/agent-flow-renderer-registry';
 import type { AgentFlowIssue } from '../../lib/validate-document';
@@ -57,10 +57,6 @@ function isPolicyFieldRenderer(renderer: string) {
     renderer === 'switch' ||
     renderer === 'http_request_curl_import'
   );
-}
-
-function getFieldLabelTag() {
-  return null;
 }
 
 function getFieldHelp(path: string) {
@@ -251,7 +247,6 @@ export function NodeInspector({
                   const hasError = fieldIssues.some(
                     (issue) => issue.level === 'error'
                   );
-                  const labelTag = getFieldLabelTag();
                   const labelHelp = getFieldHelp(childBlock.path);
                   const labelAction = getFieldLabelAction(
                     childBlock,
@@ -295,14 +290,6 @@ export function NodeInspector({
                             className="agent-flow-editor__inspector-field-label"
                           >
                             {childBlock.label}
-                            {labelTag ? (
-                              <Tag
-                                variant="filled"
-                                className="agent-flow-editor__inspector-field-label-tag"
-                              >
-                                {labelTag}
-                              </Tag>
-                            ) : null}
                             {labelHelp ? (
                               <Tooltip title={labelHelp}>
                                 <QuestionCircleOutlined

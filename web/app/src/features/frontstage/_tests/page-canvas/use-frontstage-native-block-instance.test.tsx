@@ -3,6 +3,7 @@ import { FrontstageNativePreparationScheduler } from '../../lib/page-canvas/nati
 import { createNativePreparationSource } from './fixtures/native-preparation-source';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -44,6 +45,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
   });
 
   afterEach(() => {
+    // Unmount while RAF still uses the fixture's timer handles so the host
+    // cancels its queued frame through the matching cancel implementation.
+    cleanup();
     vi.restoreAllMocks();
   });
 
