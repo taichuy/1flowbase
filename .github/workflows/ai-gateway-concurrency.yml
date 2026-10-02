@@ -1,11 +1,11 @@
-name: Gateway Same-Value Identity Correctness and Paired Resources
+name: Gateway Same-Binary Terminal Timeline A/A
 'on':
   workflow_dispatch: {}
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: gateway-identity-reuse-${{ github.ref }}
+  group: gateway-terminal-aa-${{ github.ref }}
   cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -17,9 +17,9 @@ env:
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
 jobs:
-  identity-reuse:
+  terminal-aa:
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:18.4
@@ -35,7 +35,7 @@ jobs:
       - name: Checkout exact candidate product source
         uses: actions/checkout@v5
         with:
-          ref: 5a7f004b0d7ab0ab61d60c2f8cbff2f1fff77dbd
+          ref: 60308d4fe3b85b6317653d5c6bda834609f4ad3a
           persist-credentials: false
           fetch-depth: 0
       - name: Checkout immutable isolated controls
@@ -43,34 +43,24 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: tmp/experiment-control
-          sparse-checkout: scripts/node/ai-gateway-concurrency/cloud-monitor-probe
+          sparse-checkout: |
+            scripts/node/ai-gateway-concurrency/cloud-monitor-probe
+            .github/workflows
           persist-credentials: false
       - name: Setup Node24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: Pure source and no-sudo counter controls
+      - name: Pure source and ordinary counter controls
         run: |
           set -euo pipefail
           controls=tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe
-          out=tmp/test-governance/gateway-identity-reuse/build
+          out=tmp/test-governance/gateway-terminal-aa/build
           mkdir -p "$out"
-          node --test "$controls/identity-reuse/_tests/"*.test.js "$controls/_tests/"*.test.js "$controls/duplicate-lock/_tests/"*.test.js "$controls/lock-scope/_tests/"*.test.js > "$out/pure-node-tests.log" 2>&1
+          node --test "$controls/terminal-aa/_tests/"*.test.js "$controls/_tests/"*.test.js "$controls/duplicate-lock/_tests/"*.test.js "$controls/lock-scope/_tests/"*.test.js > "$out/pure-node-tests.log" 2>&1
           python3 "$controls/_tests/sampler.test.py" > "$out/pure-sampler-tests.log" 2>&1
-          node --check "$controls/identity-reuse/run.js"
-          node --check "$controls/identity-reuse/prepare-provider.js"
-          bash -n "$controls/identity-reuse/ci-gates.sh"
-      - name: Setup exact Rust toolchain on Actions only
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.98.1
-      - name: Restore existing compiler dependency cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-        with:
-          shared-key: ai-gateway-protocol-conformance
-          key: codex/gateway-cpu-ci-20261001
-          save-if: false
-          workspaces: api -> target
+          node --check "$controls/terminal-aa/run.js"
+          node --check "$controls/terminal-aa/prepare-reuse.js"
       - name: Configure only owned ephemeral PostgreSQL SQL statistics and backup clients
         run: |
           set -euo pipefail
@@ -93,57 +83,49 @@ jobs:
           done
           echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
           echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-      - name: Verify immutable Provider artifact metadata only
+      - name: Verify immutable previously compiled binary artifact metadata
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          out=tmp/test-governance/gateway-identity-reuse/build
-          gh api repos/taichuy/1flowbase/actions/artifacts/11221429445 > "$out/provider-artifact-metadata.json"
-          node -e "const a=require('./$out/provider-artifact-metadata.json');if(a.id!==11221429445||a.expired||a.workflow_run.id!==36992344470||a.digest!=='sha256:ac699d8a43379055c065e2c067218134d4f9e2341464f00dfdfb53a854720351')throw Error('immutable provider archive mismatch')"
-      - name: Download immutable packages; do not use sealed old API binaries
+          out=tmp/test-governance/gateway-terminal-aa/build
+          gh api repos/taichuy/1flowbase/actions/artifacts/11242053254 > "$out/reuse-artifact-metadata.json"
+          node -e "const a=require('./$out/reuse-artifact-metadata.json');if(a.id!==11242053254||a.expired||a.workflow_run.id!==37036697535||a.digest!=='sha256:9bb7a475d85f4c5f4af3660e3bb47a6149dc4edc4a5984cacb911ceda1169489')throw Error('immutable compiled artifact mismatch')"
+      - name: Download previous compiled baseline and packages, do not build Rust
         uses: actions/download-artifact@v8
         with:
-          name: gateway-resource-safe-build-36992344470
-          run-id: 36992344470
+          name: gateway-identity-reuse-build-37036697535
+          run-id: 37036697535
           github-token: ${{ github.token }}
-          path: tmp/provider-artifact
-      - name: Relevant Rust behavior gates then exact fresh baseline and candidate release builds
-        timeout-minutes: 125
-        env:
-          API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-          DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-          BOOTSTRAP_ROOT_ACCOUNT: root
-          BOOTSTRAP_ROOT_PASSWORD: change-me
-          WORKFLOW_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          controls=tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/identity-reuse
-          node "$controls/prepare-provider.js"
-          bash "$controls/ci-gates.sh" "$controls"
-      - name: Fixed source C8 ABBA twice; ordinary identity counters only
-        timeout-minutes: 20
+          path: tmp/terminal-aa-reuse
+      - name: Exact binary source API tree package provenance and baseline byte verification
         env:
           WORKFLOW_SHA: ${{ github.sha }}
-        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/identity-reuse/run.js
+        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/terminal-aa/prepare-reuse.js
+      - name: Same60308 same binary C8 AA1 AA2 client terminal and existing timing facts
+        timeout-minutes: 12
+        env:
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/terminal-aa/run.js
       - name: Upload every successful or failed synthetic result
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: gateway-identity-reuse-raw-${{ github.run_id }}
+          name: gateway-terminal-aa-raw-${{ github.run_id }}
           path: |
-            tmp/test-governance/gateway-identity-reuse/manifest.json
-            tmp/test-governance/gateway-identity-reuse/summary.json
-            tmp/test-governance/gateway-identity-reuse/C*/**
+            tmp/test-governance/gateway-terminal-aa/manifest.json
+            tmp/test-governance/gateway-terminal-aa/summary.json
+            tmp/test-governance/gateway-terminal-aa/AA*/**
           retention-days: 14
           if-no-files-found: warn
-      - name: Upload gates, provenance and paired release build receipts
+      - name: Upload gate and reused binary provenance without duplicate binary archive
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: gateway-identity-reuse-build-${{ github.run_id }}
+          name: gateway-terminal-aa-proof-${{ github.run_id }}
           path: |
-            tmp/test-governance/gateway-identity-reuse/build/**
-            tmp/protocol-reuse/**
+            tmp/test-governance/gateway-terminal-aa/build/*.json
+            tmp/test-governance/gateway-terminal-aa/build/*.txt
+            tmp/test-governance/gateway-terminal-aa/build/*.log
           retention-days: 7
           if-no-files-found: warn

@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "purpose": "same semantic product/binary A/A localization of client stream stalls; not optimization or perf acceptance",
+  "product_source": "60308d4fe3b85b6317653d5c6bda834609f4ad3a",
+  "product_api_tree": "95fba71501566f77f45a3c9da7f54ebeb6f41154",
+  "api_binary_sha256": "8d27decf5013ea06dac8bc76e53a86511d45b33cc21cc2923a407c3bbd5c2860",
+  "reuse_run": 37036697535,
+  "reuse_artifact_id": 11242053254,
+  "reuse_artifact_name": "gateway-identity-reuse-build-37036697535",
+  "reuse_artifact_sha256": "9bb7a475d85f4c5f4af3660e3bb47a6149dc4edc4a5984cacb911ceda1169489",
+  "reuse_binary_path": "test-governance/gateway-identity-reuse/build/baseline-release-api-server",
+  "provider_source": "997c705b3c564c93d2fc49b973e0b5bbdb759cdc",
+  "provider_packages_sha256": {
+    "openai": "8d5a338447566d8ac26a2572c2d536fad37838e766572df4dd23686965b57b3e",
+    "anthropic": "07af38ee7aff8ebd59894f5884a1c5cb7861248a87710e1437d13db429b79642",
+    "openai_compatible": "33c99266767d7d8cbe8b27c639065d5eeda854453dc8c9cc04c7ac8f64db0516"
+  },
+  "profile": "release",
+  "toolchain_receipt": "reuse original Rust1.98.1; no compile/cargo/Rust setup in new workflow",
+  "order": [
+    "AA1",
+    "AA2"
+  ],
+  "fixture": {
+    "concurrency": 8,
+    "history_items": 128,
+    "input_text_bytes": 524288,
+    "mock_deltas": 256,
+    "gap_ms": 10,
+    "api_pool_max": 5,
+    "warm_streams": 8,
+    "native_warm_reads": 8,
+    "measured_streams": 8,
+    "native_measured_reads": 8,
+    "direct_before": 8,
+    "direct_after": 8
+  },
+  "budget": {
+    "measured_gateway_total": 16,
+    "warm_gateway_total": 16,
+    "direct_total": 32,
+    "native_total": 32,
+    "primary_http_total": 96,
+    "scope_excludes": "fixture-owned setup/bootstrap/cleanup management HTTP; no new model/native retries",
+    "extra_read_only_SQL_total": 2,
+    "extra_SQL_per_fixture": 1,
+    "extra_SQL_timeout_ms": 3000,
+    "extra_command_timeout_ms": 5000,
+    "extra_export_max_bytes": 524288,
+    "real_model_requests": 0
+  },
+  "observation": {
+    "client_fields": [
+      "request_start_ns",
+      "headers_ns",
+      "first_delta_ns",
+      "last_expected_delta_ns",
+      "protocol_completed_ns",
+      "body_end_ns"
+    ],
+    "client_stream_clock_reads": 6,
+    "last_delta_condition": "fixed mock256th delta only; unexpected/missing counts fail completeness, no per-token clock loop",
+    "client_namespaced_clock": "Node hrtime monotonic; no subtraction of API relative timing from Node absolute clock",
+    "server_existing_fields": [
+      "attempt_index",
+      "status",
+      "started_at",
+      "first_token_at",
+      "finished_at",
+      "time_to_first_token_ms",
+      "provider_stream_timing_summary",
+      "provider_timing_receipt"
+    ],
+    "server_metrics_path": "node_run_records.metrics_payload.attempts[]",
+    "selection": "only current owned database/current target application/eight returned measured run UUIDs; white-list JSON server-side; no whole metrics/body/input/provider metadata",
+    "read_boundary": "after measured HTTP and native drain completion, outside foreground sampler window; one read, no retries",
+    "unavailable_fields": [
+      "server inner_body_eof",
+      "server recorder_complete",
+      "dispatcher wait/control spans"
+    ],
+    "unavailable_policy": "explicit null/unobserved; never infer server boundary from client EOF or legacy cfg(test) SSE logger",
+    "per_delta_work": "one small JS delta count/conditional dispatch, no per-delta clock calls, tracing arrays or writes; not zero overhead"
+  },
+  "observer_cost": {
+    "retain_counters": "driver user/system CPU and phase window, exact client clock call counts, diagnostic JSON bytes and one-query elapsed/export bytes",
+    "no_new_long_wait": "reuse existing fixture warm/settle/idle/drain only; no slot delay, no new profiling",
+    "interpretation": "same observed binary in both AA fixtures; no zero-overhead or statistically repeatable latency claim from two clusters"
+  },
+  "security": {
+    "sudo": false,
+    "capabilities": false,
+    "perf": false,
+    "maps": false,
+    "PG_permissions_changed": false,
+    "timing_detail_capture": 0,
+    "ordinary_sampler": "unchanged; denied fields null"
+  },
+  "job_limits": {
+    "expected_sampling_minutes": "about5 with same fixture cadence; estimate not guarantee",
+    "sampling_step_timeout_minutes": 12,
+    "job_timeout_minutes": 25
+  },
+  "answerable": [
+    "distinguish client first token to last delta, last delta to protocol_completed, protocol_completed to body_end",
+    "does existing provider ingress/append max delay track client stalls, or is the gap downstream/after terminal?",
+    "whether same baseline binary has seconds-scale variance between two AA fixtures"
+  ],
+  "not_answerable": [
+    "causal identity-reuse benefit",
+    "precise server innerEOF/archive-done/dispatcher waits without application instrumentation",
+    "PG PSS/IO or physical disk writes denied/unattributed",
+    "production P99/confidence or exact delivery ACK/archive/billing flush"
+  ],
+  "state": "frozen harness-only diagnostic; pure40 Node/sampler7/YAML/syntax/source-byte-reuse checks and independent source review passed; PostgreSQL/Actions runtime not yet verified"
+}
