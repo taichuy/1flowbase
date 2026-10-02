@@ -284,3 +284,37 @@ async fn cumulative_diagnostics_cancelling_complete_does_not_cancel_durable_work
     assert_eq!(metrics.stage_snapshot(Stage::CompleteWait).count, 2);
     assert_eq!(metrics.stage_snapshot(Stage::WorkerTotal).cancelled, 0);
 }
+
+#[tokio::test]
+async fn cumulative_diagnostics_concurrent_complete_waiters_share_one_durable_receipt() {
+    use super::super::diagnostics::Stage;
+    let writer = Arc::new(SlowFactWriter::default());
+    let recorder = ClientTrajectoryRecorder::with_writer_and_diagnostics(
+        writer.clone(), ClientTrajectoryTransport::Http, std::time::Duration::ZERO, true,
+    );
+    let metrics = recorder.owner.state.diagnostics.clone().unwrap();
+    recorder.bind_run(Uuid::now_v7(), None);
+    recorder.record(ClientTrajectoryFrameKind::Request, b"{}").await.unwrap();
+    writer.entered.notified().await;
+    let mut waiters = Vec::new();
+    for _ in 0..2 {
+        let owner = recorder.clone();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        waiters.push(tokio::spawn(async move {
+            signal_first_pending(owner.complete(), started).await
+        }));
+        ready.await.expect("each completion waiter was polled Pending");
+    }
+    assert!(waiters.iter().all(|waiter| !waiter.is_finished()));
+    writer.release.notify_one();
+    for waiter in waiters {
+        let receipt = waiter.await.unwrap().unwrap();
+        assert_eq!(receipt.request_id, recorder.capture_id());
+        assert_eq!(receipt.persisted_through, 1);
+    }
+    let completion = metrics.stage_snapshot(Stage::CompleteWait);
+    assert_eq!(completion.count, 2);
+    assert_eq!(completion.failures, 0);
+    assert_eq!(completion.cancelled, 0);
+    assert_eq!(metrics.stage_snapshot(Stage::WorkerTotal).count, 1);
+}
