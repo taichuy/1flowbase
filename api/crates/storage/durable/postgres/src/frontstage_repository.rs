@@ -817,7 +817,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 .iter()
                 .position(|(id, _)| *id == target_id)
                 .ok_or(ControlPlaneError::InvalidInput("move_position"))?;
-            siblings.insert(target_index + usize::from(input.after_id.is_some()), source);
+            let insertion_index = target_index + usize::from(input.after_id.is_some());
+            siblings.insert(insertion_index, source);
             // Existing rank rebalance handles equal and legacy ranks with strict byte order.
             let ranks = crate::ordered_tree::rank::rebalance(siblings.len())?;
             let ids = siblings.iter().map(|(id, _)| *id).collect::<Vec<_>>();
@@ -825,7 +826,10 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 .iter()
                 .map(|rank| rank.as_str().to_owned())
                 .collect::<Vec<_>>();
-            rank = values[ids.iter().position(|id| *id == input.page_id).unwrap()].clone();
+            rank = values
+                .get(insertion_index)
+                .ok_or(ControlPlaneError::InvalidInput("move_position"))?
+                .clone();
             sqlx::query(
                 r#"update frontstage_pages as page set rank = ordered.rank, updated_at = now()
                    from unnest($2::uuid[], $3::text[]) as ordered(id, rank)
