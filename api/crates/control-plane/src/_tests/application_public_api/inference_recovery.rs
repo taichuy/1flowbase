@@ -223,7 +223,7 @@ async fn fixture_with_protocol_context(
     .unwrap();
     let callback = repository.seed_pending_llm_tool_callback_task(run.id, json!({
         "tool_calls":[{"id":"call_1","name":"exec","arguments":{}}],
-        "provider_metadata":{"native_response":{"binding":inference_binding(),"configuration_digest":sealed.configuration_digest().unwrap(),"history":history}}
+        "provider_metadata":{"native_response":{"response_id":format!("resp_{}", run.id),"binding":inference_binding(),"configuration_digest":sealed.configuration_digest().unwrap(),"history":history}}
     }));
     let mut body = original;
     body["input"].as_array_mut().unwrap().extend(output);
@@ -431,7 +431,7 @@ async fn terminal_response_reissue_cannot_change_accepted_tools_or_configuration
 }
 
 #[tokio::test]
-async fn terminal_transport_reissue_rejects_untrusted_or_non_transport_failure() {
+async fn new_response_does_not_use_old_recovery_receipt_as_its_admission() {
     for mutation in 0..5 {
         let mut failure = terminal_transport_failure();
         match mutation {
@@ -446,7 +446,13 @@ async fn terminal_transport_reissue_rejects_untrusted_or_non_transport_failure()
             _ => unreachable!(),
         }
         let f = fixture(Some(failure)).await;
-        assert!(f.prepare(&f.command).await.is_err(), "mutation {mutation}");
+        assert!(
+            matches!(
+                f.prepare(&f.command).await.unwrap(),
+                PreparedPublishedCallbackResume::StartNewTurnFromHistory
+            ),
+            "mutation {mutation}"
+        );
         f.assert_receipt_unchanged();
     }
 }
@@ -480,7 +486,8 @@ async fn native_recovery_rejects_missing_changed_history_and_configuration() {
                 Some(ProviderTransportPayload::openai_responses(body).unwrap());
         }
         let expected = match mutation {
-            0 | 7 => "native_recovery_full_context_required",
+            0 => "native_recovery_full_context_required",
+            7 => "native_tool_output_response_mismatch",
             1 => "native_recovery_history_item_count_mismatch",
             6 => "native_recovery_configuration_mismatch",
             _ => "native_recovery_history_mismatch",
@@ -540,7 +547,7 @@ async fn private_recovery_evidence_stays_in_the_api_actor_scope() {
 }
 
 #[tokio::test]
-async fn native_recovery_rejects_semantic_untrusted_expired_and_exhausted_failures() {
+async fn new_responses_request_does_not_replay_semantic_untrusted_expired_or_exhausted_attempts() {
     for mutation in 0..7 {
         let mut failure = transport_failure();
         match mutation {
@@ -567,8 +574,9 @@ async fn native_recovery_rejects_semantic_untrusted_expired_and_exhausted_failur
         }
         let f = fixture(Some(failure)).await;
         assert!(
-            f.prepare(&f.command).await.is_err(),
-            "failure mutation {mutation} must reject"
+            matches!(f.prepare(&f.command).await.unwrap(),
+                PreparedPublishedCallbackResume::StartNewTurnFromHistory),
+            "failure mutation {mutation} must start a new lifecycle without an internal replay grant"
         );
         f.assert_receipt_unchanged();
     }
@@ -776,19 +784,13 @@ async fn assert_recovery_successor_context(current_context: Option<ProtocolConte
 }
 
 #[tokio::test]
-async fn recovery_requires_the_failed_invocations_host_binding() {
-    for (field, expected) in [
-        (None, "native_recovery_binding_missing"),
-        (
-            Some("provider_configuration_digest"),
-            "native_recovery_configuration_mismatch",
-        ),
-        (Some("node_id"), "native_recovery_configuration_mismatch"),
-        (Some("model"), "native_recovery_configuration_mismatch"),
-        (
-            Some("artifact_checksum"),
-            "native_recovery_configuration_mismatch",
-        ),
+async fn missing_or_changed_internal_binding_does_not_mint_a_recovery_grant() {
+    for field in [
+        None,
+        Some("provider_configuration_digest"),
+        Some("node_id"),
+        Some("model"),
+        Some("artifact_checksum"),
     ] {
         let mut failure = transport_failure();
         if let Some(field) = field {
@@ -799,16 +801,12 @@ async fn recovery_requires_the_failed_invocations_host_binding() {
                 .unwrap()
                 .remove("native_inference_binding");
         }
-        let fixture = fixture(Some(failure)).await;
-        assert_eq!(
-            fixture
-                .prepare(&fixture.command)
-                .await
-                .unwrap_err()
-                .to_string(),
-            format!("conflict: {expected}")
-        );
-        fixture.assert_receipt_unchanged();
+        let f = fixture(Some(failure)).await;
+        assert!(matches!(
+            f.prepare(&f.command).await.unwrap(),
+            PreparedPublishedCallbackResume::StartNewTurnFromHistory
+        ));
+        f.assert_receipt_unchanged();
     }
 }
 
@@ -942,6 +940,57 @@ async fn consumed_full_context_extension_cannot_bypass_receipt_or_history_identi
         }
         command.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
         assert!(f.prepare(&command).await.is_err(), "mutation {mutation}");
+    }
+    f.assert_receipt_unchanged();
+}
+
+#[tokio::test]
+async fn incremental_reissue_uses_owned_predecessor_without_reconsuming_tool_results() {
+    let f = fixture(Some(terminal_transport_failure())).await;
+    let actor = ApplicationApiKeyService::new(f.repository.clone())
+        .authenticate_bearer_token(&f.command.bearer_token)
+        .await
+        .unwrap();
+    let callback = f
+        .repository
+        .find_native_responses_callbacks_by_call_ids(
+            actor.workspace_id,
+            actor.application_id,
+            actor.api_key_id,
+            actor.creator_user_id,
+            &["call_1".to_owned()],
+        )
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    let mut command = f.command.clone();
+    let mut body = command.native_transport.take().unwrap().into_wire_body();
+    body["previous_response_id"] =
+        callback.request_payload["provider_metadata"]["native_response"]["response_id"].clone();
+    body["input"] = json!([{"type":"function_call_output","call_id":"call_1","output":"done"}]);
+    command.native_transport =
+        Some(ProviderTransportPayload::openai_responses(body.clone()).unwrap());
+    assert!(matches!(
+        f.prepare(&command).await.unwrap(),
+        PreparedPublishedCallbackResume::StartNewTurnFromHistory
+    ));
+    for mutation in 0..4 {
+        let mut invalid = command.clone();
+        let mut changed = body.clone();
+        match mutation {
+            0 => changed["previous_response_id"] = json!("resp_foreign"),
+            1 => changed["input"][0]["output"] = json!("changed"),
+            2 => {
+                let duplicate = changed["input"][0].clone();
+                changed["input"].as_array_mut().unwrap().push(duplicate);
+            }
+            3 => changed["model"] = json!("foreign"),
+            _ => unreachable!(),
+        }
+        invalid.native_transport =
+            Some(ProviderTransportPayload::openai_responses(changed).unwrap());
+        assert!(f.prepare(&invalid).await.is_err(), "mutation {mutation}");
     }
     f.assert_receipt_unchanged();
 }
