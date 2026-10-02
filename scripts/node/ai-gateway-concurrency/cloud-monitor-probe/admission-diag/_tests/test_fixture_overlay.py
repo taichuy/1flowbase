@@ -59,6 +59,27 @@ class OverlayTests(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), self.original)
                 self.assertEqual(other.read_text(), "unrelated must remain")
 
+    def test_actual_exit_trap_preserves_gate_exit_or_fails_closed_on_restore_error(self):
+        gate = (MODULE.parent / "ci-gates.sh").read_text()
+        start = gate.index("restore_test_fixture() {\n")
+        end = gate.index("\n}\n", start) + 3
+        function = gate[start:end]
+        trap = next(line for line in gate.splitlines() if line.startswith("trap "))
+        # Only this local child-shell test stubs the restoration interpreter;
+        # no Rust, credentials, network, product files or global settings touched.
+        for primary_exit, restore_exit, expected in [(0, 0, 0), (17, 0, 17),
+                                                     (0, 23, 99), (17, 23, 99)]:
+            script = "\n".join([
+                "set -euo pipefail", "overlay_active=1", "controls=/unused",
+                function,
+                f"python3() {{ printf 'restore_command_exit={restore_exit}\\n'; return {restore_exit}; }}",
+                trap, f"printf 'original_gate_exit={primary_exit}\\n'", f"exit {primary_exit}",
+            ])
+            result = subprocess.run(["bash", "-c", script], text=True, capture_output=True)
+            self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+            self.assertIn(f"original_gate_exit={primary_exit}", result.stdout)
+            self.assertIn(f"restore_command_exit={restore_exit}", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

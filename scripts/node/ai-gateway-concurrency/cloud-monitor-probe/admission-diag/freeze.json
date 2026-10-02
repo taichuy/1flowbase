@@ -136,7 +136,8 @@
       "original_sha256": "739c8fff67dc8ac3356936389bbb4f77b9c3a5a4cb4db945fbfee3080ab58461",
       "reused_from_controls": "92a62c6f3a2eb4f946c610db06e6be85a803a20e",
       "scope": "only cfg(test) zero-delay immediate MemoryWriter archive notification before next admission;20ms burst unchanged; original comparative/byte/sequence assertions retained",
-      "restore": "success and failure EXIT; original SHA and clean tracked product source mandatory before release build"
+      "restore": "success and failure EXIT; original SHA and clean tracked product source mandatory before release build",
+      "restore_failure": "python restore nonzero explicitly propagates; EXIT99 means restoration failure, original gate status remains in phase log; original clean gate before fresh binary"
     }
   },
   "acceptance": {

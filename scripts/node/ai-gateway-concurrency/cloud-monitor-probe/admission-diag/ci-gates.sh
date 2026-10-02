@@ -25,7 +25,7 @@ node "$controls/source-proof.js" > "$out/source-proof.json"
 overlay_active=0
 restore_test_fixture() {
  if test "$overlay_active" -eq 1;then
-  python3 "$controls/test-fixture-overlay.py" --restore
+  python3 "$controls/test-fixture-overlay.py" --restore || return $?
   overlay_active=0
  fi
 }
