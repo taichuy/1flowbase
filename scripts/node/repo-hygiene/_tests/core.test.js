@@ -151,6 +151,25 @@ test("scanSourceFile reports front-back field contract compatibility markers as 
   assert.equal(findings[0].severity, "warning");
 });
 
+test("compatibility warnings identify comments rather than marker literals", () => {
+  const findings = scanSourceFile({
+    relativePath: "scripts/node/example.js",
+    content: [
+      "const pattern =",
+      String.raw`  /(?:\/\/|#|\/\*|\*)\s*@field-contract-compat\b/u;`,
+      "const text = '// @field-contract-compat source=a alias=b';",
+      "/*",
+      " * @field-contract-compat source=a alias=b remove_by=2026-10-30",
+      " */",
+      "const value = source.a; // @field-contract-compat source=a alias=b remove_by=2026-10-30",
+    ].join("\n"),
+  });
+  assert.deepEqual(findings.map(({ rule, line }) => ({ rule, line })), [
+    { rule: "field-contract-compat-marker", line: 5 },
+    { rule: "field-contract-compat-marker", line: 7 },
+  ]);
+});
+
 test("scanSourceFile reports editable-looking values in JSX list keys", () => {
   const findings = scanSourceFile({
     relativePath: "web/app/src/features/example/components/EditableRows.tsx",

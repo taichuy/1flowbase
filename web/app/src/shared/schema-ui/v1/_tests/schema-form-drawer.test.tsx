@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode } from 'react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { SchemaFormDrawer } from '../form-drawer/SchemaFormDrawer';
 import type { PluginFormSchema } from '../contracts/plugin-form-schema';
@@ -81,6 +81,22 @@ const schema: PluginFormSchema = {
     }
   ]
 };
+
+// Keep real component delays inside this fixture's lifetime, including callbacks
+// scheduled by validation. Automatic RTL cleanup still owns mounted components.
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+});
+
+afterEach(async () => {
+  try {
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 describe('SchemaFormDrawer', () => {
   test('validates required fields before submit', async () => {

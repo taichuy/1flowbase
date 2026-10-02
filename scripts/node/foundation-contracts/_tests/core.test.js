@@ -50,6 +50,27 @@ test('AC-001/006 routes four foundations and ignores legal non-contract changes'
   assert.equal(providerSettingsPlan.selectedFoundations.includes('application-backend'), false);
 });
 
+test('routes current protocol and invocation owners without selecting unrelated settings', () => {
+  for (const changedFile of [
+    'api/apps/api-server/src/routes/application_public_api/openai.rs',
+    'api/apps/api-server/src/routes/application_public_api/openai/chat_completions.rs',
+    'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs',
+    'api/crates/control-plane/src/application_public_api/client_stream.rs',
+    'api/crates/control-plane/src/client_trajectory/chat.rs',
+    'api/crates/control-plane/src/orchestration_runtime/provider_invoker.rs',
+    'api/crates/control-plane/src/orchestration_runtime/provider_invoker/stream.rs',
+  ]) {
+    assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, ['ai-gateway'], changedFile);
+  }
+  for (const changedFile of [
+    'api/crates/control-plane/src/settings/mod.rs',
+    'api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs',
+    'docs/architecture/interface-lifecycle.md',
+  ]) {
+    assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, [], changedFile);
+  }
+});
+
 test('AC-002 keeps mcp_result outside the core operations and only adds continuation evidence on risk', () => {
   assert.doesNotThrow(() => validatePackInventory());
 
