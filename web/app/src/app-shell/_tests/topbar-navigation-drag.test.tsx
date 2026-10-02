@@ -8,6 +8,7 @@ import {
 import { App } from 'antd';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { FrontstagePageTreeNode } from '../../features/frontstage/api/page-tree';
+import { useTopbarDragStore } from '../../features/frontstage/lib/navigation-drag/topbar-drag-store';
 import { TopbarNavigationItemLabel } from '../TopbarNavigationDesigner';
 
 const mutations = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ const nodes = ['报表', '应用'].map((title, index) => ({
   title,
   kind: 'page',
   placement: 'topbar',
+  content_presentation: 'single',
   children: []
 })) as FrontstagePageTreeNode[];
 
@@ -50,6 +52,7 @@ function transfer() {
   const data = new Map<string, string>();
   return {
     types: [] as string[],
+    setDragImage: vi.fn(),
     effectAllowed: '',
     dropEffect: '',
     setData(type: string, value: string) {
@@ -63,6 +66,7 @@ function transfer() {
 }
 
 beforeEach(() => {
+  useTopbarDragStore.setState({ drag: null });
   mutations.moveNode.mockClear();
   mutations.isPending = false;
 });
@@ -93,10 +97,22 @@ test.each([
     const label = screen
       .getByRole('link', { name: nodes[target].title! })
       .closest('.app-shell-dynamic-nav-item')!;
-    fireEvent.dragOver(label, { dataTransfer });
+    vi.spyOn(label, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      width: 100
+    } as DOMRect);
+    const overEvent = createEvent.dragOver(label, { dataTransfer });
+    Object.defineProperty(overEvent, 'clientX', { value: clientX });
+    fireEvent(label, overEvent);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      `${nodes[source].title} → ${nodes[target].title}`
+    );
     expect(dataTransfer.dropEffect).toBe('move');
     const dropEvent = createEvent.drop(label, { dataTransfer });
-    Object.defineProperty(dropEvent, 'clientX', { value: clientX });
+    // Drop coordinates deliberately disagree: the visible projection is authoritative.
+    Object.defineProperty(dropEvent, 'clientX', {
+      value: clientX < 0 ? 200 : -1
+    });
     fireEvent(label, dropEvent);
     await waitFor(() =>
       expect(mutations.moveNode).toHaveBeenCalledWith(nodes[source].id, {
@@ -126,4 +142,28 @@ test('pending mutations disable the drag handle', () => {
     'draggable',
     'false'
   );
+});
+
+test('leaving the target and ending a drag clear the projection without saving', () => {
+  renderLabels();
+  const dataTransfer = transfer();
+  const handle = screen.getByRole('button', { name: '拖拽排序报表' });
+  fireEvent.dragStart(handle, { dataTransfer });
+  const label = screen
+    .getByRole('link', { name: '应用' })
+    .closest('.app-shell-dynamic-nav-item')!;
+  vi.spyOn(label, 'getBoundingClientRect').mockReturnValue({
+    left: 0,
+    width: 100
+  } as DOMRect);
+  const over = createEvent.dragOver(label, { dataTransfer });
+  Object.defineProperty(over, 'clientX', { value: 90 });
+  fireEvent(label, over);
+  expect(screen.getByRole('status')).toBeInTheDocument();
+  fireEvent.dragLeave(label);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  fireEvent.drop(label, { dataTransfer });
+  fireEvent.dragEnd(handle, { dataTransfer });
+  expect(mutations.moveNode).not.toHaveBeenCalled();
+  expect(useTopbarDragStore.getState().drag).toBeNull();
 });

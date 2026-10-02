@@ -28,6 +28,10 @@ import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
 import './frontstage-page-tree-sidebar.css';
 import './frontstage-add-action.css';
 import { i18nText } from '../../../shared/i18n/text';
+import {
+  canProjectNavigationMove,
+  projectNavigationPosition
+} from '../lib/navigation-drag/projection';
 import { PageTreeIcon } from '../lib/page-tree-icons/registry';
 
 type FrontStagePageTreeSidebarProps = {
@@ -242,78 +246,84 @@ function renderTreeNode({
   const resolveDropPosition = (
     event: DragEvent<HTMLElement>,
     forcedPosition?: 'before' | 'inside' | 'after'
-  ): 'before' | 'inside' | 'after' => {
-    if (forcedPosition) {
-      return forcedPosition;
-    }
-
-    const rect = event.currentTarget.getBoundingClientRect();
-    const yRatio = (event.clientY - rect.top) / rect.height;
-    const activeDraggedNodeId = getDraggedNodeIdFromEvent(event);
-    const activeDraggedNode = activeDraggedNodeId
-      ? findNodeById(pageTree, activeDraggedNodeId)
-      : null;
-    const canDropInsideCurrentGroup =
-      node.kind === 'group' && Boolean(activeDraggedNode);
-
-    if (
-      canDropInsideCurrentGroup &&
-      (!Number.isFinite(yRatio) || (yRatio > 0.28 && yRatio < 0.72))
-    ) {
-      return 'inside';
-    }
-
-    return event.clientY <= rect.top + rect.height / 2 ? 'before' : 'after';
+  ) => {
+    if (forcedPosition) return forcedPosition;
+    const row = event.currentTarget.matches(
+      '.frontstage-page-tree-sidebar__node-row'
+    )
+      ? event.currentTarget
+      : event.currentTarget.querySelector(
+          '.frontstage-page-tree-sidebar__node-row'
+        );
+    if (!row) return null;
+    const rect = row.getBoundingClientRect();
+    return projectNavigationPosition(
+      event.clientY,
+      rect.top,
+      rect.height,
+      node.kind === 'group'
+    );
   };
 
   const updateDropIndicator = (
     event: DragEvent<HTMLElement>,
     forcedPosition?: 'before' | 'inside' | 'after'
   ) => {
-    const activeDraggedNodeId = getDraggedNodeIdFromEvent(event);
-    if (!canEdit || !activeDraggedNodeId || activeDraggedNodeId === node.id) {
+    event.stopPropagation();
+    const sourceId = getDraggedNodeIdFromEvent(event);
+    const position = resolveDropPosition(event, forcedPosition);
+    if (
+      !canEdit ||
+      isOperationPending ||
+      !draggedNodeId ||
+      !sourceId ||
+      !position ||
+      !canProjectNavigationMove(pageTree, sourceId, node.id, position)
+    ) {
+      event.dataTransfer.dropEffect = 'none';
+      setDropIndicator(null);
       return;
     }
-
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
-
-    const position = resolveDropPosition(event, forcedPosition);
-
-    setDropIndicator({
-      targetNodeId: node.id,
-      position
-    });
+    setDropIndicator({ targetNodeId: node.id, position });
   };
 
-  const handleDrop = (
-    event: DragEvent<HTMLElement>,
-    forcedPosition?: 'before' | 'inside' | 'after'
-  ) => {
-    if (!canEdit) {
-      return;
-    }
-
+  const handleDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
-
-    const droppedNodeId =
-      event.dataTransfer.getData(PAGE_TREE_DRAG_DATA_TYPE) || draggedNodeId;
+    const sourceId = getDraggedNodeIdFromEvent(event);
     setDraggedNodeId(null);
     setDropIndicator(null);
-
-    if (!droppedNodeId || droppedNodeId === node.id) {
+    if (
+      !canEdit ||
+      isOperationPending ||
+      !sourceId ||
+      dropIndicator?.targetNodeId !== node.id ||
+      !canProjectNavigationMove(
+        pageTree,
+        sourceId,
+        node.id,
+        dropIndicator.position
+      )
+    )
       return;
-    }
-
-    const position =
-      forcedPosition ??
-      (dropIndicator?.targetNodeId === node.id
-        ? dropIndicator.position
-        : resolveDropPosition(event));
-
-    onMoveNodeToPosition(droppedNodeId, node.id, position);
+    onMoveNodeToPosition(sourceId, node.id, dropIndicator.position);
   };
+
+  const draggedNode = draggedNodeId
+    ? findNodeById(pageTree, draggedNodeId)
+    : null;
+  const projectionContent = (position: 'before' | 'inside' | 'after') => (
+    <span role="status">
+      {draggedNode ? getNodeTitle(draggedNode) : ''} → {title} ·{' '}
+      {position === 'inside'
+        ? i18nText('frontstage', 'drag_projection.inside')
+        : position === 'before'
+          ? i18nText('frontstage', 'drag_projection.before')
+          : i18nText('frontstage', 'drag_projection.after')}
+    </span>
+  );
 
   const menuItems: MenuProps['items'] = [
     {
@@ -550,16 +560,21 @@ function renderTreeNode({
       {dropIndicator?.targetNodeId === node.id &&
       dropIndicator.position === 'before' ? (
         <div
-          className="frontstage-page-tree-sidebar__drop-placeholder"
+          className="frontstage-page-tree-sidebar__drop-placeholder frontstage-page-tree-sidebar__drop-placeholder--before"
           onDragOver={(event) => updateDropIndicator(event, 'before')}
-          onDrop={(event) => handleDrop(event, 'before')}
-        />
+          onDrop={handleDrop}
+        >
+          {projectionContent('before')}
+        </div>
       ) : null}
       <div
         className={[
           'frontstage-page-tree-sidebar__node-row',
           isSelected
             ? 'frontstage-page-tree-sidebar__node-row--selected'
+            : null,
+          isInsideDropTarget
+            ? 'frontstage-page-tree-sidebar__node-row--drop-inside'
             : null,
           isPageNode ? 'frontstage-page-tree-sidebar__node-row--page' : null,
           isHidden ? 'frontstage-page-tree-sidebar__node-row--hidden' : null,
@@ -599,12 +614,28 @@ function renderTreeNode({
                     setDropIndicator(null);
                   }}
                   onDragStart={(event) => {
+                    if (!canEdit || isOperationPending) {
+                      event.preventDefault();
+                      return;
+                    }
                     event.stopPropagation();
                     event.dataTransfer.effectAllowed = 'move';
                     event.dataTransfer.setData(
                       PAGE_TREE_DRAG_DATA_TYPE,
                       node.id
                     );
+                    const row = event.currentTarget.closest(
+                      '.frontstage-page-tree-sidebar__node-row'
+                    ) as HTMLElement | null;
+                    if (row) {
+                      const rect = row.getBoundingClientRect();
+                      event.dataTransfer.setDragImage(
+                        row,
+                        event.clientX - rect.left,
+                        event.clientY - rect.top
+                      );
+                    }
+                    setDropIndicator(null);
                     setDraggedNodeId(node.id);
                   }}
                   onClick={(event) => {
@@ -667,8 +698,10 @@ function renderTreeNode({
               <div
                 className="frontstage-page-tree-sidebar__drop-placeholder frontstage-page-tree-sidebar__drop-placeholder--inside"
                 onDragOver={(event) => updateDropIndicator(event, 'inside')}
-                onDrop={(event) => handleDrop(event, 'inside')}
-              />
+                onDrop={handleDrop}
+              >
+                {projectionContent('inside')}
+              </div>
             </li>
           ) : null}
         </ul>
@@ -676,10 +709,12 @@ function renderTreeNode({
       {dropIndicator?.targetNodeId === node.id &&
       dropIndicator.position === 'after' ? (
         <div
-          className="frontstage-page-tree-sidebar__drop-placeholder"
+          className="frontstage-page-tree-sidebar__drop-placeholder frontstage-page-tree-sidebar__drop-placeholder--after"
           onDragOver={(event) => updateDropIndicator(event, 'after')}
-          onDrop={(event) => handleDrop(event, 'after')}
-        />
+          onDrop={handleDrop}
+        >
+          {projectionContent('after')}
+        </div>
       ) : null}
     </li>
   );
@@ -758,7 +793,13 @@ export function FrontStagePageTreeSidebar({
   };
 
   return (
-    <div className="frontstage-page-tree-sidebar">
+    <div
+      className="frontstage-page-tree-sidebar"
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          setDropIndicator(null);
+      }}
+    >
       <ul className="frontstage-page-tree-sidebar__tree">
         {pageTree.map((node) =>
           renderTreeNode({
@@ -783,7 +824,8 @@ export function FrontStagePageTreeSidebar({
             onSelectPage,
             draggedNodeId,
             setDraggedNodeId,
-            dropIndicator,
+            dropIndicator:
+              canEdit && !isOperationPending ? dropIndicator : null,
             setDropIndicator
           })
         )}

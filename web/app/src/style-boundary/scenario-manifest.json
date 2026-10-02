@@ -197,6 +197,8 @@
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
       "web/app/src/app-shell/Navigation.tsx",
+      "web/app/src/app-shell/TopbarNavigationDesigner.tsx",
+      "web/app/src/app-shell/navigation-drag.css",
       "web/app/src/app-shell/AccountMenu.tsx",
       "web/app/src/app-shell/account-menu-items.tsx",
       "web/app/src/app-shell/SettingsChromeMenu.tsx",

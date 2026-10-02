@@ -1,4 +1,9 @@
 {
+  "drag_projection": {
+    "before": "Before",
+    "inside": "Move into group",
+    "after": "After"
+  },
   "auto": {
     "save_as_page_template": "Save as page template",
     "save_template_draft": "Save template draft",

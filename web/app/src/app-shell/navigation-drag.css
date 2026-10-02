@@ -1,0 +1,43 @@
+.app-shell-dynamic-nav-item {
+  position: relative;
+}
+
+.app-shell-dynamic-nav-item--dragging {
+  opacity: 0.55;
+}
+
+.app-shell-nav-projection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #2563eb;
+  color: var(--text-primary);
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.app-shell-nav-projection--before {
+  left: -3px;
+}
+.app-shell-nav-projection--after {
+  right: -3px;
+}
+
+.app-shell-nav-projection__caption {
+  position: fixed;
+  font-size: 12px;
+  max-width: calc(100vw - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  z-index: 1100;
+  pointer-events: none;
+  padding: 4px 8px;
+  border: 1px dashed #2563eb;
+  border-radius: 4px;
+  background: var(--bg-surface, #fff);
+  color: #2563eb;
+}
