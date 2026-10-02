@@ -1,0 +1,99 @@
+#[path = "@CHECKOUT@/api/crates/control-plane/src/orchestration_runtime/provider_invoker/stream_timing.rs"]
+mod stream_timing;
+
+#[cfg(test)]
+mod allocation_fixture {
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+    thread_local! {
+        static COUNTS: Cell<(bool, usize, usize)> = const { Cell::new((false, 0, 0)) };
+    }
+    struct TrackingAllocator;
+    fn record(bytes: usize) {
+        let _ = COUNTS.try_with(|counts| {
+            let (active, calls, requested) = counts.get();
+            if active { counts.set((true, calls + 1, requested + bytes)); }
+        });
+    }
+    unsafe impl GlobalAlloc for TrackingAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            record(layout.size()); System.alloc(layout)
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) { System.dealloc(ptr, layout); }
+        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            record(new_size); System.realloc(ptr, layout, new_size)
+        }
+    }
+    #[global_allocator]
+    static ALLOCATOR: TrackingAllocator = TrackingAllocator;
+    pub(super) fn measure(f: impl FnOnce() -> usize) -> (usize, usize, usize) {
+        COUNTS.with(|counts| counts.set((true, 0, 0)));
+        let size = f();
+        COUNTS.with(|counts| {
+            let (_, calls, requested) = counts.replace((false, 0, 0));
+            (size, calls, requested)
+        })
+    }
+    #[test]
+    fn fake_frames_remove_only_measurement_output_allocations() {
+        for (label, frame) in [
+            ("text", serde_json::json!({"type":"text_delta", "text":"汉字 🦀 \n \""})),
+            ("tool", serde_json::json!({"type":"output_item", "item":{"arguments":"x".repeat(1024)}})),
+            ("large", serde_json::json!({"type":"output_item", "item":{"text":"x".repeat(64*1024)}})),
+        ] {
+            let old = measure(|| serde_json::to_vec(&frame).unwrap().len());
+            let new = measure(|| crate::stream_timing::serialized_frame_size(&frame));
+            assert_eq!(old.0, new.0); assert!(old.1 > 0); assert_eq!(new.1, 0); assert_eq!(new.2, 0);
+            println!("allocation_fixture label={label} json_bytes={} old_alloc_calls={} old_requested_bytes={} new_alloc_calls={} new_requested_bytes={}", old.0, old.1, old.2, new.1, new.2);
+        }
+    }
+}
+
+#[cfg(test)]
+mod typed_event_semantics {
+    use extension_contracts::provider_contract::*;
+    use serde_json::json;
+    use crate::stream_timing::{serialized_frame_size, ProviderStreamTiming};
+    #[test]
+    fn every_real_provider_event_variant_keeps_exact_json_size_without_output_allocations() {
+        let special = format!("汉字 🦀 \" \\ {}", (0u8..32).map(char::from).collect::<String>());
+        let events = vec![
+            ProviderStreamEvent::ProtocolObservation { protocol:"responses".into(), transport:"sse".into(), direction:"received".into(), kind:"message".into(), body:special.clone(), encoding:"utf8".into(), status:Some(200) },
+            ProviderStreamEvent::NativeEvent { protocol:"responses".into(), event:json!({"value":null,"text":special}) },
+            ProviderStreamEvent::TextDelta { delta:special.clone() },
+            ProviderStreamEvent::ReasoningDelta { delta:String::new() },
+            ProviderStreamEvent::ReasoningSignatureDelta { signature:special.clone() },
+            ProviderStreamEvent::ToolCallDelta { call_id:"call-1".into(), delta:json!({"arguments":special}) },
+            ProviderStreamEvent::ToolCallCommit { call:ProviderToolCall { id:"call-1".into(), name:"tool".into(), arguments:json!({"x":special}), provider_metadata:json!({}) } },
+            ProviderStreamEvent::McpCallDelta { call_id:"call-2".into(), delta:json!({"value":true}) },
+            ProviderStreamEvent::McpCallCommit { call:ProviderMcpCall { id:"call-2".into(), server:"srv".into(), method:"call".into(), arguments:json!({"x":special}) } },
+            ProviderStreamEvent::ResponsesOutputDelta { event:json!({"type":"response.output_text.delta","delta":special}) },
+            ProviderStreamEvent::OutputItem { phase:ProviderOutputItemPhase::Done, output_index:usize::MAX, item:json!({"type":"function_call","id":"item-1","call_id":"call-1","name":"tool","arguments":"x".repeat(64*1024)}) },
+            ProviderStreamEvent::UsageDelta { usage:ProviderUsage { input_tokens:Some(u64::MAX), output_tokens:Some(0), ..Default::default() } },
+            ProviderStreamEvent::UsageSnapshot { usage:ProviderUsage::default() },
+            ProviderStreamEvent::Finish { reason:ProviderFinishReason::Stop },
+            ProviderStreamEvent::Error { error:ProviderRuntimeError::new(ProviderRuntimeErrorKind::RateLimited,special.clone()).with_provider_details(json!({"x":null})) },
+            ProviderStreamEvent::OutputProtocolFailure { failure:ProviderOutputProtocolFailure { protocol:"responses".into(), error_code:"fixture".into(), message:special.clone(), retry_feedback:special, provider_details:json!([null, true, 123]) } },
+        ];
+        assert_eq!(events.len(),16);
+        let mut summary=ProviderStreamTiming::new(false);
+        let mut detailed=ProviderStreamTiming::new(true);
+        let (mut old_calls,mut old_bytes,mut new_calls,mut new_bytes,mut json_bytes)=(0,0,0,0,0);
+        for (index,event) in events.iter().enumerate() {
+            let old=crate::allocation_fixture::measure(||serde_json::to_vec(event).unwrap().len());
+            let new=crate::allocation_fixture::measure(||serialized_frame_size(event));
+            assert_eq!(old.0,new.0);assert!(old.1>0);assert_eq!(new.1,0);assert_eq!(new.2,0);
+            old_calls+=old.1;old_bytes+=old.2;new_calls+=new.1;new_bytes+=new.2;json_bytes+=old.0;
+            for timing in [&mut summary,&mut detailed] { timing.observe(index as u64,"typed_fixture",new.0,10,11).unwrap(); }
+        }
+        assert_eq!(summary.summary()["total_size_bytes"],json!(json_bytes));
+        assert_eq!(detailed.summary()["total_size_bytes"],json!(json_bytes));
+        for (event,record) in events.iter().zip(detailed.into_details().unwrap().as_array().unwrap()) { assert_eq!(record["size_bytes"],json!(serde_json::to_vec(event).unwrap().len())); }
+        println!("typed_event_fixture variants=16 json_bytes={json_bytes} old_alloc_calls={old_calls} old_requested_bytes={old_bytes} new_alloc_calls={new_calls} new_requested_bytes={new_bytes}");
+    }
+    #[test]
+    fn unsupported_json_map_keys_preserve_original_failure_fallback() {
+        let bad=std::collections::BTreeMap::from([(vec![1u8,2],3u8)]);
+        assert!(serde_json::to_vec(&bad).is_err());assert_eq!(serialized_frame_size(&bad),0);
+    }
+}

@@ -1,0 +1,2 @@
+'use strict';const test=require('node:test'),assert=require('node:assert/strict'),{checkFiles,FILES}=require('../frame-proof');
+test('Frozen candidate proof rejects production scope drift and wrong source bytes',()=>{assert.doesNotThrow(()=>checkFiles(Object.keys(FILES),FILES));assert.throws(()=>checkFiles([...Object.keys(FILES),'api/Cargo.lock'],FILES));assert.throws(()=>checkFiles(Object.keys(FILES),{...FILES,[Object.keys(FILES)[0]]:'corrupted'}));});

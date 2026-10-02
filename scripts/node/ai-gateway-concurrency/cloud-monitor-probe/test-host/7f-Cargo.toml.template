@@ -1,0 +1,15 @@
+[package]
+name = "gateway-frame-size-unit"
+version = "0.0.0"
+edition = "2021"
+[workspace]
+[lib]
+path = "lib.rs"
+doctest = false
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+extension-contracts = { path = "@CHECKOUT@/api/crates/extension-contracts" }
+[profile.dev]
+debug = 1

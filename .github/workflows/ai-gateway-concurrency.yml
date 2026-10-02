@@ -1,4 +1,4 @@
-name: Gateway Source-bound Reuse Paired Mock Experiment
+name: Gateway80b7f Single-variable Frame-size Experiment
 permissions:
   contents: read
   actions: read
@@ -14,7 +14,6 @@ env:
   ANTHROPIC_AUTH_TOKEN: ''
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
-  PAIRED_VALIDATED_TEST_SOURCE: ${{ inputs.repair_sha }}
 jobs:
   paired-monitor-direct:
     runs-on: ubuntu-24.04
@@ -34,13 +33,13 @@ jobs:
     - name: Checkout frozen candidate
       uses: actions/checkout@v5
       with:
-        ref: ${{ inputs.repair_sha }}
+        ref: 7f702cbfed9a9cc39d569ade078a9ba8cc7eac39
         persist-credentials: false
         fetch-depth: 0
-    - name: Checkout matched user dev baseline
+    - name: Checkout frozen source-equivalent baseline80b
       uses: actions/checkout@v5
       with:
-        ref: ed55f8fc73db24beac21ca4831659733ffac3adb
+        ref: 80b4e635e1738e1e2df1a22f94dfd7a6bc9a31af
         path: tmp/paired-baseline-source
         persist-credentials: false
     - name: Checkout identical locked official providers
@@ -76,8 +75,8 @@ jobs:
           tmp/paired-official-source/runtime-extensions/@taichuy/openai -> target
           tmp/paired-official-source/runtime-extensions/@taichuy/anthropic -> target
           tmp/paired-official-source/runtime-extensions/@taichuy/openai_compatible -> target
-    - name: Prove entire candidate delta is the approved test-only repair
-      run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/reuse-proof.js --source-only
+    - name: Prove80b baseline equivalence and independent fixed7f source
+      run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/frame-proof.js --source-only
     - name: Download verified immutable paired release and identical provider artifact
       uses: actions/download-artifact@v8
       with:
@@ -88,14 +87,14 @@ jobs:
     - name: Verify runtime bytes and source binding; record current runner
       env:
         WORKFLOW_SHA: ${{ github.sha }}
-      run: |-
+      run: |
         set -euo pipefail
-        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/reuse-proof.js
+        node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/frame-proof.js
         evidence=tmp/test-governance/gateway-monitor-paired/build
         for item in runner-cpu.txt runner-memory.txt runner-quota.json sources.txt; do mv "$evidence/$item" "$evidence/reused-original-$item"; done
         lscpu > "$evidence/runner-cpu.txt"
         cat /proc/meminfo > "$evidence/runner-memory.txt"
-        printf '%s\n' 'runtime_candidate=539e335204df667552c56faf4f13b323acb7320b' "test_candidate=$PAIRED_VALIDATED_TEST_SOURCE" "workflow=$WORKFLOW_SHA" 'reused_run=36893524316 artifact=11181109322' 'profile=release features=default' > "$evidence/sources.txt"
+        printf '%s\n' 'baseline_equivalent=80b4e635e1738e1e2df1a22f94dfd7a6bc9a31af baseline_compiled_from=539e335204df667552c56faf4f13b323acb7320b' 'candidate=7f702cbfed9a9cc39d569ade078a9ba8cc7eac39' "workflow=$WORKFLOW_SHA" 'reused_run=36893524316 artifact=11181109322' 'profile=release features=default' > "$evidence/sources.txt"
         python3 - <<'PYENV'
         import json,pathlib
         root=pathlib.Path('/sys/fs/cgroup');row={}
@@ -103,11 +102,39 @@ jobs:
          p=root/name;row[name]=p.read_text().strip() if p.exists() else 'unavailable'
         pathlib.Path('tmp/test-governance/gateway-monitor-paired/build/runner-quota.json').write_text(json.dumps(row,indent=2))
         PYENV
+        cp "$evidence/binaries.json" "$evidence/original-binaries.json"
+        cp "$evidence/candidate-release-api-server" "$evidence/baseline-release-api-server"
+        node <<'JSREUSE'
+        const fs=require('node:fs'),p='tmp/test-governance/gateway-monitor-paired/build/binaries.json';const old=JSON.parse(fs.readFileSync(p));fs.writeFileSync(p,JSON.stringify({baseline:{...old.candidate,source:'80b4e635e1738e1e2df1a22f94dfd7a6bc9a31af',compiled_from:old.candidate.source}},null,2));
+        JSREUSE
+    - name: Build only changed7f production API release
+      run: |
+        set -euo pipefail
+        evidence=tmp/test-governance/gateway-monitor-paired/build
+        run_logged() {
+         phase="$1"; logfile="$2"; shift 2
+         printf '[phase-start] %s %s\n' "$phase" "$(date -u +%FT%TZ)"
+         set +e
+         "$@" 2>&1 | tee "$logfile"
+         command_status=("${PIPESTATUS[@]}")
+         set -e
+         printf '[phase-end] %s %s command_exit=%s tee_exit=%s\n' "$phase" "$(date -u +%FT%TZ)" "${command_status[0]}" "${command_status[1]}"
+         if [ "${command_status[0]}" -ne 0 ]; then return "${command_status[0]}"; fi
+         if [ "${command_status[1]}" -ne 0 ]; then return "${command_status[1]}"; fi
+        }
+        rustc --version --verbose
+        cargo --version
+        printf '[build-source] %s profile=release features=default RUSTFLAGS=%s\n' "$(git rev-parse HEAD)" "${RUSTFLAGS:-}"
+        run_logged candidate-release "$evidence/candidate-build.log" cargo build --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --bin api-server
+        cp api/target/release/api-server "$evidence/candidate-release-api-server"
+        node <<'JSBUILD'
+        const fs=require('node:fs'),crypto=require('node:crypto'),p='tmp/test-governance/gateway-monitor-paired/build/binaries.json';const b=JSON.parse(fs.readFileSync(p));b.candidate={source:'7f702cbfed9a9cc39d569ade078a9ba8cc7eac39',sha256:crypto.createHash('sha256').update(fs.readFileSync('tmp/test-governance/gateway-monitor-paired/build/candidate-release-api-server')).digest('hex')};fs.writeFileSync(p,JSON.stringify(b,null,2));
+        JSBUILD
     - name: Upload immutable paired build and provider evidence before tests
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: gateway-merged-paired-build-${{ github.run_id }}
+        name: gateway-frame-size-paired-build-${{ github.run_id }}
         path: |-
           tmp/test-governance/gateway-monitor-paired/build/**
           tmp/protocol-reuse/**
@@ -136,38 +163,36 @@ jobs:
         echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
         echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
     - name: Validate experiment statistics contracts
-      run: node --test tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/_tests/*.test.js
-    - name: Run affected runtime-profile and compatible-stream unit coverage
+      run: |
+        node --test tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/_tests/*.test.js
+        python3 -m unittest discover -s tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/analysis -p 'test_*.py'
+    - name: Execute7f actual-module size and affected compatible-stream gates
       run: |
         set -euo pipefail
         evidence=tmp/test-governance/gateway-monitor-paired/build
         printf '[test-source] %s\n' "$(git rev-parse HEAD)"
-        rustc --version
-        cargo --version
         run_logged() {
-          phase="$1"
-          logfile="$2"
-          shift 2
-          printf '[phase-start] %s %s\n' "$phase" "$(date -u +%FT%TZ)"
-          set +e
-          "$@" 2>&1 | tee "$logfile"
-          command_status=("${PIPESTATUS[@]}")
-          set -e
-          printf '[phase-end] %s %s command_exit=%s tee_exit=%s\n' "$phase" "$(date -u +%FT%TZ)" "${command_status[0]}" "${command_status[1]}"
-          if [ "${command_status[0]}" -ne 0 ]; then return "${command_status[0]}"; fi
-          if [ "${command_status[1]}" -ne 0 ]; then return "${command_status[1]}"; fi
+         phase="$1"; logfile="$2"; shift 2
+         printf '[phase-start] %s %s\n' "$phase" "$(date -u +%FT%TZ)"
+         set +e
+         "$@" 2>&1 | tee "$logfile"
+         command_status=("${PIPESTATUS[@]}")
+         set -e
+         printf '[phase-end] %s %s command_exit=%s tee_exit=%s\n' "$phase" "$(date -u +%FT%TZ)" "${command_status[0]}" "${command_status[1]}"
+         if [ "${command_status[0]}" -ne 0 ]; then return "${command_status[0]}"; fi
+         if [ "${command_status[1]}" -ne 0 ]; then return "${command_status[1]}"; fi
         }
-        run_logged runtime-profile "$evidence/runtime-profile-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p runtime-profile --lib
-        run_logged repaired-shared-source "$evidence/repaired-shared-source-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib api_profile_port_and_process_list_share_the_injected_observation -- --test-threads=1
-        run_logged compatible-stream "$evidence/compatible-stream-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib compat_sse::tests -- --test-threads=1
+        python3 tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/test-host/prepare-pure-host.py 7f "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/tmp/frame-size-test-host"
+        run_logged frame-size-debug-actual-module "$evidence/frame-size-tests.log" cargo test --manifest-path tmp/frame-size-test-host/Cargo.toml --locked --jobs 1 --lib
+        run_logged compatible-stream-release "$evidence/compatible-stream-tests.log" cargo test --manifest-path api/Cargo.toml --release --locked --jobs 1 -p api-server --lib compat_sse::tests -- --test-threads=1
         python3 - <<'PYTEST'
         import pathlib,re,json
         rows=[]
-        for name in ['runtime-profile-tests.log','repaired-shared-source-tests.log','compatible-stream-tests.log']:
+        for name,profile in [('frame-size-tests.log','debug actual-module host'),('compatible-stream-tests.log','release actual API')]:
          text=(pathlib.Path('tmp/test-governance/gateway-monitor-paired/build')/name).read_text()
          matches=re.findall(r'test result: ok[.] (\d+) passed; (\d+) failed',text)
          if not matches or sum(int(m[0]) for m in matches)==0:raise SystemExit('No executed passing tests: '+name)
-         rows.append({'log':name,'passed':sum(int(m[0]) for m in matches),'failed':sum(int(m[1]) for m in matches)})
+         rows.append({'log':name,'profile':profile,'passed':sum(int(m[0]) for m in matches),'failed':sum(int(m[1]) for m in matches)})
         pathlib.Path('tmp/test-governance/gateway-monitor-paired/build/unit-counts.json').write_text(json.dumps(rows,indent=2))
         PYTEST
       env:
@@ -175,33 +200,31 @@ jobs:
         DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
         BOOTSTRAP_ROOT_ACCOUNT: root
         BOOTSTRAP_ROOT_PASSWORD: change-me
-        PAIRED_VALIDATED_TEST_SOURCE: ${{ inputs.repair_sha }}
-    - name: Run bounded monitor and128-item8KiB512KiB direct/Gateway ABBA pairs
+    - name: Run512KiB C1/C8 primary and separate detailed observation ABBA
       run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/run.js
+    - name: Recompute saved detailed callback and timer boundary evidence
+      if: always()
+      run: python3 tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/analysis/report.py tmp/test-governance/gateway-monitor-paired
     - name: Upload all positive and negative raw experiment evidence
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: gateway-merged-paired-raw-${{ github.run_id }}
+        name: gateway-frame-size-paired-raw-${{ github.run_id }}
         path: |
           tmp/test-governance/gateway-monitor-paired/manifest.json
           tmp/test-governance/gateway-monitor-paired/summary.json
-          tmp/test-governance/gateway-monitor-paired/A*/**
-          tmp/test-governance/gateway-monitor-paired/B*/**
+          tmp/test-governance/gateway-monitor-paired/boundary-review.json
+          tmp/test-governance/gateway-monitor-paired/P*/**
+          tmp/test-governance/gateway-monitor-paired/O*/**
         retention-days: 14
         if-no-files-found: warn
     - name: Upload complete final build and unit logs
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: gateway-merged-paired-final-build-${{ github.run_id }}
+        name: gateway-frame-size-paired-final-build-${{ github.run_id }}
         path: tmp/test-governance/gateway-monitor-paired/build/**
         retention-days: 7
         if-no-files-found: warn
 'on':
-  workflow_dispatch:
-    inputs:
-      repair_sha:
-        description: Frozen candidate test-only repair SHA; production changes reject artifact reuse
-        required: true
-        type: string
+  workflow_dispatch: {}

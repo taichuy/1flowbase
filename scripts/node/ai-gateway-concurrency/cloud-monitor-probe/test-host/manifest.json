@@ -1,0 +1,19 @@
+{
+  "base": "80b4e635e1738e1e2df1a22f94dfd7a6bc9a31af",
+  "candidates": {
+    "7f": {
+      "sha": "7f702cbfed9a9cc39d569ade078a9ba8cc7eac39",
+      "branch": "codex/gateway-frame-size-20261001",
+      "files_sha256": {
+        "api/crates/control-plane/src/orchestration_runtime/provider_invoker.rs": "08748b563dc28c13c8cff4ed958080e21493984196a749320f8a75a06a7cf43e",
+        "api/crates/control-plane/src/orchestration_runtime/provider_invoker/_tests/stream_timing.rs": "4caaa5a4bd84b75d1ed92e48d92014d0c553e2b8ada25e1c7ae335354c8a1491",
+        "api/crates/control-plane/src/orchestration_runtime/provider_invoker/stream_timing.rs": "f5d57323e4b640cc03bcf5bcced9ab746991d20e5ba4700448123a5b6dad4bda"
+      },
+      "patch_sha256": "a8f78af1caba67fb764c604982c87cdf06d50fe5c8c7c8ec9db182060fa856a4",
+      "base_apply_check": {
+        "exit": 0,
+        "stderr": ""
+      }
+    }
+  }
+}
