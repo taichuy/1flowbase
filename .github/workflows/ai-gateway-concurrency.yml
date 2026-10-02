@@ -58,6 +58,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: 1.98.1
+      if: ${{ !inputs.observer_only }}
     - name: Prove fixed80b runtime equivalence
       run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/lock-scope/scope-proof.js --source-only
     - name: Download verified immutable paired release and identical provider artifact
@@ -67,6 +68,7 @@ jobs:
         run-id: 36893524316
         github-token: ${{ github.token }}
         path: tmp
+      if: ${{ !inputs.observer_only }}
     - name: Verify identical reused80b runtime/providers and record runner
       env:
         WORKFLOW_SHA: ${{ github.sha }}
@@ -84,8 +86,9 @@ jobs:
          p=root/name;row[name]=p.read_text().strip() if p.exists() else 'unavailable'
         pathlib.Path('tmp/test-governance/gateway-app-lock-scope/build/runner-quota.json').write_text(json.dumps(row,indent=2))
         PYENV
+      if: ${{ !inputs.observer_only }}
     - name: Upload fixed runtime proof before diagnostic
-      if: always()
+      if: ${{ always() && !inputs.observer_only }}
       uses: actions/upload-artifact@v6
       with:
         name: gateway-app-lock-scope-build-${{ github.run_id }}
@@ -120,8 +123,11 @@ jobs:
         node --test tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/_tests/*.test.js tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/lock-scope/_tests/*.test.js
         python3 -m unittest discover -s tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/lock-scope/_tests -p 'test_*.py'
         python3 -m py_compile tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/lock-scope/sampler.py
+    - name: Smoke loaded observer query and real native blocker before workload
+      run: python3 tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/lock-scope/observer_smoke.py
     - name: Run same80b same-app8 versus8-app1 C8 ABBA diagnostic
       run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/lock-scope/run.js
+      if: ${{ !inputs.observer_only }}
     - name: Upload complete/partial lock and dedup raw
       if: always()
       uses: actions/upload-artifact@v6
@@ -133,7 +139,13 @@ jobs:
           tmp/test-governance/gateway-app-lock-scope/A*/**
           tmp/test-governance/gateway-app-lock-scope/B*/**
           tmp/test-governance/gateway-app-lock-scope/build/scope-proof.json
+          tmp/test-governance/gateway-app-lock-scope/observer-smoke/**
         retention-days: 14
         if-no-files-found: warn
 'on':
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      observer_only:
+        description: Only bounded observer smoke; no Gateway workload
+        type: boolean
+        default: true
