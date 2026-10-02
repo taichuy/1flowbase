@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
-import type { DropdownProps } from 'antd';
+import { ConfigProvider, type DropdownProps } from 'antd';
 
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
 import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
@@ -192,21 +192,25 @@ describe('native block Dropdown runtime adapter', () => {
         root={root}
         renderEpoch="dropdown:cascading"
         plan={createPlan()}
+        // Top-layer ownership and logical close are tested here; jsdom does
+        // not deliver the browser CSS animation completion event.
         component={() => (
-          <Dropdown
-            menu={{
-              subMenuOpenDelay: 0,
-              items: [
-                {
-                  key: 'sub',
-                  label: 'sub menu',
-                  children: [{ key: 'child', label: 'child menu item' }]
-                }
-              ]
-            }}
-          >
-            <button type="button">Cascading menu</button>
-          </Dropdown>
+          <ConfigProvider theme={{ token: { motion: false } }}>
+            <Dropdown
+              menu={{
+                subMenuOpenDelay: 0,
+                items: [
+                  {
+                    key: 'sub',
+                    label: 'sub menu',
+                    children: [{ key: 'child', label: 'child menu item' }]
+                  }
+                ]
+              }}
+            >
+              <button type="button">Cascading menu</button>
+            </Dropdown>
+          </ConfigProvider>
         )}
         ctx={createContext()}
       />

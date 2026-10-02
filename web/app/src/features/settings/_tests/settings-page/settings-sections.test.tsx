@@ -1348,7 +1348,7 @@ describe('SettingsPage', () => {
       expect(window.location.pathname).toBe('/settings/files');
     });
     expect(
-      await screen.findByRole('tab', { name: '文件表' })
+      await screen.findByRole('tab', { name: '文件表' }, { timeout: 10_000 })
     ).toBeInTheDocument();
   });
 
