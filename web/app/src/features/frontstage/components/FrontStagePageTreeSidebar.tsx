@@ -592,7 +592,9 @@ function renderTreeNode({
         onDrop={handleDrop}
       >
         {tooltipText ? (
-          <Tooltip title={tooltipText}>{nodeContent}</Tooltip>
+          <Tooltip title={tooltipText} placement="rightTop">
+            {nodeContent}
+          </Tooltip>
         ) : (
           nodeContent
         )}
