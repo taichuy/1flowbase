@@ -58,3 +58,28 @@ fn application_template_release_rejects_invalid_versions_and_keeps_unversioned_p
         .release
         .is_none());
 }
+
+#[test]
+fn application_template_rejects_previous_successful_release_after_upgrade() {
+    let mut records = vec![
+        ApplicationTemplateReleaseRecord {
+            release_version: 1,
+            checksum: "v1-digest".into(),
+            successful: true,
+        },
+        ApplicationTemplateReleaseRecord {
+            release_version: 2,
+            checksum: "v2-digest".into(),
+            successful: true,
+        },
+    ];
+    for _ in 0..2 {
+        let error =
+            application_template_needs_install(&release(1), "v1-digest", &records).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("application_template_release_downgrade"));
+        assert!(!application_template_needs_install(&release(2), "v2-digest", &records).unwrap());
+        records.reverse();
+    }
+}

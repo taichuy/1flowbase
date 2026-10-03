@@ -40,6 +40,12 @@ pub fn application_template_needs_install(
     records: &[ApplicationTemplateReleaseRecord],
 ) -> Result<bool> {
     validate_application_template_release(release)?;
+    if records
+        .iter()
+        .any(|r| r.successful && r.release_version > release.release_version)
+    {
+        return Err(ControlPlaneError::Conflict("application_template_release_downgrade").into());
+    }
     if let Some(existing) = records
         .iter()
         .find(|r| r.release_version == release.release_version)
@@ -52,12 +58,6 @@ pub fn application_template_needs_install(
         if existing.successful {
             return Ok(false);
         }
-    }
-    if records
-        .iter()
-        .any(|r| r.successful && r.release_version > release.release_version)
-    {
-        return Err(ControlPlaneError::Conflict("application_template_release_downgrade").into());
     }
     Ok(true)
 }
