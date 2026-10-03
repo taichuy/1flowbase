@@ -791,14 +791,19 @@ test('required Docker recovery evidence cannot silently skip absent Docker or im
     for (const dockerScript of ['#!/bin/sh\nexit 1\n', '#!/bin/sh\n[ "$1" = info ]\n']) {
       const dockerPath = path.join(fixtureBin, 'docker');
       fs.writeFileSync(dockerPath, dockerScript, { mode: 0o755 });
+      const childEnv = { ...process.env, PATH: `${fixtureBin}${path.delimiter}${process.env.PATH || ''}`, REQUIRE_DOCKER_RECOVERY_EVIDENCE: '1' };
+      // Start an independent runner; inherited context makes Node skip all child tests.
+      delete childEnv.NODE_TEST_CONTEXT;
       const result = spawnSync(process.execPath, [
-        '--test', '--test-name-pattern=^real Docker directory bind mount', __filename,
+        '--test', '--test-reporter=tap', '--test-name-pattern=^real Docker directory bind mount', __filename,
       ], {
-        env: { ...process.env, PATH: `${fixtureBin}:${process.env.PATH || ''}`, REQUIRE_DOCKER_RECOVERY_EVIDENCE: '1' },
+        env: childEnv,
         encoding: 'utf8', maxBuffer: 1024 * 1024,
       });
       assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
       assert.match(`${result.stdout}\n${result.stderr}`, /required Docker recovery evidence needs Docker and alpine:3\.20/u);
+      assert.match(result.stdout, /not ok \d+ - real Docker directory bind mount/u);
+      assert.match(result.stdout, /^# fail 1$/mu);
     }
   } finally { fs.rmSync(fixtureBin, { recursive: true, force: true }); }
 });
