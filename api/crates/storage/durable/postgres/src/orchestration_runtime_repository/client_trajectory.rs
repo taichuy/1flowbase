@@ -12,6 +12,22 @@ use control_plane_contracts::ports::{
     ClientTrajectorySection, ClientTrajectorySectionItem, ClientTrajectoryStep,
 };
 
+#[derive(sqlx::FromRow)]
+struct FlowContentScope {
+    scope_id: Uuid,
+    application_id: Uuid,
+}
+
+#[derive(sqlx::FromRow)]
+struct FactOwnership {
+    input_node_valid: bool,
+    linked_node_valid: bool,
+    capture_flow_run_id: Option<Uuid>,
+    capture_node_run_id: Option<Uuid>,
+    step_request_id: Option<Uuid>,
+    section_step_valid: bool,
+}
+
 impl PgControlPlaneStore {
     pub(super) async fn append_client_trajectory_fact(
         &self,
@@ -34,37 +50,65 @@ impl PgControlPlaneStore {
         let mut tx = self.pool().begin().await?;
         // Client delivery occurs after a business terminal commit. This dedicated
         // observational append does not reopen a run or relax the execution append fence.
-        let exists: Option<Uuid> =
-            sqlx::query_scalar("select id from flow_runs where id=$1 for no key update")
-                .bind(input.flow_run_id)
-                .fetch_optional(&mut *tx)
-                .await?;
-        anyhow::ensure!(exists.is_some(), "client trajectory flow missing");
-        if let Some(node) = input.node_run_id {
-            let valid: bool = sqlx::query_scalar(
-                "select exists(select 1 from node_runs where id=$1 and flow_run_id=$2)",
-            )
-            .bind(node)
-            .bind(input.flow_run_id)
-            .fetch_one(&mut *tx)
-            .await?;
-            anyhow::ensure!(valid, "client trajectory node scope mismatch");
-        }
-        if let ClientTrajectoryFact::NodeLink { node_run_id } = &input.fact {
-            let valid: bool = sqlx::query_scalar("select exists(select 1 from node_runs where id=$1 and flow_run_id=$2 and node_type='llm')")
-                .bind(node_run_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(valid, "client trajectory node scope mismatch");
-        }
-        let scope = sqlx::query(
-            "select flow_run_id,node_run_id from client_trajectory_captures where request_id=$1",
+        let flow_scope = sqlx::query_as::<_, FlowContentScope>(
+            "select scope_id,application_id from flow_runs where id=$1 for no key update",
         )
-        .bind(input.request_id)
+        .bind(input.flow_run_id)
         .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| anyhow!("client trajectory flow missing"))?;
+        let linked_node = match &input.fact {
+            ClientTrajectoryFact::NodeLink { node_run_id } => Some(*node_run_id),
+            _ => None,
+        };
+        let (step_id, section_step_id) = match &input.fact {
+            ClientTrajectoryFact::Step { step } => (Some(step.id), None),
+            ClientTrajectoryFact::Section { step_id, .. } => (None, Some(*step_id)),
+            _ => (None, None),
+        };
+        // Keep this as a new statement AFTER the flow lock: a writer that we
+        // waited for may have committed the capture/step since our lock began.
+        let ownership = sqlx::query_as::<_, FactOwnership>(r#"
+            select
+                case when $3::uuid is null then true else
+                    exists(select 1 from node_runs where id=$3 and flow_run_id=$1)
+                end as input_node_valid,
+                case when $4::uuid is null then true else
+                    exists(select 1 from node_runs where id=$4 and flow_run_id=$1 and node_type='llm')
+                end as linked_node_valid,
+                c.flow_run_id as capture_flow_run_id,c.node_run_id as capture_node_run_id,
+                case when $5::uuid is not null then
+                    (select request_id from client_trajectory_steps where id=$5)
+                end as step_request_id,
+                case when $6::uuid is null then true else
+                    exists(select 1 from client_trajectory_steps where id=$6 and request_id=$2 and flow_run_id=$1)
+                end as section_step_valid
+            from (values (1)) as fact(singleton)
+            left join client_trajectory_captures c on c.request_id=$2
+        "#)
+        .bind(input.flow_run_id)
+        .bind(input.request_id)
+        .bind(input.node_run_id)
+        .bind(linked_node)
+        .bind(step_id)
+        .bind(section_step_id)
+        .fetch_one(&mut *tx)
         .await?;
-        if let Some(scope) = scope {
+        // Validate in the original order, including multi-invalid inputs.
+        anyhow::ensure!(
+            ownership.input_node_valid,
+            "client trajectory node scope mismatch"
+        );
+        anyhow::ensure!(
+            ownership.linked_node_valid,
+            "client trajectory node scope mismatch"
+        );
+        // A capture's flow is NOT NULL; its node can be NULL. Do not conflate
+        // a legitimate flow-wide capture with an absent capture.
+        if let Some(flow_run_id) = ownership.capture_flow_run_id {
             anyhow::ensure!(
-                scope.get::<Uuid, _>("flow_run_id") == input.flow_run_id
-                    && scope.get::<Option<Uuid>, _>("node_run_id") == input.node_run_id,
+                flow_run_id == input.flow_run_id
+                    && ownership.capture_node_run_id == input.node_run_id,
                 "client trajectory capture scope mismatch"
             );
         } else {
@@ -73,21 +117,15 @@ impl PgControlPlaneStore {
                 "client trajectory capture missing"
             );
         }
-        if let ClientTrajectoryFact::Step { step } = &input.fact {
-            let owner: Option<Uuid> =
-                sqlx::query_scalar("select request_id from client_trajectory_steps where id=$1")
-                    .bind(step.id)
-                    .fetch_optional(&mut *tx)
-                    .await?;
+        if matches!(&input.fact, ClientTrajectoryFact::Step { .. }) {
             anyhow::ensure!(
-                owner.is_none_or(|owner| owner == input.request_id),
+                ownership
+                    .step_request_id
+                    .is_none_or(|owner| owner == input.request_id),
                 "client trajectory step scope mismatch"
             );
         }
-        if let ClientTrajectoryFact::Section {
-            step_id, section, ..
-        } = &input.fact
-        {
+        if let ClientTrajectoryFact::Section { section, .. } = &input.fact {
             anyhow::ensure!(
                 [
                     "overview",
@@ -101,9 +139,10 @@ impl PgControlPlaneStore {
                 "client trajectory section invalid"
             );
             // Raw callers have already entered their archive path above.
-            let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_steps where id=$1 and request_id=$2 and flow_run_id=$3)")
-                .bind(step_id).bind(input.request_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(valid, "client trajectory section scope mismatch");
+            anyhow::ensure!(
+                ownership.section_step_valid,
+                "client trajectory section scope mismatch"
+            );
         }
         // The initial existence check holds this flow's FOR NO KEY UPDATE lock
         // until this fact commits, already serializing all sequence writers.
@@ -117,8 +156,17 @@ impl PgControlPlaneStore {
                 section,
                 value,
             } => {
-                semantic::write_section(&mut tx, input, *step_id, section, value, sequence, None)
-                    .await?;
+                semantic::write_section(
+                    &mut tx,
+                    input,
+                    *step_id,
+                    section,
+                    value,
+                    sequence,
+                    None,
+                    Some(&flow_scope),
+                )
+                .await?;
             }
             // Integrity, node correlation and response identity are real events.
             _ => {
