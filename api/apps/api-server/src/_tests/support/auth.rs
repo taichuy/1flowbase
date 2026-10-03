@@ -336,6 +336,7 @@ async fn test_state_with_runtime_profile_state(
         model_billing_require_provider_usage: config.model_billing_require_provider_usage,
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
+        application_template_root: String::new(),
         provider_secret_master_key: config.provider_secret_master_key.clone(),
         host_extension_dropin_root: config.host_extension_dropin_root.clone(),
         allow_unverified_filesystem_dropins: config.allow_unverified_filesystem_dropins,

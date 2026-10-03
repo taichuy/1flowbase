@@ -15,6 +15,7 @@ use serde_json::Value;
 use std::sync::Arc;
 pub(crate) mod interface;
 pub(crate) mod plugins;
+pub(crate) mod releases;
 fn owned(operation: &str) -> access_control::ConsoleRouteOwnership {
     access_control::ConsoleRouteOwnership::ConsoleOperation(operation.to_owned())
 }
@@ -118,3 +119,7 @@ pub async fn install(
     .await?;
     Ok(Json(ApiSuccess::new(output.0)))
 }
+
+#[cfg(test)]
+#[path = "_tests/releases.rs"]
+mod release_tests;

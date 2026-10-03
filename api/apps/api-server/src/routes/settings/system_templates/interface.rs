@@ -7,6 +7,7 @@ use crate::routes::console_interface::{
 use crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with;
 use control_plane::mcp_bundle::{ImportMcpBundleCommand, PreviewMcpBundleCommand};
 use control_plane::mcp_management::McpManagementService;
+use control_plane::portable_template::PortableTemplateIdentityRepository;
 use control_plane::portable_template::{
     PortableTemplateEffect, PortableTemplateInstallService, PortableTemplatePackage,
     PortableTemplateSelection, PortableTemplateService,
@@ -51,23 +52,51 @@ impl InterfaceContract for TemplateOutput {
         Some(json!({"completed":true}))
     }
 }
-struct TemplateAdapter(TemplateDependencies);
+pub(crate) struct TemplateAdapter(pub TemplateDependencies);
 impl TemplateAdapter {
-    async fn execute_inner(
+    pub(crate) async fn execute_inner(
         &self,
-        principal: &UserPrincipal,
+        actor: &domain::ActorContext,
         input: TemplateInput,
     ) -> Result<TemplateOutput, ApiError> {
-        let actor = principal.actor();
         let repository = self.0.store.for_actor(actor.clone());
         let service = PortableTemplateService::new(repository.clone());
         let result = match input {
-            TemplateInput::Catalog => serde_json::to_value(service.catalog(actor.user_id).await?)?,
+            TemplateInput::Catalog => {
+                let mut catalog = serde_json::to_value(service.catalog(actor.user_id).await?)?;
+                catalog["application_templates"] = super::releases::catalog(
+                    &self.0.application_template_root,
+                    &repository,
+                    actor.current_workspace_id,
+                )
+                .await?;
+                catalog
+            }
             TemplateInput::Export(selection) => {
                 serde_json::to_value(service.export(actor.user_id, selection).await?)?
             }
             TemplateInput::Preview(package) => {
                 let mut preview = service.preview(actor.user_id, &package).await?;
+                if let Some(release) = &package.release {
+                    let records = repository
+                        .load_application_template_releases(
+                            actor.current_workspace_id,
+                            &release.template_id,
+                        )
+                        .await?;
+                    if let Err(error) =
+                        control_plane::portable_template::application_template_needs_install(
+                            release,
+                            &control_plane::portable_template::application_template_checksum(
+                                &package,
+                            )?,
+                            &records,
+                        )
+                    {
+                        preview.valid = false;
+                        preview.failures.push(format!("{error:#}"));
+                    }
+                }
                 if let Some(bundle) = &package.mcp_bundle {
                     let mcp_preview = McpManagementService::new(self.0.store.clone())
                         .preserve_unmentioned_instance_entries(actor.user_id, bundle.clone())
@@ -150,6 +179,32 @@ impl TemplateAdapter {
                 serde_json::to_value(preview)?
             }
             TemplateInput::Install(mut package) => {
+                // A dedicated database session lock serializes API and startup installs across nodes.
+                let _install_guard = repository
+                    .lock_application_template_install(actor.current_workspace_id)
+                    .await?;
+                if !control_plane::portable_template::prepare_application_template_release(
+                    &repository,
+                    actor.current_workspace_id,
+                    &package,
+                )
+                .await?
+                {
+                    return Ok(TemplateOutput(serde_json::to_value(
+                        control_plane::portable_template::PortableTemplateInstallResult {
+                            complete: true,
+                            ..Default::default()
+                        },
+                    )?));
+                }
+                let release_state = package
+                    .release
+                    .clone()
+                    .map(|release| {
+                        control_plane::portable_template::application_template_checksum(&package)
+                            .map(|checksum| (release, checksum))
+                    })
+                    .transpose()?;
                 if let Some(bundle) = package.mcp_bundle.take() {
                     package.mcp_bundle = Some(
                         McpManagementService::new(self.0.store.clone())
@@ -195,7 +250,7 @@ impl TemplateAdapter {
                 }
                 self.0.resolve_plugins(actor, &package.plugins).await?;
                 let mcp_bundle = package.mcp_bundle.clone();
-                let mut installed = PortableTemplateInstallService::new(repository)
+                let mut installed = PortableTemplateInstallService::new(repository.clone())
                     .with_node_id(self.0.api_node_id.clone())
                     .install(actor.user_id, package)
                     .await?;
@@ -257,6 +312,19 @@ impl TemplateAdapter {
                     installed.complete = false;
                     installed.failures.push(format!("runtime model registry synchronization: {error:#}; definitions may already be committed"));
                 }
+                if installed.complete {
+                    if let Some((release, checksum)) = release_state {
+                        repository
+                            .record_application_template_release(
+                                actor.current_workspace_id,
+                                &release.template_id,
+                                release.release_version,
+                                &checksum,
+                                true,
+                            )
+                            .await?;
+                    }
+                }
                 serde_json::to_value(installed)?
             }
         };
@@ -270,7 +338,7 @@ impl ConsoleInterfacePort<TemplateInput, TemplateOutput> for TemplateAdapter {
         input: TemplateInput,
     ) -> ConsoleInterfaceFuture<'a, TemplateOutput> {
         Box::pin(async move {
-            self.execute_inner(principal, input)
+            self.execute_inner(principal.actor(), input)
                 .await
                 .map_err(ConsoleInterfaceTargetError)
         })

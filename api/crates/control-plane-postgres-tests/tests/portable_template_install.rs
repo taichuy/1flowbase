@@ -13,7 +13,7 @@ fn fixture() -> PortableTemplatePackage {
     let page_id = Uuid::new_v4();
     let tab_id = Uuid::new_v4();
     let block_id = Uuid::new_v4().to_string();
-    PortableTemplatePackage {schema_version:PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),plugins:vec![],mcp_bundle:None,applications:vec![],
+    PortableTemplatePackage { release: None,schema_version:PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),plugins:vec![],mcp_bundle:None,applications:vec![],
         data_models:vec![PortableDataModel {id:model_id,code:"portable_orders".into(),title:"Portable orders".into(),description:None,scope_kind:domain::DataModelScopeKind::Workspace,template_provider:"core".into(),template_code:"general".into(),template_version:"v1".into(),status:domain::DataModelStatus::Published,builtin:false,fields:vec![PortableModelField {id:Uuid::new_v4(),code:"label".into(),title:"Label".into(),description:None,field_kind:domain::ModelFieldKind::String,is_system:false,is_required:false,api_required:false,is_unique:false,default_value:None,display_interface:None,display_options:json!({"page_id":page_id}),relation_target_model_id:None,relation_options:json!({})}]}],
         pages:vec![PortablePage {id:page_id,parent_id:None,kind:domain::FrontstagePageKind::Page,title:Some("Portable".into()),icon:None,tooltip:None,is_hidden:false,placement:domain::frontstage::FrontstageNavigationPlacement::Topbar,content_presentation:domain::frontstage::FrontstagePageContentPresentation::Single,slug:Some("portable".into()),rank:"a".into(),visibility_rules:vec![],tabs:vec![PortableTab {id:tab_id,title:Some("Default".into()),rank:"a".into(),is_default:true,route_segment:None,document_root_uid:format!("source-tab-{tab_id}"),document_payload:json!({"root":format!("source-tab-{tab_id}"),"model":model_id,"page":page_id,"tab":tab_id}),blocks:vec![PortableBlock {block_id:block_id.clone(),parent_block_id:None,rank:"a".into(),presentation:domain::frontstage::FrontstageBlockPresentation::Inline,title:Some("Orders".into()),description:None,code_ref:format!("frontstage.block.{block_id}"),schema_version:1,input_mapping:BTreeMap::new(),output_mapping:BTreeMap::new(),runtime_descriptor:json!({"props":{"model_id":model_id}}),source_code:format!("export default function Component() {{ return '{model_id}:{page_id}:{tab_id}:{block_id}'; }}")}]}]}]}
 }
@@ -259,6 +259,7 @@ async fn published_workflow_is_compiled_and_draft_remains_independent() {
         response_mode: WorkflowExtensionResponseMode::Sync,
     });
     let mut package = PortableTemplatePackage {
+        release: None,
         mcp_bundle: None,
         schema_version: PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),
         pages: vec![],
@@ -572,4 +573,46 @@ async fn repeat_install_updates_mapped_resources_and_preserves_target_only_model
             .as_deref(),
         Some("Updated block")
     );
+}
+
+#[tokio::test]
+async fn release_ledger_preserves_failed_retry_immutable_digest_and_workspace_scope() {
+    let (store, workspace, _) = support::seed_store().await;
+    let id = "@taichuy/gateway-demo";
+    store
+        .record_application_template_release(workspace.id, id, 1, "digest", false)
+        .await
+        .unwrap();
+    let rows = store
+        .load_application_template_releases(workspace.id, id)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert!(!rows[0].successful);
+    assert!(store
+        .record_application_template_release(workspace.id, id, 1, "changed", true)
+        .await
+        .is_err());
+    assert!(store
+        .load_application_template_releases(Uuid::new_v4(), id)
+        .await
+        .unwrap()
+        .is_empty());
+    store
+        .record_application_template_release(workspace.id, id, 1, "digest", true)
+        .await
+        .unwrap();
+    store
+        .record_application_template_release(workspace.id, id, 1, "digest", false)
+        .await
+        .unwrap();
+    let rows = store
+        .load_application_template_releases(workspace.id, id)
+        .await
+        .unwrap();
+    assert!(
+        rows[0].successful,
+        "retry reservation must not erase prior success"
+    );
+    assert_eq!(rows[0].checksum, "digest");
 }

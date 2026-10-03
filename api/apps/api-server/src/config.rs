@@ -49,6 +49,8 @@ pub struct ApiConfig {
     pub cors_allowed_origins: Option<Vec<HeaderValue>>,
     pub api_node_id: String,
     pub provider_install_root: String,
+    pub application_template_root: String,
+    pub application_template_auto_update: bool,
     pub mcp_template_library_root: String,
     pub provider_secret_master_key: String,
     pub host_extension_dropin_root: String,
@@ -358,6 +360,20 @@ impl ApiConfig {
             cors_allowed_origins,
             api_node_id,
             provider_install_root,
+            application_template_root: map
+                .get("API_APPLICATION_TEMPLATE_ROOT")
+                .cloned()
+                .unwrap_or_else(|| {
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../resources/application-templates")
+                        .to_string_lossy()
+                        .into_owned()
+                }),
+            application_template_auto_update: parse_bool_flag(
+                "API_APPLICATION_TEMPLATE_AUTO_UPDATE",
+                map.get("API_APPLICATION_TEMPLATE_AUTO_UPDATE"),
+                true,
+            )?,
             mcp_template_library_root,
             provider_secret_master_key,
             host_extension_dropin_root,

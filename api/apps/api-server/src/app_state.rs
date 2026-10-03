@@ -393,6 +393,7 @@ pub struct ApiState {
     pub model_billing_require_provider_usage: bool,
     pub api_node_id: String,
     pub provider_install_root: String,
+    pub application_template_root: String,
     pub provider_secret_master_key: String,
     pub host_extension_dropin_root: String,
     pub allow_unverified_filesystem_dropins: bool,

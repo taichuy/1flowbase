@@ -13,3 +13,6 @@ pub use install::*;
 
 #[cfg(test)]
 mod _tests;
+
+mod releases;
+pub use releases::*;

@@ -967,3 +967,24 @@ fn worker_idle_grace_accepts_zero_and_is_independent_of_transport_lifetime() {
             .contains("API_PROVIDER_WORKER_IDLE_GRACE_SECONDS"));
     }
 }
+
+#[test]
+fn application_templates_auto_update_defaults_on_and_accepts_explicit_disable() {
+    let mut values = base_env_without_ephemeral_backend();
+    let config = ApiConfig::from_env_map(&values).unwrap();
+    assert!(config.application_template_auto_update);
+    assert!(config
+        .application_template_root
+        .ends_with("resources/application-templates"));
+    values.push(("API_APPLICATION_TEMPLATE_AUTO_UPDATE", "false"));
+    values.push((
+        "API_APPLICATION_TEMPLATE_ROOT",
+        "/opt/application-templates",
+    ));
+    let config = ApiConfig::from_env_map(&values).unwrap();
+    assert!(!config.application_template_auto_update);
+    assert_eq!(
+        config.application_template_root,
+        "/opt/application-templates"
+    );
+}

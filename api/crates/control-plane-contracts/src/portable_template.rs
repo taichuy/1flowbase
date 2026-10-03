@@ -20,7 +20,19 @@ pub struct PortableTemplateSelection {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct PortableTemplateRelease {
+    pub template_id: String,
+    pub release_version: u64,
+    pub name: String,
+    pub description: String,
+    pub exported_from_system_version: String,
+    pub exported_at: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PortableTemplatePackage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release: Option<PortableTemplateRelease>,
     pub schema_version: String,
     pub pages: Vec<PortablePage>,
     pub applications: Vec<PortableApplication>,

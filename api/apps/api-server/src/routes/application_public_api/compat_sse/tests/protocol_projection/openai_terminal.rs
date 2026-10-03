@@ -137,6 +137,7 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
         model_billing_require_provider_usage: base_state.model_billing_require_provider_usage,
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
+        application_template_root: String::new(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),
         host_extension_dropin_root: base_state.host_extension_dropin_root.clone(),
         allow_unverified_filesystem_dropins: base_state.allow_unverified_filesystem_dropins,

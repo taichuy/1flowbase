@@ -3,12 +3,70 @@ use crate::PgControlPlaneStore;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{portable_template::*, ports::*};
-use sqlx::Row;
+use sqlx::{Connection, Row};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+struct PgApplicationTemplateInstallGuard {
+    _connection: sqlx::PgConnection,
+}
+impl ApplicationTemplateInstallGuard for PgApplicationTemplateInstallGuard {}
+
 #[async_trait]
 impl PortableTemplateIdentityRepository for PgControlPlaneStore {
+    async fn lock_application_template_install(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<Box<dyn ApplicationTemplateInstallGuard>> {
+        let mut connection =
+            sqlx::PgConnection::connect_with(&self.pool().connect_options()).await?;
+        sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 0))")
+            .bind(format!("application-template:{workspace_id}"))
+            .execute(&mut connection)
+            .await?;
+        Ok(Box::new(PgApplicationTemplateInstallGuard {
+            _connection: connection,
+        }))
+    }
+
+    async fn load_application_template_releases(
+        &self,
+        workspace_id: Uuid,
+        template_id: &str,
+    ) -> Result<Vec<ApplicationTemplateReleaseRecord>> {
+        let rows: Vec<(i64, String, bool)> = sqlx::query_as(
+            "SELECT release_version, checksum, successful FROM application_template_releases WHERE workspace_id=$1 AND template_id=$2 ORDER BY release_version DESC"
+        ).bind(workspace_id).bind(template_id).fetch_all(self.pool()).await?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(version, checksum, successful)| ApplicationTemplateReleaseRecord {
+                    release_version: version as u64,
+                    checksum,
+                    successful,
+                },
+            )
+            .collect())
+    }
+    async fn record_application_template_release(
+        &self,
+        workspace_id: Uuid,
+        template_id: &str,
+        release_version: u64,
+        checksum: &str,
+        successful: bool,
+    ) -> Result<()> {
+        let version = i64::try_from(release_version)?;
+        let result = sqlx::query("INSERT INTO application_template_releases (workspace_id, template_id, release_version, checksum, successful) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (workspace_id,template_id,release_version) DO UPDATE SET successful = application_template_releases.successful OR excluded.successful, updated_at=now() WHERE application_template_releases.checksum = excluded.checksum")
+            .bind(workspace_id).bind(template_id).bind(version).bind(checksum).bind(successful)
+            .execute(self.pool()).await?;
+        anyhow::ensure!(
+            result.rows_affected() == 1,
+            "application_template_immutable_release"
+        );
+        Ok(())
+    }
+
     async fn load_portable_template_identity_map(
         &self,
         workspace_id: Uuid,
@@ -54,6 +112,7 @@ impl PortableTemplateReadRepository for PgControlPlaneStore {
         )
         .await?;
         let mut package = PortableTemplatePackage {
+            release: None,
             schema_version: PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),
             pages: Vec::new(),
             applications: Vec::new(),

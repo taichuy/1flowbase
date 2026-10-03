@@ -37,6 +37,7 @@ fn group(id: u128, parent: Option<u128>) -> PortablePage {
 }
 fn snapshot() -> PortableTemplatePackage {
     PortableTemplatePackage {
+        release: None,
         schema_version: PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),
         pages: vec![],
         applications: vec![],
@@ -434,3 +435,5 @@ fn shared_draft_and_publication_flow_identity_has_one_owner() {
         .iter()
         .any(|e| e.contains("identity_collision")));
 }
+
+mod releases;
