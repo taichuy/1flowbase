@@ -163,7 +163,7 @@ async function apply(mode) {
           "import { TokenTrendChart } from '@1flowbase/token-trend';",
         source_code: "<TokenTrendChart points={points} />",
         source: "workspace",
-        group: "报表",
+        group: "reports",
         upstream: { identity: "1flowbase/token-trend", version: "1.0.0" },
         version: "1.0.0",
         keywords: ["tokens", "费用", "趋势"],
