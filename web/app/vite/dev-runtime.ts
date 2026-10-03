@@ -4,12 +4,16 @@ import path from 'node:path';
 
 import type { Plugin, ViteDevServer } from 'vite';
 
+import {
+  pruneDevGenerationCaches,
+  retainDevGenerationCache
+} from './dev-generation-cache';
+
 const HMR_PROBE_ID = 'virtual:1flowbase-dev-hmr-probe';
 const RESOLVED_HMR_PROBE_ID = `\0${HMR_PROBE_ID}`;
 const DEV_GENERATION_META_NAME = '1flowbase-dev-generation';
 const DEV_GENERATION_MANIFEST_NAME = '1flowbase-generation-manifest.json';
 const DEV_CRITICAL_INTEROP_SPECIFIERS = ['is-mobile', 'react-is'] as const;
-const DEV_GENERATIONS_RETAINED = 2;
 const DEV_WORKSPACE_DEPENDENCY_ROOTS = ['packages/api-client'] as const;
 const READY_PATH = '/__1flowbase_dev_ready';
 const HMR_PROBE_PATH = '/__1flowbase_dev_hmr_probe';
@@ -107,7 +111,8 @@ function createDevGenerationDependencyManifest(
     path.resolve(root, `.env.${mode}`),
     path.resolve(root, `.env.${mode}.local`),
     path.resolve(root, 'vite.config.ts'),
-    path.resolve(root, 'vite', 'dev-runtime.ts')
+    path.resolve(root, 'vite', 'dev-runtime.ts'),
+    path.resolve(root, 'vite', 'dev-generation-cache.ts')
   ];
   const viteEnvironment = Object.fromEntries(
     Object.entries(process.env)
@@ -242,47 +247,6 @@ async function waitForCriticalInteropCache(
   throw latestError instanceof Error
     ? latestError
     : new Error('critical CommonJS optimization timed out');
-}
-
-async function pruneDevGenerationCaches(
-  root: string,
-  activeGeneration: string
-) {
-  const generationsRoot = path.join(root, 'node_modules', '.vite-generations');
-  if (!fs.existsSync(generationsRoot)) return [];
-
-  const candidates = fs
-    .readdirSync(generationsRoot, { withFileTypes: true })
-    .filter(
-      (entry) => entry.isDirectory() && /^[a-f0-9]{64}$/u.test(entry.name)
-    )
-    .map((entry) => {
-      const directory = path.join(generationsRoot, entry.name);
-      return {
-        directory,
-        generation: entry.name,
-        modifiedAt: fs.statSync(directory).mtimeMs
-      };
-    })
-    .sort((left, right) => right.modifiedAt - left.modifiedAt);
-
-  const orderedGenerations = [
-    activeGeneration,
-    ...candidates.map((entry) => entry.generation)
-  ]
-    .filter(
-      (generation, index, generations) =>
-        generations.indexOf(generation) === index
-    )
-    .slice(0, DEV_GENERATIONS_RETAINED);
-  const retained = new Set(orderedGenerations);
-  const removed: string[] = [];
-  for (const candidate of candidates) {
-    if (retained.has(candidate.generation)) continue;
-    await fs.promises.rm(candidate.directory, { recursive: true, force: true });
-    removed.push(candidate.generation);
-  }
-  return removed;
 }
 
 function attachReadinessMiddleware(
@@ -439,7 +403,7 @@ function oneFlowbaseDevRuntimePlugin({
     fs.writeFileSync(hmrProbeFile, 'export const generation = "boot";\n');
   }
   const retireStaleGenerations = () => {
-    if (serverCacheIsCustom()) return;
+    if (!releaseGeneration) return;
     setImmediate(() => {
       void pruneDevGenerationCaches(root, generation)
         .then((removed) => {
@@ -459,12 +423,29 @@ function oneFlowbaseDevRuntimePlugin({
     });
   };
   let runtimeLogger: ViteDevServer['config']['logger'] | null = null;
-  const serverCacheIsCustom = () =>
-    process.env.VITE_DEV_CACHE_DIR &&
-    process.env.VITE_DEV_CACHE_DIR !== devGenerationCacheDirectory(root, mode);
+  let releaseGeneration: (() => Promise<void>) | null = null;
   return {
     name: '1flowbase-dev-runtime',
     enforce: 'pre',
+    async configResolved(config) {
+      if (
+        command === 'serve' &&
+        config.cacheDir ===
+          path.join(root, 'node_modules', '.vite-generations', generation)
+      ) {
+        // Pin before Vite starts its optimizer or serves requests.
+        releaseGeneration = await retainDevGenerationCache(root, generation);
+      }
+    },
+    async closeBundle() {
+      if (releaseGeneration) {
+        const release = releaseGeneration;
+        releaseGeneration = null;
+        await release();
+      }
+      if (hmrProbeFile && fs.existsSync(hmrProbeFile))
+        fs.unlinkSync(hmrProbeFile);
+    },
     resolveId(id) {
       if (id === HMR_PROBE_ID) return RESOLVED_HMR_PROBE_ID;
       return null;
