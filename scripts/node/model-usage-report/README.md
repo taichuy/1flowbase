@@ -5,7 +5,7 @@ Scoped authoring rollout for page `01a073f3-03e9-7030-86a4-371f80ebf522` and its
 - `report.sql`: one filtered log set for totals, Shanghai time buckets and users. Request count includes every logged request; absent usage remains null, empty buckets are zero, fees retain their currencies. Cache rate is the input-volume-weighted recorded provider rate, not a second token total.
 - `range.js`: validates and normalizes paired timestamps before templating SQL; defaults to rolling 24 hours, selects hour/day buckets.
 - `workflow.js`: upgrades the existing draft without changing its output extraction or endpoint.
-- JSX sources: three blocks; shared input/output mapping `timeRange → usage.timeRange`. Only the overview initializes the value. User events publish it; incoming changes do not republish. Each request ignores completion after its effect is superseded.
+- JSX sources: three blocks; shared input/output mapping `timeRange → usage.timeRange`. Only the compact overview renders the time filter and initializes the value. Its filter events publish the shared range; the trend and user table only consume changes and never render duplicate filters. Each request ignores completion after its effect is superseded.
 - `apply.js`: authenticated authoring APIs, source revision checks, exact backups and temporary session cleanup. Run workflow then page only with the corresponding frontend candidate available. The database scope is intentionally the existing page's workspace, not caller-supplied SQL.
 
 ```sh

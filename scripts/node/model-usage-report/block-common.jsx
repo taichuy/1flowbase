@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Button,
   DatePicker,
   Empty,
   Flex,
   Radio,
   Spin,
-  Statistic,
   Table,
   Typography,
   theme,
@@ -48,7 +46,6 @@ function useReport(ctx, initialize) {
   const [report, setReport] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
-  const [refresh, setRefresh] = useState(0);
   const publish = async (value) => {
     try {
       const result = await ctx.outputs.publish({ timeRange: value });
@@ -95,7 +92,7 @@ function useReport(ctx, initialize) {
     return () => {
       active = false;
     };
-  }, [range?.started_from, range?.started_to, refresh]);
+  }, [range?.started_from, range?.started_to]);
   return {
     range,
     report,
@@ -103,7 +100,6 @@ function useReport(ctx, initialize) {
     error,
     publish,
     select,
-    reload: () => setRefresh((n) => n + 1),
   };
 }
 function Filters({ state, label }) {
@@ -148,9 +144,6 @@ function Filters({ state, label }) {
           }}
         />
       )}
-      <Button onClick={state.reload} loading={state.busy}>
-        刷新
-      </Button>
     </Flex>
   );
 }
@@ -177,7 +170,6 @@ function Section({ title, state, children }) {
         <Title level={4} style={{ margin: 0 }}>
           {title}
         </Title>
-        <Filters state={state} label={title} />
       </Flex>
       {state.error && (
         <Alert
