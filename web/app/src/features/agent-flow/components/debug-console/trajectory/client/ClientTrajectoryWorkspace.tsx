@@ -63,6 +63,7 @@ export function ClientTrajectoryWorkspace({
       (cursor === undefined || page.next_cursor > cursor)
         ? page.next_cursor
         : undefined,
+    staleTime: 60_000,
     refetchOnWindowFocus: false
   });
   useProgressiveTrajectory(active, pages);
@@ -321,8 +322,11 @@ export function ClientTrajectoryWorkspace({
             </div>
           ) : null}
           {pages.isLoading ? (
-            <div className="provider-trajectory__loading">
+            <div className="provider-trajectory__loading" role="status">
               <Spin />
+              <span>
+                {i18nText('agentFlow', 'trajectory.loading_first_page')}
+              </span>
             </div>
           ) : null}
           {pages.isError ? (
@@ -516,6 +520,15 @@ export function ClientTrajectoryWorkspace({
         ) : null}
       </div>
       <footer className="provider-trajectory__footer">
+        <span role="status">
+          {pages.isError
+            ? i18nText('agentFlow', 'auto.loading_failed')
+            : pages.isPending
+              ? i18nText('agentFlow', 'trajectory.loading_first_page')
+              : pages.isFetching || pages.hasNextPage
+                ? i18nText('agentFlow', 'trajectory.loading_pages')
+                : i18nText('agentFlow', 'trajectory.loading_complete')}
+        </span>
         <span>
           {i18nText('agentFlow', 'trajectory.loaded_steps', {
             count: items.length

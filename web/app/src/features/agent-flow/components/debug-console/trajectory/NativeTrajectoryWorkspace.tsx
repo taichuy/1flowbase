@@ -24,6 +24,7 @@ import {
 } from './workflow/presentation';
 import { WorkflowEventDetail } from './workflow/WorkflowEventDetail';
 import { TrajectoryTimeline, type TrajectoryRange } from './TrajectoryTimeline';
+import { workflowTrajectoryQueryOptions } from './workflow/query-options';
 import { useProgressiveTrajectory } from './use-progressive-trajectory';
 import './provider-trajectory.css';
 import './workflow/workflow-trajectory.css';
@@ -65,21 +66,8 @@ export function NativeTrajectoryWorkspace({
     to: timeRange ? new Date(timeRange[1]).toISOString() : undefined
   };
   const pages = useInfiniteQuery({
-    queryKey: ['workflow-trajectory', runId, filters],
-    enabled: active && Boolean(loader.loadWorkflowTrajectory),
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      loader.loadWorkflowTrajectory!(runId, pageParam, filters),
-    getNextPageParam: (page, all, cursor) =>
-      page.next_cursor &&
-      page.next_cursor !== cursor &&
-      !all
-        .slice(0, -1)
-        .some((previous) => previous.next_cursor === page.next_cursor)
-        ? page.next_cursor
-        : undefined,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false
+    ...workflowTrajectoryQueryOptions(runId, loader, filters),
+    enabled: active && Boolean(loader.loadWorkflowTrajectory)
   });
   useProgressiveTrajectory(active, pages);
   const items = useMemo(
@@ -257,8 +245,11 @@ export function NativeTrajectoryWorkspace({
           aria-label={i18nText('agentFlow', 'trajectory.steps')}
         >
           {pages.isLoading ? (
-            <div className="provider-trajectory__loading">
+            <div className="provider-trajectory__loading" role="status">
               <Spin />
+              <span>
+                {i18nText('agentFlow', 'trajectory.loading_first_page')}
+              </span>
             </div>
           ) : null}
           {pages.isError ? (
@@ -425,6 +416,15 @@ export function NativeTrajectoryWorkspace({
         ) : null}
       </div>
       <footer className="provider-trajectory__footer">
+        <span role="status">
+          {pages.isError
+            ? i18nText('agentFlow', 'auto.loading_failed')
+            : pages.isPending
+              ? i18nText('agentFlow', 'trajectory.loading_first_page')
+              : pages.isFetching || pages.hasNextPage
+                ? i18nText('agentFlow', 'trajectory.loading_pages')
+                : i18nText('agentFlow', 'trajectory.loading_complete')}
+        </span>
         <span>{i18nText('agentFlow', 'trajectory.chronology_note')}</span>
         <span>
           {i18nText('agentFlow', 'trajectory.loaded_steps', {

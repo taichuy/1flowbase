@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { workflowTrajectoryQueryOptions } from './workflow/query-options';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import { Button, Tooltip, Segmented } from 'antd';
@@ -68,6 +70,15 @@ export function ProviderTrajectory({
     });
   }
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!open || nodeRunId || !loader.loadWorkflowTrajectory) return;
+    // Warm only the first summary page; the visible workspace owns pagination.
+    void queryClient.prefetchInfiniteQuery({
+      ...workflowTrajectoryQueryOptions(runId, loader, { category: 'all' }),
+      pages: 1
+    });
+  }, [open, nodeRunId, runId, loader, queryClient]);
   const title = nodeRunId
     ? i18nText('agentFlow', 'trajectory.title')
     : i18nText('agentFlow', 'trajectory.run_title');

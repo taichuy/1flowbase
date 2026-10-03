@@ -3,6 +3,8 @@
     "range_start": "范围起点",
     "range_end": "范围终点",
     "range_all": "全部时间范围",
+    "loading_first_page": "正在加载轨迹，请稍候…",
+    "loading_complete": "当前范围已全部加载",
     "loading_pages": "正在加载更多记录…",
     "close_window": "关闭轨迹窗口",
     "resize_window": "调整轨迹窗口 {{edge}} 边界",
