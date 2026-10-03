@@ -88,7 +88,16 @@ describe('LlmMcpInstancesField', () => {
     expect(screen.getByText('missing-instance')).toBeInTheDocument();
     expect(await screen.findByText('不可用')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '添加 MCP 实例' }));
+    const addInstanceButton = screen.getByRole('button', {
+      name: '添加 MCP 实例'
+    });
+    // Query success can render before Ant Design's loading state settles;
+    // a loading Button consumes clicks instead of forwarding them to Dropdown.
+    await waitFor(() => {
+      expect(addInstanceButton).toBeEnabled();
+      expect(addInstanceButton).not.toHaveClass('ant-btn-loading');
+    });
+    fireEvent.click(addInstanceButton);
     fireEvent.click(
       await screen.findByRole('menuitem', { name: 'Workspace Ops' })
     );
