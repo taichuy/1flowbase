@@ -106,7 +106,9 @@ describe('application templates extension tab', () => {
       await screen.findByRole('tab', { name: 'Application templates' })
     ).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText('Gateway demo')).toBeInTheDocument();
-    expect(screen.getByText('Installed version')).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: 'Installed version' })
+    ).toBeInTheDocument();
     expect(screen.getByText('Build a gateway workspace')).toBeInTheDocument();
     expect(api.installSystemTemplate).not.toHaveBeenCalled();
     await openPreview();
@@ -117,7 +119,12 @@ describe('application templates extension tab', () => {
     fireEvent.click(install);
     expect(await screen.findByText('Template installed')).toBeInTheDocument();
     expect(api.installSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token');
-    expect(install).toBeDisabled();
+    const completedInstall = screen.getByRole('button', {
+      name: 'Confirm install and overwrite'
+    });
+    expect(completedInstall).toBeDisabled();
+    fireEvent.click(completedInstall);
+    expect(api.installSystemTemplate).toHaveBeenCalledTimes(1);
   });
   test('invalid preview surfaces failures and blocks installation', async () => {
     api.previewSystemTemplate.mockResolvedValue({
@@ -152,7 +159,12 @@ describe('application templates extension tab', () => {
       await screen.findByText('Template installation incomplete')
     ).toBeInTheDocument();
     expect(screen.getByText('Plugin download failed')).toBeInTheDocument();
-    expect(install).toBeDisabled();
+    const completedInstall = screen.getByRole('button', {
+      name: 'Confirm install and overwrite'
+    });
+    expect(completedInstall).toBeDisabled();
+    fireEvent.click(completedInstall);
+    expect(api.installSystemTemplate).toHaveBeenCalledTimes(1);
   });
   test('preview request failure is visible and cannot install', async () => {
     api.previewSystemTemplate.mockRejectedValue(new Error('denied'));

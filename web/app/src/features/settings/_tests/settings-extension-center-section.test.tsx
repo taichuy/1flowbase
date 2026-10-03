@@ -395,7 +395,8 @@ describe('SettingsExtensionCenterSection', () => {
     renderSection();
 
     expect(await screen.findByText('openai')).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(9);
+    expect(screen.getAllByRole('tab')).toHaveLength(10);
+    expect(screen.getByRole('tab', { name: '应用模板' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'UI 组件' })).toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '来源' })
