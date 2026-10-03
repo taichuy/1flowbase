@@ -9,6 +9,7 @@ import {
   type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime/browser';
 import { createBlockModalRuntime } from './runtime';
+import { createBlockNotificationRuntime } from '../notification/runtime';
 
 /** Cache the factory and dependencies; instantiate user closures per React mount. */
 export async function evaluateFrontstageReactArtifact(
@@ -20,7 +21,10 @@ export async function evaluateFrontstageReactArtifact(
   if (
     !artifact ||
     !artifact.program.injectedModules.some(
-      ({ source }) => source === 'antd' || source.startsWith('antd/es/modal')
+      ({ source }) =>
+        source === 'antd' ||
+        source.startsWith('antd/es/modal') ||
+        source.startsWith('antd/es/notification')
     )
   ) {
     return evaluateNativeReactComponentArtifactWithRegistry(
@@ -58,9 +62,20 @@ export async function evaluateFrontstageReactArtifact(
   function MountedBlock(props: Record<string, unknown>) {
     const [instance] = useState(() => {
       const runtime = createBlockModalRuntime();
+      const notifications = createBlockNotificationRuntime();
       const scoped = { ...modules };
-      if (scoped.antd) scoped.antd = { ...scoped.antd, Modal: runtime.Modal };
+      if (scoped.antd)
+        scoped.antd = {
+          ...scoped.antd,
+          Modal: runtime.Modal,
+          notification: notifications.notification
+        };
       for (const source of Object.keys(scoped)) {
+        if (/^antd\/es\/notification(?:\/index)?(?:\.js)?$/.test(source))
+          scoped[source] = {
+            ...scoped[source],
+            default: notifications.notification
+          };
         if (/^antd\/es\/modal(?:\/index)?(?:\.js)?$/.test(source))
           scoped[source] = { ...scoped[source], default: runtime.Modal };
         if (/^antd\/es\/modal\/useModal(?:\/index)?(?:\.js)?$/.test(source))
@@ -77,12 +92,15 @@ export async function evaluateFrontstageReactArtifact(
       if (!evaluated.ok) throw new Error(evaluated.diagnostics[0]?.message);
       return {
         ...runtime,
+        NotificationProvider: notifications.Provider,
         Component: evaluated.component as ComponentType<Record<string, unknown>>
       };
     });
     return (
       <instance.Provider>
-        <instance.Component {...props} />
+        <instance.NotificationProvider>
+          <instance.Component {...props} />
+        </instance.NotificationProvider>
       </instance.Provider>
     );
   }

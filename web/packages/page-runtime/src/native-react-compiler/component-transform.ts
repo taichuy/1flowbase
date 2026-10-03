@@ -59,6 +59,7 @@ export function transformNativeReactComponentSource(
   const policy = validateNativeTrustedBlockJavaScript(tsx.code, {
     allowedImportSources: acceptedImportSources,
     scopedModal: true,
+    scopedNotification: true,
     compilerGeneratedImportSources: new Set([
       NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE
     ])
