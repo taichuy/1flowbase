@@ -55,6 +55,8 @@ export interface FrontstageBlockInstance {
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
   ports?: FrontstageBlockPorts;
+  input_mapping?: Record<string, string>;
+  output_mapping?: Record<string, string>;
   presentation: FrontstageBlockPresentation;
   layout: FrontstageBlockLayout;
   order: number;

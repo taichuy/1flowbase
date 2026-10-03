@@ -261,7 +261,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   );
   const pageSignalSession = useMemo(
     () => createFrontstagePageSignalSession(),
-    [activePageContent?.tab.id]
+    [activePageContent?.page.id]
   );
   const pageSignalCoordinator = useMemo(
     () =>

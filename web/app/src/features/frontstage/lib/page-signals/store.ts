@@ -50,7 +50,20 @@ export function commitFrontstageBlockOutputs({
     }
   }
 
+  for (const [name, variable] of Object.entries(block.output_mapping ?? {})) {
+    if (!ports.some((port) => port.name === name) || !variable.trim()) {
+      return failure(snapshot, `Invalid output mapping: ${name}.`);
+    }
+  }
+
   const values = new Map(snapshot.values);
+  for (const [name, variable] of Object.entries(block.output_mapping ?? {})) {
+    const key = pageVariableKey(variable);
+    const previous = values.get(key);
+    if (!jsonValuesEqual(previous, outputs[name])) {
+      values.set(key, freezeJsonValue(outputs[name]));
+    }
+  }
   for (const scope of scopes) {
     for (const port of ports) {
       values.set(
@@ -75,6 +88,38 @@ export function readFrontstageSignal(
   address: FrontstageSignalAddress
 ): unknown {
   return snapshot.values.get(signalKey(address));
+}
+
+export function readFrontstagePageVariable(
+  snapshot: FrontstageSignalSnapshot,
+  variable: string
+): unknown {
+  return snapshot.values.get(pageVariableKey(variable));
+}
+
+function pageVariableKey(variable: string): string {
+  return `variable:${variable}`;
+}
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => jsonValuesEqual(value, right[index]))
+    );
+  }
+  if (isRecord(left) && isRecord(right)) {
+    const keys = Object.keys(left);
+    return (
+      keys.length === Object.keys(right).length &&
+      keys.every(
+        (key) =>
+          Object.hasOwn(right, key) && jsonValuesEqual(left[key], right[key])
+      )
+    );
+  }
+  return false;
 }
 
 export function clearFrontstagePageSignals(): FrontstageSignalSnapshot {

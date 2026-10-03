@@ -60,6 +60,8 @@ export function createFrontstageRuntimeAssemblyBlocks(
           'runtime-assembly'
       },
       props: record(descriptor.props),
+      input_mapping: layer.input_mapping,
+      output_mapping: layer.output_mapping,
       ports: {
         inputs: Array.isArray(record(descriptor.ports).inputs)
           ? (record(descriptor.ports).inputs as NonNullable<

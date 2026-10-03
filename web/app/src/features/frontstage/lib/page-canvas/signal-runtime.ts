@@ -7,6 +7,7 @@ import {
   commitFrontstageBlockOutputs,
   createFrontstageSignalSnapshot,
   readFrontstageSignal,
+  readFrontstagePageVariable,
   type FrontstageSignalSnapshot
 } from '../page-signals/store';
 
@@ -106,7 +107,10 @@ export class FrontstageSignalRuntimeCoordinator {
     this.blockListeners.set(blockId, listeners);
     return () => {
       listeners.delete(listener);
-      if (listeners.size === 0 && this.blockListeners.get(blockId) === listeners)
+      if (
+        listeners.size === 0 &&
+        this.blockListeners.get(blockId) === listeners
+      )
         this.blockListeners.delete(blockId);
     };
   }
@@ -140,6 +144,13 @@ export class FrontstageSignalRuntimeCoordinator {
       const value = this.readSource(input.source);
       if (value !== undefined) inputs[input.name] = value;
     }
+    for (const [name, variable] of Object.entries(block?.input_mapping ?? {})) {
+      const value = readFrontstagePageVariable(
+        this.pageSession.snapshot,
+        variable
+      );
+      if (value !== undefined) inputs[name] = value;
+    }
     return inputs;
   }
 
@@ -157,6 +168,9 @@ export class FrontstageSignalRuntimeCoordinator {
     const block = this.blocksById.get(blockId);
     if (!block)
       return { ok: false, stale: false, error: 'Signal block does not exist.' };
+    const previousInputs = new Map(
+      [...this.blocksById.keys()].map((id) => [id, this.inputsFor(id)])
+    );
     const committed = commitFrontstageBlockOutputs({
       block,
       outputs,
@@ -167,8 +181,17 @@ export class FrontstageSignalRuntimeCoordinator {
     if (!committed.ok)
       return { ok: false, stale: false, error: committed.error };
     this.pageSession.snapshot = committed.snapshot;
-    const affectedBlocks = this.graph.order.filter((candidateId) =>
-      this.graph.dependencies.get(candidateId)?.has(blockId)
+    const candidates = new Set([
+      ...this.graph.order,
+      ...this.blocksById.keys()
+    ]);
+    const affectedBlocks = [...candidates].filter(
+      (candidateId) =>
+        this.graph.dependencies.get(candidateId)?.has(blockId) ||
+        !inputsEqual(
+          previousInputs.get(candidateId)!,
+          this.inputsFor(candidateId)
+        )
     );
     for (const affectedBlockId of affectedBlocks) {
       this.blockSnapshots.set(
@@ -188,14 +211,15 @@ export class FrontstageSignalRuntimeCoordinator {
 
   clear(): void {
     this.pageSession.snapshot = clearFrontstagePageSignals();
+    this.dispose();
+  }
+
+  dispose(): void {
+    // The page owns the session; retiring a tab coordinator must not erase it.
     this.latestInstanceEpochs.clear();
     this.blockSnapshots.clear();
     this.blockListeners.clear();
     this.nextInstanceEpoch = 0;
-  }
-
-  dispose(): void {
-    this.clear();
   }
 
   private readSource(
@@ -238,7 +262,8 @@ function inputsEqual(
   return (
     currentNames.length === nextNames.length &&
     currentNames.every(
-      (name) => Object.hasOwn(next, name) && Object.is(current[name], next[name])
+      (name) =>
+        Object.hasOwn(next, name) && Object.is(current[name], next[name])
     )
   );
 }
