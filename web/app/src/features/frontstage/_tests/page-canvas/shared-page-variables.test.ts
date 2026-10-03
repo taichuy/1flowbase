@@ -12,15 +12,28 @@ const schema = {
   required: ['days'],
   properties: { days: { type: 'integer' } }
 };
-const blocks = ['overview', 'trend', 'users'].map((id) => ({
-  id,
-  input_mapping: { timeRange: 'usage.timeRange' },
-  output_mapping: { timeRange: 'usage.timeRange' },
-  ports: {
-    inputs: [{ name: 'timeRange', schema }],
-    outputs: [{ name: 'timeRange', schema }]
-  }
-})) as FrontstageBlockInstance[];
+const blocks: FrontstageBlockInstance[] = ['overview', 'trend', 'users'].map(
+  (id, order) => ({
+    id,
+    rendererVersion: null,
+    sourceId: id,
+    codeRef: `${id}-code`,
+    sourceCodeRef: id,
+    catalog: { providerCode: null, installationId: null },
+    contribution: { pluginId: null, pluginVersion: null, code: id },
+    props: {},
+    presentation: { heightMode: 'auto', height: null },
+    layout: { order },
+    order,
+    runtime: { kind: 'native_react', entry: null, hint: 'native_react' },
+    input_mapping: { timeRange: 'usage.timeRange' },
+    output_mapping: { timeRange: 'usage.timeRange' },
+    ports: {
+      inputs: [{ name: 'timeRange', schema }],
+      outputs: [{ name: 'timeRange', schema }]
+    }
+  })
+);
 
 function setup() {
   const session = createFrontstagePageSignalSession();

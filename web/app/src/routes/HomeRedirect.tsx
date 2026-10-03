@@ -47,5 +47,6 @@ export function HomeRedirect() {
   const firstPage = pageTreeQuery.data.find(
     (node) => node.placement === 'topbar' && node.slug
   );
-  return <Navigate to={firstPage ? `/${firstPage.slug}` : '/me'} replace />;
+  if (!firstPage?.slug) return <Navigate to="/me" replace />;
+  return <Navigate to="/$slug" params={{ slug: firstPage.slug }} replace />;
 }

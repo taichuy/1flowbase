@@ -1,5 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider
+} from '@tanstack/react-router';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { HomeRedirect } from '../HomeRedirect';
 import { resetAuthStore, useAuthStore } from '../../state/auth-store';
@@ -12,27 +19,45 @@ vi.mock('../../features/frontstage/api/page-tree', () => ({
     workspaceId
   ]
 }));
-vi.mock('@tanstack/react-router', () => ({
-  Navigate: ({ to, replace }: { to: string; replace: boolean }) => (
-    <a href={to} data-replace={String(replace)}>
-      Destination
-    </a>
-  )
-}));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key })
 }));
 
 function renderRedirect() {
-  return render(
+  const history = createMemoryHistory({ initialEntries: ['/'] });
+  const rootRoute = createRootRoute();
+  const homeRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    component: HomeRedirect
+  });
+  const meRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/me',
+    component: () => <a href="/me">Destination</a>
+  });
+  const slugRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/$slug',
+    component: () => {
+      const { slug } = slugRoute.useParams();
+      return <a href={`/${slug}`}>Destination</a>;
+    }
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([homeRoute, meRoute, slugRoute]),
+    history
+  });
+  render(
     <QueryClientProvider
       client={
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <HomeRedirect />
+      <RouterProvider router={router} />
     </QueryClientProvider>
   );
+  return { history, router };
 }
 
 beforeEach(() => {
@@ -57,9 +82,9 @@ test('redirects to the first accessible topbar node, skipping sidebar and missin
     { placement: 'topbar', slug: 'demo' },
     { placement: 'topbar', slug: 'gateway' }
   ]);
-  renderRedirect();
+  const { history } = renderRedirect();
   expect(await screen.findByRole('link')).toHaveAttribute('href', '/demo');
-  expect(screen.getByRole('link')).toHaveAttribute('data-replace', 'true');
+  expect(history.length).toBe(1);
 });
 
 test('uses the personal center when there are no topbar pages', async () => {
@@ -68,10 +93,10 @@ test('uses the personal center when there are no topbar pages', async () => {
   expect(await screen.findByRole('link')).toHaveAttribute('href', '/me');
 });
 
-test('does not redirect before the navigation tree finishes loading', () => {
+test('does not redirect before the navigation tree finishes loading', async () => {
   fetchTree.mockReturnValue(new Promise(() => {}));
   renderRedirect();
-  expect(screen.getByRole('status')).toBeInTheDocument();
+  expect(await screen.findByRole('status')).toBeInTheDocument();
   expect(screen.queryByRole('link')).not.toBeInTheDocument();
 });
 
@@ -87,6 +112,6 @@ test('exposes a retry on failure and redirects after recovery', async () => {
 test('does not fetch or loop back to home without a workspace', async () => {
   resetAuthStore();
   renderRedirect();
-  expect(screen.getByRole('link')).toHaveAttribute('href', '/me');
+  expect(await screen.findByRole('link')).toHaveAttribute('href', '/me');
   expect(fetchTree).not.toHaveBeenCalled();
 });

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { App } from 'antd';
 import { expect, test, vi } from 'vitest';
 
@@ -21,6 +27,7 @@ test.each(['page', 'group'] as const)(
       title: 'route',
       kind,
       placement: 'topbar' as const,
+      content_presentation: 'single' as const,
       slug: 'route',
       icon: 'FileTextOutlined',
       tooltip: '原描述',
