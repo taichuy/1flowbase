@@ -8,6 +8,7 @@ mod archive_codec;
 mod block_sealing;
 mod compact_directory;
 mod dense_directory;
+mod ownership;
 mod packed_directory;
 mod persistence;
 mod segments;

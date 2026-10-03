@@ -238,6 +238,7 @@ pub(super) async fn write_section(
     value: &Value,
     sequence: i64,
     historical_id: Option<Uuid>,
+    locked_scope: Option<&FlowContentScope>,
 ) -> Result<Uuid> {
     let id = historical_id.unwrap_or_else(Uuid::now_v7);
     let (value_hash, value_byte_size) = value_identity(value)?;
@@ -254,15 +255,27 @@ pub(super) async fn write_section(
             content_id = Some(id);
             content_path = path;
         } else {
-            let (scope_id, application_id) = sqlx::query_as::<_, (Uuid, Uuid)>(
-                "select scope_id,application_id from flow_runs where id=$1",
+            let maintenance_scope;
+            let flow_scope = if let Some(scope) = locked_scope {
+                scope
+            } else {
+                // Historical maintenance locks an allowlist of runs, rather than
+                // receiving the normal fact writer's typed locked ownership.
+                maintenance_scope = sqlx::query_as::<_, FlowContentScope>(
+                    "select scope_id,application_id from flow_runs where id=$1",
+                )
+                .bind(input.flow_run_id)
+                .fetch_one(&mut **tx)
+                .await?;
+                &maintenance_scope
+            };
+            let (id, _, _, created) = put_canonical_runtime_content_with_creation(
+                tx,
+                flow_scope.scope_id,
+                flow_scope.application_id,
+                value,
             )
-            .bind(input.flow_run_id)
-            .fetch_one(&mut **tx)
             .await?;
-            let (id, _, _, created) =
-                put_canonical_runtime_content_with_creation(tx, scope_id, application_id, value)
-                    .await?;
             if created {
                 sqlx::query(
                     "insert into runtime_observation_body_ownership(content_id) values($1)",
@@ -650,6 +663,7 @@ impl PgControlPlaneStore {
                 value,
                 row.get("event_sequence"),
                 Some(id),
+                None,
             )
             .await?;
             let restored = sqlx::query(SECTION_ROWS)
