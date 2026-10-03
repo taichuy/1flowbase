@@ -391,8 +391,11 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
       - uses: dtolnay/rust-toolchain@stable
+      - name: Prepare real recovery bind-mount fixture
+        run: docker pull alpine:3.20
       - uses: ./.github/actions/quality-gate
         env:
+          REQUIRE_DOCKER_RECOVERY_EVIDENCE: "1"
           GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
           GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
         with:

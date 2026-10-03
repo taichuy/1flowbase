@@ -253,11 +253,11 @@ function buildBackendCommands({
     const commands = [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard })];
     // The SQL report needs PostgreSQL, not a private deployed page. Run once in
     // the database-backed batch, and keep it inside the candidate gate receipt.
-    if (target === 'test' && shard === 'storage-postgres-1-of-4') {
+    if (target === 'test' && normalizeBackendShard(shard)?.key === 'storage-postgres-1-of-4') {
       commands.push({
         label: 'model-usage-report-postgres',
         command: process.execPath,
-        args: ['--test', path.join(repoRoot, 'scripts/node/model-usage-report/integration/postgres.test.js')],
+        args: ['--test', '--test-reporter=tap', path.join(repoRoot, 'scripts/node/model-usage-report/integration/postgres.test.js')],
         cwd: repoRoot,
       });
     }
@@ -352,12 +352,24 @@ async function runBackend(argv = [], deps = {}) {
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,
     writeStderr: deps.writeStderr,
-    ...(options.target === 'official-i18n-seed' ? {
+    ...(options.target === 'official-i18n-seed' || (options.target === 'test' && options.shard === 'storage-postgres-1-of-4') ? {
       runCommandSequenceImpl: (sequenceOptions) => {
         let emptySelection = false;
         const status = runCommandSequence({
           ...sequenceOptions,
           onCommandComplete({ command, result }) {
+            if (command.label === 'model-usage-report-postgres') {
+              const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+              const count = (name) => Number(output.match(new RegExp(`^# ${name} (\\d+)$`, 'mu'))?.[1] ?? NaN);
+              if (result.status === 0 && !(count('tests') > 0 && count('pass') === count('tests') && count('fail') === 0 && count('skipped') === 0)) {
+                emptySelection = true;
+                (deps.writeStderr || process.stderr.write.bind(process.stderr))(
+                  `${command.label}: no complete passing SQL evidence; refusing empty or skipped PostgreSQL gate\n`,
+                );
+              }
+              return;
+            }
+            if (options.target !== 'official-i18n-seed') return;
             const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
             if (result.status === 0 && !(counts.passedCount > 0)) {
               emptySelection = true;

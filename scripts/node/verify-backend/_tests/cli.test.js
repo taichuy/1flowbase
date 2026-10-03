@@ -535,7 +535,7 @@ test('root_1998_ac_007_cross_layer_postgres_host_enters_all_four_ci_partitions',
       assert.deepEqual(commands[1], {
         label: 'model-usage-report-postgres',
         command: process.execPath,
-        args: ['--test', '/repo-root/scripts/node/model-usage-report/integration/postgres.test.js'],
+        args: ['--test', '--test-reporter=tap', '/repo-root/scripts/node/model-usage-report/integration/postgres.test.js'],
         cwd: '/repo-root',
       });
     }
@@ -563,6 +563,44 @@ test('official Seed gate rejects zero or absent executed-test summaries', async 
         },
       });
       assert.equal(status, stdout.includes('4 passed') ? 0 : 1);
+    } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+  }
+});
+
+test('actual PostgreSQL shard CLI executes SQL evidence and rejects failed, empty or skipped runs', async () => {
+  for (const [sqlStatus, stdout, expectedStatus] of [
+    [0, '# tests 2\n# pass 2\n# fail 0\n# skipped 0\n', 0],
+    [7, '# tests 2\n# pass 1\n# fail 1\n# skipped 0\n', 7],
+    [0, '# tests 0\n# pass 0\n# fail 0\n# skipped 0\n', 1],
+    [0, '# tests 2\n# pass 0\n# fail 0\n# skipped 2\n', 1],
+    [0, '', 1],
+  ]) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'postgres-sql-execution-'));
+    const invocations = [];
+    try {
+      const status = await main(['test', 'storage-postgres-1-of-4'], {
+        repoRoot, env: {},
+        runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
+        writeStdout() {}, writeStderr() {},
+        managedRunnerImpl(options) {
+          return options.runCommandSequenceImpl({
+            ...options,
+            spawnSyncImpl(command, args) {
+              invocations.push({ command, args });
+              return command === 'cargo'
+                ? { status: 0, stdout: 'Summary 158 tests run: 158 passed', stderr: '' }
+                : { status: sqlStatus, stdout, stderr: '' };
+            },
+          });
+        },
+      });
+      assert.equal(status, expectedStatus);
+      assert.equal(invocations.length, 2, 'the actual CLI must not omit the SQL lane');
+      assert.equal(invocations[1].command, process.execPath);
+      assert.deepEqual(invocations[1].args, [
+        '--test', '--test-reporter=tap',
+        path.join(repoRoot, 'scripts/node/model-usage-report/integration/postgres.test.js'),
+      ]);
     } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
   }
 });
