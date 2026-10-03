@@ -129,7 +129,15 @@ test("DRS-002 development runtime publishes a generation and warms the boot boun
   assert.match(runtimeSource, /verifyCriticalInteropCache/u);
   assert.match(runtimeSource, /waitForCriticalInteropCache/u);
   assert.match(runtimeSource, /pruneDevGenerationCaches/u);
-  assert.match(runtimeSource, /fs\.promises\.rm/u);
+  const cacheSource = fs.readFileSync(
+    path.resolve(
+      path.dirname(viteConfigPath),
+      "vite",
+      "dev-generation-cache.ts",
+    ),
+    "utf8",
+  );
+  assert.match(cacheSource, /fs\.promises\.rm/u);
 });
 
 test("DRS-003 pre-React bootstrap never leaves an empty root after module failure", () => {

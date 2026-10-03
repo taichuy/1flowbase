@@ -103,6 +103,40 @@ describe('dev generation dependency manifest', () => {
 });
 
 describe('dev runtime diagnostics', () => {
+  test('does not retire an older generation still owned by a live server', async () => {
+    const { appRoot } = createFixture();
+    const generationsRoot = path.join(
+      appRoot,
+      'node_modules',
+      '.vite-generations'
+    );
+    const live = 'a'.repeat(64);
+    const recent = 'b'.repeat(64);
+    const incoming = 'c'.repeat(64);
+    for (const [index, generation] of [live, recent, incoming].entries()) {
+      const directory = path.join(generationsRoot, generation);
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(
+        path.join(directory, 'Icon.js'),
+        'export default "icon";'
+      );
+      fs.utimesSync(directory, new Date(index + 1), new Date(index + 1));
+    }
+    const owners = path.join(generationsRoot, '.owners', live);
+    fs.mkdirSync(owners, { recursive: true });
+    fs.writeFileSync(
+      path.join(owners, `${process.pid}-00000000-0000-4000-8000-000000000000`),
+      ''
+    );
+
+    expect(await pruneDevGenerationCaches(appRoot, incoming)).not.toContain(
+      live
+    );
+    expect(
+      fs.readFileSync(path.join(generationsRoot, live, 'Icon.js'), 'utf8')
+    ).toBe('export default "icon";');
+  });
+
   test('AC-004 preserves validation stage, specifier, and original error', () => {
     const failure = createDevRuntimeError(
       'optimizer_contract',
