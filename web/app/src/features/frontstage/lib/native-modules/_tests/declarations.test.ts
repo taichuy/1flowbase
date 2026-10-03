@@ -5,6 +5,18 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('countup exposes numeric props and its hook types', () => {
+    expect(typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import React from 'react';
+import CountUp, { useCountUp, type CountUpProps } from 'react-countup';
+const props: CountUpProps = { end: 112893, decimals: 2, separator: ',' };
+// @ts-expect-error end must be a number.
+props.end = 'invalid';
+const counter = <CountUp {...props} />;
+void counter; void useCountUp;`
+    })).toEqual([]);
+  });
   test('difference and draggable expose their installed public types', () => {
     expect(
       typeCheckSource({
@@ -314,7 +326,8 @@ function createTypeCheckEnvironment(
   const options: ts.CompilerOptions = {
     allowSyntheticDefaultImports: true,
     esModuleInterop: true,
-    jsx: ts.JsxEmit.ReactJSX,
+    // Match BlockSourceEditor: JSX is checked but emitted by the block compiler.
+    jsx: ts.JsxEmit.Preserve,
     lib: ['lib.es2022.d.ts'],
     module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Node10,

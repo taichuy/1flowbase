@@ -10,6 +10,7 @@ export const FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES = [
   'lodash/debounce',
   'lodash/difference',
   'react-draggable',
+  'react-countup',
   'react-infinite-scroll-component',
   '@rc-component/virtual-list'
 ] as const;

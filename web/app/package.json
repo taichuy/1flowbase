@@ -53,6 +53,7 @@
     "lru-cache": "10.4.3",
     "monaco-editor": "^0.55.1",
     "react": "^19.0.0",
+    "react-countup": "6.5.3",
     "react-dom": "^19.0.0",
     "react-draggable": "4.7.0",
     "react-easy-crop": "^5.5.7",

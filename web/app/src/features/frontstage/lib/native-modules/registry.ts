@@ -159,6 +159,9 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     const debounceModule = await import('lodash/debounce');
     return { module: { default: debounceModule.default } };
   }),
+  registration('react-countup', ['default', 'useCountUp'], async () => ({
+    module: await import('./countup/runtime')
+  })),
   registration('@rc-component/virtual-list', ['default'], async () => ({
     module: await import('@rc-component/virtual-list')
   })),
