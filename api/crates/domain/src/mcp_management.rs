@@ -1,3 +1,5 @@
+pub mod input_defaults;
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -592,6 +594,7 @@ pub fn mcp_call_parameter_is_open(input_mapping: &serde_json::Value, name: &str)
                     .get("interface_param")
                     .and_then(serde_json::Value::as_str)
                     == Some(name)
+                    && !input_defaults::mapping_is_hidden(mapping)
                     && mapping.get("mcp_param").and_then(serde_json::Value::as_str) == Some(name)
                     && mapping
                         .pointer("/source/kind")
@@ -606,6 +609,7 @@ pub fn mcp_call_parameter_is_open(input_mapping: &serde_json::Value, name: &str)
 }
 
 pub fn validate_mcp_call_parameters(input_mapping: &serde_json::Value) -> Result<(), &'static str> {
+    input_defaults::validate_input_defaults(input_mapping, &[])?;
     let parameters = input_mapping
         .get("interface_parameters")
         .and_then(serde_json::Value::as_array)

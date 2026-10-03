@@ -72,6 +72,8 @@ struct McpInputMapping {
 
 #[derive(Debug, Deserialize)]
 struct McpInputMappingEntry {
+    #[serde(flatten)]
+    defaults: domain::mcp_management::input_defaults::McpInputDefaults,
     interface_param: String,
     #[serde(default)]
     mcp_param: Option<String>,
@@ -258,6 +260,11 @@ fn build_interface_arguments(
     if !mcp_arguments.is_object() {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput("mcp_arguments").into());
     }
+    domain::mcp_management::input_defaults::validate_input_defaults(
+        input_mapping,
+        &interface_entry.parameter_descriptors,
+    )
+    .map_err(control_plane::errors::ControlPlaneError::InvalidInput)?;
     let input_mapping: McpInputMapping = serde_json::from_value(input_mapping.clone())
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("input_mapping"))?;
     let server_bound_parameters = input_mapping
@@ -274,7 +281,7 @@ fn build_interface_arguments(
     let mut arguments = TargetArguments::default();
     let mut next_parameter_target = BTreeMap::<String, usize>::new();
 
-    for mapping in input_mapping.mappings {
+    for mapping in &input_mapping.mappings {
         if matches!(
             mapping.source.as_ref(),
             Some(McpInputValueSource::McpCall { .. })
@@ -299,38 +306,52 @@ fn build_interface_arguments(
             *next_index = (*next_index).saturating_add(1);
             current_index
         };
-        let mcp_value = match mapping.source {
+        let mut mcp_value = match mapping.source {
             Some(McpInputValueSource::ServerBinding {
                 binding: McpServerBinding::WorkspaceId,
             }) => Value::String(server_bound_inputs.workspace_id.to_string()),
-            Some(McpInputValueSource::McpArgument { path }) => {
-                match get_path_value(mcp_arguments, &path) {
+            ref source => {
+                if matches!(source, Some(McpInputValueSource::McpCall { .. })) {
+                    continue;
+                }
+                let path = match source {
+                    Some(McpInputValueSource::McpArgument { path }) => Some(path.as_str()),
+                    _ => mapping.mcp_param.as_deref(),
+                };
+                match mapping
+                    .defaults
+                    .resolve(path.and_then(|path| get_path_value(mcp_arguments, path)))
+                {
                     Some(value) => value.clone(),
-                    _ if mapping.required => {
+                    None if mapping.required => {
                         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
                             "mcp_arguments",
                         )
                         .into())
                     }
-                    _ => continue,
+                    None => continue,
                 }
             }
-            None => match mapping
-                .mcp_param
-                .as_deref()
-                .and_then(|path| get_path_value(mcp_arguments, path))
-            {
-                Some(value) => value.clone(),
-                _ if mapping.required => {
-                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                        "mcp_arguments",
-                    )
-                    .into())
-                }
-                _ => continue,
-            },
-            Some(McpInputValueSource::McpCall { .. }) => continue,
         };
+        // Visible parent-object mappings must not override hidden descendants, in either order.
+        for hidden in input_mapping
+            .mappings
+            .iter()
+            .filter(|entry| entry.defaults.hidden)
+        {
+            if let Some(relative) = hidden
+                .interface_param
+                .strip_prefix(&format!("{}.", mapping.interface_param))
+            {
+                if let Some(object) = mcp_value.as_object_mut() {
+                    if let Some(value) = hidden.defaults.default_value.as_ref() {
+                        set_path_value(object, relative, value.clone());
+                    } else {
+                        remove_path_value(object, relative);
+                    }
+                }
+            }
+        }
         let targets = parameter_targets(interface_entry, &mapping.interface_param)?;
         let target = targets
             .get(target_index)
@@ -373,6 +394,16 @@ fn build_interface_arguments(
     );
 
     Ok(arguments)
+}
+
+fn remove_path_value(object: &mut Map<String, Value>, path: &str) {
+    if let Some((head, tail)) = path.split_once('.') {
+        if let Some(child) = object.get_mut(head).and_then(Value::as_object_mut) {
+            remove_path_value(child, tail);
+        }
+    } else {
+        object.remove(path);
+    }
 }
 
 fn materialize_required_object_containers(schema: Option<&Value>, target: &mut Map<String, Value>) {
@@ -724,3 +755,7 @@ mod server_binding_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/input_defaults.rs"]
+mod input_defaults_tests;

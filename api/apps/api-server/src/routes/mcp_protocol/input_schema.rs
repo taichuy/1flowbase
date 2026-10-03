@@ -5,6 +5,7 @@ struct ParameterMapping<'a> {
     mcp_param: &'a str,
     description: Option<&'a str>,
     required: bool,
+    has_default: bool,
 }
 
 pub(super) fn mapped_schema(parameter_schema: &Value, input_mapping: &Value) -> Value {
@@ -30,6 +31,20 @@ pub(super) fn mapped_schema(parameter_schema: &Value, input_mapping: &Value) -> 
             mapping.interface_param,
             mapping.mcp_param,
         );
+        // A visible object must not expose a hidden descendant through its copied schema.
+        for hidden in configured_mappings
+            .into_iter()
+            .flatten()
+            .filter(|entry| domain::mcp_management::input_defaults::mapping_is_hidden(entry))
+        {
+            if let Some(relative) = hidden
+                .get("interface_param")
+                .and_then(Value::as_str)
+                .and_then(|name| name.strip_prefix(&format!("{}.", mapping.interface_param)))
+            {
+                remove_field_schema(&mut field_schema, relative);
+            }
+        }
         apply_description(&mut field_schema, mapping.description);
         let path = mapping
             .mcp_param
@@ -40,13 +55,40 @@ pub(super) fn mapped_schema(parameter_schema: &Value, input_mapping: &Value) -> 
             &mut mapped_schema,
             path.as_slice(),
             field_schema,
-            mapping.required,
+            mapping.required && !mapping.has_default,
         );
     }
     mapped_schema
 }
 
+fn remove_field_schema(schema: &mut Value, path: &str) {
+    let Some(object) = schema.as_object_mut() else {
+        return;
+    };
+    object.remove("default");
+    let (head, tail) = path
+        .split_once('.')
+        .map_or((path, None), |(head, tail)| (head, Some(tail)));
+    if let Some(properties) = object.get_mut("properties").and_then(Value::as_object_mut) {
+        if let Some(tail) = tail {
+            if let Some(child) = properties.get_mut(head) {
+                remove_field_schema(child, tail);
+            }
+        } else {
+            properties.remove(head);
+        }
+    }
+    if tail.is_none() {
+        if let Some(required) = object.get_mut("required").and_then(Value::as_array_mut) {
+            required.retain(|name| name.as_str() != Some(head));
+        }
+    }
+}
+
 fn parameter_mapping(value: &Value) -> Option<ParameterMapping<'_>> {
+    if domain::mcp_management::input_defaults::mapping_is_hidden(value) {
+        return None;
+    }
     let value = value.as_object()?;
     if matches!(
         value
@@ -69,6 +111,9 @@ fn parameter_mapping(value: &Value) -> Option<ParameterMapping<'_>> {
         return None;
     }
     Some(ParameterMapping {
+        has_default: value
+            .get("default_value")
+            .is_some_and(|value| !value.is_null()),
         interface_param,
         mcp_param,
         description: value
@@ -301,3 +346,7 @@ mod tests {
         assert_eq!(schema["required"], json!(["page_id"]));
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/input_defaults.rs"]
+mod input_defaults_tests;

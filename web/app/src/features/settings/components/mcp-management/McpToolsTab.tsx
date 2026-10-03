@@ -303,7 +303,9 @@ export function McpToolsTab({
         throw new Error('result_schema JSON');
       }
       if (!inputMappingValidRef.current) {
-        throw new Error('input_mapping JSON');
+        throw new Error(
+          i18nText('settingsMcpManagement', 'mcp_mapping_default_invalid')
+        );
       }
       if (!outputMappingValidRef.current) {
         throw new Error('output_mapping JSON');
@@ -901,7 +903,8 @@ export function McpToolsTab({
         />
       </DataTableLayout>
       <FixedHeightModal
-        width={840}
+        width="70vw"
+        resizable
         className="mcp-management__tool-modal"
         open={modalOpen}
         title={
@@ -913,7 +916,7 @@ export function McpToolsTab({
         onOk={() => form.submit()}
         confirmLoading={saveToolMutation.isPending}
         footer={
-          <Space>
+          <Space wrap>
             {previousToolStep ? (
               <Button
                 icon={<LeftOutlined />}

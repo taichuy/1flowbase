@@ -1,4 +1,5 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
+import { ModalWidthResize } from './ModalWidthResize';
 
 import { Modal } from 'antd';
 import type { ModalProps } from 'antd';
@@ -11,6 +12,7 @@ export interface FixedHeightModalProps {
   children: ReactNode;
   footer?: ReactNode;
   width?: ModalProps['width'];
+  resizable?: boolean;
   height?: string;
   className?: string;
   scrollBodyClassName?: string;
@@ -34,6 +36,7 @@ export function FixedHeightModal({
   children,
   footer,
   width,
+  resizable = false,
   height = DEFAULT_CONTENT_HEIGHT,
   className,
   scrollBodyClassName,
@@ -44,7 +47,14 @@ export function FixedHeightModal({
   onCancel,
   onOk
 }: FixedHeightModalProps) {
+  const [resizedWidth, setResizedWidth] = useState<number>();
   const modalStyle = {
+    ...(resizable
+      ? {
+          minWidth: 'min(560px, calc(100vw - 32px))',
+          maxWidth: 'calc(100vw - 32px)'
+        }
+      : {}),
     '--fixed-height-modal-content-height': height
   } as CSSProperties;
 
@@ -59,7 +69,17 @@ export function FixedHeightModal({
       okText={okText}
       style={modalStyle}
       title={title}
-      width={width}
+      width={resizable ? (resizedWidth ?? width) : width}
+      afterClose={() => setResizedWidth(undefined)}
+      modalRender={
+        resizable
+          ? (node) => (
+              <ModalWidthResize onWidthChange={setResizedWidth}>
+                {node}
+              </ModalWidthResize>
+            )
+          : undefined
+      }
       onCancel={onCancel}
       onOk={onOk}
     >

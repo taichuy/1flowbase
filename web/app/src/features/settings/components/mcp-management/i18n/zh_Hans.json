@@ -223,5 +223,8 @@
     "proxy_remote_arguments": "远端 arguments",
     "proxy_upstream_result": "第三方原始结果",
     "proxy_mapped_result": "本地映射结果"
-  }
+  },
+  "mcp_mapping_default_value": "默认值",
+  "mcp_mapping_hidden": "隐藏",
+  "mcp_mapping_default_invalid": "请填写符合参数类型的默认值；隐藏的必填参数必须配置默认值。"
 }

@@ -958,30 +958,40 @@ describe('McpManagementPanel', () => {
             mappings: expect.arrayContaining([
               {
                 interface_param: 'application_id',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'application_id',
                 description: 'Application id',
                 required: true
               },
               {
                 interface_param: 'api_enabled',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'api_enabled',
                 description: 'API enabled',
                 required: true
               },
               {
                 interface_param: 'mapping.input.query_target',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'mapping.input.query_target',
                 description: 'Query target',
                 required: true
               },
               {
                 interface_param: 'mapping.input.history_target',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'mapping.input.history_target',
                 description: 'History target',
                 required: false
               },
               {
                 interface_param: 'mapping.output.answer_selector',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'mapping.output.answer_selector',
                 description: 'Answer selector',
                 required: false
@@ -1115,6 +1125,8 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'max_inline_chars',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'max_inline_chars',
                 description:
                   '返回字符预算；正整数，留空使用 Tool 默认值，例如 4000。',
@@ -1194,12 +1206,16 @@ describe('McpManagementPanel', () => {
             mappings: expect.arrayContaining([
               {
                 interface_param: 'app_id',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'app_id',
                 description: 'Application id',
                 required: true
               },
               {
                 interface_param: 'display_name',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'display_name',
                 description: 'Display name',
                 required: false
@@ -1368,6 +1384,8 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'user_id',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'userId',
                 description: 'User id',
                 required: true

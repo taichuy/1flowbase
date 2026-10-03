@@ -1,4 +1,5 @@
-.fixed-height-modal > .ant-modal-container {
+.fixed-height-modal > .ant-modal-container,
+.fixed-height-modal__resize-frame > .ant-modal-container {
   display: flex;
   height: var(
     --fixed-height-modal-content-height,
@@ -32,4 +33,34 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
+}
+
+.fixed-height-modal__resize-frame {
+  position: relative;
+}
+
+.fixed-height-modal__resize-handle {
+  position: absolute;
+  z-index: 1;
+  top: 16px;
+  bottom: 16px;
+  width: 12px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.fixed-height-modal__resize-handle:hover,
+.fixed-height-modal__resize-handle:focus-visible {
+  background: var(--ant-color-primary-bg);
+  outline: 1px solid var(--ant-color-primary-border);
+}
+
+.fixed-height-modal__resize-handle--left {
+  left: -6px;
+}
+.fixed-height-modal__resize-handle--right {
+  right: -6px;
 }

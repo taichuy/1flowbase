@@ -18,6 +18,8 @@ export type McpInputParameterMapping = {
   mcp_param: string;
   description: string;
   required: boolean;
+  default_value?: unknown;
+  hidden?: boolean;
   source?: { kind: 'mcp_call'; path: string };
 };
 
@@ -114,6 +116,12 @@ function normalizeMapping(value: unknown): McpInputParameterMapping | null {
   return {
     interface_param: interfaceParam,
     mcp_param: stringValue(value.mcp_param) || interfaceParam,
+    ...(Object.hasOwn(value, 'default_value')
+      ? { default_value: value.default_value }
+      : {}),
+    ...(Object.hasOwn(value, 'hidden')
+      ? { hidden: value.hidden === true }
+      : {}),
     description: stringValue(value.description),
     required: booleanValue(value.required),
     ...(isRecord(value.source) &&
@@ -280,4 +288,42 @@ export function inputMappingHasContent(value: unknown): boolean {
         entry.required
     )
   );
+}
+
+export function parseMappingDefault(text: string, fieldType: string): unknown {
+  if (text === '') return null;
+  if (fieldType === 'string') return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+export function mappingDefaultError(
+  entry: McpInputParameterMapping,
+  parameter?: McpInputInterfaceParameter
+): string | undefined {
+  const value = entry.default_value;
+  if (value === undefined || value === null) {
+    return entry.hidden && (entry.required || parameter?.required)
+      ? 'required'
+      : undefined;
+  }
+  const type = parameter?.field_type.toLowerCase();
+  const valid =
+    type === 'string'
+      ? typeof value === 'string'
+      : type === 'boolean' || type === 'bool'
+        ? typeof value === 'boolean'
+        : ['integer', 'int', 'i32', 'i64', 'u32', 'u64'].includes(type ?? '')
+          ? typeof value === 'number' && Number.isInteger(value)
+          : ['number', 'float', 'double', 'f32', 'f64'].includes(type ?? '')
+            ? typeof value === 'number'
+            : type?.startsWith('array')
+              ? Array.isArray(value)
+              : type === 'object'
+                ? isRecord(value)
+                : true;
+  return valid ? undefined : 'type';
 }

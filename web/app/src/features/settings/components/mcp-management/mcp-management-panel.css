@@ -166,7 +166,8 @@
 .mcp-input-mapping-editor__mapping-row {
   grid-template-columns:
     minmax(160px, 1fr) minmax(160px, 1fr)
-    minmax(180px, 1.2fr) 72px 40px;
+    minmax(180px, 1.2fr) minmax(140px, 0.8fr) 48px 48px 40px;
+  min-width: 840px;
 }
 
 .mcp-input-mapping-editor__head,

@@ -11,7 +11,7 @@ import {
   Tabs,
   Typography
 } from 'antd';
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { InlineJsonCodeEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
@@ -19,7 +19,9 @@ import {
   type McpInputInterfaceParameter,
   type McpInputMappingValue,
   type McpInputParameterMapping,
-  normalizeInputMapping
+  normalizeInputMapping,
+  parseMappingDefault,
+  mappingDefaultError
 } from './mcp-input-mapping-model';
 
 function stringifyMapping(value: McpInputMappingValue) {
@@ -34,6 +36,8 @@ function mappingFromInterfaceParameter(
     mcp_param: parameter.name,
     description: parameter.description,
     required: parameter.required,
+    default_value: null,
+    hidden: false,
     ...(parameter.source?.kind === 'mcp_call'
       ? { source: { kind: 'mcp_call' as const, path: parameter.name } }
       : {})
@@ -445,7 +449,13 @@ function InputMappingLayerSection({
             <span>{i18nText('settings', 'auto.interface_param')}</span>
             <span>{i18nText('settings', 'auto.mcp_param')}</span>
             <span>{i18nText('settings', 'auto.description')}</span>
+            <span>
+              {i18nText('settingsMcpManagement', 'mcp_mapping_default_value')}
+            </span>
             <span>{i18nText('settings', 'auto.required')}</span>
+            <span>
+              {i18nText('settingsMcpManagement', 'mcp_mapping_hidden')}
+            </span>
             <span />
           </div>
           {rows.map((row) => {
@@ -455,6 +465,10 @@ function InputMappingLayerSection({
 
             const entry = row.item;
             const index = row.index;
+            const parameter = mapping.interface_parameters.find(
+              (item) => item.name === entry.interface_param
+            );
+            const defaultError = mappingDefaultError(entry, parameter);
 
             return (
               <div
@@ -485,6 +499,34 @@ function InputMappingLayerSection({
                     })
                   }
                 />
+                <Input
+                  aria-label={`default_value ${entry.interface_param}`}
+                  placeholder={parameter?.field_type}
+                  status={defaultError ? 'error' : undefined}
+                  title={
+                    defaultError
+                      ? i18nText(
+                          'settingsMcpManagement',
+                          'mcp_mapping_default_invalid'
+                        )
+                      : undefined
+                  }
+                  value={
+                    entry.default_value == null
+                      ? ''
+                      : typeof entry.default_value === 'string'
+                        ? entry.default_value
+                        : JSON.stringify(entry.default_value)
+                  }
+                  onChange={(event) =>
+                    onUpdateMapping(index, {
+                      default_value: parseMappingDefault(
+                        event.target.value,
+                        parameter?.field_type ?? 'string'
+                      )
+                    })
+                  }
+                />
                 <Checkbox
                   aria-label={`required ${entry.interface_param}`}
                   checked={entry.required}
@@ -493,6 +535,13 @@ function InputMappingLayerSection({
                     onUpdateMapping(index, {
                       required: event.target.checked
                     })
+                  }
+                />
+                <Checkbox
+                  aria-label={`hidden ${entry.interface_param}`}
+                  checked={entry.hidden === true}
+                  onChange={(event) =>
+                    onUpdateMapping(index, { hidden: event.target.checked })
                   }
                 />
                 <Button
@@ -562,10 +611,24 @@ export function McpInputMappingEditor({
     setJsonDraft(jsonDraftState(resetKey, serializedMapping));
   }
 
+  useEffect(() => {
+    onValidityChange?.(
+      !jsonDraft.error &&
+        mapping.mappings.every(
+          (entry) =>
+            !mappingDefaultError(
+              entry,
+              mapping.interface_parameters.find(
+                (parameter) => parameter.name === entry.interface_param
+              )
+            )
+        )
+    );
+  }, [mapping, jsonDraft.error, onValidityChange]);
+
   function emit(nextMapping: McpInputMappingValue) {
     const nextSerializedMapping = stringifyMapping(nextMapping);
     setJsonDraft(jsonDraftState(resetKey, nextSerializedMapping));
-    onValidityChange?.(true);
     onChange(nextMapping);
   }
 
@@ -701,7 +764,6 @@ export function McpInputMappingEditor({
         text: nextText,
         error: ''
       });
-      onValidityChange?.(true);
       onChange(nextMapping);
     } catch {
       setJsonDraft({

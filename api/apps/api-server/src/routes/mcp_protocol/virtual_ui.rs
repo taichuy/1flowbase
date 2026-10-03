@@ -986,6 +986,11 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
     if let Err(message) = validate_tool_call_controls(arguments, tool) {
         return Ok(VirtualToolOutcome::invalid(message));
     }
+    let resolved_arguments = domain::mcp_management::input_defaults::resolve_call_defaults(
+        arguments,
+        &tool.input_mapping,
+    );
+    let arguments = &resolved_arguments;
     let inline_chars = match result_delivery::tool_inline_limit(arguments, tool) {
         Ok(limit) => limit,
         Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
@@ -1199,10 +1204,27 @@ fn validate_tool_call_controls(
         if arguments.get(name).is_some()
             && !domain::mcp_management::mcp_call_parameter_is_open(&tool.input_mapping, name)
         {
-            return Err("Call parameter not open for this tool");
+            let hidden = tool
+                .input_mapping
+                .get("mappings")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .any(|entry| {
+                    entry.pointer("/source/kind").and_then(Value::as_str) == Some("mcp_call")
+                        && entry.get("interface_param").and_then(Value::as_str) == Some(name)
+                        && domain::mcp_management::input_defaults::mapping_is_hidden(entry)
+                });
+            if !hidden {
+                return Err("Call parameter not open for this tool");
+            }
         }
     }
-    let des_id = match arguments.get("des_id") {
+    let resolved_arguments = domain::mcp_management::input_defaults::resolve_call_defaults(
+        arguments,
+        &tool.input_mapping,
+    );
+    let des_id = match resolved_arguments.get("des_id") {
         Some(value) => value.as_str().ok_or("Invalid des_id")?,
         None => &tool.des_id,
     };

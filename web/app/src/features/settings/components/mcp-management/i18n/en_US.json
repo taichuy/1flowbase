@@ -223,5 +223,8 @@
     "proxy_remote_arguments": "Remote arguments",
     "proxy_upstream_result": "Raw upstream result",
     "proxy_mapped_result": "Local mapped result"
-  }
+  },
+  "mcp_mapping_default_value": "Default value",
+  "mcp_mapping_hidden": "Hidden",
+  "mcp_mapping_default_invalid": "Enter a default matching the parameter type. Hidden required parameters need a default."
 }

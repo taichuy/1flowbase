@@ -867,6 +867,11 @@ where
             .map_err(ControlPlaneError::InvalidInput)?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
+        domain::mcp_management::input_defaults::validate_input_defaults(
+            &command.input_mapping,
+            &interface.parameter_descriptors,
+        )
+        .map_err(ControlPlaneError::InvalidInput)?;
         let des_id_required = false;
         self.repository
             .create_mcp_tool(&CreateMcpToolInput {
@@ -922,6 +927,11 @@ where
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
+        domain::mcp_management::input_defaults::validate_input_defaults(
+            &command.input_mapping,
+            &interface.parameter_descriptors,
+        )
+        .map_err(ControlPlaneError::InvalidInput)?;
         let des_id_required = false;
         self.repository
             .update_mcp_tool(&UpdateMcpToolInput {
