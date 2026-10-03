@@ -64,6 +64,7 @@ jobs:
         save-if: true
         cache-workspace-crates: true
         workspaces: api -> target
+        cache-on-failure: true
     - name: Verify immutable baseline artifact metadata
       env:
         GH_TOKEN: ${{ github.token }}
