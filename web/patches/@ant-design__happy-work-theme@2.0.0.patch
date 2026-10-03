@@ -1,0 +1,60 @@
+diff --git a/es/DotEffect/index.js b/es/DotEffect/index.js
+index db3f8cbb48bb8b2c97fe01feb12c53d3e9b57ba4..4d88cfec6434b6bd9829a546b6c922ae27825afd 100644
+--- a/es/DotEffect/index.js
++++ b/es/DotEffect/index.js
+@@ -25,6 +25,7 @@ export default function DotEffect({
+ 
+   // ========================= Dots =========================
+   React.useEffect(() => {
++    let motionTimeout;
+     const id = raf(() => {
+       if (['-dangerous', '-error'].some(skipCls => target.className.includes(skipCls))) {
+         return;
+@@ -52,7 +53,7 @@ export default function DotEffect({
+       const dotCount = minSize >= 20 ? DOT_COUNT_LG : DOT_COUNT;
+ 
+       // Delay to start dot motion
+-      setTimeout(() => {
++      motionTimeout = setTimeout(() => {
+         const offsetAngle = Math.random() * 360;
+ 
+         // Color
+@@ -111,6 +112,8 @@ export default function DotEffect({
+     });
+     return () => {
+       raf.cancel(id);
++      clearTimeout(motionTimeout);
++      target.removeAttribute(targetAttrName);
+     };
+   }, []);
+ 
+diff --git a/lib/DotEffect/index.js b/lib/DotEffect/index.js
+index 08b2701d15d285a5d7ba2545f47b3530599c76b4..773132026b13e8a426f831f6414b9124380002d7 100644
+--- a/lib/DotEffect/index.js
++++ b/lib/DotEffect/index.js
+@@ -33,6 +33,7 @@ function DotEffect({
+ 
+   // ========================= Dots =========================
+   React.useEffect(() => {
++    let motionTimeout;
+     const id = (0, _raf.default)(() => {
+       if (['-dangerous', '-error'].some(skipCls => target.className.includes(skipCls))) {
+         return;
+@@ -60,7 +61,7 @@ function DotEffect({
+       const dotCount = minSize >= 20 ? DOT_COUNT_LG : DOT_COUNT;
+ 
+       // Delay to start dot motion
+-      setTimeout(() => {
++      motionTimeout = setTimeout(() => {
+         const offsetAngle = Math.random() * 360;
+ 
+         // Color
+@@ -119,6 +120,8 @@ function DotEffect({
+     });
+     return () => {
+       _raf.default.cancel(id);
++      clearTimeout(motionTimeout);
++      target.removeAttribute(targetAttrName);
+     };
+   }, []);
+ 

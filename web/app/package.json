@@ -17,6 +17,7 @@
     "@1flowbase/ui": "workspace:*",
     "@ant-design/colors": "^8.0.1",
     "@ant-design/cssinjs": "^2.1.2",
+    "@ant-design/happy-work-theme": "2.0.0",
     "@ant-design/icons": "^6.3.4",
     "@ant-design/icons-svg": "^4.6.0",
     "@ant-design/x": "2.9.0",

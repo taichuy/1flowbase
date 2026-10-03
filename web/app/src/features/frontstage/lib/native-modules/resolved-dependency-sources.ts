@@ -4,6 +4,8 @@ export const FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES = [
   'antd',
   'antd-img-crop',
   '@ant-design/colors',
+  '@ant-design/cssinjs',
+  '@ant-design/happy-work-theme',
   'dayjs',
   'lodash/debounce'
 ] as const;

@@ -133,6 +133,12 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@ant-design/colors', ANT_DESIGN_COLORS_EXPORTS, async () => ({
     module: await loadAntDesignColorsModule()
   })),
+  registration('@ant-design/cssinjs', ['StyleProvider'], async () => ({
+    module: await import('./effects/cssinjs-runtime')
+  })),
+  registration('@ant-design/happy-work-theme', ['HappyProvider'], async () => ({
+    module: await import('./effects/happy-work-runtime')
+  })),
   registration('antd-img-crop', ['default'], loadAntdImgCropModule),
   ...DAYJS_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
     registration(module_source, exports, async () => ({

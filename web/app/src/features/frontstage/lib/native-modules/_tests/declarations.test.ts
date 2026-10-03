@@ -5,6 +5,24 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('I2242-AC-001 uses real StyleProvider and HappyProvider prop types', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import type { ComponentProps } from 'react';
+import { StyleProvider } from '@ant-design/cssinjs';
+import { HappyProvider } from '@ant-design/happy-work-theme';
+const style: ComponentProps<typeof StyleProvider> = { hashPriority: 'high' };
+const happy: ComponentProps<typeof HappyProvider> = { disabled: false };
+// @ts-expect-error hashPriority must retain its literal union.
+const invalidStyle: ComponentProps<typeof StyleProvider> = { hashPriority: 'invalid' };
+// @ts-expect-error disabled is boolean, not any.
+const invalidHappy: ComponentProps<typeof HappyProvider> = { disabled: 'yes' };
+void style; void happy; void invalidStyle; void invalidHappy;`
+      })
+    ).toEqual([]);
+  });
+
   test('AC-002 type-checks public Ant Design locales with their real Locale type', () => {
     const diagnostics = typeCheckSource({
       extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
