@@ -311,8 +311,7 @@ export function FrontstageWorkspacePage({
         key={JSON.stringify([navigationScope, sessionIdentity, workspaceId])}
         activeKey={JSON.stringify([
           selectedPageId,
-          tabReference,
-          blockId ?? null
+          resolvedTabId ?? runtimeTarget?.tab_id ?? tabReference
         ])}
         pageTree={pageTreeQuery.data ?? pageTreeFromApi}
       >

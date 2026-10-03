@@ -443,8 +443,10 @@ export function usePageTreeWorkspace({
       return;
     }
 
-    setSelectedPageId(nodeId);
-    onNavigatePage?.(nodeId);
+    // A route-controlled page keeps its own runtime until the router activates
+    // the destination. Mutating it here tears down the page being retained.
+    if (onNavigatePage) onNavigatePage(nodeId);
+    else setSelectedPageId(nodeId);
   };
 
   return {
