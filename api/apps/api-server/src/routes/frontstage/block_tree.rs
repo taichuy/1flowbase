@@ -2,7 +2,8 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     Json,
 };
 use control_plane::{
@@ -739,24 +740,53 @@ pub async fn delete_frontstage_block_subtree(
     Ok(Json(ApiSuccess::new(value)))
 }
 
-#[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code", responses((status = 200, body = FrontstageBlockNodeCodeResponse), (status = 404, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code", params(("If-None-Match" = Option<String>, Header, description = "Source SHA-256 ETag")), responses((status = 200, body = FrontstageBlockNodeCodeResponse), (status = 304, description = "Source unchanged"), (status = 404, body = crate::error_response::ErrorBody)))]
 pub async fn get_frontstage_block_node_code(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
-) -> Result<Json<ApiSuccess<FrontstageBlockNodeCodeResponse>>, ApiError> {
-    let interface::FrontstageBlocksOutput::Code(value) = invoke_blocks(
+) -> Result<Response, ApiError> {
+    let condition = headers
+        .get_all(header::IF_NONE_MATCH)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .collect::<Vec<_>>()
+        .join(",");
+    let output = invoke_blocks(
         state,
         headers,
         "http.console.frontstage.blocks.code.get.v1",
-        interface::FrontstageBlocksInput::GetCode(page_id, block_id),
+        interface::FrontstageBlocksInput::GetCode(
+            page_id,
+            block_id,
+            (!condition.is_empty()).then_some(condition),
+        ),
         false,
     )
-    .await?
-    else {
-        unreachable!()
+    .await?;
+    code_read_response(output)
+}
+
+fn code_read_response(output: interface::FrontstageBlocksOutput) -> Result<Response, ApiError> {
+    let (digest, mut response) = match output {
+        interface::FrontstageBlocksOutput::Code(value) => (
+            value.source_sha256.clone(),
+            Json(ApiSuccess::new(value)).into_response(),
+        ),
+        interface::FrontstageBlocksOutput::NotModified(digest) => {
+            (digest, StatusCode::NOT_MODIFIED.into_response())
+        }
+        _ => unreachable!(),
     };
-    Ok(Json(ApiSuccess::new(value)))
+    let etag = HeaderValue::from_str(&format!("\"{digest}\""))
+        .map_err(|error| ApiError(anyhow::Error::from(error)))?;
+    response.headers_mut().insert(header::ETAG, etag);
+    // Browsers must revalidate against current ACL on every read.
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-cache"),
+    );
+    Ok(response)
 }
 
 #[utoipa::path(

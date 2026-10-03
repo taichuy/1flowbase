@@ -1086,6 +1086,23 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         Ok(row.map(map_frontstage_block_code_row))
     }
 
+    async fn get_frontstage_block_source_sha256(
+        &self,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        code_ref: &str,
+    ) -> Result<Option<String>> {
+        sqlx::query_scalar(
+            "select source_sha256 from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = $3",
+        )
+        .bind(workspace_id)
+        .bind(page_id)
+        .bind(code_ref)
+        .fetch_optional(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> Result<()> {
         AuthRepository::append_audit_log(self, event).await
     }

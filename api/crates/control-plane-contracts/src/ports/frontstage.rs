@@ -176,5 +176,13 @@ pub trait FrontstagePageRepository: Send + Sync {
         code_ref: &str,
     ) -> anyhow::Result<Option<domain::frontstage::FrontstageBlockCodeRecord>>;
 
+    /// Digest-only read: implementations must not load the source body.
+    async fn get_frontstage_block_source_sha256(
+        &self,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        code_ref: &str,
+    ) -> anyhow::Result<Option<String>>;
+
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> anyhow::Result<()>;
 }

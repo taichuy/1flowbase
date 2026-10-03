@@ -1512,6 +1512,7 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-frontstage-blocks"],
             crate::routes::frontstage::block_tree::interface::compile_registry(
                 crate::routes::frontstage::block_tree::interface::FrontstageBlocksDependencies {
+                    block_code_cache: control_plane::frontstage::BlockCodeCache(state.infrastructure.cache_store()),
                     store: state.store.clone(),
                     api_node_id: state.api_node_id.clone(),
                 },

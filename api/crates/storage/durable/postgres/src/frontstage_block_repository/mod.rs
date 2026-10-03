@@ -1209,6 +1209,17 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         .ok_or(ControlPlaneError::Conflict(
             "frontstage_block_source_revision",
         ))?;
+        // Source CAS and the durable digest-cache fence commit atomically. The current
+        // schema makes code_ref unique per page; scope the fence to the source owner
+        // nevertheless, so every referencing node advances if sharing is introduced.
+        sqlx::query(
+            "update frontstage_block_nodes set updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond') where scope_id = $1 and tree_partition_id = $2 and code_ref = $3",
+        )
+        .bind(input.workspace_id)
+        .bind(input.page_id)
+        .bind(&code_ref)
+        .execute(&mut *tx)
+        .await?;
         insert_audit(&mut tx, &input.audit_log).await?;
         tx.commit().await?;
         Ok(domain::frontstage::FrontstageBlockCodeRecord {

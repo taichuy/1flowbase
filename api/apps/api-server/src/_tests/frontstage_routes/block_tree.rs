@@ -76,6 +76,22 @@ fn assert_error(payload: &Value, code: &str) {
     assert_eq!(payload["code"], json!(code), "{payload}");
 }
 
+async fn conditional_code_get(
+    app: &axum::Router,
+    path: &str,
+    cookie: &str,
+    etag: Option<&str>,
+) -> axum::response::Response {
+    let mut request = Request::builder().uri(path).header("cookie", cookie);
+    if let Some(etag) = etag {
+        request = request.header("if-none-match", etag);
+    }
+    app.clone()
+        .oneshot(request.body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+}
+
 #[tokio::test]
 async fn canonical_block_tree_supports_public_projection_traversal_code_and_guarded_deletion() {
     let app = test_app().await;
@@ -306,6 +322,21 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     );
     assert!(initial_code_payload["data"].get("code_ref").is_none());
     let initial_hash = initial_code_payload["data"]["source_sha256"].clone();
+    let initial_etag = format!("\"{}\"", initial_hash.as_str().unwrap());
+    for _ in 0..2 {
+        let unchanged = conditional_code_get(&app, &code_path, &cookie, Some(&initial_etag)).await;
+        assert_eq!(unchanged.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(unchanged.headers()["etag"], initial_etag);
+        assert_eq!(unchanged.headers()["cache-control"], "private, no-cache");
+        assert!(to_bytes(unchanged.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+    let forced = conditional_code_get(&app, &code_path, &cookie, None).await;
+    assert_eq!(forced.status(), StatusCode::OK);
+    assert_eq!(forced.headers()["etag"], initial_etag);
+
     assert!(initial_code_payload["data"]
         .get("dependency_lock")
         .is_none());
@@ -339,6 +370,22 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         json!("export default 'changed';")
     );
     assert_ne!(save_code_payload["data"]["source_sha256"], initial_hash);
+    let changed = conditional_code_get(&app, &code_path, &cookie, Some(&initial_etag)).await;
+    assert_eq!(changed.status(), StatusCode::OK);
+    assert_eq!(
+        changed.headers()["etag"],
+        format!(
+            "\"{}\"",
+            save_code_payload["data"]["source_sha256"].as_str().unwrap()
+        )
+    );
+    let changed_body: Value =
+        serde_json::from_slice(&to_bytes(changed.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        changed_body["data"]["source_code"],
+        "export default 'changed';"
+    );
+
     assert!(save_code_payload["data"].get("dependency_lock").is_none());
     let (update_status, update_payload) = send_json(
         &app,
@@ -461,6 +508,9 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
     )
     .await;
     let block_id = block_payload["data"]["block_id"].as_str().unwrap();
+    let code_path = format!("{blocks_path}/{block_id}/code");
+    let warmed = conditional_code_get(&app, &code_path, &root_cookie, None).await;
+    let cached_etag = warmed.headers()["etag"].to_str().unwrap().to_owned();
 
     let no_csrf_response = app
         .clone()
@@ -530,6 +580,11 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
     let (replace_status, _) = send_json(&app, "POST", &format!("{blocks_path}/{block_id}/code/replace"),
         &viewer_cookie, &viewer_csrf, json!({"expected_source_revision":"a".repeat(64),"edits":[{"old_text":"export","new_text":"bad"}]})).await;
     assert_eq!(replace_status, StatusCode::FORBIDDEN);
+
+    let denied_cached =
+        conditional_code_get(&app, &code_path, &viewer_cookie, Some(&cached_etag)).await;
+    assert_eq!(denied_cached.status(), StatusCode::NOT_FOUND);
+    assert!(denied_cached.headers().get("etag").is_none());
 
     for runtime_path in [
         format!("{blocks_path}/{block_id}"),

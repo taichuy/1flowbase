@@ -1,3 +1,5 @@
+mod code_cache;
+pub use code_cache::BlockCodeCache;
 mod source_editing;
 pub use source_editing::*;
 
@@ -153,6 +155,11 @@ pub struct FrontstageBlockCodeFragment {
     pub next_line: Option<u32>,
     pub next_column: Option<u32>,
     pub truncated_by_max_chars: bool,
+}
+
+pub enum FrontstageBlockCodeRead {
+    Source(domain::frontstage::FrontstageBlockCodeRecord),
+    NotModified(String),
 }
 
 pub struct FrontstageBlockOpenTarget {
@@ -711,6 +718,41 @@ where
             .get_frontstage_block_code(command.workspace_id, command.page_id, &node.code_ref)
             .await?
             .ok_or(ControlPlaneError::NotFound("block_node_not_found").into())
+    }
+
+    /// Authorize against durable page/tab state before consulting any digest cache.
+    pub async fn get_block_node_code_conditional(
+        &self,
+        command: FrontstageBlockScopeCommand,
+        if_none_match: Option<&str>,
+    ) -> Result<FrontstageBlockCodeRead> {
+        let (_, node) = self.load_visible_block(&command).await?;
+        if let Some(condition) = if_none_match {
+            let source = self.repository.get_frontstage_block_source_sha256(
+                command.workspace_id,
+                command.page_id,
+                &node.code_ref,
+            );
+            let digest = match &self.block_code_cache {
+                Some(cache) => cache.load(&node, source).await?,
+                None => source.await?,
+            }
+            .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
+            if code_cache::etag_matches(condition, &digest) {
+                return Ok(FrontstageBlockCodeRead::NotModified(digest));
+            }
+        }
+        let code = self
+            .repository
+            .get_frontstage_block_code(command.workspace_id, command.page_id, &node.code_ref)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
+        if let Some(cache) = &self.block_code_cache {
+            // Never reload the node revision after reading source: an in-flight old
+            // source may only fill the revision observed before that read.
+            cache.store(&node, &code.source_sha256).await;
+        }
+        Ok(FrontstageBlockCodeRead::Source(code))
     }
 
     pub async fn get_block_code_fragment(

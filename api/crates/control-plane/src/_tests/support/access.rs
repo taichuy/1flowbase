@@ -625,6 +625,15 @@ impl crate::ports::FrontstagePageRepository for MemoryRoleRepository {
         anyhow::bail!("frontstage document save is not used by role tests")
     }
 
+    async fn get_frontstage_block_source_sha256(
+        &self,
+        _workspace_id: Uuid,
+        _page_id: Uuid,
+        _code_ref: &str,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     async fn get_frontstage_block_code(
         &self,
         _workspace_id: Uuid,

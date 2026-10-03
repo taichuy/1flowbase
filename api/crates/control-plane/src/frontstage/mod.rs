@@ -205,6 +205,7 @@ pub struct FrontstagePageService<R> {
     actor_override: Option<domain::ActorContext>,
     node_id: Option<String>,
     navigation_cache: Option<crate::navigation_cache::NavigationCache>,
+    block_code_cache: Option<BlockCodeCache>,
 }
 
 impl<R> FrontstagePageService<R>
@@ -217,6 +218,7 @@ where
             actor_override: None,
             node_id: None,
             navigation_cache: None,
+            block_code_cache: None,
         }
     }
 
@@ -226,7 +228,13 @@ where
             actor_override: Some(actor),
             node_id: None,
             navigation_cache: None,
+            block_code_cache: None,
         }
+    }
+
+    pub fn with_block_code_cache(mut self, cache: BlockCodeCache) -> Self {
+        self.block_code_cache = Some(cache);
+        self
     }
 
     pub fn with_node_id(mut self, node_id: impl Into<String>) -> Self {
