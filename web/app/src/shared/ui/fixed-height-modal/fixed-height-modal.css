@@ -52,10 +52,23 @@
   border-radius: 4px;
 }
 
-.fixed-height-modal__resize-handle:hover,
+.fixed-height-modal__resize-handle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+  background: var(--ant-color-border-secondary);
+  content: '';
+}
+
 .fixed-height-modal__resize-handle:focus-visible {
-  background: var(--ant-color-primary-bg);
-  outline: 1px solid var(--ant-color-primary-border);
+  outline: none;
+}
+
+.fixed-height-modal__resize-handle:hover::after,
+.fixed-height-modal__resize-handle:focus-visible::after {
+  background: var(--ant-color-primary);
 }
 
 .fixed-height-modal__resize-handle--left {
