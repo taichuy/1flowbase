@@ -1,4 +1,4 @@
-import { apiFetch } from '../../transport';
+import { apiFetch, apiFetchIfModified } from '../../transport';
 
 import type {
   ConsoleFrontstageBlockDeleteImpact,
@@ -146,10 +146,7 @@ export function listConsoleFrontstageBlockChildren(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNodeSummary[]> {
   return apiFetch({
-    path: withQuery(
-      `${blockPath(pageId, blockId)}/children`,
-      query
-    ),
+    path: withQuery(`${blockPath(pageId, blockId)}/children`, query),
     method: 'GET',
     baseUrl
   });
@@ -174,10 +171,7 @@ export function listConsoleFrontstageBlockDescendants(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockDescendant[]> {
   return apiFetch({
-    path: withQuery(
-      `${blockPath(pageId, blockId)}/descendants`,
-      query
-    ),
+    path: withQuery(`${blockPath(pageId, blockId)}/descendants`, query),
     method: 'GET',
     baseUrl
   });
@@ -239,6 +233,25 @@ export function getConsoleFrontstageBlockNodeCode(
   });
 }
 
+export function revalidateConsoleFrontstageBlockNodeCode(
+  pageId: string,
+  blockId: string,
+  options: {
+    source_sha256?: string | null;
+    signal?: AbortSignal;
+    baseUrl?: string;
+  } = {}
+) {
+  return apiFetchIfModified<ConsoleFrontstageBlockNodeCode>({
+    path: `${blockPath(pageId, blockId)}/code`,
+    baseUrl: options.baseUrl,
+    signal: options.signal,
+    headers: options.source_sha256
+      ? { 'if-none-match': `"${options.source_sha256}"` }
+      : undefined
+  });
+}
+
 export function getConsoleFrontstageBlockCodeFragment(
   pageId: string,
   blockId: string,
@@ -246,10 +259,7 @@ export function getConsoleFrontstageBlockCodeFragment(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockCodeFragment> {
   return apiFetch({
-    path: withQuery(
-      `${blockPath(pageId, blockId)}/code/fragment`,
-      query
-    ),
+    path: withQuery(`${blockPath(pageId, blockId)}/code/fragment`, query),
     method: 'GET',
     baseUrl
   });

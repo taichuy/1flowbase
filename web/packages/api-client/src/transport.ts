@@ -168,6 +168,32 @@ export async function apiFetch<T>({
   return unwrapApiSuccess<T>((await response.json()) as ApiSuccessEnvelope<T>);
 }
 
+/** Conditional GET keeps 304 distinct from errors and empty successful DTOs. */
+export async function apiFetchIfModified<T>({
+  path,
+  baseUrl = getDefaultApiBaseUrl(),
+  signal,
+  headers
+}: Pick<ApiRequestOptions, 'path' | 'baseUrl' | 'signal' | 'headers'>): Promise<
+  { status: 'modified'; value: T } | { status: 'not_modified' }
+> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers,
+    signal,
+    // The application owns its actor-scoped copy; never let the HTTP cache
+    // satisfy an authorization/version check without contacting the server.
+    cache: 'no-store'
+  });
+  if (response.status === 304) return { status: 'not_modified' };
+  if (!response.ok) throw await ApiClientError.fromResponse(response);
+  return {
+    status: 'modified',
+    value: unwrapApiSuccess<T>(await response.json())
+  };
+}
+
 export async function apiFetchBlob({
   path,
   method = 'GET',

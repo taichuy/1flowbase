@@ -1,3 +1,4 @@
+import { subscribeFrontstageSourceChanges } from '../lib/runtime-cache/source-changes';
 import {
   evaluateNativeReactComponentArtifactWithRegistry,
   diagnoseLegacyBlockModuleSource,
@@ -7,10 +8,17 @@ import {
   type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime';
 import {
-  getConsoleFrontstageBlockNodeCode,
+  revalidateConsoleFrontstageBlockNodeCode,
   type ConsoleFrontstageBlockNodeCode
 } from '@1flowbase/api-client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 
 import { getFrontstageApiBaseUrl } from '../api/page-tree';
 import {
@@ -54,6 +62,7 @@ type NativeComponentFlight =
     };
 
 export interface UseFrontstagePageCanvasNativePreparationsInput {
+  active?: boolean;
   actorId: string | null | undefined;
   actorWorkspaceId: string | null | undefined;
   readPlan: FrontstagePageCanvasBlockCodeReadPlan | null | undefined;
@@ -64,7 +73,8 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
     Partial<Pick<FrontstageNativeReactArtifactCache, 'captureWriteEpoch'>>;
   fetchSource?: (
     request: FrontstagePageCanvasBlockCodeReadPlan['requests'][number],
-    signal: AbortSignal
+    signal: AbortSignal,
+    cached?: NativePreparationSource
   ) => Promise<NativePreparationSource>;
   compile?: (input: {
     source: string;
@@ -77,6 +87,7 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
 }
 
 export interface UseFrontstagePageCanvasNativePreparationsResult {
+  isValidating: boolean;
   preparations: FrontstageNativePreparationSource;
   noteInteraction(): void;
   retryBlock(blockId: string): void;
@@ -84,6 +95,7 @@ export interface UseFrontstagePageCanvasNativePreparationsResult {
 }
 
 export function useFrontstagePageCanvasNativePreparations({
+  active = true,
   actorId,
   actorWorkspaceId,
   readPlan,
@@ -97,7 +109,17 @@ export function useFrontstagePageCanvasNativePreparations({
 }: UseFrontstagePageCanvasNativePreparationsInput): UseFrontstagePageCanvasNativePreparationsResult {
   const scheduler = useMemo(
     () => new FrontstageNativePreparationScheduler(maxConcurrent),
-    [maxConcurrent]
+    [maxConcurrent, actorId, actorWorkspaceId]
+  );
+  const wasActive = useRef(active);
+  const [isValidating, setIsValidating] = useState(false);
+  const sourceCopies = useMemo(
+    () => new Map<string, NativePreparationSource>(),
+    [scheduler]
+  );
+  const compiledRefreshes = useMemo(
+    () => new Map<string, number>(),
+    [scheduler]
   );
   const [refreshGenerationsByRequestId, setRefreshGenerationsByRequestId] =
     useState<Record<string, number>>({});
@@ -189,6 +211,8 @@ export function useFrontstagePageCanvasNativePreparations({
             ...observation
           }),
         prepare: async (signal, enterStage) => {
+          const forceCompile =
+            refreshGeneration > (compiledRefreshes.get(request.requestId) ?? 0);
           const contribution =
             catalogEntries === undefined
               ? undefined
@@ -200,8 +224,24 @@ export function useFrontstagePageCanvasNativePreparations({
           const writeEpoch = artifactCache
             .captureWriteEpoch?.(actorId)
             .catch(() => ({ local: -1, persisted: -1 }));
-          const source = await fetchSource(request, signal);
+          const source = await fetchSource(
+            request,
+            signal,
+            forceCompile ? undefined : sourceCopies.get(request.requestId)
+          );
           throwIfAborted(signal);
+          // The backend digest is the conditional-read contract. Reject corrupt
+          // source before it can become a trusted browser copy or artifact.
+          if (
+            source.source_sha256 &&
+            sha256Text(source.source_code) !== source.source_sha256
+          ) {
+            sourceCopies.delete(request.requestId);
+            throw new Error(
+              'Native React source revision does not match its content.'
+            );
+          }
+          sourceCopies.set(request.requestId, source);
           const legacyDiagnostic = diagnoseLegacyBlockModuleSource(
             source.source_code
           );
@@ -313,6 +353,7 @@ export function useFrontstagePageCanvasNativePreparations({
           }
           const { evaluated, moduleAssets, moduleSources } = componentFlight;
           throwIfAborted(signal);
+          compiledRefreshes.set(request.requestId, refreshGeneration);
           return {
             artifact: evaluated.artifact,
             component: evaluated.component,
@@ -341,24 +382,69 @@ export function useFrontstagePageCanvasNativePreparations({
     moduleRegistryFactory,
     modulePolicySha256,
     readPlan,
-    refreshGenerationsByRequestId
+    refreshGenerationsByRequestId,
+    sourceCopies,
+    compiledRefreshes
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!active) scheduler.suspend();
     scheduler.reconcile(tasks, demandsByBlockId);
-  }, [demandsByBlockId, scheduler, tasks]);
+  }, [active, demandsByBlockId, scheduler, tasks]);
+
+  useLayoutEffect(() => {
+    let current = true;
+    const returning = active && !wasActive.current;
+    wasActive.current = active;
+    if (!active) {
+      scheduler.suspend();
+      setIsValidating(false);
+    } else if (returning) {
+      setIsValidating(true);
+      void scheduler.revalidate().finally(() => {
+        if (!current) return;
+        setIsValidating(false);
+        scheduler.setPageVisible(
+          typeof document === 'undefined' ||
+            document.visibilityState !== 'hidden'
+        );
+      });
+    }
+    return () => {
+      current = false;
+    };
+  }, [active, scheduler]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const updateVisibility = () =>
-      scheduler.setPageVisible(document.visibilityState !== 'hidden');
+      scheduler.setPageVisible(
+        active && !isValidating && document.visibilityState !== 'hidden'
+      );
     updateVisibility();
     document.addEventListener('visibilitychange', updateVisibility);
     return () =>
       document.removeEventListener('visibilitychange', updateVisibility);
-  }, [scheduler]);
+  }, [active, isValidating, scheduler]);
 
   useEffect(() => () => scheduler.dispose(), [scheduler]);
+
+  useEffect(
+    () =>
+      subscribeFrontstageSourceChanges((change) => {
+        if (
+          change.workspaceId !== readPlan?.workspaceId ||
+          change.pageId !== readPlan.pageId
+        )
+          return;
+        const request = readPlan.requests.find(
+          (entry) => entry.blockId === change.blockId
+        );
+        if (request) sourceCopies.delete(request.requestId);
+        scheduler.retry(change.blockId);
+      }),
+    [readPlan, scheduler, sourceCopies]
+  );
 
   const retryBlock = useCallback(
     (blockId: string) => scheduler.retry(blockId),
@@ -381,21 +467,34 @@ export function useFrontstagePageCanvasNativePreparations({
     },
     [readPlan]
   );
-  return { preparations: scheduler, noteInteraction, retryBlock, refreshBlock };
+  return {
+    preparations: scheduler,
+    isValidating,
+    noteInteraction,
+    retryBlock,
+    refreshBlock
+  };
 }
 
 async function defaultFetchSource(
   request: FrontstagePageCanvasBlockCodeReadPlan['requests'][number],
-  signal: AbortSignal
+  signal: AbortSignal,
+  cached?: NativePreparationSource
 ): Promise<NativePreparationSource> {
   throwIfAborted(signal);
-  const source = await getConsoleFrontstageBlockNodeCode(
+  const response = await revalidateConsoleFrontstageBlockNodeCode(
     request.pageId,
     request.blockId,
-    getFrontstageApiBaseUrl()
+    {
+      baseUrl: getFrontstageApiBaseUrl(),
+      signal,
+      source_sha256: cached?.source_sha256
+    }
   );
   throwIfAborted(signal);
-  return source;
+  if (response.status === 'modified') return response.value;
+  if (cached?.source_sha256) return cached;
+  throw new Error('Source revalidation returned no browser copy.');
 }
 
 function throwIfAborted(signal: AbortSignal): void {

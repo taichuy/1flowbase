@@ -287,6 +287,78 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
   });
 });
 
+test('returning to a retained page validates its browser copy without recompiling or changing instance identity', async () => {
+  const artifact = createArtifact();
+  const plan = readPlan();
+  const source = {
+    block_id: 'block-1',
+    page_id: 'page-1',
+    source_code: SOURCE,
+    source_sha256: null
+  };
+  const fetchSource = vi.fn(async () => source);
+  const compile = vi.fn(async () => ({
+    ok: true as const,
+    artifact,
+    diagnostics: [] as []
+  }));
+  const artifactCache = {
+    get: vi.fn(async () => ({ status: 'hit' as const, artifact })),
+    put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+  };
+  const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
+    definitions: [],
+    load: vi.fn(async () => ({})),
+    resolveModuleMap: vi.fn(async () => ({})),
+    resolveModuleAssets: vi.fn(async () => [])
+  });
+  const { result, rerender } = renderHook(
+    ({ active }) =>
+      useFrontstagePageCanvasNativePreparations({
+        active,
+        actorId: 'actor-1',
+        actorWorkspaceId: 'workspace-1',
+        readPlan: plan,
+        fetchSource,
+        compile,
+        artifactCache,
+        moduleRegistryFactory
+      }),
+    { initialProps: { active: true } }
+  );
+  await waitFor(() =>
+    expect(
+      result.current.preparations.getBlockSnapshot('block-1')?.status
+    ).toBe('ready')
+  );
+  const original = result.current.preparations.getBlockSnapshot('block-1');
+  rerender({ active: false });
+  rerender({ active: true });
+  await waitFor(() => expect(fetchSource).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(result.current.isValidating).toBe(false));
+  expect(fetchSource).toHaveBeenLastCalledWith(
+    plan.requests[0],
+    expect.any(AbortSignal),
+    source
+  );
+  expect(compile).not.toHaveBeenCalled();
+  expect(result.current.preparations.getBlockSnapshot('block-1')).toBe(
+    original
+  );
+  result.current.refreshBlock('block-1');
+  await waitFor(() => expect(compile).toHaveBeenCalledOnce());
+  await waitFor(() =>
+    expect(
+      result.current.preparations.getBlockSnapshot('block-1')?.status
+    ).toBe('ready')
+  );
+  rerender({ active: false });
+  rerender({ active: true });
+  await waitFor(() => expect(fetchSource).toHaveBeenCalledTimes(4));
+  await waitFor(() => expect(result.current.isValidating).toBe(false));
+  expect(compile).toHaveBeenCalledOnce();
+});
+
 function readPlan(count = 1): FrontstagePageCanvasBlockCodeReadPlan {
   return {
     workspaceId: 'workspace-1',

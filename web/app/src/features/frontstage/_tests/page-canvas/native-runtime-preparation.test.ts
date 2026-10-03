@@ -501,6 +501,67 @@ describe('FrontstageNativePreparationScheduler', () => {
   });
 });
 
+describe('retained native preparation validation', () => {
+  test('keeps the ready snapshot while validating unchanged source; changed source remounts', async () => {
+    const scheduler = new FrontstageNativePreparationScheduler(1);
+    const original = prepared('v1');
+    const pending = deferred();
+    let response = Promise.resolve(original);
+    scheduler.reconcile([task('block', 0, async () => response)], { block: 1 });
+    await tick();
+    const snapshot = scheduler.getBlockSnapshot('block');
+    expect(snapshot?.status).toBe('ready');
+    scheduler.suspend();
+    response = pending.promise;
+    const validation = scheduler.revalidate();
+    expect(scheduler.getBlockSnapshot('block')).toBe(snapshot);
+    pending.resolve({ ...original });
+    await validation;
+    expect(scheduler.getBlockSnapshot('block')).toBe(snapshot);
+    response = Promise.resolve(prepared('v2'));
+    await scheduler.revalidate();
+    expect(scheduler.getBlockSnapshot('block')).toMatchObject({
+      status: 'ready',
+      generation: 1,
+      prepared: { identityInput: { sourceSha256: 'v2' } }
+    });
+    scheduler.dispose();
+  });
+
+  test('permission rejection removes ready contents; cancelled validation cannot restore them', async () => {
+    const scheduler = new FrontstageNativePreparationScheduler(1);
+    let response = () => Promise.resolve(prepared('v1'));
+    scheduler.reconcile([task('block', 0, async () => response())], {
+      block: 1
+    });
+    await tick();
+    response = async () => {
+      throw new Error('forbidden');
+    };
+    await scheduler.revalidate();
+    expect(scheduler.getBlockSnapshot('block')).toMatchObject({
+      status: 'failed',
+      error: new Error('forbidden')
+    });
+    scheduler.dispose();
+    const pending = deferred();
+    scheduler.reconcile([task('block', 0, async () => prepared('v1'))], {
+      block: 1
+    });
+    await tick();
+    scheduler.reconcile([task('block', 0, async () => pending.promise)], {
+      block: 1
+    });
+    const before = scheduler.getBlockSnapshot('block');
+    const validation = scheduler.revalidate();
+    scheduler.suspend();
+    pending.resolve(prepared('late-v2'));
+    await validation;
+    expect(scheduler.getBlockSnapshot('block')).toBe(before);
+    scheduler.dispose();
+  });
+});
+
 function task(
   blockId: string,
   slotIndex: number,

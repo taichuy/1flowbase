@@ -310,6 +310,35 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
     if (visible) this.pump();
   }
 
+  /** Suspend pending work without discarding a mounted, ready runtime. */
+  suspend(): void {
+    this.visible = false;
+    const changed: string[] = [];
+    for (const current of this.scheduled.values()) {
+      if (!current.abortController) continue;
+      current.abortController.abort();
+      current.abortController = null;
+      if (current.snapshot.status !== 'ready') {
+        current.generation += 1;
+        current.snapshot = this.snapshot(current, 'idle');
+        changed.push(current.task.blockId);
+      }
+    }
+    this.emit(changed);
+  }
+
+  /** ACL/version checks complete before the retained canvas is revealed. */
+  async revalidate(): Promise<void> {
+    await Promise.all(
+      [...this.scheduled.values()]
+        .filter(
+          (current) =>
+            current.snapshot.status === 'ready' && !current.abortController
+        )
+        .map((current) => this.start(current, true))
+    );
+  }
+
   retry(blockId: string): void {
     const current = this.scheduled.get(blockId);
     if (!current) return;
@@ -368,11 +397,18 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
       this.start(current);
   }
 
-  private start(current: ScheduledPreparation): void {
+  private start(
+    current: ScheduledPreparation,
+    revalidating = false
+  ): Promise<void> {
+    const retained =
+      revalidating && current.snapshot.status === 'ready'
+        ? current.snapshot
+        : null;
     const abortController = new AbortController();
     const generation = current.generation;
     current.abortController = abortController;
-    current.snapshot = this.snapshot(current, 'source_fetch');
+    if (!retained) current.snapshot = this.snapshot(current, 'source_fetch');
     current.observedAtMs = Date.now();
     this.observe(current, generation, 'source_fetch', 'network');
     this.emit([current.task.blockId]);
@@ -387,17 +423,27 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
       if (!this.isCurrent(current, generation, abortController)) {
         throw new DOMException('Preparation aborted.', 'AbortError');
       }
-      current.snapshot = this.snapshot(current, stage);
+      if (!retained) current.snapshot = this.snapshot(current, stage);
       this.observe(current, generation, stage, cacheTier);
       this.emit([current.task.blockId]);
     };
-    void current.task
+    return current.task
       .prepare(abortController.signal, enterStage)
       .then(async (prepared) => {
         await this.admitMainThreadStage(current, generation, abortController);
         if (!this.isCurrent(current, generation, abortController)) return;
         current.abortController = null;
-        current.snapshot = this.readySnapshot(current, prepared);
+        if (
+          retained &&
+          retained.prepared.component === prepared.component &&
+          retained.prepared.identityInput.sourceSha256 ===
+            prepared.identityInput.sourceSha256
+        ) {
+          current.snapshot = retained;
+        } else {
+          if (retained) current.generation += 1;
+          current.snapshot = this.readySnapshot(current, prepared);
+        }
         this.emit([current.task.blockId]);
         this.pump();
       })

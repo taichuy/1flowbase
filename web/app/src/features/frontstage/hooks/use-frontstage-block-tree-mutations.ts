@@ -1,3 +1,4 @@
+import { notifyFrontstageSourceChange } from '../lib/runtime-cache/source-changes';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../state/auth-store';
@@ -240,6 +241,11 @@ export function useFrontstageBlockTreeMutations(
         requireCsrfToken(csrfToken)
       ),
     onSuccess: (code) => {
+      notifyFrontstageSourceChange({
+        workspaceId,
+        pageId,
+        blockId: code.block_id
+      });
       queryClient.setQueryData(
         frontstageBlockTreeQueryKeys.code(workspaceId, pageId, code.block_id),
         code
