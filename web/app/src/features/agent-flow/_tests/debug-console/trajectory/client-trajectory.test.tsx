@@ -141,7 +141,7 @@ test('defaults to original client classification and lazily loads only selected 
   const call = await screen.findByRole('button', {
     name: '工具调用 · exec_command'
   });
-  expect(loadWorkflowTrajectory).not.toHaveBeenCalled();
+  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(1);
   expect(loadClientTrajectorySection).not.toHaveBeenCalled();
   fireEvent.click(call);
   await waitFor(() =>

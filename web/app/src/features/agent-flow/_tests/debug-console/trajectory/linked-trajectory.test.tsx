@@ -1,6 +1,7 @@
 import './navigation';
 import { workflowNative, workflowPage } from './workflow-fixture';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -222,7 +223,7 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
     await screen.findByRole('button', { name: /Previous request/ })
   ).toHaveAttribute('aria-pressed', 'true');
   expect(loadClientTrajectory).toHaveBeenCalledTimes(2);
-  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(1);
+  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(2);
   expect(
     screen.queryByRole('button', { name: '返回上一视图' })
   ).not.toBeInTheDocument();
@@ -326,4 +327,56 @@ test('uses the single compact source shortcut to open its exact client request',
       })
     )
   );
+});
+
+test('warms only the internal first page, reuses it on switch, and loads remaining summaries visibly', async () => {
+  const { loadWorkflowTrajectory, loadTrajectoryBody } = fixture();
+  let resolveFirst!: (page: ReturnType<typeof workflowPage>) => void;
+  loadWorkflowTrajectory.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveFirst = resolve;
+      })
+  );
+  loadWorkflowTrajectory.mockResolvedValueOnce(
+    workflowPage([workflowNative(invocation('second-page', 1, 'generate'))])
+  );
+  expect(loadWorkflowTrajectory).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  await waitFor(() => expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(1));
+  await act(async () =>
+    resolveFirst(
+      workflowPage(
+        [workflowNative(invocation('warm-first', 0, 'generate'))],
+        'next'
+      )
+    )
+  );
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(1);
+  expect(loadTrajectoryBody).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText('工作流内部事件'));
+  expect(
+    screen.getByRole('button', { name: /^模型调用准备 ·/ })
+  ).toBeInTheDocument();
+  await waitFor(() => expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(2));
+  expect(loadWorkflowTrajectory.mock.calls[1][1]).toBe('next');
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole('button', { name: /^模型调用准备 ·/ })
+    ).toHaveLength(2)
+  );
+  expect(screen.getAllByRole('status').some((status) => status.textContent === '当前范围已全部加载')).toBe(true);
+  expect(loadTrajectoryBody).not.toHaveBeenCalled();
+});
+
+test('shows explicit loading feedback while the internal first page is pending', async () => {
+  const { loadWorkflowTrajectory } = fixture();
+  loadWorkflowTrajectory.mockImplementation(() => new Promise(() => {}));
+  fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  fireEvent.click(screen.getByText('工作流内部事件'));
+  expect(screen.getAllByText('正在加载轨迹，请稍候…').length).toBeGreaterThan(
+    0
+  );
+  expect(screen.queryByText('当前范围已全部加载')).not.toBeInTheDocument();
 });
