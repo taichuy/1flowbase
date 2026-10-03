@@ -567,102 +567,98 @@ function renderTreeNode({
           {projectionContent('before')}
         </div>
       ) : null}
-      <div
-        className={[
-          'frontstage-page-tree-sidebar__node-row',
-          isSelected
-            ? 'frontstage-page-tree-sidebar__node-row--selected'
-            : null,
-          isInsideDropTarget
-            ? 'frontstage-page-tree-sidebar__node-row--drop-inside'
-            : null,
-          isPageNode ? 'frontstage-page-tree-sidebar__node-row--page' : null,
-          isHidden ? 'frontstage-page-tree-sidebar__node-row--hidden' : null,
-          isDragging
-            ? 'frontstage-page-tree-sidebar__node-row--dragging'
-            : null,
-          canEdit
-            ? 'frontstage-page-tree-sidebar__node-row--design'
-            : 'frontstage-page-tree-sidebar__node-row--view'
-        ]
-          .filter(Boolean)
-          .join(' ')}
-        style={{ paddingLeft: 8 + level * 16 }}
-        onDragOver={(event) => updateDropIndicator(event)}
-        onDrop={handleDrop}
-      >
-        {tooltipText ? (
-          <Tooltip title={tooltipText} placement="rightTop">
-            {nodeContent}
-          </Tooltip>
-        ) : (
-          nodeContent
-        )}
-        {canEdit ? (
-          <>
-            <div
-              className="frontstage-page-tree-sidebar__node-actions-visible"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Tooltip title={i18nText('frontstage', 'auto.drag_sort_hint')}>
-                <FrontstageNodeActionButton
-                  aria-label={i18nText('frontstage', 'auto.drag_move_node')}
-                  disabled={isOperationPending}
-                  draggable={!isOperationPending}
-                  icon={<DragOutlined />}
-                  onDragEnd={(event) => {
-                    event.stopPropagation();
-                    setDraggedNodeId(null);
-                    setDropIndicator(null);
-                  }}
-                  onDragStart={(event) => {
-                    if (!canEdit || isOperationPending) {
-                      event.preventDefault();
-                      return;
-                    }
-                    event.stopPropagation();
-                    event.dataTransfer.effectAllowed = 'move';
-                    event.dataTransfer.setData(
-                      PAGE_TREE_DRAG_DATA_TYPE,
-                      node.id
-                    );
-                    const row = event.currentTarget.closest(
-                      '.frontstage-page-tree-sidebar__node-row'
-                    ) as HTMLElement | null;
-                    if (row) {
-                      const rect = row.getBoundingClientRect();
-                      event.dataTransfer.setDragImage(
-                        row,
-                        event.clientX - rect.left,
-                        event.clientY - rect.top
-                      );
-                    }
-                    setDropIndicator(null);
-                    setDraggedNodeId(node.id);
-                  }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                  }}
-                />
-              </Tooltip>
-              <Dropdown
-                menu={{ items: menuItems }}
-                trigger={['click']}
-                placement="bottomRight"
+      <Tooltip title={tooltipText} placement="rightTop">
+        <div
+          className={[
+            'frontstage-page-tree-sidebar__node-row',
+            isSelected
+              ? 'frontstage-page-tree-sidebar__node-row--selected'
+              : null,
+            isInsideDropTarget
+              ? 'frontstage-page-tree-sidebar__node-row--drop-inside'
+              : null,
+            isPageNode ? 'frontstage-page-tree-sidebar__node-row--page' : null,
+            isHidden ? 'frontstage-page-tree-sidebar__node-row--hidden' : null,
+            isDragging
+              ? 'frontstage-page-tree-sidebar__node-row--dragging'
+              : null,
+            canEdit
+              ? 'frontstage-page-tree-sidebar__node-row--design'
+              : 'frontstage-page-tree-sidebar__node-row--view'
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          style={{ paddingLeft: 8 + level * 16 }}
+          onDragOver={(event) => updateDropIndicator(event)}
+          onDrop={handleDrop}
+        >
+          {nodeContent}
+          {canEdit ? (
+            <>
+              <div
+                className="frontstage-page-tree-sidebar__node-actions-visible"
+                onClick={(e) => e.stopPropagation()}
               >
-                <FrontstageNodeActionButton
-                  aria-label={i18nText('frontstage', 'auto.page_action_menu')}
-                  disabled={isOperationPending}
-                  icon={<MenuOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                  }}
-                />
-              </Dropdown>
-            </div>
-          </>
-        ) : null}
-      </div>
+                <Tooltip title={i18nText('frontstage', 'auto.drag_sort_hint')}>
+                  <FrontstageNodeActionButton
+                    aria-label={i18nText('frontstage', 'auto.drag_move_node')}
+                    disabled={isOperationPending}
+                    draggable={!isOperationPending}
+                    icon={<DragOutlined />}
+                    onDragEnd={(event) => {
+                      event.stopPropagation();
+                      setDraggedNodeId(null);
+                      setDropIndicator(null);
+                    }}
+                    onDragStart={(event) => {
+                      if (!canEdit || isOperationPending) {
+                        event.preventDefault();
+                        return;
+                      }
+                      event.stopPropagation();
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData(
+                        PAGE_TREE_DRAG_DATA_TYPE,
+                        node.id
+                      );
+                      const row = event.currentTarget.closest(
+                        '.frontstage-page-tree-sidebar__node-row'
+                      ) as HTMLElement | null;
+                      if (row) {
+                        const rect = row.getBoundingClientRect();
+                        event.dataTransfer.setDragImage(
+                          row,
+                          event.clientX - rect.left,
+                          event.clientY - rect.top
+                        );
+                      }
+                      setDropIndicator(null);
+                      setDraggedNodeId(node.id);
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  />
+                </Tooltip>
+                <Dropdown
+                  menu={{ items: menuItems }}
+                  trigger={['click']}
+                  placement="bottomRight"
+                >
+                  <FrontstageNodeActionButton
+                    aria-label={i18nText('frontstage', 'auto.page_action_menu')}
+                    disabled={isOperationPending}
+                    icon={<MenuOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  />
+                </Dropdown>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </Tooltip>
       {(!isCollapsed || isInsideDropTarget) &&
       (childNodes.length > 0 ||
         (canEdit && node.kind === 'group') ||
