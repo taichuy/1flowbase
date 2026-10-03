@@ -259,7 +259,7 @@ describe('application templates extension tab', () => {
       await screen.findByText('No application templates available.')
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
-    const search = screen.getByRole('textbox', {
+    const search = screen.getByRole('searchbox', {
       name: 'Search application templates'
     });
     fireEvent.change(search, { target: { value: '  gateway  ' } });
