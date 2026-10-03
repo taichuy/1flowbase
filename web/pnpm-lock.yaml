@@ -255,6 +255,9 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.5(react@19.2.5)
+      react-draggable:
+        specifier: 4.7.0
+        version: 4.7.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react-easy-crop:
         specifier: ^5.5.7
         version: 5.5.7(react-dom@19.2.5(react@19.2.5))(react@19.2.5)

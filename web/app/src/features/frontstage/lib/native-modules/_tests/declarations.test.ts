@@ -5,6 +5,20 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('difference and draggable expose their installed public types', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import difference from 'lodash/difference';
+import type { DraggableProps } from 'react-draggable';
+const values: number[] = difference([1,2], [2]);
+const axis: DraggableProps['axis'] = 'x';
+// @ts-expect-error drag axis is a literal union.
+const invalid: DraggableProps['axis'] = 'diagonal';
+void values; void axis; void invalid;`
+      })
+    ).toEqual([]);
+  });
   test('virtual list retains generic item and scroll ref types', () => {
     expect(
       typeCheckSource({

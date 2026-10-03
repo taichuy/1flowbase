@@ -145,6 +145,16 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       module: await loadDayjsModule(module_source)
     }))
   ),
+  registration('lodash/difference', ['default'], async () => {
+    const module = await import('lodash/difference');
+    return { module: { default: module.default } };
+  }),
+  registration('react-draggable', ['default', 'DraggableCore'], async () => {
+    const module = await import('react-draggable');
+    return {
+      module: { default: module.default, DraggableCore: module.DraggableCore }
+    };
+  }),
   registration('lodash/debounce', ['default'], async () => {
     const debounceModule = await import('lodash/debounce');
     return { module: { default: debounceModule.default } };

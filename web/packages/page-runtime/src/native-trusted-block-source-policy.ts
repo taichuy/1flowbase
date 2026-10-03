@@ -36,6 +36,7 @@ export type ValidateNativeTrustedBlockSourceResult =
 
 export interface ValidateNativeTrustedBlockSourceOptions {
   allowedImportSources?: ReadonlySet<string>;
+  scopedModal?: boolean;
   compilerGeneratedImportSources?: ReadonlySet<string>;
 }
 
@@ -136,7 +137,7 @@ export function validateNativeTrustedBlockJavaScript(
 
     const errors = [
       ...parsed.importErrors,
-      ...validateDeniedCapabilities(source, parsed.tokens)
+      ...validateDeniedCapabilities(source, parsed.tokens, options.scopedModal)
     ];
 
     return errors.length > 0
@@ -636,10 +637,13 @@ function findTokenIndexBeforeStatementEnd(
 
 function validateDeniedCapabilities(
   source: string,
-  tokens: SourceToken[]
+  tokens: SourceToken[],
+  scopedModal = false
 ): BlockProtocolError[] {
   const errors: BlockProtocolError[] = [];
-  const antdModalAliases = collectAntdModalAliases(source, tokens);
+  const antdModalAliases = scopedModal
+    ? new Set<string>()
+    : collectAntdModalAliases(source, tokens);
   const antdNotificationAliases = collectAntdNotificationAliases(
     source,
     tokens

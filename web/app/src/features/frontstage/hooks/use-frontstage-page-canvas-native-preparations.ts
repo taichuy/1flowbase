@@ -1,6 +1,6 @@
+import { evaluateFrontstageReactArtifact } from '../lib/native-modules/modal/evaluator';
 import { subscribeFrontstageSourceChanges } from '../lib/runtime-cache/source-changes';
 import {
-  evaluateNativeReactComponentArtifactWithRegistry,
   diagnoseLegacyBlockModuleSource,
   NativeReactSourceContractError,
   sha256Text,
@@ -45,7 +45,7 @@ import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog
 
 type NativePreparationSource = ConsoleFrontstageBlockNodeCode;
 type NativeComponentEvaluation = Awaited<
-  ReturnType<typeof evaluateNativeReactComponentArtifactWithRegistry>
+  ReturnType<typeof evaluateFrontstageReactArtifact>
 >;
 type NativeComponentFlight =
   | {
@@ -305,7 +305,7 @@ export function useFrontstagePageCanvasNativePreparations({
             componentFactoryFlight =
               (async (): Promise<NativeComponentFlight> => {
                 const evaluated =
-                  await evaluateNativeReactComponentArtifactWithRegistry(
+                  await evaluateFrontstageReactArtifact(
                     artifact,
                     moduleRegistry
                   );

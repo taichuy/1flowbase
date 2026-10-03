@@ -14,6 +14,14 @@ const source =
   "import { Surface } from '@1flowbase/native-components'; export default () => <Surface />;";
 
 describe('Native React content-addressed artifact identity', () => {
+  test('AC-001 compiles Modal calls for the mount-scoped frontend evaluator', () => {
+    expect(
+      compileNativeReactComponent(
+        "import {Modal} from 'antd'; const {confirm}=Modal; export default () => { Modal.useModal(); confirm({}); Modal['destroyAll'](); return null; }",
+        [{ module_source: 'antd', exports: ['Modal'] }]
+      )
+    ).toMatchObject({ ok: true, diagnostics: [] });
+  });
   test('I1967-AC-001 compiles quoted regular expression character classes', () => {
     const result = compileNativeReactComponent(
       `import React from 'react';
@@ -103,11 +111,6 @@ export default App;`,
     [
       'portal ownership',
       `export default () => createPortal(node, target);`,
-      'transform_failed'
-    ],
-    [
-      'AntD privileged static API',
-      `import { Modal } from 'antd'; export default () => Modal.confirm({});`,
       'transform_failed'
     ],
     [

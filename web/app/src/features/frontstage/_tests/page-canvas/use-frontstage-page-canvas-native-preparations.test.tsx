@@ -10,14 +10,9 @@ const nativeRuntime = vi.hoisted(() => ({
   }))
 }));
 
-vi.mock('@1flowbase/page-runtime', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@1flowbase/page-runtime')>();
-  return {
-    ...actual,
-    evaluateNativeReactComponentArtifactWithRegistry: nativeRuntime.evaluate
-  };
-});
+vi.mock('../../lib/native-modules/modal/evaluator', () => ({
+  evaluateFrontstageReactArtifact: nativeRuntime.evaluate
+}));
 
 import type {
   NativeReactComponentArtifact,

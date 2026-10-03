@@ -1,3 +1,4 @@
+import { evaluateFrontstageReactArtifact } from '../../lib/native-modules/modal/evaluator';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import {
   diagnoseLegacyBlockModuleSource,
@@ -203,6 +204,7 @@ export function JsxStudioRunPanel({
           ? { workerFactory: nativeCompilerWorkerFactory }
           : {}),
         registryFactory: nativeModuleRegistryFactory,
+        evaluateArtifact: evaluateFrontstageReactArtifact,
         evaluationBindings: {
           console: createStudioRunConsole({
             store: consoleStore,
