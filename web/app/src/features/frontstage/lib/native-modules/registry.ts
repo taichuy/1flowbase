@@ -149,6 +149,9 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     const debounceModule = await import('lodash/debounce');
     return { module: { default: debounceModule.default } };
   }),
+  registration('react-infinite-scroll-component', ['default'], async () => ({
+    module: await import('./infinite-scroll/runtime')
+  })),
   registration('clsx', ['default', 'clsx'], async () => ({
     module: await import('clsx')
   })),

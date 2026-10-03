@@ -5,6 +5,19 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('infinite scroll exposes real component props', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import type { Props } from 'react-infinite-scroll-component';
+const props: Props = {dataLength: 0, next() {}, hasMore: true, loader: null, children: null, scrollableTarget: 'list'};
+// @ts-expect-error dataLength must be numeric.
+props.dataLength = 'invalid';
+void props;`
+      })
+    ).toEqual([]);
+  });
+
   test('I2242-AC-001 uses real StyleProvider and HappyProvider prop types', () => {
     expect(
       typeCheckSource({

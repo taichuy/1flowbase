@@ -261,6 +261,9 @@ importers:
       react-i18next:
         specifier: ^17.0.8
         version: 17.0.8(i18next@26.3.0(typescript@5.9.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3)
+      react-infinite-scroll-component:
+        specifier: 7.2.1
+        version: 7.2.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react-is:
         specifier: 19.2.8
         version: 19.2.8
@@ -3472,6 +3475,13 @@ packages:
       typescript:
         optional: true
 
+  react-infinite-scroll-component@7.2.1:
+    resolution: {integrity: sha512-yPuEf6VHBJXFt+YXDxjlnAuhorUwiA2cKURx/P6a7WW3k+TvwY/mbx7KP1rQ1hxGzDcwreczRyLIv6eSd1sFIw==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      react: '>=17'
+      react-dom: '>=17'
+
   react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
 
@@ -6162,7 +6172,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@24.12.3)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@8.0.16(@types/node@24.12.3)(yaml@2.9.0))
+      vitest: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@8.0.16(@types/node@24.13.3)(yaml@2.9.0))
 
   '@vitest/expect@4.1.8':
     dependencies:
@@ -8076,6 +8086,11 @@ snapshots:
     optionalDependencies:
       react-dom: 19.2.5(react@19.2.5)
       typescript: 5.9.3
+
+  react-infinite-scroll-component@7.2.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
+    dependencies:
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
 
   react-is@16.13.1: {}
 
