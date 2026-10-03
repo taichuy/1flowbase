@@ -43,7 +43,7 @@ FROM alpine:3.22 AS application-template-bootstrap
 
 ARG APPLICATION_TEMPLATE_REPOSITORY=taichuy/1flowbase-official-plugins
 # Immutable application template snapshot; changing a package also bumps its release_version.
-ARG APPLICATION_TEMPLATE_REF=decab54ed087417cd850534d9c6fa203e48ddbd5
+ARG APPLICATION_TEMPLATE_REF=68cc144ced0fc53b1f0cdadda065348f76b6c62c
 
 RUN apk add --no-cache ca-certificates git jq
 COPY scripts/shell/package-application-templates.sh /usr/local/bin/package-application-templates
