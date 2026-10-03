@@ -16,6 +16,7 @@ export function isFrontstageNativeReactResolvedDeclarationSource(
       moduleSource as (typeof FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES)[number]
     ) ||
     moduleSource.startsWith('antd/es/') ||
+    moduleSource.startsWith('antd/locale/') ||
     isDndKitPackageRoot(moduleSource)
   );
 }

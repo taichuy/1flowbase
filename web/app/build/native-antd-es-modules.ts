@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -37,6 +37,17 @@ export function nativeAntDesignEsModulesPlugin(
     async resolveId(id, importer) {
       if (id === NATIVE_ANTD_ES_MODULES_VIRTUAL_ID) {
         return RESOLVED_VIRTUAL_ID;
+      }
+      if (/^antd\/locale\/[A-Za-z0-9_]+(?:\.js)?$/u.test(id)) {
+        moduleSources ??= collectAntDesignEsModuleSources();
+        const locale = moduleSources.find(
+          ({ moduleSource }) => moduleSource === id
+        );
+        if (locale) {
+          return this.resolve(locale.loaderSource, importer, {
+            skipSelf: true
+          });
+        }
       }
       if (
         isProductAntDesignSource(id) &&
@@ -209,6 +220,17 @@ export function collectAntDesignEsModuleSources(
     const withoutExtension = loaderSource.slice(0, -'.js'.length);
     bySource.set(loaderSource, loaderSource);
     bySource.set(withoutExtension, loaderSource);
+    // Public locale entries share the installed ESM implementation.
+    if (
+      /^locale\/[A-Za-z0-9_]+\.js$/u.test(relativeFile) &&
+      existsSync(path.join(packageRoot, relativeFile))
+    ) {
+      bySource.set(`antd/${relativeFile}`, loaderSource);
+      bySource.set(
+        `antd/${relativeFile.slice(0, -'.js'.length)}`,
+        loaderSource
+      );
+    }
     if (relativeFile.endsWith('/index.js')) {
       bySource.set(
         `antd/es/${relativeFile.slice(0, -'/index.js'.length)}`,

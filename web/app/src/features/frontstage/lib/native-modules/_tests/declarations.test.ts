@@ -5,6 +5,20 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('AC-002 type-checks public Ant Design locales with their real Locale type', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import type { ConfigProviderProps } from 'antd';
+import enUS from 'antd/locale/en_US';
+import zhCN from 'antd/locale/zh_CN.js';
+const locales: ConfigProviderProps['locale'][] = [enUS, zhCN];
+// @ts-expect-error Locale has no arbitrary properties (must not become any).
+enUS.nonexistentProperty();
+void locales;`
+    });
+    expect(diagnostics).toEqual([]);
+  });
+
   test('I2223 exposes the shared token trend contract to native blocks', () => {
     const diagnostics = typeCheckSource({
       extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
