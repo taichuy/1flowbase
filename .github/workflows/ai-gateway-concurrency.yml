@@ -1,159 +1,152 @@
-name: AI Gateway Protocol Conformance Gate
-
-on:
-  workflow_call:
-    inputs:
-      target_ref:
-        description: Candidate branch, tag, or SHA to validate
-        type: string
-        required: false
-        default: ''
+name: Gateway SQL Ownership Acceptance
+'on':
   workflow_dispatch:
-
+    inputs:
+      candidate_sha:
+        description: Exact frozen assembly SHA
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
-  group: ai-gateway-protocol-conformance-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: gateway-sql-ownership-${{ github.ref }}
+  cancel-in-progress: false
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   CARGO_INCREMENTAL: '0'
+  RUSTFLAGS: '-C force-frame-pointers=yes -C debuginfo=1'
   OPENAI_API_KEY: ''
   OPENAI_BASE_URL: ''
-  ANTHROPIC_API_KEY: ''
-  ANTHROPIC_AUTH_TOKEN: ''
-  ANTHROPIC_BASE_URL: ''
-  CLAUDE_CODE_OAUTH_TOKEN: ''
-
 jobs:
-  protocol-conformance:
+  diagnostic-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 180
     services:
       postgres:
         image: postgres:18.4
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: 1flowbase
-          POSTGRES_DB: 1flowbase
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: gateway_tests
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-cmd "pg_isready -U postgres -d gateway_tests"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
     steps:
-      - name: Checkout candidate source
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.target_ref || github.sha }}
-          fetch-depth: 1
-
-      - name: Resolve candidate source SHA
-        id: candidate_source
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # The candidate's paired-source lock is the single source of truth for the
-      # official provider revision. Hardcoding a ref here made cross-ref runs
-      # (workflow file from main, candidate from another branch) pair a stale
-      # official source with the candidate's fixtures.
-      - name: Resolve paired official provider revision
-        id: paired_official
-        shell: bash
-        run: >-
-          echo "revision=$(node -p
-          "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")"
-          >> "$GITHUB_OUTPUT"
-
-      - name: Checkout paired official provider source
-        uses: actions/checkout@v6
+          ref: ${{ inputs.candidate_sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          repository: taichuy/1flowbase-official-plugins
-          ref: ${{ steps.paired_official.outputs.revision }}
-          path: tmp/ai-gateway-concurrency/official-source
-          fetch-depth: 1
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v5
+          toolchain: 1.98.1
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Resolve PostgreSQL 18 backup toolchain
-        shell: bash
-        run: |
-          set -o pipefail
-          node scripts/node/postgres-toolchain/cli.js \
-            | grep -E '^API_POSTGRES_PG_(DUMP|RESTORE)_PATH=' \
-            >> "$GITHUB_ENV"
-
-      # Cache only compiler dependency state. Gate evidence and runtime provenance
-      # are still rebuilt and emitted by the repository-owned command below.
-      - name: Restore Rust dependency cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
-          shared-key: ai-gateway-protocol-conformance
-          key: ${{ github.ref_name }}
-          save-if: true
-          cache-on-failure: true
+          shared-key: gateway-connection-reuse
           cache-workspace-crates: true
-          workspaces: |
-            api -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/aliyun_bailian -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/anthropic -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/deepseek -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/gemini -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai_compatible -> target
-
-      - name: Prepare PostgreSQL 18 backup clients
-        shell: bash
-        run: |
-          tools_dir="$RUNNER_TEMP/postgresql-18-tools"
-          mkdir -p "$tools_dir"
-          for tool in pg_dump pg_restore; do
-            sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
-          #!/bin/sh
-          exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
-          SCRIPT
-            chmod +x "$tools_dir/$tool"
-          done
-          echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
-          echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-
-      - name: Run the single blocking AI Gateway quality command
-        id: protocol_conformance
-        shell: bash
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/cli.js run
-          --repo-root "$GITHUB_WORKSPACE"
-          --official-source-root "$GITHUB_WORKSPACE/tmp/ai-gateway-concurrency/official-source"
-          --database-url "postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase"
-
-      - name: Write aggregate-compatible AI Gateway report
-        if: always()
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Build source-bound optimized diagnostic executable
+        timeout-minutes: 65
         shell: bash
         env:
-          AI_GATEWAY_COMMAND_OUTCOME: ${{ steps.protocol_conformance.outcome }}
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/component-report.js
-          --repo-root "$GITHUB_WORKSPACE"
-          --command-outcome "$AI_GATEWAY_COMMAND_OUTCOME"
-
-      - name: Upload bounded protocol evidence
+          EXPECTED_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          out=tmp/test-governance/gateway-cpu-attribution/build
+          mkdir -p "$out"
+          node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/cargo-jobs.txt"
+          export CARGO_BUILD_JOBS="$(cat "$out/cargo-jobs.txt")"
+          rustc -Vv > "$out/toolchain.txt"
+          git rev-parse HEAD > "$out/source-sha.txt"
+          test "$(cat "$out/source-sha.txt")" = "$EXPECTED_SHA"
+          git rev-parse HEAD:api > "$out/api-tree.txt"
+          git status --porcelain --untracked-files=no > "$out/source-status.txt"
+          test ! -s "$out/source-status.txt"
+          set +e
+          cargo build --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server > "$out/build.log" 2>&1
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$out/build-exit-code.txt"
+          tail -c 5000 "$out/build.log"
+          test "$code" = 0
+          cp api/target/release/api-server "$out/api-server"
+          sha256sum "$out/api-server" > "$out/binary.sha256"
+          printf '%s\n' "$RUSTFLAGS" > "$out/rustflags.txt"
+          ldd "$out/api-server" > "$out/ldd.txt"
+          tar -czf "$out/api-server.tar.gz" -C "$out" api-server
+          rm "$out/api-server"
+      - uses: actions/upload-artifact@v6
         if: always()
-        uses: actions/upload-artifact@v6
         with:
-          name: test-governance-ai-gateway-protocol-conformance-${{ steps.candidate_source.outputs.sha }}
-          path: |
-            tmp/test-governance/ai-gateway-quality-gate/**
-            tmp/test-governance/ai-gateway-concurrency/**
-            tmp/test-governance/ai-gateway-protocol-conformance/**
+          name: gateway-cpu-attribution-${{ github.run_id }}
+          path: tmp/test-governance/gateway-cpu-attribution/build/**
+          retention-days: 7
           if-no-files-found: error
+      - name: Execute centralized behavior tests sequentially
+        timeout-minutes: 100
+        if: success()
+        shell: bash
+        env:
+          DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/gateway_tests
+        run: |
+          set -euo pipefail
+          out=tmp/test-governance/gateway-sql-cost/tests
+          mkdir -p "$out"
+          node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/repository-cargo-jobs.txt"
+          # CI test linking shares this runner with Postgres; preserve the prior measured resource budget.
+          python3 - <<'PYRESOURCE' > "$out/resource-policy.json"
+          import json,os,pathlib
+          memory=int(next(x.split()[1] for x in pathlib.Path('/proc/meminfo').read_text().splitlines() if x.startswith('MemTotal:')))*1024
+          cpu=len(os.sched_getaffinity(0)); jobs=max(1,min(cpu,max(1,(memory-2*1024**3)//(2*1024**3))))
+          print(json.dumps(dict(memory_bytes=memory,cpu_available=cpu,cargo_jobs=jobs,reserved_bytes=2*1024**3,bytes_per_compiler=2*1024**3)))
+          PYRESOURCE
+          export CARGO_BUILD_JOBS="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["cargo_jobs"])' "$out/resource-policy.json")"
+          export RUST_TEST_THREADS="$CARGO_BUILD_JOBS"
+          git rev-parse HEAD > "$out/source-sha.txt"
+          git rev-parse HEAD:api > "$out/api-tree.txt"
+          status=0
+          run_suite() {
+            name="$1"
+            shift
+            set +e
+            cargo test --manifest-path api/Cargo.toml --release --locked "$@" > "$out/$name.log" 2>&1
+            code=$?
+            set -e
+            printf '%s\n' "$code" > "$out/$name.exit-code.txt"
+            tail -c 4000 "$out/$name.log"
+            if [ "$code" -ne 0 ]; then status=1; fi
+          }
+          run_suite contracts -p control-plane-contracts --lib
+          run_suite storage -p storage-durable-postgres --lib client_trajectory
+          run_suite sequencing -p storage-durable-postgres --lib sequencing
+          run_suite recorder -p control-plane --lib client_trajectory
+          run_suite streams -p api-server --lib _tests::runtime_event_stream
+          run_suite boundaries -p control-plane-postgres-tests --test dependency_boundaries
+          python3 - <<'PY'
+          import json,pathlib,re
+          p=pathlib.Path('tmp/test-governance/gateway-sql-cost/tests')
+          suites=[]
+          for name in ['contracts','storage','sequencing','recorder','streams','boundaries']:
+              log=(p/(name+'.log')).read_text(errors='replace')
+              rows=re.findall(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored;',log)
+              code=int((p/(name+'.exit-code.txt')).read_text())
+              valid=code==0 and bool(rows) and sum(int(r[1]) for r in rows)>0 and all(r[0]=='ok' and int(r[2])==0 and int(r[3])==0 for r in rows)
+              suites.append(dict(name=name,exit_code=code,summaries=rows,passed=valid))
+          (p/'receipt.json').write_text(json.dumps(dict(source_sha=(p/'source-sha.txt').read_text().strip(),suites=suites),indent=2))
+          assert all(s['passed'] for s in suites), 'missing or failed behavior evidence'
+          PY
+          exit "$status"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: gateway-sql-cost-tests-${{ github.run_id }}
+          path: tmp/test-governance/gateway-sql-cost/tests/**
           retention-days: 14
+          if-no-files-found: warn
