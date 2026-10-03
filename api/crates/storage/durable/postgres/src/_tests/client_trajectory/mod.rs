@@ -7,6 +7,7 @@ const AT: &str = "2026-09-22T00:00:00Z";
 mod archive_codec;
 mod block_sealing;
 mod compact_directory;
+mod connection_reuse;
 mod dense_directory;
 mod packed_directory;
 mod persistence;

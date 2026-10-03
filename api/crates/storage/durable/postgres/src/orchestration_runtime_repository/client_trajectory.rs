@@ -17,21 +17,70 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendClientTrajectoryInput,
     ) -> Result<()> {
-        if let ClientTrajectoryFact::Step { step } = &input.fact {
-            anyhow::ensure!(
-                step.flow_run_id == input.flow_run_id
-                    && step.node_run_id == input.node_run_id
-                    && step.request_id == input.request_id,
-                "client trajectory scope mismatch"
-            );
-        }
-        if let ClientTrajectoryFact::Section { section, value, .. } = &input.fact {
-            if section == "raw" {
-                // Legacy adapter callers use the same archive; no raw event is appended.
-                return self.append_legacy_client_raw(input, value).await;
+        self.append_client_trajectory_fact_group(std::slice::from_ref(input))
+            .await
+            .pop()
+            .expect("single fact result")
+    }
+
+    pub(super) async fn append_client_trajectory_fact_group(
+        &self,
+        inputs: &[AppendClientTrajectoryInput],
+    ) -> Vec<Result<()>> {
+        let mut connection = None;
+        let mut results = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            if let ClientTrajectoryFact::Step { step } = &input.fact {
+                if step.flow_run_id != input.flow_run_id
+                    || step.node_run_id != input.node_run_id
+                    || step.request_id != input.request_id
+                {
+                    drop(connection.take());
+                    results.push(Err(anyhow::anyhow!("client trajectory scope mismatch")));
+                    continue;
+                }
             }
+
+            if let ClientTrajectoryFact::Section { section, value, .. } = &input.fact {
+                if section == "raw" {
+                    // The legacy archive path borrows from the pool itself.
+                    drop(connection.take());
+                    results.push(self.append_legacy_client_raw(input, value).await);
+                    continue;
+                }
+            }
+            if connection.is_none() {
+                match self.pool().acquire().await {
+                    Ok(acquired) => connection = Some(acquired),
+                    Err(error) => {
+                        results.push(Err(error.into()));
+                        continue;
+                    }
+                }
+            }
+            let result = self
+                .append_client_trajectory_fact_on_connection(
+                    input,
+                    connection.as_mut().expect("acquired connection"),
+                )
+                .await;
+            if result.is_err() {
+                // Preserve the next fact's normal acquire/health-check opportunity.
+                drop(connection.take());
+            }
+            results.push(result);
         }
-        let mut tx = self.pool().begin().await?;
+        results
+    }
+
+    async fn append_client_trajectory_fact_on_connection(
+        &self,
+        input: &AppendClientTrajectoryInput,
+        connection: &mut sqlx::PgConnection,
+    ) -> Result<()> {
+        // Borrowed Transaction drop queues rollback on cancellation/error; the
+        // group owns the pool lease and releases it when its future is dropped.
+        let mut tx = sqlx::Connection::begin(connection).await?;
         // Client delivery occurs after a business terminal commit. This dedicated
         // observational append does not reopen a run or relax the execution append fence.
         let exists: Option<Uuid> =

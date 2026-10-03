@@ -7,6 +7,7 @@ struct MemoryWriter {
     records: Mutex<Vec<AppendClientTrajectoryInput>>,
     frames: Mutex<Vec<ClientTrajectoryArchiveFrame>>,
     fail_once: AtomicBool,
+    fail_group_item_once: AtomicBool,
     fail_cleanup_once: AtomicBool,
     cleanup_count: AtomicU64,
     archived: Notify,
@@ -20,6 +21,21 @@ impl FactWriter for MemoryWriter {
         }
         self.records.lock().unwrap().push(input.clone());
         Ok(())
+    }
+    async fn append_group(
+        &self,
+        inputs: &[AppendClientTrajectoryInput],
+    ) -> Vec<anyhow::Result<()>> {
+        let fail = self.fail_group_item_once.swap(false, Ordering::AcqRel);
+        let mut results = Vec::new();
+        for (index, input) in inputs.iter().enumerate() {
+            if fail && index == 1 {
+                results.push(Err(anyhow::anyhow!("fixture group item failed")));
+            } else {
+                results.push(self.append(input).await);
+            }
+        }
+        results
     }
     async fn archive(
         &self,
@@ -400,3 +416,30 @@ async fn empty_prewarm_keeps_response_identity_without_fabricating_output() {
 }
 
 mod chat;
+
+#[tokio::test]
+async fn group_item_failure_counts_once_continues_suffix_and_preserves_raw() {
+    let writer = Arc::new(MemoryWriter::default());
+    writer.fail_group_item_once.store(true, Ordering::Release);
+    let recorder = capture(writer.clone());
+    recorder.bind_run(Uuid::now_v7(), None);
+    let request = br#"{"input":"original user input"}"#;
+    let response = br#"{"object":"response","output":[]}"#;
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, request)
+        .await
+        .unwrap();
+    recorder
+        .record(ClientTrajectoryFrameKind::ResponseJson, response)
+        .await
+        .unwrap();
+    assert!(recorder.complete().await.is_err());
+    let records = writer.records.lock().unwrap();
+    assert_eq!(raw(&records, "submitted"), request);
+    assert_eq!(raw(&records, "emitted"), response);
+    assert!(
+        matches!(&records.last().unwrap().fact, ClientTrajectoryFact::Integrity {status, persist_failed_count:1, ..} if status == "incomplete")
+    );
+    assert!(records.iter().any(|record| matches!(&record.fact, ClientTrajectoryFact::Section { section, value, .. } if section == "result" && value == "original user input")));
+    assert!(records.iter().any(|record| matches!(&record.fact, ClientTrajectoryFact::Section { section, .. } if section == "timing")));
+}
