@@ -961,6 +961,78 @@ async fn local_runtime_event_stream_expires_orphan_open_run_after_seventy_two_ho
     assert!(stream.list_ephemeral_entries().await.unwrap().is_empty());
 }
 
+#[tokio::test]
+async fn local_runtime_event_stream_expired_lookup_preserves_active_runs() {
+    for (closure, age) in [
+        (
+            Some(RuntimeEventCloseReason::Finished),
+            TimeDuration::hours(2),
+        ),
+        (
+            Some(RuntimeEventCloseReason::WaitingHuman),
+            TimeDuration::hours(24),
+        ),
+        (
+            Some(RuntimeEventCloseReason::WaitingCallback),
+            TimeDuration::hours(24),
+        ),
+        (None, TimeDuration::hours(72)),
+    ] {
+        let stream = LocalRuntimeEventStream::new();
+        let expired_id = Uuid::now_v7();
+        stream
+            .open_run(expired_id, RuntimeEventStreamPolicy::debug_default())
+            .await
+            .unwrap();
+        stream.append(expired_id, heartbeat()).await.unwrap();
+        if let Some(reason) = closure {
+            stream.close_run(expired_id, reason).await.unwrap();
+        }
+
+        let mut active_runs = Vec::new();
+        for _ in 0..2 {
+            let run_id = Uuid::now_v7();
+            stream
+                .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+                .await
+                .unwrap();
+            let first = stream.append(run_id, heartbeat()).await.unwrap();
+            let subscription = stream
+                .subscribe(run_id, Some(first.sequence))
+                .await
+                .unwrap();
+            active_runs.push((run_id, first, subscription));
+        }
+
+        let expired_at = OffsetDateTime::now_utc() - age - TimeDuration::seconds(1);
+        stream
+            .set_run_timestamps_for_tests(expired_id, expired_at, closure.map(|_| expired_at))
+            .unwrap();
+        // This current-thread test has not yielded to the expiry scheduler:
+        // the append lookup itself must reject and remove the expired run.
+        assert!(stream.contains_run_without_purge_for_tests(expired_id));
+        let error = stream.append(expired_id, heartbeat()).await.unwrap_err();
+        assert_eq!(error.to_string(), "runtime event stream is not open");
+        assert!(!stream.contains_run_without_purge_for_tests(expired_id));
+
+        for (run_id, first, mut subscription) in active_runs {
+            assert_eq!(
+                stream.replay(run_id, Some(0), 10).await.unwrap(),
+                vec![first]
+            );
+            let second = stream.append(run_id, heartbeat()).await.unwrap();
+            assert_eq!(second.sequence, 2);
+            let live =
+                tokio::time::timeout(Duration::from_secs(1), subscription.live_events.recv())
+                    .await
+                    .expect("active run should still deliver live events")
+                    .unwrap();
+            assert_eq!(live, second);
+            assert!(subscription.closure.borrow().is_none());
+        }
+    }
+}
+
 async fn wait_for_idle_reclamation(stream: &LocalRuntimeEventStream, run_id: Uuid) {
     tokio::time::timeout(Duration::from_secs(1), async {
         while stream.contains_run_without_purge_for_tests(run_id) {
@@ -974,6 +1046,12 @@ async fn wait_for_idle_reclamation(stream: &LocalRuntimeEventStream, run_id: Uui
 #[tokio::test]
 async fn local_runtime_event_stream_reclaims_finished_waiting_and_orphan_runs_while_idle() {
     let stream = LocalRuntimeEventStream::new();
+    let active_id = Uuid::now_v7();
+    stream
+        .open_run(active_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let active_event = stream.append(active_id, heartbeat()).await.unwrap();
     let now = OffsetDateTime::now_utc();
     for (closure, age) in [
         (
@@ -1004,6 +1082,19 @@ async fn local_runtime_event_stream_reclaims_finished_waiting_and_orphan_runs_wh
             .unwrap();
         wait_for_idle_reclamation(&stream, run_id).await;
     }
+    assert!(stream.contains_run_without_purge_for_tests(active_id));
+    assert_eq!(
+        stream.replay(active_id, Some(0), 10).await.unwrap(),
+        vec![active_event]
+    );
+    assert_eq!(
+        stream
+            .append(active_id, heartbeat())
+            .await
+            .unwrap()
+            .sequence,
+        2
+    );
 }
 
 #[tokio::test]
