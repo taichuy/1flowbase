@@ -189,6 +189,9 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       module: await loadAntDesignIconsModule(module_source)
     }))
   ),
+  registration('@1flowbase/token-trend', ['TokenTrendChart'], async () => ({
+    module: await import('../../../../shared/ui/token-trend/TokenTrendChart')
+  })),
   registration('@1flowbase/charts', ['EChart'], async () => ({
     module: await import('@1flowbase/charts')
   })),

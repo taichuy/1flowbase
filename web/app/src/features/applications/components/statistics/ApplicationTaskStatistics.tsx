@@ -23,6 +23,7 @@ import { useState } from 'react';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { formatTokenCount } from '../../../../shared/i18n/format';
+import { TokenTrendChart } from '../../../../shared/ui/token-trend/TokenTrendChart';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import {
   applicationRunMonitoringReportQueryKey,
@@ -457,160 +458,84 @@ export function ApplicationTaskStatistics({
               }}
             >
               {report.tokens_trend.length ? (
-                <ApplicationMonitoringChart
-                  ariaLabel={t('statistics.token_trend')}
-                  yAxisValueFormatters={
-                    trendMetric === 'total_tokens'
-                      ? [formatTokenCount]
-                      : undefined
-                  }
-                  seriesValueFormatters={
-                    trendMetric === 'total_tokens'
-                      ? [
-                          formatTokenCount,
-                          formatTokenCount,
-                          formatTokenCount,
-                          (value) => `${value}%`
-                        ]
-                      : undefined
-                  }
-                  onDataClick={(index) => {
-                    const point = report.tokens_trend[index];
-                    if (point)
-                      navigate(
-                        logsHref(statisticsBucketFilters(report.meta, point))
-                      );
-                  }}
-                  option={{
-                    color: [
-                      token.blue,
-                      token.colorSuccess,
-                      token.cyan,
-                      token.purple
-                    ],
-                    tooltip: { trigger: 'axis' },
-                    legend: { type: 'scroll', top: 0 },
-                    grid: {
-                      left: 64,
-                      right: trendMetric === 'total_tokens' ? 64 : 24,
-                      top: 56,
-                      bottom: 48
-                    },
-                    xAxis: {
-                      type: 'category',
-                      data: report.tokens_trend.map((point) =>
-                        formatTrendBucket(
-                          point.bucket_start,
-                          report.meta.bucket
+                trendMetric === 'total_tokens' ? (
+                  <TokenTrendChart
+                    points={report.tokens_trend}
+                    bucketLabels={report.tokens_trend.map((point) =>
+                      formatTrendBucket(point.bucket_start, report.meta.bucket)
+                    )}
+                    onDataClick={(index) => {
+                      const point = report.tokens_trend[index];
+                      if (point)
+                        navigate(
+                          logsHref(statisticsBucketFilters(report.meta, point))
+                        );
+                    }}
+                  />
+                ) : (
+                  <ApplicationMonitoringChart
+                    ariaLabel={t('statistics.trend')}
+                    onDataClick={(index) => {
+                      const point = report.tokens_trend[index];
+                      if (point)
+                        navigate(
+                          logsHref(statisticsBucketFilters(report.meta, point))
+                        );
+                    }}
+                    option={{
+                      color: [
+                        token.blue,
+                        token.colorSuccess,
+                        token.cyan,
+                        token.purple
+                      ],
+                      tooltip: { trigger: 'axis' },
+                      legend: { type: 'scroll', top: 0 },
+                      grid: {
+                        left: 64,
+                        right: 24,
+                        top: 56,
+                        bottom: 48
+                      },
+                      xAxis: {
+                        type: 'category',
+                        data: report.tokens_trend.map((point) =>
+                          formatTrendBucket(
+                            point.bucket_start,
+                            report.meta.bucket
+                          )
                         )
-                      )
-                    },
-                    yAxis:
-                      trendMetric === 'total_tokens'
-                        ? [
-                            {
-                              type: 'value',
-                              name: 'Token'
-                            },
-                            {
-                              type: 'value',
-                              name: '%',
-                              min: 0,
-                              max: 100,
-                              splitLine: { show: false }
-                            }
-                          ]
-                        : {
-                            type: 'value',
-                            name:
-                              trendMetric === 'avg_duration_ms'
-                                ? 'ms'
-                                : trendMetric === 'total_cost'
-                                  ? '$'
-                                  : ''
-                          },
-                    series:
-                      trendMetric === 'total_tokens'
-                        ? [
-                            ...[
-                              {
-                                name: t('auto.input_tokens'),
-                                field: 'input_tokens',
-                                color: token.blue
-                              },
-                              {
-                                name: t('auto.output_tokens'),
-                                field: 'output_tokens',
-                                color: token.colorSuccess
-                              },
-                              {
-                                name: t('auto.input_cache_hit_tokens'),
-                                field: 'input_cache_hit_tokens',
-                                color: token.cyan
-                              }
-                            ].map(({ name, field, color }) => ({
-                              name,
-                              type: 'line',
-                              showSymbol: report.tokens_trend.length < 32,
-                              symbolSize: 6,
-                              connectNulls: false,
-                              lineStyle: { width: 2, color },
-                              itemStyle: { color },
-                              areaStyle: { opacity: 0.08, color },
-                              data: report.tokens_trend.map(
-                                (point) =>
-                                  point[
-                                    field as
-                                      | 'input_tokens'
-                                      | 'output_tokens'
-                                      | 'input_cache_hit_tokens'
-                                  ]
-                              )
-                            })),
-                            {
-                              name: t('auto.input_cache_hit_rate'),
-                              type: 'line',
-                              yAxisIndex: 1,
-                              showSymbol: report.tokens_trend.length < 32,
-                              symbolSize: 6,
-                              connectNulls: false,
-                              lineStyle: {
-                                width: 2,
-                                color: token.purple,
-                                type: 'dashed'
-                              },
-                              itemStyle: { color: token.purple },
-                              data: report.tokens_trend.map((point) =>
-                                point.input_cache_hit_rate === null
-                                  ? null
-                                  : Number(
-                                      (
-                                        point.input_cache_hit_rate * 100
-                                      ).toFixed(2)
-                                    )
-                              )
-                            }
-                          ]
-                        : [
-                            {
-                              name:
-                                trendMetric === 'avg_duration_ms'
-                                  ? t('auto.average_duration')
-                                  : metricOptions.find(
-                                      (metric) => metric.value === trendMetric
-                                    )?.label,
-                              type: 'line',
-                              showSymbol: true,
-                              connectNulls: false,
-                              data: report.tokens_trend.map((point) =>
-                                trendMetric === 'task_count'
-                                  ? point.run_count
-                                  : point[trendMetric]
-                              )
-                            }
-                          ]
-                  }}
-                />
+                      },
+                      yAxis: {
+                        type: 'value',
+                        name:
+                          trendMetric === 'avg_duration_ms'
+                            ? 'ms'
+                            : trendMetric === 'total_cost'
+                              ? '$'
+                              : ''
+                      },
+                      series: [
+                        {
+                          name:
+                            trendMetric === 'avg_duration_ms'
+                              ? t('auto.average_duration')
+                              : metricOptions.find(
+                                  (metric) => metric.value === trendMetric
+                                )?.label,
+                          type: 'line',
+                          showSymbol: true,
+                          connectNulls: false,
+                          data: report.tokens_trend.map((point) =>
+                            trendMetric === 'task_count'
+                              ? point.run_count
+                              : point[trendMetric]
+                          )
+                        }
+                      ]
+                    }}
+                  />
+                )
               ) : (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
               )}

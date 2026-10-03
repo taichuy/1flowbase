@@ -23,6 +23,7 @@ describe('Frontstage JSX editor projection', () => {
         '@1flowbase/native-components',
         '@ant-design/icons',
         '@1flowbase/charts',
+        '@1flowbase/token-trend',
         '@1flowbase/rich-text',
         '@ant-design/x',
         '@ant-design/x-markdown'

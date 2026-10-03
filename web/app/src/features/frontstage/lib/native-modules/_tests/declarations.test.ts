@@ -5,6 +5,17 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('I2223 exposes the shared token trend contract to native blocks', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import { TokenTrendChart, type TokenTrendPoint } from '@1flowbase/token-trend';
+const points: TokenTrendPoint[] = [{ bucket_start: '2026-10-03', input_tokens: 10, output_tokens: 2, input_cache_hit_tokens: 5, input_cache_hit_rate: 0.5, cache_write_tokens: null }];
+const chart = <TokenTrendChart points={points} bucketLabels={['Oct 3']} labels={{cache_write_tokens: 'Cache write'}} />;
+void chart;`
+    });
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-001/002 type-checks runtime and type-only exports from resolved dependencies', () => {
     const diagnostics = typeCheckSource({
       extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,

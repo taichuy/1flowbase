@@ -1,5 +1,27 @@
 import type { BlockSourceExtraLib } from '../../../../shared/code-block/extra-lib';
 
+const TOKEN_TREND_DECLARATIONS = `declare module '@1flowbase/token-trend' {
+  import type { ReactElement } from 'react';
+  export interface TokenTrendPoint {
+    readonly bucket_start: string;
+    readonly input_tokens: number | null;
+    readonly output_tokens: number | null;
+    readonly input_cache_hit_tokens: number | null;
+    readonly cache_write_tokens?: number | null;
+    readonly input_cache_hit_rate: number | null;
+  }
+  export interface TokenTrendChartProps {
+    readonly points: readonly TokenTrendPoint[];
+    readonly bucketLabels?: readonly string[];
+    readonly labels?: Partial<Record<Exclude<keyof TokenTrendPoint, 'bucket_start'>, string>>;
+    readonly ariaLabel?: string;
+    readonly height?: number;
+    readonly onDataClick?: (dataIndex: number) => void;
+  }
+  export function TokenTrendChart(props: TokenTrendChartProps): ReactElement;
+}
+`;
+
 const ANTD_STYLE_DECLARATIONS = `declare module 'antd-style' {
   export type ResponsiveKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
   export function useResponsive(): Partial<Record<ResponsiveKey, boolean>>;
@@ -79,20 +101,25 @@ export function createFrontendModuleExtraLib(
       : dayjsRuntimeModule
         ? `file:///node_modules/.1flowbase-native/dayjs/${encodeURIComponent(moduleSource)}.d.ts`
         : `file:///node_modules/${moduleSource}/index.d.ts`,
-    content: dndKitInternalModule
-      ? createDndKitInternalModuleDeclaration(moduleSource)
-      : dayjsRuntimeModule
-        ? createDayjsRuntimeModuleDeclaration(moduleSource)
-        : moduleSource === '@1flowbase/block-sdk'
-          ? BLOCK_SDK_DECLARATIONS
-          : moduleSource === 'clsx'
-            ? CLSX_DECLARATIONS
-          : moduleSource === 'antd-style'
-            ? `${ANTD_STYLE_DECLARATIONS}${createGenericModuleDeclarations(
-                moduleSource,
-                exports.filter((exportName) => exportName !== 'useResponsive')
-              )}`
-            : createGenericModuleDeclarations(moduleSource, exports)
+    content:
+      moduleSource === '@1flowbase/token-trend'
+        ? TOKEN_TREND_DECLARATIONS
+        : dndKitInternalModule
+          ? createDndKitInternalModuleDeclaration(moduleSource)
+          : dayjsRuntimeModule
+            ? createDayjsRuntimeModuleDeclaration(moduleSource)
+            : moduleSource === '@1flowbase/block-sdk'
+              ? BLOCK_SDK_DECLARATIONS
+              : moduleSource === 'clsx'
+                ? CLSX_DECLARATIONS
+                : moduleSource === 'antd-style'
+                  ? `${ANTD_STYLE_DECLARATIONS}${createGenericModuleDeclarations(
+                      moduleSource,
+                      exports.filter(
+                        (exportName) => exportName !== 'useResponsive'
+                      )
+                    )}`
+                  : createGenericModuleDeclarations(moduleSource, exports)
   };
 }
 
