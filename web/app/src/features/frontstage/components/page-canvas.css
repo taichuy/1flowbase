@@ -155,3 +155,8 @@
   border-radius: 0 0 0 4px;
   cursor: sw-resize;
 }
+
+/* Viewing geometry settles immediately; design drag/resize keeps RGL feedback. */
+.frontstage-page-canvas-grid--view .react-grid-item {
+  transition: none;
+}

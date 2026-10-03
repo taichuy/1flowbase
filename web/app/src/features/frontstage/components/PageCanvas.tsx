@@ -1,3 +1,4 @@
+import { useFrontstagePageCanvasWidth } from '../lib/page-canvas/geometry/use-canvas-width';
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import type {
@@ -157,40 +158,6 @@ type PageCanvasProps = {
   onRuntimeRetry?: (blockId: string) => void;
   onRuntimeRefresh?: (blockId: string) => void;
 };
-
-const FRONTSTAGE_CANVAS_INITIAL_WIDTH = 1280;
-
-function useFrontstagePageCanvasWidth() {
-  const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(
-    null
-  );
-  const [width, setWidth] = useState(FRONTSTAGE_CANVAS_INITIAL_WIDTH);
-  const containerRef = useCallback((node: HTMLDivElement | null) => {
-    setContainerNode(node);
-  }, []);
-
-  useEffect(() => {
-    if (!containerNode) return;
-
-    const updateWidth = (nextWidth: number) => {
-      if (!Number.isFinite(nextWidth) || nextWidth <= 0) return;
-      setWidth((currentWidth) =>
-        Math.abs(currentWidth - nextWidth) < 0.5 ? currentWidth : nextWidth
-      );
-    };
-
-    updateWidth(containerNode.offsetWidth);
-    if (typeof ResizeObserver === 'undefined') return;
-
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) updateWidth(entry.contentRect.width);
-    });
-    observer.observe(containerNode);
-    return () => observer.disconnect();
-  }, [containerNode]);
-
-  return { width, containerNode, containerRef };
-}
 
 function renderFrontstageResizeHandle(
   axis: ResizeHandleAxis,
@@ -417,18 +384,34 @@ function NativeRuntimeSlotSurface({
   const renderIdentity = readyPreparation?.mountIntent
     ? frontstageNativeInstanceRenderKey(readyPreparation.mountIntent)
     : null;
-  useEffect(() => {
-    if (!viewport || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      const { width, height } = entry.contentRect;
-      if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+  useLayoutEffect(() => {
+    if (!viewport) return;
+    const updateSize = ({
+      width,
+      height
+    }: {
+      width: number;
+      height: number;
+    }) => {
+      // display:none reports zero: retain the last measured native allocation.
+      if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+      )
+        return;
       setAvailableSize((current) =>
         Math.abs(current.width - width) < 0.5 &&
         Math.abs(current.height - height) < 0.5
           ? current
           : { width, height }
       );
+    };
+    updateSize(viewport.getBoundingClientRect());
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateSize(entry.contentRect);
     });
     observer.observe(viewport);
     return () => observer.disconnect();
@@ -1462,7 +1445,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
 
       <div
         ref={containerRef}
-        className="frontstage-page-canvas-grid"
+        className={`frontstage-page-canvas-grid${isDesignMode ? '' : ' frontstage-page-canvas-grid--view'}`}
         data-testid="page-canvas-render-slots"
         onPointerOverCapture={onRuntimeInteraction}
         onPointerDownCapture={onRuntimeInteraction}
@@ -1488,7 +1471,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
           });
         }}
       >
-        {isRenderEmpty && isDesignMode ? (
+        {gridWidth <= 0 ? null : isRenderEmpty && isDesignMode ? (
           <div data-testid="page-canvas-design-empty-state" />
         ) : isRenderEmpty ? (
           <div

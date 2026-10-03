@@ -15,6 +15,8 @@ import type {
 
 export type FrontStagePageProps = {
   workspaceId: string;
+  /** Mounted inactive sessions retain DOM and state while runtime preparation pauses. */
+  runtimeActive?: boolean;
   pageId?: string;
   tabId?: string;
   blockRuntimeAssembly?: ConsoleFrontstageBlockRuntimeAssembly;
