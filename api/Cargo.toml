@@ -60,7 +60,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 semver = "1"
 sha2 = "0.10"
-sysinfo = { version = "0.34.2", features = ["multithread"] }
+# Keep upstream's sequential default: parallel /proc scans spend more CPU on
+# Rayon scheduling than on our narrow observations (sysinfo issue #1352).
+sysinfo = "0.34.2"
 sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "uuid", "macros", "time", "json", "migrate"] }
 tar = "0.4.46"
 thiserror = "2"
