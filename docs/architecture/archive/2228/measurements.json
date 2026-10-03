@@ -1,0 +1,49 @@
+{
+  "schema_version": "gateway-resource-acceptance/v1",
+  "runtime_source": "65e96e65e53459783e700873006f3d73d1aa31ec",
+  "exact_test_source": "fe691ea61b7c6bbb8a837d973a4c44491c25d1ec",
+  "strict_ac003": "UNVERIFIED",
+  "comparison_limitations": [
+    "C8 CPU is observed batch cost divided by8, not individual causal attribution.",
+    "CPU quantized to CLK_TCK; cgroup aligned to nearest200ms sample.",
+    "P95 of10 batch means has limited precision; retained raw samples include all outcomes.",
+    "Storage includes warmup and measured traffic; physical page growth is not JSON payload length.",
+    "PSS is sequential sampled proportional memory; allocator retained pages are not per-request allocations."
+  ],
+  "artifacts": [
+    {
+      "file": "comparison.json",
+      "sha256": "962d7b93791319033808184123bc5626b4b1a85cff025327a96baf805633da51"
+    },
+    {
+      "file": "long-candidate-1/summary.json",
+      "sha256": "1f66db3c8e9da4b62c29511fa28eff1dfbdd708152845bcb20b4be0408452374"
+    },
+    {
+      "file": "live-gap-fixture/evidence-5/receipt.json",
+      "sha256": "e5485916e8a94ff28deed3795515a18abcacedad46a45856b571c7f376178da1"
+    },
+    {
+      "file": "real-log-audit-1/receipt.json",
+      "sha256": "29a5398d85be659241cbaaf220f45e2ae506bd6ec88c8452cb1074bcc8a64614"
+    },
+    {
+      "file": "real-log-audit-1/workload-counts.json",
+      "sha256": "f8e4e376486e7bfdc396a8b3214b4d29ac60bd9e0b2a1a7b82e16a04e3d21509"
+    },
+    {
+      "file": "http-scope-audit-1/receipt.json",
+      "sha256": "aab1d8c2db31ac1dc394fa754bb47cab80cc5779785411c26c222ac209d9ecae"
+    }
+  ],
+  "aggregate_files": [
+    {
+      "file": "mock-measurements.jsonl",
+      "sha256": "c56f3b788f7a7483a978415e011edf83d60f08f9c6d280c7964a16b7d74b7d59"
+    },
+    {
+      "file": "long-measurements.json",
+      "sha256": "2447b25eddaeddb19e17355ccc8163d25b4263f465f7af03390cd4fdf8740017"
+    }
+  ]
+}
