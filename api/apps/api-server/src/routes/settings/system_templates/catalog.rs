@@ -203,43 +203,57 @@ pub(crate) async fn resolve(
                 .official_catalog_source
                 .download_artifact_for_workspace(actor.current_workspace_id, &located.entry)
                 .await?;
-            let signature = downloaded
-                .descriptor
-                .signature
-                .as_ref()
-                .context("application_template_signature_missing")?;
-            let field = |key: &str| {
-                signature
-                    .get(key)
-                    .and_then(Value::as_str)
-                    .context("application_template_signature_field")
-            };
-            plugin_framework::verify_trusted_ed25519_artifact(
-                &downloaded.artifact_bytes,
-                downloaded
-                    .descriptor
-                    .expected_checksum
-                    .as_deref()
-                    .context("application_template_checksum_missing")?,
-                field("algorithm")?,
-                field("key_id")?,
-                field("signature")?,
+            let package = decode_verified_archive(
+                &downloaded,
+                metadata["template_id"].as_str().unwrap_or_default(),
+                request.release_version,
                 &dependencies.official_plugin_source.trusted_public_keys(),
-            )
-            .map_err(|_| {
-                crate::official_extension_catalog::OfficialExtensionArtifactError::SignatureInvalid
-            })?;
-            let package = archive::decode(&downloaded.artifact_bytes)?;
-            let release = package
-                .release
-                .as_ref()
-                .context("application_template_release_missing")?;
-            ensure!(
-                release.template_id == metadata["template_id"].as_str().unwrap_or_default()
-                    && release.release_version == request.release_version,
-                "application_template_release_mismatch"
-            );
+            )?;
             Ok(package)
         }
     }
+}
+
+pub(crate) fn decode_verified_archive(
+    downloaded: &crate::official_extension_catalog::DownloadedOfficialExtensionArtifact,
+    template_id: &str,
+    release_version: u64,
+    trusted_keys: &[plugin_framework::TrustedPublicKey],
+) -> Result<PortableTemplatePackage> {
+    let signature = downloaded
+        .descriptor
+        .signature
+        .as_ref()
+        .context("application_template_signature_missing")?;
+    let field = |key: &str| {
+        signature
+            .get(key)
+            .and_then(Value::as_str)
+            .context("application_template_signature_field")
+    };
+    plugin_framework::verify_trusted_ed25519_artifact(
+        &downloaded.artifact_bytes,
+        downloaded
+            .descriptor
+            .expected_checksum
+            .as_deref()
+            .context("application_template_checksum_missing")?,
+        field("algorithm")?,
+        field("key_id")?,
+        field("signature")?,
+        trusted_keys,
+    )
+    .map_err(|_| {
+        crate::official_extension_catalog::OfficialExtensionArtifactError::SignatureInvalid
+    })?;
+    let package = archive::decode(&downloaded.artifact_bytes)?;
+    let release = package
+        .release
+        .as_ref()
+        .context("application_template_release_missing")?;
+    ensure!(
+        release.template_id == template_id && release.release_version == release_version,
+        "application_template_release_mismatch"
+    );
+    Ok(package)
 }

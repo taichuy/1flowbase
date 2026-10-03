@@ -142,3 +142,57 @@ fn reference_marker_with_other_keys_is_ordinary_user_data() {
         "business-value"
     );
 }
+
+#[test]
+fn official_download_verifies_exact_zip_bytes_and_pinned_release() {
+    use crate::official_extension_catalog::{
+        DownloadedOfficialExtensionArtifact, OfficialExtensionArtifactDescriptor,
+    };
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use ed25519_dalek::{
+        pkcs8::{spki::der::pem::LineEnding, EncodePublicKey},
+        Signer, SigningKey,
+    };
+    let key = SigningKey::from_bytes(&[33; 32]);
+    let bytes = archive::encode(&package()).unwrap();
+    let trusted = vec![plugin_framework::TrustedPublicKey {
+        key_id: "fixture".into(),
+        algorithm: "ed25519".into(),
+        public_key_pem: key
+            .verifying_key()
+            .to_public_key_pem(LineEnding::LF)
+            .unwrap(),
+    }];
+    let mut downloaded = DownloadedOfficialExtensionArtifact {
+        file_name: "demo.zip".into(),
+        descriptor: OfficialExtensionArtifactDescriptor {
+            locator_kind: "github_release_asset".into(),
+            locator: "https://example.test/demo.zip".into(),
+            expected_checksum: Some(archive::checksum(&bytes)),
+            signature: Some(
+                json!({"algorithm":"ed25519","key_id":"fixture","signature":STANDARD.encode(key.sign(&bytes).to_bytes())}),
+            ),
+            platform: None,
+        },
+        artifact_bytes: bytes,
+    };
+    assert!(
+        super::catalog::decode_verified_archive(&downloaded, "@test/demo", 2, &trusted).is_ok()
+    );
+    assert!(
+        super::catalog::decode_verified_archive(&downloaded, "@test/demo", 3, &trusted).is_err()
+    );
+    assert!(
+        super::catalog::decode_verified_archive(&downloaded, "@other/demo", 2, &trusted).is_err()
+    );
+    assert!(super::catalog::decode_verified_archive(&downloaded, "@test/demo", 2, &[]).is_err());
+    downloaded.artifact_bytes.push(0);
+    assert!(
+        super::catalog::decode_verified_archive(&downloaded, "@test/demo", 2, &trusted).is_err()
+    );
+    // Updating only the public checksum must not allow a forged archive.
+    downloaded.descriptor.expected_checksum = Some(archive::checksum(&downloaded.artifact_bytes));
+    assert!(
+        super::catalog::decode_verified_archive(&downloaded, "@test/demo", 2, &trusted).is_err()
+    );
+}
