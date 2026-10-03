@@ -180,3 +180,69 @@ async fn observed_nodes_are_deduplicated_without_reassigning_the_client_capture(
     assert!(records.iter().all(|r| r.node_run_id.is_none()));
     assert_eq!(raw(&records, "submitted"), b"{}");
 }
+
+struct PausedGroupSink {
+    groups: Arc<Mutex<Vec<Vec<ClientTrajectoryFact>>>>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+#[async_trait::async_trait]
+impl classify::FactSink for PausedGroupSink {
+    async fn push(&mut self, _fact: ClientTrajectoryFact) {
+        panic!("Step facts must use the natural group");
+    }
+    async fn push_group(&mut self, facts: Vec<ClientTrajectoryFact>) {
+        let first = {
+            let mut groups = self.groups.lock().unwrap();
+            groups.push(facts);
+            groups.len() == 1
+        };
+        if first {
+            self.entered.notify_one();
+            self.release.notified().await;
+        }
+    }
+}
+#[tokio::test]
+async fn classifier_natural_groups_wait_before_visiting_next_history_item() {
+    let groups = Arc::new(Mutex::new(Vec::new()));
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut sink = PausedGroupSink {
+        groups: groups.clone(),
+        entered: entered.clone(),
+        release: release.clone(),
+    };
+    let task = tokio::spawn(async move {
+        let mut classifier = classify::Classifier::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            None,
+            ClientTrajectoryTransport::Http,
+        );
+        classifier
+            .observe_into(
+                ClientTrajectoryFrameKind::Request,
+                serde_json::from_slice(&long_request()).unwrap(),
+                "2026-09-22T00:00:00Z",
+                &mut sink,
+            )
+            .await;
+    });
+    entered.notified().await;
+    assert_eq!(groups.lock().unwrap().len(), 1);
+    assert!(!task.is_finished());
+    release.notify_one();
+    task.await.unwrap();
+    let groups = groups.lock().unwrap();
+    assert_eq!(groups.len(), 601);
+    for group in groups.iter() {
+        let ClientTrajectoryFact::Step { step } = &group[0] else {
+            panic!("group begins with Step")
+        };
+        assert!(group[1..].iter().all(|fact| matches!(fact, ClientTrajectoryFact::Section { step_id, section, .. } if *step_id == step.id && section != "raw")));
+        assert!(
+            matches!(group.last().unwrap(), ClientTrajectoryFact::Section { section, .. } if section == "timing")
+        );
+    }
+}

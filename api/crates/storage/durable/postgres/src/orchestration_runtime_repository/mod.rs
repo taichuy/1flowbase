@@ -423,6 +423,12 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     ) -> Result<()> {
         self.append_client_trajectory_fact(input).await
     }
+    async fn append_client_trajectory_group(
+        &self,
+        inputs: &[AppendClientTrajectoryInput],
+    ) -> Vec<Result<()>> {
+        self.append_client_trajectory_fact_group(inputs).await
+    }
     async fn append_client_trajectory_archive(
         &self,
         input: &control_plane_contracts::ports::AppendClientTrajectoryArchiveInput,

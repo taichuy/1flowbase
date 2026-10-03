@@ -14,6 +14,18 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<()> {
         anyhow::bail!("append_client_trajectory not implemented")
     }
+    /// Ordered natural group; every fact commits independently and failures do not
+    /// suppress later facts. Results have exactly the input order and length.
+    async fn append_client_trajectory_group(
+        &self,
+        inputs: &[AppendClientTrajectoryInput],
+    ) -> Vec<anyhow::Result<()>> {
+        let mut results = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            results.push(self.append_client_trajectory(input).await);
+        }
+        results
+    }
     /// Internal writer: unbound captures are durable but unavailable to public readers.
     async fn append_client_trajectory_archive(
         &self,

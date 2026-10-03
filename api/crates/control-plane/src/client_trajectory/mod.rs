@@ -63,6 +63,16 @@ pub struct ClientTrajectoryRecorder {
 #[async_trait::async_trait]
 trait FactWriter: Send + Sync {
     async fn append(&self, input: &AppendClientTrajectoryInput) -> anyhow::Result<()>;
+    async fn append_group(
+        &self,
+        inputs: &[AppendClientTrajectoryInput],
+    ) -> Vec<anyhow::Result<()>> {
+        let mut results = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            results.push(self.append(input).await);
+        }
+        results
+    }
     async fn archive(
         &self,
         input: &AppendClientTrajectoryArchiveInput,
@@ -79,6 +89,12 @@ struct RepositoryWriter(Arc<dyn OrchestrationRuntimeRepository>);
 impl FactWriter for RepositoryWriter {
     async fn append(&self, input: &AppendClientTrajectoryInput) -> anyhow::Result<()> {
         self.0.append_client_trajectory(input).await
+    }
+    async fn append_group(
+        &self,
+        inputs: &[AppendClientTrajectoryInput],
+    ) -> Vec<anyhow::Result<()>> {
+        self.0.append_client_trajectory_group(inputs).await
     }
     async fn archive(
         &self,
@@ -265,6 +281,16 @@ async fn persist(
         observed_at: at,
         fact,
     };
+    let result = repository.append(&input).await;
+    account_persistence(&input, result, failed);
+}
+fn account_persistence(
+    input: &AppendClientTrajectoryInput,
+    result: anyhow::Result<()>,
+    failed: &mut u64,
+) {
+    let id = input.request_id;
+    let flow = input.flow_run_id;
     let kind = match &input.fact {
         ClientTrajectoryFact::Integrity { .. } => "integrity",
         ClientTrajectoryFact::NodeLink { .. } => "node_link",
@@ -272,7 +298,7 @@ async fn persist(
         ClientTrajectoryFact::Step { .. } => "step",
         ClientTrajectoryFact::Section { section, .. } => section.as_str(),
     };
-    let Err(error) = repository.append(&input).await else {
+    let Err(error) = result else {
         return;
     };
     let reason = match error.to_string().as_str() {
@@ -284,7 +310,7 @@ async fn persist(
         _ => "repository",
     };
     *failed = failed.saturating_add(1);
-    tracing::warn!(request_id = %id, flow_run_id = %scope.flow, fact_kind = kind, reason, "client trajectory fact persistence failed");
+    tracing::warn!(request_id = %id, flow_run_id = %flow, fact_kind = kind, reason, "client trajectory fact persistence failed");
 }
 struct PersistenceSink<'a> {
     repository: &'a dyn FactWriter,
@@ -305,6 +331,26 @@ impl classify::FactSink for PersistenceSink<'_> {
             self.failed,
         )
         .await;
+    }
+    async fn push_group(&mut self, facts: Vec<ClientTrajectoryFact>) {
+        let inputs: Vec<_> = facts
+            .into_iter()
+            .map(|fact| AppendClientTrajectoryInput {
+                flow_run_id: self.scope.flow,
+                node_run_id: self.scope.node,
+                request_id: self.id,
+                observed_at: self.at.to_owned(),
+                fact,
+            })
+            .collect();
+        let results = self.repository.append_group(&inputs).await;
+        let mut results = results.into_iter();
+        for input in &inputs {
+            let result = results
+                .next()
+                .unwrap_or_else(|| Err(anyhow::anyhow!("client trajectory group result missing")));
+            account_persistence(input, result, self.failed);
+        }
     }
 }
 
