@@ -1,24 +1,14 @@
-name: AI Gateway Protocol Conformance Gate
-
-on:
-  workflow_call:
-    inputs:
-      target_ref:
-        description: Candidate branch, tag, or SHA to validate
-        type: string
-        required: false
-        default: ''
-  workflow_dispatch:
-
+name: Gateway Current Dev Capture Admission OFF-ON
+'on':
+  workflow_dispatch: {}
 permissions:
   contents: read
-
+  actions: read
 concurrency:
-  group: ai-gateway-protocol-conformance-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: gateway-admission-diag-${{ github.ref }}
+  cancel-in-progress: false
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   CARGO_INCREMENTAL: '0'
   OPENAI_API_KEY: ''
   OPENAI_BASE_URL: ''
@@ -26,11 +16,10 @@ env:
   ANTHROPIC_AUTH_TOKEN: ''
   ANTHROPIC_BASE_URL: ''
   CLAUDE_CODE_OAUTH_TOKEN: ''
-
 jobs:
-  protocol-conformance:
+  admission-diag:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 110
     services:
       postgres:
         image: postgres:18.4
@@ -38,86 +27,66 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: 1flowbase
           POSTGRES_DB: 1flowbase
-        ports:
-          - 5432:5432
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres -d 1flowbase"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - name: Checkout candidate source
+      - name: Checkout exact baseline-semantic diagnostic source
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.target_ref || github.sha }}
-          fetch-depth: 1
-
-      - name: Resolve candidate source SHA
-        id: candidate_source
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # The candidate's paired-source lock is the single source of truth for the
-      # official provider revision. Hardcoding a ref here made cross-ref runs
-      # (workflow file from main, candidate from another branch) pair a stale
-      # official source with the candidate's fixtures.
-      - name: Resolve paired official provider revision
-        id: paired_official
-        shell: bash
-        run: >-
-          echo "revision=$(node -p
-          "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")"
-          >> "$GITHUB_OUTPUT"
-
-      - name: Checkout paired official provider source
-        uses: actions/checkout@v6
+          ref: 12454fd98de333fca48e476791d4b7f849d1a0bd
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Checkout immutable isolated controls
+        uses: actions/checkout@v5
         with:
-          repository: taichuy/1flowbase-official-plugins
-          ref: ${{ steps.paired_official.outputs.revision }}
-          path: tmp/ai-gateway-concurrency/official-source
-          fetch-depth: 1
-
-      - name: Setup Node.js 24
+          ref: ${{ github.sha }}
+          path: tmp/experiment-control
+          sparse-checkout: |
+            scripts/node/ai-gateway-concurrency/cloud-monitor-probe
+            .github/workflows
+          persist-credentials: false
+      - name: Setup Node24
         uses: actions/setup-node@v5
         with:
           node-version: 24
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Resolve PostgreSQL 18 backup toolchain
-        shell: bash
+      - name: Pure source and ordinary counter controls
         run: |
-          set -o pipefail
-          node scripts/node/postgres-toolchain/cli.js \
-            | grep -E '^API_POSTGRES_PG_(DUMP|RESTORE)_PATH=' \
-            >> "$GITHUB_ENV"
-
-      # Cache only compiler dependency state. Gate evidence and runtime provenance
-      # are still rebuilt and emitted by the repository-owned command below.
-      - name: Restore Rust dependency cache
+          set -euo pipefail
+          controls=tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe
+          out=tmp/test-governance/gateway-admission-diag/build
+          mkdir -p "$out"
+          node --test "$controls/admission-diag/_tests/"*.test.js "$controls/_tests/"*.test.js "$controls/duplicate-lock/_tests/"*.test.js "$controls/lock-scope/_tests/"*.test.js > "$out/pure-node-tests.log" 2>&1
+          python3 "$controls/_tests/sampler.test.py" > "$out/pure-sampler-tests.log" 2>&1
+          python3 "$controls/admission-diag/_tests/test_fixture_overlay.py" > "$out/pure-fixture-overlay-tests.log" 2>&1
+          node --check "$controls/admission-diag/run.js"
+          node --check "$controls/admission-diag/prepare-packages.js"
+      - name: Setup exact Rust toolchain on Actions only
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+      - name: Restore existing compiler dependency cache, do not create cache policy
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: ai-gateway-protocol-conformance
-          key: ${{ github.ref_name }}
-          save-if: true
-          cache-on-failure: true
-          cache-workspace-crates: true
-          workspaces: |
-            api -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/aliyun_bailian -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/anthropic -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/deepseek -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/gemini -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai_compatible -> target
-
-      - name: Prepare PostgreSQL 18 backup clients
-        shell: bash
+          key: codex/gateway-cpu-ci-20261001
+          save-if: false
+          workspaces: api -> target
+      - name: Configure only owned ephemeral PostgreSQL SQL statistics and backup clients
         run: |
+          set -euo pipefail
+          pg_container="$(docker ps --filter publish=5432 --format '{{.ID}}')"
+          test -n "$pg_container"
+          docker exec "$pg_container" psql -U postgres -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET shared_preload_libraries='pg_stat_statements'"
+          docker restart "$pg_container"
+          for attempt in $(seq 1 30);do
+            if docker exec "$pg_container" pg_isready -U postgres -d 1flowbase;then break;fi
+            sleep 1
+          done
           tools_dir="$RUNNER_TEMP/postgresql-18-tools"
           mkdir -p "$tools_dir"
-          for tool in pg_dump pg_restore; do
+          for tool in pg_dump pg_restore;do
             sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
           #!/bin/sh
           exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
@@ -126,34 +95,57 @@ jobs:
           done
           echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
           echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-
-      - name: Run the single blocking AI Gateway quality command
-        id: protocol_conformance
-        shell: bash
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/cli.js run
-          --repo-root "$GITHUB_WORKSPACE"
-          --official-source-root "$GITHUB_WORKSPACE/tmp/ai-gateway-concurrency/official-source"
-          --database-url "postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase"
-
-      - name: Write aggregate-compatible AI Gateway report
-        if: always()
-        shell: bash
+      - name: Verify immutable official package artifact metadata
         env:
-          AI_GATEWAY_COMMAND_OUTCOME: ${{ steps.protocol_conformance.outcome }}
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/component-report.js
-          --repo-root "$GITHUB_WORKSPACE"
-          --command-outcome "$AI_GATEWAY_COMMAND_OUTCOME"
-
-      - name: Upload bounded protocol evidence
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=tmp/test-governance/gateway-admission-diag/build
+          gh api repos/taichuy/1flowbase/actions/artifacts/11242053254 > "$out/package-artifact-metadata.json"
+          node -e "const a=require('./$out/package-artifact-metadata.json');if(a.id!==11242053254||a.expired||a.workflow_run.id!==37036697535||a.workflow_run.head_sha!=='e6f04ad83441a0c5b9baa0f03b9eae235b8c9058'||a.digest!=='sha256:9bb7a475d85f4c5f4af3660e3bb47a6149dc4edc4a5984cacb911ceda1169489')throw Error('immutable package archive mismatch')"
+      - name: Download official package archive; previous API binaries never reused
+        uses: actions/download-artifact@v8
+        with:
+          name: gateway-identity-reuse-build-37036697535
+          run-id: 37036697535
+          github-token: ${{ github.token }}
+          path: tmp/admission-package-reuse
+      - name: Verify package bytes only, gate OFF and ON, compile one fresh release binary
+        timeout-minutes: 90
+        env:
+          API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+          DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+          BOOTSTRAP_ROOT_ACCOUNT: root
+          BOOTSTRAP_ROOT_PASSWORD: change-me
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          controls=tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/admission-diag
+          node "$controls/prepare-packages.js"
+          bash "$controls/ci-gates.sh" "$controls"
+      - name: Same diagnostic binary C8 OFF1 ON1 ON2 OFF2, ordinary counters only
+        timeout-minutes: 12
+        env:
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: node tmp/experiment-control/scripts/node/ai-gateway-concurrency/cloud-monitor-probe/admission-diag/run.js
+      - name: Upload every successful or failed synthetic result
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: test-governance-ai-gateway-protocol-conformance-${{ steps.candidate_source.outputs.sha }}
+          name: gateway-admission-diag-raw-${{ github.run_id }}
           path: |
-            tmp/test-governance/ai-gateway-quality-gate/**
-            tmp/test-governance/ai-gateway-concurrency/**
-            tmp/test-governance/ai-gateway-protocol-conformance/**
-          if-no-files-found: error
+            tmp/test-governance/gateway-admission-diag/manifest.json
+            tmp/test-governance/gateway-admission-diag/summary.json
+            tmp/test-governance/gateway-admission-diag/O*/**
           retention-days: 14
+          if-no-files-found: warn
+      - name: Upload source gates and one fresh binary reuse receipt
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gateway-admission-diag-build-${{ github.run_id }}
+          path: |
+            tmp/test-governance/gateway-admission-diag/build/**
+            tmp/protocol-reuse/**
+          retention-days: 7
+          if-no-files-found: warn

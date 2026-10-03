@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "purpose": "single-variable same-Value canonical identity reuse; resource gain unmeasured",
+  "baseline": "60308d4fe3b85b6317653d5c6bda834609f4ad3a",
+  "candidate": "5a7f004b0d7ab0ab61d60c2f8cbff2f1fff77dbd",
+  "baseline_api_tree": "95fba71501566f77f45a3c9da7f54ebeb6f41154",
+  "candidate_api_tree": "d4798adb7f01255555182e2cdda0ee5f369901ee",
+  "provider_source": "997c705b3c564c93d2fc49b973e0b5bbdb759cdc",
+  "provider_artifact": 11221429445,
+  "provider_artifact_run": 36992344470,
+  "provider_artifact_name": "gateway-resource-safe-build-36992344470",
+  "provider_artifact_sha256": "ac699d8a43379055c065e2c067218134d4f9e2341464f00dfdfb53a854720351",
+  "provider_packages_sha256": {
+    "openai": "8d5a338447566d8ac26a2572c2d536fad37838e766572df4dd23686965b57b3e",
+    "anthropic": "07af38ee7aff8ebd59894f5884a1c5cb7861248a87710e1437d13db429b79642",
+    "openai_compatible": "33c99266767d7d8cbe8b27c639065d5eeda854453dc8c9cc04c7ac8f64db0516"
+  },
+  "rust_toolchain": "1.98.1",
+  "profile": "release",
+  "features": "default",
+  "allocator": "unchanged",
+  "codegen": "unchanged; no RUSTFLAGS override",
+  "binary_reuse": "No exact-current-dev binary artifact verified; API binaries must be built on Actions, never dot cloud computer",
+  "security": {
+    "sampler_identity": "ordinary runner only",
+    "sudo": false,
+    "new_capabilities": false,
+    "perf": false,
+    "maps": false,
+    "mem": false,
+    "stack": false,
+    "sysctl": false,
+    "unavailable_PG_PSS_IO": "null; permission denial cached; no retry using other identity"
+  },
+  "sampling": {
+    "interval_ms": 500,
+    "root_identity": "PID/start_ticks pinned at startup and rechecked before every snapshot",
+    "CPU_average": "single core100%; report window seconds and CPU ticks",
+    "sampled_peak": "actual interval average >=100ms; include interval/window",
+    "incomplete_identity": "null plus captured lower bound; never zero/sum/average",
+    "whole_fixture_denominator": null
+  },
+  "protocol_fixture": {
+    "text_bytes": 524288,
+    "history_items": 128,
+    "response_deltas": 256,
+    "gap_ms": 10,
+    "api_pool_max": 5,
+    "concurrency": 8,
+    "wire_capture": false,
+    "timing_detail_capture": 0,
+    "live_lock_watch": false,
+    "real_model_requests": 0
+  },
+  "order": [
+    "A1",
+    "B1",
+    "B2",
+    "A2",
+    "A3",
+    "B3",
+    "B4",
+    "A4"
+  ],
+  "requests": {
+    "fixtures": 8,
+    "per_fixture_gateway_warm": 8,
+    "per_fixture_gateway_measured": 8,
+    "per_fixture_direct_before": 8,
+    "per_fixture_direct_after": 8,
+    "per_fixture_native_warm_status": 8,
+    "per_fixture_native_measured_status": 8,
+    "implicit_model_retry": 0,
+    "implicit_native_status_retry": 0,
+    "total_gateway_measured": 64,
+    "per_arm_gateway_measured": 32,
+    "total_gateway_warm": 64,
+    "total_direct_mock": 128,
+    "total_native_status_reads": 128,
+    "total_stream_and_native_http": 384,
+    "scope_excludes": "fixture-owned bootstrap/setup/cleanup management HTTP; all synthetic"
+  },
+  "functional_gates": {
+    "new_pure_Rust_goldens": 6,
+    "Rust_filters": [
+      "canonical_runtime_json",
+      "client_semantic",
+      "client_dense_directory",
+      "runtime_json_storage_tests",
+      "sequencing::tests"
+    ],
+    "required_integrity": "original Value/byte-size collision and foreign scope refusal; NUL/literal escape/numbers; key/array ordering; section/history/cursor/partial fact commits; sequence rollback/overflow/concurrency; untouched protocol owner",
+    "blocking_stage": "all positive/negative storage gates and exact source/SQL invariants before release pair",
+    "full_protocol_merge_gate": "not replaced by storage tests or resource mock; remains required before PR"
+  },
+  "hash_count_proof": {
+    "baseline_client_section": "S + K complete canonical traversals/hashes",
+    "candidate_client_section": "S complete traversals/hashes",
+    "saved": "K where write_section independently puts canonical body; standard timing/overview child still1; other callers1 unchanged",
+    "observed_K": "outside-foreground before/after count of body_kind=content and empty content_path; no saved CPU inferred from count"
+  },
+  "acceptance": {
+    "performance": "same-direction CPU/request gain across both ABBA blocks beyond noise; no CPU percentage until measured",
+    "metrics": "API/PG CPU where available, average/peak/windows, RSS/PSS, SQL/WAL/process IO/file allocation separately; missing fields disclosed",
+    "latency": "TTFT/total P95/P99 with sample N32/arm and window variability; up to500ms tradeoff requires evidence; no averages-only acceptance",
+    "negative": "no repeatable benefit => no PR; failed/incomplete gates => no PR",
+    "publication": "draft PR to current latest dev only after concrete gain and full relevant gates; no merge/deploy"
+  },
+  "stop": [
+    "scope/hash/size/original/cursor/sequence mismatch",
+    "second Value/hash injection possible",
+    "resource or access rejection",
+    "need schema/history/permission/protocol change",
+    "failed run without materially changed fix",
+    "no repeatable gain"
+  ]
+}
