@@ -182,26 +182,34 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<PortableTemplatePackage> {
     )?;
     materialize(manifest, &files)
 }
-pub(crate) fn load_directory(root: &Path) -> Result<PortableTemplatePackage> {
-    let manifest = read_manifest(&std::fs::read(root.join("manifest.json"))?)?;
+pub(crate) async fn load_directory(root: &Path) -> Result<PortableTemplatePackage> {
+    let bytes = tokio::fs::read(root.join("manifest.json")).await?;
+    let manifest = tokio::task::spawn_blocking(move || read_manifest(&bytes))
+        .await
+        .context("application_template_manifest_decode_task")??;
     let mut files = BTreeMap::new();
     for file in &manifest.files {
         let mut path = root.to_path_buf();
         for part in file.path.split('/') {
             path.push(part);
             ensure!(
-                !std::fs::symlink_metadata(&path)?.file_type().is_symlink(),
+                !tokio::fs::symlink_metadata(&path)
+                    .await?
+                    .file_type()
+                    .is_symlink(),
                 "application_template_archive_symlink"
             );
         }
-        let metadata = std::fs::metadata(&path)?;
+        let metadata = tokio::fs::metadata(&path).await?;
         ensure!(
             metadata.is_file(),
             "application_template_archive_nonregular"
         );
-        files.insert(file.path.clone(), std::fs::read(path)?);
+        files.insert(file.path.clone(), tokio::fs::read(path).await?);
     }
-    materialize(manifest, &files)
+    tokio::task::spawn_blocking(move || materialize(manifest, &files))
+        .await
+        .context("application_template_directory_decode_task")?
 }
 fn put(files: &mut BTreeMap<String, Vec<u8>>, path: String, value: Value) -> Result<Value> {
     safe_path(&path)?;

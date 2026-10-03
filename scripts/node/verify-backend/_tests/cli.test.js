@@ -526,11 +526,19 @@ test('root_1998_ac_007_cross_layer_postgres_host_enters_all_four_ci_partitions',
     assert.equal(shard.nextestPartition, `hash:${index + 1}/4`);
     assert.deepEqual(shard.packages, ['storage-durable-postgres', 'control-plane-postgres-tests']);
     const commands = buildCommands({ cargoJobs: 4, cargoTestThreads: 2, repoRoot: '/repo-root', env: {}, target: 'test', shard: shard.key });
-    assert.equal(commands.length, 1);
+    assert.equal(commands.length, index === 0 ? 2 : 1);
     assert.deepEqual(commands[0].args, [
       'nextest', 'run', '--package', 'storage-durable-postgres', '--package', 'control-plane-postgres-tests',
       '--partition', `hash:${index + 1}/4`, '--test-threads', '2', '--no-fail-fast', '--no-tests=fail',
     ]);
+    if (index === 0) {
+      assert.deepEqual(commands[1], {
+        label: 'model-usage-report-postgres',
+        command: process.execPath,
+        args: ['--test', '/repo-root/scripts/node/model-usage-report/integration/postgres.test.js'],
+        cwd: '/repo-root',
+      });
+    }
   }
 });
 

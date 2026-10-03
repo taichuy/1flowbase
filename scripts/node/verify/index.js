@@ -250,7 +250,18 @@ function buildBackendCommands({
   }
 
   if (target === 'clippy' || target === 'test' || target === 'check') {
-    return [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard })];
+    const commands = [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard })];
+    // The SQL report needs PostgreSQL, not a private deployed page. Run once in
+    // the database-backed batch, and keep it inside the candidate gate receipt.
+    if (target === 'test' && shard === 'storage-postgres-1-of-4') {
+      commands.push({
+        label: 'model-usage-report-postgres',
+        command: process.execPath,
+        args: ['--test', path.join(repoRoot, 'scripts/node/model-usage-report/integration/postgres.test.js')],
+        cwd: repoRoot,
+      });
+    }
+    return commands;
   }
 
   if (target === 'image-llm-vision') {

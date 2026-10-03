@@ -46,11 +46,11 @@ function setup(props: { cursor?: string; q?: string } = {}) {
       </QueryClientProvider>
     </App>
   );
-  const result = render(view(props));
+  const utils = render(view(props));
   return {
-    ...result,
+    ...utils,
     rerenderSection: (route: { cursor?: string; q?: string }) =>
-      result.rerender(view(route))
+      utils.rerender(view(route))
   };
 }
 async function openPreview() {

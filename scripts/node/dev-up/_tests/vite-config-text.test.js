@@ -28,6 +28,21 @@ function sourceFiles(directory) {
   });
 }
 
+function assertPreReactModuleBoundary(bootstrapSource, recoverySource) {
+  const staticImports = [
+    ...bootstrapSource.matchAll(
+      /^\s*import\s+(?:[^;]*?\s+from\s+)?['"]([^'"]+)['"]/gmu,
+    ),
+  ].map((match) => match[1]);
+  assert.deepEqual(staticImports, ['./app/bootstrap/dev-module-recovery']);
+  // The sole eager dependency is a browser-only recovery helper with no further
+  // module edges. Reject local transitive imports as well as heavy packages.
+  assert.doesNotMatch(
+    recoverySource,
+    /^\s*import\s|^\s*export\s+[^;]*?\s+from\s+['"]|\b(?:import|require)\s*\(/mu,
+  );
+}
+
 test("vite config uses the repo default frontend port", () => {
   const viteConfigSource = fs.readFileSync(viteConfigPath, "utf8");
 
@@ -153,7 +168,14 @@ test("DRS-003 pre-React bootstrap never leaves an empty root after module failur
   assert.match(indexSource, /data-testid="application-bootstrap-shell"/u);
   assert.match(indexSource, /class="application-bootstrap-shell__spinner"/u);
   assert.match(indexSource, />thinking<\/span>/u);
-  assert.doesNotMatch(bootstrapSource, /^import\s/mu);
+  const recoverySource = fs.readFileSync(
+    path.resolve(webSourceRoot, 'app/bootstrap/dev-module-recovery.ts'),
+    'utf8',
+  );
+  assertPreReactModuleBoundary(bootstrapSource, recoverySource);
+  assert.match(bootstrapSource, /if \(recoverDevModuleGraph\(error\)\) return/u);
+  assert.match(bootstrapSource, /resetDevModuleRecovery\(\)/u);
+  assert.match(bootstrapSource, /root\.replaceChildren\(alert\)/u);
   assert.doesNotMatch(bootstrapSource, /renderBootStage/u);
   assert.match(bootstrapSource, /renderBootFailure/u);
   assert.match(
@@ -176,6 +198,32 @@ test("DRS-003 pre-React bootstrap never leaves an empty root after module failur
     `${indexSource}\n${bootstrapSource}\n${appSource}\n${runtimeBootstrapSource}`,
     /应用正在启动/u,
   );
+});
+
+test('DRS-003 eager boundary rejects new bootstrap or recovery module dependencies', () => {
+  const bootstrap = "import { recoverDevModuleGraph } from './app/bootstrap/dev-module-recovery';";
+  const recovery = 'export function recoverDevModuleGraph() { return false; }';
+  assert.doesNotThrow(() => assertPreReactModuleBoundary(bootstrap, recovery));
+  for (const dependency of [
+    "import React from 'react';",
+    "import './heavy-local-module';",
+  ]) {
+    assert.throws(() =>
+      assertPreReactModuleBoundary(`${bootstrap}\n${dependency}`, recovery),
+    );
+    assert.throws(() =>
+      assertPreReactModuleBoundary(bootstrap, `${dependency}\n${recovery}`),
+    );
+  }
+  for (const dependency of [
+    "export { App } from './App';",
+    "void import('./App');",
+    "const React = require('react');",
+  ]) {
+    assert.throws(() =>
+      assertPreReactModuleBoundary(bootstrap, `${dependency}\n${recovery}`),
+    );
+  }
 });
 
 test("DV-F07 host UI imports Ant icons through deterministic leaf modules", () => {

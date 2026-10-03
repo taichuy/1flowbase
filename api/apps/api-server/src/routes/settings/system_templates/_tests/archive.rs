@@ -347,3 +347,34 @@ fn official_download_verifies_exact_zip_bytes_and_pinned_release() {
         super::catalog::decode_verified_archive(&downloaded, "@test/demo", 2, &trusted).is_err()
     );
 }
+
+#[tokio::test]
+async fn asynchronous_upload_decode_preserves_package_and_invalid_input_errors() {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let expected = package();
+    let encoded = STANDARD.encode(archive::encode(&expected).unwrap());
+    let actual = super::catalog::decode_uploaded_archive(encoded)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(actual).unwrap(),
+        serde_json::to_value(expected).unwrap()
+    );
+    for invalid in [
+        "invalid base64!".to_owned(),
+        STANDARD.encode(b"invalid zip"),
+    ] {
+        let error = super::catalog::decode_uploaded_archive(invalid)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+                Some(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "application_template_archive_invalid"
+                ))
+            ),
+            "{error:?}"
+        );
+    }
+}

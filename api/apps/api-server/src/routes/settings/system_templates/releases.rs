@@ -13,12 +13,7 @@ use control_plane::{
     ports::FrontstagePageRepository,
 };
 use serde_json::Value;
-use std::{
-    collections::BTreeSet,
-    io::Read,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{collections::BTreeSet, io::Read, path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 pub(crate) struct BuiltinRelease {
@@ -27,74 +22,106 @@ pub(crate) struct BuiltinRelease {
     pub checksum: String,
 }
 impl BuiltinRelease {
-    pub fn load(&self) -> Result<PortableTemplatePackage> {
-        if self.root.join("template.zip").is_file() {
-            archive::decode(&std::fs::read(self.root.join("template.zip"))?)
+    pub async fn load(&self) -> Result<PortableTemplatePackage> {
+        let zip_path = self.root.join("template.zip");
+        if tokio::fs::metadata(&zip_path)
+            .await
+            .is_ok_and(|m| m.is_file())
+        {
+            let bytes = tokio::fs::read(zip_path).await?;
+            tokio::task::spawn_blocking(move || archive::decode(&bytes))
+                .await
+                .context("application_template_builtin_decode_task")?
         } else {
-            archive::load_directory(&self.root)
+            archive::load_directory(&self.root).await
         }
     }
 }
-pub(crate) fn discover(root: &str) -> Result<Vec<BuiltinRelease>> {
-    if root.is_empty() || !Path::new(root).exists() {
+pub(crate) async fn discover(root: &str) -> Result<Vec<BuiltinRelease>> {
+    if root.is_empty() || !tokio::fs::try_exists(root).await? {
         return Ok(Vec::new());
+    }
+    enum MetadataInput {
+        Zip(std::fs::File),
+        Manifest(Vec<u8>),
     }
     let mut results = Vec::new();
     let mut ids = BTreeSet::new();
-    for organization in std::fs::read_dir(root)? {
-        let organization = organization?;
-        if !organization.file_type()?.is_dir()
+    let mut organizations = tokio::fs::read_dir(root).await?;
+    while let Some(organization) = organizations.next_entry().await? {
+        if !organization.file_type().await?.is_dir()
             || !organization.file_name().to_string_lossy().starts_with('@')
         {
             continue;
         }
-        for template in std::fs::read_dir(organization.path())? {
-            let template = template?;
-            if !template.file_type()?.is_dir() {
+        let mut templates = tokio::fs::read_dir(organization.path()).await?;
+        while let Some(template) = templates.next_entry().await? {
+            if !template.file_type().await?.is_dir() {
                 continue;
             }
             let root = template.path();
-            let (bytes, digest) = if root.join("template.zip").is_file() {
-                let file = std::fs::File::open(root.join("template.zip"))?;
-                let mut zip = zip::ZipArchive::new(file)?;
-                let mut entry = zip.by_name("manifest.json")?;
-                let mut bytes = Vec::new();
-                entry.read_to_end(&mut bytes)?;
-                // Metadata identity is stable without materializing each package.
-                let digest = archive::checksum(&bytes);
-                (bytes, digest)
+            let zip_path = root.join("template.zip");
+            let zipped = tokio::fs::metadata(&zip_path)
+                .await
+                .is_ok_and(|m| m.is_file());
+            let input = if zipped {
+                // Open asynchronously, then read only ZIP metadata on the blocking
+                // pool instead of buffering every package while listing releases.
+                MetadataInput::Zip(tokio::fs::File::open(zip_path).await?.into_std().await)
             } else {
-                let bytes = std::fs::read(root.join("manifest.json"))
-                    .context("application_template_package_missing")?;
-                let digest = archive::checksum(&bytes);
-                (bytes, digest)
+                MetadataInput::Manifest(
+                    tokio::fs::read(root.join("manifest.json"))
+                        .await
+                        .context("application_template_package_missing")?,
+                )
             };
-            let manifest = archive::read_manifest(&bytes)?;
-            let release: PortableTemplateRelease = serde_json::from_value(
-                manifest
-                    .package
-                    .get("release")
-                    .cloned()
-                    .context("application_template_release_missing")?,
-            )?;
-            validate_application_template_release(&release)?;
+            let item = tokio::task::spawn_blocking(move || {
+                let bytes = match input {
+                    MetadataInput::Zip(file) => {
+                        let mut zip = zip::ZipArchive::new(file)?;
+                        let mut entry = zip.by_name("manifest.json")?;
+                        let mut manifest = Vec::new();
+                        entry.read_to_end(&mut manifest)?;
+                        manifest
+                    }
+                    MetadataInput::Manifest(bytes) => bytes,
+                };
+                // Metadata identity is stable without materializing each package.
+                let checksum = archive::checksum(&bytes);
+                let manifest = archive::read_manifest(&bytes)?;
+                let release: PortableTemplateRelease = serde_json::from_value(
+                    manifest
+                        .package
+                        .get("release")
+                        .cloned()
+                        .context("application_template_release_missing")?,
+                )?;
+                validate_application_template_release(&release)?;
+                Ok::<_, anyhow::Error>(BuiltinRelease {
+                    root,
+                    release,
+                    checksum,
+                })
+            })
+            .await
+            .context("application_template_discovery_decode_task")??;
             ensure!(
-                ids.insert(release.template_id.clone()),
+                ids.insert(item.release.template_id.clone()),
                 "application_template_duplicate_id:{}",
-                release.template_id
+                item.release.template_id
             );
-            results.push(BuiltinRelease {
-                root,
-                release,
-                checksum: digest,
-            });
+            results.push(item);
         }
     }
     results.sort_by(|a, b| a.release.template_id.cmp(&b.release.template_id));
     Ok(results)
 }
-pub(crate) fn load_packages(root: &str) -> Result<Vec<PortableTemplatePackage>> {
-    discover(root)?.into_iter().map(|r| r.load()).collect()
+pub(crate) async fn load_packages(root: &str) -> Result<Vec<PortableTemplatePackage>> {
+    let mut packages = Vec::new();
+    for release in discover(root).await? {
+        packages.push(release.load().await?);
+    }
+    Ok(packages)
 }
 
 pub(crate) async fn synchronize_at_startup(
@@ -134,7 +161,7 @@ pub(crate) async fn synchronize_at_startup(
             },
     };
     let adapter = TemplateAdapter(dependencies);
-    for package in load_packages(&state.application_template_root)? {
+    for package in load_packages(&state.application_template_root).await? {
         let template_id = package
             .release
             .as_ref()
