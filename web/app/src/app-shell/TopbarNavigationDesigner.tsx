@@ -78,9 +78,7 @@ export function TopbarNavigationItemLabel({
       initialTitle: node.title ?? '',
       initialIcon: node.icon ?? '',
       initialTooltip: node.tooltip ?? '',
-      initialSlug: node.slug ?? '',
-      nodeKind: node.kind,
-      showSlug: true
+      nodeKind: node.kind
     });
   };
 
@@ -89,7 +87,6 @@ export function TopbarNavigationItemLabel({
     const values = await form.validateFields();
     await mutations.renameNode(node.id, {
       title: values.title?.trim() ?? '',
-      slug: values.slug?.trim() ?? '',
       icon: values.icon ?? null,
       tooltip: values.tooltip ?? null
     });
@@ -276,7 +273,6 @@ export function TopbarNavigationItemLabel({
         isOperationPending={mutations.isPending}
         onCancel={() => setDialog(null)}
         onIconPickerOpenChange={setIconPickerOpen}
-        onRefreshSlug={() => form.setFieldValue('slug', randomSlug())}
         onSubmit={() => {
           void submitEdit();
         }}
