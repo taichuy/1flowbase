@@ -13,15 +13,12 @@ describe('route truth layer', () => {
     expect(APP_ROUTES.map((route) => route.id)).toEqual([
       'home',
       'application-detail',
-      'templates',
       'settings',
       'me',
       'sign-in'
     ]);
-    expect(APP_ROUTES.find((route) => route.id === 'templates')).toMatchObject({
-      path: '/templates',
-      navLabelKey: 'auto.templates'
-    });
+    expect(APP_ROUTES.some((route) => route.path === '/templates')).toBe(false);
+    expect(APP_ROUTES.find((route) => route.id === 'home')?.chromeSlot).toBe('hidden');
     expect(getSelectedRouteId('/settings')).toBe('settings');
     expect(getSelectedRouteId('/settings/docs')).toBe('settings');
     expect(getSelectedRouteId('/settings/roles')).toBe('settings');
@@ -36,8 +33,8 @@ describe('route truth layer', () => {
     );
     expect(getSelectedRouteId('/frontstage/workspace-1')).toBe('home');
     expect(getSelectedRouteId('/frontstage/workspace-1/page-1')).toBe('home');
-    expect(getSelectedRouteId('/templates')).toBe('templates');
-    expect(getSelectedRouteId('/templates/agent-flow')).toBe('templates');
+    expect(getSelectedRouteId('/templates')).toBe('home');
+    expect(getSelectedRouteId('/templates/agent-flow')).toBe('home');
     expect(getSelectedRouteId('/templates-foo')).toBe('home');
     expect(getSelectedRouteId('/applications/app-1')).toBe('home');
     expect(getSelectedRouteId('/applications/app-1/orchestration')).toBe('home');
@@ -52,7 +49,6 @@ describe('route truth layer', () => {
       APP_ROUTES.find((route) => route.id === 'application-detail')?.permissionKey
     ).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'embedded-apps')).toBeUndefined();
-    expect(APP_ROUTES.find((route) => route.id === 'templates')?.permissionKey).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'settings')?.permissionKey).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'sign-in')?.guard).toBe('public-only');
   });

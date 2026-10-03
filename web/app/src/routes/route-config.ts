@@ -23,8 +23,8 @@ export const APP_ROUTES: AppRouteDefinition[] = [
   {
     id: 'home',
     path: '/',
-    navLabelKey: 'auto.workbench',
-    chromeSlot: 'primary',
+    navLabelKey: null,
+    chromeSlot: 'hidden',
     selectedMatchers: [(pathname) => pathname === '/'],
     permissionKey: null,
     guard: 'session-required'
@@ -36,19 +36,6 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     chromeSlot: 'hidden',
     selectedMatchers: [
       (pathname) => /^\/applications\/[^/]+(\/|$)/.test(pathname)
-    ],
-    permissionKey: null,
-    guard: 'session-required'
-  },
-  // Keep embedded apps hidden because the roadmap is distant and may change.
-  {
-    id: 'templates',
-    path: '/templates',
-    navLabelKey: 'auto.templates',
-    chromeSlot: 'primary',
-    selectedMatchers: [
-      (pathname) =>
-        pathname === '/templates' || pathname.startsWith('/templates/')
     ],
     permissionKey: null,
     guard: 'session-required'

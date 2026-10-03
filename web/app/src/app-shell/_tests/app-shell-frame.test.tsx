@@ -72,7 +72,7 @@ describe('AppShellFrame', () => {
           item_id: 'home',
           route_id: 'home',
           parent_item_id: null,
-          label_key: 'auto.workbench',
+          label_key: 'auto.settings',
           navigation_slot: 'primary',
           order: 1
         }
@@ -127,8 +127,8 @@ describe('AppShellFrame', () => {
   test('translates primary navigation labels at render time', async () => {
     renderShell('/');
 
-    expect(await screen.findByText('workbench')).toBeInTheDocument();
-    expect(screen.queryByText('auto.workbench')).not.toBeInTheDocument();
+    expect(await screen.findByText('settings')).toBeInTheDocument();
+    expect(screen.queryByText('auto.settings')).not.toBeInTheDocument();
   });
 
   test('places the account menu after the secondary top actions', async () => {

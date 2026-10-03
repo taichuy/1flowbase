@@ -62,9 +62,9 @@ const AppShellFrame = lazy(() =>
     default: module.AppShellFrame
   }))
 );
-const HomePage = lazy(() =>
-  import('../features/home/pages/HomePage').then((module) => ({
-    default: module.HomePage
+const HomeRedirect = lazy(() =>
+  import('../routes/HomeRedirect').then((module) => ({
+    default: module.HomeRedirect
   }))
 );
 const FrontstageWorkspacePage = lazy(() =>
@@ -75,11 +75,6 @@ const FrontstageWorkspacePage = lazy(() =>
 const MePage = lazy(() =>
   import('../features/me/pages/MePage').then((module) => ({
     default: module.MePage
-  }))
-);
-const TemplatesPage = lazy(() =>
-  import('../features/templates/pages/TemplatesPage').then((module) => ({
-    default: module.TemplatesPage
   }))
 );
 const SettingsPage = lazy(() =>
@@ -165,7 +160,7 @@ const homeRoute = createRoute({
   component: () => (
     <RouteGuard routeId="home">
       <LazyRouteBoundary>
-        <HomePage />
+        <HomeRedirect />
       </LazyRouteBoundary>
     </RouteGuard>
   )
@@ -263,19 +258,6 @@ const applicationStatisticsRoute = createRoute({
       />
     );
   }
-});
-
-const templatesRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: '/templates',
-  notFoundComponent: NotFoundPage,
-  component: () => (
-    <RouteGuard routeId="templates">
-      <LazyRouteBoundary>
-        <TemplatesPage />
-      </LazyRouteBoundary>
-    </RouteGuard>
-  )
 });
 
 function renderSettingsRoute(
@@ -775,7 +757,6 @@ const routeTree = rootRoute.addChildren([
     applicationMonitoringRoute,
     applicationStatisticsRoute,
     // Keep embedded apps hidden because the roadmap is distant and may change.
-    templatesRoute,
     settingsIndexRoute,
     settingsDocsRoute,
     settingsApiKeyAuthenticationRoute,

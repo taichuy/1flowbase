@@ -67,9 +67,8 @@
     "profile": "个人资料",
     "settings": "设置",
     "subsystem": "子系统",
-    "templates": "模板",
     "user": "用户",
-    "workbench": "工作台"
+    "retry": "重试"
   },
   "language": {
     "current": "中",

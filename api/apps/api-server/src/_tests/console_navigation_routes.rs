@@ -63,7 +63,7 @@ async fn console_navigation_route_returns_root_registry_with_separated_arrays() 
     );
 
     let route_ids = string_values(&payload, &["data", "route_definitions"], "route_id");
-    assert!(route_ids.contains(&"home".to_string()));
+    assert!(!route_ids.contains(&"home".to_string()));
     assert!(route_ids.contains(&"settings.roles".to_string()));
 
     let item_ids = string_values(&payload, &["data", "navigation_items"], "item_id");
@@ -130,8 +130,8 @@ async fn console_navigation_route_returns_admin_registry_with_builtin_permission
 
     assert_eq!(status, StatusCode::OK);
     let item_ids = string_values(&payload, &["data", "navigation_items"], "item_id");
-    assert!(item_ids.contains(&"home".to_string()));
-    assert!(item_ids.contains(&"templates".to_string()));
+    assert!(!item_ids.contains(&"home".to_string()));
+    assert!(!item_ids.contains(&"templates".to_string()));
     assert!(item_ids.contains(&"settings.docs".to_string()));
     assert!(item_ids.contains(&"settings.roles".to_string()));
 }
@@ -177,7 +177,7 @@ async fn console_navigation_route_trims_limited_member_registry() {
     assert!(!item_ids.contains(&"settings.members".to_string()));
     assert!(!item_ids.contains(&"settings.docs".to_string()));
     assert!(!item_ids.contains(&"settings.roles".to_string()));
-    assert!(item_ids.contains(&"templates".to_string()));
+    assert!(!item_ids.contains(&"templates".to_string()));
 
     let route_ids = string_values(&payload, &["data", "route_definitions"], "route_id");
     assert!(!route_ids.contains(&"settings.docs".to_string()));

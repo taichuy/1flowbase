@@ -32,10 +32,8 @@ import sharedZhHans from './resources/zh_Hans.json';
 import sharedEnUS from './resources/en_US.json';
 import sharedUiZhHans from '../../shared/ui/i18n/zh_Hans.json';
 import sharedUiEnUS from '../../shared/ui/i18n/en_US.json';
-import templatesZhHans from '../../features/templates/i18n/zh_Hans.json';
 import workflowZhHans from '../../features/workflow/i18n/zh_Hans.json';
 import workflowEnUS from '../../features/workflow/i18n/en_US.json';
-import templatesEnUS from '../../features/templates/i18n/en_US.json';
 
 export const applicationTranslationResources = {
   zh_Hans: {
@@ -56,7 +54,6 @@ export const applicationTranslationResources = {
     settings: settingsZhHans,
     shared: sharedZhHans,
     sharedUi: sharedUiZhHans,
-    templates: templatesZhHans,
     workflow: workflowZhHans
   },
   en_US: {
@@ -77,7 +74,6 @@ export const applicationTranslationResources = {
     settings: settingsEnUS,
     shared: sharedEnUS,
     sharedUi: sharedUiEnUS,
-    templates: templatesEnUS,
     workflow: workflowEnUS
   }
 } as const;

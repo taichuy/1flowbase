@@ -39,17 +39,9 @@ import {
 } from '../../state/frontstage-design-mode-store';
 
 const primaryRouteRecords = {
-  home: {
-    path: '/',
-    label_key: 'auto.workbench'
-  },
   'embedded-apps': {
     path: '/embedded-apps',
     label_key: 'auto.subsystem'
-  },
-  templates: {
-    path: '/templates',
-    label_key: 'auto.templates'
   }
 } as const;
 
@@ -89,7 +81,7 @@ describe('Navigation', () => {
     resetFrontstageDesignModeStore();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
-      consoleNavigationForPrimaryRoutes(['home', 'embedded-apps', 'templates'])
+      consoleNavigationForPrimaryRoutes(['embedded-apps'])
     );
     frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([]);
   });
@@ -162,10 +154,8 @@ describe('Navigation', () => {
         .getByRole('link', { name: '销售' })
         .closest('.ant-menu-submenu-title')
     ).toHaveAttribute('aria-haspopup', 'true');
-    expect(
-      within(nav).getByRole('link', { name: '工作台' })
-    ).toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: '模板' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: '工作台' })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: '模板' })).not.toBeInTheDocument();
   });
 
   test('AC-001 and AC-002 nest each topbar page tree under its matching mobile topbar item', async () => {
@@ -309,9 +299,7 @@ describe('Navigation', () => {
     ).not.toBeInTheDocument();
     const topLevelItems = within(nav).getAllByRole('menuitem');
     expect(topLevelItems.map((item) => item.textContent)).toEqual([
-      '工作台',
       '子系统',
-      '模板',
       '新增菜单'
     ]);
   });
@@ -354,16 +342,11 @@ describe('Navigation', () => {
 
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
 
+    expect(within(nav).queryByRole('link', { name: '工作台' })).not.toBeInTheDocument();
     expect(
-      await within(nav).findByRole('link', { name: '工作台' })
+      await within(nav).findByRole('link', { name: '子系统' })
     ).toBeInTheDocument();
-    expect(
-      within(nav).getByRole('link', { name: '子系统' })
-    ).toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: '模板' })).toHaveAttribute(
-      'href',
-      '/templates'
-    );
+    expect(within(nav).queryByRole('link', { name: '模板' })).not.toBeInTheDocument();
     expect(
       within(nav).queryByRole('link', { name: '设置' })
     ).not.toBeInTheDocument();

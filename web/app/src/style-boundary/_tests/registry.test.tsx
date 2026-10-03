@@ -55,7 +55,7 @@ describe('style boundary registry', () => {
 
   test('maps changed files to explicitly declared scenes', () => {
     expect(
-      getSceneIdsForFiles(['web/app/src/features/home/pages/HomePage.tsx'])
+      getSceneIdsForFiles(['web/app/src/routes/HomeRedirect.tsx'])
     ).toEqual(['page.home']);
     expect(
       getSceneIdsForFiles(['web/app/src/app-shell/app-shell.css'])
@@ -67,7 +67,6 @@ describe('style boundary registry', () => {
       'page.application-detail',
       'page.application-api',
       'page.embedded-apps',
-      'page.templates',
       'page.settings-extension-center-agent-flow',
       'page.settings',
       'page.settings-i18n.desktop',
@@ -218,7 +217,7 @@ describe('style boundary registry', () => {
     expect(
       await screen.findByRole('heading', { name: '1flowbase' })
     ).toBeInTheDocument();
-    expect(await screen.findByText('Support Agent')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /编辑/ })).toBeInTheDocument();
     expect(
       screen.getByRole('navigation', { name: 'Primary' })
     ).toBeInTheDocument();

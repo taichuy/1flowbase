@@ -105,29 +105,6 @@ struct ConsoleRouteSpec {
 
 const BUILTIN_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
     ConsoleRouteSpec {
-        route_id: "home",
-        surface_key: "home",
-        path: "/",
-        label_key: "auto.workbench",
-        navigation_slot: ConsoleNavigationSlot::Primary,
-        parent_item_id: None,
-        order: 100,
-        permission_codes: &[],
-        requirement: ConsolePermissionRequirement::Authenticated,
-    },
-    // Keep embedded apps hidden because the roadmap is distant and may change.
-    ConsoleRouteSpec {
-        route_id: "templates",
-        surface_key: "templates",
-        path: "/templates",
-        label_key: "auto.templates",
-        navigation_slot: ConsoleNavigationSlot::Primary,
-        parent_item_id: None,
-        order: 400,
-        permission_codes: &[],
-        requirement: ConsolePermissionRequirement::Authenticated,
-    },
-    ConsoleRouteSpec {
         route_id: "settings",
         surface_key: "settings",
         path: "/settings",

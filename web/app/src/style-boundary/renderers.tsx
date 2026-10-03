@@ -21,7 +21,6 @@ import { McpTemplateLibrary } from '../features/settings/components/mcp-manageme
 import { PluginUploadInstallModal } from '../features/settings/components/model-providers/PluginUploadInstallModal';
 import '../features/settings/components/model-providers/model-provider-panel.css';
 import type { UploadFile } from 'antd/es/upload/interface';
-import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import {
   createStyleBoundaryFrontstagePageContent,
   createStyleBoundaryOrchestrationState,
@@ -293,10 +292,6 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   },
   'page.embedded-apps': () =>
     renderShellScene('/embedded-apps', <EmbeddedAppsPage />),
-  'page.templates': () => {
-    seedStyleBoundaryTemplateFetch();
-    return renderShellScene('/templates', <TemplatesPage />);
-  },
   'page.settings-extension-center-agent-flow': () => {
     seedStyleBoundaryTemplateFetch();
     return renderRouterScene('/settings/extension-center/agent-flow');

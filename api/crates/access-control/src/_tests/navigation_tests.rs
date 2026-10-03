@@ -33,12 +33,12 @@ fn root_console_navigation_sees_all_builtin_items() {
     let navigation = accessible_console_navigation(&actor);
 
     let item_ids = item_ids(&navigation);
-    assert_eq!(navigation.route_definitions.len(), 20);
-    assert_eq!(navigation.navigation_items.len(), 20);
-    assert_eq!(navigation.permission_bindings.len(), 20);
-    assert!(item_ids.contains(&"home"));
+    assert_eq!(navigation.route_definitions.len(), 18);
+    assert_eq!(navigation.navigation_items.len(), 18);
+    assert_eq!(navigation.permission_bindings.len(), 18);
+    assert!(!item_ids.contains(&"home"));
     assert!(!item_ids.contains(&"embedded-apps"));
-    assert!(item_ids.contains(&"templates"));
+    assert!(!item_ids.contains(&"templates"));
     assert!(item_ids.contains(&"settings"));
     assert!(item_ids.contains(&"settings.docs"));
     assert!(item_ids.contains(&"settings.api-key-authentication"));
@@ -65,8 +65,8 @@ fn settings_members_route_actor_sees_only_members_settings_entries() {
     let navigation = accessible_console_navigation(&actor);
 
     let item_ids = item_ids(&navigation);
-    assert!(item_ids.contains(&"home"));
-    assert!(item_ids.contains(&"templates"));
+    assert!(!item_ids.contains(&"home"));
+    assert!(!item_ids.contains(&"templates"));
     assert!(item_ids.contains(&"settings"));
     assert!(item_ids.contains(&"settings.members"));
     assert!(!item_ids.contains(&"settings.docs"));
@@ -97,14 +97,14 @@ fn explicit_settings_feature_actors_see_their_registered_navigation_item() {
 }
 
 #[test]
-fn authenticated_actor_sees_workbench_and_templates_without_route_page_permission() {
+fn authenticated_actor_has_no_legacy_primary_navigation() {
     let actor = scoped_actor(&[]);
 
     let navigation = accessible_console_navigation(&actor);
 
     let item_ids = item_ids(&navigation);
-    assert!(item_ids.contains(&"home"));
-    assert!(item_ids.contains(&"templates"));
+    assert!(!item_ids.contains(&"home"));
+    assert!(!item_ids.contains(&"templates"));
     assert!(!item_ids.contains(&"settings"));
     assert!(!item_ids.contains(&"settings.api-key-authentication"));
     assert!(!item_ids.contains(&"settings.docs"));

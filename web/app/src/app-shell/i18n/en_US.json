@@ -67,9 +67,8 @@
     "profile": "personal information",
     "settings": "settings",
     "subsystem": "Subsystem",
-    "templates": "Templates",
     "user": "User",
-    "workbench": "workbench"
+    "retry": "Retry"
   },
   "language": {
     "current": "EN",

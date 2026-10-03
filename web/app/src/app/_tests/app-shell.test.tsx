@@ -6,21 +6,10 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@1flowbase/api-client', () => ({
+  listFrontstagePages: vi.fn().mockResolvedValue([]),
   getDefaultApiBaseUrl: vi.fn().mockReturnValue('http://127.0.0.1:7800'),
   getConsoleNavigation: vi.fn().mockResolvedValue({
     route_definitions: [
-      {
-        route_id: 'home',
-        surface_key: 'home',
-        path: '/',
-        surface_kind: 'system'
-      },
-      {
-        route_id: 'templates',
-        surface_key: 'templates',
-        path: '/templates',
-        surface_kind: 'system'
-      },
       {
         route_id: 'settings.api-key-authentication',
         surface_key: 'api-key-authentication',
@@ -29,22 +18,6 @@ vi.mock('@1flowbase/api-client', () => ({
       }
     ],
     navigation_items: [
-      {
-        item_id: 'home',
-        route_id: 'home',
-        parent_item_id: null,
-        label_key: 'auto.workbench',
-        navigation_slot: 'primary',
-        order: 1
-      },
-      {
-        item_id: 'templates',
-        route_id: 'templates',
-        parent_item_id: null,
-        label_key: 'auto.templates',
-        navigation_slot: 'primary',
-        order: 4
-      },
       {
         item_id: 'settings.api-key-authentication',
         route_id: 'settings.api-key-authentication',
@@ -124,7 +97,7 @@ describe('App shell', () => {
   });
 
   test(
-    'renders the formal console shell with application workspace content',
+    'renders the console shell after redirecting to the personal profile',
     async () => {
       render(<App />);
 
@@ -136,14 +109,14 @@ describe('App shell', () => {
       expect(header).not.toHaveStyle('--app-shell-edge-gap: 5%');
       expect(within(primaryNavigation).getByRole('menu')).toBeInTheDocument();
       expect(
-        await within(primaryNavigation).findByRole('link', { name: '工作台' })
-      ).toBeInTheDocument();
+        within(primaryNavigation).queryByRole('link', { name: '工作台' })
+      ).not.toBeInTheDocument();
       expect(
         within(primaryNavigation).queryByRole('link', { name: '子系统' })
       ).not.toBeInTheDocument();
       expect(
-        within(primaryNavigation).getByRole('link', { name: '模板' })
-      ).toBeInTheDocument();
+        within(primaryNavigation).queryByRole('link', { name: '模板' })
+      ).not.toBeInTheDocument();
       expect(screen.getByRole('menuitem', { name: '设置' })).toBeInTheDocument();
       expect(screen.getByRole('menuitem', { name: 'Captain Root' })).toBeInTheDocument();
       expect(
@@ -157,13 +130,7 @@ describe('App shell', () => {
       ).not.toBeInTheDocument();
       expect(screen.queryByText('Workspace Bootstrap')).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'Theme Preview' })).not.toBeInTheDocument();
-      expect(await screen.findByText('Support Agent')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: '进入应用' })).not.toBeInTheDocument();
-      expect(screen.getByRole('link', { name: '进入应用-Support Agent' })).toHaveAttribute(
-        'href',
-        '/applications/app-1/orchestration'
-      );
-      expect(screen.getByRole('button', { name: '更多操作-Support Agent' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /编辑/ })).toBeInTheDocument();
       expect(screen.queryByText(/api-server/i)).not.toBeInTheDocument();
     },
     15000
@@ -191,7 +158,7 @@ describe('App shell', () => {
     expect(appShellCss).not.toContain('margin: 0 auto;');
   });
 
-  test.each(['/agent-flow', '/embedded/demo-app', '/embedded-apps/demo-app'])(
+  test.each(['/templates', '/agent-flow', '/embedded/demo-app', '/embedded-apps/demo-app'])(
     'no longer resolves legacy console route %s',
     async (pathname) => {
       window.history.pushState({}, '', pathname);
