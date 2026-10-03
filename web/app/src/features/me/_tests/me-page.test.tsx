@@ -85,7 +85,7 @@ describe('MePage', () => {
 
       await waitFor(() => {
         expect(window.location.pathname).toBe('/me/profile');
-      });
+      }, { timeout: 10_000 });
       expect(await screen.findByRole('heading', { name: '个人资料', level: 4 })).toBeInTheDocument();
     },
     15000

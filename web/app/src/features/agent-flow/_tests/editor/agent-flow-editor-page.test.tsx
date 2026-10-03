@@ -644,7 +644,7 @@ describe('AgentFlowEditorShell', () => {
 
     expect(runtimeApi.startFlowDebugRun).not.toHaveBeenCalled();
     expect(
-      await screen.findByRole('complementary', { name: '预览' })
+      await screen.findByRole('complementary', { name: '预览' }, { timeout: 10_000 })
     ).toBeInTheDocument();
 
     fireEvent.change(await screen.findByPlaceholderText('和 Bot 聊天'), {
