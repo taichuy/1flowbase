@@ -4,6 +4,7 @@ mod _tests;
 mod batch;
 mod classify;
 mod decode;
+mod diagnostics;
 mod schemas;
 use crate::ports::{
     AppendClientTrajectoryArchiveInput, AppendClientTrajectoryInput, ClientTrajectoryArchiveFrame,
@@ -34,6 +35,7 @@ struct Frame {
     at: String,
 }
 struct Shared {
+    diagnostics: Option<Arc<diagnostics::Diagnostics>>,
     flush_delay: std::time::Duration,
     scope: Mutex<Option<Scope>>,
     binding_closed: AtomicBool,
@@ -130,8 +132,19 @@ impl ClientTrajectoryRecorder {
         transport: ClientTrajectoryTransport,
         flush_delay: std::time::Duration,
     ) -> Self {
+        Self::with_writer_and_diagnostics(repository, transport, flush_delay, diagnostics::enabled())
+    }
+    fn with_writer_and_diagnostics(
+        repository: Arc<dyn FactWriter>,
+        transport: ClientTrajectoryTransport,
+        flush_delay: std::time::Duration,
+        enable_diagnostics: bool,
+    ) -> Self {
+        let diagnostics =
+            enable_diagnostics.then(|| Arc::new(diagnostics::Diagnostics::default()));
         let (sender, receiver) = mpsc::channel(QUEUE_RECORDS);
         let state = Arc::new(Shared {
+            diagnostics,
             flush_delay,
             scope: Mutex::new(None),
             binding_closed: AtomicBool::new(false),
@@ -198,15 +211,21 @@ impl ClientTrajectoryRecorder {
             !self.owner.state.finished.load(Ordering::Acquire),
             "client capture already finished"
         );
-        self.owner
+        let frame = Frame {
+            kind,
+            bytes: bytes.to_vec(),
+            at: observed_at(),
+        };
+        // Only send/admission elapsed time; copying bytes/timestamping stays outside.
+        let span = diagnostics::start(&self.owner.state, diagnostics::Stage::admission(kind));
+        let result = self
+            .owner
             .sender
-            .send(Frame {
-                kind,
-                bytes: bytes.to_vec(),
-                at: observed_at(),
-            })
+            .send(frame)
             .await
-            .map_err(|_| anyhow::anyhow!("client archive writer stopped"))
+            .map_err(|_| anyhow::anyhow!("client archive writer stopped"));
+        diagnostics::finish(span, result.is_ok());
+        result
     }
     pub fn mark_incomplete(&self) {
         self.owner.state.dropped.fetch_add(1, Ordering::Relaxed);
@@ -217,9 +236,10 @@ impl ClientTrajectoryRecorder {
         self.owner.state.notify.notify_one();
     }
     pub async fn complete(&self) -> anyhow::Result<ClientTrajectoryArchiveReceipt> {
+        let span = diagnostics::start(&self.owner.state, diagnostics::Stage::CompleteWait);
         self.finish();
         self.wait_finished().await;
-        match self
+        let result = match self
             .owner
             .state
             .result
@@ -230,7 +250,12 @@ impl ClientTrajectoryRecorder {
             Some(Ok(receipt)) => Ok(receipt),
             Some(Err(error)) => Err(anyhow::anyhow!(error)),
             None => Err(anyhow::anyhow!("client archive completion missing")),
+        };
+        diagnostics::finish(span, result.is_ok());
+        if let Some(metrics) = &self.owner.state.diagnostics {
+            metrics.emit_first_complete(self.owner.id, &self.owner.state, result.is_ok());
         }
+        result
     }
     pub async fn wait_finished(&self) {
         loop {
@@ -257,6 +282,7 @@ async fn persist(
     at: String,
     fact: ClientTrajectoryFact,
     failed: &mut u64,
+    state: &Shared,
 ) {
     let input = AppendClientTrajectoryInput {
         flow_run_id: scope.flow,
@@ -272,7 +298,10 @@ async fn persist(
         ClientTrajectoryFact::Step { .. } => "step",
         ClientTrajectoryFact::Section { section, .. } => section.as_str(),
     };
-    let Err(error) = repository.append(&input).await else {
+    let span = diagnostics::start(state, diagnostics::Stage::FactAppend);
+    let result = repository.append(&input).await;
+    diagnostics::finish(span, result.is_ok());
+    let Err(error) = result else {
         return;
     };
     let reason = match error.to_string().as_str() {
@@ -288,6 +317,7 @@ async fn persist(
 }
 struct PersistenceSink<'a> {
     repository: &'a dyn FactWriter,
+    state: &'a Shared,
     scope: Scope,
     id: Uuid,
     at: &'a str,
@@ -303,6 +333,7 @@ impl classify::FactSink for PersistenceSink<'_> {
             self.at.to_owned(),
             fact,
             self.failed,
+            self.state,
         )
         .await;
     }
@@ -335,6 +366,7 @@ async fn persist_node_links(
             at,
             ClientTrajectoryFact::NodeLink { node_run_id },
             failed,
+            state,
         )
         .await;
         linked.insert(node_run_id);
@@ -348,6 +380,7 @@ async fn worker(
     state: Arc<Shared>,
     mut receiver: mpsc::Receiver<Frame>,
 ) {
+    let span = diagnostics::start(&state, diagnostics::Stage::WorkerTotal);
     let result = archive_worker(repository.as_ref(), transport, id, &state, &mut receiver)
         .await
         .map_err(|e| e.to_string());
@@ -355,9 +388,14 @@ async fn worker(
         // Drop-only transport owners have no caller left to inspect complete().
         tracing::warn!(request_id=%id, %error, "client trajectory archive owner completion failed");
     }
+    let ok = result.is_ok();
+    diagnostics::finish(span, ok);
     *state.result.lock().expect("capture result lock") = Some(result);
     state.stopped.store(true, Ordering::Release);
     state.stopped_notify.notify_waiters();
+    if let Some(metrics) = &state.diagnostics {
+        metrics.emit("worker_end", id, &state, ok);
+    }
 }
 async fn archive_worker(
     repository: &dyn FactWriter,
@@ -381,16 +419,21 @@ async fn archive_worker(
         }
         let (next, mut eof) = tokio::select! {frame=receiver.recv()=>{let eof=frame.is_none();(frame,eof)},_=state.notify.notified()=>(None,false)};
         if let Some(frame) = next {
+            let span = diagnostics::start(state, diagnostics::Stage::ArchiveCollect);
             let (frames, drained) = batch::collect(frame, state, receiver).await;
+            diagnostics::finish(span, true);
             eof |= drained;
-            receipt = repository
+            let span = diagnostics::start(state, diagnostics::Stage::ArchiveCommit);
+            let result = repository
                 .archive(&AppendClientTrajectoryArchiveInput {
                     request_id: id,
                     part_id: Uuid::now_v7(),
                     transport,
                     frames,
                 })
-                .await?;
+                .await;
+            diagnostics::finish(span, result.is_ok());
+            receipt = result?;
         }
         let scope = {
             let scope = state
@@ -417,6 +460,7 @@ async fn archive_worker(
                         persist_failed_count: 0,
                     },
                     &mut failed,
+                    state,
                 )
                 .await;
                 classifier = Some(classify::Classifier::new(
@@ -427,27 +471,40 @@ async fn archive_worker(
             let classifier = classifier.as_mut().expect("classifier initialized");
             // This owner is the sole archive writer; its receipt is the committed watermark.
             while replay_cursor < receipt.persisted_through {
-                let frames = repository.replay(id, replay_cursor).await?;
+                let span = diagnostics::start(state, diagnostics::Stage::ReplayRead);
+                let result = repository.replay(id, replay_cursor).await;
+                diagnostics::finish(span, result.is_ok());
+                let frames = result?;
                 if frames.is_empty() {
                     break;
                 }
                 for frame in frames {
                     let mut sink = PersistenceSink {
                         repository,
+                        state,
                         scope,
                         id,
                         at: &frame.observed_at,
                         failed: &mut failed,
                     };
                     if frame.kind == ClientTrajectoryFrameKind::Request {
+                        let span =
+                            diagnostics::start(state, diagnostics::Stage::RequestClassifyInclusive);
                         classifier
                             .begin_request_into(&frame.observed_at, &mut sink)
                             .await;
+                        diagnostics::finish(span, true);
                     }
-                    for value in decoder.feed(frame.kind, &frame.bytes) {
+                    let span = diagnostics::start(state, diagnostics::Stage::Decode);
+                    let values = decoder.feed(frame.kind, &frame.bytes);
+                    diagnostics::finish(span, true);
+                    for value in values {
+                        let span =
+                            diagnostics::start(state, diagnostics::Stage::classification(frame.kind));
                         classifier
                             .observe_into(frame.kind, value, &frame.observed_at, &mut sink)
                             .await;
+                        diagnostics::finish(span, true);
                     }
                     replay_cursor = frame.sequence;
                 }
@@ -461,7 +518,10 @@ async fn archive_worker(
     if final_scope.is_none() {
         // No run can acquire this capture after the final owner boundary. Release
         // pre-bind bytes explicitly; a failed cleanup makes complete() fail.
-        repository.discard_unbound(id).await?;
+        let span = diagnostics::start(state, diagnostics::Stage::UnboundDiscard);
+        let result = repository.discard_unbound(id).await;
+        diagnostics::finish(span, result.is_ok());
+        result?;
         receipt.persisted_through = 0;
     }
     if let (Some(scope), Some(classifier)) = (final_scope, classifier) {
@@ -490,6 +550,7 @@ async fn archive_worker(
                 persist_failed_count: failed,
             },
             &mut failed,
+            state,
         )
         .await;
     }
