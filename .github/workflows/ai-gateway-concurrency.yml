@@ -1,14 +1,15 @@
-name: Gateway Exact Source Release Binary Build
+name: Gateway Candidate Release and Centralized Behavior Tests
 'on':
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Exact 40-character candidate SHA; empty builds baseline once
+        description: Exact 40-character frozen candidate source SHA
         type: string
-        required: false
+        required: true
         default: ''
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: gateway-resource-release-${{ github.ref }}
   cancel-in-progress: false
@@ -26,153 +27,275 @@ env:
 jobs:
   release-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 110
+    timeout-minutes: 180
     steps:
-      - name: Validate immutable input
-        env:
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-        run: |
-          set -euo pipefail
-          if test -n "$CANDIDATE_SHA"; then
-            [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+    - name: Validate immutable input
+      env:
+        CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      run: |
+        set -euo pipefail
+        [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+    - name: Checkout immutable baseline
+      uses: actions/checkout@v5
+      with:
+        ref: 464ce849a6e74826e48fe0731aa26046e04068ff
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Checkout immutable frozen candidate
+      uses: actions/checkout@v5
+      with:
+        ref: ${{ inputs.candidate_sha }}
+        path: tmp/resource-candidate
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Setup pinned Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: 1.98.1
+    - name: Setup Node 24 for repository resource policy
+      uses: actions/setup-node@v5
+      with:
+        node-version: 24
+    - name: Restore existing compiler dependencies only
+      uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      with:
+        shared-key: ai-gateway-protocol-conformance
+        key: codex/gateway-cpu-ci-20261001
+        save-if: true
+        cache-workspace-crates: true
+        workspaces: api -> target
+    - name: Verify immutable baseline artifact metadata
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        out=tmp/test-governance/gateway-resources-20261003/release-build
+        mkdir -p "$out"
+        gh api repos/taichuy/1flowbase/actions/artifacts/11269821364 > "$out/baseline-artifact-metadata.json"
+        python3 - "$out/baseline-artifact-metadata.json" <<'PYCODE'
+        import json,pathlib,sys
+        a=json.loads(pathlib.Path(sys.argv[1]).read_text())
+        assert a['id']==11269821364 and not a['expired']
+        assert a['workflow_run']['id']==37109806977
+        assert a['workflow_run']['head_sha']=='b05d7e1551deccab46fa09cf572f626704e47460'
+        assert a['digest']=='sha256:0c16eff89479611414de663704008ce23f8fb91f050ad15da64d6b6dac9b3ddf'
+        PYCODE
+    - name: Download sealed baseline build only; never relabel as candidate
+      uses: actions/download-artifact@v8
+      with:
+        name: gateway-resource-release-37109806977-1
+        run-id: 37109806977
+        github-token: ${{ github.token }}
+        path: tmp/resource-baseline-reuse
+    - name: Independently verify baseline source features and binary hash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import hashlib,json,pathlib,shutil,subprocess,tarfile
+        root=pathlib.Path.cwd(); reused=root/'tmp/resource-baseline-reuse/baseline'
+        receipt=json.loads((reused/'receipt.json').read_text())
+        git=lambda *args:subprocess.check_output(['git',*args],text=True).strip()
+        assert receipt['source_sha']=='464ce849a6e74826e48fe0731aa26046e04068ff'
+        assert receipt['source_tree']==git('rev-parse','HEAD^{tree}')
+        assert receipt['api_tree']=='99cd9cf45a28a7c3daabc3e5d8d604d87868ef3d'
+        assert receipt['toolchain']=='1.98.1' and receipt['profile']=='release'
+        assert receipt['features']=='default' and receipt['source_clean'] is True
+        assert receipt['target']=='x86_64-unknown-linux-gnu'
+        assert receipt['rustflags']=='' and receipt['cargo_encoded_rustflags']==''
+        assert receipt['cargo_lock_sha256']==hashlib.sha256((root/'api/Cargo.lock').read_bytes()).hexdigest()
+        assert receipt['resolved_features_sha256']==hashlib.sha256((reused/'resolved-features.json').read_bytes()).hexdigest()
+        assert receipt['paired_source_lock']==json.loads((root/'scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').read_text())
+        with tarfile.open(reused/'api-server.tar.gz','r:gz') as archive:
+         assert archive.getnames()==['api-server']
+         binary=archive.extractfile('api-server').read()
+        assert hashlib.sha256(binary).hexdigest()==receipt['binary_sha256']
+        assert (reused/'binary.sha256').read_text().split()[0]==receipt['binary_sha256']
+        out=root/'tmp/test-governance/gateway-resources-20261003/release-build/baseline'
+        shutil.copytree(reused,out)
+        (out/'reuse-receipt.json').write_text(json.dumps({'source_run_id':37109806977,'source_artifact_id':11269821364,'verified':True,'baseline_rebuilt':False,'candidate_source_is_independent':True},indent=2)+'\n')
+        PYCODE
+    - name: Build candidate optimized binary and exact source provenance
+      timeout-minutes: 75
+      env:
+        CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        WORKFLOW_SHA: ${{ github.sha }}
+        BUILD_RUN_ID: ${{ github.run_id }}
+        BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/api/target"
+        out="$GITHUB_WORKSPACE/tmp/test-governance/gateway-resources-20261003/release-build"
+        mkdir -p "$out"
+        rustc -Vv > "$out/toolchain.txt"
+        test "$(rustc -V | awk '{print $2}')" = 1.98.1
+        cargo -V >> "$out/toolchain.txt"
+        getconf GNU_LIBC_VERSION > "$out/glibc.txt"
+        uname -m > "$out/architecture.txt"
+        # Honor repository resource-derived compilation parallelism.
+        node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/cargo-jobs.txt"
+        export CARGO_BUILD_JOBS="$(cat "$out/cargo-jobs.txt")"
+        baseline=464ce849a6e74826e48fe0731aa26046e04068ff
+        candidate="${CANDIDATE_SHA:-$baseline}"
+        build_one() {
+          local role="$1" source_root="$2" expected_sha="$3"
+          local dest="$out/$role"
+          mkdir -p "$dest"
+          test "$(git -C "$source_root" rev-parse HEAD)" = "$expected_sha"
+          test -z "$(git -C "$source_root" status --porcelain --untracked-files=no)"
+          if test "$role" = baseline; then
+            test "$(git -C "$source_root" rev-parse HEAD:api)" = 99cd9cf45a28a7c3daabc3e5d8d604d87868ef3d
           fi
-      - name: Checkout immutable baseline
-        uses: actions/checkout@v5
-        with:
-          ref: 464ce849a6e74826e48fe0731aa26046e04068ff
-          persist-credentials: false
-          fetch-depth: 1
-      - name: Checkout immutable candidate only if different
-        if: inputs.candidate_sha != '' && inputs.candidate_sha != '464ce849a6e74826e48fe0731aa26046e04068ff'
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.candidate_sha }}
-          path: tmp/resource-candidate
-          persist-credentials: false
-          fetch-depth: 1
-      - name: Setup pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.98.1
-      - name: Setup Node 24 for repository resource policy
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-      - name: Restore existing compiler dependencies only
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-        with:
-          shared-key: ai-gateway-protocol-conformance
-          key: codex/gateway-cpu-ci-20261001
-          save-if: true
-          cache-workspace-crates: true
-          workspaces: api -> target
-      - name: Build clean optimized binaries and provenance
-        timeout-minutes: 100
+          printf '[build-start] %s %s\n' "$role" "$(date -u +%FT%TZ)"
+          set +e
+          (cd "$source_root" && cargo build --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server) > "$dest/build.log" 2>&1
+          local code=$?
+          set -e
+          python3 - "$dest/build.log" <<'PY'
+        import pathlib,sys
+        path=pathlib.Path(sys.argv[1]); limit=2*1024*1024
+        with path.open('rb') as log:
+          log.seek(0,2); length=log.tell()
+          if length>limit:
+            log.seek(-limit,2); tail=log.read()
+          else:
+            tail=None
+        if tail is not None: path.write_bytes(b'[log truncated to last 2 MiB]\n'+tail)
+        PY
+          printf '[build-end] %s %s exit=%s\n' "$role" "$(date -u +%FT%TZ)" "$code"
+          if test "$code" -ne 0; then tail -c 6000 "$dest/build.log"; return "$code"; fi
+          test -z "$(git -C "$source_root" status --porcelain --untracked-files=no)"
+          cp "$CARGO_TARGET_DIR/release/api-server" "$dest/api-server"
+          chmod 755 "$dest/api-server"
+          # Serialize the enabled feature graph, without credentials or environment dumps.
+          (cd "$source_root" && cargo metadata --manifest-path api/Cargo.toml --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu) > "$dest/cargo-metadata.json" 2> "$dest/metadata.log"
+          ldd "$dest/api-server" > "$dest/ldd.txt"
+          readelf --version-info "$dest/api-server" > "$dest/elf-versions.txt"
+          if grep -q 'not found' "$dest/ldd.txt"; then return 1; fi
+          python3 - "$source_root" "$dest" "$role" "$expected_sha" <<'PY'
+        import hashlib,json,os,pathlib,subprocess,sys
+        source,dest,role,sha=sys.argv[1:]
+        source=pathlib.Path(source); dest=pathlib.Path(dest)
+        git=lambda *args: subprocess.check_output(['git','-C',str(source),*args],text=True).strip()
+        digest=lambda path:hashlib.sha256(path.read_bytes()).hexdigest()
+        metadata=json.loads((dest/'cargo-metadata.json').read_text())
+        features=sorted([{'package_id':node['id'],'features':sorted(node['features'])} for node in metadata['resolve']['nodes']],key=lambda item:item['package_id'])
+        (dest/'resolved-features.json').write_text(json.dumps(features,indent=2)+'\n')
+        receipt={
+          'schema_version':'1flowbase.gateway-resource-release/v1',
+          'role':role,'source_sha':sha,'source_tree':git('rev-parse','HEAD^{tree}'),
+          'api_tree':git('rev-parse','HEAD:api'),'source_clean':True,
+          'workflow_sha':os.environ['WORKFLOW_SHA'],'run_id':os.environ['BUILD_RUN_ID'],
+          'run_attempt':os.environ['BUILD_RUN_ATTEMPT'],
+          'toolchain':'1.98.1','toolchain_verbose':(dest.parent/'toolchain.txt').read_text(),
+          'target':'x86_64-unknown-linux-gnu','profile':'release','features':'default',
+          'command':'cargo build --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server',
+          'rustflags':'','cargo_encoded_rustflags':'','cargo_incremental':'0',
+          'cargo_build_jobs':os.environ['CARGO_BUILD_JOBS'],
+          'cargo_lock_sha256':digest(source/'api/Cargo.lock'),
+          'resolved_features_sha256':digest(dest/'resolved-features.json'),
+          'binary_sha256':digest(dest/'api-server'),
+          'paired_source_lock':json.loads((source/'scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').read_text()),
+          'provider_packages_built':False,'runtime_validation':'not-run',
+          'build_glibc':(dest.parent/'glibc.txt').read_text().strip(),
+        }
+        (dest/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+        PY
+          (cd "$dest" && sha256sum api-server > binary.sha256 && tar -czf api-server.tar.gz api-server)
+          rm "$dest/api-server" "$dest/cargo-metadata.json"
+        }
+        build_one candidate "$GITHUB_WORKSPACE/tmp/resource-candidate" "$candidate"
+    - name: Upload candidate binary before behavioral tests
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: gateway-resource-release-${{ github.run_id }}-${{ github.run_attempt
+          }}
+        path: tmp/test-governance/gateway-resources-20261003/release-build/**
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Centralized candidate behavior tests; one Cargo process at a time
+      timeout-minutes: 90
+      env:
+        CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        DATABASE_URL: postgres://postgres:gateway-test-only@127.0.0.1:5432/gateway_tests
+        WORKFLOW_SHA: ${{ github.sha }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/api/target"
+        out="$GITHUB_WORKSPACE/tmp/test-governance/gateway-resources-20261003/behavior-tests"
+        mkdir -p "$out"
+        cd "$GITHUB_WORKSPACE/tmp/resource-candidate"
+        test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+        test -z "$(git status --porcelain --untracked-files=no)"
+        # No fixed jobs=1/4 policy: reserve 2 GiB for OS/Postgres and 2 GiB per compiler.
+        python3 - <<'PYCODE' > "$out/resource-policy.json"
+        import json,os,pathlib
+        memory=int(next(x.split()[1] for x in pathlib.Path('/proc/meminfo').read_text().splitlines() if x.startswith('MemTotal:')))*1024
+        cpu=len(os.sched_getaffinity(0)); jobs=max(1,min(cpu,max(1,(memory-2*1024**3)//(2*1024**3))))
+        print(json.dumps({'memory_bytes':memory,'cpu_available':cpu,'cargo_jobs':jobs,'test_threads':jobs,'reserved_bytes':2*1024**3,'bytes_per_compiler':2*1024**3}))
+        PYCODE
+        export CARGO_BUILD_JOBS="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["cargo_jobs"])' "$out/resource-policy.json")"
+        export RUST_TEST_THREADS="$CARGO_BUILD_JOBS"
+        run_test() {
+         local name="$1"; shift
+         printf '[test-start] %s %s\n' "$name" "$(date -u +%FT%TZ)"
+         printf '%s\n' "$*" > "$out/$name.command.txt"
+         set +e
+         "$@" > "$out/$name.log" 2>&1
+         local code=$?
+         set -e
+         printf '%s\n' "$code" > "$out/$name.exit-code.txt"
+         python3 - "$out/$name.log" <<'PYCODE'
+        import pathlib,sys
+        path=pathlib.Path(sys.argv[1]); limit=2*1024*1024
+        with path.open('rb') as log:
+         log.seek(0,2); length=log.tell()
+         if length>limit: log.seek(-limit,2); tail=log.read()
+         else: tail=None
+        if tail is not None: path.write_bytes(b'[log truncated to last 2 MiB]\n'+tail)
+        PYCODE
+         printf '[test-end] %s %s exit=%s\n' "$name" "$(date -u +%FT%TZ)" "$code"
+         if test "$code" -ne 0; then tail -c 6000 "$out/$name.log"; fi
+        }
+        run_test storage-client-trajectory cargo test --manifest-path api/Cargo.toml --release --locked -p storage-durable-postgres --lib client_trajectory
+        run_test api-runtime-event-stream cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --lib _tests::runtime_event_stream
+        python3 - "$out" <<'PYCODE'
+        import json,os,pathlib,re,subprocess,sys
+        out=pathlib.Path(sys.argv[1]); results=[]
+        for name in ['storage-client-trajectory','api-runtime-event-stream']:
+         log=(out/(name+'.log')).read_text(errors='replace')
+         match=re.search(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored;',log)
+         code=int((out/(name+'.exit-code.txt')).read_text())
+         result={'name':name,'command':(out/(name+'.command.txt')).read_text().strip(),'exit_code':code,'summary_found':match is not None}
+         if match: result.update(passed=int(match[2]),failed=int(match[3]),ignored=int(match[4]))
+         result['accepted']=code==0 and match is not None and int(match[2])>0 and int(match[3])==0 and int(match[4])==0
+         results.append(result)
+        git=lambda *args:subprocess.check_output(['git',*args],text=True).strip()
+        receipt={'schema_version':'1flowbase.gateway-resource-behavior-tests/v1','candidate_sha':git('rev-parse','HEAD'),'api_tree':git('rev-parse','HEAD:api'),'workflow_sha':os.environ['WORKFLOW_SHA'],'toolchain':subprocess.check_output(['rustc','-Vv'],text=True),'profile':'release','features':'default','sequential_cargo_processes':True,'resource_policy':json.loads((out/'resource-policy.json').read_text()),'results':results,'passed':all(x['accepted'] for x in results)}
+        assert receipt['candidate_sha']==os.environ['CANDIDATE_SHA']
+        assert git('status','--porcelain','--untracked-files=no')==''
+        (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+        sys.exit(0 if receipt['passed'] else 1)
+        PYCODE
+    - name: Upload centralized test receipt including failures
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: gateway-resource-behavior-tests-${{ github.run_id }}-${{ github.run_attempt
+          }}
+        path: tmp/test-governance/gateway-resources-20261003/behavior-tests/**
+        retention-days: 7
+        if-no-files-found: warn
+    services:
+      postgres:
+        image: postgres:18.4
         env:
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-          WORKFLOW_SHA: ${{ github.sha }}
-          BUILD_RUN_ID: ${{ github.run_id }}
-          BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/api/target"
-          out="$GITHUB_WORKSPACE/tmp/test-governance/gateway-resources-20261003/release-build"
-          mkdir -p "$out"
-          rustc -Vv > "$out/toolchain.txt"
-          test "$(rustc -V | awk '{print $2}')" = 1.98.1
-          cargo -V >> "$out/toolchain.txt"
-          getconf GNU_LIBC_VERSION > "$out/glibc.txt"
-          uname -m > "$out/architecture.txt"
-          # Honor repository resource-derived compilation parallelism.
-          node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/cargo-jobs.txt"
-          export CARGO_BUILD_JOBS="$(cat "$out/cargo-jobs.txt")"
-          baseline=464ce849a6e74826e48fe0731aa26046e04068ff
-          candidate="${CANDIDATE_SHA:-$baseline}"
-          build_one() {
-            local role="$1" source_root="$2" expected_sha="$3"
-            local dest="$out/$role"
-            mkdir -p "$dest"
-            test "$(git -C "$source_root" rev-parse HEAD)" = "$expected_sha"
-            test -z "$(git -C "$source_root" status --porcelain --untracked-files=no)"
-            if test "$role" = baseline; then
-              test "$(git -C "$source_root" rev-parse HEAD:api)" = 99cd9cf45a28a7c3daabc3e5d8d604d87868ef3d
-            fi
-            printf '[build-start] %s %s\n' "$role" "$(date -u +%FT%TZ)"
-            set +e
-            (cd "$source_root" && cargo build --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server) > "$dest/build.log" 2>&1
-            local code=$?
-            set -e
-            python3 - "$dest/build.log" <<'PY'
-          import pathlib,sys
-          path=pathlib.Path(sys.argv[1]); limit=2*1024*1024
-          with path.open('rb') as log:
-            log.seek(0,2); length=log.tell()
-            if length>limit:
-              log.seek(-limit,2); tail=log.read()
-            else:
-              tail=None
-          if tail is not None: path.write_bytes(b'[log truncated to last 2 MiB]\n'+tail)
-          PY
-            printf '[build-end] %s %s exit=%s\n' "$role" "$(date -u +%FT%TZ)" "$code"
-            if test "$code" -ne 0; then tail -c 6000 "$dest/build.log"; return "$code"; fi
-            test -z "$(git -C "$source_root" status --porcelain --untracked-files=no)"
-            cp "$CARGO_TARGET_DIR/release/api-server" "$dest/api-server"
-            chmod 755 "$dest/api-server"
-            # Serialize the enabled feature graph, without credentials or environment dumps.
-            (cd "$source_root" && cargo metadata --manifest-path api/Cargo.toml --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu) > "$dest/cargo-metadata.json" 2> "$dest/metadata.log"
-            ldd "$dest/api-server" > "$dest/ldd.txt"
-            readelf --version-info "$dest/api-server" > "$dest/elf-versions.txt"
-            if grep -q 'not found' "$dest/ldd.txt"; then return 1; fi
-            python3 - "$source_root" "$dest" "$role" "$expected_sha" <<'PY'
-          import hashlib,json,os,pathlib,subprocess,sys
-          source,dest,role,sha=sys.argv[1:]
-          source=pathlib.Path(source); dest=pathlib.Path(dest)
-          git=lambda *args: subprocess.check_output(['git','-C',str(source),*args],text=True).strip()
-          digest=lambda path:hashlib.sha256(path.read_bytes()).hexdigest()
-          metadata=json.loads((dest/'cargo-metadata.json').read_text())
-          features=sorted([{'package_id':node['id'],'features':sorted(node['features'])} for node in metadata['resolve']['nodes']],key=lambda item:item['package_id'])
-          (dest/'resolved-features.json').write_text(json.dumps(features,indent=2)+'\n')
-          receipt={
-            'schema_version':'1flowbase.gateway-resource-release/v1',
-            'role':role,'source_sha':sha,'source_tree':git('rev-parse','HEAD^{tree}'),
-            'api_tree':git('rev-parse','HEAD:api'),'source_clean':True,
-            'workflow_sha':os.environ['WORKFLOW_SHA'],'run_id':os.environ['BUILD_RUN_ID'],
-            'run_attempt':os.environ['BUILD_RUN_ATTEMPT'],
-            'toolchain':'1.98.1','toolchain_verbose':(dest.parent/'toolchain.txt').read_text(),
-            'target':'x86_64-unknown-linux-gnu','profile':'release','features':'default',
-            'command':'cargo build --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server',
-            'rustflags':'','cargo_encoded_rustflags':'','cargo_incremental':'0',
-            'cargo_build_jobs':os.environ['CARGO_BUILD_JOBS'],
-            'cargo_lock_sha256':digest(source/'api/Cargo.lock'),
-            'resolved_features_sha256':digest(dest/'resolved-features.json'),
-            'binary_sha256':digest(dest/'api-server'),
-            'paired_source_lock':json.loads((source/'scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').read_text()),
-            'provider_packages_built':False,'runtime_validation':'not-run',
-            'build_glibc':(dest.parent/'glibc.txt').read_text().strip(),
-          }
-          (dest/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
-          PY
-            (cd "$dest" && sha256sum api-server > binary.sha256 && tar -czf api-server.tar.gz api-server)
-            rm "$dest/api-server" "$dest/cargo-metadata.json"
-          }
-          build_one baseline "$GITHUB_WORKSPACE" "$baseline"
-          if test "$candidate" = "$baseline"; then
-            cp -a "$out/baseline" "$out/candidate"
-            python3 - "$out/candidate/receipt.json" <<'PY'
-          import json,pathlib,sys
-          path=pathlib.Path(sys.argv[1]); receipt=json.loads(path.read_text())
-          receipt['role']='candidate'; receipt['same_sha_reused_from']='baseline'
-          path.write_text(json.dumps(receipt,indent=2)+'\n')
-          PY
-          else
-            build_one candidate "$GITHUB_WORKSPACE/tmp/resource-candidate" "$candidate"
-          fi
-      - name: Upload source-bound binaries and bounded build receipts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: gateway-resource-release-${{ github.run_id }}-${{ github.run_attempt }}
-          path: tmp/test-governance/gateway-resources-20261003/release-build/**
-          retention-days: 7
-          if-no-files-found: warn
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: gateway-test-only
+          POSTGRES_DB: gateway_tests
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d gateway_tests" --health-interval
+          5s --health-timeout 5s --health-retries 12
