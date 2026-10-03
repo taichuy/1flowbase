@@ -43,8 +43,9 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
 };
 
-const CATEGORIES: [&str; 6] = [
+const CATEGORIES: [&str; 7] = [
     "agent-flow",
+    "applications-demo",
     "capability-plugins",
     "host-extensions",
     "i18n",
@@ -866,7 +867,7 @@ async fn ac_001_002_search_refreshes_an_updated_snapshot_and_uses_the_last_compl
 }
 
 #[tokio::test]
-async fn root_1545_ac_2_v1_source_reads_six_category_pages_and_later_page_detail() {
+async fn root_1545_ac_2_v1_source_reads_all_category_pages_and_later_page_detail() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base_url = format!("http://{}", listener.local_addr().unwrap());
     let (documents, sources) = catalog_documents(&base_url);
@@ -1586,3 +1587,6 @@ fn artifact_checksum(category: &str, artifact: &str) -> String {
         Sha256::digest(artifact_bytes(category, artifact))
     )
 }
+
+#[path = "official_extension_catalog_source/application_templates.rs"]
+mod application_templates;

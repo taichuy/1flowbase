@@ -6,6 +6,7 @@ use uuid::Uuid;
 #[serde(rename_all = "kebab-case")]
 pub enum ExtensionCategory {
     AgentFlow,
+    ApplicationsDemo,
     CapabilityPlugins,
     HostExtensions,
     I18n,
@@ -14,8 +15,9 @@ pub enum ExtensionCategory {
 }
 
 impl ExtensionCategory {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::AgentFlow,
+        Self::ApplicationsDemo,
         Self::CapabilityPlugins,
         Self::HostExtensions,
         Self::I18n,
@@ -26,6 +28,7 @@ impl ExtensionCategory {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::AgentFlow => "agent-flow",
+            Self::ApplicationsDemo => "applications-demo",
             Self::CapabilityPlugins => "capability-plugins",
             Self::HostExtensions => "host-extensions",
             Self::I18n => "i18n",
