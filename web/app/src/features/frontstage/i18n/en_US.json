@@ -103,7 +103,6 @@
     "description": "Description",
     "disabled": "Disabled",
     "drag_move_node": "Drag and drop to move nodes",
-    "drag_sort_hint": "Drag/Sort (please use Move Up/Move Down in the menu)",
     "edit": "Edit",
     "edit_block": "Edit block",
     "edit_description": "Edit description",

@@ -599,47 +599,45 @@ function renderTreeNode({
                 className="frontstage-page-tree-sidebar__node-actions-visible"
                 onClick={(e) => e.stopPropagation()}
               >
-                <Tooltip title={i18nText('frontstage', 'auto.drag_sort_hint')}>
-                  <FrontstageNodeActionButton
-                    aria-label={i18nText('frontstage', 'auto.drag_move_node')}
-                    disabled={isOperationPending}
-                    draggable={!isOperationPending}
-                    icon={<DragOutlined />}
-                    onDragEnd={(event) => {
-                      event.stopPropagation();
-                      setDraggedNodeId(null);
-                      setDropIndicator(null);
-                    }}
-                    onDragStart={(event) => {
-                      if (!canEdit || isOperationPending) {
-                        event.preventDefault();
-                        return;
-                      }
-                      event.stopPropagation();
-                      event.dataTransfer.effectAllowed = 'move';
-                      event.dataTransfer.setData(
-                        PAGE_TREE_DRAG_DATA_TYPE,
-                        node.id
+                <FrontstageNodeActionButton
+                  aria-label={i18nText('frontstage', 'auto.drag_move_node')}
+                  disabled={isOperationPending}
+                  draggable={!isOperationPending}
+                  icon={<DragOutlined />}
+                  onDragEnd={(event) => {
+                    event.stopPropagation();
+                    setDraggedNodeId(null);
+                    setDropIndicator(null);
+                  }}
+                  onDragStart={(event) => {
+                    if (!canEdit || isOperationPending) {
+                      event.preventDefault();
+                      return;
+                    }
+                    event.stopPropagation();
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData(
+                      PAGE_TREE_DRAG_DATA_TYPE,
+                      node.id
+                    );
+                    const row = event.currentTarget.closest(
+                      '.frontstage-page-tree-sidebar__node-row'
+                    ) as HTMLElement | null;
+                    if (row) {
+                      const rect = row.getBoundingClientRect();
+                      event.dataTransfer.setDragImage(
+                        row,
+                        event.clientX - rect.left,
+                        event.clientY - rect.top
                       );
-                      const row = event.currentTarget.closest(
-                        '.frontstage-page-tree-sidebar__node-row'
-                      ) as HTMLElement | null;
-                      if (row) {
-                        const rect = row.getBoundingClientRect();
-                        event.dataTransfer.setDragImage(
-                          row,
-                          event.clientX - rect.left,
-                          event.clientY - rect.top
-                        );
-                      }
-                      setDropIndicator(null);
-                      setDraggedNodeId(node.id);
-                    }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                    }}
-                  />
-                </Tooltip>
+                    }
+                    setDropIndicator(null);
+                    setDraggedNodeId(node.id);
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                />
                 <Dropdown
                   menu={{ items: menuItems }}
                   trigger={['click']}
