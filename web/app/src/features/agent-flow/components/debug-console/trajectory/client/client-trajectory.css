@@ -129,7 +129,25 @@
   overflow-wrap: anywhere;
 }
 .client-trajectory__fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
   margin: 12px 0;
+}
+.client-trajectory__scalar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0;
+}
+.client-trajectory__scalar dt {
+  color: var(--text-secondary);
+}
+.client-trajectory__scalar dd {
+  min-width: 0;
+  margin: 0;
 }
 @media (max-width: 760px) {
   .client-trajectory__request-select small {

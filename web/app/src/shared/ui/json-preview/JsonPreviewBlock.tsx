@@ -57,12 +57,42 @@ function JsonEditorFallback({ minHeight }: { minHeight: string }) {
   );
 }
 
-function JsonEditor({ height, value }: { height: string; value: string }) {
+function JsonEditor({
+  height,
+  value,
+  maxAutoHeight
+}: {
+  height: string;
+  value: string;
+  maxAutoHeight?: number;
+}) {
+  const [contentHeight, setContentHeight] = useState<number>();
+  const editorHeight =
+    maxAutoHeight === undefined
+      ? height
+      : Math.min(contentHeight ?? maxAutoHeight, maxAutoHeight);
   return (
-    <Suspense fallback={<JsonEditorFallback minHeight={height} />}>
+    <Suspense
+      fallback={
+        <JsonEditorFallback
+          minHeight={
+            typeof editorHeight === 'number'
+              ? `${editorHeight}px`
+              : editorHeight
+          }
+        />
+      }
+    >
       <MonacoEditor
         defaultLanguage="json"
-        height={height}
+        height={editorHeight}
+        onMount={(editor) => {
+          if (maxAutoHeight === undefined) return;
+          const resize = () => setContentHeight(editor.getContentHeight());
+          resize();
+          const subscription = editor.onDidContentSizeChange(resize);
+          editor.onDidDispose(() => subscription.dispose());
+        }}
         options={EDITOR_OPTIONS}
         theme="vs"
         value={value}
@@ -84,6 +114,7 @@ export function JsonPreviewBlock({
   displayTitle = title,
   fullscreenAriaLabel,
   height = '220px',
+  maxAutoHeight,
   rawText,
   headerActionsTarget
 }: {
@@ -99,6 +130,8 @@ export function JsonPreviewBlock({
   displayTitle?: string;
   fullscreenAriaLabel?: string;
   height?: string;
+  /** Fit the wrapped content height, up to this pixel limit. */
+  maxAutoHeight?: number;
   rawText?: string;
   headerActionsTarget?: HTMLElement | null;
 }) {
@@ -201,7 +234,11 @@ export function JsonPreviewBlock({
       )}
       {!isCollapsed ? (
         <div className="json-preview-block__editor">
-          <JsonEditor height={height} value={formattedValue} />
+          <JsonEditor
+            height={height}
+            value={formattedValue}
+            maxAutoHeight={maxAutoHeight}
+          />
         </div>
       ) : null}
       <Modal

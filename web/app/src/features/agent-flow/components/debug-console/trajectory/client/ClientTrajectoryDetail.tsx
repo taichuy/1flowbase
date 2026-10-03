@@ -240,23 +240,25 @@ function SectionValue({ value, section }: { value: unknown; section: string }) {
     !Array.isArray(value)
   ) {
     return (
-      <Descriptions
-        className="client-trajectory__fields"
-        size="small"
-        column={1}
-        items={Object.entries(value).map(([key, field]) => ({
-          key,
-          label: key,
-          children:
-            field !== null && typeof field === 'object' ? (
-              <JsonPreviewBlock title={key} value={field} height="180px" />
-            ) : (
-              <span className="client-trajectory__text">
+      <div className="client-trajectory__fields">
+        {Object.entries(value).map(([key, field]) =>
+          field !== null && typeof field === 'object' ? (
+            <JsonPreviewBlock
+              key={key}
+              title={key}
+              value={field}
+              maxAutoHeight={240}
+            />
+          ) : (
+            <dl key={key} className="client-trajectory__scalar">
+              <dt>{key}:</dt>
+              <dd className="client-trajectory__text">
                 {String(field ?? '—')}
-              </span>
-            )
-        }))}
-      />
+              </dd>
+            </dl>
+          )
+        )}
+      </div>
     );
   }
   return (
