@@ -10,7 +10,6 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   CARGO_INCREMENTAL: '0'
   RUSTFLAGS: '-C force-frame-pointers=yes -C debuginfo=1'
-  CARGO_ENCODED_RUSTFLAGS: ''
   OPENAI_API_KEY: ''
   OPENAI_BASE_URL: ''
 jobs:
