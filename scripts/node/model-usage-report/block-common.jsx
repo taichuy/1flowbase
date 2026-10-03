@@ -76,13 +76,13 @@ function useReport(ctx, initialize) {
     setBusy(true);
     setError(false);
     setReport(null);
-    const query =
-      "?started_from=" +
-      encodeURIComponent(range.started_from) +
-      "&started_to=" +
-      encodeURIComponent(range.started_to);
     ctx.api
-      .get("/api/ex/model-usage-report" + query)
+      .get("/api/ex/model-usage-report", {
+        query: {
+          started_from: range.started_from,
+          started_to: range.started_to,
+        },
+      })
       .then((result) => {
         if (active) setReport(result.report);
       })

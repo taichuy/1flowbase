@@ -113,3 +113,36 @@ test("published API matches independent request-log totals for fixed interval", 
     );
   });
 });
+
+test("frontstage callable gateway accepts structured query parameters and returns report", async () => {
+  await withApi(async (api) => {
+    const { report } = await api(
+      "/api/console/frontstage/pages/01a073f3-03e9-7030-86a4-371f80ebf522/tabs/01a073f3-03e9-7030-86a4-372f129962fa/callable-interfaces/dispatch",
+      "POST",
+      {
+        block_id: "01a07465-8419-7eb2-9335-a193bffb7558",
+        method: "GET",
+        path: "/api/ex/model-usage-report",
+        request: {
+          query: {
+            started_from: "2026-09-29T00:00:00Z",
+            started_to: "2026-10-03T00:00:00Z",
+          },
+        },
+      },
+    );
+    assert.ok(report.request_count >= 0);
+    assert.equal(
+      Date.parse(report.started_from),
+      Date.parse("2026-09-29T00:00:00Z"),
+    );
+    assert.equal(
+      Date.parse(report.started_to),
+      Date.parse("2026-10-03T00:00:00Z"),
+    );
+    assert.equal(
+      report.trend.reduce((n, p) => n + p.request_count, 0),
+      report.request_count,
+    );
+  });
+});
