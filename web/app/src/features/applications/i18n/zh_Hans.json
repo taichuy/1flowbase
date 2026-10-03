@@ -1,5 +1,7 @@
 {
   "auto": {
+    "view_execution_trace": "查看执行轨迹",
+    "close": "关闭",
     "total_cost": "费用",
     "api_keys": "API Keys",
     "application_type_agent_flow": "AgentFlow",
@@ -308,7 +310,6 @@
   "archive_import": {
     "path_conflict": "应用路径已被占用，无法导入。",
     "entry_failed": "应用导入未完成，请检查归档内容后重试。",
-    "close": "关闭",
     "preview_summary": "共 {{count}} 个应用，确认名称后导入为草稿。",
     "result_summary": "导入成功：{{succeeded_count}}，失败：{{failed_count}}，未完成：{{partial_count}}",
     "partial_help": "部分应用已创建，但配置尚未全部保存。请查看应用后处理，避免重复导入。",

@@ -8,6 +8,9 @@ import {
 import { Grid } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+// Configuration tests use the real section; module loading precedes test hooks.
+import '../pages/settings-page/SettingsAuthCenterSection';
+
 const echartsMock = vi.hoisted(() => ({
   chart: {
     dispose: vi.fn(),

@@ -384,6 +384,7 @@ function RunConversation({
   logConversationId,
   onClose,
   onOpenMessageLog,
+  onOpenRunTrace,
   onOpenResumeTimeline,
   traceLoader,
   runId
@@ -395,6 +396,7 @@ function RunConversation({
   logConversationId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
+  onOpenRunTrace?: () => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string;
 }) {
@@ -607,6 +609,13 @@ function RunConversation({
 
   return (
     <div className="application-run-detail__conversation-pane">
+      {initialConversationQuery.isSuccess &&
+      messages.length === 0 &&
+      onOpenRunTrace ? (
+        <Button onClick={onOpenRunTrace}>
+          {i18nText('applications', 'auto.view_execution_trace')}
+        </Button>
+      ) : null}
       <AgentFlowDebugConsole
         ariaLabel={i18nText('applications', 'auto.run_details_preview')}
         closeLabel={i18nText('applications', 'auto.close_run_details')}
@@ -702,6 +711,7 @@ export function ApplicationRunDetailPanel({
   logConversationId,
   onClose,
   onOpenMessageLog,
+  onOpenRunTrace,
   onOpenResumeTimeline,
   traceLoader,
   runId
@@ -713,6 +723,7 @@ export function ApplicationRunDetailPanel({
   logConversationId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
+  onOpenRunTrace?: () => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string | null;
 }) {
@@ -735,6 +746,7 @@ export function ApplicationRunDetailPanel({
             logConversationId={logConversationId}
             onClose={onClose}
             onOpenMessageLog={onOpenMessageLog}
+            onOpenRunTrace={onOpenRunTrace}
             onOpenResumeTimeline={onOpenResumeTimeline}
             traceLoader={traceLoader}
             runId={runId}

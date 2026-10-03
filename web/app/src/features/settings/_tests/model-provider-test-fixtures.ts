@@ -181,6 +181,18 @@ export function buildMainInstanceSettings(
     provider_code: modelProviderCatalogEntries[0].provider_code,
     auto_include_new_instances: autoIncludeNewInstances,
     revision: 1,
+    distribution_rules: [
+      ['none', '无'],
+      ['round_robin', '轮询'],
+      ['retry_round_robin', '重试轮询']
+    ].map(([value, display_name]) => ({
+      value,
+      rule_id: `builtin.${value}`,
+      rule_version: '1',
+      contract_version: '1flowbase.provider-distribution-rule/v1',
+      display_name,
+      config_fields: []
+    })),
     model_routing_policies: primaryContractProviderModels.map((model) => ({
       model_id: model.model_id,
       distribution_rule: distributionRule,

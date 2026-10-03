@@ -408,7 +408,7 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
   assert.match(singleScopeBlock, /REACT_DOCTOR_CANDIDATE_SOURCE: quality-gate-target-sha/u);
   assert.match(
     workflow,
-    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate/u,
+    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate/u,
   );
   assert.match(
     workflow,
@@ -431,7 +431,8 @@ test("API coverage sharding is enforced after structural equivalence is proven",
   assert.match(workflow, /options:[\s\S]*?- coverage-backend-api-server\n/u);
   assert.match(workflow, /timeout-minutes: 30/u);
   assert.match(workflow, /coverage-shadow-api-server-profraw-\$\{\{ matrix\.shard \}\}/u);
-  assert.match(workflow, /node scripts\/node\/coverage-shadow\.js merge api-server 4/u);
+  assert.match(workflow, /INPUT_SCOPE: coverage-backend-api-server-merge/u);
+  assert.match(workflow, /name: test-governance-coverage-backend-api-server-merge/u);
   assert.match(workflow, /resolve-quality-gate-target:\n[\s\S]*?target_sha: \$\{\{ steps\.target\.outputs\.sha \}\}/u);
   assert.match(workflow, /coverage-backend-gate:\n[\s\S]*?needs: resolve-quality-gate-target/u);
   assert.match(workflow, /ref: \$\{\{ needs\.resolve-quality-gate-target\.outputs\.target_sha \}\}/u);
@@ -439,7 +440,7 @@ test("API coverage sharding is enforced after structural equivalence is proven",
   assert.match(workflow, /coverage-shadow\/api-server\/api-server-merged\.json/u);
   assert.match(workflow, /coverage-shadow\/api-server\/equivalence\.json/u);
   assert.match(workflow, /aggregate:\n[\s\S]*?- coverage-backend-api-server-sharded-merge/u);
-  assert.doesNotMatch(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server(?:,|')/u);
+  assert.match(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server-merge(?:,|')/u);
 });
 
 test("React Doctor keeps current debt as a narrow baseline", () => {
@@ -858,7 +859,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   );
   assert.match(
     workflow,
-    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- backend-consistency-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
+    /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- resolve-quality-gate-target\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate\n\s+- backend-consistency-gate\n\s+- coverage-frontend-gate\n\s+- coverage-backend-gate/u,
   );
   assert.doesNotMatch(workflow, /- state-protocols-gate/u);
   assert.match(workflow, /- container-images-gate/u);
@@ -943,7 +944,7 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   assert.doesNotMatch(workflow, /test-binar(?:y|ies)/u);
 });
 
-test("API-server quality-gate shards build and export the real SDK worker fixtures", () => {
+test("API-server and Host quality-gate shards build and export the real SDK worker fixtures", () => {
   const workflow = readQualityGateWorkflow();
   const singleScope = workflow.slice(
     workflow.indexOf("  single-scope-gate:\n"),
@@ -967,7 +968,7 @@ test("API-server quality-gate shards build and export the real SDK worker fixtur
 
     const step = job.slice(stepStart, actionStart);
     assert.ok(
-      step.includes("if: ${{ startsWith(" + scope + ", 'repo-backend-test-api-server-') }}"),
+      step.includes("if: ${{ startsWith(" + scope + ", 'repo-backend-test-api-server-') || " + scope + " == 'repo-backend-test-runtime-storage-fast' }}"),
     );
     assert.ok(
       step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target),
@@ -1155,4 +1156,32 @@ test("quality gate action isolates middleware postgres per gate scope", () => {
     middlewareCompose,
     /\$\{POSTGRES_DATA_DIR:-\.\/volumes\/postgres\}:\/var\/lib\/postgresql/u,
   );
+});
+
+
+test('default aggregate requires exactly the current full online component inventory', () => {
+  const { DEFAULT_AGGREGATE_SCOPES } = require('../commands.js');
+  const workflow = readQualityGateWorkflow();
+  const scopes = workflow.match(/INPUT_EXPECTED_SCOPES: '([^']+)'/u)?.[1].split(',');
+  assert.ok(scopes, 'full online gate must declare its component inventory');
+  assert.deepEqual([...DEFAULT_AGGREGATE_SCOPES].sort(), scopes.sort());
+});
+
+
+test("Host coverage lanes prepare real SDK executable fixtures before running transport tests", () => {
+  const workflow = readQualityGateWorkflow();
+  for (const jobName of ["single-scope-gate", "coverage-backend-gate"]) {
+    const jobStart = workflow.indexOf(`  ${jobName}:`);
+    const fixtureStart = workflow.indexOf("      - name: Build Host coverage worker fixtures\n", jobStart);
+    const gateStart = workflow.indexOf("      - uses: ./.github/actions/quality-gate", jobStart);
+    assert.ok(fixtureStart > jobStart && fixtureStart < gateStart, `${jobName} must prepare fixtures before tests`);
+    const fixture = workflow.slice(fixtureStart, gateStart);
+    assert.match(fixture, /coverage-backend-runtime-extension-host/u);
+    assert.match(fixture, /CARGO_TARGET_DIR: .*rust-(?:single-coverage|coverage)\//u);
+    for (const kind of ["hook", "event"]) {
+      assert.ok(fixture.includes(`--example managed_${kind}_worker`));
+      assert.ok(fixture.includes(`strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker"`));
+      assert.ok(fixture.includes(`MANAGED_${kind.toUpperCase()}_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker`));
+    }
+  }
 });

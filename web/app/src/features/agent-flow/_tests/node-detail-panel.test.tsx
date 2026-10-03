@@ -135,8 +135,15 @@ function SelectionSeed({ nodeId }: { nodeId: string }) {
   return null;
 }
 
-function renderWithProviders(ui: ReactNode) {
-  return render(<AppProviders>{ui}</AppProviders>);
+async function renderWithProviders(ui: ReactNode) {
+  render(<AppProviders>{ui}</AppProviders>);
+  await waitFor(() => {
+    expect(
+      document.querySelector(
+        '.agent-flow-node-detail__body, .agent-flow-node-detail__config-tab'
+      )
+    ).toBeInTheDocument();
+  });
 }
 
 function getLlmNodeConfig(
@@ -212,8 +219,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'builds node detail from the schema registry and node schema adapter',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeDetailPanel
@@ -226,15 +233,18 @@ describe('NodeDetailPanel', () => {
       );
 
       expect(resolveAgentFlowNodeSchemaSpy).toHaveBeenCalledWith('llm');
-      expect(createAgentFlowNodeSchemaAdapterSpy).toHaveBeenCalledTimes(1);
+      expect(createAgentFlowNodeSchemaAdapterSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ nodeId: 'node-llm' })
+      );
+      expect(screen.getByLabelText('节点别名')).toHaveValue('LLM');
     },
     NODE_DETAIL_PANEL_TEST_TIMEOUT
   );
 
   test(
     'renders header, config tab and last-run tab for the selected node',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeDetailPanel
@@ -262,8 +272,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'keeps run loading state from leaking into the debug action',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeDetailPanel
@@ -293,8 +303,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'keeps debug loading state from leaking into the run action',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeDetailPanel
@@ -324,8 +334,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'uses the same node type icon in detail header as the canvas card',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeDetailPanel
@@ -351,8 +361,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'renders alias and description editors inside the header exactly once',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeDetailPanel
@@ -376,8 +386,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'keeps config tab focused on editable settings and relations without redundant summary cards',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeConfigTab />
@@ -402,8 +412,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'does not duplicate identity or summary content inside config tab',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeConfigTab />
@@ -419,8 +429,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'hides retry and exception policy controls for the start node',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-start" />
           <NodeConfigTab />
@@ -440,8 +450,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'renders the standard node shell with only workflow start input settings',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider
           initialState={createWorkflowInitialState()}
         >
@@ -484,8 +494,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'does not expose extension mapping actions in workflow start details',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider
           initialState={createWorkflowInitialState()}
         >
@@ -516,8 +526,8 @@ describe('NodeDetailPanel', () => {
 
   test(
     'keeps schedule context outside workflow start node details',
-    () => {
-      renderWithProviders(
+    async () => {
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider
           initialState={createWorkflowInitialState()}
         >
@@ -556,7 +566,7 @@ describe('NodeDetailPanel', () => {
   test(
     'renders exception handling as a three-state strategy selector',
     async () => {
-      renderWithProviders(
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <SelectionSeed nodeId="node-llm" />
           <NodeConfigTab />
@@ -597,7 +607,7 @@ describe('NodeDetailPanel', () => {
     async () => {
       let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
-      renderWithProviders(
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <DocumentObserver
             onChange={(document) => {
@@ -636,7 +646,7 @@ describe('NodeDetailPanel', () => {
     async () => {
       let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
-      renderWithProviders(
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <DocumentObserver
             onChange={(document) => {
@@ -681,7 +691,7 @@ describe('NodeDetailPanel', () => {
     async () => {
       let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
-      renderWithProviders(
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <DocumentObserver
             onChange={(document) => {
@@ -716,7 +726,7 @@ describe('NodeDetailPanel', () => {
     async () => {
       let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
-      renderWithProviders(
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={createInitialState()}>
           <DocumentObserver
             onChange={(document) => {
@@ -776,7 +786,7 @@ describe('NodeDetailPanel', () => {
         modelProviderOptionsContract
       );
 
-      renderWithProviders(
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={state}>
           <DocumentObserver
             onChange={(document) => {
@@ -859,7 +869,7 @@ describe('NodeDetailPanel', () => {
       };
       fetchModelProviderOptionsSpy.mockResolvedValueOnce(duplicatedContract);
 
-      renderWithProviders(
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={state}>
           <DocumentObserver
             onChange={(document) => {
@@ -912,7 +922,7 @@ describe('NodeDetailPanel', () => {
         modelProviderOptionsContract
       );
 
-      renderWithProviders(
+      await renderWithProviders(
         <AgentFlowEditorStoreProvider initialState={state}>
           <SelectionSeed nodeId="node-llm" />
           <NodeConfigTab />

@@ -1,6 +1,12 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import {
+  configure,
+  fireEvent,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('antd', async (importOriginal) => {
   const actual = await importOriginal<typeof import('antd')>();
@@ -39,12 +45,19 @@ vi.mock('antd', async (importOriginal) => {
 });
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import * as runtimeApi from '../../api/runtime';
 import { AgentFlowEditorShell } from '../../components/editor/AgentFlowEditorShell';
 import { createNodeDocument } from '../../lib/document/node-factory';
 import { renderReactFlowScene } from '../../../../test/renderers/render-react-flow-scene';
+
+// The inspector, preview modal and Last Run panel are demand-loaded islands.
+// Use the existing route-wiring budget for cold module loading in this fixture.
+configure({ asyncUtilTimeout: 10_000 });
 
 function createInitialState() {
   return {
@@ -279,6 +292,14 @@ function expectNodePreviewRequest(
 }
 
 describe('node last run runtime', () => {
+  beforeAll(async () => {
+    // This fixture verifies preview contracts; cold lazy readiness has its own route tests.
+    await Promise.all([
+      loadApplicationI18nResources(),
+      import('../../components/detail/NodeDetailPanel')
+    ]);
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     window.localStorage.clear();

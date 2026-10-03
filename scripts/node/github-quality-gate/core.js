@@ -364,6 +364,7 @@ function normalizeBackendConsistencyTarget(target) {
     label: target.label,
     packageName: target.packageName,
     filter: target.filter,
+    testTarget: target.testTarget || '',
     status: target.status || 'not_run',
     exitCode: Number.isFinite(target.exitCode) ? target.exitCode : null,
     durationMs: Number.isFinite(target.durationMs) ? target.durationMs : null,
@@ -403,7 +404,7 @@ function formatDurationMs(durationMs) {
 }
 
 function formatBackendConsistencyTargetLine(target) {
-  return `| \`${target.label}\` | \`${target.packageName}\` | \`${target.filter}\` | `
+  return `| \`${target.label}\` | \`${target.packageName}\` | \`${target.testTarget ? `--test ${target.testTarget}` : target.filter}\` | `
     + `${target.status} | ${formatDurationMs(target.durationMs)} | `
     + `${target.passedCount ?? 'n/a'} | ${target.failedCount ?? 'n/a'} |`;
 }
@@ -601,9 +602,12 @@ function dedupeBy(items, keyForItem) {
   return deduped;
 }
 
-function normalizeComponentReport({ repoRoot, artifact }) {
+function normalizeComponentReport({ repoRoot, artifact, expectedCommit }) {
   const exitCode = Number.isFinite(artifact.report.exitCode) ? artifact.report.exitCode : 1;
-  const status = artifact.report.status === 'passed' && exitCode === 0 ? 'passed' : 'failed';
+  const identityError = !artifact.missing && (!expectedCommit || artifact.report.commit !== expectedCommit)
+    ? `Candidate mismatch for ${artifact.scope}: expected ${expectedCommit || 'missing'}, received ${artifact.report.commit || 'missing'}`
+    : '';
+  const status = artifact.report.status === 'passed' && exitCode === 0 && !identityError ? 'passed' : 'failed';
   const logPath = artifact.artifactPath
     ? path.join(artifact.artifactPath, 'quality-gate.latest.log')
     : '';
@@ -612,11 +616,12 @@ function normalizeComponentReport({ repoRoot, artifact }) {
     artifactName: artifact.artifactName,
     scope: artifact.scope,
     status,
-    exitCode,
+    exitCode: identityError ? 1 : exitCode,
+    commit: artifact.report.commit || '',
     reportPath: artifact.reportPath ? toRepoRelative(repoRoot, artifact.reportPath) : '',
     logPath: fs.existsSync(logPath) ? toRepoRelative(repoRoot, logPath) : '',
     failureExcerpt: status === 'failed'
-      ? (artifact.missing ? `No quality gate artifact was downloaded for scope: ${artifact.scope}` : readFailureExcerpt(logPath))
+      ? (identityError || (artifact.missing ? `No quality gate artifact was downloaded for scope: ${artifact.scope}` : readFailureExcerpt(logPath)))
       : '',
   };
 }
@@ -656,7 +661,7 @@ function buildAggregateReport({
   timestamp,
   env,
 }) {
-  const components = componentArtifacts.map((artifact) => normalizeComponentReport({ repoRoot, artifact }));
+  const components = componentArtifacts.map((artifact) => normalizeComponentReport({ repoRoot, artifact, expectedCommit: env.GITHUB_SHA }));
   const warningFiles = dedupeBy(
     componentArtifacts.flatMap((artifact) => artifact.report.warningFiles || []),
     (filePath) => filePath

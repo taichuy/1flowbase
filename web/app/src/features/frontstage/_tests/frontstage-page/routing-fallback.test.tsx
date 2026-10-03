@@ -732,7 +732,7 @@ describe('FrontStagePage - routing fallback', () => {
     );
 
     expect(screen.getByText('分组 一级')).toBeInTheDocument();
-    expect(screen.queryByText('分组 二级')).not.toBeInTheDocument();
+    expect(screen.getByText('分组 二级')).toBeInTheDocument();
     expect(screen.getAllByText('页面 内页').length).toBeGreaterThan(0);
     expect(
       screen.getByRole('heading', { name: '页面 内页' })

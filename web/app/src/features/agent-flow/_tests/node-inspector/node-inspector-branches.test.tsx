@@ -19,8 +19,8 @@ import {
 beforeEach(setupNodeInspectorTest);
 
 describe('NodeInspector branches', () => {
-  test('renders loop number fields in compact inline rows while keeping condition groups stacked', () => {
-    renderWithProviders(
+  test('renders loop number fields in compact inline rows while keeping condition groups stacked', async () => {
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithLoopNode()}
       >
@@ -47,7 +47,7 @@ describe('NodeInspector branches', () => {
     ).not.toHaveClass('agent-flow-editor__inspector-field--inline');
   });
 
-  test('keeps If / Else condition rule controls inside narrow inspector bounds', () => {
+  test('keeps If / Else condition rule controls inside narrow inspector bounds', async () => {
     const inspectorStyles = readFileSync(
       'src/features/agent-flow/components/editor/styles/inspector.css',
       'utf8'
@@ -68,7 +68,7 @@ describe('NodeInspector branches', () => {
     const initialState = createInitialStateWithIfElseNode();
     let latestDocument = initialState.draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={initialState}>
         <SelectionSeed nodeId="node-if-else" />
         <DocumentObserver
@@ -171,7 +171,7 @@ describe('NodeInspector branches', () => {
     const initialState = createInitialStateWithIfElseNode();
     let latestDocument = initialState.draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={initialState}>
         <SelectionSeed nodeId="node-if-else" />
         <DocumentObserver
@@ -248,7 +248,7 @@ describe('NodeInspector branches', () => {
     });
     let latestDocument = initialState.draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={initialState}>
         <SelectionSeed nodeId="node-if-else" />
         <DocumentObserver
@@ -346,7 +346,7 @@ describe('NodeInspector branches', () => {
       }
     };
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={initialState}>
         <SelectionSeed nodeId="node-if-else" />
         <NodeConfigTab />

@@ -122,7 +122,7 @@ async fn policy(store: &PgControlPlaneStore, workspace: Uuid, code: &str) -> Rol
 }
 fn allowed(policy: &RoleConsolePolicy, group_id: &str, id: &str) -> bool {
     effective_console_simple_operation(
-        &[policy.clone()],
+        std::slice::from_ref(policy),
         &group(group_id),
         &ConsoleOperationId::try_from(id).unwrap(),
     )

@@ -1205,6 +1205,7 @@ describe('useAgentFlowDebugSession streaming', () => {
       {
         document,
         debug_session_id: expect.stringMatching(/^app-1:draft-1:/),
+        mcp_instance_ids: [],
         input_payload: {
           'node-start': {
             files: [],
@@ -1308,6 +1309,7 @@ describe('useAgentFlowDebugSession streaming', () => {
       {
         document,
         debug_session_id: expect.stringMatching(/^app-1:draft-1:/),
+        mcp_instance_ids: [],
         input_payload: {
           'node-start': {
             files: [],

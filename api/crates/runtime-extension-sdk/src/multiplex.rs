@@ -26,6 +26,13 @@ use tokio::{
 // Match Tokio BufWriter's standard physical I/O buffer, not a stream/call limit.
 const OUTPUT_WRITE_BUFFER_BYTES: usize = 8 * 1024;
 
+// One active invocation owns cancellation, observed termination, and emitter validity.
+struct ActiveCall {
+    abort: tokio::task::AbortHandle,
+    watcher: JoinHandle<()>,
+    live: Rc<Cell<bool>>,
+}
+
 type PendingCallbacks =
     Rc<RefCell<HashMap<(String, String), oneshot::Sender<(Value, OwnedSemaphorePermit)>>>>;
 
@@ -228,7 +235,7 @@ async fn read_frame<R: AsyncBufRead + Unpin>(
             if bytes.len() > MULTIPLEX_MAX_FRAME_BYTES {
                 return Err(MultiplexError::FrameTooLarge);
             }
-            let frame: MultiplexEnvelope<MultiplexHostMessage> = serde_json::from_slice(&bytes)?;
+            let frame: MultiplexEnvelope<MultiplexHostMessage> = serde_json::from_slice(bytes)?;
             if !frame.is_supported() {
                 return Err(MultiplexError::Protocol);
             }
@@ -350,8 +357,7 @@ where
     let handler = Rc::new(handler);
     // The watcher owns each handler JoinHandle, so construction, polling, and
     // terminal encoding panics cannot leave an active call waiting forever.
-    let mut active: HashMap<String, (tokio::task::AbortHandle, JoinHandle<()>, Rc<Cell<bool>>)> =
-        HashMap::new();
+    let mut active: HashMap<String, ActiveCall> = HashMap::new();
     let mut max_seen_call_id = 0_u64;
     let mut input_closed = false;
     // Retain partial bytes when another select branch wins; a local read buffer
@@ -366,7 +372,7 @@ where
             _ = panic_rx.changed() => { break Err(MultiplexError::HandlerPanicked); }
             completed = complete_rx.recv(), if !active.is_empty() => {
                 let Some((call_id, response)) = completed else { break Err(MultiplexError::Protocol); };
-                if let Some((_, watcher, live)) = active.remove(&call_id) {
+                if let Some(ActiveCall { watcher, live, .. }) = active.remove(&call_id) {
                     let _ = watcher.await;
                     live.set(false);
                     remove_callbacks(&callbacks, &call_id);
@@ -406,10 +412,10 @@ where
                                 Err(_) => {} // explicitly aborted call
                             }
                         });
-                        active.insert(call_id, (abort, watcher, live));
+                        active.insert(call_id, ActiveCall { abort, watcher, live });
                     }
                     MultiplexHostMessage::Cancel { call_id } => {
-                        let Some((abort, watcher, live)) = active.remove(&call_id) else {
+                        let Some(ActiveCall { abort, watcher, live }) = active.remove(&call_id) else {
                             // Any previously dispatched call has already reached a terminal.
                             if parse_call_id(&call_id).is_some_and(|id| id <= max_seen_call_id) { continue; }
                             break Err(MultiplexError::Correlation);
@@ -441,7 +447,15 @@ where
             }
         }
     };
-    for (_, (abort, watcher, live)) in active.drain() {
+    for (
+        _,
+        ActiveCall {
+            abort,
+            watcher,
+            live,
+        },
+    ) in active.drain()
+    {
         live.set(false);
         abort.abort();
         let _ = watcher.await;

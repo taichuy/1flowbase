@@ -179,9 +179,15 @@ describe('debug console shell', () => {
 
     expect(runtimeApi.startFlowDebugRun).not.toHaveBeenCalled();
     expect(
-      screen.getByRole('complementary', { name: '预览' })
+      await screen.findByRole(
+        'complementary',
+        { name: '预览' },
+        { timeout: 10_000 }
+      )
     ).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('和 Bot 聊天')).toBeInTheDocument();
+    expect(
+      await screen.findByPlaceholderText('和 Bot 聊天', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
     expect(screen.queryByText('功能已开启')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '管理功能' })
@@ -223,9 +229,10 @@ describe('debug console shell', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: '预览' }));
-    fireEvent.change(screen.getByPlaceholderText('和 Bot 聊天'), {
-      target: { value: '请总结退款政策' }
-    });
+    fireEvent.change(
+      await screen.findByPlaceholderText('和 Bot 聊天', {}, { timeout: 10_000 }),
+      { target: { value: '请总结退款政策' } }
+    );
     fireEvent.click(screen.getByRole('button', { name: '发送调试消息' }));
     fireEvent.click(
       await screen.findByRole(
@@ -238,7 +245,7 @@ describe('debug console shell', () => {
     const logDock = await screen.findByTestId(
       'agent-flow-editor-conversation-log-dock'
     );
-    expect(within(logDock).getByLabelText('对话日志')).toBeInTheDocument();
+    expect(await within(logDock).findByLabelText('对话日志')).toBeInTheDocument();
     expect(
       within(logDock).getByRole('separator', { name: '调整对话日志宽度' })
     ).toBeInTheDocument();

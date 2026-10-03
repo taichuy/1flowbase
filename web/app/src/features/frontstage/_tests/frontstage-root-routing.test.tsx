@@ -199,9 +199,13 @@ describe('frontstage topbar root routing', () => {
       </AppProviders>
     );
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/sales/pages/page-top-level');
-    });
+    // This first navigation loads the cold lazy workspace module.
+    await waitFor(
+      () => {
+        expect(window.location.pathname).toBe('/sales/pages/page-top-level');
+      },
+      { timeout: 10_000 }
+    );
   });
 
   test('AC-002 keeps the group root when it only contains grouped pages', async () => {

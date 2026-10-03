@@ -32,7 +32,10 @@ test('buildCommands targets backend consistency suites without workspace-wide re
     });
     assert.deepEqual(command.args.slice(0, 2), ['test', '-p']);
     assert.deepEqual(command.args.slice(3, 5), ['--jobs', '4']);
-    assert.deepEqual(command.args.slice(6), ['--', '--test-threads=1']);
+    const target = BACKEND_CONSISTENCY_TARGETS.find((row) => row.label === command.label);
+    assert.deepEqual(command.args.slice(6), [
+      ...(target.testTarget ? ['--test', target.testTarget] : []), '--', '--test-threads=1',
+    ]);
   }
 });
 
@@ -222,4 +225,46 @@ test('runBackendConsistencyCommandSequence records failed and skipped target sta
     { status: 'failed', passedCount: 1, failedCount: 1 },
     { status: 'skipped', passedCount: null, failedCount: null },
   ]);
+});
+
+
+test('consistency gates reject zero, ignored-only, absent, and contradictory execution summaries', () => {
+  for (const stdout of [
+    'test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 91 filtered out;',
+    'test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out;',
+    'Finished compilation successfully',
+    'test result: FAILED. 1 passed; 1 failed; 0 ignored;',
+  ]) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'consistency-empty-'));
+    const commands = buildCommands({ cargoJobs: 2, cargoTestThreads: 1 }).slice(0, 1);
+    let stderr = '';
+    const status = runBackendConsistencyCommandSequence({
+      repoRoot, env: {}, scope: 'empty-selection', commands,
+      spawnSyncImpl: () => ({ status: 0, stdout, stderr: '' }),
+      writeStdout() {}, writeStderr: (text) => { stderr += text; },
+    });
+    const report = JSON.parse(fs.readFileSync(path.join(repoRoot,
+      'tmp/test-governance/backend-consistency-targets.json'), 'utf8'));
+    assert.equal(status, 1);
+    assert.equal(report.targets[0].status, 'failed');
+    assert.equal(report.targets[0].exitCode, 1);
+    assert.match(stderr, /refusing empty consistency gate/u);
+  }
+});
+
+test('migrated runtime consistency suites use their real Cargo integration targets', () => {
+  const targets = BACKEND_CONSISTENCY_TARGETS.filter((row) => row.testTarget);
+  assert.deepEqual(targets.map((row) => [row.packageName, row.testTarget]), [
+    ['control-plane-postgres-tests', 'runtime_record_integration'],
+    ['control-plane-postgres-tests', 'orchestration_runtime_integration'],
+  ]);
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const manifest = fs.readFileSync(path.join(repoRoot,
+    'api/crates/control-plane-postgres-tests/Cargo.toml'), 'utf8');
+  for (const target of targets) {
+    assert.ok(manifest.includes(`name = "${target.testTarget}"`));
+    const source = fs.readFileSync(path.join(repoRoot,
+      `api/crates/control-plane-postgres-tests/tests/${target.testTarget}/mod.rs`), 'utf8');
+    assert.match(source, /mod (?:crud|runtime_events);/u);
+  }
 });

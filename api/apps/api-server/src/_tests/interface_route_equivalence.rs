@@ -83,7 +83,8 @@ fn issue_1958_migrated_routes_have_no_production_compatibility_bypass() {
     }
     assert!(!compatibility_stream.contains("public_mcp_runtime_invoker(&state"));
     assert!(openai.contains("compatibility_interface::invoke_blocking"));
-    assert!(openai.contains("compatibility_interface::invoke_stream"));
+    assert!(openai.contains("compatibility_interface::invoke_client_stream_with_principal"));
+    assert!(openai.contains("compatibility_interface::invoke_typed_stream_with_principal"));
     assert!(anthropic.contains("compatibility_interface::invoke_blocking"));
     assert!(anthropic.contains("compatibility_interface::invoke_stream"));
     assert_eq!(

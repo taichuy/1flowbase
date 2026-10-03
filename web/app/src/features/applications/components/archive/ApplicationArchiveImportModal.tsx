@@ -32,7 +32,7 @@ export function ApplicationArchiveImportModal({
       title={t('auto.import_template')}
       width={960}
       okText={t('auto.import_template')}
-      cancelText={results ? t('archive_import.close') : t('auto.cancel')}
+      cancelText={results ? t('auto.close') : t('auto.cancel')}
       confirmLoading={importing}
       closable={!importing}
       mask={{ closable: !importing }}

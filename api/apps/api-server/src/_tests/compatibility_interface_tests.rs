@@ -71,7 +71,7 @@ fn blocking_compatibility_bindings_publish_as_typed_http_plans() {
 }
 
 #[test]
-fn blocking_compatibility_routes_select_frozen_binding_constants() {
+fn compatibility_routes_select_frozen_bindings_and_registered_invocation_helpers() {
     let source = include_str!("../routes/application_public_api/openai.rs");
     let anthropic = include_str!("../routes/application_public_api/anthropic.rs");
 
@@ -94,6 +94,7 @@ fn blocking_compatibility_routes_select_frozen_binding_constants() {
     assert!(source.contains("OPENAI_CHAT_MODELS_BINDING_ID"));
     assert!(source.contains("compatibility_interface::invoke_models"));
     assert!(source.contains("compatibility_interface::invoke_blocking"));
-    assert!(source.contains("compatibility_interface::invoke_stream"));
+    assert!(source.contains("compatibility_interface::invoke_client_stream_with_principal"));
+    assert!(source.contains("compatibility_interface::invoke_typed_stream_with_principal"));
     assert!(anthropic.contains("compatibility_interface::invoke_blocking"));
 }

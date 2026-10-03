@@ -19,7 +19,9 @@ const FOUNDATION_DEFINITIONS = {
     matches(filePath) {
       return /^scripts\/node\/(?:ai-gateway-concurrency|provider-conformance|verify-state-protocols)(?:\/|\.js$)/u.test(filePath)
         || /^scripts\/node\/cli\/(?:ai-gateway|acp-claude-smoke)/u.test(filePath)
-        || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic\.rs|compat_sse(?:\/|\.rs$))/u.test(filePath)
+        || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic\.rs|openai(?:\/|\.rs$)|compatibility_interface(?:\/|\.rs$)|compat_sse(?:\/|\.rs$))/u.test(filePath)
+        || /^api\/crates\/control-plane\/src\/(?:application_public_api|client_trajectory)(?:\/|\.rs$)/u.test(filePath)
+        || /^api\/crates\/control-plane\/src\/orchestration_runtime\/provider_invoker(?:\/|\.rs$)/u.test(filePath)
         || /^\.github\/workflows\/ai-gateway-concurrency\.yml$/u.test(filePath);
     },
     fast: [

@@ -136,7 +136,7 @@ describe('AgentFlowCanvas', () => {
     expect(
       screen.getByRole('button', { name: '返回主画布' })
     ).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: '节点别名' })).toHaveValue(
+    expect(await screen.findByRole('textbox', { name: '节点别名' })).toHaveValue(
       'Inner Answer'
     );
     expect(screen.queryByText('Start')).not.toBeInTheDocument();

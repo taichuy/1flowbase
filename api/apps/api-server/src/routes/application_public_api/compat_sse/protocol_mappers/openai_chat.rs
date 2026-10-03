@@ -41,7 +41,9 @@ impl OpenAiChatStreamMapper {
         match self.usage_baseline.project(run.usage.as_ref()) {
             Some(usage) => payload["usage"] = json!(usage),
             None => {
-                payload.as_object_mut().unwrap().remove("usage");
+                if let Value::Object(fields) = &mut payload {
+                    fields.remove("usage");
+                }
             }
         }
         payload

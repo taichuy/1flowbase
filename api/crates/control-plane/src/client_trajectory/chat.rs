@@ -2,6 +2,30 @@
 use super::{Classifier, FactSink};
 use crate::ports::{ClientTrajectoryFact as Fact, ClientTrajectoryFrameKind};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
+
+pub(super) struct ChatChoice {
+    message: Value,
+    tool_fragments: BTreeMap<u64, Value>,
+}
+
+impl Default for ChatChoice {
+    fn default() -> Self {
+        Self {
+            message: json!({"role": "assistant"}),
+            tool_fragments: BTreeMap::new(),
+        }
+    }
+}
+
+impl ChatChoice {
+    fn into_message(mut self) -> Value {
+        if !self.tool_fragments.is_empty() {
+            self.message["tool_calls"] = Value::Array(self.tool_fragments.into_values().collect());
+        }
+        self.message
+    }
+}
 
 impl Classifier {
     pub(super) async fn chat_message(
@@ -76,10 +100,8 @@ impl Classifier {
                     .await;
                 self.chat_finished.insert(index);
             } else if let Some(delta) = choice.get("delta").filter(|v| v.is_object()) {
-                let message = self
-                    .chat_choices
-                    .entry(index)
-                    .or_insert_with(|| json!({"role":"assistant"}));
+                let accumulated_choice = self.chat_choices.entry(index).or_default();
+                let message = &mut accumulated_choice.message;
                 for field in ["content", "reasoning_content", "reasoning", "refusal"] {
                     if let Some(text) = delta[field].as_str() {
                         append(message, field, text);
@@ -94,13 +116,9 @@ impl Classifier {
                             self.incomplete = true;
                             continue;
                         };
-                        let key = call_index.to_string();
-                        if message.get("tool_fragments").is_none() {
-                            message["tool_fragments"] = json!({});
-                        }
-                        let fragments = message["tool_fragments"].as_object_mut().unwrap();
-                        let accumulated = fragments
-                            .entry(key)
+                        let accumulated = accumulated_choice
+                            .tool_fragments
+                            .entry(call_index)
                             .or_insert_with(|| json!({"function":{}}));
                         for field in ["id", "type"] {
                             if let Some(text) = call[field].as_str() {
@@ -115,15 +133,8 @@ impl Classifier {
                     }
                 }
                 if !choice["finish_reason"].is_null() {
-                    let mut message = self.chat_choices.remove(&index).unwrap();
-                    if let Some(Value::Object(calls)) =
-                        message.as_object_mut().unwrap().remove("tool_fragments")
-                    {
-                        let mut calls: Vec<_> = calls.into_iter().collect();
-                        calls.sort_by_key(|(index, _)| index.parse::<u64>().unwrap_or_default());
-                        message["tool_calls"] =
-                            Value::Array(calls.into_iter().map(|(_, call)| call).collect());
-                    }
+                    let message = std::mem::take(accumulated_choice).into_message();
+                    self.chat_choices.remove(&index);
                     self.chat_message(message, "emitted", at, facts).await;
                     self.chat_finished.insert(index);
                 }

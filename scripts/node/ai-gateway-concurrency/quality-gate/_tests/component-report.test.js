@@ -40,6 +40,7 @@ test('AC-012: passing gateway evidence becomes an aggregate-compatible component
   assert.equal(report.status, 'passed');
   assert.equal(report.scope, 'ai-gateway-protocol-conformance');
   assert.equal(report.exitCode, 0);
+  assert.equal(report.commit, passingGateResult.main_source_sha);
   assert.equal(report.protocolConformance.oracleRows, 16);
   assert.equal(report.protocolConformance.profileRows, 9);
   assert.equal(report.protocolConformance.errorRows, 20);
@@ -67,4 +68,19 @@ test('AC-012: component report writer emits the standard aggregate filenames', (
   assert.equal(path.basename(paths.logPath), 'quality-gate.latest.log');
   assert.equal(JSON.parse(fs.readFileSync(paths.reportPath, 'utf8')).status, 'passed');
   assert.match(fs.readFileSync(paths.logPath, 'utf8'), /status=passed/u);
+});
+
+
+test('gateway producer evidence is accepted only for its actual source candidate', () => {
+  const { buildAggregateReport } = require('../../../github-quality-gate/core.js');
+  const report = buildComponentReport({ commandOutcome: 'success', gateResult: passingGateResult });
+  const artifacts = [{ artifactName: 'gateway', scope: report.scope, report }];
+  const aggregate = (sha) => buildAggregateReport({
+    repoRoot: path.resolve(__dirname, '../../../../..'), reportType: 'ci',
+    componentArtifacts: artifacts, env: { GITHUB_SHA: sha }, timestamp: '2026-10-02',
+  }).json;
+  assert.equal(aggregate(passingGateResult.main_source_sha).status, 'passed');
+  const wrong = aggregate('different-source');
+  assert.equal(wrong.status, 'failed');
+  assert.match(wrong.components[0].failureExcerpt, /Candidate mismatch/u);
 });

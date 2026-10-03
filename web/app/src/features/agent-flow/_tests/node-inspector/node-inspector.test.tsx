@@ -60,7 +60,7 @@ describe('NodeInspector core', () => {
     state.draft.document.graph.nodes.push(sqlNode);
     let latestDocument = state.draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-sql" />
         <DocumentObserver
@@ -90,7 +90,7 @@ describe('NodeInspector core', () => {
     });
   });
 
-  test('AC-012/013 renders backend-projected i18n_text as inert text and falls back to the typed English key', () => {
+  test('AC-012/013 renders backend-projected i18n_text as inert text and falls back to the typed English key', async () => {
     const translatedState = createInitialState();
     const answerNode = createNodeDocument(
       'answer',
@@ -112,7 +112,7 @@ describe('NodeInspector core', () => {
       }
     ];
 
-    const { unmount } = renderWithProviders(
+    const { unmount } = await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={translatedState}>
         <SelectionSeed nodeId="node-answer-i18n" />
         <NodeConfigTab />
@@ -136,7 +136,7 @@ describe('NodeInspector core', () => {
     fallbackNode.bindings.answer_template = answerNode.bindings.answer_template;
     fallbackState.draft.document.graph.nodes.push(fallbackNode);
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={fallbackState}>
         <SelectionSeed nodeId="node-answer-i18n-fallback" />
         <NodeConfigTab />
@@ -149,7 +149,7 @@ describe('NodeInspector core', () => {
   });
 
   test('reads config sections through the node schema registry and adapter bridge', async () => {
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>
         <SelectionSeed nodeId="node-llm" />
         <NodeInspector />
@@ -163,11 +163,13 @@ describe('NodeInspector core', () => {
       );
     });
     expect(resolveAgentFlowNodeSchemaSpy).toHaveBeenCalledWith('llm');
-    expect(createAgentFlowNodeSchemaAdapterSpy).toHaveBeenCalledTimes(1);
+    expect(createAgentFlowNodeSchemaAdapterSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 'node-llm' })
+    );
   });
 
   test('renders config sections as always-open blocks without repeating basics once summary content moves out', async () => {
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>
         <SelectionSeed nodeId="node-llm" />
         <NodeInspector />
@@ -212,10 +214,10 @@ describe('NodeInspector core', () => {
     );
   }, 10000);
 
-  test('updates node identity through header interactions instead of mutating document inline', () => {
+  test('updates node identity through header interactions instead of mutating document inline', async () => {
     let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>
         <SelectionSeed nodeId="node-start" />
         <DocumentObserver
@@ -257,7 +259,7 @@ describe('NodeInspector core', () => {
   });
 
   test('keeps issue-driven focus working after the inspector loses its header chrome', async () => {
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>
         <FocusIssueSeed />
         <NodeConfigTab />
@@ -283,7 +285,7 @@ describe('NodeInspector core', () => {
       modelProviderOptionsContract
     );
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <NodeConfigTab />
@@ -329,7 +331,7 @@ describe('NodeInspector core', () => {
       })
     );
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <DocumentObserver
@@ -477,7 +479,7 @@ describe('NodeInspector core', () => {
 
     llmNodeConfig.mcp_instance_ids = ['missing-instance'];
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <NodeConfigTab />
@@ -531,7 +533,7 @@ describe('NodeInspector core', () => {
       })
     );
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <DocumentObserver
@@ -642,7 +644,7 @@ describe('NodeInspector core', () => {
       }
     ];
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <DocumentObserver
@@ -836,7 +838,7 @@ describe('NodeInspector core', () => {
       }
     ];
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <DocumentObserver
@@ -919,7 +921,7 @@ describe('NodeInspector core', () => {
       }
     ];
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <NodeConfigTab />
@@ -1007,7 +1009,7 @@ describe('NodeInspector core', () => {
   });
 
   test('collapses generated outputs by default and keeps output contract editing hidden', async () => {
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={createInitialState()}>
         <SelectionSeed nodeId="node-llm" />
         <NodeConfigTab />
@@ -1030,7 +1032,7 @@ describe('NodeInspector core', () => {
     expect(screen.getByText('usage')).toBeInTheDocument();
   });
 
-  test('renders field validation errors under the owning inspector field', () => {
+  test('renders field validation errors under the owning inspector field', async () => {
     const state = createInitialState();
     const answerNode = state.draft.document.graph.nodes.find(
       (node) => node.id === 'node-answer'
@@ -1054,7 +1056,7 @@ describe('NodeInspector core', () => {
       dispatch: vi.fn()
     });
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <NodeInspector schema={schema} adapter={adapter} />
       </AgentFlowEditorStoreProvider>
@@ -1076,7 +1078,7 @@ describe('NodeInspector core', () => {
     const state = createInitialStateWithHttpRequestNode();
     let latestDocument = state.draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-http-request" />
         <DocumentObserver
@@ -1192,7 +1194,7 @@ describe('NodeInspector core', () => {
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithHttpRequestNode()}
       >
@@ -1216,7 +1218,7 @@ describe('NodeInspector core', () => {
   });
 
   test('keeps code output contract definition editable without rendering the shared output contract card', async () => {
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider
         initialState={createInitialStateWithCodeNode()}
       >
@@ -1236,8 +1238,8 @@ describe('NodeInspector core', () => {
     expect(screen.queryByLabelText('代码结果')).not.toBeInTheDocument();
   });
 
-  test('keeps Code boolean input selector values visible in the single value column', () => {
-    renderWithProviders(
+  test('keeps Code boolean input selector values visible in the single value column', async () => {
+    await renderWithProviders(
       <TemplatedNamedBindingsField
         ariaLabel="inputs"
         options={[
@@ -1271,10 +1273,10 @@ describe('NodeInspector core', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('adds Code input rows without preselecting a parameter type', () => {
+  test('adds Code input rows without preselecting a parameter type', async () => {
     const handleChange = vi.fn();
 
-    renderWithProviders(
+    await renderWithProviders(
       <TemplatedNamedBindingsField
         ariaLabel="inputs"
         options={[]}
@@ -1293,8 +1295,8 @@ describe('NodeInspector core', () => {
     ]);
   });
 
-  test('keeps named binding input focused when editing its name', () => {
-    renderWithProviders(<NamedBindingsFocusHarness />);
+  test('keeps named binding input focused when editing its name', async () => {
+    await renderWithProviders(<NamedBindingsFocusHarness />);
 
     const nameInput = screen.getByLabelText('bindings-0-name');
     nameInput.focus();

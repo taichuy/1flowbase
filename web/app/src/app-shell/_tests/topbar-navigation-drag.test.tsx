@@ -22,14 +22,14 @@ vi.mock(
   })
 );
 
-const nodes = ['报表', '应用'].map((title, index) => ({
+const nodes = ['报表', '应用'].map<FrontstagePageTreeNode>((title, index) => ({
   id: `node-${index}`,
   title,
   kind: 'page',
   placement: 'topbar',
   content_presentation: 'single',
   children: []
-})) as FrontstagePageTreeNode[];
+}));
 
 function renderLabels() {
   render(

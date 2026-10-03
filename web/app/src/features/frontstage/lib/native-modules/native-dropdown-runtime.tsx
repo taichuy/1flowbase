@@ -11,9 +11,11 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent,
   type ReactElement,
   type ReactNode,
-  type Ref
+  type Ref,
+  type SyntheticEvent
 } from 'react';
 
 import { useNativeBlockSurface } from './native-block-surface-context';
@@ -31,6 +33,8 @@ export function NativeBlockDropdown({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const [overlayGeneration, setOverlayGeneration] = useState(0);
   const previousLayoutEpoch = useRef(surface?.layoutEpoch);
+  const hoverTrigger = (trigger ?? ['hover']).includes('hover');
+  const menuDismissed = useRef(false);
   const controlled = open !== undefined;
   const resolvedOpen = controlled ? open : uncontrolledOpen;
   const resolvedOpenRef = useRef(resolvedOpen);
@@ -52,12 +56,22 @@ export function NativeBlockDropdown({
 
   const transitionOpen = useCallback(
     (nextOpen: boolean, info: { source: 'trigger' | 'menu' }) => {
+      // A menu dismissal wins over a previously scheduled hover-open callback.
+      // Only a new physical trigger intent may rearm hover opening.
+      if (
+        nextOpen &&
+        info.source === 'trigger' &&
+        hoverTrigger &&
+        menuDismissed.current
+      )
+        return;
+      if (!nextOpen && info.source === 'menu') menuDismissed.current = true;
       if (resolvedOpenRef.current === nextOpen) return;
       resolvedOpenRef.current = nextOpen;
       if (!controlled) setUncontrolledOpen(nextOpen);
       onOpenChange?.(nextOpen, info);
     },
-    [controlled, onOpenChange]
+    [controlled, hoverTrigger, onOpenChange]
   );
   const resolvePopupContainer = useCallback(
     (triggerNode?: HTMLElement) =>
@@ -69,7 +83,21 @@ export function NativeBlockDropdown({
       document.body,
     [getPopupContainer, overlayHost, targetRoot]
   );
-  const hoverTrigger = (trigger ?? ['hover']).includes('hover');
+  const rearmTriggerIntent = (event: SyntheticEvent<HTMLSpanElement>) => {
+    if (event.currentTarget.contains(event.target as Node)) {
+      menuDismissed.current = false;
+    }
+  };
+  const rearmHoverIntent = (event: MouseEvent<HTMLSpanElement>) => {
+    // Portal events bubble through React, but do not enter the trigger DOM.
+    if (!event.currentTarget.contains(event.target as Node)) return;
+    if (
+      event.relatedTarget instanceof Node &&
+      event.currentTarget.contains(event.relatedTarget)
+    )
+      return;
+    rearmTriggerIntent(event);
+  };
   const normalizedChildren = useViewportFixedVirtualTrigger({
     children,
     enabled: usesNativeLayer && resolvedOpen,
@@ -100,7 +128,14 @@ export function NativeBlockDropdown({
     <span
       data-flowbase-native-dropdown-intent=""
       style={{ display: 'contents' }}
-      onPointerOverCapture={() => transitionOpen(true, { source: 'trigger' })}
+      onKeyDownCapture={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') rearmTriggerIntent(event);
+      }}
+      onPointerDownCapture={rearmTriggerIntent}
+      onContextMenuCapture={rearmTriggerIntent}
+      onMouseDownCapture={rearmTriggerIntent}
+      onMouseOverCapture={rearmHoverIntent}
+      onPointerOverCapture={rearmHoverIntent}
     >
       {popupScopedDropdown}
     </span>

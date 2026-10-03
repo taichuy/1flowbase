@@ -1386,6 +1386,13 @@ export function ApplicationLogsWorkspace({
                   }
                   onClose={() => selectRun(null)}
                   onOpenMessageLog={openConversationLog}
+                  onOpenRunTrace={() => {
+                    if (!selectedRunId) return;
+                    openConversationLog(
+                      buildApplicationRunTraceMessage(selectedRunId)
+                    );
+                    changeLogTab('trace');
+                  }}
                   onOpenResumeTimeline={openResumeTimeline}
                   runId={selectedRunId}
                 />

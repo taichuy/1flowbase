@@ -256,4 +256,7 @@ test('enforced merge gathers all profiles and writes standalone coverage evidenc
   assert.equal(evidence.inventory.fullCount, 4);
   assert.equal(evidence.coverage.lineCoveragePercent, 100);
   assert.equal(evidence.comparison, undefined);
+  assert.deepEqual(JSON.parse(fs.readFileSync(
+    path.join(repoRoot, 'tmp/test-governance/coverage/backend/api-server.json'), 'utf8'
+  )), summary);
 });

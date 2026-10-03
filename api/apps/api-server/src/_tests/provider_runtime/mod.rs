@@ -1070,7 +1070,9 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
         5,
         "every canonical provider input must fail closed on a crossed provider code"
     );
-    assert!(boot.contains("RuntimeExtensionHost::new_with_artifact_resolver_and_plugin_data("));
+    assert!(boot.contains(
+        "RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source("
+    ));
     assert!(boot.contains("ApiRuntimeArtifactResolver::new("));
     assert!(boot.contains("RuntimeBackendSlot::default()"));
     assert!(boot.contains("runtime_backend_slot.bind(runtime_extension_host.clone())"));

@@ -20,7 +20,7 @@ describe('NodeInspector protocol context', () => {
     const state = createInitialStateWithProtocolContextCodeNode();
     delete getLlmNodeConfig(state.draft.document).protocol_context;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <NodeConfigTab />
@@ -52,7 +52,7 @@ describe('NodeInspector protocol context', () => {
     await appI18n.changeLanguage('en_US');
     const state = createInitialStateWithProtocolContextCodeNode();
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <NodeConfigTab />
@@ -73,7 +73,7 @@ describe('NodeInspector protocol context', () => {
     const state = createInitialStateWithProtocolContextCodeNode();
     let latestDocument = state.draft.document;
 
-    renderWithProviders(
+    await renderWithProviders(
       <AgentFlowEditorStoreProvider initialState={state}>
         <SelectionSeed nodeId="node-llm" />
         <DocumentObserver

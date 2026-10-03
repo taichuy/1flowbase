@@ -450,7 +450,10 @@ describe('ApplicationApiPage', () => {
     expect(storageSpy).not.toHaveBeenCalled();
     expect(window.location.href).not.toContain('sk-019e1a463b39');
 
-    fireEvent.click(screen.getByRole('button', { name: /关\s*闭/ }));
+    const tokenDialog = screen.getByRole('dialog', {
+      name: '保存这次创建的 API Key'
+    });
+    fireEvent.click(within(tokenDialog).getByLabelText('关闭', { selector: 'button' }));
 
     await waitFor(() => {
       expect(

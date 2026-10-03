@@ -448,10 +448,6 @@ impl ProviderHost {
     }
 
     #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "internal reload fixture; production activation uses a frozen artifact reference"
-    )]
     pub async fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedProviderSummary> {
         let source = match self.loaded_sources.get(plugin_id).cloned() {
             Some(source) => source,

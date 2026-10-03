@@ -870,7 +870,10 @@ describe('FrontStagePage - runtime canvas state', () => {
     ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole('button', { name: i18nText('frontstage', 'auto.retry') })
+      screen.getByRole('button', {
+        name: (name) =>
+          name.replace(/\s/gu, '') === i18nText('frontstage', 'auto.retry')
+      })
     );
     expect(onRetryLoadPageTree).toHaveBeenCalledTimes(1);
   });
@@ -911,7 +914,10 @@ describe('FrontStagePage - runtime canvas state', () => {
     ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole('button', { name: i18nText('frontstage', 'auto.retry') })
+      screen.getByRole('button', {
+        name: (name) =>
+          name.replace(/\s/gu, '') === i18nText('frontstage', 'auto.retry')
+      })
     );
     expect(onRetryLoadPageTree).toHaveBeenCalledTimes(1);
   });

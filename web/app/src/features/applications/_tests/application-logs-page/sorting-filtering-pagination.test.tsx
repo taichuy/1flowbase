@@ -591,8 +591,16 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
         name: '更新时间'
       })
     ).toBeInTheDocument();
-    expect(screen.getByText('2026/4/17 18:05:00')).toBeInTheDocument();
-    expect(screen.getByText('2026/4/17 20:00:00')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        new Date('2026-04-17T10:05:00Z').toLocaleString('zh-CN', { hour12: false })
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        new Date('2026-04-17T12:00:00Z').toLocaleString('zh-CN', { hour12: false })
+      )
+    ).toBeInTheDocument();
 
     const searchInput = screen.getByPlaceholderText('搜索标题');
     fireEvent.change(searchInput, { target: { value: '退款' } });

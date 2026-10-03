@@ -189,6 +189,15 @@ const runtimeApi = vi.hoisted(() => ({
   completeCallbackTask: vi.fn()
 }));
 
+const trajectoryApi = vi.hoisted(() => ({
+  fetchRunPayload: vi.fn()
+}));
+
+vi.mock('../../api/trajectory', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/trajectory')>()),
+  fetchRunPayload: trajectoryApi.fetchRunPayload
+}));
+
 vi.mock('../../api/runtime', () => runtimeApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
@@ -234,6 +243,11 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     runtimeApi.fetchApplicationConversationMessages.mockReset();
     runtimeApi.fetchApplicationRunConversationMessages.mockReset();
     runtimeApi.fetchRuntimeDebugArtifact.mockReset();
+    trajectoryApi.fetchRunPayload.mockReset();
+    trajectoryApi.fetchRunPayload.mockImplementation(
+      async (_applicationId: string, _runId: string, section: 'input_payload' | 'output_payload') =>
+        sampleRunDetail().flow_run[section]
+    );
 
     runtimeApi.fetchApplicationRuns.mockResolvedValue(
       applicationRunsPage([
@@ -494,14 +508,13 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     ).not.toBeInTheDocument();
     expect(within(conversation).getByText('总结退款政策')).toBeInTheDocument();
     expect(within(conversation).getByText('退款政策摘要')).toBeInTheDocument();
-    const composerInput = screen.getByPlaceholderText('和 Bot 聊天');
-    expect(composerInput).toBeInTheDocument();
-    fireEvent.change(composerInput, {
-      target: { value: '这只是日志页的输入 UI' }
-    });
-    expect(composerInput).toHaveValue('这只是日志页的输入 UI');
-    fireEvent.click(screen.getByRole('button', { name: '发送调试消息' }));
-    expect(composerInput).toHaveValue('');
+    expect(
+      screen.queryByRole('button', { name: '查看执行轨迹' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('和 Bot 聊天')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '发送调试消息' })
+    ).not.toBeInTheDocument();
     expect(runtimeApi.resumeFlowRun).not.toHaveBeenCalled();
     expect(runtimeApi.completeCallbackTask).not.toHaveBeenCalled();
     expect(screen.queryByText('功能已开启')).not.toBeInTheDocument();
@@ -546,9 +559,14 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       'true'
     );
     expect(runtimeApi.fetchApplicationRunTraceTree).not.toHaveBeenCalled();
+    expect(trajectoryApi.fetchRunPayload).not.toHaveBeenCalled();
+    fireEvent.click(await within(logPanel).findByRole('button', { name: '输出' }));
     expect(
       await within(logPanel).findByLabelText('输出 JSON')
     ).toHaveTextContent('退款政策摘要');
+    expect(trajectoryApi.fetchRunPayload).toHaveBeenCalledWith(
+      'app-1', 'run-1', 'output_payload'
+    );
     expect(within(logPanel).getByText('协议')).toBeInTheDocument();
     expect(within(logPanel).queryByText('节点数')).not.toBeInTheDocument();
 
@@ -592,7 +610,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     ).not.toBeInTheDocument();
   }, 40_000);
 
-  test('opens a waiting callback conversation log without active polling', async () => {
+  test('refreshes a waiting callback conversation log until its reply arrives', async () => {
     runtimeApi.fetchApplicationRuns.mockReset();
     runtimeApi.fetchApplicationConversationMessages.mockReset();
     runtimeApi.fetchApplicationRunConversationMessages.mockReset();
@@ -691,10 +709,10 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 1200));
     });
-    expect(screen.queryByText('最终回答')).not.toBeInTheDocument();
+    expect(await screen.findByText('最终回答')).toBeInTheDocument();
     expect(
       runtimeApi.fetchApplicationRunConversationMessages.mock.calls.length
-    ).toBe(1);
+    ).toBeGreaterThan(1);
   }, 8_000);
 
   test('drags and resizes floating run detail window', async () => {
@@ -941,6 +959,17 @@ describe('ApplicationLogsPage - floating windows shell', () => {
         }))
       )
     );
+    runtimeApi.fetchApplicationLogConversationMessages.mockResolvedValue(
+      conversationMessagesPage(
+        [1, 2, 3, 4].map((n) => ({
+          id: `message-${n}`,
+          flow_run_id: `run-${n}`,
+          role: 'assistant' as const,
+          content: `调用 ${n}`,
+          sequence: n
+        }))
+      )
+    );
     render(
       <AppProviders>
         <AntdApp>
@@ -983,12 +1012,13 @@ describe('ApplicationLogsPage - floating windows shell', () => {
         }
       ])
     );
+    fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));
+    expect(await screen.findByText('调用 4')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '查看此会话' }));
     expect(await screen.findByText('会话中的第二任务')).toBeInTheDocument();
     expect(
       runtimeApi.fetchApplicationLogConversationMessages
     ).toHaveBeenCalledWith('app-1', 'conversation-1', {
-      aroundRunId: 'run-1',
       limit: 5
     });
     fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));

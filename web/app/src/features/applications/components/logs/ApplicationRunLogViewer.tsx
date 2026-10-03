@@ -125,6 +125,11 @@ export function ApplicationRunLogViewer({
                 setTraceTab('detail');
                 setPanel('trace');
               }}
+              onOpenRunTrace={() => {
+                setTraceMessage(buildApplicationRunTraceMessage(runId));
+                setTraceTab('trace');
+                setPanel('trace');
+              }}
               onOpenResumeTimeline={(message) => {
                 setTimelineRunId(message.detailRunId ?? message.runId ?? runId);
                 setPanel('timeline');

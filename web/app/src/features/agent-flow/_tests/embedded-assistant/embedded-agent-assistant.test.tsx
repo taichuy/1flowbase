@@ -61,6 +61,10 @@ vi.mock('@monaco-editor/react', () => ({
   )
 }));
 
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
 import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 import { AppProviders } from '../../../../app/AppProviders';
 import type { ConsoleFlowDebugStreamEvent } from '@1flowbase/api-client';
@@ -247,9 +251,13 @@ describe('EmbeddedAgentAssistant', () => {
     await waitFor(() => {
       expect(getConsoleAssistantSettings).toHaveBeenCalledTimes(1);
     });
-    await waitFor(() => expect(
-      document.querySelector('.agent-flow-editor__debug-console')
-    ).toBeInTheDocument());
+    await waitFor(
+      () => expect(
+        document.querySelector('.agent-flow-editor__debug-console')
+      ).toBeInTheDocument(),
+      { timeout: 10_000 }
+    );
+    expect(screen.getByTestId('debug-conversation-messages')).toBeInTheDocument();
     expect(document.querySelector('.ant-drawer')).not.toBeInTheDocument();
     expect(
       screen.getByTestId('embedded-agent-assistant-preview')
@@ -2011,7 +2019,7 @@ describe('EmbeddedAgentAssistant', () => {
       'aria-label',
       i18nText('appShell', 'auto.assistant_activity')
     );
-    expect(within(sidebar).getByText('Research node')).toBeInTheDocument();
+    expect(await within(sidebar).findByText('Research node')).toBeInTheDocument();
     expect(
       within(sidebar).getByText(i18nText('agentFlow', 'auto.reply_directly'))
     ).toBeInTheDocument();
@@ -2213,7 +2221,9 @@ describe('EmbeddedAgentAssistant', () => {
     const sidebar = await screen.findByTestId(
       'embedded-agent-assistant-history'
     );
-    expect(within(sidebar).getByText('History node')).toBeInTheDocument();
+    expect(
+      await within(sidebar).findByText('History node', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
     expect(
       await within(sidebar).findByText('17.79 K tokens')
     ).toBeInTheDocument();

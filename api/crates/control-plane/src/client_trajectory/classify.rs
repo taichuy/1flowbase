@@ -18,7 +18,7 @@ pub(super) struct Classifier {
     node: Option<Uuid>,
     transport: ClientTrajectoryTransport,
     protocol: &'static str,
-    chat_choices: BTreeMap<u64, Value>,
+    chat_choices: BTreeMap<u64, chat::ChatChoice>,
     chat_finished: BTreeSet<u64>,
     response_id: Option<String>,
     turn_id: Option<String>,

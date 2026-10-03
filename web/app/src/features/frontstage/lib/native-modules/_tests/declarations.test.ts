@@ -176,6 +176,18 @@ dropdownRef.forceAlign();`
     expect(diagnostics).toEqual([]);
   });
 
+  test('rejects an invalid public prop after reusing the declaration program', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import type { FlexProps } from 'antd';
+const gap: FlexProps['gap'] = { unsupported: true };
+void gap;`
+    });
+    expect(diagnostics.join('\n')).toMatch(
+      /not assignable|does not exist|known properties/
+    );
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({
@@ -186,21 +198,44 @@ dropdownRef.forceAlign();`
   });
 });
 
-function typeCheckSource({
-  extraLibs,
-  source
-}: {
-  extraLibs: readonly {
-    content: string;
-    filePath: string;
-    source: string;
-  }[];
+type DeclarationLibs = readonly {
+  content: string;
+  filePath: string;
   source: string;
-}): string[] {
-  const sourcePath = '/demo.tsx';
-  const files = new Map<string, string>([[sourcePath, source]]);
+}[];
+
+type TypeCheckEnvironment = {
+  files: Map<string, string>;
+  host: ts.CompilerHost;
+  options: ts.CompilerOptions;
+  program?: ts.Program;
+};
+
+// All fixtures consume the same immutable declaration inventory. Reuse parsed
+// libraries and TypeScript's incremental program, never a fixture's diagnostics.
+const typeCheckEnvironments = new WeakMap<
+  DeclarationLibs,
+  TypeCheckEnvironment
+>();
+const sourcePath = '/demo.tsx';
+
+function createTypeCheckEnvironment(
+  extraLibs: DeclarationLibs
+): TypeCheckEnvironment {
+  const files = new Map<string, string>([[sourcePath, '']]);
   for (const extraLib of extraLibs) {
     files.set(new URL(extraLib.filePath).pathname, extraLib.content);
+  }
+  const directories = new Set<string>();
+  for (const filePath of files.keys()) {
+    for (
+      let slash = filePath.lastIndexOf('/');
+      slash >= 0;
+      slash = filePath.lastIndexOf('/', slash - 1)
+    ) {
+      directories.add(filePath.slice(0, slash) || '/');
+      if (slash === 0) break;
+    }
   }
   const options: ts.CompilerOptions = {
     allowSyntheticDefaultImports: true,
@@ -217,34 +252,48 @@ function typeCheckSource({
   const host = ts.createCompilerHost(options, true);
   const getSourceFile = host.getSourceFile.bind(host);
   const directoryExists = host.directoryExists?.bind(host);
+  const parsedFiles = new Map<string, { text?: string; file: ts.SourceFile }>();
   host.fileExists = (filePath) =>
     files.has(filePath) || ts.sys.fileExists(filePath);
   host.readFile = (filePath) =>
     files.get(filePath) ?? ts.sys.readFile(filePath);
   host.directoryExists = (directoryPath) =>
-    [...files.keys()].some((filePath) =>
-      filePath.startsWith(`${directoryPath}/`)
-    ) || directoryExists?.(directoryPath) === true;
-  host.getSourceFile = (filePath, languageVersion) =>
-    files.has(filePath)
-      ? ts.createSourceFile(
-          filePath,
-          files.get(filePath)!,
-          languageVersion,
-          true
-        )
-      : getSourceFile(filePath, languageVersion);
+    directories.has(directoryPath) || directoryExists?.(directoryPath) === true;
+  host.getSourceFile = (filePath, languageVersion) => {
+    const text = files.get(filePath);
+    const cached = parsedFiles.get(filePath);
+    if (cached && cached.text === text) return cached.file;
+    const file =
+      text !== undefined
+        ? ts.createSourceFile(filePath, text, languageVersion, true)
+        : getSourceFile(filePath, languageVersion);
+    if (file) parsedFiles.set(filePath, { text, file });
+    return file;
+  };
+  return { files, host, options };
+}
+
+function typeCheckSource({
+  extraLibs,
+  source
+}: {
+  extraLibs: DeclarationLibs;
+  source: string;
+}): string[] {
+  let environment = typeCheckEnvironments.get(extraLibs);
+  if (!environment) {
+    environment = createTypeCheckEnvironment(extraLibs);
+    typeCheckEnvironments.set(extraLibs, environment);
+  }
+  environment.files.set(sourcePath, source);
+  environment.program = ts.createProgram(
+    [sourcePath, ...[...environment.files.keys()].filter(isDeclarationFile)],
+    environment.options,
+    environment.host,
+    environment.program
+  );
   return ts
-    .getPreEmitDiagnostics(
-      ts.createProgram(
-        [
-          sourcePath,
-          ...[...files.keys()].filter((filePath) => isDeclarationFile(filePath))
-        ],
-        options,
-        host
-      )
-    )
+    .getPreEmitDiagnostics(environment.program)
     .filter(
       (diagnostic) =>
         !diagnostic.file || diagnostic.file.fileName === sourcePath

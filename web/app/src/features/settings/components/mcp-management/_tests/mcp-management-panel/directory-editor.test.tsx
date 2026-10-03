@@ -291,6 +291,10 @@ vi.mock('@1flowbase/rich-text', async () => {
     }
   };
 });
+vi.mock('../../../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
 vi.mock('@monaco-editor/react', () => ({
   __esModule: true,
   default: ({

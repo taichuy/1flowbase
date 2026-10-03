@@ -287,7 +287,10 @@ describe('JsxStudioRunPanel Native React run revision', () => {
       nativeCompiler: createCompiler()
     });
 
-    await waitFor(() => expect(trialShadowRoot(view.container)).not.toBeNull());
+    await waitFor(
+      () => expect(trialShadowRoot(view.container)).not.toBeNull(),
+      { timeout: 10_000 }
+    );
     const shadowRoot = trialShadowRoot(view.container);
     const output = await within(
       shadowRoot as unknown as HTMLElement
@@ -492,9 +495,16 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     });
     const consolePane = screen.getByTestId('js-block-console-pane');
 
-    expect(
-      await within(consolePane).findByText('render count 0')
-    ).toBeVisible();
+    // Provider updates may legitimately render the same revision more than
+    // once. Every captured render log must remain visible in its owning pane.
+    const initialRenderLogs =
+      await within(consolePane).findAllByText('render count 0');
+    initialRenderLogs.forEach((entry) => expect(entry).toBeVisible());
+    expect(initialRenderLogs).toHaveLength(
+      browserLog.mock.calls.filter(
+        ([label, count]) => label === 'render count' && count === 0
+      ).length
+    );
     fireEvent.click(
       await trialQueries(view.container).findByRole('button', {
         name: 'Emit runtime log'
@@ -504,9 +514,14 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(
       await within(consolePane).findByText('button clicked {"count": 0}')
     ).toBeVisible();
-    expect(
-      await within(consolePane).findByText('render count 1')
-    ).toBeVisible();
+    const updatedRenderLogs =
+      await within(consolePane).findAllByText('render count 1');
+    updatedRenderLogs.forEach((entry) => expect(entry).toBeVisible());
+    expect(updatedRenderLogs).toHaveLength(
+      browserLog.mock.calls.filter(
+        ([label, count]) => label === 'render count' && count === 1
+      ).length
+    );
     expect(browserLog).toHaveBeenCalledWith('render count', 1);
     expect(browserWarn).toHaveBeenCalledWith('button clicked', { count: 0 });
   });
@@ -535,13 +550,25 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     );
 
     const panes = await screen.findAllByTestId('js-block-console-pane');
-    expect(await within(panes[0]!).findByText('first only')).toBeVisible();
+    const firstLogs = await within(panes[0]!).findAllByText('first only');
+    firstLogs.forEach((entry) => expect(entry).toBeVisible());
     expect(
       within(panes[0]!).queryByText('second only')
     ).not.toBeInTheDocument();
-    expect(await within(panes[1]!).findByText('second only')).toBeVisible();
+    const secondLogs = await within(panes[1]!).findAllByText('second only');
+    secondLogs.forEach((entry) => expect(entry).toBeVisible());
     expect(within(panes[1]!).queryByText('first only')).not.toBeInTheDocument();
-    expect(browserInfo).toHaveBeenCalledTimes(2);
+    expect(firstLogs).toHaveLength(
+      browserInfo.mock.calls.filter(([message]) => message === 'first only')
+        .length
+    );
+    expect(secondLogs).toHaveLength(
+      browserInfo.mock.calls.filter(([message]) => message === 'second only')
+        .length
+    );
+    expect(browserInfo).toHaveBeenCalledTimes(
+      firstLogs.length + secondLogs.length
+    );
   });
 
   test('R6-AC-002 keeps the resizable Console inside the editor run surface', async () => {

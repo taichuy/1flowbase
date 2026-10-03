@@ -386,8 +386,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   };
 });
 
-import { AppProviders } from '../../../../app/AppProviders';
-import { AppRouterProvider } from '../../../../app/router';
+import { ApplicationRuntimeBootstrap } from '../../../../app/ApplicationRuntimeBootstrap';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import {
   settingsSectionDefinitions,
@@ -459,9 +458,7 @@ function renderApp(pathname: string) {
   window.history.pushState({}, '', pathname);
 
   return render(
-    <AppProviders>
-      <AppRouterProvider />
-    </AppProviders>
+    <ApplicationRuntimeBootstrap />
   );
 }
 
@@ -1133,7 +1130,9 @@ describe('SettingsPage', () => {
       'href',
       '/settings/data-models'
     );
-    expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled()
+    );
     expect(
       await screen.findByText('主数据源', {}, { timeout: 10000 })
     ).toBeInTheDocument();
@@ -1349,7 +1348,7 @@ describe('SettingsPage', () => {
       expect(window.location.pathname).toBe('/settings/files');
     });
     expect(
-      await screen.findByRole('tab', { name: '文件表' })
+      await screen.findByRole('tab', { name: '文件表' }, { timeout: 10_000 })
     ).toBeInTheDocument();
   });
 

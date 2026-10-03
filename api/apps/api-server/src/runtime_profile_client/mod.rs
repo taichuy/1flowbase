@@ -33,11 +33,16 @@ impl HostApiRuntimeProfileCollector {
         Self::new_with_sample_source(process_started_at, Arc::new(RuntimeSampleSource::default()))
     }
     pub fn new_with_sample_source(
-        process_started_at: OffsetDateTime, sample_source: Arc<RuntimeSampleSource>,
+        process_started_at: OffsetDateTime,
+        sample_source: Arc<RuntimeSampleSource>,
     ) -> Result<Self> {
         Ok(Self {
             collector: Arc::new(RuntimeProfileCollector::new_with_sample_source(
-                "api-server", env!("CARGO_PKG_VERSION"), process_started_at, "ok", sample_source,
+                "api-server",
+                env!("CARGO_PKG_VERSION"),
+                process_started_at,
+                "ok",
+                sample_source,
             )?),
         })
     }

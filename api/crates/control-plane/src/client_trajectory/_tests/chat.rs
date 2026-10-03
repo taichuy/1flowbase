@@ -130,3 +130,47 @@ async fn chat_unary_preserves_message_content_and_error_terminal() {
         assert!(records.iter().any(|r|matches!(&r.fact,ClientTrajectoryFact::Step{step} if step.origin=="emitted" && step.category==if response.get("error").is_some(){"error"}else{"assistant"})));
     }
 }
+
+#[tokio::test]
+async fn chat_tool_fragments_preserve_numeric_index_order_and_exact_arguments() {
+    let writer = Arc::new(MemoryWriter::default());
+    let recorder = capture(writer.clone());
+    recorder
+        .record(ClientTrajectoryFrameKind::Request, &chat_request())
+        .await
+        .unwrap();
+    recorder.bind_run(Uuid::now_v7(), None);
+    let chunk = json!({"choices": [{"index": 0, "delta": {"tool_calls": [
+        {"index": 10, "id": "second", "type": "function", "function": {"name": "later", "arguments": "{}"}},
+        {"index": 2, "id": "first", "type": "function", "function": {"name": "earlier", "arguments": "{\"city\":\"北京\"}"}}
+    ]}, "finish_reason": "tool_calls"}]});
+    let wire = format!("data: {chunk}\n\ndata: [DONE]\n\n");
+    recorder
+        .record(ClientTrajectoryFrameKind::ResponseSse, wire.as_bytes())
+        .await
+        .unwrap();
+    recorder.finish();
+    recorder.wait_finished().await;
+    let records = writer.records.lock().unwrap();
+    assert!(complete(&records));
+    assert_eq!(raw(&records, "emitted"), wire.as_bytes());
+    let calls: Vec<_> = records
+        .iter()
+        .filter_map(|record| match &record.fact {
+            ClientTrajectoryFact::Step { step }
+                if step.origin == "emitted" && step.category == "tool_call" =>
+            {
+                Some(step)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].call_id.as_deref(), Some("first"));
+    assert_eq!(
+        calls[0].parameters_preview.as_deref(),
+        Some("{\"city\":\"北京\"}")
+    );
+    assert_eq!(calls[1].call_id.as_deref(), Some("second"));
+    assert_eq!(calls[1].parameters_preview.as_deref(), Some("{}"));
+}

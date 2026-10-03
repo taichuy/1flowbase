@@ -504,6 +504,7 @@ describe('ModelProvidersPage - main instance selection', () => {
             provider_code: providerCode,
             auto_include_new_instances: input.auto_include_new_instances,
             revision: mainInstanceState.revision + 1,
+            distribution_rules: mainInstanceState.distribution_rules,
             model_routing_policies: input.model_routing_policies ?? []
           };
 

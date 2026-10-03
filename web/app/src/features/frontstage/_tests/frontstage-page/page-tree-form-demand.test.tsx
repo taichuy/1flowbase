@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Form } from 'antd';
 import { StrictMode, useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import {
@@ -46,6 +46,22 @@ const dialog: PageTreeFormDialog = {
   initialIcon: '',
   initialTooltip: ''
 };
+
+// Keep real component delays inside this fixture's lifetime, including callbacks
+// scheduled by validation. Automatic RTL cleanup still owns mounted components.
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+});
+
+afterEach(async () => {
+  try {
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 describe('PageTreeFormModal demand lifecycle', () => {
   it('MDP-001 MDP-002 keeps form and icon catalog dormant while hidden', () => {
