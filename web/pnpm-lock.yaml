@@ -192,6 +192,9 @@ importers:
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/virtual-list':
+        specifier: 1.5.1
+        version: 1.5.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@scalar/api-reference-react':
         specifier: ^0.9.65
         version: 0.9.65(react@19.2.5)(tailwindcss@4.3.3)(typescript@5.9.3)(zod@4.4.3)

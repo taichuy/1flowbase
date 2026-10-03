@@ -5,6 +5,21 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('virtual list retains generic item and scroll ref types', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import VirtualList, { type ListProps, type ListRef } from '@rc-component/virtual-list';
+const props: ListProps<{ id: string }> = { data: [{id: 'one'}], height: 400, itemHeight: 47, itemKey: 'id', children: item => item.id };
+// @ts-expect-error item data must retain the supplied type.
+props.data = [{ id: 123 }];
+declare const ref: ListRef;
+ref.scrollTo({key: 'one'});
+void props; void VirtualList;`
+      })
+    ).toEqual([]);
+  });
+
   test('infinite scroll exposes real component props', () => {
     expect(
       typeCheckSource({

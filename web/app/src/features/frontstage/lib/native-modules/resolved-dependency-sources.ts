@@ -8,7 +8,8 @@ export const FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES = [
   '@ant-design/happy-work-theme',
   'dayjs',
   'lodash/debounce',
-  'react-infinite-scroll-component'
+  'react-infinite-scroll-component',
+  '@rc-component/virtual-list'
 ] as const;
 
 export function isFrontstageNativeReactResolvedDeclarationSource(
