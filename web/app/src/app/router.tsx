@@ -3,6 +3,7 @@ import {
   selectNavigationQueryScope
 } from '../state/navigation-query-scope';
 import {
+  ErrorComponent,
   Navigate,
   Outlet,
   RouterProvider,
@@ -35,6 +36,7 @@ import { i18nText } from '../shared/i18n/text';
 import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions';
 import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
+import { recoverDevModuleGraph } from './bootstrap/dev-module-recovery';
 
 let applicationDetailPageFlight:
   | Promise<
@@ -805,6 +807,12 @@ const routeTree = rootRoute.addChildren([
 function createAppRouter() {
   return createRouter({
     routeTree,
+    ...(import.meta.env.DEV
+      ? {
+          defaultErrorComponent: ErrorComponent,
+          defaultOnCatch: recoverDevModuleGraph
+        }
+      : {}),
     defaultNotFoundComponent: NotFoundPage,
     notFoundMode: 'root'
   });

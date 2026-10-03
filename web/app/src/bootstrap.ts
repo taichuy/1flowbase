@@ -1,5 +1,13 @@
-const DEV_GENERATION_META_NAME = '1flowbase-dev-generation';
-const DEV_RELOAD_PREFIX = '1flowbase.dev-runtime.reload';
+import {
+  currentDevGeneration,
+  recoverDevModuleGraph,
+  resetDevModuleRecovery
+} from './app/bootstrap/dev-module-recovery';
+
+// A later source edit gets a new recovery attempt, but a reload alone does not.
+if (import.meta.hot) {
+  import.meta.hot.on('vite:beforeUpdate', resetDevModuleRecovery);
+}
 
 function rootElement() {
   const root = document.getElementById('root');
@@ -7,34 +15,10 @@ function rootElement() {
   return root;
 }
 
-function currentGeneration() {
-  return (
-    document
-      .querySelector(`meta[name="${DEV_GENERATION_META_NAME}"]`)
-      ?.getAttribute('content') || 'unknown'
-  );
-}
-
-function shouldReloadModuleGraph(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /does not provide an export|dynamically imported module|outdated optimize dep|importing a module script failed/iu.test(
-    message
-  );
-}
-
 function renderBootFailure(error: unknown) {
   console.error('[1flowbase-bootstrap] application module graph failed', error);
-  const generation = currentGeneration();
-  const reloadKey = `${DEV_RELOAD_PREFIX}:${generation}`;
-  if (
-    import.meta.env.DEV &&
-    shouldReloadModuleGraph(error) &&
-    sessionStorage.getItem(reloadKey) !== 'attempted'
-  ) {
-    sessionStorage.setItem(reloadKey, 'attempted');
-    window.location.reload();
-    return;
-  }
+  if (recoverDevModuleGraph(error)) return;
+  const generation = currentDevGeneration();
 
   const root = rootElement();
   const alert = document.createElement('div');
@@ -49,7 +33,7 @@ function renderBootFailure(error: unknown) {
   retry.type = 'button';
   retry.textContent = '重新加载';
   retry.addEventListener('click', () => {
-    sessionStorage.removeItem(reloadKey);
+    resetDevModuleRecovery();
     window.location.reload();
   });
   alert.append(title, detail, retry);

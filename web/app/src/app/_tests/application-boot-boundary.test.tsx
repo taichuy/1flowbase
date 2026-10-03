@@ -3,6 +3,11 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { ApplicationBootBoundary } from '../ApplicationBootBoundary';
+import { recoverDevModuleGraph } from '../bootstrap/dev-module-recovery';
+
+vi.mock('../bootstrap/dev-module-recovery', () => ({
+  recoverDevModuleGraph: vi.fn(() => false)
+}));
 
 function BrokenRuntime(): ReactNode {
   throw new Error("does not provide an export named 'ForwardRef'");
@@ -33,6 +38,11 @@ describe('ApplicationBootBoundary', () => {
     );
 
     expect(screen.getByRole('alert')).toHaveTextContent('应用模块加载失败');
+    expect(recoverDevModuleGraph).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "does not provide an export named 'ForwardRef'"
+      })
+    );
     expect(screen.getByRole('button', { name: '重新加载' })).toBeVisible();
   });
 });
