@@ -736,10 +736,13 @@ where
             let digest = match &self.block_code_cache {
                 Some(cache) => cache.load(&node, source).await?,
                 None => source.await?,
-            }
-            .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
-            if code_cache::etag_matches(condition, &digest) {
-                return Ok(FrontstageBlockCodeRead::NotModified(digest));
+            };
+            // Legacy sources may have no digest. Only the full read determines
+            // whether source exists; missing metadata must never yield a 304.
+            if let Some(digest) = digest {
+                if code_cache::etag_matches(condition, &digest) {
+                    return Ok(FrontstageBlockCodeRead::NotModified(digest));
+                }
             }
         }
         let code = self
@@ -747,10 +750,10 @@ where
             .get_frontstage_block_code(command.workspace_id, command.page_id, &node.code_ref)
             .await?
             .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
-        if let Some(cache) = &self.block_code_cache {
+        if let (Some(cache), Some(digest)) = (&self.block_code_cache, &code.source_sha256) {
             // Never reload the node revision after reading source: an in-flight old
             // source may only fill the revision observed before that read.
-            cache.store(&node, &code.source_sha256).await;
+            cache.store(&node, digest).await;
         }
         Ok(FrontstageBlockCodeRead::Source(code))
     }

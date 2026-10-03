@@ -766,3 +766,49 @@ async fn ac_001_to_003_block_code_supports_bounded_reads_and_revision_guarded_ra
 
 #[path = "block_tree/source_editing.rs"]
 mod source_editing;
+
+#[tokio::test]
+async fn legacy_source_without_digest_always_returns_full_code_without_etag() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let (page_id, tab_id) = create_block_page(&app, &cookie, &csrf, &workspace_id).await;
+    let source = "export default 'legacy-without-digest';";
+    let (status, payload) = create_block(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        &page_id,
+        Some(&tab_id),
+        "Legacy",
+        None,
+        source,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
+    let block_id = payload["data"]["block_id"].as_str().unwrap();
+    let path = format!("/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code");
+    // Simulate the supported legacy nullable column before any source-cache fill.
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    let changed = sqlx::query("update frontstage_block_codes set source_sha256 = null where workspace_id = $1 and page_id = $2")
+        .bind(uuid::Uuid::parse_str(&workspace_id).unwrap())
+        .bind(uuid::Uuid::parse_str(&page_id).unwrap())
+        .execute(&pool).await.unwrap();
+    assert_eq!(changed.rows_affected(), 1);
+    for condition in [None, Some("*"), Some("\"obsolete\""), Some("*")] {
+        let response = conditional_code_get(&app, &path, &cookie, condition).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("etag").is_none());
+        assert_eq!(response.headers()["cache-control"], "private, no-cache");
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        assert_eq!(body["data"]["block_id"], block_id);
+        assert_eq!(body["data"]["page_id"], page_id);
+        assert_eq!(body["data"]["source_code"], source);
+        assert_eq!(body["data"]["source_sha256"], Value::Null);
+    }
+    pool.close().await;
+}

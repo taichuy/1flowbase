@@ -195,3 +195,14 @@ fn conditional_get_uses_weak_comparison_and_requires_quoted_tags() {
     assert!(!etag_matches(&digest, &digest));
     assert!(!etag_matches("\"old\"", &digest));
 }
+
+#[tokio::test]
+async fn legacy_missing_digest_is_not_cached_or_replaced_with_a_synthetic_digest() {
+    let store = Arc::new(MemoryCache::default());
+    let cache = BlockCodeCache(store.clone());
+    let record = node();
+    for _ in 0..2 {
+        assert_eq!(cache.load(&record, async { Ok(None) }).await.unwrap(), None);
+        assert!(store.values.lock().unwrap().is_empty());
+    }
+}

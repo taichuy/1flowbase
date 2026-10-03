@@ -1092,7 +1092,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         page_id: Uuid,
         code_ref: &str,
     ) -> Result<Option<String>> {
-        sqlx::query_scalar(
+        sqlx::query_scalar::<_, Option<String>>(
             "select source_sha256 from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = $3",
         )
         .bind(workspace_id)
@@ -1100,6 +1100,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(code_ref)
         .fetch_optional(self.pool())
         .await
+        .map(Option::flatten)
         .map_err(Into::into)
     }
 

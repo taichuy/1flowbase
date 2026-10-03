@@ -774,13 +774,15 @@ fn code_read_response(output: interface::FrontstageBlocksOutput) -> Result<Respo
             Json(ApiSuccess::new(value)).into_response(),
         ),
         interface::FrontstageBlocksOutput::NotModified(digest) => {
-            (digest, StatusCode::NOT_MODIFIED.into_response())
+            (Some(digest), StatusCode::NOT_MODIFIED.into_response())
         }
         _ => unreachable!(),
     };
-    let etag = HeaderValue::from_str(&format!("\"{digest}\""))
-        .map_err(|error| ApiError(anyhow::Error::from(error)))?;
-    response.headers_mut().insert(header::ETAG, etag);
+    if let Some(digest) = digest {
+        let etag = HeaderValue::from_str(&format!("\"{digest}\""))
+            .map_err(|error| ApiError(anyhow::Error::from(error)))?;
+        response.headers_mut().insert(header::ETAG, etag);
+    }
     // Browsers must revalidate against current ACL on every read.
     response.headers_mut().insert(
         header::CACHE_CONTROL,
