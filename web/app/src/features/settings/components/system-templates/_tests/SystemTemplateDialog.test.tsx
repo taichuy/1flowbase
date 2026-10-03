@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from 'antd';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   getSystemTemplateCatalog: vi.fn(),
-  exportSystemTemplate: vi.fn(),
+  exportSystemTemplateArchive: vi.fn(),
   previewSystemTemplate: vi.fn(),
   installSystemTemplate: vi.fn()
 }));
@@ -84,6 +84,9 @@ function upload(container: HTMLElement, contents = JSON.stringify(body)) {
   });
 }
 describe('portable template flow', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   beforeEach(async () => {
     Object.values(api).forEach((mock) => mock.mockReset());
     await appI18n.changeLanguage('en_US');
@@ -108,9 +111,9 @@ describe('portable template flow', () => {
     setup();
     fireEvent.click(screen.getByRole('button', { name: 'Export template' }));
     expect(
-      await screen.findByRole('button', { name: 'Download JSON' })
+      await screen.findByRole('button', { name: 'Download ZIP' })
     ).toBeDisabled();
-    expect(api.exportSystemTemplate).not.toHaveBeenCalled();
+    expect(api.exportSystemTemplateArchive).not.toHaveBeenCalled();
   });
   test('MCP instance alone can be selected for export', async () => {
     api.getSystemTemplateCatalog.mockResolvedValue({
@@ -126,7 +129,7 @@ describe('portable template flow', () => {
     });
     fireEvent.mouseDown(selector);
     fireEvent.click(await screen.findByText('Agent tools'));
-    expect(screen.getByRole('button', { name: 'Download JSON' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Download ZIP' })).toBeEnabled();
   });
   test('server rejection prevents installation and replacing the file clears stale preview', async () => {
     api.previewSystemTemplate.mockResolvedValue({
@@ -147,7 +150,7 @@ describe('portable template flow', () => {
     upload(container, 'not json');
     expect(
       await screen.findByText(
-        'The file is not valid JSON. Choose another file.'
+        'Could not read this template file. Choose a ZIP archive or a legacy JSON file.'
       )
     ).toBeInTheDocument();
     expect(screen.queryByText('Route already exists')).not.toBeInTheDocument();
@@ -187,5 +190,116 @@ describe('portable template flow', () => {
     ).toBeDisabled();
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1)!);
     expect(screen.queryByText('target-model')).not.toBeInTheDocument();
+  });
+  test('downloads the ZIP bytes and filename returned by archive export', async () => {
+    api.getSystemTemplateCatalog.mockResolvedValue({
+      pages: [],
+      applications: [],
+      data_models: [],
+      mcp_instances: [{ id: 'agent-tools', name: 'Agent tools' }]
+    });
+    api.exportSystemTemplateArchive.mockResolvedValue({
+      archive_base64: 'UEsDBAD/',
+      file_name: 'selected-template.zip'
+    });
+    const createUrl = vi
+      .fn<(blob: Blob) => string>()
+      .mockReturnValue('blob:template-archive');
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      writable: true,
+      value: createUrl
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      writable: true,
+      value: vi.fn()
+    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Export template' }));
+    fireEvent.mouseDown(
+      await screen.findByRole('combobox', { name: 'MCP instances' })
+    );
+    fireEvent.click(await screen.findByText('Agent tools'));
+    fireEvent.click(screen.getByRole('button', { name: 'Download ZIP' }));
+    await waitFor(() => expect(click).toHaveBeenCalledOnce());
+    expect(api.exportSystemTemplateArchive).toHaveBeenCalledWith(
+      {
+        page_ids: [],
+        application_ids: [],
+        data_model_ids: [],
+        mcp_instance_ids: ['agent-tools']
+      },
+      'csrf-token'
+    );
+    const blob = createUrl.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe('application/zip');
+    const bytes = await new Promise<ArrayBuffer>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.readAsArrayBuffer(blob);
+    });
+    expect(Array.from(new Uint8Array(bytes))).toEqual([80, 75, 3, 4, 0, 255]);
+    const anchor = click.mock.contexts[0] as HTMLAnchorElement;
+    expect(anchor.download).toBe('selected-template.zip');
+    expect(anchor.href).toBe('blob:template-archive');
+  });
+  test('previews and installs a ZIP using the same opaque archive bytes', async () => {
+    api.installSystemTemplate.mockResolvedValue({
+      complete: true,
+      created: [],
+      updated: [],
+      id_map: {},
+      failures: []
+    });
+    const { container } = setup();
+    const file = new File(
+      [new Uint8Array([80, 75, 3, 4, 0, 255])],
+      'template.ZIP',
+      { type: 'application/zip' }
+    );
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] }
+    });
+    await waitFor(() =>
+      expect(api.previewSystemTemplate).toHaveBeenCalledWith(
+        { archive_base64: 'UEsDBAD/' },
+        'csrf-token'
+      )
+    );
+    const install = await screen.findByRole('button', {
+      name: 'Install template'
+    });
+    await waitFor(() => expect(install).toBeEnabled());
+    fireEvent.click(install);
+    expect(await screen.findByText('Template installed')).toBeInTheDocument();
+    expect(api.installSystemTemplate).toHaveBeenCalledWith(
+      { archive_base64: 'UEsDBAD/' },
+      'csrf-token'
+    );
+  });
+  test('archive validation failure never enables installation', async () => {
+    api.previewSystemTemplate.mockRejectedValue(
+      new Error('archive digest mismatch')
+    );
+    const { container } = setup();
+    const file = new File(['tampered archive'], 'template.zip', {
+      type: 'application/zip'
+    });
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] }
+    });
+    expect(
+      await screen.findByText(
+        'Template preview failed. Clear this file and import it again.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Install template' })
+    ).toBeDisabled();
+    expect(api.installSystemTemplate).not.toHaveBeenCalled();
   });
 });

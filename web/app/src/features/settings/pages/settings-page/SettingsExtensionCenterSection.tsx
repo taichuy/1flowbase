@@ -249,7 +249,7 @@ export function SettingsExtensionCenterSection(props: {
   if (props.category === 'application-templates') {
     return (
       <Suspense fallback={<LoadingState compact />}>
-        <ApplicationTemplateCatalogPanel />
+        <ApplicationTemplateCatalogPanel cursor={props.cursor} q={props.q} />
       </Suspense>
     );
   }

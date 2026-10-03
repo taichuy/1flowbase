@@ -331,3 +331,95 @@ async fn mcp_only_application_template_creates_then_updates_the_selected_instanc
         .iter()
         .any(|item| item["kind"] == "mcp_instance" && item["target_id"] == "template_instance"));
 }
+
+#[tokio::test]
+async fn application_template_catalog_is_metadata_only_and_offline_pages_are_independent() {
+    use crate::routes::settings::system_templates::archive;
+    let (mut state, _) = test_api_state_with_database_url().await;
+    let root = std::env::temp_dir().join(format!("template-catalog-{}", uuid::Uuid::new_v4()));
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(root.clone());
+    for index in 0..101 {
+        let directory = root.join(format!("@fixture/demo-{index:03}"));
+        std::fs::create_dir_all(&directory).unwrap();
+        let package=serde_json::from_value(json!({"schema_version":"1flowbase.portable-template/v1","pages":[],"applications":[],"data_models":[],"plugins":[],"release":{"template_id":format!("@fixture/demo-{index:03}"),"release_version":1,"name":format!("Demo {index:03}"),"description":"Offline fixture","exported_at":"2026-10-03T00:00:00Z","exported_from_system_version":"0.4.1"}})).unwrap();
+        std::fs::write(
+            directory.join("template.zip"),
+            archive::encode(&package).unwrap(),
+        )
+        .unwrap();
+    }
+    std::sync::Arc::get_mut(&mut state)
+        .unwrap()
+        .application_template_root = root.to_str().unwrap().into();
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let get = |query: &str| {
+        let app = app.clone();
+        let cookie = cookie.clone();
+        let uri = format!("/api/console/settings/system-templates/catalog{query}");
+        async move {
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .uri(uri)
+                        .header("cookie", cookie)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            serde_json::from_slice::<Value>(
+                &to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+            )
+            .unwrap()["data"]
+                .clone()
+        }
+    };
+    let first = get("?category=applications-demo").await;
+    assert_eq!(first["total"], 101);
+    assert_eq!(
+        first["application_templates"].as_array().unwrap().len(),
+        100
+    );
+    assert_eq!(first["next_cursor"], "builtin:100");
+    assert!(first["application_templates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|entry| entry.get("package").is_none() && entry["source"] == "builtin"));
+    let second = get("?category=applications-demo&cursor=builtin%3A100").await;
+    assert_eq!(second["application_templates"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        second["application_templates"][0]["template_id"],
+        "@fixture/demo-100"
+    );
+    assert!(second["next_cursor"].is_null());
+    let filtered = get("?category=applications-demo&q=Demo%20100").await;
+    assert_eq!(filtered["total"], 1);
+    let resources = get("").await;
+    assert!(resources["pages"].is_array());
+    assert!(resources.get("application_templates").is_none());
+    let bad_archive = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/system-templates/preview")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({"archive_base64":"not a ZIP"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bad_archive.status(), StatusCode::BAD_REQUEST);
+}

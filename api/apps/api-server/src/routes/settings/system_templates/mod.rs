@@ -5,14 +5,17 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 use axum::{
-    extract::{DefaultBodyLimit, State},
+    extract::{DefaultBodyLimit, Query, State},
     handler::Handler,
     http::HeaderMap,
     Json,
 };
-use control_plane::portable_template::{PortableTemplatePackage, PortableTemplateSelection};
+use catalog::{CatalogQuery, ExportQuery, TemplateRequest};
+use control_plane::portable_template::PortableTemplateSelection;
 use serde_json::Value;
 use std::sync::Arc;
+pub(crate) mod archive;
+pub(crate) mod catalog;
 pub(crate) mod interface;
 pub(crate) mod plugins;
 pub(crate) mod releases;
@@ -32,14 +35,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/settings/system-templates/preview",
             console_post(
-                preview.layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+                preview.layer(DefaultBodyLimit::max(96 * 1024 * 1024)),
                 owned("system_templates.preview"),
             ),
         )
         .route(
             "/settings/system-templates/install",
             console_post(
-                install.layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+                install.layer(DefaultBodyLimit::max(96 * 1024 * 1024)),
                 owned("system_templates.install"),
             ),
         )
@@ -48,6 +51,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 #[utoipa::path(get, path = "/api/console/settings/system-templates/catalog", responses((status = 200, body = Object)))]
 pub async fn catalog(
     State(state): State<Arc<ApiState>>,
+    Query(query): Query<CatalogQuery>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let snapshot = Arc::clone(&state);
@@ -57,7 +61,11 @@ pub async fn catalog(
         snapshot,
         "http.console.settings.system-templates.catalog.v1",
         credential,
-        interface::TemplateInput::Catalog,
+        if query.category.is_some() {
+            interface::TemplateInput::Library(query)
+        } else {
+            interface::TemplateInput::Catalog
+        },
     )
     .await?;
     Ok(Json(ApiSuccess::new(output.0)))
@@ -66,6 +74,7 @@ pub async fn catalog(
 #[utoipa::path(post, request_body = Object, path = "/api/console/settings/system-templates/export", responses((status = 200, body = Object)))]
 pub async fn export(
     State(state): State<Arc<ApiState>>,
+    Query(query): Query<ExportQuery>,
     headers: HeaderMap,
     Json(body): Json<PortableTemplateSelection>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
@@ -76,7 +85,16 @@ pub async fn export(
         snapshot,
         "http.console.settings.system-templates.export.v1",
         credential,
-        interface::TemplateInput::Export(body),
+        match query.format.as_deref() {
+            None | Some("json") => interface::TemplateInput::Export(body),
+            Some("archive") => interface::TemplateInput::ExportArchive(body),
+            _ => {
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "application_template_export_format",
+                )
+                .into())
+            }
+        },
     )
     .await?;
     Ok(Json(ApiSuccess::new(output.0)))
@@ -86,7 +104,7 @@ pub async fn export(
 pub async fn preview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(body): Json<PortableTemplatePackage>,
+    Json(body): Json<TemplateRequest>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let snapshot = Arc::clone(&state);
     let credential =
@@ -95,7 +113,7 @@ pub async fn preview(
         snapshot,
         "http.console.settings.system-templates.preview.v1",
         credential,
-        interface::TemplateInput::Preview(body),
+        interface::TemplateInput::ResolvePreview(body),
     )
     .await?;
     Ok(Json(ApiSuccess::new(output.0)))
@@ -105,7 +123,7 @@ pub async fn preview(
 pub async fn install(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(body): Json<PortableTemplatePackage>,
+    Json(body): Json<TemplateRequest>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let snapshot = Arc::clone(&state);
     let credential =
@@ -114,7 +132,7 @@ pub async fn install(
         snapshot,
         "http.console.settings.system-templates.install.v1",
         credential,
-        interface::TemplateInput::Install(body),
+        interface::TemplateInput::ResolveInstall(body),
     )
     .await?;
     Ok(Json(ApiSuccess::new(output.0)))
@@ -123,3 +141,7 @@ pub async fn install(
 #[cfg(test)]
 #[path = "_tests/releases.rs"]
 mod release_tests;
+
+#[cfg(test)]
+#[path = "_tests/archive.rs"]
+mod archive_tests;

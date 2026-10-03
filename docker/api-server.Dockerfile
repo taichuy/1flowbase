@@ -4,6 +4,8 @@ FROM rust:1-slim-bookworm AS builder
 
 ARG TARGETARCH
 ARG TARGETOS
+# Optional build-machine concurrency; no runtime or production capacity limit.
+ARG BUILD_CARGO_JOBS
 
 WORKDIR /workspace/api
 
@@ -19,6 +21,7 @@ RUN --mount=type=cache,id=1flowbase-cargo-registry,sharing=locked,target=/usr/lo
     --mount=type=cache,id=1flowbase-cargo-git,sharing=locked,target=/usr/local/cargo/git \
     --mount=type=cache,id=1flowbase-rust-target-${TARGETOS}-${TARGETARCH},sharing=locked,target=/workspace/api/target-cache \
     CARGO_TARGET_DIR=/workspace/api/target-cache \
+    CARGO_BUILD_JOBS="${BUILD_CARGO_JOBS:-$(nproc)}" \
       cargo build --release -p api-server --bin api-server --bin system_recovery \
     && cp /workspace/api/target-cache/release/api-server /workspace/api/api-server \
     && cp /workspace/api/target-cache/release/system_recovery /workspace/api/system_recovery
@@ -39,13 +42,13 @@ RUN chmod 0755 /usr/local/bin/package-model-pricing-bootstrap \
       "${MODEL_PRICING_REF}" \
       /model-pricing
 
-FROM alpine:3.22 AS application-template-bootstrap
+FROM node:24-alpine AS application-template-bootstrap
 
 ARG APPLICATION_TEMPLATE_REPOSITORY=taichuy/1flowbase-official-plugins
 # Immutable application template snapshot; changing a package also bumps its release_version.
 ARG APPLICATION_TEMPLATE_REF=68cc144ced0fc53b1f0cdadda065348f76b6c62c
 
-RUN apk add --no-cache ca-certificates git jq
+RUN apk add --no-cache ca-certificates git curl
 COPY scripts/shell/package-application-templates.sh /usr/local/bin/package-application-templates
 RUN sh /usr/local/bin/package-application-templates \
       "${APPLICATION_TEMPLATE_REPOSITORY}" \

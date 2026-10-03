@@ -22,10 +22,29 @@ export interface ApplicationTemplateCatalogItem {
   checksum: string;
   installed_release_version: number | null;
   installed_checksum: string | null;
-  package: PortableTemplatePackage;
+  catalog_id: string;
+  source: 'builtin' | 'official';
+}
+export interface ApplicationTemplateCatalogPage {
+  application_templates: ApplicationTemplateCatalogItem[];
+  next_cursor: string | null;
+  total: number;
+}
+export interface ApplicationTemplateCatalogQuery {
+  cursor?: string;
+  q?: string;
+}
+export interface ApplicationTemplateReference {
+  catalog_id: string;
+  release_version: number;
+}
+export interface PortableTemplateArchive {
+  archive_base64: string;
+}
+export interface PortableTemplateArchiveExport extends PortableTemplateArchive {
+  file_name: string;
 }
 export interface PortableTemplateCatalog {
-  application_templates: ApplicationTemplateCatalogItem[];
   pages: PortableCatalogItem[];
   applications: PortableCatalogItem[];
   data_models: PortableCatalogItem[];
@@ -65,6 +84,30 @@ export interface PortableTemplateInstallResult {
 const BASE_PATH = '/api/console/settings/system-templates';
 export const getSystemTemplateCatalog = (baseUrl?: string) =>
   apiFetch<PortableTemplateCatalog>({ path: `${BASE_PATH}/catalog`, baseUrl });
+export const getApplicationTemplateCatalog = (
+  query: ApplicationTemplateCatalogQuery = {},
+  baseUrl?: string
+) => {
+  const search = new URLSearchParams({ category: 'applications-demo' });
+  if (query.cursor) search.set('cursor', query.cursor);
+  if (query.q) search.set('q', query.q);
+  return apiFetch<ApplicationTemplateCatalogPage>({
+    path: `${BASE_PATH}/catalog?${search}`,
+    baseUrl
+  });
+};
+export const exportSystemTemplateArchive = (
+  body: PortableTemplateSelection,
+  csrfToken: string,
+  baseUrl?: string
+) =>
+  apiFetch<PortableTemplateArchiveExport>({
+    path: `${BASE_PATH}/export?format=archive`,
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
 export const exportSystemTemplate = (
   body: PortableTemplateSelection,
   csrfToken: string,

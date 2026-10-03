@@ -22,7 +22,17 @@ function fixture(t, releaseVersion) {
     pages: [], applications: [], data_models: [], plugins: [],
   };
   const bytes = `${JSON.stringify(artifact, null, 2)}\n`;
-  fs.writeFileSync(path.join(template, 'template.json'), bytes);
+  fs.writeFileSync(path.join(template, 'manifest.json'), bytes);
+  // The publisher itself has archive contract tests. This fixture checks that
+  // the Docker packager executes tools/resources from the pinned commit only.
+  const tools = path.join(source, 'scripts/application-template');
+  fs.mkdirSync(tools, { recursive: true });
+  fs.writeFileSync(path.join(tools, 'archive.mjs'), `
+    import fs from 'node:fs';
+    import path from 'node:path';
+    export async function readPackage(root) { return JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'))); }
+    export async function buildArchive(root) { return fs.readFileSync(path.join(root, 'manifest.json')); }
+  `);
   assert.equal(run('git', ['init', '-q'], source).status, 0);
   assert.equal(run('git', ['add', '.'], source).status, 0);
   assert.equal(run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -34,10 +44,10 @@ function fixture(t, releaseVersion) {
 test('image packager copies the immutable committed artifact, preserving bytes', (t) => {
   const f = fixture(t, 1);
   // Uncommitted source changes cannot silently alter an image release.
-  fs.writeFileSync(path.join(f.source, 'applications-demo/@test/demo/template.json'), '{}');
+  fs.writeFileSync(path.join(f.source, 'applications-demo/@test/demo/manifest.json'), '{}');
   const result = run('sh', [packager, f.source, f.sha, f.output], repoRoot);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(fs.readFileSync(path.join(f.output, '@test/demo/template.json'), 'utf8'), f.bytes);
+  assert.equal(fs.readFileSync(path.join(f.output, '@test/demo/template.zip'), 'utf8'), f.bytes);
   const receipt = JSON.parse(fs.readFileSync(path.join(f.output, 'receipt.json'), 'utf8'));
   assert.equal(receipt.resolved_commit, f.sha);
   assert.equal(receipt.source_file_count, 1);

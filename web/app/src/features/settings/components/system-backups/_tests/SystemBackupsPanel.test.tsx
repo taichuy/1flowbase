@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   getSystemTemplateCatalog: vi.fn(),
-  exportSystemTemplate: vi.fn(),
+  exportSystemTemplateArchive: vi.fn(),
   previewSystemTemplate: vi.fn(),
   installSystemTemplate: vi.fn(),
   listSystemBackups: vi.fn(),
@@ -167,9 +167,7 @@ describe('SystemBackupsPanel', () => {
     expect(
       within(await screen.findByRole('dialog')).getByText('Export template')
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Download JSON' })
-    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download ZIP' })).toBeDisabled();
   });
 
   test('routes template JSON from Import backup to server preview without uploading a backup archive', async () => {
@@ -201,6 +199,37 @@ describe('SystemBackupsPanel', () => {
     });
     await waitFor(() =>
       expect(api.previewSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token')
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Install template' })
+    ).toBeEnabled();
+    expect(api.importSystemBackup).not.toHaveBeenCalled();
+  });
+
+  test('routes template ZIP from the backup import entry to archive preview', async () => {
+    api.previewSystemTemplate.mockResolvedValue({
+      valid: true,
+      counts: { pages: 1, applications: 0, data_models: 0, mcp_instances: 0 },
+      failures: [],
+      warnings: [],
+      dependencies: [],
+      effects: [],
+      mcp_shared_tool_impacts: []
+    });
+    const { container } = renderPanel();
+    const input = container.querySelector('input[type="file"]')!;
+    expect(input.getAttribute('accept')).toContain('.zip');
+    const file = new File(
+      [new Uint8Array([80, 75, 3, 4, 0, 255])],
+      'template.zip',
+      { type: 'application/zip' }
+    );
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() =>
+      expect(api.previewSystemTemplate).toHaveBeenCalledWith(
+        { archive_base64: 'UEsDBAD/' },
+        'csrf-token'
+      )
     );
     expect(
       await screen.findByRole('button', { name: 'Install template' })

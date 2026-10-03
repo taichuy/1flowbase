@@ -18,6 +18,10 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 pub(crate) enum TemplateInput {
     Catalog,
+    Library(super::catalog::CatalogQuery),
+    ExportArchive(PortableTemplateSelection),
+    ResolvePreview(super::catalog::TemplateRequest),
+    ResolveInstall(super::catalog::TemplateRequest),
     Export(PortableTemplateSelection),
     Preview(PortableTemplatePackage),
     Install(PortableTemplatePackage),
@@ -36,7 +40,7 @@ impl InterfaceContract for TemplateInput {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation": match self {Self::Catalog=>"catalog",Self::Export(_)=>"export",Self::Preview(_)=>"preview",Self::Install(_)=>"install"}}),
+            json!({"operation": match self {Self::Catalog|Self::Library(_)=>"catalog",Self::Export(_)|Self::ExportArchive(_)=>"export",Self::Preview(_)|Self::ResolvePreview(_)=>"preview",Self::Install(_)|Self::ResolveInstall(_)=>"install"}}),
         )
     }
 }
@@ -59,18 +63,28 @@ impl TemplateAdapter {
         actor: &domain::ActorContext,
         input: TemplateInput,
     ) -> Result<TemplateOutput, ApiError> {
+        let input = match input {
+            TemplateInput::ResolvePreview(request) => {
+                TemplateInput::Preview(super::catalog::resolve(&self.0, actor, request).await?)
+            }
+            TemplateInput::ResolveInstall(request) => {
+                TemplateInput::Install(super::catalog::resolve(&self.0, actor, request).await?)
+            }
+            other => other,
+        };
         let repository = self.0.store.for_actor(actor.clone());
         let service = PortableTemplateService::new(repository.clone());
         let result = match input {
-            TemplateInput::Catalog => {
-                let mut catalog = serde_json::to_value(service.catalog(actor.user_id).await?)?;
-                catalog["application_templates"] = super::releases::catalog(
-                    &self.0.application_template_root,
-                    &repository,
-                    actor.current_workspace_id,
-                )
-                .await?;
-                catalog
+            TemplateInput::Catalog => serde_json::to_value(service.catalog(actor.user_id).await?)?,
+            TemplateInput::Library(query) => super::catalog::list(&self.0, actor, query).await?,
+            TemplateInput::ExportArchive(selection) => {
+                use base64::Engine;
+                let package = service.export(actor.user_id, selection).await?;
+                let bytes = super::archive::encode(&package)?;
+                json!({"archive_base64":base64::engine::general_purpose::STANDARD.encode(bytes),"file_name":"application-template.zip"})
+            }
+            TemplateInput::ResolvePreview(_) | TemplateInput::ResolveInstall(_) => {
+                unreachable!("resolved before dispatch")
             }
             TemplateInput::Export(selection) => {
                 serde_json::to_value(service.export(actor.user_id, selection).await?)?

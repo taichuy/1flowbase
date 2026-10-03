@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useSystemTemplates } from '../../api/system-templates/useSystemTemplates';
+import { readTemplateFile, templateArchiveBlob } from './archive';
 
 const emptySelection = (): PortableTemplateSelection => ({
   page_ids: [],
@@ -49,6 +50,7 @@ export function SystemTemplateDialog({
   }>();
   const [reading, setReading] = useState(false);
   const [fileError, setFileError] = useState(false);
+  const [downloadError, setDownloadError] = useState(false);
   const { catalog, exportMutation, previewMutation, installMutation } =
     useSystemTemplates(exportOpen);
   const preview = previewMutation.data;
@@ -65,11 +67,9 @@ export function SystemTemplateDialog({
     if (!file) return;
     let cancelled = false;
     setReading(true);
-    void file
-      .text()
-      .then((text) => {
+    void readTemplateFile(file)
+      .then((body) => {
         if (cancelled) return;
-        const body: unknown = JSON.parse(text);
         setImportFile({ name: file.name, body });
         previewFile(body);
       })
@@ -84,20 +84,19 @@ export function SystemTemplateDialog({
     };
   }, [file, template, previewFile]);
   const download = async () => {
+    setDownloadError(false);
     try {
       const body = await exportMutation.mutateAsync(selection);
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' })
-      );
+      const url = URL.createObjectURL(templateArchiveBlob(body.archive_base64));
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = '1flowbase-template.json';
+      anchor.download = body.file_name;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       onClose();
       setSelection(emptySelection());
     } catch {
-      /* The mutation error is shown in the export dialog. */
+      setDownloadError(true);
     }
   };
   return (
@@ -122,7 +121,7 @@ export function SystemTemplateDialog({
           {t('plugin_notice')}
         </Typography.Paragraph>
         {reading && <Typography.Text>{file?.name}</Typography.Text>}
-        {fileError && <Alert type="error" showIcon title={t('invalid_json')} />}
+        {fileError && <Alert type="error" showIcon title={t('invalid_file')} />}
         {importFile && (
           <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
             <Typography.Text>{importFile.name}</Typography.Text>
@@ -350,7 +349,7 @@ export function SystemTemplateDialog({
             }
           />
         )}
-        {exportMutation.isError && (
+        {(exportMutation.isError || downloadError) && (
           <Alert type="error" showIcon title={t('export_failed')} />
         )}
         <Form layout="vertical" disabled={exportMutation.isPending}>

@@ -1,5 +1,7 @@
 import {
-  exportSystemTemplate,
+  exportSystemTemplateArchive,
+  getApplicationTemplateCatalog,
+  type ApplicationTemplateCatalogQuery,
   getSystemTemplateCatalog,
   installSystemTemplate,
   previewSystemTemplate,
@@ -10,6 +12,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../../state/auth-store';
 
 const queryKey = ['settings', 'system-templates', 'catalog'] as const;
+export function useApplicationTemplateCatalog(
+  enabled: boolean,
+  query: ApplicationTemplateCatalogQuery
+) {
+  return useQuery({
+    queryKey: [...queryKey, 'applications-demo', query],
+    queryFn: () => getApplicationTemplateCatalog(query),
+    enabled
+  });
+}
+
 export function useSystemTemplates(exportOpen: boolean) {
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
@@ -20,7 +33,7 @@ export function useSystemTemplates(exportOpen: boolean) {
   });
   const exportMutation = useMutation({
     mutationFn: (selection: PortableTemplateSelection) =>
-      exportSystemTemplate(selection, csrfToken)
+      exportSystemTemplateArchive(selection, csrfToken)
   });
   const previewMutation = useMutation({
     mutationFn: (body: PortableTemplatePackage) =>

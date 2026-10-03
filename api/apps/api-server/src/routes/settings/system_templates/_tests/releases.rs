@@ -1,4 +1,4 @@
-use super::releases::load_packages;
+use super::{archive, releases::load_packages};
 use serde_json::json;
 
 #[test]
@@ -17,13 +17,33 @@ fn discovery_uses_scoped_packages_ignores_receipts_and_rejects_duplicate_ids() {
     std::fs::write(root.join("receipt.json"), "this is not a package").unwrap();
     let package = json!({"schema_version":"1flowbase.portable-template/v1", "pages":[], "applications":[], "data_models":[],
         "release":{"template_id":"@taichuy/gateway-demo", "release_version":1,"name":"Gateway demo","description":"Demo", "exported_from_system_version":"0.4.1","exported_at":"2026-10-03T00:00:00Z"}});
-    std::fs::write(directory.join("template.json"), package.to_string()).unwrap();
+    let package = serde_json::from_value(package).unwrap();
+    let bytes = archive::encode(&package).unwrap();
+    std::fs::write(directory.join("template.zip"), &bytes).unwrap();
     assert_eq!(load_packages(root.to_str().unwrap()).unwrap().len(), 1);
     let duplicate = root.join("@taichuy/duplicate");
     std::fs::create_dir_all(&duplicate).unwrap();
-    std::fs::write(duplicate.join("template.json"), package.to_string()).unwrap();
+    std::fs::write(duplicate.join("template.zip"), bytes).unwrap();
     assert!(load_packages(root.to_str().unwrap())
         .unwrap_err()
         .to_string()
         .contains("duplicate_id"));
+}
+
+#[test]
+fn split_source_and_zip_have_the_same_install_package() {
+    let root = std::env::temp_dir().join(format!("template-split-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let package=serde_json::from_value(json!({"schema_version":"1flowbase.portable-template/v1","pages":[],"applications":[],"data_models":[],"plugins":[]})).unwrap();
+    for (path, bytes) in archive::source_files(&package).unwrap() {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+    assert_eq!(
+        serde_json::to_value(archive::load_directory(&root).unwrap()).unwrap(),
+        serde_json::to_value(archive::decode(&archive::encode(&package).unwrap()).unwrap())
+            .unwrap()
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

@@ -1,5 +1,6 @@
-//! Filesystem release discovery and boot composition; installation shares the typed API command.
+//! Built-in split releases and composition; installation shares the typed API command.
 use super::{
+    archive,
     interface::{TemplateAdapter, TemplateInput},
     plugins::TemplateDependencies,
 };
@@ -7,21 +8,39 @@ use crate::app_state::ApiState;
 use anyhow::{ensure, Context, Result};
 use control_plane::{
     portable_template::{
-        application_template_checksum, validate_application_template_release,
-        PortableTemplateIdentityRepository, PortableTemplatePackage,
+        validate_application_template_release, PortableTemplatePackage, PortableTemplateRelease,
     },
     ports::FrontstagePageRepository,
 };
-use serde_json::{json, Value};
-use std::{collections::BTreeSet, path::Path, sync::Arc};
+use serde_json::Value;
+use std::{
+    collections::BTreeSet,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use uuid::Uuid;
 
-/// Discover only ROOT/@organization/name/template.json; receipts and unrelated files are ignored.
-pub(crate) fn load_packages(root: &str) -> Result<Vec<PortableTemplatePackage>> {
+pub(crate) struct BuiltinRelease {
+    pub root: PathBuf,
+    pub release: PortableTemplateRelease,
+    pub checksum: String,
+}
+impl BuiltinRelease {
+    pub fn load(&self) -> Result<PortableTemplatePackage> {
+        if self.root.join("template.zip").is_file() {
+            archive::decode(&std::fs::read(self.root.join("template.zip"))?)
+        } else {
+            archive::load_directory(&self.root)
+        }
+    }
+}
+pub(crate) fn discover(root: &str) -> Result<Vec<BuiltinRelease>> {
     if root.is_empty() || !Path::new(root).exists() {
         return Ok(Vec::new());
     }
-    let mut paths = Vec::new();
+    let mut results = Vec::new();
+    let mut ids = BTreeSet::new();
     for organization in std::fs::read_dir(root)? {
         let organization = organization?;
         if !organization.file_type()?.is_dir()
@@ -31,74 +50,58 @@ pub(crate) fn load_packages(root: &str) -> Result<Vec<PortableTemplatePackage>> 
         }
         for template in std::fs::read_dir(organization.path())? {
             let template = template?;
-            if template.file_type()?.is_dir() {
-                let path = template.path().join("template.json");
-                ensure!(
-                    path.is_file(),
-                    "application_template_package_missing:{}",
-                    path.display()
-                );
-                paths.push(path);
+            if !template.file_type()?.is_dir() {
+                continue;
             }
+            let root = template.path();
+            let (bytes, digest) = if root.join("template.zip").is_file() {
+                let file = std::fs::File::open(root.join("template.zip"))?;
+                let mut zip = zip::ZipArchive::new(file)?;
+                let mut entry = zip.by_name("manifest.json")?;
+                ensure!(
+                    entry.size() <= 4 * 1024 * 1024,
+                    "application_template_manifest_size"
+                );
+                let mut bytes = Vec::new();
+                entry
+                    .by_ref()
+                    .take(4 * 1024 * 1024 + 1)
+                    .read_to_end(&mut bytes)?;
+                // Metadata identity is stable without materializing each package.
+                let digest = archive::checksum(&bytes);
+                (bytes, digest)
+            } else {
+                let bytes = std::fs::read(root.join("manifest.json"))
+                    .context("application_template_package_missing")?;
+                let digest = archive::checksum(&bytes);
+                (bytes, digest)
+            };
+            let manifest = archive::read_manifest(&bytes)?;
+            let release: PortableTemplateRelease = serde_json::from_value(
+                manifest
+                    .package
+                    .get("release")
+                    .cloned()
+                    .context("application_template_release_missing")?,
+            )?;
+            validate_application_template_release(&release)?;
+            ensure!(
+                ids.insert(release.template_id.clone()),
+                "application_template_duplicate_id:{}",
+                release.template_id
+            );
+            results.push(BuiltinRelease {
+                root,
+                release,
+                checksum: digest,
+            });
         }
     }
-    paths.sort();
-    let mut packages = Vec::new();
-    let mut ids = BTreeSet::new();
-    for path in paths {
-        if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
-        let bytes = std::fs::read(&path)
-            .with_context(|| format!("read application template {}", path.display()))?;
-        let package: PortableTemplatePackage = serde_json::from_slice(&bytes)
-            .with_context(|| format!("decode application template {}", path.display()))?;
-        let release = package
-            .release
-            .as_ref()
-            .context("application_template_release_missing")?;
-        validate_application_template_release(release)?;
-        ensure!(
-            ids.insert(release.template_id.clone()),
-            "application_template_duplicate_id:{}",
-            release.template_id
-        );
-        packages.push(package);
-    }
-    Ok(packages)
+    results.sort_by(|a, b| a.release.template_id.cmp(&b.release.template_id));
+    Ok(results)
 }
-
-pub(crate) async fn catalog<R: PortableTemplateIdentityRepository>(
-    root: &str,
-    repository: &R,
-    workspace_id: Uuid,
-) -> Result<Value> {
-    let mut entries = Vec::new();
-    for package in load_packages(root)? {
-        let release = package
-            .release
-            .as_ref()
-            .context("application_template_release_missing")?;
-        let checksum = application_template_checksum(&package)?;
-        let records = repository
-            .load_application_template_releases(workspace_id, &release.template_id)
-            .await?;
-        let installed = records
-            .iter()
-            .filter(|r| r.successful)
-            .max_by_key(|r| r.release_version);
-        entries.push(json!({
-            "template_id": release.template_id,
-            "release_version": release.release_version,
-            "name": release.name,
-            "description": release.description,
-            "checksum": checksum,
-            "installed_release_version": installed.map(|r| r.release_version),
-            "installed_checksum": installed.map(|r| &r.checksum),
-            "package": package,
-        }));
-    }
-    Ok(Value::Array(entries))
+pub(crate) fn load_packages(root: &str) -> Result<Vec<PortableTemplatePackage>> {
+    discover(root)?.into_iter().map(|r| r.load()).collect()
 }
 
 pub(crate) async fn synchronize_at_startup(

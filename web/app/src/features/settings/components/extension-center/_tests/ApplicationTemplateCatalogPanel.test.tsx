@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   getSystemTemplateCatalog: vi.fn(),
+  getApplicationTemplateCatalog: vi.fn(),
   previewSystemTemplate: vi.fn(),
   installSystemTemplate: vi.fn()
 }));
@@ -21,11 +22,7 @@ import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { SettingsExtensionCenterSection } from '../../../pages/settings-page/SettingsExtensionCenterSection';
 
-const body = {
-  schema_version: '1flowbase.portable-template/v1',
-  pages: [],
-  release: { template_id: 'gateway-demo', release_version: 2 }
-};
+const body = { catalog_id: 'official/gateway-demo', release_version: 2 };
 const preview = {
   valid: true,
   counts: { pages: 1, applications: 1, data_models: 2, mcp_instances: 0 },
@@ -35,23 +32,26 @@ const preview = {
   effects: [],
   mcp_shared_tool_impacts: []
 };
-function setup() {
-  return render(
+function setup(props: { cursor?: string; q?: string } = {}) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  });
+  const view = (route: { cursor?: string; q?: string }) => (
     <App>
-      <QueryClientProvider
-        client={
-          new QueryClient({
-            defaultOptions: {
-              queries: { retry: false },
-              mutations: { retry: false }
-            }
-          })
-        }
-      >
-        <SettingsExtensionCenterSection category="application-templates" />
+      <QueryClientProvider client={client}>
+        <SettingsExtensionCenterSection
+          category="application-templates"
+          {...route}
+        />
       </QueryClientProvider>
     </App>
   );
+  const result = render(view(props));
+  return {
+    ...result,
+    rerenderSection: (route: { cursor?: string; q?: string }) =>
+      result.rerender(view(route))
+  };
 }
 async function openPreview() {
   fireEvent.click(
@@ -73,11 +73,9 @@ describe('application templates extension tab', () => {
         permissions: ['settings_feature.access.system.backups']
       } as NonNullable<ReturnType<typeof useAuthStore.getState>['me']>
     });
-    api.getSystemTemplateCatalog.mockResolvedValue({
-      pages: [],
-      applications: [],
-      data_models: [],
-      mcp_instances: [],
+    api.getApplicationTemplateCatalog.mockResolvedValue({
+      next_cursor: null,
+      total: 1,
       application_templates: [
         {
           template_id: 'gateway-demo',
@@ -87,7 +85,8 @@ describe('application templates extension tab', () => {
           checksum: 'next',
           installed_release_version: 1,
           installed_checksum: 'previous',
-          package: body
+          catalog_id: body.catalog_id,
+          source: 'official'
         }
       ]
     });
@@ -100,7 +99,7 @@ describe('application templates extension tab', () => {
       failures: []
     });
   });
-  test('selects the dedicated tab, displays release state and manually installs the exact previewed package', async () => {
+  test('selects the dedicated tab, displays release state and manually installs the exact previewed version reference', async () => {
     setup();
     expect(
       await screen.findByRole('tab', { name: 'Application templates' })
@@ -111,6 +110,11 @@ describe('application templates extension tab', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Build a gateway workspace')).toBeInTheDocument();
     expect(api.installSystemTemplate).not.toHaveBeenCalled();
+    expect(api.getSystemTemplateCatalog).not.toHaveBeenCalled();
+    expect(api.getApplicationTemplateCatalog).toHaveBeenCalledWith({
+      cursor: undefined,
+      q: undefined
+    });
     await openPreview();
     const install = await screen.findByRole('button', {
       name: 'Confirm install and overwrite'
@@ -187,6 +191,7 @@ describe('application templates extension tab', () => {
         'System backup and template permission is required.'
       )
     ).toBeInTheDocument();
+    expect(api.getApplicationTemplateCatalog).not.toHaveBeenCalled();
     expect(api.getSystemTemplateCatalog).not.toHaveBeenCalled();
     expect(api.previewSystemTemplate).not.toHaveBeenCalled();
     expect(api.installSystemTemplate).not.toHaveBeenCalled();
@@ -200,7 +205,9 @@ describe('application templates extension tab', () => {
     expect(api.previewSystemTemplate).not.toHaveBeenCalled();
   });
   test('catalog failure remains visible with a retry', async () => {
-    api.getSystemTemplateCatalog.mockRejectedValue(new Error('unavailable'));
+    api.getApplicationTemplateCatalog.mockRejectedValue(
+      new Error('unavailable')
+    );
     setup();
     expect(
       await screen.findByText('Could not load application templates.')
@@ -208,5 +215,107 @@ describe('application templates extension tab', () => {
     expect(
       screen.getByRole('button', { name: 'Reload templates' })
     ).toBeEnabled();
+  });
+  test('fetches the URL cursor and query and navigates to the backend next cursor', async () => {
+    api.getApplicationTemplateCatalog.mockResolvedValue({
+      application_templates: [
+        {
+          template_id: 'second',
+          catalog_id: 'official/second',
+          release_version: 3,
+          name: 'Second page template',
+          description: 'Only on the second page',
+          checksum: 'second',
+          installed_release_version: null,
+          installed_checksum: null,
+          source: 'official'
+        }
+      ],
+      next_cursor: 'third-cursor',
+      total: 37
+    });
+    setup({ cursor: 'second-cursor', q: 'gateway' });
+    expect(await screen.findByText('Second page template')).toBeInTheDocument();
+    expect(api.getApplicationTemplateCatalog).toHaveBeenCalledWith({
+      cursor: 'second-cursor',
+      q: 'gateway'
+    });
+    expect(screen.queryByText('Gateway demo')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(navigate).toHaveBeenLastCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'application-templates' },
+      search: { q: 'gateway', cursor: 'third-cursor' }
+    });
+  });
+  test('search resets pagination and an empty last page cannot advance', async () => {
+    api.getApplicationTemplateCatalog.mockResolvedValue({
+      application_templates: [],
+      next_cursor: null,
+      total: 0
+    });
+    setup({ cursor: 'old-cursor', q: 'old' });
+    expect(
+      await screen.findByText('No application templates available.')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
+    const search = screen.getByRole('textbox', {
+      name: 'Search application templates'
+    });
+    fireEvent.change(search, { target: { value: '  gateway  ' } });
+    fireEvent.keyDown(search, {
+      key: 'Enter',
+      code: 'Enter',
+      charCode: 13,
+      keyCode: 13
+    });
+    expect(navigate).toHaveBeenLastCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'application-templates' },
+      search: { q: 'gateway', cursor: undefined }
+    });
+    expect(api.previewSystemTemplate).not.toHaveBeenCalled();
+    expect(api.installSystemTemplate).not.toHaveBeenCalled();
+  });
+  test('replaces server pages and returns to the previously visited cursor', async () => {
+    api.getApplicationTemplateCatalog.mockImplementation(
+      async ({ cursor }) => ({
+        application_templates: [
+          {
+            template_id: cursor ?? 'first',
+            catalog_id: cursor ?? 'first',
+            release_version: 1,
+            name: cursor ?? 'First page template',
+            description: 'Page metadata',
+            checksum: 'digest',
+            installed_release_version: null,
+            installed_checksum: null,
+            source: 'official'
+          }
+        ],
+        next_cursor:
+          cursor === 'page-three' ? null : cursor ? 'page-three' : 'page-two',
+        total: 3
+      })
+    );
+    const view = setup({ q: 'demo' });
+    expect(await screen.findByText('First page template')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    view.rerenderSection({ q: 'demo', cursor: 'page-two' });
+    expect(await screen.findByText('page-two')).toBeInTheDocument();
+    expect(screen.queryByText('First page template')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    view.rerenderSection({ q: 'demo', cursor: 'page-three' });
+    expect(await screen.findByText('page-three')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
+    expect(navigate).toHaveBeenLastCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'application-templates' },
+      search: { q: 'demo', cursor: 'page-two' }
+    });
+    expect(api.getApplicationTemplateCatalog).toHaveBeenCalledWith({
+      q: 'demo',
+      cursor: 'page-three'
+    });
   });
 });

@@ -588,8 +588,9 @@ impl ApiConfig {
     }
 }
 
-const OFFICIAL_EXTENSION_CATALOG_CATEGORIES: [(&str, &str); 6] = [
+const OFFICIAL_EXTENSION_CATALOG_CATEGORIES: [(&str, &str); 7] = [
     ("agent-flow", "AGENT_FLOW"),
+    ("applications-demo", "APPLICATIONS_DEMO"),
     ("capability-plugins", "CAPABILITY_PLUGINS"),
     ("host-extensions", "HOST_EXTENSIONS"),
     ("i18n", "I18N"),

@@ -333,9 +333,9 @@ export function SystemBackupsPanel() {
           </Space>
           <Space wrap>
             <Upload
-              accept=".1fb-backup,.json,application/octet-stream,application/json"
+              accept=".1fb-backup,.zip,.json,application/octet-stream,application/zip,application/json"
               beforeUpload={(file) => {
-                if (file.name.toLowerCase().endsWith('.json')) {
+                if (/\.(zip|json)$/i.test(file.name)) {
                   setTemplateDialog({ mode: 'import', file });
                 } else {
                   setPendingImport(file);
