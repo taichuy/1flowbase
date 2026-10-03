@@ -39,6 +39,19 @@ RUN chmod 0755 /usr/local/bin/package-model-pricing-bootstrap \
       "${MODEL_PRICING_REF}" \
       /model-pricing
 
+FROM alpine:3.22 AS application-template-bootstrap
+
+ARG APPLICATION_TEMPLATE_REPOSITORY=taichuy/1flowbase-official-plugins
+# Immutable application template snapshot; changing a package also bumps its release_version.
+ARG APPLICATION_TEMPLATE_REF=decab54ed087417cd850534d9c6fa203e48ddbd5
+
+RUN apk add --no-cache ca-certificates git jq
+COPY scripts/shell/package-application-templates.sh /usr/local/bin/package-application-templates
+RUN sh /usr/local/bin/package-application-templates \
+      "${APPLICATION_TEMPLATE_REPOSITORY}" \
+      "${APPLICATION_TEMPLATE_REF}" \
+      /application-templates
+
 FROM node:24-bookworm-slim AS runtime-base
 
 ARG APP_UID=1000
@@ -68,10 +81,12 @@ ENV MALLOC_ARENA_MAX=8
 
 ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
     API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore \
-    API_MODEL_PRICING_BOOTSTRAP_ROOT=/app/api/resources/model-pricing
+    API_MODEL_PRICING_BOOTSTRAP_ROOT=/app/api/resources/model-pricing \
+    API_APPLICATION_TEMPLATE_ROOT=/app/api/resources/application-templates
 
 COPY api/plugins /app/api/plugins
 COPY --from=model-pricing-bootstrap /model-pricing /app/api/resources/model-pricing
+COPY --from=application-template-bootstrap /application-templates /app/api/resources/application-templates
 RUN mkdir -p \
     /app/api/storage \
     /app/api/plugins/packages \

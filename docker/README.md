@@ -210,3 +210,11 @@ FLOWBASE_WEB_VERSION=local FLOWBASE_API_SERVER_VERSION=local docker compose up -
 ```
 
 CI 发布镜像时也会继续使用 GitHub Actions cache，因此同一镜像的后续构建会复用远端缓存。CI 使用 buildx 发布 `linux/amd64` 和 `linux/arm64`。镜像按组件 manifest 版本自动发布：`web/app/package.json` 的 `version` 变化只发布 web 镜像，`api/apps/api-server/Cargo.toml` 的 `version` 变化只发布唯一 Backend 镜像。普通源码提交不会发布镜像。
+
+## 内置应用模板
+
+后端镜像包含官方 `applications-demo/@taichuy/gateway-demo` 版本化模板，启动时在依赖与工作区就绪后初始化；新版本直接覆盖模板对应的页面、应用、数据模型定义和 MCP 配置，并新增缺失对象。不会删除模板之外的资源或同步业务数据记录。
+
+在部署 `.env` 设置 `API_APPLICATION_TEMPLATE_AUTO_UPDATE=false`，可同时关闭空库初始化与已有库自动升级。扩展中心“应用模板”保留手动安装入口。恢复为 `true` 后重启后端即可继续自动同步。
+
+`API_APPLICATION_TEMPLATE_ROOT` 指定镜像模板目录，默认镜像路径 `/app/api/resources/application-templates`。构建参数 `APPLICATION_TEMPLATE_REPOSITORY` 与 `APPLICATION_TEMPLATE_REF` 指定来源与不可变 commit；模板变更须递增其 `release.release_version`。同版本不同内容会拒绝更新，失败不会记录成功版本。

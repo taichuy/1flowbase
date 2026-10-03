@@ -522,6 +522,8 @@ jobs:
           build-args: |
             MODEL_PRICING_REPOSITORY=${{ steps.model_pricing_snapshot.outputs.repository }}
             MODEL_PRICING_REF=${{ steps.model_pricing_snapshot.outputs.commit }}
+            APPLICATION_TEMPLATE_REPOSITORY=${{ steps.model_pricing_snapshot.outputs.repository }}
+            APPLICATION_TEMPLATE_REF=${{ steps.model_pricing_snapshot.outputs.commit }}
           build-contexts: |
             api_server_binaries=./tmp/api-server-binaries
           cache-from: |
