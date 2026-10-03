@@ -26,7 +26,7 @@
 | 绕过 service 直接改关键状态、插件可注册系统接口、`public / control / runtime` 混层 | `Blocking` |
 | 公共 API 契约变化未回归、`RuntimeExtension / CapabilityPlugin` 边界被打破、repository 混业务规则、`Resource Action Kernel` 托管边界失效 | `High` |
 | HostExtension 绕过 manifest contribution 直接扩系统接口、直接改 Core 真值表，或 RuntimeExtension / CapabilityPlugin 直接持有 Redis、NATS、RabbitMQ 等基础设施连接 | `High` |
-| `storage-durable/postgres` 内的 `storage-postgres` repository / mapper 拆分被打回混层实现、`storage-durable / storage-object` 边界被混用、mapper 藏业务规则、dynamic modeling 与 runtime data 被混成同一层 | `High` |
+| `storage/durable/postgres` 内的 `storage-durable-postgres` repository / mapper 拆分被打回混层实现、`storage-durable / storage-object` 边界被混用、mapper 藏业务规则、dynamic modeling 与 runtime data 被混成同一层 | `High` |
 | `ApiSuccess` / `204` / 错误结构不一致、后端验证命令或验证脚本缺失、测试目录或命名不对齐 | `Medium` |
 | 文档、命名、低风险一致性瑕疵，但未直接影响行为 | `Low` |
 
@@ -56,5 +56,5 @@
 - `Low` 不等于可以忽略，只是优先级最低
 - 严重度判断必须基于证据和影响，不要只看改动大小
 - 证据不足时不要强行给高结论，应该明确写未验证限制
-- maintainability warning 不是修改授权；删除、合并抽象、改公共接口或清理兼容层前必须等待用户同意
+- maintainability warning 不是修改授权；删除、合并抽象、改公共接口或清理兼容层须在现有授权范围内；缺少授权时才请求用户同意
 - 非空 warning 或 `warningFiles` 只代表需要维护者查看，不自动改变 gate status；只有显式 error/blocker、失败 component 或非零 exit code才阻断

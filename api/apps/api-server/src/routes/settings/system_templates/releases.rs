@@ -58,15 +58,8 @@ pub(crate) fn discover(root: &str) -> Result<Vec<BuiltinRelease>> {
                 let file = std::fs::File::open(root.join("template.zip"))?;
                 let mut zip = zip::ZipArchive::new(file)?;
                 let mut entry = zip.by_name("manifest.json")?;
-                ensure!(
-                    entry.size() <= 4 * 1024 * 1024,
-                    "application_template_manifest_size"
-                );
                 let mut bytes = Vec::new();
-                entry
-                    .by_ref()
-                    .take(4 * 1024 * 1024 + 1)
-                    .read_to_end(&mut bytes)?;
+                entry.read_to_end(&mut bytes)?;
                 // Metadata identity is stable without materializing each package.
                 let digest = archive::checksum(&bytes);
                 (bytes, digest)

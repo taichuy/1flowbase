@@ -47,3 +47,39 @@ fn split_source_and_zip_have_the_same_install_package() {
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn discovery_reads_metadata_from_the_same_packages_the_codec_accepts() {
+    let root =
+        std::env::temp_dir().join(format!("template-large-manifest-{}", uuid::Uuid::new_v4()));
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(root.clone());
+    let directory = root.join("@fixture/large-metadata");
+    std::fs::create_dir_all(&directory).unwrap();
+    let description = "metadata".repeat(524_289);
+    let package = serde_json::from_value(json!({
+        "schema_version":"1flowbase.portable-template/v1",
+        "pages":[],"applications":[],"data_models":[],"plugins":[],
+        "release":{"template_id":"@fixture/large-metadata","release_version":1,
+            "name":"Large metadata","description":description,
+            "exported_at":"2026-10-03T00:00:00Z","exported_from_system_version":"0.4.1"}
+    }))
+    .unwrap();
+    std::fs::write(
+        directory.join("template.zip"),
+        archive::encode(&package).unwrap(),
+    )
+    .unwrap();
+    let releases = super::releases::discover(root.to_str().unwrap()).unwrap();
+    assert_eq!(releases.len(), 1);
+    assert_eq!(releases[0].release.description, description);
+    assert_eq!(
+        serde_json::to_value(releases[0].load().unwrap()).unwrap(),
+        serde_json::to_value(package).unwrap()
+    );
+}

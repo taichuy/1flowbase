@@ -202,10 +202,10 @@ test("DV-F08 root router keeps page implementations behind lazy boundaries", () 
   );
 
   for (const pageName of [
-    "HomePage",
+    "HomeRedirect",
     "FrontstageWorkspacePage",
     "MePage",
-    "TemplatesPage",
+    "SettingsPage",
   ]) {
     assert.doesNotMatch(
       routerSource,
@@ -213,6 +213,23 @@ test("DV-F08 root router keeps page implementations behind lazy boundaries", () 
     );
     assert.match(routerSource, new RegExp(`const ${pageName} = lazy`, "u"));
   }
+  const { discoverLazyImports } = require('../../vite-lazy-deps-gate/core.js');
+  const routerLazyImports = discoverLazyImports({
+    repoRoot: path.resolve(__dirname, '../../../..'),
+  }).filter((entry) => entry.source === 'web/app/src/app/router.tsx');
+  assert.deepEqual(
+    routerLazyImports.map((entry) => entry.specifier).sort(),
+    [
+      '../app-shell/AppShellFrame',
+      '../routes/HomeRedirect',
+      '../features/frontstage/pages/FrontstageWorkspacePage',
+      '../features/me/pages/MePage',
+      '../features/settings/pages/SettingsPage',
+      '../features/applications/pages/ApplicationDetailPage',
+    ].sort(),
+  );
+  assert.ok(routerLazyImports.every((entry) => entry.resolvedPath));
+  assert.doesNotMatch(routerSource, /from ['"][^'"]*pages\/ApplicationDetailPage['"]/u);
   assert.match(routerSource, /const AppShellFrame = lazy/u);
   assert.doesNotMatch(appSource, /features\/workflow\/register/u);
   assert.doesNotMatch(appSource, /from ['"]\.\/router['"]/u);

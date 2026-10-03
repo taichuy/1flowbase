@@ -119,7 +119,7 @@ cargo test -p <crate-name>
 
 - `repository` 只做持久化与查询投影，不偷带业务逻辑
 - `mapper` 只做转换，不藏权限、状态或额外查询语义
-- `storage-durable/postgres` 内的 `storage-postgres` repository / mapper 拆分仍然成立
+- `storage/durable/postgres` 内的 `storage-durable-postgres` repository / mapper 拆分仍然成立
 - `storage-durable` 没有吸收额外 durable backend 细节，`storage-object` 没有混入插件产物存储或业务 service 规则
 - 复杂 SQL、JSON 字段、枚举转换等易错点有对应 targeted tests
 - runtime metadata、物理表列名与 `scope_id` 语义保持一致
@@ -129,10 +129,10 @@ cargo test -p <crate-name>
 出 QA 结论前，至少补一轮后端 blast radius 审查：
 
 - 公共 API、session 或 auth 契约变化后，调用方是否同步成立
-- `storage-durable/postgres`、`storage-durable`、`storage-object` 或持久化层调整后，service、route、tests 是否仍成立
+- `storage/durable/postgres`、`storage-durable`、`storage-object` 或持久化层调整后，service、route、tests 是否仍成立
 - runtime 或插件相关改动后，白名单槽位与消费方式是否仍成立
 - HostExtension 相关改动后，manifest contribution、load plan、route / worker / migration namespace 和 infrastructure provider 是否仍成立
-- `storage-durable/postgres/migrations` 是否仍是顺序追加历史迁移链；修改历史 migration 时是否使用独立 schema 避免 checksum 污染
+- `storage/durable/postgres/migrations` 是否仍是顺序追加历史迁移链；修改历史 migration 时是否使用独立 schema 避免 checksum 污染
 - `workspace/system`、`SYSTEM_SCOPE_ID` 与 runtime `scope_id` 约束是否贯穿 route / service / repository / tests
 - `_tests`、文件大小、目录收纳和最小验证命令是否仍遵守质量门禁
 

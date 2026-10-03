@@ -334,7 +334,7 @@ async fn mcp_only_application_template_creates_then_updates_the_selected_instanc
 
 #[tokio::test]
 async fn application_template_catalog_is_metadata_only_and_offline_pages_are_independent() {
-    use crate::routes::settings::system_templates::archive;
+    use crate::routes::system_templates::archive;
     let (mut state, _) = test_api_state_with_database_url().await;
     let root = std::env::temp_dir().join(format!("template-catalog-{}", uuid::Uuid::new_v4()));
     struct Cleanup(std::path::PathBuf);

@@ -103,19 +103,17 @@ struct ConsoleRouteSpec {
     requirement: ConsolePermissionRequirement,
 }
 
-const BUILTIN_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
-    ConsoleRouteSpec {
-        route_id: "settings",
-        surface_key: "settings",
-        path: "/settings",
-        label_key: "auto.settings",
-        navigation_slot: ConsoleNavigationSlot::Secondary,
-        parent_item_id: None,
-        order: 100,
-        permission_codes: &[],
-        requirement: ConsolePermissionRequirement::Authenticated,
-    },
-];
+const BUILTIN_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[ConsoleRouteSpec {
+    route_id: "settings",
+    surface_key: "settings",
+    path: "/settings",
+    label_key: "auto.settings",
+    navigation_slot: ConsoleNavigationSlot::Secondary,
+    parent_item_id: None,
+    order: 100,
+    permission_codes: &[],
+    requirement: ConsolePermissionRequirement::Authenticated,
+}];
 
 pub fn builtin_console_navigation() -> ConsoleNavigation {
     let mut route_definitions = BUILTIN_CONSOLE_ROUTES

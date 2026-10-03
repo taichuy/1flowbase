@@ -10,7 +10,7 @@
     },
     {
       "source": "web/app/src/app/router.tsx",
-      "specifier": "../features/home/pages/HomePage",
+      "specifier": "../routes/HomeRedirect",
       "smokePaths": [
         "/"
       ]
@@ -30,13 +30,6 @@
       "specifier": "../features/me/pages/MePage",
       "smokePaths": [
         "/me"
-      ]
-    },
-    {
-      "source": "web/app/src/app/router.tsx",
-      "specifier": "../features/templates/pages/TemplatesPage",
-      "smokePaths": [
-        "/templates"
       ]
     },
     {
@@ -187,6 +180,13 @@
       "specifier": "../../components/extension-center/UiComponentCatalogPanel",
       "smokePaths": [
         "/settings/extension-center/runtime-extensions"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      "specifier": "../../components/extension-center/ApplicationTemplateCatalogPanel",
+      "smokePaths": [
+        "/settings/extension-center/application-templates"
       ]
     },
     {

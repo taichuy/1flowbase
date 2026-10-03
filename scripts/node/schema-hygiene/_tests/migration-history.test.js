@@ -39,3 +39,30 @@ test('published PostgreSQL migrations keep their sqlx checksums', () => {
     assert.equal(migrationChecksum(relativePath), checksum, relativePath);
   }
 });
+
+test('template release readiness is repaired additively without exempting the immutable ledger', () => {
+  const os = require('node:os');
+  const { collectSchemaInventory, evaluateSchemaHygiene } = require('../core.js');
+  const original = '20261003010000_application_template_releases.sql';
+  const readiness = '20261003170000_application_template_release_readiness.sql';
+  const migrationRoot = 'api/crates/storage/durable/postgres/migrations';
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'template-release-readiness-'));
+  const directory = path.join(fixtureRoot, migrationRoot);
+  fs.mkdirSync(directory, { recursive: true });
+  try {
+    fs.copyFileSync(path.join(repoRoot, migrationRoot, original), path.join(directory, original));
+    const before = evaluateSchemaHygiene({ inventory: collectSchemaInventory({ repoRoot: fixtureRoot }) });
+    assert.deepEqual(before.findings.filter((item) => item.severity === 'error').map((item) => item.rule).sort(), [
+      'managed-table-created-at',
+      'managed-table-id',
+      'managed-table-scope-column',
+      'managed-table-scope-time-index',
+    ]);
+    fs.copyFileSync(path.join(repoRoot, migrationRoot, readiness), path.join(directory, readiness));
+    const after = evaluateSchemaHygiene({ inventory: collectSchemaInventory({ repoRoot: fixtureRoot }) });
+    assert.equal(after.summary.errors, 0);
+    assert.equal(after.tables[0].profile, 'managed_table');
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});

@@ -1210,6 +1210,11 @@ describe('McpManagementPanel', () => {
       target: { value: 'appId' }
     });
 
+    expect(within(dialog).getByLabelText('default_value app_id')).toHaveValue(
+      ''
+    );
+    expect(within(dialog).getByLabelText('hidden app_id')).not.toBeChecked();
+
     clickSegmentedOption(dialog, 'output_mapping');
     fireEvent.click(
       within(dialog).getByRole('button', { name: '获取返回结构' })
@@ -1252,6 +1257,8 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'app_id',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'appId',
                 description: 'Application id',
                 required: true
@@ -1312,6 +1319,8 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'app_id',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'appId',
                 description: 'Application id',
                 required: true
@@ -1453,6 +1462,13 @@ describe('McpManagementPanel', () => {
       target: { value: 'appId' }
     });
 
+    for (const name of ['app_id', 'display_name']) {
+      expect(
+        within(dialog).getByLabelText(`default_value ${name}`)
+      ).toHaveValue('');
+      expect(within(dialog).getByLabelText(`hidden ${name}`)).not.toBeChecked();
+    }
+
     clickSegmentedOption(dialog, 'debug');
     expect(
       within(dialog).queryByText('mcp_get(tool_id)')
@@ -1484,12 +1500,16 @@ describe('McpManagementPanel', () => {
             mappings: [
               {
                 interface_param: 'app_id',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'appId',
                 description: 'Application id',
                 required: true
               },
               {
                 interface_param: 'display_name',
+                default_value: null,
+                hidden: false,
                 mcp_param: 'display_name',
                 description: 'Display name',
                 required: false

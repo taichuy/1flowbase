@@ -22,6 +22,8 @@
 - 优先消费 Rust 启动注册产生的 compiled inventory；Node 工具负责稳定报告和 CI 结算，不用 regex 重建 Axum 真值。
 - 至少提供 Core 与 HostExtension 各一个确定性 fixture，并覆盖未注册 API、重复 owner、无 grant、有 grant、inactive extension 和数据越权反例。
 - 新 API 加入已有 feature 是权限扩张；inventory diff 必须明确列出 owner、旧/新 routes与operations，并分别列出full/custom角色有效权限变化。
-- 旧 `console-route-registry-hygiene` 在只解析源码时只能作为替换过程的辅助证据，不能单独结算 registry ownership。
+- 正式入口为 `node scripts/node/verify.js console-operation-registry-hygiene`（直接入口见 `scripts/node/console-operation-registry-hygiene/README.md`）。它串行执行 `migrated_assembly_contains_every_console_router_owner_assembly` 与 `console_route_assembly`，默认再运行 Rust `console_operation_inventory` exporter，以当前 compiled inventory 与 baseline 结算 ownership、接口描述、migration 和权限扩张 diff；source scan 只作 advisory warning。
+- compiled gate 含 Rust 测试与 exporter，按集中 Test Batch 的资源边界执行；传入 fixture inventory 也不能免除 compiled assembly 检查。报告统一落到 `tmp/test-governance/console-operation-registry-hygiene.{json,md}`。
+- compiled inventory 与 Node fixture 不能单独结算真实鉴权。结合 `api/apps/api-server/tests/console_core_registry_tests.rs` 的 compiled owner / interface 证据、`api/apps/api-server/src/middleware/require_settings_feature_permission.rs` 的授权反例，并对本次受影响真实 route 补齐无授权 403、有授权可用、同 feature 其他 operation 拒绝与 inactive owner 拒绝的适用证据；未执行的授权场景仍标为未验证。
 - Dev Acceptance Gate 跑最小 registry、授权和 CLI fixture；workspace cargo、按 contract 需要的 PostgreSQL 集成验证与全仓 hygiene 默认交 CI / beta。
 - 无法取得 compiled inventory、鉴权反例或适用的 contract replacement 证据时写 `未验证，不下确定结论`；QA 不自动补授权、改映射、制造兼容或执行语义级修复。

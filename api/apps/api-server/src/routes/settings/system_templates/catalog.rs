@@ -27,7 +27,7 @@ pub struct ExportQuery {
 pub enum TemplateRequest {
     Catalog(CatalogRequest),
     Archive(ArchiveRequest),
-    Package(PortableTemplatePackage),
+    Package(Box<PortableTemplatePackage>),
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -160,24 +160,18 @@ pub(crate) async fn resolve(
     request: TemplateRequest,
 ) -> Result<PortableTemplatePackage> {
     match request {
-        TemplateRequest::Package(package) => Ok(package),
-        TemplateRequest::Archive(request) => {
-            ensure!(
-                request.archive_base64.len() <= 90 * 1024 * 1024,
-                "application_template_archive_size"
-            );
-            STANDARD
-                .decode(request.archive_base64)
-                .map_err(anyhow::Error::from)
-                .and_then(|bytes| archive::decode(&bytes))
-                .map_err(|error| {
-                    tracing::debug!(error=%error,"invalid application template upload");
-                    control_plane::errors::ControlPlaneError::InvalidInput(
-                        "application_template_archive_invalid",
-                    )
-                    .into()
-                })
-        }
+        TemplateRequest::Package(package) => Ok(*package),
+        TemplateRequest::Archive(request) => STANDARD
+            .decode(request.archive_base64)
+            .map_err(anyhow::Error::from)
+            .and_then(|bytes| archive::decode(&bytes))
+            .map_err(|error| {
+                tracing::debug!(error=%error,"invalid application template upload");
+                control_plane::errors::ControlPlaneError::InvalidInput(
+                    "application_template_archive_invalid",
+                )
+                .into()
+            }),
         TemplateRequest::Catalog(request) => {
             if let Some(id) = request.catalog_id.strip_prefix("builtin:") {
                 let item = releases::discover(&dependencies.application_template_root)?

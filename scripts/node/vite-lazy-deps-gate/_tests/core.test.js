@@ -267,6 +267,126 @@ test('analyzeStaticLazyDeps reports lazy route imports missing smoke manifest co
   assert.equal(result.findings[0].specifier, '../features/lazy/LazyPage');
 });
 
+const fixtureManifestEntry = {
+  source: 'web/app/src/app/router.tsx',
+  specifier: '../features/lazy/LazyPage',
+  smokePaths: ['/lazy/example'],
+};
+
+for (const [name, routerSource] of [
+  ['deleted import with target still on disk', 'export const page = null;'],
+  ['eager import', "import { LazyPage } from '../features/lazy/LazyPage';"],
+  ['type-only import', "type Page = typeof import('../features/lazy/LazyPage');"],
+  ['unrelated dynamic import', "void import('../features/lazy/LazyPage');"],
+  ['unused loader', "function loadPage() { return import('../features/lazy/LazyPage'); }"],
+  ['helper returning a different value', [
+    "function loadPage() { void import('../features/lazy/LazyPage'); return Promise.resolve({}); }",
+    'const Page = lazy(() => loadPage());',
+  ].join('\n')],
+  ['memoized helper returning a different flight', [
+    "function loadPage() { flight ??= import('../features/lazy/LazyPage'); return otherFlight; }",
+    'const Page = lazy(() => loadPage());',
+  ].join('\n')],
+]) {
+  test(`stale manifest rejects ${name}`, (t) => {
+    const fixture = createFixtureRepo({
+      optimizeDepsInclude: ['present-lazy'],
+      manifestEntries: [fixtureManifestEntry],
+    });
+    t.after(() => fs.rmSync(fixture.repoRoot, { recursive: true, force: true }));
+    writeFile(fixture.repoRoot, fixtureManifestEntry.source, routerSource);
+
+    const result = analyzeStaticLazyDeps(fixture);
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.findings.map((finding) => finding.code), ['stale-smoke-manifest']);
+    assert.equal(result.findings[0].specifier, fixtureManifestEntry.specifier);
+  });
+}
+
+test('stale manifest rejects deleted source files and obsolete targets', (t) => {
+  const fixture = createFixtureRepo({
+    optimizeDepsInclude: ['present-lazy'],
+    manifestEntries: [
+      fixtureManifestEntry,
+      { ...fixtureManifestEntry, source: 'web/app/src/app/deleted.tsx' },
+      { ...fixtureManifestEntry, specifier: '../features/deleted/DeletedPage' },
+    ],
+  });
+  t.after(() => fs.rmSync(fixture.repoRoot, { recursive: true, force: true }));
+
+  const result = analyzeStaticLazyDeps(fixture);
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.findings.map((finding) => finding.code), [
+    'stale-smoke-manifest', 'stale-smoke-manifest',
+  ]);
+  assert.equal(result.findings[0].source, 'web/app/src/app/deleted.tsx');
+  assert.equal(result.findings[1].specifier, '../features/deleted/DeletedPage');
+});
+
+for (const [name, loader] of [
+  ['direct return', "function loadPage() { return import('../features/lazy/LazyPage'); }"],
+  ['memoized flight', [
+    "let flight: Promise<typeof import('../features/lazy/LazyPage')> | undefined;",
+    "function loadPage() { flight ??= import('../features/lazy/LazyPage'); return flight; }",
+  ].join('\n')],
+]) {
+  for (const covered of [true, false]) {
+    test(`lazy helper ${name} ${covered ? 'accepts coverage' : 'requires coverage'}`, (t) => {
+      const fixture = createFixtureRepo({
+        optimizeDepsInclude: ['present-lazy'],
+        manifestEntries: covered ? [fixtureManifestEntry] : [],
+      });
+      t.after(() => fs.rmSync(fixture.repoRoot, { recursive: true, force: true }));
+      writeFile(fixture.repoRoot, fixtureManifestEntry.source, [
+        loader,
+        'const Page = lazy(() => loadPage().then((module) => ({ default: module.LazyPage })));',
+        'void loadPage();',
+      ].join('\n'));
+
+      const result = analyzeStaticLazyDeps(fixture);
+
+      assert.equal(result.ok, covered);
+      assert.deepEqual(result.findings.map((finding) => finding.code), covered ? [] : ['missing-smoke-manifest']);
+      assert.deepEqual(result.lazyOnlyDependencies, ['present-lazy']);
+      assert.equal(result.lazyEntries.length, 1);
+      assert.equal(result.lazyEntries[0].specifier, fixtureManifestEntry.specifier);
+    });
+  }
+}
+
+test('helper-backed lazy imports still reject unoptimized dependencies', (t) => {
+  const fixture = createFixtureRepo({ manifestEntries: [fixtureManifestEntry] });
+  t.after(() => fs.rmSync(fixture.repoRoot, { recursive: true, force: true }));
+  writeFile(fixture.repoRoot, fixtureManifestEntry.source, [
+    "function loadPage() { return import('../features/lazy/LazyPage'); }",
+    'const Page = lazy(() => loadPage());',
+  ].join('\n'));
+
+  const result = analyzeStaticLazyDeps(fixture);
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.findings.map((finding) => finding.code), ['missing-optimize-dep']);
+  assert.equal(result.findings[0].dependency, 'present-lazy');
+});
+
+test('helper-backed lazy imports reject unresolved source targets', (t) => {
+  const fixture = createFixtureRepo({ manifestEntries: [fixtureManifestEntry] });
+  t.after(() => fs.rmSync(fixture.repoRoot, { recursive: true, force: true }));
+  writeFile(fixture.repoRoot, fixtureManifestEntry.source, [
+    "function loadPage() { return import('../features/lazy/LazyPage'); }",
+    'const Page = lazy(() => loadPage());',
+  ].join('\n'));
+  fs.rmSync(path.join(fixture.repoRoot, 'web/app/src/features/lazy/LazyPage.tsx'));
+
+  const result = analyzeStaticLazyDeps(fixture);
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.findings.map((finding) => finding.code), ['unresolved-lazy-import']);
+  assert.equal(result.findings[0].specifier, fixtureManifestEntry.specifier);
+});
+
 test('detectRuntimeFailureSignals catches Vite dev optimized dep failures', () => {
   const signals = detectRuntimeFailureSignals({
     responses: [

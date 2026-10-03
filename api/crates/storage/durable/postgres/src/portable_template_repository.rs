@@ -57,8 +57,9 @@ impl PortableTemplateIdentityRepository for PgControlPlaneStore {
         successful: bool,
     ) -> Result<()> {
         let version = i64::try_from(release_version)?;
-        let result = sqlx::query("INSERT INTO application_template_releases (workspace_id, template_id, release_version, checksum, successful) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (workspace_id,template_id,release_version) DO UPDATE SET successful = application_template_releases.successful OR excluded.successful, updated_at=now() WHERE application_template_releases.checksum = excluded.checksum")
+        let result = sqlx::query("INSERT INTO application_template_releases (workspace_id, template_id, release_version, checksum, successful, id) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (workspace_id,template_id,release_version) DO UPDATE SET successful = application_template_releases.successful OR excluded.successful, updated_at=now() WHERE application_template_releases.checksum = excluded.checksum")
             .bind(workspace_id).bind(template_id).bind(version).bind(checksum).bind(successful)
+            .bind(Uuid::now_v7())
             .execute(self.pool()).await?;
         anyhow::ensure!(
             result.rows_affected() == 1,

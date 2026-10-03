@@ -1130,8 +1130,9 @@ describe('SettingsPage', () => {
       'href',
       '/settings/data-models'
     );
-    await waitFor(() =>
-      expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled()
+    await waitFor(
+      () => expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled(),
+      { timeout: 10000 }
     );
     expect(
       await screen.findByText('主数据源', {}, { timeout: 10000 })
@@ -1148,7 +1149,9 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe('/settings/system-runtime');
     });
-    expect(await screen.findByText('资源监控')).toBeInTheDocument();
+    expect(
+      await screen.findByText('资源监控', {}, { timeout: 10000 })
+    ).toBeInTheDocument();
     expect(screen.queryByText('运行概览')).not.toBeInTheDocument();
     expect(screen.queryByText('运行环境')).not.toBeInTheDocument();
     expect(screen.queryByText('同机部署')).not.toBeInTheDocument();

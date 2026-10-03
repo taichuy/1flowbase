@@ -35,14 +35,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/settings/system-templates/preview",
             console_post(
-                preview.layer(DefaultBodyLimit::max(96 * 1024 * 1024)),
+                preview.layer(DefaultBodyLimit::disable()),
                 owned("system_templates.preview"),
             ),
         )
         .route(
             "/settings/system-templates/install",
             console_post(
-                install.layer(DefaultBodyLimit::max(96 * 1024 * 1024)),
+                install.layer(DefaultBodyLimit::disable()),
                 owned("system_templates.install"),
             ),
         )

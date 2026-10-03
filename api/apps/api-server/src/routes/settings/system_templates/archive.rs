@@ -11,9 +11,6 @@ use std::{
 };
 
 pub(crate) const SCHEMA: &str = "1flowbase.application-template-archive/v1";
-const MAX_BYTES: usize = 64 * 1024 * 1024;
-const MAX_FILES: usize = 10_000;
-const MAX_DEPTH: usize = 128;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Manifest {
@@ -40,25 +37,13 @@ fn safe_path(path: &str) -> Result<()> {
             .all(|p| !p.is_empty() && p != "." && p != ".."),
         "application_template_archive_path"
     );
-    ensure!(
-        path.split('/').count() <= MAX_DEPTH,
-        "application_template_archive_depth"
-    );
     Ok(())
 }
 pub(crate) fn read_manifest(bytes: &[u8]) -> Result<Manifest> {
-    ensure!(
-        bytes.len() <= MAX_BYTES,
-        "application_template_archive_size"
-    );
     let manifest: Manifest = serde_json::from_slice(bytes)?;
     ensure!(
         manifest.schema_version == SCHEMA,
         "application_template_archive_schema"
-    );
-    ensure!(
-        manifest.files.len() <= MAX_FILES,
-        "application_template_archive_file_count"
     );
     let mut previous: Option<&str> = None;
     for file in &manifest.files {
@@ -79,31 +64,33 @@ fn materialize(
         files.len() == manifest.files.len(),
         "application_template_archive_extra_file"
     );
-    let mut total = 0usize;
     for file in &manifest.files {
         let bytes = files
             .get(&file.path)
             .context("application_template_archive_missing_file")?;
-        total = total
-            .checked_add(bytes.len())
-            .context("application_template_archive_size")?;
         ensure!(
-            total <= MAX_BYTES && checksum(bytes) == file.sha256,
+            checksum(bytes) == file.sha256,
             "application_template_archive_checksum"
         );
     }
-    fn resolve(
-        value: Value,
-        files: &BTreeMap<String, Vec<u8>>,
-        active: &mut BTreeSet<String>,
-        used: &mut BTreeSet<String>,
-        depth: usize,
-        expanded: &mut usize,
-    ) -> Result<Value> {
-        ensure!(depth <= MAX_DEPTH, "application_template_archive_depth");
-        match value {
-            Value::Object(mut object) if object.len() == 1 && object.contains_key("$file") => {
-                ensure!(object.len() == 1, "application_template_archive_reference");
+    // Postorder DFS uses heap-backed frames, so reference chains do not consume
+    // the call stack. Only references on the current branch are active: repeated
+    // references in separate branches remain legal.
+    enum Frame {
+        Visit(Value),
+        Object(Vec<String>),
+        Array(usize),
+        LeaveReference(String),
+    }
+    let mut pending = vec![Frame::Visit(manifest.package)];
+    let mut values = Vec::new();
+    let mut active = BTreeSet::new();
+    let mut used = BTreeSet::new();
+    while let Some(frame) = pending.pop() {
+        match frame {
+            Frame::Visit(Value::Object(mut object))
+                if object.len() == 1 && object.contains_key("$file") =>
+            {
                 let path = object
                     .remove("$file")
                     .and_then(|v| v.as_str().map(str::to_owned))
@@ -115,49 +102,36 @@ fn materialize(
                 let bytes = files
                     .get(&path)
                     .context("application_template_archive_undeclared_reference")?;
-                *expanded = expanded
-                    .checked_add(bytes.len())
-                    .context("application_template_archive_size")?;
-                ensure!(
-                    *expanded <= MAX_BYTES,
-                    "application_template_archive_expanded_size"
-                );
                 used.insert(path.clone());
-                let result = resolve(
-                    serde_json::from_slice(bytes)?,
-                    files,
-                    active,
-                    used,
-                    depth + 1,
-                    expanded,
-                )?;
-                active.remove(&path);
-                Ok(result)
+                pending.push(Frame::LeaveReference(path));
+                pending.push(Frame::Visit(serde_json::from_slice(bytes)?));
             }
-            Value::Object(object) => Ok(Value::Object(
-                object
-                    .into_iter()
-                    .map(|(k, v)| Ok((k, resolve(v, files, active, used, depth + 1, expanded)?)))
-                    .collect::<Result<_>>()?,
-            )),
-            Value::Array(array) => Ok(Value::Array(
-                array
-                    .into_iter()
-                    .map(|v| resolve(v, files, active, used, depth + 1, expanded))
-                    .collect::<Result<_>>()?,
-            )),
-            scalar => Ok(scalar),
+            Frame::Visit(Value::Object(object)) => {
+                let (keys, children): (Vec<_>, Vec<_>) = object.into_iter().unzip();
+                pending.push(Frame::Object(keys));
+                pending.extend(children.into_iter().rev().map(Frame::Visit));
+            }
+            Frame::Visit(Value::Array(array)) => {
+                pending.push(Frame::Array(array.len()));
+                pending.extend(array.into_iter().rev().map(Frame::Visit));
+            }
+            Frame::Visit(scalar) => values.push(scalar),
+            Frame::Object(keys) => {
+                let children = values.split_off(values.len() - keys.len());
+                values.push(Value::Object(keys.into_iter().zip(children).collect()));
+            }
+            Frame::Array(len) => {
+                let children = values.split_off(values.len() - len);
+                values.push(Value::Array(children));
+            }
+            Frame::LeaveReference(path) => {
+                active.remove(&path);
+            }
         }
     }
-    let mut used = BTreeSet::new();
-    let value = resolve(
-        manifest.package,
-        files,
-        &mut BTreeSet::new(),
-        &mut used,
-        0,
-        &mut 0,
-    )?;
+    let value = values
+        .pop()
+        .context("application_template_archive_package")?;
     ensure!(
         used.len() == files.len(),
         "application_template_archive_unreferenced_file"
@@ -171,18 +145,9 @@ fn materialize(
     Ok(package)
 }
 pub(crate) fn decode(bytes: &[u8]) -> Result<PortableTemplatePackage> {
-    ensure!(
-        bytes.len() <= MAX_BYTES,
-        "application_template_archive_size"
-    );
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
-    ensure!(
-        archive.len() <= MAX_FILES + 1024,
-        "application_template_archive_file_count"
-    );
     let mut files = BTreeMap::new();
     let mut names = BTreeSet::new();
-    let mut total = 0usize;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
         let name = entry.name().trim_end_matches('/').to_owned();
@@ -206,19 +171,8 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<PortableTemplatePackage> {
             ),
             "application_template_archive_compression"
         );
-        ensure!(
-            entry.size() <= MAX_BYTES as u64,
-            "application_template_archive_size"
-        );
         let mut data = Vec::new();
-        entry
-            .by_ref()
-            .take((MAX_BYTES + 1) as u64)
-            .read_to_end(&mut data)?;
-        total = total
-            .checked_add(data.len())
-            .context("application_template_archive_size")?;
-        ensure!(total <= MAX_BYTES, "application_template_archive_size");
+        entry.read_to_end(&mut data)?;
         files.insert(name, data);
     }
     let manifest = read_manifest(
@@ -231,7 +185,6 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<PortableTemplatePackage> {
 pub(crate) fn load_directory(root: &Path) -> Result<PortableTemplatePackage> {
     let manifest = read_manifest(&std::fs::read(root.join("manifest.json"))?)?;
     let mut files = BTreeMap::new();
-    let mut total = 0u64;
     for file in &manifest.files {
         let mut path = root.to_path_buf();
         for part in file.path.split('/') {
@@ -242,12 +195,9 @@ pub(crate) fn load_directory(root: &Path) -> Result<PortableTemplatePackage> {
             );
         }
         let metadata = std::fs::metadata(&path)?;
-        total = total
-            .checked_add(metadata.len())
-            .context("application_template_archive_size")?;
         ensure!(
-            metadata.is_file() && total <= MAX_BYTES as u64,
-            "application_template_archive_size"
+            metadata.is_file(),
+            "application_template_archive_nonregular"
         );
         files.insert(file.path.clone(), std::fs::read(path)?);
     }
@@ -354,7 +304,12 @@ pub(crate) fn source_files(package: &PortableTemplatePackage) -> Result<BTreeMap
                     let path = if kind == "tools" {
                         let hash = format!(
                             "{:x}",
-                            Sha256::digest(resource[field].as_str().unwrap().as_bytes())
+                            Sha256::digest(
+                                resource[field]
+                                    .as_str()
+                                    .context("application_template_archive_identity")?
+                                    .as_bytes()
+                            )
                         );
                         format!("mcp/tools/{}/{id}.json", &hash[..2])
                     } else {
