@@ -9,6 +9,7 @@ mod block_sealing;
 mod compact_directory;
 mod dense_directory;
 mod packed_directory;
+mod persistence;
 mod segments;
 mod semantic;
 async fn append(

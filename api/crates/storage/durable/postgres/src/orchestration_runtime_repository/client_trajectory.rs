@@ -105,7 +105,8 @@ impl PgControlPlaneStore {
                 .bind(step_id).bind(input.request_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
             anyhow::ensure!(valid, "client trajectory section scope mismatch");
         }
-        lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
+        // The initial existence check holds this flow's FOR NO KEY UPDATE lock
+        // until this fact commits, already serializing all sequence writers.
         let sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
         match &input.fact {
             ClientTrajectoryFact::Step { step } => {
