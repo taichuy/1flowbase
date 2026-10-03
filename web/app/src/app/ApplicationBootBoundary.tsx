@@ -5,6 +5,8 @@ import {
   type ReactNode
 } from 'react';
 
+import { recoverDevModuleGraph } from './bootstrap/dev-module-recovery';
+
 type ApplicationBootBoundaryState = {
   error: Error | null;
 };
@@ -20,6 +22,7 @@ class ApplicationBootBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    recoverDevModuleGraph(error);
     if (import.meta.env.DEV) {
       console.error('[1flowbase-dev-runtime] application boot failed', {
         error,
