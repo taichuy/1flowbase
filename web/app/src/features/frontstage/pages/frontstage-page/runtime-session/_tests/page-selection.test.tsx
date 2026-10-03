@@ -12,6 +12,7 @@ test('route navigation does not temporarily replace the outgoing page runtime sc
   const { result, rerender } = renderHook(
     ({ pageId }) =>
       usePageTreeWorkspace({
+        autoSelectFirstPage: true,
         pageId,
         initialPageTree,
         onNavigatePage
@@ -27,7 +28,7 @@ test('route navigation does not temporarily replace the outgoing page runtime sc
 
 test('standalone page selection without a route owner remains interactive', () => {
   const { result } = renderHook(() =>
-    usePageTreeWorkspace({ initialPageTree })
+    usePageTreeWorkspace({ initialPageTree, autoSelectFirstPage: true })
   );
   act(() => result.current.handleSelectPage('b'));
   expect(result.current.selectedPageId).toBe('b');

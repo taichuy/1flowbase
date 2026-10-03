@@ -613,7 +613,19 @@ describe('frontstage topbar root routing', () => {
       </AppProviders>
     );
 
-    const pageDom = await screen.findByTestId('frontstage-page');
+    // Capture the loaded page whose runtime must survive overlay navigation,
+    // after the initial loading placeholder has completed.
+    await waitFor(() => {
+      expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalled();
+      expect(
+        (
+          frontStagePageView.props as {
+            pageContent?: { tab?: { id?: string } };
+          } | null
+        )?.pageContent?.tab?.id
+      ).toBe('tab-overview');
+    });
+    const pageDom = screen.getByTestId('frontstage-page');
     act(() =>
       frontStagePageView.props?.onNavigateBlock?.('block-child', {
         inputs: { record_id: 'record-1' }
