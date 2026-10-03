@@ -13,7 +13,7 @@ const { assertNoArtifactSecrets } = require('../cli-smoke/artifact-scan');
 async function run(config) {
   const { createGatewayFixture, sha256File } = require(path.join(config.repoRoot, 'scripts/node/ai-gateway-concurrency/gateway-fixture'));
   const { OwnerHttpClient } = require(path.join(config.repoRoot, 'scripts/node/ai-gateway-concurrency/gateway-fixture/http-owner'));
-  const { reserveLoopbackPort } = require(path.join(config.repoRoot, 'scripts/node/ai-gateway-concurrency/gateway-fixture/process-owner'));
+  const { reserveLoopbackPort, spawnOwned } = require(path.join(config.repoRoot, 'scripts/node/ai-gateway-concurrency/gateway-fixture/process-owner'));
   const { openTemporaryOwnerSession } = require(path.join(config.repoRoot, 'scripts/node/page-debug/auth'));
   const sessions = [];
   const canaries = secrets(config);
@@ -59,7 +59,20 @@ async function run(config) {
     if (!apiPort) { do { apiPort = await reserveLoopbackPort(); } while ([7600, 7800].includes(apiPort)); }
     check();
     phase = 'fixture_bootstrap';
-    fixture = await createGatewayFixture({ ...config, apiPort, upstreamBaseUrl: mock.baseUrl, artifactRoot: path.join(config.artifactRoot, 'service') }, { OwnerHttpClient: TemporaryOwner });
+    fixture = await createGatewayFixture({ ...config, apiPort, upstreamBaseUrl: mock.baseUrl, artifactRoot: path.join(config.artifactRoot, 'service') }, {
+      OwnerHttpClient: TemporaryOwner,
+      spawnOwned(binary, env, options) {
+        // Runtime builtins need real source assets even when the binary's build tree is gone.
+        // Mutable extension/backup state stays inside the fixture-owned scratch directory.
+        return spawnOwned(binary, {
+          ...env,
+          API_MCP_TEMPLATE_LIBRARY_ROOT: path.join(options.cwd, 'mcp-library'),
+          API_SYSTEM_BACKUP_REPOSITORY_ROOT: path.join(options.cwd, 'system-backups'),
+          API_APPLICATION_TEMPLATE_ROOT: path.join(config.repoRoot, 'api/resources/application-templates'),
+          API_MODEL_PRICING_BOOTSTRAP_ROOT: path.join(config.repoRoot, 'api/resources/model-pricing'),
+        }, { ...options, cwd: path.join(config.repoRoot, 'api') });
+      },
+    });
     const target = fixture.result.targets.openai.gateway;
     const fixtureTarget = fixture.result.targets.openai;
     canaries.push(...Object.values(fixture.result.targets).map(t => t.api_key), ...fixture.result.pools.anthropic.map(t => t.api_key));
