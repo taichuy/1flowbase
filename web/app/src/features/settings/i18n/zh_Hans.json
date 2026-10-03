@@ -1163,6 +1163,7 @@
     "plugin_runtime_inactive": "未运行",
     "plugin_runtime_load_failed": "$t(auto.loading_failed)",
     "plugin_pending_restart": "等待重启",
-    "select_installed_plugin_version": "选择此版本"
+    "select_installed_plugin_version": "选择此版本",
+    "application_templates": "应用模板"
   }
 }

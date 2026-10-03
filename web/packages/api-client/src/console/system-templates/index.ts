@@ -14,7 +14,18 @@ export interface PortableCatalogItem {
   parent_id: string | null;
   code: string | null;
 }
+export interface ApplicationTemplateCatalogItem {
+  template_id: string;
+  release_version: number;
+  name: string;
+  description: string;
+  checksum: string;
+  installed_release_version: number | null;
+  installed_checksum: string | null;
+  package: PortableTemplatePackage;
+}
 export interface PortableTemplateCatalog {
+  application_templates: ApplicationTemplateCatalogItem[];
   pages: PortableCatalogItem[];
   applications: PortableCatalogItem[];
   data_models: PortableCatalogItem[];

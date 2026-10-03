@@ -195,6 +195,10 @@ export function PricingCatalogPanel() {
               key: 'installed',
               label: i18nText('settings', 'auto.installed_extensions')
             },
+            {
+              key: 'application-templates',
+              label: i18nText('settings', 'auto.application_templates')
+            },
             { key: 'agent-flow', label: 'agent-flow' },
             { key: 'capability-plugins', label: 'capability-plugins' },
             { key: 'host-extensions', label: 'host-extensions' },

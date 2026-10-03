@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '../../../../state/auth-store';
 import { useSystemTemplates } from '../../api/system-templates/useSystemTemplates';
 
 const emptySelection = (): PortableTemplateSelection => ({
@@ -28,14 +29,19 @@ const emptySelection = (): PortableTemplateSelection => ({
 export function SystemTemplateDialog({
   mode,
   file,
+  template,
+  canInstall = true,
   onClose
 }: {
   mode: 'export' | 'import';
   file?: File;
+  template?: { name: string; body: PortableTemplatePackage };
+  canInstall?: boolean;
   onClose: () => void;
 }) {
   const { t } = useTranslation('settingsSystemTemplates');
   const exportOpen = mode === 'export';
+  const csrfToken = useAuthStore((state) => state.csrfToken);
   const [selection, setSelection] = useState(emptySelection);
   const [importFile, setImportFile] = useState<{
     name: string;
@@ -51,6 +57,11 @@ export function SystemTemplateDialog({
     reading || previewMutation.isPending || installMutation.isPending;
   const { mutate: previewFile } = previewMutation;
   useEffect(() => {
+    if (template) {
+      setImportFile(template);
+      previewFile(template.body);
+      return;
+    }
     if (!file) return;
     let cancelled = false;
     setReading(true);
@@ -71,7 +82,7 @@ export function SystemTemplateDialog({
     return () => {
       cancelled = true;
     };
-  }, [file, previewFile]);
+  }, [file, template, previewFile]);
   const download = async () => {
     try {
       const body = await exportMutation.mutateAsync(selection);
@@ -93,7 +104,7 @@ export function SystemTemplateDialog({
     <>
       <Modal
         open={mode === 'import'}
-        title={t('import')}
+        title={template ? t('preview') : t('import')}
         footer={null}
         width={800}
         closable={!busy}
@@ -104,6 +115,9 @@ export function SystemTemplateDialog({
         }}
       >
         <Typography.Paragraph>{t('structure_notice')}</Typography.Paragraph>
+        {template && (
+          <Alert type="warning" showIcon title={t('overwrite_notice')} />
+        )}
         <Typography.Paragraph type="secondary">
           {t('plugin_notice')}
         </Typography.Paragraph>
@@ -113,7 +127,13 @@ export function SystemTemplateDialog({
           <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
             <Typography.Text>{importFile.name}</Typography.Text>
             {previewMutation.isError && (
-              <Alert type="error" showIcon title={t('preview_failed')} />
+              <Alert
+                type="error"
+                showIcon
+                title={
+                  template ? t('catalog_preview_failed') : t('preview_failed')
+                }
+              />
             )}
             {preview && (
               <>
@@ -281,6 +301,8 @@ export function SystemTemplateDialog({
                 loading={installMutation.isPending}
                 disabled={
                   busy ||
+                  !canInstall ||
+                  !csrfToken ||
                   !preview?.valid ||
                   Boolean(preview.failures.length) ||
                   Boolean(result) ||
@@ -288,7 +310,7 @@ export function SystemTemplateDialog({
                 }
                 onClick={() => installMutation.mutate(importFile.body)}
               >
-                {t('install')}
+                {template ? t('confirm_install') : t('install')}
               </Button>
               <Button disabled={busy} onClick={onClose}>
                 {t('close')}

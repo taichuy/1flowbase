@@ -234,12 +234,25 @@ function extensionRiskWarningText(
   return key ? t(key) : message;
 }
 
+const ApplicationTemplateCatalogPanel = lazy(() =>
+  import('../../components/extension-center/ApplicationTemplateCatalogPanel').then(
+    (module) => ({ default: module.ApplicationTemplateCatalogPanel })
+  )
+);
+
 export function SettingsExtensionCenterSection(props: {
   category: SettingsExtensionCenterCategory;
   cursor?: string;
   q?: string;
   canManageUiComponents?: boolean;
 }) {
+  if (props.category === 'application-templates') {
+    return (
+      <Suspense fallback={<LoadingState compact />}>
+        <ApplicationTemplateCatalogPanel />
+      </Suspense>
+    );
+  }
   if (props.category === 'model-pricing') {
     return (
       <Suspense fallback={<LoadingState compact />}>
@@ -272,7 +285,7 @@ function GenericExtensionCenterSection({
 }: {
   category: Exclude<
     SettingsExtensionCenterCategory,
-    'model-pricing' | 'ui-components'
+    'model-pricing' | 'ui-components' | 'application-templates'
   >;
   cursor?: string;
   q?: string;
@@ -1091,6 +1104,10 @@ function GenericExtensionCenterSection({
           }}
           items={[
             { key: 'installed', label: t('auto.installed_extensions') },
+            {
+              key: 'application-templates',
+              label: t('auto.application_templates')
+            },
             ...CATEGORIES.map((category) => ({
               key: category,
               label: category

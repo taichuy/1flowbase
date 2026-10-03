@@ -443,6 +443,7 @@ const settingsExtensionCenterRoute = createRoute({
 });
 
 const extensionCenterCategories = new Set<SettingsExtensionCenterCategory>([
+  'application-templates',
   'installed',
   'agent-flow',
   'capability-plugins',

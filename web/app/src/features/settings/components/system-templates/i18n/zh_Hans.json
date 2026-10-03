@@ -33,5 +33,17 @@
   "retry": "重新加载对象",
   "export_failed": "模板导出失败。",
   "reference_map": "引用 ID 映射",
-  "close": "关闭"
+  "close": "关闭",
+  "overwrite_notice": "安装或更新会覆盖同标识定义，包括本地修改。",
+  "confirm_install": "确认安装并覆盖",
+  "template_name": "模板名称",
+  "installed_version": "已安装版本",
+  "not_installed": "未安装",
+  "preview_action": "预览安装",
+  "catalog_title": "内置应用模板",
+  "access_denied": "需要系统备份与模板操作权限。",
+  "catalog_empty": "暂无应用模板。",
+  "catalog_retry": "重新加载模板",
+  "catalog_load_failed": "无法加载应用模板。",
+  "catalog_preview_failed": "模板预览失败，请关闭预览后重试。"
 }

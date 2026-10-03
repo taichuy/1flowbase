@@ -32,6 +32,10 @@ export function UiComponentCatalogPanel({ canManage }: { canManage: boolean }) {
               key: 'installed',
               label: settingsT('auto.installed_extensions')
             },
+            {
+              key: 'application-templates',
+              label: settingsT('auto.application_templates')
+            },
             { key: 'agent-flow', label: 'agent-flow' },
             { key: 'capability-plugins', label: 'capability-plugins' },
             { key: 'host-extensions', label: 'host-extensions' },

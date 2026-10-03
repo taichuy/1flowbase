@@ -1163,6 +1163,7 @@
     "plugin_runtime_inactive": "Inactive",
     "plugin_runtime_load_failed": "Load failed",
     "plugin_pending_restart": "Pending restart",
-    "select_installed_plugin_version": "Select this version"
+    "select_installed_plugin_version": "Select this version",
+    "application_templates": "Application templates"
   }
 }

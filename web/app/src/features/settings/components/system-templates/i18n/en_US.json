@@ -33,5 +33,17 @@
   "retry": "Reload objects",
   "export_failed": "Template export failed.",
   "reference_map": "Reference ID mapping",
-  "close": "Close"
+  "close": "Close",
+  "overwrite_notice": "Installing or updating replaces matching definitions, including local edits.",
+  "confirm_install": "Confirm install and overwrite",
+  "template_name": "Template name",
+  "installed_version": "Installed version",
+  "not_installed": "Not installed",
+  "preview_action": "Preview installation",
+  "catalog_title": "Built-in application templates",
+  "access_denied": "System backup and template permission is required.",
+  "catalog_empty": "No application templates available.",
+  "catalog_retry": "Reload templates",
+  "catalog_load_failed": "Could not load application templates.",
+  "catalog_preview_failed": "Template preview failed. Close this preview and try again."
 }
