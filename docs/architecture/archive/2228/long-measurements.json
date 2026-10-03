@@ -1,0 +1,1139 @@
+{
+  "schema_version": "gateway-resource-long-summary/v1",
+  "verdict": {
+    "status": "UNVERIFIED",
+    "pass": false,
+    "errors": [],
+    "unverified": [
+      "mailbox-triggered parent sampling interruption and resumption"
+    ],
+    "usefulTurns": 12,
+    "durationMs": 2019298.75005,
+    "recoveredRetryNotifications": 0,
+    "usefulWorkSpanMs": 1926601.577525,
+    "requiredWorkSpanMs": 1800000,
+    "contextProbeVerified": false
+  },
+  "useful_work": {
+    "tools": 149,
+    "span_ms": 1926601.5776367188,
+    "max_gap_ms": 188331.087028,
+    "requested_start_utc": "2026-10-03T09:49:49.526Z",
+    "requested_end_utc": "2026-10-03T10:21:56.127Z",
+    "sample_start_utc": "2026-10-03T09:49:49.316Z",
+    "sample_end_utc": "2026-10-03T10:21:56.395Z",
+    "endpoint_alignment_ms": [
+      -210.144287109375,
+      267.278076171875
+    ],
+    "sample_wall_seconds": 1927.079072384,
+    "samples": 1926,
+    "cpu": {
+      "api": {
+        "cpu_seconds": 42.48,
+        "observed_cpu_seconds_lower_bound": 42.48,
+        "complete": true,
+        "processes_before": 1,
+        "processes_after": 1
+      },
+      "plugin": {
+        "cpu_seconds": 5.9,
+        "observed_cpu_seconds_lower_bound": 5.9,
+        "complete": true,
+        "processes_before": 1,
+        "processes_after": 1
+      },
+      "database": {
+        "cpu_seconds": null,
+        "observed_cpu_seconds_lower_bound": 2.1,
+        "complete": false,
+        "processes_before": 14,
+        "processes_after": 14
+      }
+    },
+    "db_cgroup_cpu_seconds": 79.569524,
+    "average_percent_one_core": {
+      "api": 2.2043724416273047,
+      "plugin": 0.30616283911490344,
+      "database": 4.129022266925669
+    },
+    "sampled_one_second_cpu_peak_percent": {
+      "api": 28.965872958831486,
+      "plugin": 7.990585643815583
+    },
+    "memory_start": {
+      "api": {
+        "pss_bytes": 195267584,
+        "rss_bytes": 198287360
+      },
+      "plugin": {
+        "pss_bytes": 6598656,
+        "rss_bytes": 6606848
+      },
+      "database": {
+        "pss_bytes": null,
+        "rss_bytes": 913682432
+      }
+    },
+    "memory_end": {
+      "api": {
+        "pss_bytes": 252418048,
+        "rss_bytes": 255438848
+      },
+      "plugin": {
+        "pss_bytes": 12165120,
+        "rss_bytes": 12173312
+      },
+      "database": {
+        "pss_bytes": null,
+        "rss_bytes": 1092063232
+      }
+    },
+    "memory_peak": {
+      "api": {
+        "pss_bytes": 257346560,
+        "pss_bytes_valid_samples": 1926,
+        "pss_bytes_missing_samples": 0,
+        "rss_bytes": 260366336,
+        "rss_bytes_valid_samples": 1926,
+        "rss_bytes_missing_samples": 0
+      },
+      "plugin": {
+        "pss_bytes": 16044032,
+        "pss_bytes_valid_samples": 1926,
+        "pss_bytes_missing_samples": 0,
+        "rss_bytes": 16052224,
+        "rss_bytes_valid_samples": 1926,
+        "rss_bytes_missing_samples": 0
+      },
+      "database": {
+        "pss_bytes": null,
+        "pss_bytes_valid_samples": 0,
+        "pss_bytes_missing_samples": 1926,
+        "rss_bytes": 1222279168,
+        "rss_bytes_valid_samples": 1925,
+        "rss_bytes_missing_samples": 1
+      }
+    },
+    "db_cgroup_memory_start_bytes": 630173696,
+    "db_cgroup_memory_end_bytes": 459407360,
+    "db_cgroup_memory_peak_bytes": 661532672
+  },
+  "full_client": {
+    "requested_start_utc": "2026-10-03T09:49:21.612Z",
+    "requested_end_utc": "2026-10-03T10:23:00.911Z",
+    "sample_start_utc": "2026-10-03T09:49:21.412Z",
+    "sample_end_utc": "2026-10-03T10:23:01.119Z",
+    "endpoint_alignment_ms": [
+      -200,
+      208
+    ],
+    "sample_wall_seconds": 2019.70661188,
+    "samples": 2019,
+    "cpu": {
+      "api": {
+        "cpu_seconds": 44.43,
+        "observed_cpu_seconds_lower_bound": 44.43,
+        "complete": true,
+        "processes_before": 1,
+        "processes_after": 1
+      },
+      "plugin": {
+        "cpu_seconds": 6.19,
+        "observed_cpu_seconds_lower_bound": 6.19,
+        "complete": true,
+        "processes_before": 1,
+        "processes_after": 1
+      },
+      "database": {
+        "cpu_seconds": null,
+        "observed_cpu_seconds_lower_bound": 2.2,
+        "complete": false,
+        "processes_before": 14,
+        "processes_after": 14
+      }
+    },
+    "db_cgroup_cpu_seconds": 83.142159,
+    "average_percent_one_core": {
+      "api": 2.199824456614681,
+      "plugin": 0.3064801572461147,
+      "database": 4.11654635930557
+    },
+    "sampled_one_second_cpu_peak_percent": {
+      "api": 28.965872958831486,
+      "plugin": 7.990585643815583
+    },
+    "memory_start": {
+      "api": {
+        "pss_bytes": 192200704,
+        "rss_bytes": 195219456
+      },
+      "plugin": {
+        "pss_bytes": 5844992,
+        "rss_bytes": 5853184
+      },
+      "database": {
+        "pss_bytes": null,
+        "rss_bytes": null
+      }
+    },
+    "memory_end": {
+      "api": {
+        "pss_bytes": 247965696,
+        "rss_bytes": 250986496
+      },
+      "plugin": {
+        "pss_bytes": 12005376,
+        "rss_bytes": 12013568
+      },
+      "database": {
+        "pss_bytes": null,
+        "rss_bytes": 1100857344
+      }
+    },
+    "memory_peak": {
+      "api": {
+        "pss_bytes": 257346560,
+        "pss_bytes_valid_samples": 2019,
+        "pss_bytes_missing_samples": 0,
+        "rss_bytes": 260366336,
+        "rss_bytes_valid_samples": 2019,
+        "rss_bytes_missing_samples": 0
+      },
+      "plugin": {
+        "pss_bytes": 16044032,
+        "pss_bytes_valid_samples": 2019,
+        "pss_bytes_missing_samples": 0,
+        "rss_bytes": 16052224,
+        "rss_bytes_valid_samples": 2019,
+        "rss_bytes_missing_samples": 0
+      },
+      "database": {
+        "pss_bytes": null,
+        "pss_bytes_valid_samples": 0,
+        "pss_bytes_missing_samples": 2019,
+        "rss_bytes": 1222279168,
+        "rss_bytes_valid_samples": 2017,
+        "rss_bytes_missing_samples": 2
+      }
+    },
+    "db_cgroup_memory_start_bytes": 628445184,
+    "db_cgroup_memory_end_bytes": 438607872,
+    "db_cgroup_memory_peak_bytes": 661532672
+  },
+  "drain": {
+    "requested_start_utc": "2026-10-03T10:23:01.128Z",
+    "requested_end_utc": "2026-10-03T10:23:11.419Z",
+    "sample_start_utc": "2026-10-03T10:23:01.119Z",
+    "sample_end_utc": "2026-10-03T10:23:11.412Z",
+    "endpoint_alignment_ms": [
+      -9,
+      -7
+    ],
+    "sample_wall_seconds": 10.292581357,
+    "samples": 12,
+    "cpu": {
+      "api": {
+        "cpu_seconds": 0.06,
+        "observed_cpu_seconds_lower_bound": 0.06,
+        "complete": true,
+        "processes_before": 1,
+        "processes_after": 1
+      },
+      "plugin": {
+        "cpu_seconds": 0,
+        "observed_cpu_seconds_lower_bound": 0,
+        "complete": true,
+        "processes_before": 1,
+        "processes_after": 1
+      },
+      "database": {
+        "cpu_seconds": 0.09,
+        "observed_cpu_seconds_lower_bound": 0.09,
+        "complete": true,
+        "processes_before": 14,
+        "processes_after": 14
+      }
+    },
+    "db_cgroup_cpu_seconds": 0.254513,
+    "average_percent_one_core": {
+      "api": 0.5829441412109306,
+      "plugin": 0,
+      "database": 2.47278103686696
+    },
+    "sampled_one_second_cpu_peak_percent": {
+      "api": 1.9966963899483678,
+      "plugin": 0
+    },
+    "memory_start": {
+      "api": {
+        "pss_bytes": 247965696,
+        "rss_bytes": 250986496
+      },
+      "plugin": {
+        "pss_bytes": 12005376,
+        "rss_bytes": 12013568
+      },
+      "database": {
+        "pss_bytes": null,
+        "rss_bytes": 1100857344
+      }
+    },
+    "memory_end": {
+      "api": {
+        "pss_bytes": 237922304,
+        "rss_bytes": 240943104
+      },
+      "plugin": {
+        "pss_bytes": 11997184,
+        "rss_bytes": 12005376
+      },
+      "database": {
+        "pss_bytes": null,
+        "rss_bytes": 1100865536
+      }
+    },
+    "memory_peak": {
+      "api": {
+        "pss_bytes": 247965696,
+        "pss_bytes_valid_samples": 12,
+        "pss_bytes_missing_samples": 0,
+        "rss_bytes": 250986496,
+        "rss_bytes_valid_samples": 12,
+        "rss_bytes_missing_samples": 0
+      },
+      "plugin": {
+        "pss_bytes": 12005376,
+        "pss_bytes_valid_samples": 12,
+        "pss_bytes_missing_samples": 0,
+        "rss_bytes": 12013568,
+        "rss_bytes_valid_samples": 12,
+        "rss_bytes_missing_samples": 0
+      },
+      "database": {
+        "pss_bytes": null,
+        "pss_bytes_valid_samples": 0,
+        "pss_bytes_missing_samples": 12,
+        "rss_bytes": 1100865536,
+        "rss_bytes_valid_samples": 12,
+        "rss_bytes_missing_samples": 0
+      }
+    },
+    "db_cgroup_memory_start_bytes": 438607872,
+    "db_cgroup_memory_end_bytes": 441716736,
+    "db_cgroup_memory_peak_bytes": 441716736
+  },
+  "storage_client": {
+    "start_utc": "2026-10-03T09:49:21.146Z",
+    "end_utc": "2026-10-03T10:23:01.128Z",
+    "elapsed_seconds": 2019.982,
+    "database": {
+      "database_bytes": 31252480,
+      "heap_bytes": 7979008,
+      "index_bytes": 5644288,
+      "toast_bytes": 16662528,
+      "wal_bytes": 171670208
+    },
+    "objects": {
+      "allocated_bytes": 0,
+      "logical_bytes": 0,
+      "files": 0
+    },
+    "tables": [
+      {
+        "schema": "public",
+        "table": "runtime_canonical_contents",
+        "heap_bytes": 745472,
+        "index_bytes": 688128,
+        "toast_bytes": 3612672,
+        "total_bytes": 5046272
+      },
+      {
+        "schema": "public",
+        "table": "application_run_conversation_message_items",
+        "heap_bytes": 950272,
+        "index_bytes": 385024,
+        "toast_bytes": 3235840,
+        "total_bytes": 4571136
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_archive_parts",
+        "heap_bytes": 1564672,
+        "index_bytes": 1114112,
+        "toast_bytes": 139264,
+        "total_bytes": 2818048
+      },
+      {
+        "schema": "public",
+        "table": "application_run_trace_node_contents",
+        "heap_bytes": 761856,
+        "index_bytes": 319488,
+        "toast_bytes": 1318912,
+        "total_bytes": 2400256
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_archive_blocks",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 2244608,
+        "total_bytes": 2252800
+      },
+      {
+        "schema": "public",
+        "table": "node_run_details",
+        "heap_bytes": 131072,
+        "index_bytes": 16384,
+        "toast_bytes": 2105344,
+        "total_bytes": 2252800
+      },
+      {
+        "schema": "public",
+        "table": "runtime_events",
+        "heap_bytes": 909312,
+        "index_bytes": 434176,
+        "toast_bytes": 696320,
+        "total_bytes": 2039808
+      },
+      {
+        "schema": "public",
+        "table": "application_run_trace_nodes",
+        "heap_bytes": 630784,
+        "index_bytes": 425984,
+        "toast_bytes": 221184,
+        "total_bytes": 1277952
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_archive_segments",
+        "heap_bytes": 114688,
+        "index_bytes": 516096,
+        "toast_bytes": 557056,
+        "total_bytes": 1187840
+      },
+      {
+        "schema": "public",
+        "table": "runtime_native_snapshot_items",
+        "heap_bytes": 212992,
+        "index_bytes": 196608,
+        "toast_bytes": 655360,
+        "total_bytes": 1064960
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_events",
+        "heap_bytes": 262144,
+        "index_bytes": 204800,
+        "toast_bytes": 409600,
+        "total_bytes": 876544
+      },
+      {
+        "schema": "public",
+        "table": "flow_runs",
+        "heap_bytes": 24576,
+        "index_bytes": 8192,
+        "toast_bytes": 442368,
+        "total_bytes": 483328
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_steps",
+        "heap_bytes": 294912,
+        "index_bytes": 163840,
+        "toast_bytes": 0,
+        "total_bytes": 458752
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_callback_tasks",
+        "heap_bytes": 0,
+        "index_bytes": 49152,
+        "toast_bytes": 368640,
+        "total_bytes": 417792
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_sections",
+        "heap_bytes": 81920,
+        "index_bytes": 262144,
+        "toast_bytes": 0,
+        "total_bytes": 344064
+      },
+      {
+        "schema": "public",
+        "table": "runtime_credit_ledger",
+        "heap_bytes": 172032,
+        "index_bytes": 98304,
+        "toast_bytes": 0,
+        "total_bytes": 270336
+      },
+      {
+        "schema": "public",
+        "table": "runtime_spans",
+        "heap_bytes": 155648,
+        "index_bytes": 73728,
+        "toast_bytes": 0,
+        "total_bytes": 229376
+      },
+      {
+        "schema": "public",
+        "table": "provider_protocol_capsules",
+        "heap_bytes": 204800,
+        "index_bytes": 16384,
+        "toast_bytes": 0,
+        "total_bytes": 221184
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_tool_callback_inbox",
+        "heap_bytes": 0,
+        "index_bytes": 24576,
+        "toast_bytes": 180224,
+        "total_bytes": 204800
+      },
+      {
+        "schema": "public",
+        "table": "provider_semantic_trajectory_steps",
+        "heap_bytes": 131072,
+        "index_bytes": 73728,
+        "toast_bytes": 0,
+        "total_bytes": 204800
+      },
+      {
+        "schema": "public",
+        "table": "runtime_native_snapshot_manifests",
+        "heap_bytes": 163840,
+        "index_bytes": 32768,
+        "toast_bytes": 8192,
+        "total_bytes": 204800
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_callback_resume_attempts",
+        "heap_bytes": 0,
+        "index_bytes": 24576,
+        "toast_bytes": 172032,
+        "total_bytes": 196608
+      },
+      {
+        "schema": "public",
+        "table": "application_run_log_tasks",
+        "heap_bytes": 16384,
+        "index_bytes": 49152,
+        "toast_bytes": 114688,
+        "total_bytes": 188416
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_resume_claims",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 172032,
+        "total_bytes": 188416
+      },
+      {
+        "schema": "public",
+        "table": "runtime_context_projections",
+        "heap_bytes": 98304,
+        "index_bytes": 57344,
+        "toast_bytes": 0,
+        "total_bytes": 155648
+      },
+      {
+        "schema": "public",
+        "table": "native_trajectory_integrity",
+        "heap_bytes": 114688,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 122880
+      },
+      {
+        "schema": "public",
+        "table": "runtime_observation_body_ownership",
+        "heap_bytes": 81920,
+        "index_bytes": 32768,
+        "toast_bytes": 0,
+        "total_bytes": 114688
+      },
+      {
+        "schema": "public",
+        "table": "credit_event_outbox",
+        "heap_bytes": 90112,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": 90112
+      },
+      {
+        "schema": "public",
+        "table": "node_runs",
+        "heap_bytes": 40960,
+        "index_bytes": 49152,
+        "toast_bytes": 0,
+        "total_bytes": 90112
+      },
+      {
+        "schema": "public",
+        "table": "application_conversation_messages",
+        "heap_bytes": 40960,
+        "index_bytes": 16384,
+        "toast_bytes": 0,
+        "total_bytes": 57344
+      },
+      {
+        "schema": "public",
+        "table": "model_provider_request_logs",
+        "heap_bytes": 0,
+        "index_bytes": 49152,
+        "toast_bytes": 0,
+        "total_bytes": 49152
+      },
+      {
+        "schema": "public",
+        "table": "application_conversations",
+        "heap_bytes": 8192,
+        "index_bytes": 24576,
+        "toast_bytes": 8192,
+        "total_bytes": 40960
+      },
+      {
+        "schema": "public",
+        "table": "application_run_trace_projection_statuses",
+        "heap_bytes": 0,
+        "index_bytes": 32768,
+        "toast_bytes": 0,
+        "total_bytes": 40960
+      },
+      {
+        "schema": "public",
+        "table": "runtime_invocation_context_bindings",
+        "heap_bytes": 32768,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 40960
+      },
+      {
+        "schema": "public",
+        "table": "runtime_items",
+        "heap_bytes": 40960,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": 40960
+      },
+      {
+        "schema": "public",
+        "table": "application_run_log_summaries",
+        "heap_bytes": -32768,
+        "index_bytes": 57344,
+        "toast_bytes": 0,
+        "total_bytes": 32768
+      },
+      {
+        "schema": "public",
+        "table": "runtime_native_snapshot_references",
+        "heap_bytes": 0,
+        "index_bytes": 32768,
+        "toast_bytes": 0,
+        "total_bytes": 32768
+      },
+      {
+        "schema": "public",
+        "table": "user_credit_accounts",
+        "heap_bytes": 0,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": 32768
+      },
+      {
+        "schema": "public",
+        "table": "billing_sessions",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_archive_heads",
+        "heap_bytes": 8192,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_captures",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_node_links",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_checkpoints",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "runtime_cost_ledger",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "runtime_usage_ledger",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "application_run_trace_refresh_queue",
+        "heap_bytes": 0,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": -16384
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_recovery_history",
+        "heap_bytes": -73728,
+        "index_bytes": 32768,
+        "toast_bytes": 0,
+        "total_bytes": -32768
+      }
+    ]
+  },
+  "storage_with_drain": {
+    "start_utc": "2026-10-03T09:49:21.146Z",
+    "end_utc": "2026-10-03T10:23:11.419Z",
+    "elapsed_seconds": 2030.273,
+    "database": {
+      "database_bytes": 31252480,
+      "heap_bytes": 7979008,
+      "index_bytes": 5644288,
+      "toast_bytes": 16662528,
+      "wal_bytes": 171670632
+    },
+    "objects": {
+      "allocated_bytes": 0,
+      "logical_bytes": 0,
+      "files": 0
+    },
+    "tables": [
+      {
+        "schema": "public",
+        "table": "runtime_canonical_contents",
+        "heap_bytes": 745472,
+        "index_bytes": 688128,
+        "toast_bytes": 3612672,
+        "total_bytes": 5046272
+      },
+      {
+        "schema": "public",
+        "table": "application_run_conversation_message_items",
+        "heap_bytes": 950272,
+        "index_bytes": 385024,
+        "toast_bytes": 3235840,
+        "total_bytes": 4571136
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_archive_parts",
+        "heap_bytes": 1564672,
+        "index_bytes": 1114112,
+        "toast_bytes": 139264,
+        "total_bytes": 2818048
+      },
+      {
+        "schema": "public",
+        "table": "application_run_trace_node_contents",
+        "heap_bytes": 761856,
+        "index_bytes": 319488,
+        "toast_bytes": 1318912,
+        "total_bytes": 2400256
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_archive_blocks",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 2244608,
+        "total_bytes": 2252800
+      },
+      {
+        "schema": "public",
+        "table": "node_run_details",
+        "heap_bytes": 131072,
+        "index_bytes": 16384,
+        "toast_bytes": 2105344,
+        "total_bytes": 2252800
+      },
+      {
+        "schema": "public",
+        "table": "runtime_events",
+        "heap_bytes": 909312,
+        "index_bytes": 434176,
+        "toast_bytes": 696320,
+        "total_bytes": 2039808
+      },
+      {
+        "schema": "public",
+        "table": "application_run_trace_nodes",
+        "heap_bytes": 630784,
+        "index_bytes": 425984,
+        "toast_bytes": 221184,
+        "total_bytes": 1277952
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_archive_segments",
+        "heap_bytes": 114688,
+        "index_bytes": 516096,
+        "toast_bytes": 557056,
+        "total_bytes": 1187840
+      },
+      {
+        "schema": "public",
+        "table": "runtime_native_snapshot_items",
+        "heap_bytes": 212992,
+        "index_bytes": 196608,
+        "toast_bytes": 655360,
+        "total_bytes": 1064960
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_events",
+        "heap_bytes": 262144,
+        "index_bytes": 204800,
+        "toast_bytes": 409600,
+        "total_bytes": 876544
+      },
+      {
+        "schema": "public",
+        "table": "flow_runs",
+        "heap_bytes": 24576,
+        "index_bytes": 8192,
+        "toast_bytes": 442368,
+        "total_bytes": 483328
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_steps",
+        "heap_bytes": 294912,
+        "index_bytes": 163840,
+        "toast_bytes": 0,
+        "total_bytes": 458752
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_callback_tasks",
+        "heap_bytes": 0,
+        "index_bytes": 49152,
+        "toast_bytes": 368640,
+        "total_bytes": 417792
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_sections",
+        "heap_bytes": 81920,
+        "index_bytes": 262144,
+        "toast_bytes": 0,
+        "total_bytes": 344064
+      },
+      {
+        "schema": "public",
+        "table": "runtime_credit_ledger",
+        "heap_bytes": 172032,
+        "index_bytes": 98304,
+        "toast_bytes": 0,
+        "total_bytes": 270336
+      },
+      {
+        "schema": "public",
+        "table": "runtime_spans",
+        "heap_bytes": 155648,
+        "index_bytes": 73728,
+        "toast_bytes": 0,
+        "total_bytes": 229376
+      },
+      {
+        "schema": "public",
+        "table": "provider_protocol_capsules",
+        "heap_bytes": 204800,
+        "index_bytes": 16384,
+        "toast_bytes": 0,
+        "total_bytes": 221184
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_tool_callback_inbox",
+        "heap_bytes": 0,
+        "index_bytes": 24576,
+        "toast_bytes": 180224,
+        "total_bytes": 204800
+      },
+      {
+        "schema": "public",
+        "table": "provider_semantic_trajectory_steps",
+        "heap_bytes": 131072,
+        "index_bytes": 73728,
+        "toast_bytes": 0,
+        "total_bytes": 204800
+      },
+      {
+        "schema": "public",
+        "table": "runtime_native_snapshot_manifests",
+        "heap_bytes": 163840,
+        "index_bytes": 32768,
+        "toast_bytes": 8192,
+        "total_bytes": 204800
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_callback_resume_attempts",
+        "heap_bytes": 0,
+        "index_bytes": 24576,
+        "toast_bytes": 172032,
+        "total_bytes": 196608
+      },
+      {
+        "schema": "public",
+        "table": "application_run_log_tasks",
+        "heap_bytes": 16384,
+        "index_bytes": 49152,
+        "toast_bytes": 114688,
+        "total_bytes": 188416
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_resume_claims",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 172032,
+        "total_bytes": 188416
+      },
+      {
+        "schema": "public",
+        "table": "runtime_context_projections",
+        "heap_bytes": 98304,
+        "index_bytes": 57344,
+        "toast_bytes": 0,
+        "total_bytes": 155648
+      },
+      {
+        "schema": "public",
+        "table": "native_trajectory_integrity",
+        "heap_bytes": 114688,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 122880
+      },
+      {
+        "schema": "public",
+        "table": "runtime_observation_body_ownership",
+        "heap_bytes": 81920,
+        "index_bytes": 32768,
+        "toast_bytes": 0,
+        "total_bytes": 114688
+      },
+      {
+        "schema": "public",
+        "table": "credit_event_outbox",
+        "heap_bytes": 90112,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": 90112
+      },
+      {
+        "schema": "public",
+        "table": "node_runs",
+        "heap_bytes": 40960,
+        "index_bytes": 49152,
+        "toast_bytes": 0,
+        "total_bytes": 90112
+      },
+      {
+        "schema": "public",
+        "table": "application_conversation_messages",
+        "heap_bytes": 40960,
+        "index_bytes": 16384,
+        "toast_bytes": 0,
+        "total_bytes": 57344
+      },
+      {
+        "schema": "public",
+        "table": "model_provider_request_logs",
+        "heap_bytes": 0,
+        "index_bytes": 49152,
+        "toast_bytes": 0,
+        "total_bytes": 49152
+      },
+      {
+        "schema": "public",
+        "table": "application_conversations",
+        "heap_bytes": 8192,
+        "index_bytes": 24576,
+        "toast_bytes": 8192,
+        "total_bytes": 40960
+      },
+      {
+        "schema": "public",
+        "table": "application_run_trace_projection_statuses",
+        "heap_bytes": 0,
+        "index_bytes": 32768,
+        "toast_bytes": 0,
+        "total_bytes": 40960
+      },
+      {
+        "schema": "public",
+        "table": "runtime_invocation_context_bindings",
+        "heap_bytes": 32768,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 40960
+      },
+      {
+        "schema": "public",
+        "table": "runtime_items",
+        "heap_bytes": 40960,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": 40960
+      },
+      {
+        "schema": "public",
+        "table": "application_run_log_summaries",
+        "heap_bytes": -32768,
+        "index_bytes": 57344,
+        "toast_bytes": 0,
+        "total_bytes": 32768
+      },
+      {
+        "schema": "public",
+        "table": "runtime_native_snapshot_references",
+        "heap_bytes": 0,
+        "index_bytes": 32768,
+        "toast_bytes": 0,
+        "total_bytes": 32768
+      },
+      {
+        "schema": "public",
+        "table": "user_credit_accounts",
+        "heap_bytes": 0,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": 32768
+      },
+      {
+        "schema": "public",
+        "table": "billing_sessions",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_archive_heads",
+        "heap_bytes": 8192,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_captures",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "client_trajectory_node_links",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_checkpoints",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "runtime_cost_ledger",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "runtime_usage_ledger",
+        "heap_bytes": 0,
+        "index_bytes": 8192,
+        "toast_bytes": 0,
+        "total_bytes": 8192
+      },
+      {
+        "schema": "public",
+        "table": "application_run_trace_refresh_queue",
+        "heap_bytes": 0,
+        "index_bytes": 0,
+        "toast_bytes": 0,
+        "total_bytes": -16384
+      },
+      {
+        "schema": "public",
+        "table": "flow_run_recovery_history",
+        "heap_bytes": -73728,
+        "index_bytes": 32768,
+        "toast_bytes": 0,
+        "total_bytes": -32768
+      }
+    ]
+  },
+  "observer": {
+    "user_cpu_us": 2098854,
+    "system_cpu_us": 10502308,
+    "wall_ms": 12871.500834998918,
+    "samples": 2041,
+    "cpu_seconds": 12.601162
+  },
+  "limitations": [
+    "Long case has no paired real-upstream baseline; CPU is observed total for this workload, not a causal optimization effect.",
+    "Storage brackets client process initialization, original useful work and evidence reads; preflight excluded from storage_client; physical page allocation may reuse existing free space.",
+    "Database cgroup CPU includes all owned cluster processes/background work; WAL is generated bytes, not retained conversation storage.",
+    "PSS is sampled at1s and includes allocator/replay retention, not allocated bytes per request;10s drain does not expire2h event retention.",
+    "Observer CPU excludes psql child processes; endpoint snapshots are outside measured useful-tool window.",
+    "CPU one-core percentage may exceed100 for multithreaded process; no utilization-flatness guarantee."
+  ],
+  "runtime_source_sha": "65e96e65e53459783e700873006f3d73d1aa31ec",
+  "runtime_binary_sha256": "bb27cd190c2e9ee60524f60724bb9a3f0fba6cf163b6af9574086e1b7c2aa1af",
+  "original_summary_sha256": "1f66db3c8e9da4b62c29511fa28eff1dfbdd708152845bcb20b4be0408452374",
+  "task_specific_AC005": "PASS; original generic verdict preserved",
+  "native_generate_counts": {
+    "gpt-6-luna/max": 74,
+    "gpt-6.1-sol/medium": 7
+  }
+}

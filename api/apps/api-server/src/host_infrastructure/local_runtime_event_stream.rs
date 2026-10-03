@@ -191,13 +191,18 @@ impl LocalRuntimeEventStream {
     }
 
     fn run(&self, run_id: Uuid) -> Result<Arc<LocalRunEventStream>> {
-        self.purge_expired_runs();
-        self.runs
+        let mut runs = self
+            .runs
             .lock()
-            .expect("runtime event stream runs lock poisoned")
+            .expect("runtime event stream runs lock poisoned");
+        let run = runs
             .get(&run_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("runtime event stream is not open"))
+            .ok_or_else(|| anyhow!("runtime event stream is not open"))?;
+        if run.expired_at(OffsetDateTime::now_utc()) {
+            runs.remove(&run_id);
+            return Err(anyhow!("runtime event stream is not open"));
+        }
+        Ok(Arc::clone(run))
     }
 
     fn purge_expired_runs(&self) {
