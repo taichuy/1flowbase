@@ -3,13 +3,18 @@ name: Gateway Independent Resource Comparison
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Exact frozen P10 and P11 product assembly SHA
+        description: Exact frozen product or integration assembly SHA
         required: true
         type: string
       fixture_sha:
         description: Exact frozen diagnostic fixture SHA (never merge this ref into dev)
         required: true
         type: string
+      run_resource_matrix:
+        description: Run the paired resource comparison after behavior tests
+        required: false
+        type: boolean
+        default: true
 permissions:
   contents: read
   actions: read
@@ -67,8 +72,8 @@ jobs:
         shell: bash
         env:
           EXPECTED_SHA: ${{ inputs.candidate_sha }}
-          FROZEN_SOURCE_SHA: 406994b15e8392b1173211b4dc89768e4c2215be
-          FROZEN_API_TREE: f03b503cfcad036f30caf6421a7aa9d4f810327f
+          FROZEN_SOURCE_SHA: 0693f82c7276cc5a89c5e3221e8f0263371bbaf8
+          FROZEN_API_TREE: 6a2ec2176d77a6504825ae566906af43b2a4b787
         run: |
           set -euo pipefail
           out=tmp/test-governance/gateway-cpu-attribution/build
@@ -199,6 +204,7 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
   independent-resource:
+    if: ${{ inputs.run_resource_matrix }}
     needs: build-test
     runs-on: ubuntu-24.04
     timeout-minutes: 60

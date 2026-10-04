@@ -18,8 +18,8 @@
       "sha256": "d838568c8286e8bf3f2b4e74dde5efed2d7f6a3e5a91580fafc150ceaaf66fc2"
     },
     "candidate": {
-      "source": "406994b15e8392b1173211b4dc89768e4c2215be",
-      "api_tree": "f03b503cfcad036f30caf6421a7aa9d4f810327f",
+      "source": "0693f82c7276cc5a89c5e3221e8f0263371bbaf8",
+      "api_tree": "6a2ec2176d77a6504825ae566906af43b2a4b787",
       "identity_binding": "required_clean_build_outputs_from_current_workflow_run"
     }
   },
