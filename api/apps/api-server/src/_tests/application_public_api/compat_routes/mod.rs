@@ -686,6 +686,7 @@ pub(super) async fn test_app_with_runtime_event_stream(
     let (base_state, _) = test_api_state_with_database_url().await;
     let config = test_config();
     let state = Arc::new(ApiState {
+        mcp_oauth_issuer: base_state.mcp_oauth_issuer.clone(),
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         console_policy_reader: Arc::clone(&base_state.console_policy_reader),

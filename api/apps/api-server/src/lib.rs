@@ -379,6 +379,7 @@ fn console_router_with_assembly(
             "/api/ex",
             routes::application_public_api::ex::route_assembly(),
         )
+        .merge(routes::mcp_oauth::route_assembly())
         .nest("/api", routes::mcp_protocol::route_assembly())
         .nest("/api", routes::webmcp::route_assembly())
         .nest(
@@ -854,6 +855,7 @@ async fn app_and_runtime_host_from_config(
     runtime_extension_host.mark_ready()?;
 
     let state = Arc::new(ApiState {
+        mcp_oauth_issuer: config.mcp_oauth_issuer.clone(),
         #[cfg(test)]
         test_resources: None,
         console_policy_reader: Arc::new(store.clone()),

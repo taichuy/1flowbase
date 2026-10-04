@@ -213,6 +213,16 @@ pub(crate) enum ExternalEndpointCatalogError {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ApprovedExternalControl {
+    OAuthMetadata,
+    OAuthResource,
+    OAuthConfig,
+    OAuthRegister,
+    OAuthAuthorize,
+    OAuthAuthorization,
+    OAuthVerify,
+    OAuthDecision,
+    OAuthToken,
+
     Health,
     ConsoleHealth,
     Docs,
@@ -228,7 +238,16 @@ pub(crate) enum ApprovedExternalControl {
 }
 
 impl ApprovedExternalControl {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 21] = [
+        Self::OAuthMetadata,
+        Self::OAuthResource,
+        Self::OAuthConfig,
+        Self::OAuthRegister,
+        Self::OAuthAuthorize,
+        Self::OAuthAuthorization,
+        Self::OAuthVerify,
+        Self::OAuthDecision,
+        Self::OAuthToken,
         Self::Health,
         Self::ConsoleHealth,
         Self::Docs,
@@ -245,6 +264,51 @@ impl ApprovedExternalControl {
 
     fn contribution(self) -> ExternalEndpointContribution {
         match self {
+            Self::OAuthMetadata => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/.well-known/oauth-authorization-server",
+            ),
+            Self::OAuthResource => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/.well-known/oauth-protected-resource/api/mcp/:instance_id",
+            ),
+            Self::OAuthConfig => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/config",
+            ),
+            Self::OAuthRegister => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "POST",
+                "/api/public/mcp-oauth/register",
+            ),
+            Self::OAuthAuthorize => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/authorize",
+            ),
+            Self::OAuthAuthorization => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/authorization",
+            ),
+            Self::OAuthVerify => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "POST",
+                "/api/public/mcp-oauth/verify",
+            ),
+            Self::OAuthDecision => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "POST",
+                "/api/public/mcp-oauth/decision",
+            ),
+            Self::OAuthToken => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "POST",
+                "/api/public/mcp-oauth/token",
+            ),
             Self::Health => ExternalEndpointContribution::operational_control_http(
                 "root-operational-control",
                 "GET",

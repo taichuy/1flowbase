@@ -59,3 +59,5 @@ pub use plugin_contribution_authority::*;
 
 pub mod portable_template;
 pub use portable_template::*;
+
+pub mod mcp_oauth;

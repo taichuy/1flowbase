@@ -576,7 +576,15 @@ where
         if !token.starts_with("pat_") {
             return Err(ControlPlaneError::NotAuthenticated.into());
         }
-        let token_hash = hash_api_key_token(token);
+        self.authenticate_user_api_key_hash(&hash_api_key_token(token))
+            .await
+    }
+
+    /// Trusted OAuth owner can revalidate the original key without retaining its secret.
+    pub async fn authenticate_user_api_key_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<UserApiKeyActor> {
         let api_key = self
             .repository
             .find_api_key_by_token_hash(&token_hash)

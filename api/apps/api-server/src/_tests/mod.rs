@@ -75,3 +75,5 @@ mod workflow_schedule_worker;
 mod workspace_routes;
 
 mod interface_lifecycle_acceptance;
+
+mod mcp_oauth_routes;

@@ -212,6 +212,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
+            mcp_oauth_issuer: None,
             store: store.clone(),
             console_policy_reader: std::sync::Arc::new(store.clone()),
             system_backup,
