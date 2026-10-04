@@ -156,11 +156,13 @@ pub use network_egress::{
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{
-    ApplicationConversationRunSummary, ApplicationRunChildTaskTrace,
-    ApplicationRunConversationContextItem, ApplicationRunConversationMessageItem,
-    ApplicationRunConversationOutputState, ApplicationRunDetail, ApplicationRunLogSummary,
-    ApplicationRunLogTask, ApplicationRunStitchedTrace, ApplicationRunSubagentTrace,
-    ApplicationRunSummary, ApplicationRunTaskRoundTrace, ApplicationRunTraceNodeContentRecord,
+    ApplicationConversationRunSummary, ApplicationRunChildTaskProjectionSource,
+    ApplicationRunChildTaskTrace, ApplicationRunConversationContextItem,
+    ApplicationRunConversationMessageItem, ApplicationRunConversationOutputState,
+    ApplicationRunDetail, ApplicationRunLogSummary, ApplicationRunLogTask,
+    ApplicationRunSourceNodeMetadata, ApplicationRunSourceRunMetadata, ApplicationRunStitchedTrace,
+    ApplicationRunSubagentTrace, ApplicationRunSummary, ApplicationRunTaskRoundProjectionSource,
+    ApplicationRunTaskRoundTrace, ApplicationRunTraceNodeContentRecord,
     ApplicationRunTraceNodeRecord, ApplicationRunTraceProjectionDiagnostic,
     ApplicationRunTraceProjectionSource, ApplicationRunTraceProjectionStatus,
     ApplicationRunTraceProjectionStatusRecord, CallbackTaskRecord, CallbackTaskStatus,
