@@ -298,6 +298,13 @@ async function cell(label, variant, dimension, inputs) {
 async function main() {
   if (fs.existsSync(out)) throw Error('fresh artifact root required');
   fs.mkdirSync(out, { recursive: true });
+  // Candidate identity comes only from the verified build job; no legacy artifact fallback.
+  const source = process.env.RB_CANDIDATE_SOURCE_SHA, tree = process.env.RB_CANDIDATE_API_TREE;
+  const digest = process.env.RB_CANDIDATE_BINARY_SHA256, runId = process.env.RB_CANDIDATE_RUN_ID;
+  const artifactName = process.env.RB_CANDIDATE_ARTIFACT_NAME;
+  if (!/^[a-f0-9]{40}$/.test(source || '') || !/^[a-f0-9]{40}$/.test(tree || '') || !/^[a-f0-9]{64}$/.test(digest || '') || !/^[1-9][0-9]*$/.test(runId || '') || !Number.isSafeInteger(Number(runId))) throw Error('all verified candidate build outputs are required');
+  if (source !== manifest.binaries.candidate.source || tree !== manifest.binaries.candidate.api_tree || artifactName !== `gateway-cpu-attribution-${runId}`) throw Error('candidate build output binding mismatch');
+  Object.assign(manifest.binaries.candidate, { run_id: Number(runId), artifact_name: artifactName, sha256: digest });
   write(path.join(out, 'manifest.json'), manifest);
   write(path.join(out, 'environment.json'), { uname: execute('uname', ['-a']), lscpu: execute('lscpu', []), node: process.version,
     docker: execute('docker', ['version', '--format', '{{json .}}']), psql: execute('/usr/bin/psql', ['--version']), fixture_sha: execute('git', ['rev-parse', 'HEAD']) });

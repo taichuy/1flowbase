@@ -18,12 +18,9 @@
       "sha256": "d838568c8286e8bf3f2b4e74dde5efed2d7f6a3e5a91580fafc150ceaaf66fc2"
     },
     "candidate": {
-      "run_id": 37162484674,
-      "artifact_id": 11287859600,
-      "artifact_name": "gateway-cpu-attribution-37162484674",
-      "source": "c8b48b6789868c6fa115625f2d9b80894ce95d26",
-      "api_tree": "3a5a0239aaf0e8802bbdb7b4a20ff2bfe61c6f8a",
-      "sha256": "17ad8d4e153de454d05bad9650ef9b8854786948a72009207ffc2425df6697fd"
+      "source": "8ac453a947708904db765b6afae6188b3b9ea04e",
+      "api_tree": "25b773314c3c92647c45e628952d28e286e5f4e4",
+      "identity_binding": "required_clean_build_outputs_from_current_workflow_run"
     }
   },
   "plugins": {

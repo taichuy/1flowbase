@@ -2,6 +2,10 @@ name: Gateway Independent Resource Comparison
 'on':
   workflow_dispatch:
     inputs:
+      candidate_sha:
+        description: Exact frozen P10 and P11 product assembly SHA
+        required: true
+        type: string
       fixture_sha:
         description: Exact frozen diagnostic fixture SHA (never merge this ref into dev)
         required: true
@@ -14,8 +18,188 @@ concurrency:
   cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  CARGO_INCREMENTAL: '0'
+  RUSTFLAGS: '-C force-frame-pointers=yes -C debuginfo=1'
+  OPENAI_API_KEY: ''
+  OPENAI_BASE_URL: ''
 jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 195
+    outputs:
+      source_sha: ${{ steps.build.outputs.source_sha }}
+      api_tree: ${{ steps.build.outputs.api_tree }}
+      binary_sha256: ${{ steps.build.outputs.binary_sha256 }}
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: gateway_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gateway_tests"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: gateway-connection-reuse
+          cache-workspace-crates: true
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Build source-bound optimized diagnostic executable
+        id: build
+        timeout-minutes: 65
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.candidate_sha }}
+          FROZEN_SOURCE_SHA: 8ac453a947708904db765b6afae6188b3b9ea04e
+          FROZEN_API_TREE: 25b773314c3c92647c45e628952d28e286e5f4e4
+        run: |
+          set -euo pipefail
+          out=tmp/test-governance/gateway-cpu-attribution/build
+          mkdir -p "$out"
+          test "$EXPECTED_SHA" = "$FROZEN_SOURCE_SHA"
+          node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/cargo-jobs.txt"
+          export CARGO_BUILD_JOBS="$(cat "$out/cargo-jobs.txt")"
+          rustc -Vv > "$out/toolchain.txt"
+          git rev-parse HEAD > "$out/source-sha.txt"
+          test "$(cat "$out/source-sha.txt")" = "$EXPECTED_SHA"
+          git rev-parse HEAD:api > "$out/api-tree.txt"
+          test "$(cat "$out/api-tree.txt")" = "$FROZEN_API_TREE"
+          git status --porcelain --untracked-files=no > "$out/source-status.txt"
+          test ! -s "$out/source-status.txt"
+          set +e
+          started=$(date +%s)
+          cargo build --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server > "$out/build.log" 2>&1
+          code=$?
+          printf '%s\n' "$(( $(date +%s) - started ))" > "$out/build.elapsed-seconds.txt"
+          set -e
+          printf '%s\n' "$code" > "$out/build-exit-code.txt"
+          tail -c 5000 "$out/build.log"
+          test "$code" = 0
+          git status --porcelain --untracked-files=no > "$out/source-status.txt"
+          test ! -s "$out/source-status.txt"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD:api)" = "$FROZEN_API_TREE"
+          cp api/target/release/api-server "$out/api-server"
+          sha256sum "$out/api-server" > "$out/binary.sha256"
+          printf '%s\n' "$RUSTFLAGS" > "$out/rustflags.txt"
+          ldd "$out/api-server" > "$out/ldd.txt"
+          tar -czf "$out/api-server.tar.gz" -C "$out" api-server
+          rm "$out/api-server"
+          node - <<'NODEBUILD'
+          const fs = require('node:fs'), path = require('node:path');
+          const dir = 'tmp/test-governance/gateway-cpu-attribution/build';
+          const read = file => fs.readFileSync(path.join(dir,file),'utf8').trim();
+          const source = read('source-sha.txt'), tree = read('api-tree.txt'), hash = read('binary.sha256').split(/\s+/)[0];
+          if (!/^[a-f0-9]{40}$/.test(source) || !/^[a-f0-9]{40}$/.test(tree) || !/^[a-f0-9]{64}$/.test(hash)) throw Error('invalid build identity');
+          if (source !== process.env.EXPECTED_SHA || source !== process.env.FROZEN_SOURCE_SHA || tree !== process.env.FROZEN_API_TREE || read('source-status.txt') !== '' || read('build-exit-code.txt') !== '0') throw Error('unverified build identity');
+          fs.writeFileSync(path.join(dir,'build-receipt.json'),JSON.stringify({source_sha:source,api_tree:tree,binary_sha256:hash,profile:'release',features:'default',rustflags:read('rustflags.txt'),elapsed_seconds:Number(read('build.elapsed-seconds.txt')),warning_count:(read('build.log').match(/^warning:/gm)||[]).length},null,2));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,`source_sha=${source}\napi_tree=${tree}\nbinary_sha256=${hash}\n`);
+          NODEBUILD
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: gateway-cpu-attribution-${{ github.run_id }}
+          path: tmp/test-governance/gateway-cpu-attribution/build/**
+          retention-days: 7
+          if-no-files-found: error
+      - name: Fetch locked dependencies for offline boundary checks
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=tmp/test-governance/gateway-sql-cost/tests
+          mkdir -p "$out"
+          started=$(date +%s)
+          set +e
+          cargo fetch --manifest-path api/Cargo.toml --locked > "$out/fetch.log" 2>&1
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$out/fetch.exit-code.txt"
+          printf '%s\n' "$(( $(date +%s) - started ))" > "$out/fetch.elapsed-seconds.txt"
+          tail -c 4000 "$out/fetch.log"
+          test "$code" = 0
+      - name: Execute centralized behavior tests sequentially
+        timeout-minutes: 100
+        if: success()
+        shell: bash
+        env:
+          DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/gateway_tests
+        run: |
+          set -euo pipefail
+          out=tmp/test-governance/gateway-sql-cost/tests
+          mkdir -p "$out"
+          node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/repository-cargo-jobs.txt"
+          # CI test linking shares this runner with Postgres; preserve the prior measured resource budget.
+          python3 - <<'PYRESOURCE' > "$out/resource-policy.json"
+          import json,os,pathlib
+          memory=int(next(x.split()[1] for x in pathlib.Path('/proc/meminfo').read_text().splitlines() if x.startswith('MemTotal:')))*1024
+          cpu=len(os.sched_getaffinity(0)); jobs=max(1,min(cpu,max(1,(memory-2*1024**3)//(2*1024**3))))
+          print(json.dumps(dict(memory_bytes=memory,cpu_available=cpu,cargo_jobs=jobs,reserved_bytes=2*1024**3,bytes_per_compiler=2*1024**3)))
+          PYRESOURCE
+          export CARGO_BUILD_JOBS="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["cargo_jobs"])' "$out/resource-policy.json")"
+          export RUST_TEST_THREADS="$CARGO_BUILD_JOBS"
+          git rev-parse HEAD > "$out/source-sha.txt"
+          git rev-parse HEAD:api > "$out/api-tree.txt"
+          status=0
+          run_suite() {
+            name="$1"
+            shift
+            set +e
+            started=$(date +%s)
+            cargo test --manifest-path api/Cargo.toml --release --locked "$@" > "$out/$name.log" 2>&1
+            code=$?
+            printf '%s\n' "$(( $(date +%s) - started ))" > "$out/$name.elapsed-seconds.txt"
+            set -e
+            printf '%s\n' "$code" > "$out/$name.exit-code.txt"
+            tail -c 4000 "$out/$name.log"
+            if [ "$code" -ne 0 ]; then status=1; fi
+          }
+          run_suite contracts -p control-plane-contracts --lib
+          run_suite storage -p storage-durable-postgres --lib client_trajectory
+          run_suite sequencing -p storage-durable-postgres --lib sequencing
+          run_suite recorder -p control-plane --lib client_trajectory
+          run_suite streams -p api-server --lib _tests::runtime_event_stream
+          run_suite boundaries -p control-plane-postgres-tests --test dependency_boundaries
+          python3 - <<'PY'
+          import json,pathlib,re
+          p=pathlib.Path('tmp/test-governance/gateway-sql-cost/tests')
+          suites=[]
+          for name in ['contracts','storage','sequencing','recorder','streams','boundaries']:
+              log=(p/(name+'.log')).read_text(errors='replace')
+              rows=re.findall(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored;',log)
+              code=int((p/(name+'.exit-code.txt')).read_text())
+              valid=code==0 and bool(rows) and sum(int(r[1]) for r in rows)>0 and all(r[0]=='ok' and int(r[2])==0 and int(r[3])==0 for r in rows)
+              suites.append(dict(name=name,exit_code=code,summaries=rows,passed=valid,elapsed_seconds=int((p/(name+'.elapsed-seconds.txt')).read_text()),warning_count=len(re.findall(r'^warning:',log,re.M))))
+          (p/'receipt.json').write_text(json.dumps(dict(source_sha=(p/'source-sha.txt').read_text().strip(),api_tree=(p/'api-tree.txt').read_text().strip(),fetch_exit_code=int((p/'fetch.exit-code.txt').read_text()),fetch_elapsed_seconds=int((p/'fetch.elapsed-seconds.txt').read_text()),suites=suites),indent=2))
+          assert all(s['passed'] for s in suites), 'missing or failed behavior evidence'
+          PY
+          exit "$status"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: gateway-sql-cost-tests-${{ github.run_id }}
+          path: tmp/test-governance/gateway-sql-cost/tests/**
+          retention-days: 7
+          if-no-files-found: warn
   independent-resource:
+    needs: build-test
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -41,8 +225,8 @@ jobs:
           path: tmp/ci-independent-inputs/baseline
       - uses: actions/download-artifact@v5
         with:
-          name: gateway-cpu-attribution-37162484674
-          run-id: 37162484674
+          name: gateway-cpu-attribution-${{ github.run_id }}
+          run-id: ${{ github.run_id }}
           github-token: ${{ github.token }}
           path: tmp/ci-independent-inputs/candidate
       - name: Pre-pull fixture PostgreSQL image within four minutes
@@ -53,6 +237,12 @@ jobs:
           timeout --signal=TERM --kill-after=15s 240s docker pull postgres:18.4
       - name: Run twelve fresh-container ABBA cells serially
         timeout-minutes: 50
+        env:
+          RB_CANDIDATE_SOURCE_SHA: ${{ needs.build-test.outputs.source_sha }}
+          RB_CANDIDATE_API_TREE: ${{ needs.build-test.outputs.api_tree }}
+          RB_CANDIDATE_BINARY_SHA256: ${{ needs.build-test.outputs.binary_sha256 }}
+          RB_CANDIDATE_RUN_ID: ${{ github.run_id }}
+          RB_CANDIDATE_ARTIFACT_NAME: gateway-cpu-attribution-${{ github.run_id }}
         run: node scripts/node/ai-gateway-concurrency/resource-benchmark/ci-isolated/run.cjs
       - name: Clean only fixture-owned containers after interrupted driver
         if: always()
