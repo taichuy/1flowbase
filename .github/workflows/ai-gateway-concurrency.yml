@@ -1,4 +1,4 @@
-name: Gateway Resource Source Build
+name: Gateway Resource Candidate Regression
 'on':
   workflow_dispatch:
     inputs:
@@ -89,3 +89,60 @@ jobs:
           path: tmp/test-governance/gateway-resource-ci/build/**
           retention-days: 7
           if-no-files-found: error
+      - name: Execute centralized behavior tests sequentially
+        timeout-minutes: 100
+        if: success()
+        shell: bash
+        env:
+          DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/gateway_tests
+        run: |
+          set -euo pipefail
+          out=tmp/test-governance/gateway-resource-ci/tests
+          mkdir -p "$out"
+          node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/repository-cargo-jobs.txt"
+          # CI test linking shares this runner with Postgres; preserve the prior measured resource budget.
+          python3 - <<'PYRESOURCE' > "$out/resource-policy.json"
+          import json,os,pathlib
+          memory=int(next(x.split()[1] for x in pathlib.Path('/proc/meminfo').read_text().splitlines() if x.startswith('MemTotal:')))*1024
+          cpu=len(os.sched_getaffinity(0)); jobs=max(1,min(cpu,max(1,(memory-2*1024**3)//(2*1024**3))))
+          print(json.dumps(dict(memory_bytes=memory,cpu_available=cpu,cargo_jobs=jobs,reserved_bytes=2*1024**3,bytes_per_compiler=2*1024**3)))
+          PYRESOURCE
+          export CARGO_BUILD_JOBS="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["cargo_jobs"])' "$out/resource-policy.json")"
+          export RUST_TEST_THREADS="$CARGO_BUILD_JOBS"
+          git rev-parse HEAD > "$out/source-sha.txt"
+          git rev-parse HEAD:api > "$out/api-tree.txt"
+          status=0
+          run_suite() {
+            name="$1"
+            shift
+            set +e
+            cargo test --manifest-path api/Cargo.toml --release --locked "$@" > "$out/$name.log" 2>&1
+            code=$?
+            set -e
+            printf '%s\n' "$code" > "$out/$name.exit-code.txt"
+            tail -c 4000 "$out/$name.log"
+            if [ "$code" -ne 0 ]; then status=1; fi
+          }
+          run_suite trace_projection -p control-plane --lib trace_projection
+          run_suite application_logs -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::
+          python3 - <<'PY'
+          import json,pathlib,re
+          p=pathlib.Path('tmp/test-governance/gateway-resource-ci/tests')
+          suites=[]
+          for name in ['trace_refresh','sequencing','client_trajectory','enrichment']:
+              log=(p/(name+'.log')).read_text(errors='replace')
+              rows=re.findall(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored;',log)
+              code=int((p/(name+'.exit-code.txt')).read_text())
+              valid=code==0 and bool(rows) and sum(int(r[1]) for r in rows)>0 and all(r[0]=='ok' and int(r[2])==0 and int(r[3])==0 for r in rows)
+              suites.append(dict(name=name,exit_code=code,summaries=rows,passed=valid))
+          (p/'receipt.json').write_text(json.dumps(dict(source_sha=(p/'source-sha.txt').read_text().strip(),suites=suites),indent=2))
+          assert all(s['passed'] for s in suites), 'missing or failed behavior evidence'
+          PY
+          exit "$status"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: gateway-resource-tests-${{ github.run_id }}
+          path: tmp/test-governance/gateway-resource-ci/tests/**
+          retention-days: 14
+          if-no-files-found: warn

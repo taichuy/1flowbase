@@ -69,6 +69,7 @@ use crate::repositories::PgControlPlaneStore;
 mod client_trajectory;
 mod detail_queries;
 mod json_storage;
+mod task_trace_sources;
 mod trajectory;
 use json_storage::{
     lossless_json_columns, lossless_json_parameter, lossless_json_value, lossless_text_parameter,

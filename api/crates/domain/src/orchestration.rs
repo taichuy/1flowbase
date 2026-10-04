@@ -710,8 +710,8 @@ pub struct ApplicationRunTraceProjectionSource {
     pub event_counts_by_node_run: HashMap<Uuid, usize>,
     pub stitched_trace: Vec<ApplicationRunStitchedTrace>,
     pub subagent_traces: Vec<ApplicationRunSubagentTrace>,
-    pub task_rounds: Vec<ApplicationRunTaskRoundTrace>,
-    pub child_task_traces: Vec<ApplicationRunChildTaskTrace>,
+    pub task_rounds: Vec<ApplicationRunTaskRoundProjectionSource>,
+    pub child_task_traces: Vec<ApplicationRunChildTaskProjectionSource>,
 }
 
 impl From<&ApplicationRunDetail> for ApplicationRunTraceProjectionSource {
@@ -740,8 +740,147 @@ impl From<&ApplicationRunDetail> for ApplicationRunTraceProjectionSource {
                 }),
             stitched_trace: detail.stitched_trace.clone(),
             subagent_traces: detail.subagent_traces.clone(),
-            task_rounds: detail.task_rounds.clone(),
-            child_task_traces: detail.child_task_traces.clone(),
+            task_rounds: detail
+                .task_rounds
+                .iter()
+                .map(ApplicationRunTaskRoundProjectionSource::from)
+                .collect(),
+            child_task_traces: detail
+                .child_task_traces
+                .iter()
+                .map(ApplicationRunChildTaskProjectionSource::from)
+                .collect(),
+        }
+    }
+}
+
+/// Metadata of a historical run linked lazily by the task trace builder.
+/// This is deliberately not a partial `FlowRunRecord`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunSourceRunMetadata {
+    pub id: Uuid,
+    pub title: String,
+    pub status: FlowRunStatus,
+    pub started_at: OffsetDateTime,
+    pub finished_at: Option<OffsetDateTime>,
+}
+
+impl From<&FlowRunRecord> for ApplicationRunSourceRunMetadata {
+    fn from(run: &FlowRunRecord) -> Self {
+        Self {
+            id: run.id,
+            title: run.title.clone(),
+            status: run.status,
+            started_at: run.started_at,
+            finished_at: run.finished_at,
+        }
+    }
+}
+
+/// Facts needed to link a historical node and project its callback routes.
+/// Bodies remain available through the complete detail read path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunSourceNodeMetadata {
+    pub id: Uuid,
+    pub node_id: String,
+    pub node_type: String,
+    pub node_alias: String,
+    pub status: NodeRunStatus,
+    pub metrics_payload: serde_json::Value,
+    pub legacy_answer_snapshot: bool,
+    pub tool_route_traces: Vec<serde_json::Value>,
+    pub started_at: OffsetDateTime,
+    pub finished_at: Option<OffsetDateTime>,
+}
+
+impl ApplicationRunSourceNodeMetadata {
+    fn from_task_node(node: &NodeRunRecord, callback_tasks: &[CallbackTaskRecord]) -> Self {
+        Self {
+            id: node.id,
+            node_id: node.node_id.clone(),
+            node_type: node.node_type.clone(),
+            node_alias: node.node_alias.clone(),
+            status: node.status,
+            metrics_payload: node.metrics_payload.clone(),
+            legacy_answer_snapshot: node.node_type == "answer"
+                && [
+                    node.input_payload
+                        .get("presentation")
+                        .and_then(|p| p.get("materialized_from")),
+                    node.debug_payload
+                        .get("answer_presentation")
+                        .and_then(|p| p.get("materialized_from")),
+                ]
+                .into_iter()
+                .flatten()
+                .filter_map(serde_json::Value::as_str)
+                .any(|marker| matches!(marker, "waiting_prefix" | "canonical_stream_state")),
+            tool_route_traces: if callback_tasks
+                .iter()
+                .any(|task| task.node_run_id == node.id && task.callback_kind == "llm_tool_calls")
+            {
+                node.debug_payload
+                    .get("visible_internal_llm_tool_trace")
+                    .and_then(serde_json::Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            },
+            started_at: node.started_at,
+            finished_at: node.finished_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunTaskRoundProjectionSource {
+    pub call_kind: String,
+    pub source_flow_run: ApplicationRunSourceRunMetadata,
+    pub node_runs: Vec<ApplicationRunSourceNodeMetadata>,
+    pub callback_tasks: Vec<CallbackTaskRecord>,
+    pub native_messages: Vec<serde_json::Value>,
+}
+
+impl From<&ApplicationRunTaskRoundTrace> for ApplicationRunTaskRoundProjectionSource {
+    fn from(round: &ApplicationRunTaskRoundTrace) -> Self {
+        Self {
+            call_kind: round.call_kind.clone(),
+            source_flow_run: (&round.source_flow_run).into(),
+            node_runs: round
+                .node_runs
+                .iter()
+                .map(|node| {
+                    ApplicationRunSourceNodeMetadata::from_task_node(node, &round.callback_tasks)
+                })
+                .collect(),
+            callback_tasks: round.callback_tasks.clone(),
+            native_messages: round.native_messages.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunChildTaskProjectionSource {
+    pub subagent_kind: Option<String>,
+    pub source_flow_run: ApplicationRunSourceRunMetadata,
+    pub node_runs: Vec<ApplicationRunSourceNodeMetadata>,
+    pub callback_tasks: Vec<CallbackTaskRecord>,
+}
+
+impl From<&ApplicationRunChildTaskTrace> for ApplicationRunChildTaskProjectionSource {
+    fn from(child: &ApplicationRunChildTaskTrace) -> Self {
+        Self {
+            subagent_kind: child.subagent_kind.clone(),
+            source_flow_run: (&child.source_flow_run).into(),
+            node_runs: child
+                .node_runs
+                .iter()
+                .map(|node| {
+                    ApplicationRunSourceNodeMetadata::from_task_node(node, &child.callback_tasks)
+                })
+                .collect(),
+            callback_tasks: child.callback_tasks.clone(),
         }
     }
 }

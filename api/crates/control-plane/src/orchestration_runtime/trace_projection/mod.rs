@@ -102,10 +102,14 @@ fn trace_visible_current_node_run_groups(
 fn trace_visible_node_run_groups(
     node_runs: &[domain::NodeRunRecord],
 ) -> Vec<&[domain::NodeRunRecord]> {
-    // A repeated node id is another execution, not a replacement snapshot.
+    visible_execution_groups(node_runs, is_legacy_waiting_answer_snapshot_node_run)
+}
+
+// A repeated node id is another execution, not a replacement snapshot.
+fn visible_execution_groups<T>(node_runs: &[T], hidden: impl Fn(&T) -> bool) -> Vec<&[T]> {
     node_runs
         .iter()
-        .filter(|node_run| !is_legacy_waiting_answer_snapshot_node_run(node_run))
+        .filter(|node| !hidden(node))
         .map(std::slice::from_ref)
         .collect()
 }
@@ -427,49 +431,13 @@ impl TraceProjectionBuilder {
         tool_calls: &[ToolCallProjection<'_>],
         synthetic_tool_calls: &[serde_json::Value],
     ) -> Result<()> {
-        let stable_locator = format!("{parent_stable_locator}/tools");
-        let trace_node_id = trace_node_id_for_locator(self.flow_run_id, &stable_locator);
-        let tool_call_count = tool_calls.len() + synthetic_tool_calls.len();
-
-        self.nodes.push(ApplicationRunTraceNodeProjectionInput {
-            trace_node_id,
-            parent_trace_node_id: Some(parent_trace_node_id),
-            stable_locator: stable_locator.clone(),
-            node_kind: "tool_group".to_string(),
-            owner_kind: Some("node_run_tools".to_string()),
-            owner_id: Some(parent_trace_node_id.to_string()),
-            order_key: order_key.clone(),
-            node_id: None,
-            node_type: Some("tools".to_string()),
-            node_mode: None,
-            node_alias: "Tools".to_string(),
-            status: tool_group_status(
-                &tool_calls
-                    .iter()
-                    .map(|tool_call| tool_call.task)
-                    .collect::<Vec<_>>(),
-            ),
-            started_at: tool_calls
-                .iter()
-                .map(|tool_call| tool_call.task.created_at)
-                .min()
-                .unwrap_or(OffsetDateTime::UNIX_EPOCH),
-            finished_at: tool_calls
-                .iter()
-                .filter_map(|tool_call| tool_call.task.completed_at)
-                .max(),
-            duration_ms: None,
-            metrics_payload: serde_json::json!({}),
-            has_children: tool_call_count > 0,
-            child_count: i64::try_from(tool_call_count).unwrap_or(i64::MAX),
-            has_content: false,
-            content_ref: None,
-            source_flow_run_id: None,
-            source_trace_node_id: None,
-            parent_callback_task_id: None,
-            parent_tool_call_id: None,
-            trace_relation_kind: None,
-        });
+        let (trace_node_id, stable_locator) = self.push_tool_group_node(
+            &order_key,
+            parent_trace_node_id,
+            parent_stable_locator,
+            tool_calls,
+            synthetic_tool_calls.len(),
+        );
 
         let mut tool_index = 0_usize;
         for tool_call in tool_calls {
@@ -478,7 +446,13 @@ impl TraceProjectionBuilder {
                 child_order_key(&order_key, tool_index),
                 trace_node_id,
                 &stable_locator,
-                parent_node_runs,
+                route_trace_for_tool_call(
+                    parent_node_runs,
+                    &callback_tool_call_id(
+                        &tool_call.tool_call,
+                        &child_order_key(&order_key, tool_index),
+                    ),
+                ),
                 tool_call.task,
                 &tool_call.tool_call,
             )?;
@@ -750,15 +724,11 @@ impl TraceProjectionBuilder {
         order_key: String,
         parent_trace_node_id: Uuid,
         parent_stable_locator: &str,
-        parent_node_runs: &[domain::NodeRunRecord],
+        route_trace: Option<serde_json::Value>,
         task: &domain::CallbackTaskRecord,
         tool_call: &serde_json::Value,
     ) -> Result<()> {
-        let tool_call_id = tool_call
-            .get("id")
-            .and_then(serde_json::Value::as_str)
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| legacy_locator_component("tool_call", &order_key, tool_call));
+        let tool_call_id = callback_tool_call_id(tool_call, &order_key);
         let tool_name = tool_call
             .get("name")
             .and_then(serde_json::Value::as_str)
@@ -767,7 +737,6 @@ impl TraceProjectionBuilder {
         let stable_locator = format!("{parent_stable_locator}/tool:{tool_call_id}");
         let trace_node_id = trace_node_id_for_locator(self.flow_run_id, &stable_locator);
         let tool_result = tool_result_for_call(task, &tool_call_id);
-        let route_trace = route_trace_for_tool_call(parent_node_runs, &tool_call_id);
         let metrics_payload =
             tool_callback_metrics_payload(tool_call, tool_result.as_ref(), route_trace.as_ref());
         let node_mode = route_trace
@@ -898,11 +867,7 @@ impl TraceProjectionBuilder {
         parent_node_runs: &[domain::NodeRunRecord],
         tool_call: &serde_json::Value,
     ) -> Result<()> {
-        let tool_call_id = tool_call
-            .get("id")
-            .and_then(serde_json::Value::as_str)
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| legacy_locator_component("tool_call", &order_key, tool_call));
+        let tool_call_id = callback_tool_call_id(tool_call, &order_key);
         let tool_name = tool_call
             .get("name")
             .and_then(serde_json::Value::as_str)
@@ -1461,13 +1426,14 @@ mod tool_callbacks;
 pub use tool_callbacks::merge_trace_node_run_detail;
 use tool_callbacks::{
     branch_locator_component, branch_trace_node_alias, branch_trace_status,
-    callback_task_trace_node_status, callback_tasks_for_node_run_ids, node_run_group_content,
-    route_trace_branch_traces, route_trace_for_tool_call, route_trace_locator_component,
-    route_trace_metrics_payload, route_trace_node_alias, route_trace_node_kind, route_trace_status,
-    route_trace_tool_callback_status, synthetic_tool_calls_not_in_callback_tasks,
-    tool_callback_content_payload, tool_callback_metrics_payload, tool_calls_from_callback_task,
-    tool_group_status, tool_result_duration_ms, tool_result_execution_status, tool_result_for_call,
-    tool_result_for_call_from_node_runs, tool_result_timestamp,
+    callback_task_trace_node_status, callback_tasks_for_node_run_ids, callback_tool_call_id,
+    node_run_group_content, route_trace_branch_traces, route_trace_for_tool_call,
+    route_trace_locator_component, route_trace_metrics_payload, route_trace_node_alias,
+    route_trace_node_kind, route_trace_status, route_trace_tool_callback_status,
+    synthetic_tool_calls_not_in_callback_tasks, tool_callback_content_payload,
+    tool_callback_metrics_payload, tool_calls_from_callback_task, tool_group_status,
+    tool_payload_matches_call_id, tool_result_duration_ms, tool_result_execution_status,
+    tool_result_for_call, tool_result_for_call_from_node_runs, tool_result_timestamp,
 };
 
 fn root_order_key(index: usize) -> String {

@@ -1178,8 +1178,8 @@ impl PgControlPlaneStore {
             stitched_trace: list_stitched_trace_for_flow_run(self, &flow_run).await?,
             subagent_traces: list_subagent_traces_for_flow_run(self, &flow_run, &callback_tasks)
                 .await?,
-            task_rounds: self.list_task_round_traces_for_flow_run(&flow_run).await?,
-            child_task_traces: self.list_child_task_traces_for_flow_run(&flow_run).await?,
+            task_rounds: self.list_task_round_projection_sources_for_flow_run(&flow_run).await?,
+            child_task_traces: self.list_child_task_projection_sources_for_flow_run(&flow_run).await?,
             flow_run,
             callback_tasks,
         }))

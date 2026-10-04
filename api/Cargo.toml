@@ -87,6 +87,11 @@ debug = 1
 [profile.dev.package.api-server]
 debug = "line-tables-only"
 
+# Gateway history and durable facts hash their complete input in development too.
+# Keep SHA-256 compression optimized without disabling application debug checks.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.test]
 debug = 1
 

@@ -34,6 +34,61 @@ impl TraceProjectionBuilder {
         Ok(child_index)
     }
 
+    fn push_tool_group_node(
+        &mut self,
+        order_key: &str,
+        parent_trace_node_id: Uuid,
+        parent_stable_locator: &str,
+        tool_calls: &[ToolCallProjection<'_>],
+        synthetic_tool_call_count: usize,
+    ) -> (Uuid, String) {
+        let stable_locator = format!("{parent_stable_locator}/tools");
+        let trace_node_id = trace_node_id_for_locator(self.flow_run_id, &stable_locator);
+        let tool_call_count = tool_calls.len() + synthetic_tool_call_count;
+
+        self.nodes.push(ApplicationRunTraceNodeProjectionInput {
+            trace_node_id,
+            parent_trace_node_id: Some(parent_trace_node_id),
+            stable_locator: stable_locator.clone(),
+            node_kind: "tool_group".to_string(),
+            owner_kind: Some("node_run_tools".to_string()),
+            owner_id: Some(parent_trace_node_id.to_string()),
+            order_key: order_key.to_string(),
+            node_id: None,
+            node_type: Some("tools".to_string()),
+            node_mode: None,
+            node_alias: "Tools".to_string(),
+            status: tool_group_status(
+                &tool_calls
+                    .iter()
+                    .map(|tool_call| tool_call.task)
+                    .collect::<Vec<_>>(),
+            ),
+            started_at: tool_calls
+                .iter()
+                .map(|tool_call| tool_call.task.created_at)
+                .min()
+                .unwrap_or(OffsetDateTime::UNIX_EPOCH),
+            finished_at: tool_calls
+                .iter()
+                .filter_map(|tool_call| tool_call.task.completed_at)
+                .max(),
+            duration_ms: None,
+            metrics_payload: serde_json::json!({}),
+            has_children: tool_call_count > 0,
+            child_count: i64::try_from(tool_call_count).unwrap_or(i64::MAX),
+            has_content: false,
+            content_ref: None,
+            source_flow_run_id: None,
+            source_trace_node_id: None,
+            parent_callback_task_id: None,
+            parent_tool_call_id: None,
+            trace_relation_kind: None,
+        });
+
+        (trace_node_id, stable_locator)
+    }
+
     fn push_round_group(
         &mut self,
         order_key: String,
@@ -95,12 +150,12 @@ impl TraceProjectionBuilder {
         parent_trace_node_id: Uuid,
         parent_stable_locator: &str,
         ordinal: usize,
-        round: &domain::ApplicationRunTaskRoundTrace,
+        round: &domain::ApplicationRunTaskRoundProjectionSource,
     ) -> Result<()> {
         let source_run = &round.source_flow_run;
         let stable_locator = format!("{parent_stable_locator}/run:{}", source_run.id);
         let trace_node_id = trace_node_id_for_locator(self.flow_run_id, &stable_locator);
-        let node_run_groups = trace_visible_node_run_groups(&round.node_runs);
+        let node_run_groups = source_visible_node_run_groups(&round.node_runs);
         let tool_messages = round_tool_messages(&round.native_messages);
         let is_compaction = round.call_kind == "compact";
         let child_count = node_run_groups.len() + usize::from(!tool_messages.is_empty());
@@ -208,7 +263,7 @@ impl TraceProjectionBuilder {
             let source_run = &child.source_flow_run;
             let child_locator = format!("{stable_locator}/run:{}", source_run.id);
             let child_trace_node_id = trace_node_id_for_locator(self.flow_run_id, &child_locator);
-            let node_run_groups = trace_visible_node_run_groups(&child.node_runs);
+            let node_run_groups = source_visible_node_run_groups(&child.node_runs);
             let child_order = child_order_key(&order_key, index + 1);
             self.nodes.push(ApplicationRunTraceNodeProjectionInput {
                 trace_node_id: child_trace_node_id,
@@ -263,13 +318,13 @@ impl TraceProjectionBuilder {
         order_key: String,
         parent_trace_node_id: Uuid,
         parent_stable_locator: &str,
-        source_run: &domain::FlowRunRecord,
-        node_runs: &[domain::NodeRunRecord],
+        source_run: &domain::ApplicationRunSourceRunMetadata,
+        node_runs: &[domain::ApplicationRunSourceNodeMetadata],
         callback_tasks: &[domain::CallbackTaskRecord],
         owner_kind: &str,
     ) -> Result<()> {
         let first_node_run = &node_runs[0];
-        let summary_node_run = node_run_group_summary(node_runs);
+        let summary_node_run = first_node_run;
         let (stable_locator, source_stable_locator) = if node_runs.len() == 1 {
             (
                 format!("{parent_stable_locator}/node:{}", first_node_run.id),
@@ -312,7 +367,10 @@ impl TraceProjectionBuilder {
             status: summary_node_run.status.as_str().to_string(),
             started_at: first_node_run.started_at,
             finished_at: summary_node_run.finished_at,
-            duration_ms: trace_node_group_duration_ms(node_runs),
+            duration_ms: trace_node_duration_ms(
+                first_node_run.started_at,
+                first_node_run.finished_at,
+            ),
             metrics_payload: summary_node_run.metrics_payload.clone(),
             has_children: child_count > 0,
             child_count: i64::try_from(child_count).unwrap_or(i64::MAX),
@@ -337,14 +395,31 @@ impl TraceProjectionBuilder {
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            self.push_tool_group(
-                child_order_key(&order_key, 1),
+            let tool_order_key = child_order_key(&order_key, 1);
+            let (tool_group_id, tool_group_locator) = self.push_tool_group_node(
+                &tool_order_key,
                 trace_node_id,
                 &stable_locator,
-                node_runs,
                 &tool_calls,
-                &[],
-            )?;
+                0,
+            );
+            for (index, tool_call) in tool_calls.iter().enumerate() {
+                let tool_order = child_order_key(&tool_order_key, index + 1);
+                let call_id = callback_tool_call_id(&tool_call.tool_call, &tool_order);
+                let route_trace = node_runs
+                    .iter()
+                    .flat_map(|node| &node.tool_route_traces)
+                    .find(|trace| tool_payload_matches_call_id(trace, &call_id))
+                    .cloned();
+                self.push_tool_callback_node(
+                    tool_order,
+                    tool_group_id,
+                    &tool_group_locator,
+                    route_trace,
+                    tool_call.task,
+                    &tool_call.tool_call,
+                )?;
+            }
         }
         Ok(())
     }
@@ -355,7 +430,7 @@ impl TraceProjectionBuilder {
         order_key: String,
         parent_trace_node_id: Uuid,
         parent_stable_locator: &str,
-        source_run: &domain::FlowRunRecord,
+        source_run: &domain::ApplicationRunSourceRunMetadata,
         tool_messages: &[&serde_json::Value],
     ) -> Result<()> {
         let stable_locator = format!("{parent_stable_locator}/tools");
@@ -457,7 +532,9 @@ fn round_tool_messages(native_messages: &[serde_json::Value]) -> Vec<&serde_json
         .collect()
 }
 
-fn source_run_group_status<'a>(runs: impl Iterator<Item = &'a domain::FlowRunRecord>) -> String {
+fn source_run_group_status<'a>(
+    runs: impl Iterator<Item = &'a domain::ApplicationRunSourceRunMetadata>,
+) -> String {
     let mut worst = "succeeded";
     for run in runs {
         match run.status {
@@ -470,7 +547,7 @@ fn source_run_group_status<'a>(runs: impl Iterator<Item = &'a domain::FlowRunRec
 }
 
 fn source_run_group_finished_at<'a>(
-    runs: impl Iterator<Item = &'a domain::FlowRunRecord>,
+    runs: impl Iterator<Item = &'a domain::ApplicationRunSourceRunMetadata>,
 ) -> Option<OffsetDateTime> {
     let mut latest = None;
     for run in runs {
@@ -480,4 +557,10 @@ fn source_run_group_finished_at<'a>(
         }));
     }
     latest
+}
+
+fn source_visible_node_run_groups(
+    node_runs: &[domain::ApplicationRunSourceNodeMetadata],
+) -> Vec<&[domain::ApplicationRunSourceNodeMetadata]> {
+    visible_execution_groups(node_runs, |node| node.legacy_answer_snapshot)
 }
