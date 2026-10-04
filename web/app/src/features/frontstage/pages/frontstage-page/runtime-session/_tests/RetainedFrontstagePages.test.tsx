@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useContext, useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FrontstageRuntimeActivityContext } from '../../../../lib/page-canvas/runtime-activity';
@@ -81,6 +81,7 @@ function view(
   );
 }
 afterEach(() => {
+  cleanup();
   vi.useRealTimers();
   disposed.mockClear();
   callbacks.clear();

@@ -135,6 +135,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     (state) => state.setDesignMode
   );
   const {
+    pageTree,
     selectedPageId,
     selectedPageNode,
     operationStatus,
@@ -395,6 +396,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       catalogEntries: blockCatalog.isSuccess ? blockCatalog.items : null
     });
   const assemblyRuntime = useFrontstageRuntimeAssembly({
+    active: runtimeActive,
     workspaceId,
     pageId: selectedPageId,
     assembly: blockRuntimeAssembly
@@ -989,10 +991,14 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     }
     void saveBlockComposition(activePageContent, next);
   };
+  const runtimeValidationError =
+    pageCanvasNativePreparations.validationError ??
+    assemblyRuntime.validationError;
   const runtimeVisible =
     runtimeActive &&
     !pageCanvasNativePreparations.isValidating &&
-    !pageCanvasNativePreparations.validationError;
+    !assemblyRuntime.isValidating &&
+    !runtimeValidationError;
   const assemblyLayers = blockRuntimeAssembly?.layers ?? [];
   let assemblyPageIndex = -1;
   assemblyLayers.forEach((layer, index) => {
@@ -1111,7 +1117,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
   };
   const frontstageTabContent = (
     <FrontstageRuntimeActivityContext value={Boolean(runtimeVisible)}>
-      {pageCanvasNativePreparations.validationError ? (
+      {runtimeValidationError ? (
         <Alert
           style={{ margin: 16 }}
           type="error"
@@ -1120,7 +1126,12 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
           action={
             <Button
               size="small"
-              onClick={pageCanvasNativePreparations.retryValidation}
+              onClick={() => {
+                if (pageCanvasNativePreparations.validationError)
+                  pageCanvasNativePreparations.retryValidation();
+                if (assemblyRuntime.validationError)
+                  assemblyRuntime.retryValidation();
+              }}
             >
               {i18nText('frontstage', 'auto.retry')}
             </Button>

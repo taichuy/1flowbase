@@ -10,10 +10,12 @@ import {
 } from './use-frontstage-page-canvas-native-preparations';
 
 export function useFrontstageRuntimeAssembly({
+  active = true,
   workspaceId,
   pageId,
   assembly
 }: {
+  active?: boolean;
   workspaceId: string;
   pageId: string | null;
   assembly: FrontstageBlockRuntimeAssembly | undefined;
@@ -55,6 +57,7 @@ export function useFrontstageRuntimeAssembly({
     [assembly]
   );
   return useFrontstagePageCanvasNativePreparations({
+    active,
     actorId: actor?.id,
     actorWorkspaceId: actor?.current_workspace_id,
     readPlan,

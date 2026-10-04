@@ -157,11 +157,15 @@ describe('frontstage native trusted block declarative portal host', () => {
       shadow?.querySelector('[data-flowbase-native-trusted-block-mount]')
     ).toBe(mount);
     expect(shadow?.querySelector('[data-testid="retained-input"]')).toBe(input);
+    root.toggleAttribute('data-visibility-probe');
     expect(input).not.toBeVisible();
     rerender(view(true));
     await waitFor(() => expect(setup).toHaveBeenCalledTimes(2));
     expect(shadowQueries(root).getByTestId('retained-input')).toBe(input);
     expect(input).toHaveValue('unsaved value');
+    // jsdom 26 does not invalidate its computed-style cache for mutations inside
+    // Shadow DOM. Touch the light-DOM host before both visibility assertions.
+    root.toggleAttribute('data-visibility-probe');
     expect(input).toBeVisible();
     unmount();
     expect(cleanup).toHaveBeenCalledTimes(2);
