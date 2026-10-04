@@ -34,7 +34,7 @@ impl TraceProjectionBuilder {
         Ok(child_index)
     }
 
-    fn push_tool_group_node(
+    pub(super) fn push_tool_group_node(
         &mut self,
         order_key: &str,
         parent_trace_node_id: Uuid,

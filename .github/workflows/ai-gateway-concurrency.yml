@@ -129,7 +129,7 @@ jobs:
           import json,pathlib,re
           p=pathlib.Path('tmp/test-governance/gateway-resource-ci/tests')
           suites=[]
-          for name in ['trace_refresh','sequencing','client_trajectory','enrichment']:
+          for name in ['trace_projection','application_logs']:
               log=(p/(name+'.log')).read_text(errors='replace')
               rows=re.findall(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored;',log)
               code=int((p/(name+'.exit-code.txt')).read_text())
