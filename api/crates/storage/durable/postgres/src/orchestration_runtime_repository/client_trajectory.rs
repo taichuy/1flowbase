@@ -171,17 +171,10 @@ impl PgControlPlaneStore {
             ClientTrajectoryFact::Step { step } => {
                 semantic::write_step(&mut tx, input, step, sequence).await?;
             }
-            ClientTrajectoryFact::Section {
-                step_id,
-                section,
-                value,
-            } => {
+            ClientTrajectoryFact::Section { .. } => {
                 semantic::write_section(
                     &mut tx,
                     input,
-                    *step_id,
-                    section,
-                    value,
                     sequence,
                     None,
                     Some(&flow_scope),
