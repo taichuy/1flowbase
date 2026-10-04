@@ -103,7 +103,6 @@
     "description": "描述",
     "disabled": "已禁用",
     "drag_move_node": "拖拽移动节点",
-    "drag_sort_hint": "拖拽/排序 (请使用菜单中的上移/下移)",
     "edit": "编辑",
     "edit_block": "编辑区块",
     "edit_description": "编辑描述",

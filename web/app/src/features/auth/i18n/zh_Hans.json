@@ -10,5 +10,24 @@
     "fallback_submit": "登录",
     "fallback_title": "欢迎",
     "footer": "Powered by 1flowbase"
+  },
+  "mcp_oauth": {
+    "title": "授权 MCP 连接",
+    "introduction": "使用 API Key 验证并授权，无需登录 1flowbase 后台。",
+    "loading": "正在读取授权请求",
+    "request_error": "授权请求无效或已过期，请返回 ChatGPT 重新连接。",
+    "key_error": "无法验证 API Key，请检查其有效期、工作区及 MCP 访问权限后重新填写。",
+    "decision_error": "授权未完成，请重新验证 API Key；如果请求已过期，请返回 ChatGPT 重新连接。",
+    "client": "请求连接的客户端",
+    "instance": "MCP 实例",
+    "workspace": "授权工作区",
+    "permission_notice": "允许客户端通过此 MCP 实例，在 API Key 的当前权限范围内调用工具。",
+    "lifecycle_notice": "连接可自动刷新，每次授权最长持续 30 天。授权到期、API Key 到期或撤销后，需要重新授权。",
+    "approve": "同意授权并返回",
+    "change_key": "使用其他 API Key",
+    "deny": "拒绝授权",
+    "api_key": "API Key",
+    "key_help": "Key 仅提交给 1flowbase 进行验证，不会发送给 ChatGPT。",
+    "verify": "验证 API Key"
   }
 }

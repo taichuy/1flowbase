@@ -1,3 +1,4 @@
+import { ChatGptConfiguration } from './client-configuration/ChatGptConfiguration';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import KeyOutlined from '@ant-design/icons/es/icons/KeyOutlined';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
@@ -178,6 +179,7 @@ export function McpClientConfigurationModal({
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState('');
   const [saved, setSaved] = useState(false);
+  const [clientTab, setClientTab] = useState('common');
   const credentialQueryKey = [
     'settings',
     'mcp-management',
@@ -194,6 +196,7 @@ export function McpClientConfigurationModal({
     if (!instance) {
       setApiKey('');
       setSaved(false);
+      setClientTab('common');
       return;
     }
     if (credentialQuery.data?.saved && credentialQuery.data.api_key) {
@@ -352,6 +355,7 @@ export function McpClientConfigurationModal({
           danger
           icon={<DeleteOutlined />}
           disabled={!saved}
+          hidden={clientTab === 'chatgpt'}
           loading={deleteMutation.isPending}
           onClick={() => deleteMutation.mutate()}
         >
@@ -362,6 +366,7 @@ export function McpClientConfigurationModal({
           type="primary"
           icon={<SaveOutlined />}
           disabled={!apiKey.trim()}
+          hidden={clientTab === 'chatgpt'}
           loading={saveMutation.isPending}
           onClick={() => saveMutation.mutate()}
         >
@@ -374,42 +379,57 @@ export function McpClientConfigurationModal({
       destroyOnHidden
     >
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-        <Alert
-          type="info"
-          showIcon
-          title={i18nText(
-            'settingsMcpManagement',
-            'auto.api_key_encrypted_storage_notice'
-          )}
-          action={
-            <Button
-              href="/settings/api-key-authentication"
-              icon={<KeyOutlined />}
-            >
-              {i18nText('settingsMcpManagement', 'auto.generate_api_key')}
-            </Button>
-          }
-        />
-        <Form layout="vertical">
-          <Form.Item label={i18nText('settingsMcpManagement', 'auto.api_key')}>
-            <Input.Password
-              aria-label={i18nText('settingsMcpManagement', 'auto.api_key')}
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              autoComplete="off"
+        {clientTab !== 'chatgpt' ? (
+          <>
+            <Alert
+              type="info"
+              showIcon
+              title={i18nText(
+                'settingsMcpManagement',
+                'auto.api_key_encrypted_storage_notice'
+              )}
+              action={
+                <Button
+                  href="/settings/api-key-authentication"
+                  icon={<KeyOutlined />}
+                >
+                  {i18nText('settingsMcpManagement', 'auto.generate_api_key')}
+                </Button>
+              }
             />
-          </Form.Item>
-        </Form>
-        <Alert
-          type="warning"
-          showIcon
-          title={i18nText(
-            'settingsMcpManagement',
-            'auto.client_config_plaintext_notice'
-          )}
-        />
+            <Form layout="vertical">
+              <Form.Item
+                label={i18nText('settingsMcpManagement', 'auto.api_key')}
+              >
+                <Input.Password
+                  aria-label={i18nText('settingsMcpManagement', 'auto.api_key')}
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  autoComplete="off"
+                />
+              </Form.Item>
+            </Form>
+            <Alert
+              type="warning"
+              showIcon
+              title={i18nText(
+                'settingsMcpManagement',
+                'auto.client_config_plaintext_notice'
+              )}
+            />
+          </>
+        ) : null}
         <Tabs
+          activeKey={clientTab}
+          onChange={setClientTab}
           items={[
+            {
+              key: 'chatgpt',
+              label: 'ChatGPT',
+              children: instance ? (
+                <ChatGptConfiguration instanceId={instance.instance_id} />
+              ) : null
+            },
             {
               key: 'common',
               label: i18nText('settingsMcpManagement', 'auto.common'),

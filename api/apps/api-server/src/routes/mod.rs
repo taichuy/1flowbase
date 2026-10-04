@@ -45,3 +45,5 @@ pub const PUBLIC_API_PATH_PREFIX: &str = "/api/public/";
 
 #[cfg(test)]
 mod _tests;
+
+pub mod mcp_oauth;

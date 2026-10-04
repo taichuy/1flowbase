@@ -1,3 +1,4 @@
+import { McpAuthorizePage } from '../features/auth/pages/mcp-authorization/McpAuthorizePage';
 import {
   navigationQueryStaleTime,
   selectNavigationQueryScope
@@ -750,6 +751,19 @@ const signInRoute = createRoute({
   component: () => <Navigate to="/" replace />
 });
 
+const mcpAuthorizeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/mcp/authorize',
+  validateSearch: (search: Record<string, unknown>) => ({
+    request_id:
+      typeof search.request_id === 'string' ? search.request_id : undefined
+  }),
+  component: () => {
+    const { request_id } = mcpAuthorizeRoute.useSearch();
+    return <McpAuthorizePage requestId={request_id} />;
+  }
+});
+
 const routeTree = rootRoute.addChildren([
   shellRoute.addChildren([
     homeRoute,
@@ -802,7 +816,8 @@ const routeTree = rootRoute.addChildren([
       frontstageSlugPageTabRoute
     ])
   ]),
-  signInRoute
+  signInRoute,
+  mcpAuthorizeRoute
 ]);
 
 function createAppRouter() {

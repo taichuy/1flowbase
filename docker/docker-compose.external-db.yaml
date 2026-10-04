@@ -9,6 +9,7 @@ services:
       API_ENV: ${API_ENV:-production}
       API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL is required for external database compose}
       API_SERVER_ADDR: 0.0.0.0:7800
+      API_MCP_OAUTH_ISSUER: ${API_MCP_OAUTH_ISSUER:-}
       API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-http://localhost:3100,http://127.0.0.1:3100}
       API_COOKIE_NAME: ${API_COOKIE_NAME:-flowbase_console_session}
       API_COOKIE_SECURE: ${API_COOKIE_SECURE:-true}

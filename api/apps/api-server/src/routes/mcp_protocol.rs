@@ -113,12 +113,21 @@ async fn handle_mcp_request(
             &binding_id,
             InterfaceProtocol::Mcp,
             crate::extension_bus::McpUserApiKeyAuthenticationCredential {
+                instance_id: instance_id.clone(),
                 state: Arc::clone(&state),
                 headers: headers.clone(),
             },
         )
         .await
-        .map_err(|_| control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        .map_err(|_| {
+            if let Some(metadata_url) = state.mcp_oauth_issuer.as_deref().and_then(|issuer| {
+                control_plane::mcp_oauth::resource_metadata_url(issuer, &instance_id).ok()
+            }) {
+                ApiError::from(crate::routes::mcp_oauth::McpAuthenticationRequired { metadata_url })
+            } else {
+                ApiError::from(control_plane::errors::ControlPlaneError::NotAuthenticated)
+            }
+        })?;
     let actor = authenticated.principal().actor().clone();
     let user = state
         .store

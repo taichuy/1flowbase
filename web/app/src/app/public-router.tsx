@@ -1,3 +1,4 @@
+import { McpAuthorizePage } from '../features/auth/pages/mcp-authorization/McpAuthorizePage';
 import {
   Navigate,
   Outlet,
@@ -41,7 +42,24 @@ const signInRoute = createRoute({
   }
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, signInRoute]);
+const mcpAuthorizeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/mcp/authorize',
+  validateSearch: (search: Record<string, unknown>) => ({
+    request_id:
+      typeof search.request_id === 'string' ? search.request_id : undefined
+  }),
+  component: () => {
+    const { request_id } = mcpAuthorizeRoute.useSearch();
+    return <McpAuthorizePage requestId={request_id} />;
+  }
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  signInRoute,
+  mcpAuthorizeRoute
+]);
 
 function createPublicRouter() {
   return createRouter({ routeTree, notFoundMode: 'root' });

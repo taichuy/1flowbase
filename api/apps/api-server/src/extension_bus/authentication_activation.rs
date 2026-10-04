@@ -337,6 +337,7 @@ impl ConsoleAuthenticationCredential {
 }
 
 pub(crate) struct McpUserApiKeyAuthenticationCredential {
+    pub(crate) instance_id: String,
     pub(crate) state: Arc<ApiState>,
     pub(crate) headers: HeaderMap,
 }
@@ -488,6 +489,31 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                 PrincipalProfile::User,
             )?,
             |credential: McpUserApiKeyAuthenticationCredential| async move {
+                let token = credential
+                    .headers
+                    .get(axum::http::header::AUTHORIZATION)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.strip_prefix("Bearer "));
+                if let Some(token) = token.filter(|v| v.starts_with("mcp_at_")) {
+                    let issuer = credential
+                        .state
+                        .mcp_oauth_issuer
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("MCP OAuth unavailable"))?;
+                    let actor = control_plane::mcp_oauth::McpOAuthService::new(
+                        credential.state.store.clone(),
+                        issuer.clone(),
+                    )
+                    .authenticate(token, &credential.instance_id)
+                    .await?;
+                    return Ok(interface_runtime::UserPrincipal::new(
+                        actor.actor,
+                        interface_runtime::UserCredentialKind::UserApiKey {
+                            api_key_id: actor.api_key.id,
+                        },
+                    ));
+                }
+
                 let context = require_session(&credential.state, &credential.headers)
                     .await
                     .map_err(|error| error.0)?;

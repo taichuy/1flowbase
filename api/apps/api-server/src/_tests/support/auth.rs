@@ -287,6 +287,7 @@ async fn test_state_with_runtime_profile_state(
     ));
 
     let state = Arc::new(ApiState {
+        mcp_oauth_issuer: config.mcp_oauth_issuer.clone(),
         test_resources: Some(Arc::new(crate::app_state::TestResources::new(
             database,
             vec![

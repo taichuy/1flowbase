@@ -226,5 +226,21 @@
   },
   "mcp_mapping_default_value": "Default value",
   "mcp_mapping_hidden": "Hidden",
-  "mcp_mapping_default_invalid": "Enter a default matching the parameter type. Hidden required parameters need a default."
+  "mcp_mapping_default_invalid": "Enter a default matching the parameter type. Hidden required parameters need a default.",
+  "chatgpt": {
+    "load_error": "Unable to load the ChatGPT connection configuration.",
+    "retry": "Reload configuration",
+    "not_enabled": "ChatGPT authorization is not enabled on this deployment",
+    "not_enabled_help": "Ask your deployment administrator to configure the public MCP OAuth address and enable the service, then return here for the connection URL.",
+    "ready": "ChatGPT OAuth configuration is enabled",
+    "server_url": "Server URL",
+    "authentication": "Authentication method",
+    "registration": "Client registration method",
+    "dynamic_registration": "Dynamic client registration (DCR)",
+    "step_create": "Create a custom MCP in ChatGPT and paste the server URL above.",
+    "step_auth": "Choose OAuth. If a registration method is requested, choose dynamic client registration; no manual client ID or secret is needed.",
+    "step_key": "After creating and connecting, enter an API key on the 1flowbase authorization page. Console sign-in is not required.",
+    "step_consent": "Check the workspace and MCP instance, then authorize and return to ChatGPT.",
+    "lifecycle": "You do not need to save an API key in this dialog to connect ChatGPT. Access tokens refresh automatically for up to 30 days per authorization. When authorization or the key expires, or the key is revoked, reconnect using a valid key."
+  }
 }

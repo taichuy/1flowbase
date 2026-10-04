@@ -254,6 +254,10 @@ export default defineConfig(({ command, mode }) => {
         ]
       },
       proxy: {
+        '/.well-known/oauth-': {
+          target: apiProxyTarget,
+          changeOrigin: true
+        },
         '/external-npm': {
           target: externalNpmProxyTarget,
           changeOrigin: true

@@ -49,6 +49,12 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         if let Some(error) = self
             .0
+            .downcast_ref::<crate::routes::mcp_oauth::McpAuthenticationRequired>()
+        {
+            return crate::routes::mcp_oauth::authentication_challenge(error);
+        }
+        if let Some(error) = self
+            .0
             .downcast_ref::<control_plane::frontstage::FrontstageSourceEditError>()
         {
             return crate::routes::frontstage::block_tree::source_edit_error_response(error);
