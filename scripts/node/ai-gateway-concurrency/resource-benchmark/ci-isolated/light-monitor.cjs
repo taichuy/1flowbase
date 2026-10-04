@@ -1,0 +1,10 @@
+'use strict';
+const fs=require('node:fs');
+function startMonitor(out,pid,binary){
+ const stat=()=>{const raw=fs.readFileSync(`/proc/${pid}/stat`,'utf8');const f=raw.slice(raw.lastIndexOf(')')+2).trim().split(/\s+/);return {pid,start_ticks:Number(f[19]),user_ticks:Number(f[11]),system_ticks:Number(f[12]),minor_faults:Number(f[7]),major_faults:Number(f[9]),threads:Number(f[17]),processor:Number(f[36])};};
+ const first=stat();if(!Number.isSafeInteger(pid)||pid<=1||fs.realpathSync(`/proc/${pid}/exe`)!==fs.realpathSync(binary))throw Error('light monitor owned binary mismatch');
+ const rows=[];let lastPss=null,stopped=false,error=null;const cost={user_us:0,system_us:0,wall_ms:0,samples:0};
+ function capture(){if(stopped)return;const t=performance.now(),u=process.cpuUsage();try{const s=stat();if(s.start_ticks!==first.start_ticks)throw Error('owned API PID reused');const now=process.hrtime.bigint();s.timestamp_ns=String(now);s.pss_bytes=null;s.rss_bytes=null;const status=fs.readFileSync(`/proc/${pid}/status`,'utf8');const rss=/^VmRSS:\s+(\d+) kB/m.exec(status);if(rss)s.rss_bytes=Number(rss[1])*1024;if(lastPss===null||performance.now()-lastPss>=1000){const m=fs.readFileSync(`/proc/${pid}/smaps_rollup`,'utf8');const pss=/^Pss:\s+(\d+) kB/m.exec(m);if(pss)s.pss_bytes=Number(pss[1])*1024;lastPss=performance.now();}const host=fs.readFileSync('/proc/stat','utf8').split('\n')[0].trim().split(/\s+/).slice(1).map(Number);s.host_cpu_ticks=host;rows.push(s);}catch(e){if(e.code==='ENOENT'||e.code==='ESRCH')stopped=true;else{error=e.message;stopped=true;}}finally{const c=process.cpuUsage(u);cost.user_us+=c.user;cost.system_us+=c.system;cost.wall_ms+=performance.now()-t;cost.samples++;}}
+ capture();const timer=setInterval(capture,200);return ()=>{clearInterval(timer);capture();stopped=true;fs.writeFileSync(out+'/light-resources.json',JSON.stringify({schema:'gateway-light-resource-monitor/v1',pid,start_ticks:first.start_ticks,period_ms:200,pss_period_ms:1000,cost,error,samples:rows}));if(error)throw Error(error);};
+}
+module.exports={startMonitor};

@@ -1,0 +1,86 @@
+{
+  "schema": "gateway-independent-resource-fixture/v1",
+  "diagnostic_only": true,
+  "merge_to_dev": false,
+  "build": {
+    "rust": "1.98.1",
+    "profile": "release",
+    "features": "default",
+    "rustflags": "-C force-frame-pointers=yes -C debuginfo=1"
+  },
+  "binaries": {
+    "baseline": {
+      "run_id": 37128088392,
+      "artifact_id": 11276256758,
+      "artifact_name": "gateway-cpu-attribution-37128088392",
+      "source": "26d383825dd6240dbb6173ba290af932ff57e59e",
+      "api_tree": "522731b3bcb7fb6ad8b674f7e264448f16bfbe61",
+      "sha256": "d838568c8286e8bf3f2b4e74dde5efed2d7f6a3e5a91580fafc150ceaaf66fc2"
+    },
+    "candidate": {
+      "run_id": 37162484674,
+      "artifact_id": 11287859600,
+      "artifact_name": "gateway-cpu-attribution-37162484674",
+      "source": "c8b48b6789868c6fa115625f2d9b80894ce95d26",
+      "api_tree": "3a5a0239aaf0e8802bbdb7b4a20ff2bfe61c6f8a",
+      "sha256": "17ad8d4e153de454d05bad9650ef9b8854786948a72009207ffc2425df6697fd"
+    }
+  },
+  "plugins": {
+    "openai": {
+      "url": "https://github.com/taichuy/1flowbase-official-plugins/releases/download/openai-v0.2.71/1flowbase%40openai%400.2.71%40linux-amd64.1flowbasepkg",
+      "sha256": "e3c6f665ac1e5a6f2f7dfe4675bb855445a5222c6911179fe8cc0f9ba0f8f944"
+    },
+    "anthropic": {
+      "url": "https://github.com/taichuy/1flowbase-official-plugins/releases/download/anthropic-v0.1.43/1flowbase%40anthropic%400.1.43%40linux-amd64.1flowbasepkg",
+      "sha256": "6caca8b70834557987e34bf494163ff6a4f32fc053c80ecb07b5bfb089194f13"
+    },
+    "openai_compatible": {
+      "path": "packages/openai_compatible@0.3.47.1flowbasepkg",
+      "bytes": 18340709,
+      "sha256": "92387c381920b994931bc42c6a5170412bd798e33e500be73e1cc92fa09e9012"
+    }
+  },
+  "dimensions": [
+    {
+      "concurrency": 1,
+      "history_bytes": 8192
+    },
+    {
+      "concurrency": 1,
+      "history_bytes": 524288
+    },
+    {
+      "concurrency": 8,
+      "history_bytes": 524288
+    }
+  ],
+  "order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "workload": {
+    "warmups": 1,
+    "rounds": 6,
+    "idle_ms": 10000,
+    "drain_ms": 5000,
+    "history_items": 128,
+    "deltas": 256,
+    "output_bytes": 6400,
+    "endpoint_sample_ms": 60000
+  },
+  "postgres": {
+    "image": "postgres:18.4",
+    "fresh_container_per_cell": true,
+    "track": "all",
+    "track_planning": true
+  },
+  "limitations": [
+    "Planning telemetry enabled equally on both binaries; differs from prior local SQL telemetry.",
+    "CPU includes background work; C8 normalized by requests per batch, not serial latency.",
+    "API CPU resolution is CLK_TCK (normally 10ms); PG boundaries aligned to 200ms samples.",
+    "PSS sampled initially and every 1s; short-lived plugin processes are not resolved by the light API sampler."
+  ]
+}
