@@ -25,10 +25,33 @@
   <a href="../assets/community/taichuy_doc_wechat_office.png" target="_blank">微信公众号（文档）</a> |
   <a href="https://x.com/Tacihu2021" target="_blank">Twitter</a>
 </p>
+> ## 从 AI Gateway 到完整应用系统。
 
-# 1flowbase
+1flowbase是在AI gateway的低代码原生后端基座，除了AI网关基础功能之外，我们还支持你利用网关中存储AI聊天记录搭建你们独属于你们应用系统。
 
-> ## 为 Agent 构建——从 AI Gateway 到完整应用系统。
+<p align="center">
+  <img src="../../docs/assets/why-1flowbase_cn.png" alt="1flowbase Logo">
+</p>
+
+
+
+## 为agent而设计应用底座
+
+1flowbase设计之初就以API 接口为第一优先级看，我们认为传统GUI可以通过操作接口接管系统一切，那么将接口转化为MCP也可以交给agent接管一切
+
+<p align="center">
+  <img src="../../docs/assets/architecture_yewu_cn.png" alt="1flowbase Logo">
+</p>
+
+## 技术架构：
+
+<p align="center">
+  <img src="../../docs/assets/architecture_jishu_cn.png" alt="1flowbase Logo">
+</p>
+
+
+
+
 
 **1flowbase 是一个可自托管的 AI Gateway 与 AI 应用运行时。**
 
@@ -757,7 +780,7 @@ Gateway → Data → API → Workflow → UI
 -  更多开箱即用的业务应用模板
 
 
---- 
+---
 
 # Star 1flowbase
 
