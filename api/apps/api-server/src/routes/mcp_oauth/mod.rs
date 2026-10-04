@@ -58,12 +58,13 @@ fn no_store(mut r: Response) -> Response {
     r
 }
 fn issuer(state: &ApiState) -> Result<&str, ProtocolError> {
-    state.mcp_oauth_issuer.as_deref().ok_or_else(|| {
-        ProtocolError(OAuthError {
+    state
+        .mcp_oauth_issuer
+        .as_deref()
+        .ok_or(ProtocolError(OAuthError {
             error: "temporarily_unavailable",
             description: "MCP OAuth is not configured.",
-        })
-    })
+        }))
 }
 fn service(state: &ApiState) -> Result<Service, ProtocolError> {
     Ok(Service::new(state.store.clone(), issuer(state)?.into()))
