@@ -3,9 +3,14 @@ import { createRequire } from 'node:module';
 import { updateCSS as updateIconCSS } from '@ant-design/icons/es/cssUtils';
 
 const require = createRequire(import.meta.url);
-const { clearContainerCache, removeCSS, updateCSS } = createRequire(
-  require.resolve('antd/package.json')
-)('@rc-component/util/lib/Dom/dynamicCSS') as {
+// Resolve through antd so this exercises its installed transitive icon cache.
+const requireFromAntd = createRequire(require.resolve('antd/package.json'));
+const { updateCSS: updateTransitiveIconCSS } = requireFromAntd(
+  '@ant-design/icons/lib/cssUtils'
+) as { updateCSS: typeof updateIconCSS };
+const { clearContainerCache, removeCSS, updateCSS } = requireFromAntd(
+  '@rc-component/util/lib/Dom/dynamicCSS'
+) as {
   clearContainerCache(): void;
   removeCSS(key: string, option: { attachTo: ShadowRoot }): void;
   updateCSS: typeof updateIconCSS;
@@ -17,8 +22,15 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+test('covers both the direct and actual antd transitive icon versions', () => {
+  expect(require('@ant-design/icons/package.json').version).toBe('6.3.4');
+  expect(requireFromAntd('@ant-design/icons/package.json').version).toBe('6.3.2');
+  expect(updateTransitiveIconCSS).not.toBe(updateIconCSS);
+});
+
 describe.each([
-  ['icons', updateIconCSS],
+  ['direct icons 6.3.4', updateIconCSS],
+  ['antd transitive icons 6.3.2', updateTransitiveIconCSS],
   ['rc-util', updateCSS]
 ] as const)('%s ShadowRoot style ownership', (_name, update) => {
   test('reuses connected containers without placeholder churn and keeps scopes isolated', () => {

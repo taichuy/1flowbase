@@ -21,6 +21,7 @@ overrides:
 
 patchedDependencies:
   '@ant-design/happy-work-theme@2.0.0': 210d977ffda320201f47ac9afe05d9237aef90c9427eeaf0a0e5ea389ee1497f
+  '@ant-design/icons@6.3.2': b0d7fa8c3c1874fba63f80efea40ce54ad68065b1e386e39be634d0cb0925331
   '@ant-design/icons@6.3.4': b0d7fa8c3c1874fba63f80efea40ce54ad68065b1e386e39be634d0cb0925331
   '@rc-component/dialog@1.10.0': 346b5cce07cbab3a61b0a8732599e927a98330eb6d914be25fa1c29898115933
   '@rc-component/drawer@1.4.2': 9b511c2be2aba74bf206d1b1da275bda10e5fa921f91601f8a282f2d1370483f
@@ -4223,7 +4224,7 @@ snapshots:
 
   '@ant-design/icons-svg@4.6.0': {}
 
-  '@ant-design/icons@6.3.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@ant-design/icons@6.3.2(patch_hash=b0d7fa8c3c1874fba63f80efea40ce54ad68065b1e386e39be634d0cb0925331)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@ant-design/colors': 8.0.1
       '@ant-design/icons-svg': 4.5.0
@@ -4268,7 +4269,7 @@ snapshots:
       '@ant-design/cssinjs': 2.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@ant-design/cssinjs-utils': 2.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@ant-design/fast-color': 3.0.1
-      '@ant-design/icons': 6.3.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@ant-design/icons': 6.3.2(patch_hash=b0d7fa8c3c1874fba63f80efea40ce54ad68065b1e386e39be634d0cb0925331)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@babel/runtime': 7.29.7
       '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/resize-observer': 1.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -6425,7 +6426,7 @@ snapshots:
       '@ant-design/cssinjs': 2.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@ant-design/cssinjs-utils': 2.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@ant-design/fast-color': 3.0.1
-      '@ant-design/icons': 6.3.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@ant-design/icons': 6.3.2(patch_hash=b0d7fa8c3c1874fba63f80efea40ce54ad68065b1e386e39be634d0cb0925331)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@ant-design/react-slick': 2.0.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@babel/runtime': 7.29.7
       '@rc-component/cascader': 1.22.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)

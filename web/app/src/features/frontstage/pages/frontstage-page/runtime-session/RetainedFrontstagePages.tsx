@@ -1,6 +1,7 @@
 import {
   cloneElement,
   useLayoutEffect,
+  useEffect,
   useReducer,
   useRef,
   type ReactElement
@@ -9,8 +10,18 @@ import type { FrontStagePageProps } from '../page-props';
 import type { FrontStageTreeNode } from '../../../lib/page-tree';
 import { FrontstageRuntimeActivityContext } from '../../../lib/page-canvas/runtime-activity';
 
-// Retain native DOM/state for a bounded idle interval, without a page-count limit.
-export const FRONTSTAGE_SESSION_IDLE_MS = 30 * 60 * 1000;
+import { RetentionPolicy } from './retention-policy';
+import { RetentionStats } from './retention-stats';
+import {
+  browserRetentionStorage,
+  readHeapSample,
+  readRetentionBudget,
+  retainedMarkupCost,
+  serializedCost,
+  RetentionPressure,
+  RETENTION_SAMPLE_MS
+} from './retention-memory';
+import { FrontstageRetentionProtectionContext } from './retention-protection';
 
 type NavigationProps = Pick<
   FrontStagePageProps,
@@ -18,7 +29,11 @@ type NavigationProps = Pick<
 >;
 type Entry = {
   element: ReactElement<FrontStagePageProps>;
-  inactiveSince: number | null;
+  wrapper: HTMLDivElement | null;
+  cost: number | null;
+  protectedFromEviction: boolean;
+  setProtection: (value: boolean) => void;
+  setWrapper: (node: HTMLDivElement | null) => void;
   runtimeActive: boolean;
   navigationAllowed: boolean;
   guards: NavigationProps;
@@ -30,10 +45,22 @@ function createEntry(
 ): Entry {
   const entry: Entry = {
     element,
-    inactiveSince: null,
+    wrapper: null,
+    cost: null,
+    protectedFromEviction: false,
+    setProtection: () => {},
+    setWrapper: () => {},
     runtimeActive: false,
     navigationAllowed: false,
     guards: {}
+  };
+  entry.setProtection = (value) => {
+    entry.protectedFromEviction = value;
+    entry.cost = null;
+  };
+  entry.setWrapper = (node) => {
+    entry.wrapper = node;
+    entry.cost = null;
   };
   // Read the latest callback through the entry, keeping native effect props stable.
   entry.guards = {
@@ -63,20 +90,22 @@ function collectPageIds(nodes: FrontStageTreeNode[], ids = new Set<string>()) {
 
 function renderEntry(entry: Entry) {
   return (
-    <FrontstageRuntimeActivityContext.Provider value={entry.runtimeActive}>
-      {cloneElement(entry.element, {
-        runtimeActive: entry.runtimeActive,
-        onNavigatePage: entry.element.props.onNavigatePage
-          ? entry.guards.onNavigatePage
-          : undefined,
-        onNavigateTab: entry.element.props.onNavigateTab
-          ? entry.guards.onNavigateTab
-          : undefined,
-        onNavigateBlock: entry.element.props.onNavigateBlock
-          ? entry.guards.onNavigateBlock
-          : undefined
-      })}
-    </FrontstageRuntimeActivityContext.Provider>
+    <FrontstageRetentionProtectionContext.Provider value={entry.setProtection}>
+      <FrontstageRuntimeActivityContext.Provider value={entry.runtimeActive}>
+        {cloneElement(entry.element, {
+          runtimeActive: entry.runtimeActive,
+          onNavigatePage: entry.element.props.onNavigatePage
+            ? entry.guards.onNavigatePage
+            : undefined,
+          onNavigateTab: entry.element.props.onNavigateTab
+            ? entry.guards.onNavigateTab
+            : undefined,
+          onNavigateBlock: entry.element.props.onNavigateBlock
+            ? entry.guards.onNavigateBlock
+            : undefined
+        })}
+      </FrontstageRuntimeActivityContext.Provider>
+    </FrontstageRetentionProtectionContext.Provider>
   );
 }
 
@@ -84,10 +113,16 @@ function renderEntry(entry: Entry) {
 export function RetainedFrontstagePages({
   activeKey,
   pageTree,
+  statisticsScope,
+  retentionBudgetBytes,
   children
 }: {
   activeKey: string;
   pageTree?: FrontStageTreeNode[];
+  /** Actor/workspace identity only. Never include CSRF/session tokens or inputs. */
+  statisticsScope?: string;
+  /** Optional explicit accounting budget; omitted uses this browser's settings. */
+  retentionBudgetBytes?: number;
   children: ReactElement<FrontStagePageProps>;
 }) {
   const entries = useRef(new Map<string, Entry>());
@@ -95,8 +130,24 @@ export function RetainedFrontstagePages({
   const activeKeyRef = useRef(activeKey);
   activeKeyRef.current = activeKey;
   const mounted = useRef(true);
-  const [, wakeForExpiry] = useReducer((value: number) => value + 1, 0);
-  const now = Date.now();
+  const [, renderAfterEviction] = useReducer((value: number) => value + 1, 0);
+  const cache = useRef<{
+    stats: RetentionStats;
+    policy: RetentionPolicy;
+    pressure: RetentionPressure;
+  } | null>(null);
+  if (!cache.current) {
+    const stats = new RetentionStats({
+      scope: statisticsScope ?? '',
+      storage: statisticsScope ? browserRetentionStorage() : null
+    });
+    cache.current = {
+      stats,
+      policy: new RetentionPolicy(stats),
+      pressure: new RetentionPressure()
+    };
+  }
+  const activation = useRef({ key: activeKey, counted: false });
   const props = children.props;
   // A failed tree query is not evidence that a page was deleted.
   const allowedPages =
@@ -123,17 +174,16 @@ export function RetainedFrontstagePages({
     const entryPageId = entry.element.props.pageId;
     if (
       (allowedPages && entryPageId && !allowedPages.has(entryPageId)) ||
-      (denied && entryPageId === props.pageId) ||
-      (entry.inactiveSince !== null &&
-        now - entry.inactiveSince >= FRONTSTAGE_SESSION_IDLE_MS)
+      (denied && entryPageId === props.pageId)
     ) {
       entries.current.delete(key);
+      cache.current.policy.remove(key);
       continue;
     }
-    entry.runtimeActive = key === activeKey && ready;
+    const nextActive = key === activeKey && ready;
+    if (entry.runtimeActive !== nextActive) entry.cost = null;
+    entry.runtimeActive = nextActive;
     entry.navigationAllowed = entry.runtimeActive;
-    if (!entry.runtimeActive && entry.inactiveSince === null)
-      entry.inactiveSince = now;
   }
   // Never replace a hot snapshot with a failure or content from another route.
   if (ready) {
@@ -148,8 +198,8 @@ export function RetainedFrontstagePages({
       );
       entries.current.set(activeKey, entry);
     }
+    if (entry.element !== children) entry.cost = null;
     entry.element = children;
-    entry.inactiveSince = null;
     entry.runtimeActive = true;
     entry.navigationAllowed = true;
   }
@@ -181,18 +231,74 @@ export function RetainedFrontstagePages({
     };
   }, []);
   useLayoutEffect(() => {
-    const deadlines = [...entries.current.values()].flatMap((entry) =>
-      entry.inactiveSince === null
-        ? []
-        : [entry.inactiveSince + FRONTSTAGE_SESSION_IDLE_MS]
-    );
-    if (!deadlines.length) return;
-    const timer = setTimeout(
-      wakeForExpiry,
-      Math.max(1, Math.min(...deadlines) - Date.now())
-    );
-    return () => clearTimeout(timer);
-  });
+    if (activation.current.key !== activeKey)
+      activation.current = { key: activeKey, counted: false };
+    if (ready && !activation.current.counted) {
+      activation.current.counted = true;
+      cache.current!.policy.activate(activeKey);
+    }
+  }, [activeKey, ready]);
+
+  useEffect(() => {
+    const owner = cache.current!;
+    let idle: number | undefined;
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    const sweep = () => {
+      if (cancelled) return;
+      const candidates = [...entries.current].flatMap(([key, entry]) => {
+        // The current route is protected even during transient revalidation errors.
+        if (key === activeKeyRef.current) return [];
+        // Native effects are suspended while hidden. Account once after each
+        // activation/content/write transition, not by serializing every hidden
+        // DOM tree on every heap-pressure sample.
+        if (entry.cost === null) {
+          const { pageContent, blockRoots, blockRuntimeAssembly } =
+            entry.element.props;
+          entry.cost = Math.max(
+            1,
+            serializedCost({ pageContent, blockRoots, blockRuntimeAssembly }) +
+              retainedMarkupCost(entry.wrapper)
+          );
+        }
+        return [
+          { key, protected: entry.protectedFromEviction, cost: entry.cost }
+        ];
+      });
+      const heap = readHeapSample();
+      const configured =
+        typeof retentionBudgetBytes === 'number' &&
+        Number.isFinite(retentionBudgetBytes) &&
+        retentionBudgetBytes >= 0
+          ? retentionBudgetBytes
+          : readRetentionBudget(undefined, heap);
+      const budget = owner.pressure.budget(
+        heap,
+        configured,
+        candidates.reduce((sum, item) => sum + item.cost, 0)
+      );
+      const victims = owner.policy.reconcile(candidates, budget);
+      for (const key of victims) entries.current.delete(key);
+      owner.stats.flush();
+      if (victims.length) renderAfterEviction();
+      timer = setTimeout(schedule, RETENTION_SAMPLE_MS);
+    };
+    const schedule = () => {
+      if (typeof window.requestIdleCallback === 'function') {
+        idle = window.requestIdleCallback(sweep, { timeout: 1000 });
+      } else timer = setTimeout(sweep, 0);
+    };
+    const flush = () => owner.stats.flush();
+    schedule();
+    window.addEventListener('pagehide', flush);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (idle !== undefined) window.cancelIdleCallback(idle);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [activeKey, ready, retentionBudgetBytes]);
 
   return (
     <>
@@ -201,6 +307,8 @@ export function RetainedFrontstagePages({
         return (
           <div
             key={key}
+            ref={entry.setWrapper}
+            data-frontstage-retained-page={key}
             hidden={!visible}
             style={{ display: visible ? 'block' : 'none' }}
           >

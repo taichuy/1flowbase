@@ -1,0 +1,80 @@
+diff --git a/es/cssUtils.js b/es/cssUtils.js
+--- a/es/cssUtils.js
++++ b/es/cssUtils.js
+@@ -1,25 +1,10 @@
+ const APPEND_ORDER = 'data-rc-order';
+ const APPEND_PRIORITY = 'data-rc-priority';
+ const MARK_KEY = 'rc-util-key';
+-const containerCache = new Map();
++// Containers belong to their mounted surfaces; this cache must not retain them.
++const containerCache = new WeakMap();
+ function canUseDom() {
+   return !!(typeof window !== 'undefined' && window.document && window.document.createElement);
+-}
+-function contains(root, node) {
+-  if (!root || !node) {
+-    return false;
+-  }
+-  if (root.contains) {
+-    return root.contains(node);
+-  }
+-  let current = node;
+-  while (current) {
+-    if (current === root) {
+-      return true;
+-    }
+-    current = current.parentNode;
+-  }
+-  return false;
+ }
+ function getMark({
+   mark
+@@ -98,7 +83,7 @@
+ }
+ function syncRealContainer(container, option) {
+   const cachedRealContainer = containerCache.get(container);
+-  if (!cachedRealContainer || !contains(document, cachedRealContainer)) {
++  if (!cachedRealContainer || !cachedRealContainer.isConnected) {
+     const placeholderStyle = injectCSS('', option);
+     if (!placeholderStyle) {
+       return;
+diff --git a/lib/cssUtils.js b/lib/cssUtils.js
+--- a/lib/cssUtils.js
++++ b/lib/cssUtils.js
+@@ -9,25 +9,10 @@
+ const APPEND_ORDER = 'data-rc-order';
+ const APPEND_PRIORITY = 'data-rc-priority';
+ const MARK_KEY = 'rc-util-key';
+-const containerCache = new Map();
++// Containers belong to their mounted surfaces; this cache must not retain them.
++const containerCache = new WeakMap();
+ function canUseDom() {
+   return !!(typeof window !== 'undefined' && window.document && window.document.createElement);
+-}
+-function contains(root, node) {
+-  if (!root || !node) {
+-    return false;
+-  }
+-  if (root.contains) {
+-    return root.contains(node);
+-  }
+-  let current = node;
+-  while (current) {
+-    if (current === root) {
+-      return true;
+-    }
+-    current = current.parentNode;
+-  }
+-  return false;
+ }
+ function getMark({
+   mark
+@@ -106,7 +91,7 @@
+ }
+ function syncRealContainer(container, option) {
+   const cachedRealContainer = containerCache.get(container);
+-  if (!cachedRealContainer || !contains(document, cachedRealContainer)) {
++  if (!cachedRealContainer || !cachedRealContainer.isConnected) {
+     const placeholderStyle = injectCSS('', option);
+     if (!placeholderStyle) {
+       return;

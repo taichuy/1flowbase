@@ -68,6 +68,7 @@ export function FrontstageWorkspacePage({
   rootNode
 }: FrontstageWorkspacePageProps) {
   const navigationScope = useAuthStore(selectNavigationQueryScope);
+  const actorId = useAuthStore((state) => state.actor?.id);
   const sessionIdentity = useAuthStore((state) => state.csrfToken);
   const navigate = useNavigate();
   const pageTreeQuery = useQuery({
@@ -455,6 +456,9 @@ export function FrontstageWorkspacePage({
         {...page.props}
       >
         <RetainedFrontstagePages
+          statisticsScope={
+            actorId ? JSON.stringify([actorId, workspaceId]) : undefined
+          }
           activeKey={JSON.stringify([
             selectedPageId,
             resolvedTabId ?? runtimeTarget?.tab_id ?? tabReference

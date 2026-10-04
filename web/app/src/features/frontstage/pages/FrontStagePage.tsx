@@ -80,6 +80,7 @@ import {
   useFrontstageWorkspace,
   useOptionalFrontstageWorkspace
 } from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
+import { useFrontstageRetentionProtection } from './frontstage-page/runtime-session/retention-protection';
 import './frontstage-page.css';
 
 const EMPTY_RUNTIME_DEMANDS: FrontstageRuntimeDemandByBlockId = Object.freeze(
@@ -481,6 +482,12 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     (pageContentSave.error
       ? toDisplayErrorMessage(pageContentSave.error)
       : null);
+  useFrontstageRetentionProtection(
+    isJsxStudioOpen ||
+      isPageContentSavePending ||
+      isOperationPending ||
+      Boolean(pageContentSaveError)
+  );
   const handlePageRefresh = useCallback(async () => {
     if (
       !onRefreshPage ||
