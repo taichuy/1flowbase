@@ -1,11 +1,40 @@
 ---
 memory_type: project
 topic: 网关 section 存储隔离研究
-summary: 用户授权在研究worktree验证高水位引发无变化投影重建。真实PG触发器和匹配CI二进制已复现；三种真实投影的120次序号更新各产生6–7次重复重建，隔离过滤原型为0。仅因果实验，未证明全链路等价或原7600峰值归因，不合入原型。研究worktree保留。
+summary: 当前资源波动候选5d9e8935通过75项行为测试及本轮36.72分钟真实长测，已合并并push dev，未部署/重启7600或7800。同task历史正文窄读+dev SHA2编译优化降低累计放大；独立并发PSS约+3%和真实CPU峰208%保留限制。19份DB备份核验、owned资源清理完成。
 created_at: 2026-10-04 16
-updated_at: 2026-10-04 17
+updated_at: 2026-10-05 01
 decision_policy: verify_before_decision
 ---
+
+## 当前阶段：2026-10-05 01
+
+用户放弃前一轮semantic-trigger方案，要求查清dev/gateway少量会话CPU/RSS剧烈波动，并以新的≥30分钟真实任务回归。Root在taichuy-dev复用研究worktree、切到codex/gateway-resource-spikes；7600保护PID2919451/start81548916全程不请求、不发信号、不重启、不profiler，仅被动核验身份。没有固定截止日期；此状态至代码或用户目标变化时复核。
+
+零推理冻结12-member task实验与源码stack确认：后台轨迹重建为约125KB投影反复展开约101.6MB历史flow/node正文；release也复现，不能只归咎debug。候选改为projection-only窄类型和物理section按需SQL，完整detail/原文/工具/locator/水位语义保留；另对已有sha2依赖dev opt-level3，不改摘要算法、不新增包、不缓存大历史、不改插件或migration。ABBA同2MiB负载：API CPU均值-10.67%，API+PG-7.31%，PSS峰均值-22.41%；12轮首末RSS峰均值469→670MiB变为478→508MiB，CPU变异系数0.110→0.055。纯worker3次API1.29→0.40s、PG0.944→0.383s、PSS约-44.69%；完整源/投影hash相等。独立与两真实会话PSS峰分别+3.33%/+2.81%，不能声称全场景内存下降；两会话API+PG CPU-12.86%。
+
+精确source/API tree构建与73行为测试CI37209725168成功，补充2项既有rebase契约测试CI37217245768成功，总75 passed。唯一集中QA2的新长测gpt-6-luna/max+子agent6.1-sol/medium：有效36.72min、160tools、17usefulTurns；子代理、compact后连续性、ordered steering有原始证据，原oracle PASS。API首末5min CPU28.67/30.42s，但工具22/28、完成flow2/0并非同负载；全程RSS峰285.51MiB，单秒CPU峰208.26%仍存在，不能说所有峰值已消失。DB含drain物理+30.05MiB、object0、WAL生成219.46MiB；完整每表净行/heap/index/TOAST在报告，不与旧40.80MiB做未配对收益比较。
+
+QA曾因21 succeeded+1waiting_callback、101/102capture complete+1incomplete/drop2/persist0判失败，后经独立原始归档复核更正，失败版本SHA留档。实际是旧连接mailbox重排时中断，新请求使用已完成上一轮回执+新context，19项history前缀摘要/原值输出/冻结模型一致，不能取消另一轮未提交输出的pending callback；既有standard_generate_does_not_supersede测试明确要求保留。旧4帧/新277帧连续且各层SHA完整，5份Native trajectory complete/drop0。incomplete/drop2原样保留，不声称102/102完整或断连后未观察帧已交付。可选contextProbe未请求，不冒称通过；必需compact→scenario continuity另有证据。最终QA verdict passed_with_protocol_interruption_limits，AC1–AC6 passed，无blocker。
+
+主树始终dev，已fast-forward并push至5d9e8935dbd224f7ffcee9f2e1d1856294b08c77（90f91df63+5d9e8935两笔任务提交），API tree984d21afa274a45b3551cf0747f49ccbf3db5104与已验候选相同；未部署、未重启7800/7600、未合gateway。已有tar及其他私有memory保留不提交。临时CI ref codex/gateway-resource-ci-20261004保留证据，worktree保留供复用。
+
+证据根：worktree/tmp/test-governance/gateway-resource-spikes-20261004/evidence/，入口analysis.md、QA.md、qa-report.json、long-candidate-debug/summary.json。19个DB dumps合计3,368,478,363bytes由Root与QA逐份重hash；owned API/plugin/CLI/PG容器卷均清理，17套重复plugins副本已删，基础runtime、原始正文、日志、DB备份保留。目录既有24文件新增至25的维护warning和GUI未自动化验收仍如实记录。后续若要消除单秒CPU峰，须新鲜负载/stack证据，不把本次窄读收益泛化为所有成本，也不通过任意限流或取消可恢复分支换取数据好看。
+
+
+## 上一阶段（已放弃）：2026-10-04 20
+
+用户授权 worktree 验证并要求至少30分钟长任务。Root在 taichuy-dev 复用研究树 `/home/taichuy/git/git_worktree/gateway-section-storage-research`（分支 `codex/gateway-section-storage-research`），冻结候选535dde76b82de9d22ed8b513a7f57925f961dbd4；其父为当时dev的4e1e740558。候选仅新增语义刷新触发器migration、真实PG仓储测试及测试注册。三层协议、插件、事实事务和worker未改。没有固定截止日期；本状态有效至下一轮范围/源码变化。
+
+真实同负载原版A→候选B→原版C，API+plugin+独占PG cgroup含drain CPU秒/请求：并发1为1.024371/1.063241/1.132869，并发8为0.748049/0.777108/0.797113。候选处于前后原版之间，未证明稳定总CPU收益。入队INSERT少95.89%，但worker已合并通知，实际投影写入下降很小；不把SQL计数下降当性能目标通过，也没有归因7600全部峰值。因此本候选不合入dev、不部署；源码只留研究分支。仅临时CI ref推送，dev未push。CI绑定候选并成功87次执行/80独立测试，无需重跑。
+
+唯一集中QA2完成真实gpt-6-luna/max＋gpt-6.1-sol/medium子agent长测，有效工具跨度40.29min、161tools、15useful turns；subagent、compact续接、ordered steering有证据。正式oracle仍QA_FAIL：mailbox主动抢占采样并重连恢复未实际覆盖，不能改oracle算通过。23flows=19success+4provider_transport_unavailable，4个受影响turn均有后继success；110/110captures完整，drop/persist_failed0。独立强制重建23flows后259nodes/210contents业务值与raw payload一致、queue0；3条source_watermark仅native-message SHA256后缀漂移，timestamp/count前缀不变。before native-message数组没留存，具体digest来源/更新时点未隔离，严格metadata等价未证明；源稳定结论只覆盖捕获的7张表。GUI未验收。
+
+有效窗口CPU API44.96s/plugin4.60s/PG70.747711s，API RSS峰250.97MiB（不能除请求数冒充分配量）。含初始化/取证/drain DB物理+37.09MiB、object+0；WAL249.51MiB是生成量不是保留空间。五表净增：runtime_events2313、sections2591、canonical_contents1268、steps903、ownership1181。长测无同负载真实基线，不可对旧40.80MiB计算优化百分比。真实负载仍有511次投影状态写入、5406node/4409content INSERT，净留存259/210，值得后续隔离整份投影重写成本，但尚未证明其支配CPU。
+
+证据根：研究树 `tmp/test-governance/trace-refresh-regression-20261004/evidence/`；入口root-result.md、qa-cycle2-report.md、pair-qa-report.md、long-candidate/summary.json、parity-cohort/report.md。16个ownedAPI/plugin进程退出，9份DB dump（1,318,853,108bytes）SHA256/大小已独立核验；PG容器/卷不存在。Root仅清理6份重复plugins目录（原合计约12.47GiB），保留基础runtime、各case正文对象、日志和DB dumps。7600/7800未操作。研究树保留不新增worktree槽；主dev产品未改，本地更新本阶段记忆，既有未跟踪tar不动。
+
+## 先前研究阶段：2026-10-04 16–17
 
 用户要求在功能完整性优先、CPU > 内存 > 存储的约束下，研究五张网关事实/目录表的优化。Root 在 taichuy-dev 创建 `/home/taichuy/git/git_worktree/gateway-section-storage-research`，分支 `codex/gateway-section-storage-research`，基线 `762b1fe4c0da8373d1d7f7f0fe7624d6f92ebf4e`。本阶段是隔离研究，不是新的产品交付；没有截止日期，状态有效至下次代码/环境变化或用户确定实施范围。
 
