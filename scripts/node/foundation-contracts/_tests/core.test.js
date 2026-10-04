@@ -93,7 +93,7 @@ test('AC-002 keeps mcp_result outside the core operations and only adds continua
   );
 });
 
-test('mcp gateway fast pack bounds database-backed test concurrency', () => {
+test('mcp gateway fast pack uses Cargo default test parallelism', () => {
   const plan = buildFoundationPlan({
     changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'],
   });
@@ -129,7 +129,7 @@ test('AC-007/009 receipt requires candidate identity and warnings stay advisory'
       exitCode: 0,
       executedPack: plan.packs['native-react'].fast.map((item) => item.id),
       commands: plan.packs['native-react'].fast.map((item) => ({
-        id: item.id, exitCode: 0, error: '',
+        id: item.id, exitCode: 0, error: '', passedCount: 1, failedCount: 0,
         logPath: `tmp/test-governance/foundation-contracts/components/native-react/${item.id}.log`,
       })),
       warnings: ['nightly browser matrix deferred'],

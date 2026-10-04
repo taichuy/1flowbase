@@ -732,7 +732,7 @@ describe('FrontStagePage - runtime canvas state', () => {
         />
       </AppProviders>
     );
-    const ui = render(view(true));
+    const utils = render(view(true));
     const host = await screen.findByTestId(
       'frontstage-native-block-root-nested'
     );
@@ -740,19 +740,19 @@ describe('FrontStagePage - runtime canvas state', () => {
       expect(host.shadowRoot?.textContent).toContain('source:nested')
     );
     const node = host.shadowRoot?.querySelector('h1');
-    ui.rerender(view(false));
+    utils.rerender(view(false));
     expect(
       runtimeAssemblyHook.useFrontstageRuntimeAssembly
     ).toHaveBeenLastCalledWith(expect.objectContaining({ active: false }));
     runtime.isValidating = true;
-    ui.rerender(view(true));
+    utils.rerender(view(true));
     expect(host).not.toBeVisible();
     expect(
       runtimeAssemblyHook.useFrontstageRuntimeAssembly
     ).toHaveBeenLastCalledWith(expect.objectContaining({ active: true }));
     runtime.isValidating = false;
     runtime.validationError = new Error('offline');
-    ui.rerender(view(true));
+    utils.rerender(view(true));
     expect(host).not.toBeVisible();
     fireEvent.click(
       screen.getByRole('button', {
@@ -761,7 +761,7 @@ describe('FrontStagePage - runtime canvas state', () => {
     );
     expect(runtime.retryValidation).toHaveBeenCalledOnce();
     runtime.validationError = null;
-    ui.rerender(view(true));
+    utils.rerender(view(true));
     expect(host).toBeVisible();
     expect(host.shadowRoot?.querySelector('h1')).toBe(node);
   });
@@ -902,7 +902,7 @@ describe('FrontStagePage - runtime canvas state', () => {
       }
     ]);
 
-    expect(screen.getByRole('list')).toHaveTextContent('我的自定义主页');
+    expect(screen.getByRole('list')).toHaveTextContent(/^我的自定义主页$/, { normalizeWhitespace: false });
     expect(
       screen.getByRole('heading', { name: '我的自定义主页' })
     ).toBeInTheDocument();

@@ -50,30 +50,30 @@ function view(pageId: string, showSidebar = true) {
 }
 
 test('shares one shell/form while retained bodies keep their own node and state', async () => {
-  const ui = render(view('a'));
+  const utils = render(view('a'));
   const original = screen.getByTestId('a');
   fireEvent.click(original);
-  ui.rerender(view('b'));
+  utils.rerender(view('b'));
   await waitFor(() =>
-    expect(screen.getByTestId('sidebar')).toHaveTextContent('b')
+    expect(screen.getByTestId('sidebar')).toHaveTextContent(/^b$/, { normalizeWhitespace: false })
   );
   expect(screen.getAllByTestId('section-page-layout')).toHaveLength(1);
   expect(screen.getAllByTestId('sidebar')).toHaveLength(1);
   expect(screen.getAllByTestId('tree-form')).toHaveLength(1);
-  expect(original).toHaveTextContent('A:1');
-  expect(screen.getByTestId('b')).toHaveTextContent('B:0');
-  ui.rerender(view('a'));
+  expect(original).toHaveTextContent(/^A:1$/, { normalizeWhitespace: false });
+  expect(screen.getByTestId('b')).toHaveTextContent(/^B:0$/, { normalizeWhitespace: false });
+  utils.rerender(view('a'));
   expect(screen.getByTestId('a')).toBe(original);
-  expect(original).toHaveTextContent('A:1');
+  expect(original).toHaveTextContent(/^A:1$/, { normalizeWhitespace: false });
 });
 
 test('sidebar availability never replaces the content branch or its state', () => {
-  const ui = render(view('a'));
+  const utils = render(view('a'));
   const original = screen.getByTestId('a');
   fireEvent.click(original);
-  ui.rerender(view('a', false));
+  utils.rerender(view('a', false));
   expect(screen.getByTestId('a')).toBe(original);
-  expect(original).toHaveTextContent('A:1');
-  ui.rerender(view('a', true));
+  expect(original).toHaveTextContent(/^A:1$/, { normalizeWhitespace: false });
+  utils.rerender(view('a', true));
   expect(screen.getByTestId('a')).toBe(original);
 });

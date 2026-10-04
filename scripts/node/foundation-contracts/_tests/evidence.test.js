@@ -8,7 +8,7 @@ const { buildFoundationPlan, buildContractReceipt, runFastPack } = require('../c
 const candidateSha = 'abcdef1234567890';
 const passedOutput = 'running 2 tests\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;\n';
 
-function withRun(t, foundation, output = passedOutput) {
+function withRun(t, foundation, output = foundation === 'native-react' ? 'Tests 2 passed (2)\n' : passedOutput) {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'foundation-execution-evidence-'));
   t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
   const plan = buildFoundationPlan({ foundation });
@@ -43,14 +43,14 @@ test('zero-test, missing-summary and failed-test Cargo output cannot produce gre
   ]) {
     const { repoRoot, plan, receipt } = withRun(t, 'mcp-gateway', output);
     assert.equal(receipt.status, 'failed');
-    assert.match(receipt.errors[0], /no executed passing Cargo tests/u);
+    assert.match(receipt.errors[0], /no executed passing tests/u);
     assert.equal(fs.readFileSync(path.join(repoRoot, receipt.commands[0].logPath), 'utf8'), output);
     assert.equal(buildContractReceipt({ candidateSha, plan, componentResults: [receipt] }).status, 'failed');
   }
 });
 
 test('aggregation refuses omitted, incomplete, duplicate and unsuccessful required command evidence', (t) => {
-  const { plan, receipt } = withRun(t, 'native-react', 'frontend tests passed\n');
+  const { plan, receipt } = withRun(t, 'native-react', 'Tests 2 passed (2)\n');
   assert.equal(receipt.status, 'passed');
   const mutations = [
     (value) => { delete value.executedPack; delete value.commands; },

@@ -166,8 +166,7 @@ impl Fixture {
             .service
             .authenticate(token, INSTANCE)
             .await
-            .err()
-            .expect("grant must be rejected");
+            .expect_err("grant must be rejected");
         assert_eq!(error.error, "invalid_grant");
     }
 }

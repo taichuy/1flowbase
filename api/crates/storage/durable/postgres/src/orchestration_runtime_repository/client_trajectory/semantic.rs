@@ -669,14 +669,7 @@ impl PgControlPlaneStore {
                     && row.get::<i64, _>("event_sequence") == row.get::<i64, _>("anchor_sequence"),
                 "client historical section anchor mismatch"
             );
-            write_section(
-                &mut tx,
-                &input,
-                row.get("event_sequence"),
-                Some(id),
-                None,
-            )
-            .await?;
+            write_section(&mut tx, &input, row.get("event_sequence"), Some(id), None).await?;
             let restored = sqlx::query(SECTION_ROWS)
                 .bind(input.flow_run_id)
                 .bind(input.request_id)

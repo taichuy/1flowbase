@@ -3,7 +3,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
-const { parseCargoTestCounts } = require('../verify/cargo-test-results.js');
+const { parseExecutedTestCounts } = require('./test-results.js');
 
 const OUTPUT_ROOT = path.join('tmp', 'test-governance', 'foundation-contracts');
 const FOUNDATION_IDS = [
@@ -28,6 +28,7 @@ const FOUNDATION_DEFINITIONS = {
     fast: [
       {
         id: 'ai-gateway-fast-protocol',
+        testRunner: 'node',
         command: 'node',
         args: ['scripts/node/test-scripts.js', 'ai-gateway-concurrency', 'verify-state-protocols'],
         cwd: '.',
@@ -46,6 +47,7 @@ const FOUNDATION_DEFINITIONS = {
     fast: [
       {
         id: 'mcp-core-list-get-call',
+        testRunner: 'cargo',
         command: 'cargo',
         args: [
           'test',
@@ -71,6 +73,7 @@ const FOUNDATION_DEFINITIONS = {
     fast: [
       {
         id: 'application-backend-model-definition-api',
+        testRunner: 'cargo',
         command: 'cargo',
         args: ['test', '-p', 'api-server', 'model_definition_routes_'],
         cwd: 'api',
@@ -94,18 +97,21 @@ const FOUNDATION_DEFINITIONS = {
     fast: [
       {
         id: 'native-react-page-runtime',
+        testRunner: 'vitest',
         command: 'pnpm',
-        args: ['--dir', 'web/packages/page-runtime', 'test', '--', 'src/_tests/native-react-compiler', 'src/_tests/native-trusted-block'],
+        args: ['--dir', 'web/packages/page-runtime', 'exec', 'vitest', 'run', 'src/_tests/native-react-compiler', 'src/_tests/native-trusted-block'],
         cwd: '.',
       },
       {
         id: 'native-react-block-sdk',
+        testRunner: 'vitest',
         command: 'pnpm',
-        args: ['--dir', 'web/packages/block-sdk', 'test', '--', 'src/_tests/native-react-contract.test.ts'],
+        args: ['--dir', 'web/packages/block-sdk', 'exec', 'vitest', 'run', 'src/_tests/native-react-contract.test.ts'],
         cwd: '.',
       },
       {
         id: 'native-react-host-composition-and-stale-artifact',
+        testRunner: 'vitest',
         command: 'pnpm',
         args: [
           '--dir',
@@ -239,10 +245,6 @@ function buildFoundationPlan({ changedFiles = [], foundation = 'auto', lane = 'p
   };
 }
 
-function isCargoTestCommand(command) {
-  return command.command === 'cargo' && command.args?.[0] === 'test';
-}
-
 function validateComponentEvidence(requiredPack, result) {
   const errors = [];
   const requiredIds = requiredPack.map((item) => item.id);
@@ -263,9 +265,9 @@ function validateComponentEvidence(requiredPack, result) {
     if (typeof evidence.logPath !== 'string' || !evidence.logPath.trim()) {
       errors.push(`${required.id} has no command log path`);
     }
-    if (isCargoTestCommand(required) && !(Number.isInteger(evidence.passedCount)
+    if (required.testRunner && !(Number.isInteger(evidence.passedCount)
       && evidence.passedCount > 0 && evidence.failedCount === 0)) {
-      errors.push(`${required.id} has no executed passing Cargo tests`);
+      errors.push(`${required.id} has no executed passing tests`);
     }
   }
   return errors;
@@ -440,11 +442,11 @@ function runFastPack({ repoRoot, candidateSha, plan, foundation, spawnSyncImpl =
     } finally {
       fs.closeSync(logFd);
     }
-    const counts = isCargoTestCommand(item)
-      ? parseCargoTestCounts(fs.readFileSync(absoluteLogPath, 'utf8'))
+    const counts = item.testRunner
+      ? parseExecutedTestCounts(item.testRunner, fs.readFileSync(absoluteLogPath, 'utf8'))
       : { passedCount: null, failedCount: null };
-    const missingTests = isCargoTestCommand(item) && !(counts.passedCount > 0 && counts.failedCount === 0);
-    const error = result.error?.message || (missingTests ? 'no executed passing Cargo tests' : '');
+    const missingTests = item.testRunner && !(counts.passedCount > 0 && counts.failedCount === 0);
+    const error = result.error?.message || (missingTests ? 'no executed passing tests' : '');
     const exitCode = result.error || missingTests ? 1 : (result.status ?? 1);
     commandResults.push({
       id: item.id,

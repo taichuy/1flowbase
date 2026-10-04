@@ -172,14 +172,7 @@ impl PgControlPlaneStore {
                 semantic::write_step(&mut tx, input, step, sequence).await?;
             }
             ClientTrajectoryFact::Section { .. } => {
-                semantic::write_section(
-                    &mut tx,
-                    input,
-                    sequence,
-                    None,
-                    Some(&flow_scope),
-                )
-                .await?;
+                semantic::write_section(&mut tx, input, sequence, None, Some(&flow_scope)).await?;
             }
             // Integrity, node correlation and response identity are real events.
             _ => {

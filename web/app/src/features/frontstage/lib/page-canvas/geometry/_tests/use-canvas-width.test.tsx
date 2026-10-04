@@ -28,7 +28,7 @@ it('measures before paint, retains hidden geometry, then follows real resizing',
   globalThis.ResizeObserver = Observer as unknown as typeof ResizeObserver;
   vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1735);
   render(<Host />);
-  expect(screen.getByTestId('width').textContent).toBe('1735');
+  expect(screen.getByTestId('width')).toHaveTextContent(/^1735$/, { normalizeWhitespace: false });
   const resize = (width: number) =>
     act(() => {
       report?.(
@@ -37,12 +37,12 @@ it('measures before paint, retains hidden geometry, then follows real resizing',
       );
     });
   resize(0);
-  expect(screen.getByTestId('width').textContent).toBe('1735');
+  expect(screen.getByTestId('width')).toHaveTextContent(/^1735$/, { normalizeWhitespace: false });
   resize(640);
-  expect(screen.getByTestId('width').textContent).toBe('640');
+  expect(screen.getByTestId('width')).toHaveTextContent(/^640$/, { normalizeWhitespace: false });
   resize(0);
   resize(1834);
-  expect(screen.getByTestId('width').textContent).toBe('1834');
+  expect(screen.getByTestId('width')).toHaveTextContent(/^1834$/, { normalizeWhitespace: false });
 });
 it('does not fabricate a desktop allocation before first measurement', () => {
   globalThis.ResizeObserver = class {
@@ -51,5 +51,5 @@ it('does not fabricate a desktop allocation before first measurement', () => {
   } as unknown as typeof ResizeObserver;
   vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(0);
   render(<Host />);
-  expect(screen.getByTestId('width').textContent).toBe('0');
+  expect(screen.getByTestId('width')).toHaveTextContent(/^0$/, { normalizeWhitespace: false });
 });
