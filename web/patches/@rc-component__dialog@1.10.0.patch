@@ -122,3 +122,45 @@ index e75771dba200925db532354f0bcf842995337952..c1c538fb7784231d0ded9b673350ab59
    // ========================= Effect =========================
    (0, _react.useEffect)(() => {
      if (visible) {
+diff --git a/es/Dialog/Content/index.js b/es/Dialog/Content/index.js
+--- a/es/Dialog/Content/index.js
++++ b/es/Dialog/Content/index.js
+@@ -23,11 +23,13 @@
+   const panelRef = useRef(null);
+ 
+   // ============================== Refs ==============================
++  // Activity can reconnect this handle before child refs. Always forward to
++  // the current children instead of capturing missing or detached delegates.
+   React.useImperativeHandle(ref, () => ({
+-    ...panelRef.current,
+-    inMotion: dialogRef.current.inMotion,
+-    enableMotion: dialogRef.current.enableMotion
+-  }));
++    focus: () => panelRef.current?.focus(),
++    inMotion: () => dialogRef.current?.inMotion() ?? false,
++    enableMotion: () => dialogRef.current?.enableMotion() ?? false
++  }), []);
+ 
+   // ============================= Style ==============================
+   const [transformOrigin, setTransformOrigin] = React.useState();
+diff --git a/lib/Dialog/Content/index.js b/lib/Dialog/Content/index.js
+--- a/lib/Dialog/Content/index.js
++++ b/lib/Dialog/Content/index.js
+@@ -32,11 +32,13 @@
+   const panelRef = (0, _react.useRef)(null);
+ 
+   // ============================== Refs ==============================
++  // Activity can reconnect this handle before child refs. Always forward to
++  // the current children instead of capturing missing or detached delegates.
+   React.useImperativeHandle(ref, () => ({
+-    ...panelRef.current,
+-    inMotion: dialogRef.current.inMotion,
+-    enableMotion: dialogRef.current.enableMotion
+-  }));
++    focus: () => panelRef.current?.focus(),
++    inMotion: () => dialogRef.current?.inMotion() ?? false,
++    enableMotion: () => dialogRef.current?.enableMotion() ?? false
++  }), []);
+ 
+   // ============================= Style ==============================
+   const [transformOrigin, setTransformOrigin] = React.useState();
