@@ -26,15 +26,15 @@
 
 ## Receipt Contract
 
-统一 receipt 位于 `tmp/test-governance/foundation-contracts/`，至少包含：candidate SHA、lane、event、changed-file trigger、被选择的基座、组合缝隙、执行 pack、status、exit code、warning、error、未覆盖项和延后证据。
+统一 receipt 位于 `tmp/test-governance/foundation-contracts/`，至少包含：candidate SHA、lane、event、changed-file trigger、被选择的基座、组合缝隙、required / executed pack、各命令的日志路径与退出码、Cargo / Vitest / Node 已执行 passing / failed 用例数、status、exit code、warning、error、未覆盖项和延后证据。
 
-`warning` 和非空 `warningFiles` 保持可见但不改变 passed；只有显式 failed component、非零 exit code、error/blocker 或缺失的已选择 component receipt 才失败。
+`warning` 和非空 `warningFiles` 保持可见但不改变 passed；只有显式 failed component、非零 exit code、error/blocker 或缺失 / 重复的已选择 component receipt、未执行完整 required pack、重复命令 ID 或 测试零用例才失败；不得用计划回填缺失的执行证据。
 
 ## Resource Boundary
 
 - 本地默认只运行受影响 fast pack；完整 provider/browser/migration/coverage 留 CI/nightly。
 - PR / `beta` 的统一 `verify` 质量门禁调用 fast component；nightly/manual 的统一 `quality gate` 调用四基座并纳入 aggregate。可复用 workflow 不建立独立 PR/push 门禁，最长执行路径必须低于 60 分钟。
-- 少于 3 个基座反复失败时：本地单基座 → GitHub Actions 单基座 → `auto/all` 全量；不得用重复全量运行代替根因定位。
+- 完整体检先在线运行全部门禁；剩余持续线上失败的门禁不超过 3 项时，才转本地定向定位，再用 GitHub Actions 验证修复。其他 gate 不随局部修复无条件重跑；最终 aggregate 使用同一冻结 candidate 的完整证据。
 - 管理员保留手动合并判断；不得把本规则扩张为 required check、branch protection 或 ruleset 变更。
 
 ## Deterministic Evidence And Legal Negatives
@@ -43,7 +43,7 @@
 
 - 把 `mcp_result` 放进核心三入口会失败；
 - warning-only receipt 仍 passed，error/blocker 才 failed；
-- receipt 缺 candidate SHA 或 selected component 会失败；
+- receipt 缺 candidate SHA 或 selected component、required command 缺项 / 重复、测试零用例会失败；合法未选基座无需 receipt；
 - AI full workflow 不恢复成 every-PR 90-minute gate。
 
 ## Stop Conditions

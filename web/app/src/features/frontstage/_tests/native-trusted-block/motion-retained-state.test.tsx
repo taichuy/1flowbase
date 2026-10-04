@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { runInThisContext } from 'node:vm';
 import * as React from 'react';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 type CSSMotionRef = { inMotion(): boolean; enableMotion(): boolean };
 type CSSMotionProps = {
@@ -75,8 +75,9 @@ const { genCSSMotion } = loadMotion() as {
 const Motion = genCSSMotion(true);
 
 beforeEach(() => vi.useFakeTimers());
+const unmounts: Array<() => void> = [];
 afterEach(() => {
-  cleanup();
+  unmounts.splice(0).forEach((unmount) => unmount());
   vi.useRealTimers();
 });
 
@@ -120,6 +121,7 @@ function fixture(removeOnLeave = false) {
     </React.Activity>
   );
   const view = render(tree('visible', true));
+  unmounts.push(view.unmount);
   return {
     ref,
     changed,
@@ -191,7 +193,7 @@ describe('installed CSSMotion retains committed children across Activity effects
     f.show('hidden', false);
     f.show('visible', false);
     expect(f.panel()).toBe(panel);
-    expect(panel.style.display).toBe('none');
+    expect(panel).toHaveStyle({ display: 'none' });
     expect(f.ref.current!.inMotion()).toBe(false);
     expect(f.changed.mock.calls).toEqual([[true], [false]]);
     f.show('hidden', true);
@@ -199,7 +201,7 @@ describe('installed CSSMotion retains committed children across Activity effects
     expect(f.panel()).toBe(panel);
     expect(f.input()).toBe(input);
     expect(input.value).toBe('hidden change value');
-    expect(panel.style.display).not.toBe('none');
+    expect(panel).not.toHaveStyle({ display: 'none' });
     expect(f.changed.mock.calls).toEqual([[true], [false], [true]]);
   });
 

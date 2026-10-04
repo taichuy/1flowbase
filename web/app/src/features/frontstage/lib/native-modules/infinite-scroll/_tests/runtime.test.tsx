@@ -1,4 +1,4 @@
-import { act, cleanup, render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { Props } from 'react-infinite-scroll-component';
 
@@ -39,8 +39,9 @@ beforeEach(() => {
     }
   );
 });
+const unmounts: Array<() => void> = [];
 afterEach(() => {
-  cleanup();
+  unmounts.splice(0).forEach((unmount) => unmount());
   hosts.splice(0).forEach((host) => host.remove());
   vi.unstubAllGlobals();
 });
@@ -74,13 +75,14 @@ function mount(props: Partial<Props> = {}) {
       </div>
     </NativeBlockSurfaceProvider>
   );
-  const result = render(view(), { container });
+  const utils = render(view(), { container });
+  unmounts.push(utils.unmount);
   return {
-    ...result,
+    ...utils,
     root,
     container,
     next,
-    update: (props: Partial<Props>) => result.rerender(view(props))
+    update: (props: Partial<Props>) => utils.rerender(view(props))
   };
 }
 
@@ -114,7 +116,7 @@ describe('Block infinite scroll', () => {
     expect(view.next).toHaveBeenCalledTimes(2);
     view.update({ dataLength: 30, hasMore: false, endMessage: 'finished' });
     expect(observer.disconnect).toHaveBeenCalled();
-    expect(view.container.textContent).toContain('finished');
+    expect(view.container).toHaveTextContent(/finished/, { normalizeWhitespace: false });
     view.unmount();
     expect(remove.mock.calls.map(([event]) => event)).toEqual(
       expect.arrayContaining(['scroll', 'touchstart', 'touchmove', 'touchend'])

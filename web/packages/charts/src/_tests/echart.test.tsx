@@ -1,6 +1,7 @@
+import '@testing-library/jest-dom/vitest';
 import { Activity, StrictMode } from 'react';
-import { act, cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const chart = {
   on: vi.fn(),
@@ -34,9 +35,7 @@ import { EChart } from '../index';
 import { EChartResourceBoundary } from '../lifecycle';
 
 describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
-  afterEach(async () => {
-    cleanup();
-    await Promise.resolve();
+  beforeEach(() => {
     vi.clearAllMocks();
   });
 
@@ -115,7 +114,7 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
     const canvas = view.container.querySelector('canvas');
     expect(canvas).not.toBeNull();
     view.rerender(tree(false));
-    await act(async () => {});
+    await Promise.resolve();
     expect(chart.dispose).not.toHaveBeenCalled();
     expect(animation.stop).toHaveBeenCalled();
     view.rerender(tree(true));
@@ -124,9 +123,10 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
     expect(animation.start).toHaveBeenCalledTimes(2);
     expect(chart.resize).not.toHaveBeenCalled();
     view.unmount();
-    await act(async () => {});
-    expect(canvas!.isConnected).toBe(false);
-    expect(chart.dispose).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(canvas!.isConnected).toBe(false);
+      expect(chart.dispose).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('can replay effects under StrictMode and subsequently hide and reveal', async () => {
@@ -144,7 +144,7 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
     expect(canvas).not.toBeNull();
     const disposed = chart.dispose.mock.calls.length;
     view.rerender(tree(false));
-    await act(async () => {});
+    await Promise.resolve();
     view.rerender(tree(true));
     expect(view.container.querySelector('canvas')).toBe(canvas);
     expect(chart.dispose).toHaveBeenCalledTimes(disposed);
@@ -163,8 +163,7 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
         <span>empty</span>
       </EChartResourceBoundary>
     );
-    await act(async () => {});
-    expect(chart.dispose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(chart.dispose).toHaveBeenCalledTimes(1));
     view.unmount();
     expect(chart.dispose).toHaveBeenCalledTimes(1);
   });
@@ -196,6 +195,3 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
     expect(() => render(<EChart option={option} />)).toThrow(TypeError);
   });
 });
-// @vitest-environment jsdom
-
-import '@testing-library/jest-dom/vitest';

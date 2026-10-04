@@ -1,10 +1,9 @@
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, expect, test } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { expect, test } from 'vitest';
 import VirtualList from '@rc-component/virtual-list';
 import { compileNativeReactComponent } from '@1flowbase/page-runtime';
 import { createFrontstageNativeReactModuleRegistry } from '../registry';
 
-afterEach(cleanup);
 
 test('virtual list compiles and loads the real virtualized component', async () => {
   const registry = createFrontstageNativeReactModuleRegistry();
@@ -27,8 +26,8 @@ export default function Block() { return <VirtualList data={[]} height={400} ite
       )}
     </VirtualList>
   );
-  expect(view.getAllByTestId('row').length).toBeGreaterThan(0);
-  expect(view.getAllByTestId('row').length).toBeLessThan(30);
+  expect(screen.getAllByTestId('row').length).toBeGreaterThan(0);
+  expect(screen.getAllByTestId('row').length).toBeLessThan(30);
   view.unmount();
   expect(view.container.childElementCount).toBe(0);
 });

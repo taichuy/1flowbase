@@ -690,6 +690,38 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "mcp_oauth_state": {
+      "kind": "oauth_protocol_state",
+      "reason": "Host-owned OAuth client registration and browser-bound one-time state use (kind, token_hash) identity and explicit expires_at; not workspace CRUD resources. Client registrations are durable, transient states expire and are atomically consumed.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "mcp_oauth_grants": {
+      "kind": "oauth_authorization_grant",
+      "reason": "Host-owned OAuth grant is scoped through user_id and api_key_id; payload carries workspace-bound authorization. Its lifecycle is expiry/revocation, not user-editable workspace CRUD; no generic scope or timestamp columns are consumed by the repository.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "mcp_oauth_refresh_tokens": {
+      "kind": "oauth_refresh_rotation",
+      "reason": "One-way token_hash identifies a refresh token; grant_id foreign key cascades revocation retention cleanup. expires_at and consumed govern atomic rotation and replay rejection, rather than generic workspace CRUD timestamps.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "client_trajectory_archive_blocks": {
       "kind": "request_archive_child",
       "reason": "immutable archive blocks use request and block identity and inherit scope through their capture owner",

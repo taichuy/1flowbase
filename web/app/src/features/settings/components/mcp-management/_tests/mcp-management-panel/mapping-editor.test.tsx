@@ -246,6 +246,10 @@ vi.mock('@1flowbase/rich-text', async () => {
     }
   };
 });
+vi.mock('../../../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
 vi.mock('@monaco-editor/react', () => ({
   __esModule: true,
   default: ({
@@ -1030,9 +1034,6 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
     fireEvent.click(await within(dialog).findByText('JSON 解析'));
-    await act(async () => {
-      await vi.dynamicImportSettled();
-    });
     const editor = await within(dialog).findByRole(
       'textbox',
       {
@@ -1043,10 +1044,14 @@ describe('McpManagementPanel', () => {
     fireEvent.change(editor, {
       target: { value: '{"interface_parameters":' }
     });
+    expect(await within(dialog).findByText('请输入合法 JSON')).toBeInTheDocument();
 
     clickSegmentedOption(dialog, 'debug');
     fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
 
+    expect(
+      await screen.findByText('请填写符合参数类型的默认值；隐藏的必填参数必须配置默认值。')
+    ).toBeInTheDocument();
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
   }, 30_000);
 

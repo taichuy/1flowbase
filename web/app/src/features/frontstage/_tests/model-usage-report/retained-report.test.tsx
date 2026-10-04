@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Activity, useState } from 'react';
 import source from '../../../../../../../scripts/node/model-usage-report/block-common.jsx?raw';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 // Execute the hook shipped in the authored blocks, rather than a test copy.
@@ -70,7 +70,17 @@ function Fixture({
     </>
   );
 }
-function View({ ctx, owner, index }: any) {
+function View({ ctx, owner, index }: {
+  ctx: {
+    inputs: Record<string, unknown>;
+    api: { get: (...args: unknown[]) => Promise<unknown> };
+    outputs: {
+      publish: (values: Record<string, unknown>) => Promise<{ ok: boolean }>;
+    };
+  };
+  owner: boolean;
+  index: number;
+}) {
   const state = useReport(ctx, owner);
   return (
     <section data-testid={`view-${index}`} aria-busy={state.busy}>
@@ -108,7 +118,9 @@ describe('authored report single producer', () => {
       expect(screen.getByTestId(`report-${i}`)).toBe(node)
     );
     await complete(second, 'second result');
-    nodes.forEach((node) => expect(node.textContent).toBe('second result'));
+    nodes.forEach((node) =>
+      expect(node).toHaveTextContent(/^second result$/, { normalizeWhitespace: false })
+    );
   });
   it('retains completion while hidden and publishes it on reveal without a second request', async () => {
     const first = deferred();
@@ -117,9 +129,10 @@ describe('authored report single producer', () => {
     view.rerender(<Fixture get={get} visible={false} />);
     await complete(first, 'hidden completion');
     view.rerender(<Fixture get={get} />);
-    await act(async () => {});
+    await waitFor(() =>
+      expect(screen.getAllByText('hidden completion')).toHaveLength(3)
+    );
     expect(get).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByText('hidden completion')).toHaveLength(3);
   });
   it('rejects superseded results and preserves the last success on failure', async () => {
     const first = deferred(),
@@ -138,7 +151,7 @@ describe('authored report single producer', () => {
       third.reject(new Error('offline'));
     });
     await complete(second, 'obsolete result');
-    expect(screen.queryByText('obsolete result')).toBeNull();
+    expect(screen.queryByText('obsolete result')).not.toBeInTheDocument();
     expect(screen.getAllByText('first result')).toHaveLength(3);
     expect(screen.getAllByText('failed')).toHaveLength(3);
     const retry = deferred();
@@ -146,6 +159,6 @@ describe('authored report single producer', () => {
     fireEvent.click(screen.getByText('retry'));
     await complete(retry, 'recovered result');
     expect(screen.getAllByText('recovered result')).toHaveLength(3);
-    expect(screen.queryByText('failed')).toBeNull();
+    expect(screen.queryByText('failed')).not.toBeInTheDocument();
   });
 });

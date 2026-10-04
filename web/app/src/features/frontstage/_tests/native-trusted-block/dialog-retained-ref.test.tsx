@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import * as React from 'react';
-import { cleanup, render } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import ts from 'typescript';
 import { afterEach, describe, expect, test } from 'vitest';
 
@@ -18,9 +18,11 @@ const dialogRoot = dirname(
 );
 const requireFromDialog = createRequire(join(dialogRoot, 'package.json'));
 const hosts: HTMLElement[] = [];
+const unmounts: Array<() => void> = [];
 
 afterEach(() => {
-  cleanup();
+  // Unmount owned fixtures before restoring timers or removing their external hosts.
+  unmounts.splice(0).forEach((unmount) => unmount());
   for (const host of hosts.splice(0)) host.remove();
 });
 
@@ -121,6 +123,7 @@ describe.each(['es', 'lib'] as const)(
       const { Content, reconnect } = fixture(format, null, null);
       const ref = React.createRef<ContentHandle>();
       const view = render(<Content ref={ref} visible />);
+      unmounts.push(view.unmount);
       const handle = ref.current!;
       expect(typeof handle.focus).toBe('function');
       expect(() => handle.focus()).not.toThrow();
@@ -135,7 +138,7 @@ describe.each(['es', 'lib'] as const)(
         }
       );
       handle.focus();
-      expect(document.activeElement).toBe(input);
+      expect(input).toHaveFocus();
       expect(handle.inMotion()).toBe(true);
       expect(handle.enableMotion()).toBe(true);
       view.rerender(<Content ref={ref} visible={false} />);
@@ -153,10 +156,11 @@ describe.each(['es', 'lib'] as const)(
         oldMotion
       );
       const ref = React.createRef<ContentHandle>();
-      render(<Content ref={ref} visible />);
+      const view = render(<Content ref={ref} visible />);
+      unmounts.push(view.unmount);
       const handle = ref.current!;
       handle.focus();
-      expect(document.activeElement).toBe(oldPanel);
+      expect(oldPanel).toHaveFocus();
       expect(handle.inMotion()).toBe(true);
       expect(handle.enableMotion()).toBe(false);
 
@@ -179,7 +183,7 @@ describe.each(['es', 'lib'] as const)(
       };
       reconnect({ focus: () => currentPanel.focus() }, currentMotion);
       handle.focus();
-      expect(document.activeElement).toBe(currentPanel);
+      expect(currentPanel).toHaveFocus();
       expect(handle.inMotion()).toBe(false);
       expect(handle.enableMotion()).toBe(true);
       currentMotion.moving = true;

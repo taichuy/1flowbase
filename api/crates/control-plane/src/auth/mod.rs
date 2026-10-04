@@ -587,7 +587,7 @@ where
     ) -> Result<UserApiKeyActor> {
         let api_key = self
             .repository
-            .find_api_key_by_token_hash(&token_hash)
+            .find_api_key_by_token_hash(token_hash)
             .await?
             .ok_or(ControlPlaneError::NotAuthenticated)?;
         if api_key.key_kind != domain::ApiKeyKind::UserApiKey

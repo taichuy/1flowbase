@@ -26,695 +26,117 @@
   <a href="https://x.com/Tacihu2021" target="_blank">Twitter</a>
 </p>
 
-# 1flowbase
+> ## 从 AI Gateway 到完整应用系统。
 
-> ## 为 Agent 构建——从 AI Gateway 到完整应用系统。
+1flowbase是在AI gateway的低代码原生后端基座，除了AI网关基础功能之外，我们还支持你利用网关中存储AI聊天记录搭建你们独属于你们应用系统。
+
+<p align="center">
+  <img src="../../docs/assets/why-1flowbase_cn.png" alt="1flowbase Logo">
+</p>
+
+
+
+## 为agent而设计应用底座
+
+1flowbase设计之初就以API 接口为第一优先级看，我们认为传统GUI可以通过操作接口接管系统一切，那么将接口转化为MCP也可以交给agent接管一切
+
+<p align="center">
+  <img src="../../docs/assets/architecture_yewu_cn.png" alt="1flowbase Logo">
+</p>
+
+## 技术架构：
+
+<p align="center">
+  <img src="../../docs/assets/architecture_jishu_cn.png" alt="1flowbase Logo">
+</p>
+
+
+
+
 
 **1flowbase 是一个可自托管的 AI Gateway 与 AI 应用运行时。**
 
-从统一接入模型开始，你可以组合和分发 AI 能力、完整沉淀会话数据，并继续在这些能力和数据之上构建 **Workflow、API、业务数据与 React 应用**。
-
-更重要的是，1flowbase 的运行时能力以 API 为基础，并可通过 MCP 暴露给 Agent。
-
-**不只是给 Agent 提供几个工具。**
-
-**而是让整个应用系统都能够被 Agent 理解、构建和管理。**
-
-```text
-                    Agent
-                      │
-                     MCP
-                      │
-        ┌─────────────▼─────────────┐
-        │         1flowbase         │
-        │                           │
-        │  AI Gateway   Workflow    │
-        │  Models       API         │
-        │  Chat Data    Data Source │
-        │  MCP Gateway  React UI    │
-        │                           │
-        └─────────────┬─────────────┘
-                      │
-               AI Application
-```
+从统一接入模型开始，在同一个运行时里沉淀会话数据，并继续构建 **Workflow、API、业务数据与 React 应用**。所有能力以 API 为基础，并可通过 MCP 交给 Agent 理解、构建和管理。
 
 **分发智能，沉淀数据，构建应用。**
 
-------
+---
 
-## 为什么是 1flowbase？
+## 项目理念
 
-大多数 AI Gateway 解决的是：
-
-```text
-Application
-    │
-    ▼
-AI Gateway
-    │
-    ├── OpenAI
-    ├── Anthropic
-    └── Other Providers
-```
-
-统一协议、模型路由和请求分发非常重要。
-
-但对于真正运行 AI 业务的团队来说，**Gateway 不应该是终点。**
-
-每一次 AI 请求都会产生新的业务数据：
-
-- 用户提出了什么问题
-- AI 给出了什么答案
-- Agent 如何完成任务
-- 哪个模型执行了哪部分工作
-- 哪些任务失败了
-- 哪些任务成本过高
-- 用户真正需要什么能力
-
-这些不应该只是转瞬即逝的请求日志。
-
-**它们可以成为企业自己的 AI 数据资产。**
-
-1flowbase 从 AI Gateway 开始，把模型分发、会话数据、工作流、API、业务数据和前端应用放进同一个运行时中。
+- **Gateway 不是终点**：经过网关的完整 AI 会话保存到 PostgreSQL，成为可分析、可复用的数据资产，用于成本分析、模型质量评估、Prompt / 路由优化和业务系统建设。
+- **一个“模型”可以是一条 Workflow**：高能力模型负责规划、判断与审计，低成本模型负责执行，组合后作为虚拟模型统一发布；模型本身也可以作为另一个模型的 Tool。
+- **三种协议，一个入口**：支持 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 之间的转换，应用层不随供应商变化而改动。
+- **为 Agent 而设计**：GUI 能做的运行时操作都建立在 API 之上，API 再通过 MCP 暴露给 Agent。MCP Gateway 采用 `list / get / call` 渐进式工具发现，避免把大量 Tool 一次性塞进上下文。
+- **低代码效率 + 原生 React 自由度**：业务数据表可动态创建；UI 使用 React 代码区块编写，可直接使用整个 React 生态，而不是封闭的拖拽编辑器。
 
 ```text
-AI Gateway
-    ↓
-Conversation Data
-    ↓
-Workflow / API / Data
-    ↓
-Business Application
+Human → GUI ─┐
+             ├→ API → AI Gateway / Workflow / Data / React UI → AI Application
+Agent → MCP ─┘
 ```
 
-因此，你可以从一次模型调用开始，逐渐构建出一个完整的 AI 应用系统。
+---
 
-------
+## 快速开始
 
-# 一个 Gateway，不一定只是一个模型
+### Docker 部署
 
-在传统 AI Gateway 中，一个模型名称通常只是某个模型供应商的映射。
+基于 Docker 部署，无需手动搭建运行环境。
 
-例如：
-
-```text
-my-model
-    ↓
-Provider
-    ↓
-Model
-```
-
-在 1flowbase 中，一个对外发布的“模型”也可以是一条 **Workflow**。
-
-这意味着你可以把多个模型和工具组合成新的 AI 能力，再通过统一 Gateway 对外发布。
-
-例如：
-
-```text
-用户请求
-   │
-   ▼
-高能力模型
-规划 / 判断
-   │
-   ▼
-低成本工作模型
-执行任务
-   │
-   ▼
-高能力模型
-检查 / 审计
-   │
-   ▼
-最终结果
-```
-
-高能力模型不一定需要完成整个任务。
-
-很多场景真正需要高能力模型参与的是：
-
-**规划、判断、决策和审计。**
-
-大量具体执行工作，可以交给更快速、更低成本的模型。
-
-这样，你可以把不同模型的：
-
-- 能力
-- 成本
-- 速度
-- 上下文
-- 推理质量
-
-组合起来，而不是被单一模型绑定。
-
-------
-
-## 让模型调用模型
-
-1flowbase 还可以把另一个模型作为 Tool 提供给主模型。
-
-```text
-Primary Model
-      │
-      ├── Search
-      ├── Database
-      ├── Business API
-      │
-      └── Worker Model
-              │
-              ▼
-        Lower-cost Model
-```
-
-主模型可以根据任务决定是否调用工作模型。
-
-工作模型完成任务后，结果再返回主模型继续判断、检查或输出。
-
-换句话说：
-
-> **模型本身，也可以成为另一个模型的工具。**
-
-这使得你可以构建自己的模型调度策略，而不是简单地把所有请求全部交给最昂贵的模型处理。
-
-------
-
-# 三种 AI 协议，一个 Gateway
-
-1flowbase 当前支持主流 AI API 协议之间的转换：
-
-- **Anthropic Messages**
-- **OpenAI Chat Completions**
-- **OpenAI Responses**
-
-你的应用可以使用统一入口访问不同模型和工作流。
-
-这意味着应用层不必因为模型供应商变化而不断调整自己的调用方式。
-
-------
-
-# AI Gateway 也是你的数据入口
-
-1flowbase 会保存经过 Gateway 的完整 AI 会话数据，并存储到 PostgreSQL。
-
-这意味着：
-
-> **你不仅在分发 AI，也在持续积累属于自己的 AI 使用数据。**
-
-对于企业 AI 团队，这些数据可以继续用于：
-
-- AI 使用分析
-- 用户行为分析
-- Agent 行为分析
-- 成本分析
-- 模型质量分析
-- Prompt / Harness 优化
-- 路由策略优化
-- 组合模型优化
-- 业务系统建设
-
-例如教育场景：
-
-```text
-学生
- │
- ▼
-AI Gateway
- │
- ▼
-AI Tutor / Agent
- │
- ▼
-Models
-```
-
-学生与 AI 的交互可以通过 Gateway 沉淀下来。
-
-然后继续构建：
-
-```text
-Conversation Data
-        │
-        ▼
-学习行为分析
-        │
-        ▼
-知识点与问题分析
-        │
-        ▼
-学生学习报告
-        │
-        ▼
-教师 Dashboard
-```
-
-于是 AI Gateway 从单纯的模型代理层，变成 AI 能力进入业务系统的统一入口。
-
-------
-
-# 用自己的 AI 数据优化自己的 AI
-
-完整会话数据还可以形成一个持续优化闭环：
-
-```text
-AI Usage
-   │
-   ▼
-Conversation Data
-   │
-   ▼
-Analysis
-   │
-   ├── Improve Prompt
-   ├── Improve Harness
-   ├── Improve Routing
-   └── Improve Model Composition
-              │
-              └───────────┐
-                          ▼
-                      AI Usage
-```
-
-例如你可以逐渐回答这些问题：
-
-- 哪些请求最贵？
-- 哪些任务根本不需要高能力模型？
-- 哪些任务经常失败？
-- 哪种模型组合性价比最高？
-- Agent 在什么阶段最容易出现错误？
-- 哪些 Prompt 或 Harness 效果最好？
-- 哪些任务应该升级到更强模型进行审计？
-
-因此，Gateway 不只是一个请求入口。
-
-它还可以成为你的 **AI Feedback Loop**。
-
-------
-
-# 从 AI Gateway 继续构建应用
-
-AI Gateway 是 1flowbase 的起点，而不是边界。
-
-## AI Gateway
-
-统一接入模型、转换协议，并对 AI 能力进行分发。
-
-支持把普通模型和 Workflow 统一发布为 Gateway 中的模型。
-
-------
-
-## Workflow
-
-通过 Workflow 组合：
-
-- 模型
-- 工具
-- API
-- 业务逻辑
-
-然后把整个 Workflow 作为新的 AI 能力发布。
-
-```text
-Models + Tools + Logic
-          │
-          ▼
-       Workflow
-          │
-          ▼
-    Virtual Model
-          │
-          ▼
-      AI Gateway
-```
-
-------
-
-## API-first Backend
-
-1flowbase 后端能力本身通过 API 提供。
-
-GUI 能完成的运行时操作，本质上都建立在 API 之上。
-
-这也是 Agent 可以进一步管理整个系统的基础。
-
-------
-
-## Data Source
-
-当前 1flowbase 使用 **PostgreSQL** 作为主数据源。
-
-除了保存 AI 会话之外，你还可以动态创建业务数据表，并通过系统能力对数据进行管理。
-
-因此你的应用可以同时拥有：
-
-```text
-AI Data
-+
-Business Data
-```
-
-而不是把 AI Gateway 和业务数据库完全割裂。
-
-------
-
-# MCP Gateway
-
-1flowbase 可以将 API 和 MCP Tool 统一暴露给 Agent。
-
-但一个真实应用很容易拥有几十、几百甚至更多工具。
-
-把所有 Tool 一次性塞进 Agent Context 并不是一个好的方案。
-
-因此 1flowbase 使用渐进式工具发现：
-
-```text
-list
- │
- ▼
-发现有哪些 Tool
-
-get
- │
- ▼
-获取 Tool 的完整定义
-
-call
- │
- ▼
-执行 Tool
-```
-
-Agent 只需要理解三个基础工具：
-
-**list / get / call**
-
-然后根据当前任务逐步发现和调用真正需要的能力。
-
-这可以避免一次性把大量 Tool 定义塞进上下文。
-
-------
-
-# React Blocks
-
-业务系统最终仍然需要 UI。
-
-1flowbase 提供基于 **React** 的代码区块能力。
-
-每一个 Block 都可以直接编写 React 代码，因此你不必被固定的低代码组件限制。
-
-例如，Ant Design 官方示例代码可以直接作为一个 Block 的基础：
-
-```jsx
-import React from 'react';
-import { ColorPicker, Space } from 'antd';
-
-const DEFAULT_COLOR = [
-  {
-    color: 'rgb(16, 142, 233)',
-    percent: 0,
-  },
-  {
-    color: 'rgb(135, 208, 104)',
-    percent: 100,
-  },
-];
-
-const Demo = () => (
-  <Space vertical>
-    <ColorPicker
-      defaultValue={DEFAULT_COLOR}
-      allowClear
-      showText
-      mode={['single', 'gradient']}
-      onChangeComplete={(color) => {
-        console.log(color.toCssString());
-      }}
-    />
-  </Space>
-);
-
-export default Demo;
-```
-
-你可以继续使用整个 React 生态来构建自己的业务界面。
-
-因此 1flowbase 的目标并不是提供一个封闭的拖拽式页面编辑器。
-
-而是：
-
-> **在低代码效率与原生 React 自由度之间取得平衡。**
-
-------
-
-# Built for Agents
-
-我们正在进入一个新的软件阶段：
-
-> **Build for Agents.**
-
-但今天很多所谓“为 Agent 构建”的系统，实际上只是给 Agent 增加几个 Tool。
-
-基础设施本身仍然主要是为人设计的：
-
-```text
-Human
-  │
-  ▼
-Dashboard
-  │
-  ▼
-Buttons / Forms
-  │
-  ▼
-Application
-```
-
-1flowbase 的思路不同。
-
-如果 GUI 可以完成一件运行时操作，那么这项能力也应该能够通过 API 暴露。
-
-而 API 又可以进一步通过 MCP 暴露给 Agent。
-
-```text
-           Human
-             │
-             ▼
-            GUI
-             │
-             ▼
-            API
-             ▲
-             │
-            MCP
-             ▲
-             │
-           Agent
-```
-
-因此，人和 Agent 操作的是同一个系统。
-
-在 1flowbase 的运行时中，Agent 可以进一步参与：
-
-- 创建和修改 Gateway
-- 配置模型
-- 创建 Workflow
-- 创建数据表
-- 管理业务数据
-- 创建和调用 API
-- 查询运行日志
-- 配置权限
-- 构建 React 界面
-
-因此我们想解决的问题不是：
-
-> **如何给应用加一个 Agent？**
-
-而是：
-
-> **如何构建一个真正为 Agent 而生的应用系统？**
-
-------
-
-# 从 AI Gateway 到完整应用系统
-
-最终，你可以把这些能力组合起来：
-
-```text
-AI Gateway
-     +
-Workflow
-     +
-API
-     +
-Business Data
-     +
-React UI
-     +
-MCP
-     │
-     ▼
-AI Application
-```
-
-也就是说：
-
-> **在 AI Gateway 上构建一个真正为 Agent 而生的完整应用系统。**
-
-------
-
-# 一个 Agent 可以做到什么？
-
-例如把 1flowbase MCP 接入 Codex：
-
-```text
-Codex
-  │
-  ▼
-MCP
-  │
-  ▼
-1flowbase
-```
-
-Agent 可以根据你的业务需求继续操作 1flowbase：
-
-```text
-Create Data Model
-       ↓
-Create Business API
-       ↓
-Configure AI Gateway
-       ↓
-Create Workflow
-       ↓
-Build React UI
-       ↓
-Operate Application
-```
-
-## 当前状态
-
-1flowbase 的底层运行时已经采用 API-first 的方式构建，因此这些能力可以被进一步暴露给 MCP。
-
-目前我们正在持续优化：
-
-- 官方 MCP Tool 定义
-- Tool 描述
-- Agent Context
-- 默认配置
-- 应用模板
-
-目标是让 Codex 等 Coding Agent **不需要阅读 1flowbase 源码，也能够理解平台能力并直接构建应用**。
-
-当前阶段，在复杂应用构建场景下，仍建议让 Coding Agent 在 1flowbase 项目上下文中工作。
-
-------
-
-# 开箱即用的应用模板
-
-1flowbase 本身拥有较多能力。
-
-这也是我们目前正在重点改进的问题之一：
-
-> **强大的系统，不应该要求每个新用户从空白画布开始。**
-
-因此我们正在将常用能力封装成应用模板。
-
-例如未来可以直接从：
-
-```text
-AI Gateway
-Multi-model Router
-Enterprise AI Gateway
-AI Education Platform
-Agent Application Backend
-```
-
-等场景开始。
-
-你可以先使用模板完成 80% 的基础配置，再根据自己的业务需求继续扩展。
-
-------
-
-# 快速开始
-
-## Linux / macOS
-
-运行官方部署脚本：
+**Linux / macOS**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh
 ```
 
-按照提示完成配置后即可启动 1flowbase。
-
-------
-
-## Windows PowerShell
+**Windows PowerShell**
 
 ```powershell
 irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex
 ```
 
-------
-
-## Windows CMD
+**Windows CMD**
 
 ```cmd
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex"
 ```
 
-整个过程采用 Docker 部署，不需要手动搭建复杂运行环境。
+按提示完成配置即可启动。完整保存会话会产生较大数据量，高流量生产环境请提前评估存储容量、保留周期、备份与合规策略。
 
-------
+### Git 源码启动
 
-# 适合谁？
+**环境要求**
 
-## 企业 AI 团队
+- Node.js `>=24.0.0`
+- pnpm `11.x`（可通过 `corepack enable` 启用）
+- Rust stable 工具链（Cargo）
+- Docker 与 Docker Compose（用于 PostgreSQL 等中间件）
 
-如果你的组织需要统一分发：
+**启动**
 
-- OpenAI
-- Anthropic
-- 其他模型供应商
-- 自定义模型
-- 组合模型
-- Agent Workflow
+在仓库根目录执行：
 
-同时希望：
-
-- 掌握自己的 AI 数据
-- 分析企业 AI 使用行为
-- 构建内部 AI 应用
-- 为不同部门提供统一 AI 能力
-
-1flowbase 可以作为这一层基础设施。
-
-------
-
-## AI 产品团队
-
-如果你正在构建 AI SaaS 或 Agent 产品，可以从 Gateway 开始，继续扩展：
-
-```text
-Gateway → Data → API → Workflow → UI
+```bash
+git clone https://github.com/taichuy/1flowbase.git
+cd 1flowbase
+node scripts/node/dev-up.js
 ```
 
-而不必分别搭建多个互不关联的系统。
+`dev-up` 会启动 Docker 中间件、安装前端依赖、构建并运行后端，再启动前端。其他常用命令：
 
-------
+```bash
+node scripts/node/dev-up.js status
+node scripts/node/dev-up.js stop
+node scripts/node/dev-up.js restart --frontend-only
+node scripts/node/dev-up.js restart --backend-only
+```
 
-## 高级个人用户
+日志写入 `tmp/logs/`。更多常用脚本见 [scripts/README.md](../../scripts/README.md)。
 
-如果你同时使用多个模型，也可以利用 Workflow 构建自己的组合模型：
+---
 
-> 高能力模型负责决策，低成本模型负责执行。
-
-然后通过统一 API 将它当成一个模型使用。
-
-------
-
-# 1flowbase 与其他工具有什么不同？
+## 与其他工具对比
 
 | 项目       | AI Gateway | 组合模型 / Workflow | 完整会话数据 | 动态业务数据 | MCP      | React 应用   |
 | ---------- | ---------- | ------------------- | ------------ | ------------ | -------- | ------------ |
@@ -725,55 +147,13 @@ Gateway → Data → API → Workflow → UI
 | Supabase   | —          | —                   | —            | ✅            | 生态能力 | 前端自建     |
 | n8n        | —          | ✅                   | —            | —            | 生态能力 | —            |
 
-------
+---
 
-# 数据存储
+## Roadmap
 
-1flowbase 当前使用 PostgreSQL 作为主数据源。
-
-由于完整保存 AI 会话可能产生较大的数据量，对于高流量生产环境请提前评估：
-
-- 存储容量
-- 数据保留周期
-- 数据备份策略
-- 合规要求
-
-我们也计划继续加强围绕 AI 数据的生命周期管理能力。
-
-------
-
-# Roadmap
-
-当前重点包括：
-
--  更简单的默认 AI Gateway 配置
--  常用模型路由模板
--  组合模型模板
--  企业 AI Gateway 模板
--  优化 MCP Tool 描述
--  提升 Codex 等 Coding Agent 对系统能力的理解
--  降低 Agent 构建应用时对项目源码上下文的依赖
--  完善 AI 会话数据管理与生命周期策略
--  更多开箱即用的业务应用模板
-
-
---- 
-
-# Star 1flowbase
-
-如果你也认为未来的软件不只是：
-
-> **Built with AI**
-
-而应该进一步：
-
-> **Built for Agents**
-
-欢迎给 1flowbase 一个 ⭐。
-
-我们想探索的是：
-
-> **当 AI Gateway、业务数据、API、Workflow 和 UI 都能够被 Agent 操作之后，应用应该变成什么样？**
+- 开箱即用的应用模板（AI Gateway、多模型路由、企业 AI Gateway、AI 教育平台、Agent 应用后端）
+- 优化官方 MCP Tool 描述，让 Codex 等 Coding Agent 无需阅读源码即可构建应用
+- 完善 AI 会话数据的生命周期管理
 
 ---
 

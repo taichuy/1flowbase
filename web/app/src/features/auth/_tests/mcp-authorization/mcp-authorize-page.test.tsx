@@ -3,9 +3,8 @@ import {
   render,
   screen,
   waitFor,
-  cleanup
 } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { PublicAuthProviders } from '../../components/PublicAuthProviders';
 import { McpAuthorizePage } from '../../pages/mcp-authorization/McpAuthorizePage';
 
@@ -41,7 +40,6 @@ beforeEach(() => {
     () => new Promise(() => {})
   );
 });
-afterEach(cleanup);
 
 describe('API Key MCP authorization without a console session', () => {
   test('verifies, clears Key, shows server-owned workspace, and requires a separate consent', async () => {
@@ -95,7 +93,7 @@ describe('API Key MCP authorization without a console session', () => {
 
   test('requires a request and cannot turn a standalone page into a login', () => {
     renderPage();
-    expect(screen.getByRole('alert')).toHaveTextContent('授权请求无效或已过期');
+    expect(screen.getByRole('alert')).toHaveTextContent(/授权请求无效或已过期/, { normalizeWhitespace: false });
     expect(api.fetchMcpOAuthAuthorization).not.toHaveBeenCalled();
   });
 

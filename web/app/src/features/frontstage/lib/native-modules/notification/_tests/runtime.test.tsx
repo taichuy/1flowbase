@@ -1,6 +1,5 @@
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   waitFor,
@@ -20,7 +19,6 @@ import { evaluateFrontstageReactArtifact } from '../../modal/evaluator';
 
 const disposals: Array<() => void> = [];
 afterEach(() => {
-  cleanup();
   disposals.splice(0).forEach((dispose) => dispose());
 });
 
@@ -57,6 +55,7 @@ function host(Component: ComponentType, name: string, strict = false) {
     { container: root, reactStrictMode: strict }
   );
   disposals.push(() => {
+    view.unmount();
     runtime.dispose();
     element.remove();
   });
@@ -92,12 +91,12 @@ test('static notification keys, defaults and destroy remain local to each mount'
   ).toBeTruthy();
   fireEvent.click(a.root.getByText('update'));
   await a.overlay.findByText('updated');
-  expect(b.overlay.getByText('first')).toBeTruthy();
+  expect(b.overlay.getByText('first')).toBeInTheDocument();
   fireEvent.click(a.root.getByText('close'));
-  await waitFor(() => expect(a.overlay.queryByText('updated')).toBeNull());
-  expect(b.overlay.getByText('first')).toBeTruthy();
+  await waitFor(() => expect(a.overlay.queryByText('updated')).not.toBeInTheDocument());
+  expect(b.overlay.getByText('first')).toBeInTheDocument();
   b.view.unmount();
-  expect(b.overlay.queryByText('first')).toBeNull();
+  expect(b.overlay.queryByText('first')).not.toBeInTheDocument();
 });
 
 test('retained callbacks cannot notify after unmount and defaults do not leak', async () => {
@@ -111,16 +110,16 @@ test('retained callbacks cannot notify after unmount and defaults do not leak', 
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
   });
-  expect(b.overlay.queryByText('late')).toBeNull();
-  expect(a.overlay.queryByText('late')).toBeNull();
+  expect(b.overlay.queryByText('late')).not.toBeInTheDocument();
+  expect(a.overlay.queryByText('late')).not.toBeInTheDocument();
   fireEvent.click(b.root.getByText('configured'));
   await b.overlay.findByText('persistent');
   fireEvent.click(b.root.getByText('clear'));
-  await waitFor(() => expect(b.overlay.queryByText('persistent')).toBeNull());
+  await waitFor(() => expect(b.overlay.queryByText('persistent')).not.toBeInTheDocument());
   fireEvent.click(b.root.getByText('configured'));
   await b.overlay.findByText('persistent');
   await act(async () => b.runtime.advanceLayoutEpoch('next'));
-  await waitFor(() => expect(b.overlay.queryByText('persistent')).toBeNull());
+  await waitFor(() => expect(b.overlay.queryByText('persistent')).not.toBeInTheDocument());
 });
 
 test('legacy source retains static notification restriction', () => {

@@ -26,397 +26,128 @@
   <a href="https://x.com/Tacihu2021" target="_blank">Twitter</a>
 </p>
 
-> 1flowbase is a self-hosted AI gateway for individuals and enterprises: on top of protocol translation, dispatch, and detailed chat logs, it ships with a built-in Application Backend and Native React frontend blocks that help you combine AI with your business data. Most importantly, all of it can be operated and managed by your Agent through MCP.
+> ## From AI Gateway to a Complete Application System.
 
-1flowbase lets an Agent take over the entire application through MCP — whether orchestrating and publishing an AI gateway, generating backend application endpoints, or building native React interfaces.
+1flowbase is a low-code native backend foundation built on an AI gateway. Beyond core AI gateway features, it lets you build your own application system on top of the AI chat data stored in the gateway.
 
-```text
-list
- │
- ▼
-Discover available Tools
+<p align="center">
+  <img src="docs/assets/why-1flowbase_en.png" alt="Why 1flowbase">
+</p>
 
-get
- │
- ▼
-Get full Tool definition
+## An Application Foundation Designed for Agents
 
-call
- │
- ▼
-Execute Tool
-```
+1flowbase is API-first by design. If a traditional GUI can take over the entire system through APIs, then turning those APIs into MCP lets an Agent take over everything as well.
 
-Agents only need to understand three basic tools:
+<p align="center">
+  <img src="docs/assets/architecture_yewu_en.png" alt="1flowbase Business Architecture">
+</p>
 
-**list / get / call**
+## Technical Architecture
 
-Then progressively discover and invoke the capabilities they actually need based on the current task.
+<p align="center">
+  <img src="docs/assets/architecture_jishu_en.png" alt="1flowbase Technical Architecture">
+</p>
 
-This avoids stuffing a massive number of Tool definitions into the context all at once.
+**1flowbase is a self-hosted AI Gateway and AI application runtime.**
 
-------
+Start by unifying model access, retain conversation data in the same runtime, and keep building **Workflows, APIs, business data, and React applications** on top of it. Every capability is API-based and can be exposed to Agents through MCP to understand, build, and manage.
 
-# React Blocks
+**Dispatch intelligence, retain data, build applications.**
 
-Business systems ultimately still need UI.
+---
 
-1flowbase provides **React**-based code block capabilities.
+## Philosophy
 
-Each Block can directly contain React code, so you're not limited by fixed low-code components.
-
-For example, Ant Design's official example code can serve directly as the foundation for a Block:
-
-```jsx
-import React from 'react';
-import { ColorPicker, Space } from 'antd';
-
-const DEFAULT_COLOR = [
-  {
-    color: 'rgb(16, 142, 233)',
-    percent: 0,
-  },
-  {
-    color: 'rgb(135, 208, 104)',
-    percent: 100,
-  },
-];
-
-const Demo = () => (
-  <Space vertical>
-    <ColorPicker
-      defaultValue={DEFAULT_COLOR}
-      allowClear
-      showText
-      mode={['single', 'gradient']}
-      onChangeComplete={(color) => {
-        console.log(color.toCssString());
-      }}
-    />
-  </Space>
-);
-
-export default Demo;
-```
-
-You can continue using the entire React ecosystem to build your business interfaces.
-
-So 1flowbase's goal isn't to provide a closed drag-and-drop page editor.
-
-It's to:
-
-> **Strike a balance between low-code efficiency and native React freedom.**
-
-------
-
-# Built for Agents
-
-We're entering a new software era:
-
-> **Build for Agents.**
-
-But many systems today that claim to be "built for Agents" are really just adding a few Tools for Agents.
-
-The infrastructure itself is still primarily designed for humans:
+- **The gateway is not the end**: Full AI conversations passing through the gateway are stored in PostgreSQL, becoming a reusable data asset for cost analysis, model quality evaluation, prompt / routing optimization, and business system development.
+- **A "model" can be a Workflow**: High-capability models plan, judge, and audit; low-cost models execute. The combination is published as a single virtual model, and a model can itself be used as a Tool by another model.
+- **Three protocols, one entry point**: Conversion between Anthropic Messages, OpenAI Chat Completions, and OpenAI Responses, so your application layer doesn't change when providers do.
+- **Designed for Agents**: Every runtime operation available in the GUI is built on APIs, which are exposed to Agents via MCP. The MCP Gateway uses progressive `list / get / call` tool discovery instead of stuffing every Tool into the context at once.
+- **Low-code efficiency + native React freedom**: Business tables can be created dynamically; UIs are written as React code blocks with access to the entire React ecosystem, not a closed drag-and-drop editor.
 
 ```text
-Human
-  │
-  ▼
-Dashboard
-  │
-  ▼
-Buttons / Forms
-  │
-  ▼
-Application
+Human → GUI ─┐
+             ├→ API → AI Gateway / Workflow / Data / React UI → AI Application
+Agent → MCP ─┘
 ```
 
-1flowbase takes a different approach.
+---
 
-If the GUI can perform a runtime operation, that capability should also be exposable through an API.
+## Quick Start
 
-And APIs can further be exposed to Agents through MCP.
+### Docker
 
-```text
-           Human
-             │
-             ▼
-            GUI
-             │
-             ▼
-            API
-             ▲
-             │
-            MCP
-             ▲
-             │
-           Agent
-```
+Deployed with Docker — no manual environment setup required.
 
-So humans and Agents operate the same system.
-
-In 1flowbase's runtime, Agents can further participate in:
-
-- Creating and modifying Gateways
-- Configuring models
-- Creating Workflows
-- Creating data tables
-- Managing business data
-- Creating and calling APIs
-- Querying runtime logs
-- Configuring permissions
-- Building React interfaces
-
-So the problem we want to solve isn't:
-
-> **How do you add an Agent to an application?**
-
-It's:
-
-> **How do you build an application system truly built for Agents?**
-
-------
-
-# From AI Gateway to Full Application System
-
-Ultimately, you can combine all these capabilities:
-
-```text
-AI Gateway
-     +
-Workflow
-     +
-API
-     +
-Business Data
-     +
-React UI
-     +
-MCP
-     │
-     ▼
-AI Application
-```
-
-In other words:
-
-> **Build a complete application system truly built for Agents on top of an AI Gateway.**
-
-------
-
-# What Can an Agent Do?
-
-For example, connecting 1flowbase MCP to Codex:
-
-```text
-Codex
-  │
-  ▼
-MCP
-  │
-  ▼
-1flowbase
-```
-
-Agents can continue operating 1flowbase based on your business needs:
-
-```text
-Create Data Model
-       ↓
-Create Business API
-       ↓
-Configure AI Gateway
-       ↓
-Create Workflow
-       ↓
-Build React UI
-       ↓
-Operate Application
-```
-
-## Current Status
-
-1flowbase's underlying runtime is already built API-first, so these capabilities can be further exposed to MCP.
-
-We're currently actively improving:
-
-- Official MCP Tool definitions
-- Tool descriptions
-- Agent Context
-- Default configurations
-- Application templates
-
-The goal is to enable Coding Agents like Codex to **understand platform capabilities and build applications directly without reading 1flowbase source code**.
-
-At the current stage, for complex application building scenarios, we still recommend having Coding Agents work within the 1flowbase project context.
-
-------
-
-# Out-of-the-Box Application Templates
-
-1flowbase itself has many capabilities.
-
-This is also one of the issues we're currently focused on improving:
-
-> **A powerful system shouldn't require every new user to start from a blank canvas.**
-
-So we're packaging common capabilities into application templates.
-
-For example, in the future you'll be able to start directly from:
-
-```text
-AI Gateway
-Multi-model Router
-Enterprise AI Gateway
-AI Education Platform
-Agent Application Backend
-```
-
-And other scenarios.
-
-You can use a template to handle 80% of the basic configuration, then extend further based on your business needs.
-
-------
-
-# Quick Start
-
-## Linux / macOS
-
-Run the official deployment script:
+**Linux / macOS**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh
 ```
 
-Follow the prompts to complete configuration and start 1flowbase.
-
-------
-
-## Windows PowerShell
+**Windows PowerShell**
 
 ```powershell
 irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex
 ```
 
-------
-
-## Windows CMD
+**Windows CMD**
 
 ```cmd
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex"
 ```
 
-The entire process uses Docker deployment — no need to manually set up complex runtime environments.
+Follow the prompts to finish configuration and start 1flowbase. Storing full conversations can generate large data volumes; for high-traffic production, plan storage capacity, retention, backup, and compliance in advance.
 
-------
+### Git
 
-# Who Is It For?
+**Requirements**
 
-## Enterprise AI Teams
+- Node.js `>=24.0.0`
+- pnpm `11.x` (enable via `corepack enable`)
+- Rust stable toolchain (Cargo)
+- Docker with Docker Compose (for middleware such as PostgreSQL)
 
-If your organization needs unified distribution of:
+**Start**
 
-- OpenAI
-- Anthropic
-- Other model providers
-- Custom models
-- Composite models
-- Agent Workflows
+Run from the repository root:
 
-And you also want to:
-
-- Own your AI data
-- Analyze enterprise AI usage behavior
-- Build internal AI applications
-- Provide unified AI capabilities across departments
-
-1flowbase can serve as this infrastructure layer.
-
-------
-
-## AI Product Teams
-
-If you're building AI SaaS or Agent products, you can start from the Gateway and expand:
-
-```text
-Gateway → Data → API → Workflow → UI
+```bash
+git clone https://github.com/taichuy/1flowbase.git
+cd 1flowbase
+node scripts/node/dev-up.js
 ```
 
-Without having to build multiple disconnected systems separately.
+`dev-up` starts the Docker middleware, installs frontend dependencies, builds and runs the backend, and starts the frontend. Other common commands:
 
-------
+```bash
+node scripts/node/dev-up.js status
+node scripts/node/dev-up.js stop
+node scripts/node/dev-up.js restart --frontend-only
+node scripts/node/dev-up.js restart --backend-only
+```
 
-## Advanced Individual Users
-
-If you use multiple models simultaneously, you can also leverage Workflows to build your own composite models:
-
-> High-capability models handle decisions, low-cost models handle execution.
-
-Then use it as a single model through a unified API.
-
-------
-
-# How Is 1flowbase Different from Other Tools?
-
-| Project    | AI Gateway | Composite Models / Workflow | Full Conversation Data | Dynamic Business Data | MCP      | React Apps   |
-| ---------- | ---------- | --------------------------- | ---------------------- | --------------------- | -------- | ------------ |
-| 1flowbase  | ✅          | ✅                           | ✅                      | ✅                     | ✅        | ✅            |
-| LiteLLM    | ✅          | —                           | Partial                | —                     | —        | —            |
-| OpenRouter | ✅          | —                           | Platform-hosted        | —                     | —        | —            |
-| Dify       | Partial    | ✅                           | ✅                      | —                     | ✅        | Fixed app forms |
-| Supabase   | —          | —                           | —                      | ✅                     | Ecosystem | Build your own frontend |
-| n8n        | —          | ✅                           | —                      | —                     | Ecosystem | —            |
-
-------
-
-# Data Storage
-
-1flowbase currently uses PostgreSQL as its primary data source.
-
-Since storing complete AI conversations can generate significant data volume, for high-traffic production environments, please evaluate in advance:
-
-- Storage capacity
-- Data retention periods
-- Backup strategies
-- Compliance requirements
-
-We also plan to continue strengthening AI data lifecycle management capabilities.
-
-------
-
-# Roadmap
-
-Current priorities include:
-
-- Simpler default AI Gateway configuration
-- Common model routing templates
-- Composite model templates
-- Enterprise AI Gateway templates
-- Improved MCP Tool descriptions
-- Better understanding of system capabilities by Coding Agents like Codex
-- Reduced dependency on project source context when Agents build applications
-- Improved AI conversation data management and lifecycle policies
-- More out-of-the-box business application templates
-
+Logs are written to `tmp/logs/`. For more scripts, see [scripts/README.md](scripts/README.md).
 
 ---
 
-# Star 1flowbase
+## Comparison
 
-If you also believe the future of software isn't just:
+| Project    | AI Gateway | Composite Models / Workflow | Full Conversation Data | Dynamic Business Data | MCP          | React Apps       |
+| ---------- | ---------- | --------------------------- | ---------------------- | --------------------- | ------------ | ---------------- |
+| 1flowbase  | ✅          | ✅                           | ✅                      | ✅                     | ✅            | ✅                |
+| LiteLLM    | ✅          | —                           | Partial                | —                     | —            | —                |
+| OpenRouter | ✅          | —                           | Platform-hosted        | —                     | —            | —                |
+| Dify       | Partial    | ✅                           | ✅                      | —                     | ✅            | Fixed app types  |
+| Supabase   | —          | —                           | —                      | ✅                     | Ecosystem    | Build your own   |
+| n8n        | —          | ✅                           | —                      | —                     | Ecosystem    | —                |
 
-> **Built with AI**
+---
 
-But should go further:
+## Roadmap
 
-> **Built for Agents**
-
-Give 1flowbase a ⭐.
-
-What we want to explore is:
-
-> **When AI Gateway, business data, APIs, Workflows, and UI can all be operated by Agents — what should applications become?**
+- Out-of-the-box application templates (AI Gateway, multi-model router, enterprise AI Gateway, AI education platform, Agent application backend)
+- Better official MCP Tool descriptions so Coding Agents like Codex can build applications without reading the source code
+- Lifecycle management for AI conversation data
 
 ---
 

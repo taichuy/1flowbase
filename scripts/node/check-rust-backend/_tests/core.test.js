@@ -251,3 +251,38 @@ test('current api routes do not contain active blocking IO warnings', () => {
 
   assert.deepEqual(findings, []);
 });
+
+test('OAuth consent hash persistence exception does not exempt response credentials', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const relativePath = 'api/crates/control-plane/src/mcp_oauth/mod.rs';
+  const source = fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
+  const approval = source.match(/struct Approval \{([\s\S]*?)\n\}/u)?.[1];
+  assert.match(approval, /\n    token_hash: String,/u);
+  assert.doesNotMatch(approval, /pub(?:\([^)]*\))?\s+token_hash/u);
+  for (const name of ['AuthorizationView', 'VerificationView', 'TokenResponse']) {
+    const fields = source.match(new RegExp(`pub struct ${name} \\{([\\s\\S]*?)\\n\\}`, 'u'))?.[1];
+    assert.equal(typeof fields, 'string');
+    assert.doesNotMatch(fields, /\b(?:token_hash|password_hash|api_key_secret)\b/u);
+  }
+  const findings = collectRustBackendFindings({ repoRoot, includeSuppressed: true });
+  const persisted = findings.filter((item) => item.file === relativePath && item.rule === 'no-sensitive-serialize');
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0].snippet, 'token_hash: String,');
+  assert.equal(persisted[0].suppressed, true);
+  assert.match(persisted[0].suppressionReason, /Private Approval persistence payload/u);
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oauth-serialize-negative-'));
+  try {
+    const file = path.join(fixtureRoot, relativePath);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '#[derive(Serialize)]\npub struct UnsafeResponse {\n    pub token_hash: String,\n}\n');
+    const baselineDir = path.join(fixtureRoot, 'scripts/node/check-rust-backend');
+    fs.mkdirSync(baselineDir, { recursive: true });
+    fs.copyFileSync(path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json'), path.join(baselineDir, 'baseline.json'));
+    const rejected = collectRustBackendFindings({ repoRoot: fixtureRoot });
+    assert.equal(rejected.length, 1);
+    assert.equal(rejected[0].rule, 'no-sensitive-serialize');
+    assert.equal(rejected[0].suppressed, false);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});

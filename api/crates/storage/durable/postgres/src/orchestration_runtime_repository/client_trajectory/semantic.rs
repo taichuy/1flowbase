@@ -241,13 +241,19 @@ async fn shared_overview_child(
 pub(super) async fn write_section(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     input: &AppendClientTrajectoryInput,
-    step_id: Uuid,
-    section: &str,
-    value: &Value,
     sequence: i64,
     historical_id: Option<Uuid>,
     locked_scope: Option<&FlowContentScope>,
 ) -> Result<Uuid> {
+    let ClientTrajectoryFact::Section {
+        step_id,
+        section,
+        value,
+    } = &input.fact
+    else {
+        return Err(anyhow!("client trajectory section fact required"));
+    };
+    let step_id = *step_id;
     let id = historical_id.unwrap_or_else(Uuid::now_v7);
     let (value_hash, value_byte_size) = value_identity(value)?;
     let value_digest = digest_bytes(&value_hash)?;
@@ -663,17 +669,7 @@ impl PgControlPlaneStore {
                     && row.get::<i64, _>("event_sequence") == row.get::<i64, _>("anchor_sequence"),
                 "client historical section anchor mismatch"
             );
-            write_section(
-                &mut tx,
-                &input,
-                *step_id,
-                section,
-                value,
-                row.get("event_sequence"),
-                Some(id),
-                None,
-            )
-            .await?;
+            write_section(&mut tx, &input, row.get("event_sequence"), Some(id), None).await?;
             let restored = sqlx::query(SECTION_ROWS)
                 .bind(input.flow_run_id)
                 .bind(input.request_id)

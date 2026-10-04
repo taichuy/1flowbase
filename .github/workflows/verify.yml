@@ -75,7 +75,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
+      - name: Prepare real recovery bind-mount fixture
+        run: docker pull alpine:3.20
       - uses: ./.github/actions/quality-gate
+        env:
+          REQUIRE_DOCKER_RECOVERY_EVIDENCE: "1"
         with:
           scope: repo-tooling
           report_type: ci

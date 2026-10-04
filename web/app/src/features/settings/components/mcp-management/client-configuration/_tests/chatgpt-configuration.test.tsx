@@ -1,6 +1,6 @@
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import { ChatGptConfiguration } from '../ChatGptConfiguration';
 
 const fetchConfig = vi.hoisted(() => vi.fn());
@@ -20,7 +20,6 @@ const show = () =>
 beforeEach(() => {
   fetchConfig.mockReset();
 });
-afterEach(cleanup);
 
 test('shows trusted backend URL and DCR instructions without a Key input', async () => {
   fetchConfig.mockResolvedValue({

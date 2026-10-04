@@ -10,14 +10,23 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-const echartsMock = vi.hoisted(() => ({
-  chart: {
-    dispose: vi.fn(),
-    resize: vi.fn(),
-    setOption: vi.fn()
-  },
-  init: vi.fn()
-}));
+const echartsMock = vi.hoisted(() => {
+  const zrender = {
+    animation: { start: vi.fn(), stop: vi.fn(), pause: vi.fn(), resume: vi.fn() },
+    wakeUp: vi.fn()
+  };
+  return {
+    chart: {
+      dispose: vi.fn(),
+      resize: vi.fn(),
+      setOption: vi.fn(),
+      getWidth: () => 0,
+      getHeight: () => 0,
+      getZr: () => zrender
+    },
+    init: vi.fn()
+  };
+});
 
 const systemRuntimeApi = vi.hoisted(() => ({
   settingsSystemRuntimeQueryKey: ['settings', 'system-runtime'],
