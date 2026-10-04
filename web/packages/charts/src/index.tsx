@@ -94,7 +94,6 @@ export function EChart({
       applied.current = null;
       const owned = chart;
       let released = false;
-      let unregister: (() => void) | undefined;
       const resource = {
         dispose() {
           if (released) return;
@@ -108,7 +107,7 @@ export function EChart({
           owned.dispose();
         }
       };
-      unregister = resourceScope?.register(resource);
+      const unregister = resourceScope?.register(resource);
       retained.current = resource;
     }
     const activeChart = chart;
