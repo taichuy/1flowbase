@@ -869,24 +869,22 @@ fn d2_ac_001_anthropic_metadata_normalization_is_receipted_without_changing_conv
 }
 
 #[test]
-fn d2_ac_001_anthropic_marker_rejection_replaces_preliminary_decision_for_the_same_path() {
-    let error = translate_messages_request(json!({
+fn anthropic_compaction_text_retains_one_normalized_receipt() {
+    let text = "Your task is to create a detailed summary of the conversation so far";
+    let translated = translate_messages_request(json!({
         "model": "claude-compatible-custom",
-        "messages": [{
-            "role": "user",
-            "content": "Your task is to create a detailed summary of the conversation so far"
-        }]
+        "messages": [{ "role": "user", "content": text }]
     }))
-    .expect_err("Claude Code control markers have no canonical owner");
-
-    let decisions = error
+    .expect("compaction is an ordinary model prompt");
+    assert_eq!(translated.request.query, text);
+    let decisions = translated
         .report
         .decisions
         .iter()
         .filter(|decision| decision.source_path == "$.messages[0].content")
         .collect::<Vec<_>>();
-    assert_eq!(decisions.len(), 1, "a source path has one final decision");
-    assert_eq!(decisions[0].kind, TranslationDecisionKind::Unsupported);
+    assert_eq!(decisions.len(), 1);
+    assert_eq!(decisions[0].kind, TranslationDecisionKind::Normalized);
 }
 
 #[test]
@@ -978,7 +976,7 @@ fn ac_006_thinking_history_maps_to_native_reasoning_content_blocks() {
 }
 
 #[test]
-fn d2_ac_007_claude_code_compact_summary_marker_is_unsupported() {
+fn d2_ac_007_claude_code_compact_summary_prompt_is_normal_text() {
     let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
@@ -993,11 +991,14 @@ fn d2_ac_007_claude_code_compact_summary_marker_is_unsupported() {
         ]
     });
 
-    assert_unsupported_feature(request, "$.messages[1].content");
+    let expected = request["messages"][1]["content"].clone();
+    let translated =
+        translate_messages_request(request).expect("summary prompts remain ordinary text");
+    assert_eq!(json!(translated.request.query), expected);
 }
 
 #[test]
-fn d2_ac_007_claude_code_title_marker_is_unsupported() {
+fn d2_ac_007_claude_code_title_prompt_is_normal_text() {
     let request = json!({
         "model": "claude-compatible-custom",
         "system": "x-anthropic-billing-header: cc_version=2.1.141.831; cc_entrypoint=cli; cch=a143a;\n\nYou are Claude Code, Anthropic's official CLI for Claude.\n\nGenerate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this coding session. Return JSON with a single \"title\" field.",
@@ -1009,11 +1010,17 @@ fn d2_ac_007_claude_code_title_marker_is_unsupported() {
         ]
     });
 
-    assert_unsupported_feature(request, "$.system");
+    let expected = request["system"].as_str().unwrap().to_owned();
+    let translated =
+        translate_messages_request(request).expect("title prompts remain ordinary text");
+    assert_eq!(
+        translated.request.system_text().as_deref(),
+        Some(expected.as_str())
+    );
 }
 
 #[test]
-fn d2_ac_007_claude_code_away_summary_marker_is_unsupported() {
+fn d2_ac_007_claude_code_away_summary_prompt_is_normal_text() {
     let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
@@ -1027,11 +1034,14 @@ fn d2_ac_007_claude_code_away_summary_marker_is_unsupported() {
         ]
     });
 
-    assert_unsupported_feature(request, "$.messages[0].content");
+    let expected = request["messages"][0]["content"].clone();
+    let translated = translate_messages_request(request)
+        .expect("client prompt text does not define a control operation");
+    assert_eq!(json!(translated.request.query), expected);
 }
 
 #[test]
-fn d2_ac_007_claude_code_compact_resume_marker_is_unsupported() {
+fn d2_ac_007_claude_code_compact_resume_prompt_is_normal_text() {
     let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
@@ -1045,11 +1055,14 @@ fn d2_ac_007_claude_code_compact_resume_marker_is_unsupported() {
         ]
     });
 
-    assert_unsupported_feature(request, "$.messages[0].content");
+    let expected = request["messages"][0]["content"].clone();
+    let translated = translate_messages_request(request)
+        .expect("client prompt text does not define a control operation");
+    assert_eq!(json!(translated.request.query), expected);
 }
 
 #[test]
-fn d2_ac_007_claude_code_compact_resume_history_marker_is_unsupported() {
+fn d2_ac_007_claude_code_compact_resume_history_prompt_is_normal_text() {
     let request = json!({
         "model": "claude-compatible-custom",
         "metadata": {
@@ -1065,7 +1078,11 @@ fn d2_ac_007_claude_code_compact_resume_history_marker_is_unsupported() {
         ]
     });
 
-    assert_unsupported_feature(request, "$.messages[0].content");
+    let expected = request["messages"][0]["content"].clone();
+    let translated =
+        translate_messages_request(request).expect("resume history remains ordinary text");
+    assert_eq!(translated.request.history[0]["content"], expected);
+    assert_eq!(translated.request.query, "那你帮我拉一下最新代码");
 }
 
 #[test]

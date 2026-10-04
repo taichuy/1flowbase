@@ -357,21 +357,6 @@ pub(super) fn push_system_part(parts: &mut Vec<NativePromptBlock>, content: &str
     parts.push(NativePromptBlock::text(content));
 }
 
-pub(super) fn claude_code_system_control_kind(
-    system_parts: &[NativePromptBlock],
-) -> Option<&'static str> {
-    system_parts
-        .iter()
-        .any(|part| {
-            part.text_content()
-                .contains(CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER)
-                && part
-                    .text_content()
-                    .contains(CLAUDE_CODE_SESSION_TITLE_JSON_MARKER)
-        })
-        .then_some("session_title")
-}
-
 pub(super) fn metadata_conversation(metadata: &AnthropicRequestMetadata) -> NativeObject {
     let mut conversation = NativeObject::default();
     let user_id = metadata.user_id.as_deref();

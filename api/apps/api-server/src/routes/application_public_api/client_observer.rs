@@ -187,3 +187,52 @@ pub(super) fn observe_response(response: Response, capture: CaptureGuard) -> Res
 
 #[cfg(test)]
 pub(crate) mod _tests;
+
+pub(super) async fn correlate_blocking_capture(
+    state: &ApiState,
+    recorder: &ClientTrajectoryRecorder,
+    flow_run_id: uuid::Uuid,
+) {
+    use control_plane::ports::{ProviderTrajectoryRepository, TrajectorySelection};
+    recorder.bind_run(flow_run_id, None);
+    let mut cursor = None;
+    loop {
+        let page = match state
+            .store
+            .provider_trajectory_filtered_page(
+                flow_run_id,
+                None,
+                cursor,
+                100,
+                TrajectorySelection {
+                    request_id: Some(recorder.capture_id()),
+                    target_id: None,
+                },
+            )
+            .await
+        {
+            Ok(page) => page,
+            Err(error) => {
+                recorder.mark_incomplete();
+                tracing::warn!(%flow_run_id, %error, "blocking client node correlation failed");
+                return;
+            }
+        };
+        for item in page.items {
+            if let Some(node_run_id) = item.metadata["node_run_id"]
+                .as_str()
+                .and_then(|id| uuid::Uuid::parse_str(id).ok())
+            {
+                recorder.link_llm_node(flow_run_id, node_run_id);
+            }
+        }
+        match page.next_cursor {
+            Some(next) if cursor.is_none_or(|previous| next > previous) => cursor = Some(next),
+            Some(_) => {
+                recorder.mark_incomplete();
+                return;
+            }
+            None => return,
+        }
+    }
+}

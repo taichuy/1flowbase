@@ -6,9 +6,6 @@ use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 pub use control_plane_contracts::application_public_runtime::claude_code_control::claude_code_control_kind;
-use control_plane_contracts::application_public_runtime::claude_code_control::{
-    CLAUDE_CODE_SESSION_TITLE_JSON_MARKER, CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER,
-};
 
 use crate::application_public_api::callback_tool_ids::decode_anthropic_callback_tool_use_id;
 use crate::application_public_api::client_protocol_envelope::{

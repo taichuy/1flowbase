@@ -400,3 +400,5 @@ async fn empty_prewarm_keeps_response_identity_without_fabricating_output() {
 }
 
 mod chat;
+
+mod anthropic;

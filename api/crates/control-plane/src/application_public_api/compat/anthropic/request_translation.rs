@@ -9,8 +9,8 @@ use super::{
     anthropic_response_mode, anthropic_system_content_parts, metadata_conversation,
     normalize_anthropic_model_for_native, query_media_content_blocks,
     record_anthropic_context_management_decision, record_anthropic_system_decision,
-    reject_legacy_anthropic_control, validate_anthropic_message, validate_anthropic_root_fields,
-    AnthropicCompatError, AnthropicContextWindowRequest, ANTHROPIC_TYPED_ROOT_FIELDS,
+    validate_anthropic_message, validate_anthropic_root_fields, AnthropicCompatError,
+    AnthropicContextWindowRequest, ANTHROPIC_TYPED_ROOT_FIELDS,
 };
 use crate::application_public_api::client_protocol_envelope::{
     capture_client_protocol_body, ClientProtocolIngressPolicy,
@@ -63,7 +63,6 @@ pub fn translate_messages_request_with_context_window(
             }
             error.with_report(report.clone())
         })?;
-    reject_legacy_anthropic_control(&system_parts, "$.system", &mut report)?;
     record_anthropic_system_decision(object.get("system"), &mut report);
     for (index, message) in messages.iter().enumerate() {
         validate_anthropic_message(message, index, &mut report).map_err(|error| {

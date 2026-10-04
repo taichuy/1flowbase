@@ -1,3 +1,7 @@
+use super::client_observer::{self, CaptureGuard};
+use control_plane::client_trajectory::{
+    ClientTrajectoryFrameKind, ClientTrajectoryRecorder, ClientTrajectoryTransport,
+};
 use std::sync::Arc;
 
 use axum::{
@@ -36,6 +40,7 @@ use tracing::{debug, info};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+pub(super) mod error_projection;
 mod token_count;
 
 use crate::{
@@ -83,42 +88,39 @@ impl From<native::NativeApiError> for AnthropicRouteError {
 
 impl IntoResponse for AnthropicRouteError {
     fn into_response(self) -> Response {
-        let (status, error) = match self {
+        let (status, body) = match self {
             AnthropicRouteError::Compat(error) => (
                 StatusCode::BAD_REQUEST,
-                AnthropicErrorObject {
-                    error_type: error.error_type,
-                    message: error.message,
-                },
+                error_projection::project(None, StatusCode::BAD_REQUEST, &error.error_type, &error.message),
             ),
             AnthropicRouteError::Native(error) => (
                 error.status,
-                AnthropicErrorObject {
-                    error_type: error.code.to_string(),
-                    message: error.message,
-                },
+                error_projection::project(error.runtime_error.as_deref(), error.status, "api_error", &error.message),
             ),
             AnthropicRouteError::RequiredAction => (
                 StatusCode::CONFLICT,
-                AnthropicErrorObject {
-                    error_type: "required_action_not_supported".to_string(),
-                    message: "waiting states are not supported by compatible endpoints; use the Native API to inspect and resume required_action runs".to_string(),
-                },
+                error_projection::project(
+                    None,
+                    StatusCode::CONFLICT,
+                    "required_action_not_supported",
+                    "waiting states are not supported by compatible endpoints; use the Native API to inspect and resume required_action runs",
+                ),
             ),
         };
         info!(
             status_code = status.as_u16(),
-            error_type = %error.error_type,
+            error_type = %body["error"]["type"],
             "anthropic compatible route error boundary"
         );
-        (
-            status,
-            Json(AnthropicErrorBody {
-                body_type: "error",
-                error,
-            }),
-        )
-            .into_response()
+        let request_id = body
+            .get("request_id")
+            .and_then(Value::as_str)
+            .and_then(|id| axum::http::HeaderValue::from_str(id).ok());
+        let mut response = (status, Json(body)).into_response();
+        if let Some(request_id) = request_id {
+            response.headers_mut().insert("request-id", request_id);
+        }
+        response
     }
 }
 
@@ -166,6 +168,30 @@ pub async fn create_message(
     uri: Uri,
     body: Bytes,
 ) -> Result<Response, AnthropicRouteError> {
+    let recorder = client_observer::recorder(&state, ClientTrajectoryTransport::Http);
+    recorder.use_anthropic_messages_protocol();
+    if recorder
+        .record(ClientTrajectoryFrameKind::Request, &body)
+        .await
+        .is_err()
+    {
+        recorder.mark_incomplete();
+    }
+    let capture = CaptureGuard::new(recorder.clone());
+    let response = match dispatch_message(state, headers, uri, body, recorder).await {
+        Ok(response) => response,
+        Err(error) => error.into_response(),
+    };
+    Ok(client_observer::observe_response(response, capture))
+}
+
+async fn dispatch_message(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    uri: Uri,
+    body: Bytes,
+    recorder: ClientTrajectoryRecorder,
+) -> Result<Response, AnthropicRouteError> {
     info!(
         route = "messages",
         phase = "received",
@@ -201,17 +227,24 @@ pub async fn create_message(
         )
         .await?;
         let actor = compatibility_interface::application_actor(principal.principal());
-        let command = anthropic_resume_command(
+        let mut command = anthropic_resume_command(
             "",
             resume.callback_task_id,
             resume.tool_results,
             response_mode.clone(),
         );
+        command.observation_context =
+            Some(control_plane_contracts::ports::WorkflowObservationContext {
+                client_request_id: recorder.capture_id(),
+                context_flow_run_id: None,
+                context_response_id: None,
+                is_resume: true,
+            });
         match compat_sse::prepare_compatible_resume_for_actor(state.clone(), actor, command).await {
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
                 if response_mode.as_deref() == Some("streaming") =>
             {
-                return compatibility_interface::invoke_stream_with_principal(
+                return compatibility_interface::invoke_client_stream_with_principal(
                     state,
                     resume_binding_id,
                     principal,
@@ -221,6 +254,7 @@ pub async fn create_message(
                             command: plan.command,
                         },
                     },
+                    Some(recorder.clone()),
                     compat_sse::anthropic_interface_projection(model),
                 )
                 .await
@@ -228,7 +262,7 @@ pub async fn create_message(
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
                 let run = compatibility_interface::invoke_blocking_with_principal(
-                    state,
+                    state.clone(),
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
@@ -239,6 +273,7 @@ pub async fn create_message(
                     },
                 )
                 .await?;
+                client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
                 return Ok(Json(to_anthropic_response(run, model)?).into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
@@ -261,6 +296,14 @@ pub async fn create_message(
     )?;
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
+    request.metadata.set_observation_context(Some(
+        control_plane_contracts::ports::WorkflowObservationContext {
+            client_request_id: recorder.capture_id(),
+            context_flow_run_id: None,
+            context_response_id: None,
+            is_resume: false,
+        },
+    ));
     request.client_protocol_envelope = anthropic_protocol_context_from_ingress(
         uri.query(),
         &headers,
@@ -290,7 +333,7 @@ pub async fn create_message(
         }
     };
     if response_mode.as_deref() == Some("streaming") {
-        return compatibility_interface::invoke_stream_with_principal(
+        return compatibility_interface::invoke_client_stream_with_principal(
             state,
             compatibility_interface::ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
             principal,
@@ -301,6 +344,7 @@ pub async fn create_message(
                     provider_transport: None,
                 },
             },
+            Some(recorder.clone()),
             compat_sse::anthropic_interface_projection(model),
         )
         .await
@@ -308,7 +352,7 @@ pub async fn create_message(
     }
 
     let run = compatibility_interface::invoke_blocking_with_principal(
-        state,
+        state.clone(),
         compatibility_interface::ANTHROPIC_MESSAGES_BINDING_ID,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
@@ -320,6 +364,7 @@ pub async fn create_message(
         },
     )
     .await?;
+    client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
     Ok(Json(to_anthropic_response(run, model)?).into_response())
 }
 
@@ -342,6 +387,30 @@ pub async fn count_message_tokens(
     headers: HeaderMap,
     uri: Uri,
     body: Bytes,
+) -> Result<Response, AnthropicRouteError> {
+    let recorder = client_observer::recorder(&state, ClientTrajectoryTransport::Http);
+    recorder.use_anthropic_messages_protocol();
+    if recorder
+        .record(ClientTrajectoryFrameKind::Request, &body)
+        .await
+        .is_err()
+    {
+        recorder.mark_incomplete();
+    }
+    let capture = CaptureGuard::new(recorder.clone());
+    let response = match dispatch_count_message_tokens(state, headers, uri, body, recorder).await {
+        Ok(response) => response.into_response(),
+        Err(error) => error.into_response(),
+    };
+    Ok(client_observer::observe_response(response, capture))
+}
+
+async fn dispatch_count_message_tokens(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    uri: Uri,
+    body: Bytes,
+    recorder: ClientTrajectoryRecorder,
 ) -> Result<Json<AnthropicCountTokensResponse>, AnthropicRouteError> {
     info!(
         route = "messages_count_tokens",
@@ -362,6 +431,14 @@ pub async fn count_message_tokens(
         &source_body,
         translation.request.client_protocol_envelope,
     );
+    translation.request.metadata.set_observation_context(Some(
+        control_plane_contracts::ports::WorkflowObservationContext {
+            client_request_id: recorder.capture_id(),
+            context_flow_run_id: None,
+            context_response_id: None,
+            is_resume: false,
+        },
+    ));
     translation
         .request
         .execution
@@ -372,7 +449,7 @@ pub async fn count_message_tokens(
         "anthropic count tokens request translated"
     );
     let run = compatibility_interface::invoke_blocking(
-        state,
+        state.clone(),
         compatibility_interface::ANTHROPIC_COUNT_TOKENS_BINDING_ID,
         bearer_token,
         compatibility_interface::CompatibilityBlockingInput {
@@ -384,6 +461,7 @@ pub async fn count_message_tokens(
         },
     )
     .await?;
+    client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
     let input_tokens = match run.operation_terminal.as_ref() {
         Some(NativeOperationTerminal::CountTokens(receipt)) => receipt.input_tokens(),
         _ => return Err(native::blocking_run_projection_error(&run).into()),
