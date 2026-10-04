@@ -22,12 +22,13 @@ pub struct McpOAuthGrant {
 #[async_trait]
 pub trait McpOAuthRepository: Send + Sync {
     async fn oauth_authorization_stamp(&self, user_id: Uuid) -> anyhow::Result<Value>;
+    /// Only durable client registrations use None; protocol secrets always expire.
     async fn oauth_put(
         &self,
         kind: &str,
         hash: &str,
         value: Value,
-        expires_at: i64,
+        expires_at: Option<i64>,
     ) -> anyhow::Result<()>;
     async fn oauth_get(&self, kind: &str, hash: &str) -> anyhow::Result<Option<Value>>;
     /// Atomic compare-and-consume; callers validate the complete payload before consumption.

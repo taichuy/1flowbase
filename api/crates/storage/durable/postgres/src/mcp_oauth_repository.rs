@@ -23,7 +23,7 @@ impl McpOAuthRepository for PgControlPlaneStore {
         kind: &str,
         hash: &str,
         value: Value,
-        expires: i64,
+        expires: Option<i64>,
     ) -> anyhow::Result<()> {
         // Bounded opportunistic expiry keeps abandoned browser flows and token families finite.
         sqlx::query("delete from mcp_oauth_state where (kind,token_hash) in (select kind,token_hash from mcp_oauth_state where expires_at<=now() limit 100)")
@@ -31,11 +31,11 @@ impl McpOAuthRepository for PgControlPlaneStore {
         sqlx::query("delete from mcp_oauth_grants where id in (select id from mcp_oauth_grants where expires_at<=now() limit 100)")
             .execute(self.pool()).await?;
         sqlx::query("insert into mcp_oauth_state(kind,token_hash,payload,expires_at) values($1,$2,$3,to_timestamp($4::double precision)) on conflict(kind,token_hash) do update set payload=excluded.payload,expires_at=excluded.expires_at")
-            .bind(kind).bind(hash).bind(value).bind(expires as f64).execute(self.pool()).await?;
+            .bind(kind).bind(hash).bind(value).bind(expires.map(|value| value as f64)).execute(self.pool()).await?;
         Ok(())
     }
     async fn oauth_get(&self, kind: &str, hash: &str) -> anyhow::Result<Option<Value>> {
-        Ok(sqlx::query_scalar("select payload from mcp_oauth_state where kind=$1 and token_hash=$2 and expires_at>now()")
+        Ok(sqlx::query_scalar("select payload from mcp_oauth_state where kind=$1 and token_hash=$2 and (expires_at is null or expires_at>now())")
             .bind(kind).bind(hash).fetch_optional(self.pool()).await?)
     }
     async fn oauth_consume(

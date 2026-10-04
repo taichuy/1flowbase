@@ -191,7 +191,10 @@ async fn oauth_pkce_refresh_replay_resource_and_original_pat_contract() {
             ("client_id", &client),
             ("code", &code),
             ("redirect_uri", CALLBACK),
-            ("code_verifier", "wrong"),
+            (
+                "code_verifier",
+                "0123456789012345678901234567890123456789012345678901234567890123",
+            ),
         ],
     )
     .await;

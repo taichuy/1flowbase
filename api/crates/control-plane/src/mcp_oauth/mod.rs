@@ -94,12 +94,23 @@ pub fn resource_url(issuer: &str, instance: &str) -> Result<String> {
         .extend(["api", "mcp", instance]);
     Ok(url.to_string())
 }
+/// RFC9728 path-aware metadata discovery uses the exact resource path encoding.
+pub fn resource_metadata_url(issuer: &str, instance: &str) -> Result<String> {
+    let resource = resource_url(issuer, instance)?;
+    Ok(format!(
+        "{issuer}/.well-known/oauth-protected-resource{}",
+        &resource[issuer.len()..]
+    ))
+}
 fn resource_instance(issuer: &str, resource: &str) -> Result<String> {
     let encoded = resource
         .strip_prefix(&format!("{issuer}/api/mcp/"))
         .ok_or_else(OAuthError::invalid)?;
     // Decode a single RFC3986 path segment; a literal '+' must not become a space.
-    let form = format!("instance={}", encoded.replace('+', "%2B"));
+    let form = format!(
+        "instance={}",
+        encoded.replace('+', "%2B").replace('&', "%26")
+    );
     let instance = url::form_urlencoded::parse(form.as_bytes())
         .next()
         .ok_or_else(OAuthError::invalid)?
@@ -271,7 +282,7 @@ where
                 "client",
                 &hash(&client.client_id),
                 serde_json::to_value(&client)?,
-                now() + 365 * 86400,
+                None,
             )
             .await?;
         Ok(client)
@@ -317,7 +328,7 @@ where
                 "request",
                 &hash(&id),
                 serde_json::to_value(pending)?,
-                now() + REQUEST_SECONDS,
+                Some(now() + REQUEST_SECONDS),
             )
             .await?;
         Ok(id)
@@ -387,7 +398,7 @@ where
                     grant_id: grant.id,
                     token_hash: hash(&approval_token),
                 })?,
-                now() + REQUEST_SECONDS,
+                Some(now() + REQUEST_SECONDS),
             )
             .await?;
         Ok(VerificationView {
@@ -443,7 +454,7 @@ where
                         redirect_uri: p.request.redirect_uri.clone(),
                         challenge: p.request.code_challenge,
                     })?,
-                    now() + 120,
+                    Some(now() + 120),
                 )
                 .await?;
             redirect.query_pairs_mut().append_pair("code", &code);
@@ -580,7 +591,7 @@ where
                 "access",
                 &hash(&access_token),
                 json!({"grant_id":grant.id}),
-                now() + expires_in,
+                Some(now() + expires_in),
             )
             .await?;
         Ok(TokenResponse {

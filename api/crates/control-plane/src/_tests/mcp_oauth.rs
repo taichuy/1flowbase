@@ -53,3 +53,36 @@ fn resource_cannot_change_origin_or_escape_instance() {
         assert!(resource_instance("https://example.com", resource).is_err());
     }
 }
+
+#[test]
+fn metadata_uri_encodes_instance_without_query_fragment_or_header_injection() {
+    let issuer = "https://example.com";
+    for instance in [
+        "team?x",
+        "team#x",
+        "team/name",
+        "team\"name",
+        "team%name",
+        "a+b",
+        "team&other",
+        "space name",
+        "工作区",
+    ] {
+        let resource = resource_url(issuer, instance).unwrap();
+        let metadata = resource_metadata_url(issuer, instance).unwrap();
+        assert_eq!(
+            metadata,
+            format!(
+                "{issuer}/.well-known/oauth-protected-resource{}",
+                &resource[issuer.len()..]
+            )
+        );
+        let url = url::Url::parse(&metadata).unwrap();
+        assert!(url.query().is_none() && url.fragment().is_none());
+        assert!(!metadata.contains('"'));
+        assert_eq!(resource_instance(issuer, &resource).unwrap(), instance);
+    }
+    for instance in ["", ".", ".."] {
+        assert!(resource_metadata_url(issuer, instance).is_err());
+    }
+}

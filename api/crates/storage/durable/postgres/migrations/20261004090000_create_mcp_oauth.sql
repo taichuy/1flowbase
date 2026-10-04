@@ -1,6 +1,7 @@
 create table mcp_oauth_state (
   kind text not null, token_hash text not null, payload jsonb not null,
-  expires_at timestamptz not null, primary key(kind, token_hash)
+  expires_at timestamptz, primary key(kind, token_hash),
+  check ((kind = 'client') = (expires_at is null))
 );
 create index mcp_oauth_state_expiry on mcp_oauth_state(expires_at);
 create table mcp_oauth_grants (
