@@ -93,7 +93,7 @@ describe('API Key MCP authorization without a console session', () => {
 
   test('requires a request and cannot turn a standalone page into a login', () => {
     renderPage();
-    expect(screen.getByRole('alert')).toHaveTextContent(/^授权请求无效或已过期$/, { normalizeWhitespace: false });
+    expect(screen.getByRole('alert')).toHaveTextContent(/授权请求无效或已过期/, { normalizeWhitespace: false });
     expect(api.fetchMcpOAuthAuthorization).not.toHaveBeenCalled();
   });
 

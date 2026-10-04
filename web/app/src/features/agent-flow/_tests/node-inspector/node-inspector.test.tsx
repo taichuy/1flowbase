@@ -21,6 +21,7 @@ import {
   DocumentObserver,
   FocusIssueSeed,
   SelectionSeed,
+  SLOW_NODE_INSPECTOR_TEST_TIMEOUT,
   createInitialState,
   createInitialStateWithHttpRequestNode,
   createInitialStateWithCodeNode,
@@ -1187,7 +1188,7 @@ describe('NodeInspector core', () => {
         value: '{"query":"{{node-start.query}}"}'
       });
     });
-  }, 10000);
+  }, SLOW_NODE_INSPECTOR_TEST_TIMEOUT);
 
   test('renders repeated HTTP Request sections without duplicate React keys', async () => {
     const consoleErrorSpy = vi

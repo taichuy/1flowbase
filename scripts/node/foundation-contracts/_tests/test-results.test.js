@@ -48,3 +48,24 @@ test('native and Node receipt success still requires actual passing tests', () =
     }
   }
 });
+
+
+test('conditional MCP continuation rejects zero-test and missing-count receipts', () => {
+  const plan = buildFoundationPlan({
+    foundation: 'mcp-gateway',
+    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol/result_delivery.rs'],
+  });
+  const pack = plan.packs['mcp-gateway'].fast;
+  assert.equal(pack.find((item) => item.id === 'mcp-result-continuation').testRunner, 'cargo');
+  const result = {
+    foundation: 'mcp-gateway', candidateSha: 'candidate', status: 'passed', exitCode: 0,
+    executedPack: pack.map((item) => item.id),
+    commands: pack.map((item) => ({ id: item.id, exitCode: 0, logPath: `${item.id}.log`, passedCount: 2, failedCount: 0 })),
+  };
+  assert.equal(buildContractReceipt({ candidateSha: 'candidate', plan, componentResults: [result] }).status, 'passed');
+  for (const passedCount of [0, null]) {
+    const invalid = structuredClone(result);
+    invalid.commands.find((item) => item.id === 'mcp-result-continuation').passedCount = passedCount;
+    assert.equal(buildContractReceipt({ candidateSha: 'candidate', plan, componentResults: [invalid] }).status, 'failed');
+  }
+});

@@ -172,6 +172,7 @@ function buildMcpFastPack(changedFiles) {
   if (changedFiles.some((filePath) => /(?:mcp_result|result_delivery|result_receipt)/iu.test(filePath))) {
     fast.push({
       id: 'mcp-result-continuation',
+      testRunner: 'cargo',
       command: 'cargo',
       args: ['test', '-p', 'storage-durable-postgres', 'mcp_result_receipt_repository_tests'],
       cwd: 'api',

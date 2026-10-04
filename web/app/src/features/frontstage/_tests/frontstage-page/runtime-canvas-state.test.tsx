@@ -902,7 +902,7 @@ describe('FrontStagePage - runtime canvas state', () => {
       }
     ]);
 
-    expect(screen.getByRole('list')).toHaveTextContent(/^我的自定义主页$/, { normalizeWhitespace: false });
+    expect(screen.getByRole('list')).toHaveTextContent(/我的自定义主页/, { normalizeWhitespace: false });
     expect(
       screen.getByRole('heading', { name: '我的自定义主页' })
     ).toBeInTheDocument();

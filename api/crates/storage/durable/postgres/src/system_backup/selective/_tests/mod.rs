@@ -1,5 +1,6 @@
 mod fixes;
 mod native_storage;
+mod oauth;
 mod raw_storage;
 
 use super::*;
@@ -138,6 +139,19 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         );
     }
     assert_eq!(application.label_key, "auto.application_management");
+    let mcp = categories
+        .iter()
+        .find(|category| category.feature_id == "system.mcp-management")
+        .unwrap();
+    assert_eq!(
+        mcp.data_tables,
+        ["mcp_oauth_grants", "mcp_oauth_refresh_tokens", "mcp_oauth_state"]
+            .map(String::from)
+    );
+    for table in &mcp.data_tables {
+        assert!(!mcp.structure_tables.contains(table));
+        assert!(!inventory::excluded(table));
+    }
     let backups = categories
         .iter()
         .find(|category| category.feature_id == "system.backups")
