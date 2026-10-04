@@ -1,4 +1,4 @@
-name: Gateway Resource Candidate Regression
+name: Gateway Rebase Contract Audit
 'on':
   workflow_dispatch:
     inputs:
@@ -52,43 +52,6 @@ jobs:
           cache-workspace-crates: true
           cache-on-failure: true
           workspaces: api -> target
-      - name: Build source-bound development executable
-        timeout-minutes: 90
-        shell: bash
-        env:
-          EXPECTED_SHA: ${{ inputs.candidate_sha }}
-        run: |
-          set -euo pipefail
-          out=tmp/test-governance/gateway-resource-ci/build
-          mkdir -p "$out"
-          node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/cargo-jobs.txt"
-          export CARGO_BUILD_JOBS="$(cat "$out/cargo-jobs.txt")"
-          rustc -Vv > "$out/toolchain.txt"
-          git rev-parse HEAD > "$out/source-sha.txt"
-          test "$(cat "$out/source-sha.txt")" = "$EXPECTED_SHA"
-          git rev-parse HEAD:api > "$out/api-tree.txt"
-          git status --porcelain --untracked-files=no > "$out/source-status.txt"
-          test ! -s "$out/source-status.txt"
-          set +e
-          cargo build --manifest-path api/Cargo.toml --locked -p api-server --bin api-server --features tikv-jemallocator/stats > "$out/build.log" 2>&1
-          code=$?
-          set -e
-          printf '%s\n' "$code" > "$out/build-exit-code.txt"
-          tail -c 5000 "$out/build.log"
-          test "$code" = 0
-          cp api/target/debug/api-server "$out/api-server"
-          sha256sum "$out/api-server" > "$out/binary.sha256"
-          printf '%s\n' "$RUSTFLAGS" > "$out/rustflags.txt"
-          ldd "$out/api-server" > "$out/ldd.txt"
-          tar -czf "$out/api-server.tar.gz" -C "$out" api-server
-          rm "$out/api-server"
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: gateway-resource-build-${{ github.run_id }}
-          path: tmp/test-governance/gateway-resource-ci/build/**
-          retention-days: 7
-          if-no-files-found: error
       - name: Execute centralized behavior tests sequentially
         timeout-minutes: 100
         if: success()
@@ -97,7 +60,7 @@ jobs:
           DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/gateway_tests
         run: |
           set -euo pipefail
-          out=tmp/test-governance/gateway-resource-ci/tests
+          out=tmp/test-governance/gateway-resource-contract-ci/tests
           mkdir -p "$out"
           node scripts/node/testing/verify-runtime.js cargo-jobs > "$out/repository-cargo-jobs.txt"
           # CI test linking shares this runner with Postgres; preserve the prior measured resource budget.
@@ -123,13 +86,13 @@ jobs:
             tail -c 4000 "$out/$name.log"
             if [ "$code" -ne 0 ]; then status=1; fi
           }
-          run_suite trace_projection -p control-plane --lib trace_projection
-          run_suite application_logs -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::
+          run_suite standard_generate -p control-plane --lib issue_2050_standard_generate_does_not_supersede_waiting_callback
+          run_suite completed_context -p control-plane --lib completed_tool_receipt_after_incomplete_inference_starts_new_full_context_turn
           python3 - <<'PY'
           import json,pathlib,re
-          p=pathlib.Path('tmp/test-governance/gateway-resource-ci/tests')
+          p=pathlib.Path('tmp/test-governance/gateway-resource-contract-ci/tests')
           suites=[]
-          for name in ['trace_projection','application_logs']:
+          for name in ['standard_generate','completed_context']:
               log=(p/(name+'.log')).read_text(errors='replace')
               rows=re.findall(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored;',log)
               code=int((p/(name+'.exit-code.txt')).read_text())
@@ -142,7 +105,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: gateway-resource-tests-${{ github.run_id }}
-          path: tmp/test-governance/gateway-resource-ci/tests/**
+          name: gateway-resource-contract-tests-${{ github.run_id }}
+          path: tmp/test-governance/gateway-resource-contract-ci/tests/**
           retention-days: 14
           if-no-files-found: warn
