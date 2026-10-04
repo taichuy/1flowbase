@@ -204,11 +204,19 @@ async fn shared_overview_child(
     };
     // Restore the entire overview before comparing its child. Never use SQL
     // JSONB equality or a hash as proof of the original section value.
+    // Locate the target metadata before joining bodies: otherwise a cached
+    // plan can walk all application bodies and expand their history references.
     let rows = sqlx::query(r#"
+        with overview as materialized (
+            select content_id,content_path,flow_run_id,event_sequence
+            from client_trajectory_sections
+            where flow_run_id=$1 and request_id=$2 and step_id=$3
+                and section='overview' and body_kind='content'
+        )
         select p.content_id,p.content_path,runtime_original_json(c.content,c.raw_json_payloads,'content') as body
-        from client_trajectory_sections p join flow_runs f on f.id=p.flow_run_id
+        from overview p join flow_runs f on f.id=p.flow_run_id
         join runtime_canonical_contents c on c.id=p.content_id and c.scope_id=f.scope_id and c.application_id=f.application_id
-        where p.flow_run_id=$1 and p.request_id=$2 and p.step_id=$3 and p.section='overview' and p.body_kind='content'
+        where f.id=$1
         order by p.event_sequence desc
     "#).bind(input.flow_run_id).bind(input.request_id).bind(step_id).fetch_all(&mut **tx).await?;
     for row in rows {

@@ -31,6 +31,121 @@ async fn value(store: &PgControlPlaneStore, run: Uuid, id: Uuid, name: &str) -> 
 }
 
 #[tokio::test]
+async fn client_semantic_overview_lookup_uses_latest_matching_target_and_keeps_fallback() {
+    let (store, run) = seed().await;
+    let request = Uuid::now_v7();
+    begin(&store, run, None, request).await;
+    add_step(&store, run, request, request).await;
+    let arguments = json!(" exact\0 original \\u0000 ");
+    let output = json!([{"type":"output_text","text":"old overview child\0"}]);
+    let mut overview_ids = Vec::new();
+    for body in [
+        json!({"arguments":arguments,"content":output,"marker":"oldest"}),
+        json!({"arguments":arguments,"content":"different","marker":"middle"}),
+        json!({"arguments":"different","marker":"latest"}),
+    ] {
+        section(&store, run, None, request, request, "overview", body).await;
+        let id: Uuid = sqlx::query_scalar(
+            "select content_id from client_trajectory_sections where step_id=$1 and section='overview' order by event_sequence desc limit 1",
+        )
+        .bind(request)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        overview_ids.push(id);
+    }
+    // Newer overviews belonging to another step or request must not win.
+    for other_request in [request, Uuid::now_v7()] {
+        if other_request != request {
+            begin(&store, run, None, other_request).await;
+        }
+        let other_step = Uuid::now_v7();
+        add_step(&store, run, other_request, other_step).await;
+        section(
+            &store,
+            run,
+            None,
+            other_request,
+            other_step,
+            "overview",
+            json!({"arguments":arguments,"content":output,"marker":other_step}),
+        )
+        .await;
+    }
+    section(
+        &store,
+        run,
+        None,
+        request,
+        request,
+        "parameters",
+        arguments.clone(),
+    )
+    .await;
+    section(
+        &store,
+        run,
+        None,
+        request,
+        request,
+        "result",
+        output.clone(),
+    )
+    .await;
+    let shared: Vec<(Uuid, Vec<String>)> = sqlx::query_as(
+        "select content_id,content_path from client_trajectory_sections where step_id=$1 and section in ('parameters','result') order by event_sequence",
+    )
+    .bind(request)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        shared,
+        vec![
+            (overview_ids[1], vec!["arguments".to_owned()]),
+            (overview_ids[0], vec!["content".to_owned()]),
+        ],
+        "search beyond the newest nonmatch, then choose the newest exact match"
+    );
+    assert_eq!(value(&store, run, request, "parameters").await, arguments);
+    assert_eq!(value(&store, run, request, "result").await, output);
+
+    let fallback = json!({"unmatched":"independent original\0"});
+    section(
+        &store,
+        run,
+        None,
+        request,
+        request,
+        "result",
+        fallback.clone(),
+    )
+    .await;
+    let (content_id, path): (Uuid, Vec<String>) = sqlx::query_as(
+        "select content_id,content_path from client_trajectory_sections where step_id=$1 and section='result' order by event_sequence desc limit 1",
+    )
+    .bind(request)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(!overview_ids.contains(&content_id));
+    assert!(path.is_empty());
+    let results = store
+        .client_trajectory_section(run, None, request, "result", None, 32)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        results
+            .items
+            .iter()
+            .map(|item| item.value.clone())
+            .collect::<Vec<_>>(),
+        vec![output, fallback]
+    );
+}
+
+#[tokio::test]
 async fn client_semantic_directories_share_only_complete_original_values_and_preserve_occurrences()
 {
     let (store, run) = seed().await;
