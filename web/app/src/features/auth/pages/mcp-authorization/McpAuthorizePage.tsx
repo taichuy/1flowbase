@@ -45,13 +45,14 @@ function AuthorizationForm({ requestId }: { requestId?: string }) {
     if (requestId) {
       void fetchMcpOAuthAuthorization(requestId, controller.signal)
         .then((value) => {
-          if (active.current) setAuthorization(value);
+          if (active.current && !controller.signal.aborted)
+            setAuthorization(value);
         })
         .catch(() => {
           if (active.current && !controller.signal.aborted) setError('request');
         })
         .finally(() => {
-          if (active.current) setLoading(false);
+          if (active.current && !controller.signal.aborted) setLoading(false);
         });
     }
     return () => {
