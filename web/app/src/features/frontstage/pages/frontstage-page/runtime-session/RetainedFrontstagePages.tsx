@@ -202,14 +202,14 @@ export function RetainedFrontstagePages({
           <div
             key={key}
             hidden={!visible}
-            style={{ display: visible ? 'contents' : 'none' }}
+            style={{ display: visible ? 'block' : 'none' }}
           >
             {renderEntry(entry)}
           </div>
         );
       })}
       {fallback.current ? (
-        <div key={`fallback:${activeKey}`} style={{ display: 'contents' }}>
+        <div key={`fallback:${activeKey}`} style={{ display: 'block' }}>
           {renderEntry(fallback.current.entry)}
         </div>
       ) : null}
