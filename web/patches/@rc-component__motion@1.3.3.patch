@@ -1,0 +1,104 @@
+diff --git a/es/hooks/useStatus.js b/es/hooks/useStatus.js
+--- a/es/hooks/useStatus.js
++++ b/es/hooks/useStatus.js
+@@ -31,6 +31,7 @@
+   const [style, setStyle] = React.useState([null, null]);
+   const currentStatus = getStatus();
+   const mountedRef = useRef(false);
++  const effectsDisconnectedRef = useRef(false);
+   const deadlineRef = useRef(null);
+ 
+   // =========================== Dom Node ===========================
+@@ -144,6 +145,15 @@
+ 
+   // Update with new status
+   useIsomorphicLayoutEffect(() => {
++    // Activity disconnects effects without discarding the committed DOM.
++    // Its canceled frames/events cannot finish an interrupted transition.
++    if (mountedRef.current && effectsDisconnectedRef.current) {
++      effectsDisconnectedRef.current = false;
++      setAsyncVisible(visible);
++      visibleRef.current = visible;
++      updateMotionEndStatus();
++      return;
++    }
+     // When use Suspense, the `visible` will repeat trigger,
+     // But not real change of the `visible`, we need to skip it.
+     // https://github.com/ant-design/ant-design/issues/44379
+@@ -201,12 +211,13 @@
+     }
+   }, [motionAppear, motionEnter, motionLeave]);
+   useEffect(() => () => {
+-    mountedRef.current = false;
++    effectsDisconnectedRef.current = true;
+     clearTimeout(deadlineRef.current);
+   }, []);
+ 
+   // Trigger `onVisibleChanged`
+   const firstMountChangeRef = React.useRef(false);
++  const lastVisibleChangeRef = React.useRef();
+   useEffect(() => {
+     // [visible & motion not end] => [!visible & motion end] still need trigger onVisibleChanged
+     if (asyncVisible) {
+@@ -214,7 +225,8 @@
+     }
+     if (asyncVisible !== undefined && currentStatus === STATUS_NONE) {
+       // Skip first render is invisible since it's nothing changed
+-      if (firstMountChangeRef.current || asyncVisible) {
++      if ((firstMountChangeRef.current || asyncVisible) && lastVisibleChangeRef.current !== asyncVisible) {
++        lastVisibleChangeRef.current = asyncVisible;
+         onVisibleChanged?.(asyncVisible);
+       }
+       firstMountChangeRef.current = true;
+diff --git a/lib/hooks/useStatus.js b/lib/hooks/useStatus.js
+--- a/lib/hooks/useStatus.js
++++ b/lib/hooks/useStatus.js
+@@ -40,6 +40,7 @@
+   const [style, setStyle] = React.useState([null, null]);
+   const currentStatus = getStatus();
+   const mountedRef = (0, _react.useRef)(false);
++  const effectsDisconnectedRef = (0, _react.useRef)(false);
+   const deadlineRef = (0, _react.useRef)(null);
+ 
+   // =========================== Dom Node ===========================
+@@ -153,6 +154,15 @@
+ 
+   // Update with new status
+   (0, _useIsomorphicLayoutEffect.default)(() => {
++    // Activity disconnects effects without discarding the committed DOM.
++    // Its canceled frames/events cannot finish an interrupted transition.
++    if (mountedRef.current && effectsDisconnectedRef.current) {
++      effectsDisconnectedRef.current = false;
++      setAsyncVisible(visible);
++      visibleRef.current = visible;
++      updateMotionEndStatus();
++      return;
++    }
+     // When use Suspense, the `visible` will repeat trigger,
+     // But not real change of the `visible`, we need to skip it.
+     // https://github.com/ant-design/ant-design/issues/44379
+@@ -210,12 +220,13 @@
+     }
+   }, [motionAppear, motionEnter, motionLeave]);
+   (0, _react.useEffect)(() => () => {
+-    mountedRef.current = false;
++    effectsDisconnectedRef.current = true;
+     clearTimeout(deadlineRef.current);
+   }, []);
+ 
+   // Trigger `onVisibleChanged`
+   const firstMountChangeRef = React.useRef(false);
++  const lastVisibleChangeRef = React.useRef();
+   (0, _react.useEffect)(() => {
+     // [visible & motion not end] => [!visible & motion end] still need trigger onVisibleChanged
+     if (asyncVisible) {
+@@ -223,7 +234,8 @@
+     }
+     if (asyncVisible !== undefined && currentStatus === _interface.STATUS_NONE) {
+       // Skip first render is invisible since it's nothing changed
+-      if (firstMountChangeRef.current || asyncVisible) {
++      if ((firstMountChangeRef.current || asyncVisible) && lastVisibleChangeRef.current !== asyncVisible) {
++        lastVisibleChangeRef.current = asyncVisible;
+         onVisibleChanged?.(asyncVisible);
+       }
+       firstMountChangeRef.current = true;

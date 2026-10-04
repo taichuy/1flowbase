@@ -25,6 +25,7 @@ patchedDependencies:
   '@ant-design/icons@6.3.4': b0d7fa8c3c1874fba63f80efea40ce54ad68065b1e386e39be634d0cb0925331
   '@rc-component/dialog@1.10.0': 34df5c2d9a54ce5793d636750f353a8ecc0deed1c98015a13cd28947ab805b6b
   '@rc-component/drawer@1.4.2': 9b511c2be2aba74bf206d1b1da275bda10e5fa921f91601f8a282f2d1370483f
+  '@rc-component/motion@1.3.3': 2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8
   '@rc-component/util@1.12.0': 2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b
   react-grid-layout@2.2.3: e738f000027de32e8a2677dbe6e8944408c727abf8ef223bb1620ec6693466df
 
@@ -4213,7 +4214,7 @@ snapshots:
       '@ant-design/cssinjs': 2.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@ant-design/fast-color': 3.0.1
       '@babel/runtime': 7.29.7
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       antd: 6.6.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
@@ -4271,7 +4272,7 @@ snapshots:
       '@ant-design/fast-color': 3.0.1
       '@ant-design/icons': 6.3.2(patch_hash=b0d7fa8c3c1874fba63f80efea40ce54ad68065b1e386e39be634d0cb0925331)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@babel/runtime': 7.29.7
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/resize-observer': 1.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       antd: 6.6.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -5027,7 +5028,7 @@ snapshots:
   '@rc-component/collapse@1.2.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@babel/runtime': 7.29.7
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
       react: 19.2.5
@@ -5049,7 +5050,7 @@ snapshots:
 
   '@rc-component/dialog@1.10.0(patch_hash=34df5c2d9a54ce5793d636750f353a8ecc0deed1c98015a13cd28947ab805b6b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/portal': 2.2.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
@@ -5058,7 +5059,7 @@ snapshots:
 
   '@rc-component/drawer@1.4.2(patch_hash=9b511c2be2aba74bf206d1b1da275bda10e5fa921f91601f8a282f2d1370483f)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/portal': 2.2.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
@@ -5083,7 +5084,7 @@ snapshots:
 
   '@rc-component/image@1.10.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/portal': 2.2.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
@@ -5108,7 +5109,7 @@ snapshots:
 
   '@rc-component/listy@1.2.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/portal': 2.2.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/resize-observer': 1.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -5129,7 +5130,7 @@ snapshots:
 
   '@rc-component/menu@1.5.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/overflow': 1.0.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/trigger': 3.10.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -5141,7 +5142,7 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.29.7
 
-  '@rc-component/motion@1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@rc-component/motion@1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
@@ -5156,7 +5157,7 @@ snapshots:
 
   '@rc-component/notification@2.0.8(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
       react: 19.2.5
@@ -5226,7 +5227,7 @@ snapshots:
   '@rc-component/segmented@1.3.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@babel/runtime': 7.29.7
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
       react: 19.2.5
@@ -5277,7 +5278,7 @@ snapshots:
     dependencies:
       '@rc-component/dropdown': 1.0.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/menu': 1.5.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/resize-observer': 1.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
@@ -5312,7 +5313,7 @@ snapshots:
 
   '@rc-component/tree@1.4.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/virtual-list': 1.5.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       clsx: 2.1.1
@@ -5321,7 +5322,7 @@ snapshots:
 
   '@rc-component/trigger@3.10.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/portal': 2.2.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/resize-observer': 1.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/util': 1.12.0(patch_hash=2f3d5009838d2f4c8041f4da4a98cd6522d7dc22d6e76d2b8dba7c94740b6d2b)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -6443,7 +6444,7 @@ snapshots:
       '@rc-component/listy': 1.2.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/mentions': 1.12.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/menu': 1.5.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/motion': 1.3.3(patch_hash=2f36d0f5df5d0e281b8705b459c3daa33616c2a32f598206d890df9140c409d8)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/mutate-observer': 2.0.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/notification': 2.0.8(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/pagination': 1.4.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
