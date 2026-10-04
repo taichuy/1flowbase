@@ -39,3 +39,4 @@ runtime-core = { path = "../runtime-core" }
 ed25519-dalek = { version = "2", features = ["pem"] }
 flate2.workspace = true
 tar.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
