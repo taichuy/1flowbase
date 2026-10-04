@@ -17,7 +17,9 @@ const show = () =>
       <ChatGptConfiguration instanceId="demo" />
     </QueryClientProvider>
   );
-beforeEach(() => fetchConfig.mockReset());
+beforeEach(() => {
+  fetchConfig.mockReset();
+});
 afterEach(cleanup);
 
 test('shows trusted backend URL and DCR instructions without a Key input', async () => {
