@@ -62,6 +62,26 @@ export interface FrontstageNativePreparedRuntime {
   contribution?: PreparedTrustedFrontendContribution;
 }
 
+/** Only failed source reads may keep an already mounted, hidden runtime. */
+export class FrontstageNativeSourceReadError extends Error {
+  readonly retryable: boolean;
+
+  constructor(cause: unknown) {
+    super(toError(cause).message, { cause });
+    this.name = 'FrontstageNativeSourceReadError';
+    const status =
+      cause && typeof cause === 'object' && 'status' in cause
+        ? cause.status
+        : undefined;
+    this.retryable =
+      typeof status !== 'number' ||
+      status === 0 ||
+      status === 408 ||
+      status === 429 ||
+      status >= 500;
+  }
+}
+
 export function prepareFrontstageNativeContribution(
   catalogEntries: readonly NormalizedFrontstageBlockCatalogEntry[],
   request: FrontstagePageCanvasBlockCodeReadRequest,
@@ -328,8 +348,8 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
   }
 
   /** ACL/version checks complete before the retained canvas is revealed. */
-  async revalidate(): Promise<void> {
-    await Promise.all(
+  async revalidate(): Promise<Error | null> {
+    const errors = await Promise.all(
       [...this.scheduled.values()]
         .filter(
           (current) =>
@@ -337,6 +357,7 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
         )
         .map((current) => this.start(current, true))
     );
+    return errors.find((error) => error !== null) ?? null;
   }
 
   retry(blockId: string): void {
@@ -400,7 +421,7 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
   private start(
     current: ScheduledPreparation,
     revalidating = false
-  ): Promise<void> {
+  ): Promise<Error | null> {
     const retained =
       revalidating && current.snapshot.status === 'ready'
         ? current.snapshot
@@ -430,15 +451,18 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
     return current.task
       .prepare(abortController.signal, enterStage)
       .then(async (prepared) => {
-        await this.admitMainThreadStage(current, generation, abortController);
-        if (!this.isCurrent(current, generation, abortController)) return;
-        current.abortController = null;
-        if (
+        const unchanged = Boolean(
           retained &&
           retained.prepared.component === prepared.component &&
           retained.prepared.identityInput.sourceSha256 ===
             prepared.identityInput.sourceSha256
-        ) {
+        );
+        // Returning to unchanged DOM needs no mount/evaluation scheduling turn.
+        if (!unchanged)
+          await this.admitMainThreadStage(current, generation, abortController);
+        if (!this.isCurrent(current, generation, abortController)) return null;
+        current.abortController = null;
+        if (unchanged && retained) {
           current.snapshot = retained;
         } else {
           if (retained) current.generation += 1;
@@ -446,9 +470,20 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
         }
         this.emit([current.task.blockId]);
         this.pump();
+        return null;
       })
       .catch((error: unknown) => {
-        if (!this.isCurrent(current, generation, abortController)) return;
+        if (!this.isCurrent(current, generation, abortController)) return null;
+        if (
+          retained &&
+          error instanceof FrontstageNativeSourceReadError &&
+          error.retryable
+        ) {
+          current.abortController = null;
+          current.snapshot = retained;
+          this.emit([current.task.blockId]);
+          return error;
+        }
         const failedStage =
           current.snapshot.status === 'source_fetch' ||
           current.snapshot.status === 'artifact_lookup' ||
@@ -465,6 +500,7 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
         };
         this.emit([current.task.blockId]);
         this.pump();
+        return null;
       });
   }
 

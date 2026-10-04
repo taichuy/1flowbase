@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const nativeRuntime = vi.hoisted(() => ({
@@ -352,6 +352,70 @@ test('returning to a retained page validates its browser copy without recompilin
   await waitFor(() => expect(fetchSource).toHaveBeenCalledTimes(4));
   await waitFor(() => expect(result.current.isValidating).toBe(false));
   expect(compile).toHaveBeenCalledOnce();
+});
+
+test('failed return validation retains the runtime behind an error until explicit retry succeeds', async () => {
+  const plan = readPlan();
+  const artifact = createArtifact();
+  const source = {
+    block_id: 'block-1',
+    page_id: 'page-1',
+    source_code: SOURCE,
+    source_sha256: null
+  };
+  let offline = false;
+  const fetchSource = vi.fn(async () => {
+    if (offline) throw new TypeError('Failed to fetch');
+    return source;
+  });
+  const artifactCache = {
+    get: vi.fn(async () => ({ status: 'hit' as const, artifact })),
+    put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+  };
+  const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
+    definitions: [],
+    load: vi.fn(async () => ({})),
+    resolveModuleMap: vi.fn(async () => ({})),
+    resolveModuleAssets: vi.fn(async () => [])
+  });
+  const { result, rerender } = renderHook(
+    ({ active }) =>
+      useFrontstagePageCanvasNativePreparations({
+        active,
+        actorId: 'actor-1',
+        actorWorkspaceId: 'workspace-1',
+        readPlan: plan,
+        fetchSource,
+        artifactCache,
+        moduleRegistryFactory
+      }),
+    { initialProps: { active: true } }
+  );
+  await waitFor(() =>
+    expect(
+      result.current.preparations.getBlockSnapshot('block-1')?.status
+    ).toBe('ready')
+  );
+  const original = result.current.preparations.getBlockSnapshot('block-1');
+  rerender({ active: false });
+  offline = true;
+  rerender({ active: true });
+  await waitFor(() =>
+    expect(result.current.validationError).toBeInstanceOf(Error)
+  );
+  expect(result.current.preparations.getBlockSnapshot('block-1')).toBe(
+    original
+  );
+  expect(result.current.isValidating).toBe(false);
+  offline = false;
+  act(() => result.current.retryValidation());
+  await waitFor(() => expect(result.current.validationError).toBeNull());
+  await waitFor(() => expect(result.current.isValidating).toBe(false));
+  expect(fetchSource).toHaveBeenCalledTimes(3);
+  expect(artifactCache.get).toHaveBeenCalledTimes(1);
+  expect(result.current.preparations.getBlockSnapshot('block-1')).toBe(
+    original
+  );
 });
 
 function readPlan(count = 1): FrontstagePageCanvasBlockCodeReadPlan {

@@ -34,7 +34,9 @@ import {
 } from '../lib/runtime-cache';
 import {
   FrontstageNativePreparationScheduler,
+  FrontstageNativeSourceReadError,
   prepareFrontstageNativeContribution,
+  type FrontstageNativePreparedRuntime,
   type FrontstageNativePreparationSource,
   type FrontstageNativePreparationTask
 } from '../lib/page-canvas/native-runtime-preparation';
@@ -88,6 +90,8 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
 
 export interface UseFrontstagePageCanvasNativePreparationsResult {
   isValidating: boolean;
+  validationError: Error | null;
+  retryValidation(): void;
   preparations: FrontstageNativePreparationSource;
   noteInteraction(): void;
   retryBlock(blockId: string): void;
@@ -112,7 +116,10 @@ export function useFrontstagePageCanvasNativePreparations({
     [maxConcurrent, actorId, actorWorkspaceId]
   );
   const wasActive = useRef(active);
+  const needsReturnValidation = active && !wasActive.current;
   const [isValidating, setIsValidating] = useState(false);
+  const [validationError, setValidationError] = useState<Error | null>(null);
+  const [validationAttempt, setValidationAttempt] = useState(0);
   const sourceCopies = useMemo(
     () => new Map<string, NativePreparationSource>(),
     [scheduler]
@@ -161,6 +168,8 @@ export function useFrontstagePageCanvasNativePreparations({
       return [];
     }
     return readPlan.requests.map((request) => {
+      let preparedCopy: FrontstageNativePreparedRuntime | undefined;
+      let preparedSource: NativePreparationSource | undefined;
       const refreshGeneration =
         refreshGenerationsByRequestId[request.requestId] ?? 0;
       const forceCompile = refreshGeneration > 0;
@@ -224,12 +233,21 @@ export function useFrontstagePageCanvasNativePreparations({
           const writeEpoch = artifactCache
             .captureWriteEpoch?.(actorId)
             .catch(() => ({ local: -1, persisted: -1 }));
-          const source = await fetchSource(
-            request,
-            signal,
-            forceCompile ? undefined : sourceCopies.get(request.requestId)
-          );
+          let source: NativePreparationSource;
+          try {
+            source = await fetchSource(
+              request,
+              signal,
+              forceCompile ? undefined : sourceCopies.get(request.requestId)
+            );
+          } catch (error) {
+            throw new FrontstageNativeSourceReadError(error);
+          }
           throwIfAborted(signal);
+          // A conditional 304 read returns the same validated browser copy.
+          // ACL was checked by the backend; the mounted factory needs no work.
+          if (!forceCompile && source === preparedSource && preparedCopy)
+            return preparedCopy;
           // The backend digest is the conditional-read contract. Reject corrupt
           // source before it can become a trusted browser copy or artifact.
           if (
@@ -304,11 +322,10 @@ export function useFrontstagePageCanvasNativePreparations({
             const moduleRegistry = moduleRegistryFactory();
             componentFactoryFlight =
               (async (): Promise<NativeComponentFlight> => {
-                const evaluated =
-                  await evaluateFrontstageReactArtifact(
-                    artifact,
-                    moduleRegistry
-                  );
+                const evaluated = await evaluateFrontstageReactArtifact(
+                  artifact,
+                  moduleRegistry
+                );
                 if (!evaluated.ok) return { ok: false, evaluated };
                 const moduleSources =
                   evaluated.artifact.program.injectedModules.map(
@@ -354,7 +371,7 @@ export function useFrontstagePageCanvasNativePreparations({
           const { evaluated, moduleAssets, moduleSources } = componentFlight;
           throwIfAborted(signal);
           compiledRefreshes.set(request.requestId, refreshGeneration);
-          return {
+          preparedCopy = {
             artifact: evaluated.artifact,
             component: evaluated.component,
             artifactCacheTier,
@@ -367,6 +384,8 @@ export function useFrontstagePageCanvasNativePreparations({
               runtimeAbi: evaluated.artifact.identity.runtime_abi
             }
           };
+          preparedSource = source;
+          return preparedCopy;
         }
       };
     });
@@ -399,33 +418,40 @@ export function useFrontstagePageCanvasNativePreparations({
     if (!active) {
       scheduler.suspend();
       setIsValidating(false);
-    } else if (returning) {
+    } else if (returning || validationAttempt > 0) {
+      scheduler.suspend();
       setIsValidating(true);
-      void scheduler.revalidate().finally(() => {
+      setValidationError(null);
+      void scheduler.revalidate().then((error) => {
         if (!current) return;
+        setValidationError(error);
         setIsValidating(false);
         scheduler.setPageVisible(
-          typeof document === 'undefined' ||
-            document.visibilityState !== 'hidden'
+          !error &&
+            (typeof document === 'undefined' ||
+              document.visibilityState !== 'hidden')
         );
       });
     }
     return () => {
       current = false;
     };
-  }, [active, scheduler]);
+  }, [active, scheduler, validationAttempt]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const updateVisibility = () =>
       scheduler.setPageVisible(
-        active && !isValidating && document.visibilityState !== 'hidden'
+        active &&
+          !isValidating &&
+          !validationError &&
+          document.visibilityState !== 'hidden'
       );
     updateVisibility();
     document.addEventListener('visibilitychange', updateVisibility);
     return () =>
       document.removeEventListener('visibilitychange', updateVisibility);
-  }, [active, isValidating, scheduler]);
+  }, [active, isValidating, validationError, scheduler]);
 
   useEffect(() => () => scheduler.dispose(), [scheduler]);
 
@@ -450,6 +476,10 @@ export function useFrontstagePageCanvasNativePreparations({
     (blockId: string) => scheduler.retry(blockId),
     [scheduler]
   );
+  const retryValidation = useCallback(
+    () => setValidationAttempt((attempt) => attempt + 1),
+    []
+  );
   const noteInteraction = useCallback(
     () => scheduler.noteInteraction(),
     [scheduler]
@@ -469,7 +499,9 @@ export function useFrontstagePageCanvasNativePreparations({
   );
   return {
     preparations: scheduler,
-    isValidating,
+    isValidating: isValidating || needsReturnValidation,
+    validationError,
+    retryValidation,
     noteInteraction,
     retryBlock,
     refreshBlock

@@ -4,6 +4,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 
 import {
   FrontstageNativePreparationScheduler,
+  FrontstageNativeSourceReadError,
   prepareFrontstageNativeContribution,
   type FrontstageNativePreparedRuntime,
   type FrontstageNativePreparationTask
@@ -525,6 +526,36 @@ describe('retained native preparation validation', () => {
       generation: 1,
       prepared: { identityInput: { sourceSha256: 'v2' } }
     });
+    scheduler.dispose();
+  });
+
+  test('transient source validation keeps the hidden snapshot for retry; HTTP denial discards it', async () => {
+    const scheduler = new FrontstageNativePreparationScheduler(1);
+    const original = prepared('v1');
+    let failure: unknown = null;
+    scheduler.reconcile(
+      [
+        task('block', 0, async () => {
+          if (failure) throw new FrontstageNativeSourceReadError(failure);
+          return original;
+        })
+      ],
+      { block: 1 }
+    );
+    await tick();
+    const snapshot = scheduler.getBlockSnapshot('block');
+    scheduler.suspend();
+    failure = new TypeError('Failed to fetch');
+    expect(await scheduler.revalidate()).toBeInstanceOf(
+      FrontstageNativeSourceReadError
+    );
+    expect(scheduler.getBlockSnapshot('block')).toBe(snapshot);
+    failure = null;
+    expect(await scheduler.revalidate()).toBeNull();
+    expect(scheduler.getBlockSnapshot('block')).toBe(snapshot);
+    failure = Object.assign(new Error('Forbidden'), { status: 403 });
+    expect(await scheduler.revalidate()).toBeNull();
+    expect(scheduler.getBlockSnapshot('block')?.status).toBe('failed');
     scheduler.dispose();
   });
 

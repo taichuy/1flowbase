@@ -1,0 +1,16 @@
+.frontstage-workspace-shell {
+  display: contents;
+}
+
+/* Keep the content branch stable when the navigation rail is unavailable. */
+.frontstage-workspace-shell--without-sidebar
+  > .section-page-layout
+  > .section-page-layout__shell
+  > .section-page-layout__rail,
+.frontstage-workspace-shell--without-sidebar
+  > .section-page-layout
+  > .section-page-layout__shell
+  > .section-page-layout__content
+  > .section-page-layout__sidebar-content {
+  display: none;
+}

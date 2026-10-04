@@ -4,12 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
 import type { ConsoleFrontstageBlockRuntimeLayer } from '@1flowbase/api-client';
 
-import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
 import type { FrontstagePageContent } from '../api/page-content';
 import { fetchFrontstageBlockDeleteImpact } from '../api/block-tree';
-import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import {
   JsxStudioRunPanel,
@@ -34,6 +32,7 @@ import {
   updateFrontstagePageLayoutMode,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
+import { FrontstageRuntimeActivityContext } from '../lib/page-canvas/runtime-activity';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
@@ -75,9 +74,12 @@ import {
 import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
-import { PageTreeFormModal } from './frontstage-page/page-tree-form-modal';
 import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMenu';
-import { usePageTreeWorkspace } from './frontstage-page/use-page-tree-workspace';
+import {
+  FrontstageWorkspaceShell,
+  useFrontstageWorkspace,
+  useOptionalFrontstageWorkspace
+} from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
 import './frontstage-page.css';
 
 const EMPTY_RUNTIME_DEMANDS: FrontstageRuntimeDemandByBlockId = Object.freeze(
@@ -85,7 +87,17 @@ const EMPTY_RUNTIME_DEMANDS: FrontstageRuntimeDemandByBlockId = Object.freeze(
 );
 const EMPTY_BLOCK_ROOTS: NonNullable<FrontStagePageProps['blockRoots']> = [];
 
-export const FrontStagePage: FC<FrontStagePageProps> = ({
+export const FrontStagePage: FC<FrontStagePageProps> = (props) => {
+  const workspace = useOptionalFrontstageWorkspace();
+  const body = <FrontStagePageBody {...props} />;
+  return workspace ? (
+    body
+  ) : (
+    <FrontstageWorkspaceShell {...props}>{body}</FrontstageWorkspaceShell>
+  );
+};
+
+const FrontStagePageBody: FC<FrontStagePageProps> = ({
   workspaceId,
   pageId,
   tabId,
@@ -99,9 +111,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   hasBlockRuntimeLoadError = false,
   onRetryLoadBlockRuntime,
   onNavigateBlock,
-  showSidebar = true,
-  autoSelectFirstPage = true,
-  onNavigatePage,
   onNavigateTab,
   initialPageTree,
   isPageTreeLoading,
@@ -113,14 +122,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   isPageContentPermissionDenied,
   onRetryLoadPageContent,
   onRefreshPage,
-  isPageTreeMutating,
-  pageTreeMutationError,
-  onCreateGroupNode,
-  onCreatePageNode,
-  onRenamePageNode,
-  onUpdatePageNodeMetadata,
-  onMovePageNode,
-  onDeletePageNode
+  pageTreeMutationError
 }) => {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -133,43 +135,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     (state) => state.setDesignMode
   );
   const {
-    pageTree,
     selectedPageId,
     selectedPageNode,
     operationStatus,
-    pageTreeForm,
-    pageTreeFormDialog,
-    isPageTreeIconPickerOpen,
-    setPageTreeFormDialog,
-    setIsPageTreeIconPickerOpen,
     isOperationPending,
-    handleAddGroup,
-    handleAddPage,
-    handleAddPageInGroup,
-    handleAddNodeAtPosition,
-    handleDeleteNode,
-    handleSubmitPageTreeForm,
     handleRenameNode,
-    handlePageTabsEnabledChange,
-    handleEditNodeTooltip,
-    handleUpdateNodeMetadata,
-    handleMoveNode,
-    handleMoveNodeToPosition,
-    handleMovePageToGroup,
-    handleSelectPage
-  } = usePageTreeWorkspace({
-    pageId,
-    autoSelectFirstPage,
-    onNavigatePage,
-    initialPageTree,
-    isPageTreeMutating,
-    onCreateGroupNode,
-    onCreatePageNode,
-    onRenamePageNode,
-    onUpdatePageNodeMetadata,
-    onMovePageNode,
-    onDeletePageNode
-  });
+    handlePageTabsEnabledChange
+  } = useFrontstageWorkspace(pageId);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
   const [savedPageContent, setSavedPageContent] =
@@ -803,18 +775,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
   if (initialPageTree === undefined && isPageTreeLoading) {
     return (
-      <SectionPageLayout
-        pageTitle={i18nText('frontstage', 'auto.frontstage')}
-        navItems={[]}
-        activeKey=""
-        contentWidth="wide"
-        heightMode="viewport"
-        sidebarContent={
-          <Typography.Text type="secondary" style={{ paddingInline: 16 }}>
-            {i18nText('frontstage', 'auto.page_tree_loading')}
-          </Typography.Text>
-        }
-      >
+      <>
         <section className="frontstage-page-workspace">
           <header className="frontstage-page-workspace__header">
             <Typography.Title
@@ -835,24 +796,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             />
           </div>
         </section>
-      </SectionPageLayout>
+      </>
     );
   }
 
   if (initialPageTree === undefined && hasPageTreeLoadError) {
     return (
-      <SectionPageLayout
-        pageTitle={i18nText('frontstage', 'auto.frontstage')}
-        navItems={[]}
-        activeKey=""
-        contentWidth="wide"
-        heightMode="viewport"
-        sidebarContent={
-          <Typography.Text type="secondary" style={{ paddingInline: 16 }}>
-            {i18nText('frontstage', 'auto.page_tree_unavailable')}
-          </Typography.Text>
-        }
-      >
+      <>
         <section className="frontstage-page-workspace">
           <header className="frontstage-page-workspace__header">
             <Typography.Title
@@ -878,7 +828,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             </Empty>
           </div>
         </section>
-      </SectionPageLayout>
+      </>
     );
   }
 
@@ -1039,26 +989,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     }
     void saveBlockComposition(activePageContent, next);
   };
-  const frontstageSidebar = (
-    <FrontStagePageTreeSidebar
-      pageTree={pageTree}
-      selectedPageId={selectedPageId}
-      canEdit={canEditPageTree}
-      isOperationPending={isOperationPending}
-      onAddGroup={handleAddGroup}
-      onAddPage={handleAddPage}
-      onAddPageInGroup={handleAddPageInGroup}
-      onRenameNode={handleRenameNode}
-      onUpdateNodeMetadata={handleUpdateNodeMetadata}
-      onEditNodeTooltip={handleEditNodeTooltip}
-      onMoveNode={handleMoveNode}
-      onAddNodeAtPosition={handleAddNodeAtPosition}
-      onMoveNodeToPosition={handleMoveNodeToPosition}
-      onMovePageToGroup={handleMovePageToGroup}
-      onDeleteNode={handleDeleteNode}
-      onSelectPage={handleSelectPage}
-    />
-  );
+  const runtimeVisible =
+    runtimeActive &&
+    !pageCanvasNativePreparations.isValidating &&
+    !pageCanvasNativePreparations.validationError;
   const assemblyLayers = blockRuntimeAssembly?.layers ?? [];
   let assemblyPageIndex = -1;
   assemblyLayers.forEach((layer, index) => {
@@ -1128,7 +1062,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     if (layer.presentation === 'drawer') {
       return (
         <Drawer
-          open
+          open={runtimeVisible}
+          forceRender
           title={layer.title}
           size="min(720px, 92vw)"
           onClose={closeBlock}
@@ -1140,8 +1075,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     if (layer.presentation === 'modal') {
       return (
         <Modal
-          open
-          destroyOnHidden
+          open={runtimeVisible}
+          forceRender
           footer={null}
           title={layer.title}
           width={720}
@@ -1175,7 +1110,23 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     );
   };
   const frontstageTabContent = (
-    <>
+    <FrontstageRuntimeActivityContext value={Boolean(runtimeVisible)}>
+      {pageCanvasNativePreparations.validationError ? (
+        <Alert
+          style={{ margin: 16 }}
+          type="error"
+          showIcon
+          title={i18nText('frontstage', 'auto.block_tree_load_failed')}
+          action={
+            <Button
+              size="small"
+              onClick={pageCanvasNativePreparations.retryValidation}
+            >
+              {i18nText('frontstage', 'auto.retry')}
+            </Button>
+          }
+        />
+      ) : null}
       {canEnterDesignMode && isDesignMode && isPageContentSavePending ? (
         <Typography.Text
           type="secondary"
@@ -1195,10 +1146,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       ) : null}
       <div
         style={{
-          visibility:
-            !runtimeActive || pageCanvasNativePreparations.isValidating
-              ? 'hidden'
-              : undefined
+          visibility: !runtimeVisible ? 'hidden' : undefined
         }}
       >
         {nestedAssemblyPageLayer ? (
@@ -1295,17 +1243,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           {i18nText('frontstage', 'auto.add_block_button')}
         </Button>
       ) : null}
-    </>
+    </FrontstageRuntimeActivityContext>
   );
 
   return (
-    <SectionPageLayout
-      navItems={[]}
-      activeKey=""
-      contentWidth="wide"
-      heightMode="viewport"
-      sidebarContent={showSidebar ? frontstageSidebar : undefined}
-    >
+    <>
       <>
         <section
           className={[
@@ -1412,20 +1354,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             )}
           </div>
         </section>
-        <PageTreeFormModal
-          dialog={pageTreeFormDialog}
-          form={pageTreeForm}
-          iconPickerOpen={isPageTreeIconPickerOpen}
-          isOperationPending={isOperationPending}
-          onCancel={() => setPageTreeFormDialog(null)}
-          onIconPickerOpenChange={setIsPageTreeIconPickerOpen}
-          onSubmit={() => {
-            void handleSubmitPageTreeForm();
-          }}
-        />
         {selectedBlock && selectedPageId ? (
           <FrontstageJsxStudioDrawer
-            open={isJsxStudioOpen && canShowSelectedBlockActions}
+            open={
+              runtimeActive && isJsxStudioOpen && canShowSelectedBlockActions
+            }
             initialSection="code"
             workspaceId={workspaceId}
             pageId={selectedPageId}
@@ -1455,6 +1388,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           />
         ) : null}
       </>
-    </SectionPageLayout>
+    </>
   );
 };

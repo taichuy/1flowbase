@@ -305,21 +305,24 @@ export function usePageTreeWorkspace({
     });
   };
 
-  const handlePageTabsEnabledChange = (enabled: boolean) => {
-    if (!selectedPageNode || selectedPageNode.kind !== 'page') {
+  const handlePageTabsEnabledChange = (
+    enabled: boolean,
+    targetNode = selectedPageNode
+  ) => {
+    if (!targetNode || targetNode.kind !== 'page') {
       return;
     }
 
     const contentPresentation = enabled ? 'tabs' : 'single';
     void runPageTreeOperation(async () => {
-      await onRenamePageNode?.(selectedPageNode.id, {
-        title: selectedPageNode.title ?? '',
-        icon: selectedPageNode.icon ?? '',
-        tooltip: selectedPageNode.tooltip ?? '',
+      await onRenamePageNode?.(targetNode.id, {
+        title: targetNode.title ?? '',
+        icon: targetNode.icon ?? '',
+        tooltip: targetNode.tooltip ?? '',
         contentPresentation
       });
       setPageTree((currentTree) =>
-        updatePageTreeNode(currentTree, selectedPageNode.id, {
+        updatePageTreeNode(currentTree, targetNode.id, {
           content_presentation: contentPresentation
         })
       );

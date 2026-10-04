@@ -22,6 +22,7 @@ overrides:
   ws: 8.21.2
 
 patchedDependencies:
+  '@ant-design/icons@6.3.4': patches/@ant-design__icons@6.3.4.patch
   '@ant-design/happy-work-theme@2.0.0': patches/@ant-design__happy-work-theme@2.0.0.patch
   '@rc-component/dialog@1.10.0': patches/@rc-component__dialog@1.10.0.patch
   '@rc-component/drawer@1.4.2': patches/@rc-component__drawer@1.4.2.patch

@@ -6,8 +6,10 @@ import {
   type ConfigProviderProps
 } from 'antd';
 import {
+  Activity,
   Component,
   Suspense,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -37,6 +39,7 @@ import {
 } from '@1flowbase/page-runtime/browser';
 
 import { i18nText } from '../../../shared/i18n/text';
+import { FrontstageRuntimeActivityContext } from './page-canvas/runtime-activity';
 
 import type {
   PreparedTrustedFrontendContribution,
@@ -151,6 +154,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
   contribution,
   surfaceLayoutEpoch = 'stable'
 }: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
+  const active = useContext(FrontstageRuntimeActivityContext);
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
   const [, setSurfaceGeneration] = useState(0);
@@ -332,16 +336,18 @@ export function FrontstageNativeTrustedBlockPortalHost({
   );
 
   return createPortal(
-    wrapWithHostProviders(
-      content,
-      providerContext,
-      styleCache,
-      moduleSources,
-      antdStylePrefix,
-      surfaceRuntime,
-      { ...providerScope, theme: runtimeMotionTheme },
-      providerWrapper
-    ),
+    <Activity mode={active ? 'visible' : 'hidden'}>
+      {wrapWithHostProviders(
+        content,
+        providerContext,
+        styleCache,
+        moduleSources,
+        antdStylePrefix,
+        surfaceRuntime,
+        { ...providerScope, theme: runtimeMotionTheme },
+        providerWrapper
+      )}
+    </Activity>,
     surface.mountElement,
     renderEpoch
   );
