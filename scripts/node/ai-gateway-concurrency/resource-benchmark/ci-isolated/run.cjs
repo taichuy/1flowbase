@@ -8,6 +8,7 @@ const { once } = require('node:events');
 const { delay } = require('../mock.cjs');
 const { psqlEnvironment } = require('../database.cjs');
 const { redactServiceLog } = require('../../gateway-fixture/service-logs');
+const { requirePostgresUrl } = require('../../gateway-fixture/inputs');
 const { assertNoArtifactSecrets } = require('../../cli-smoke/artifact-scan');
 const { startMonitor } = require('./light-monitor.cjs');
 const manifest = require('./manifest.json');
@@ -70,9 +71,12 @@ async function createDatabase(label) {
   const token = crypto.randomUUID();
   const name = 'gateway-independent-' + token;
   const password = crypto.randomBytes(32).toString('hex');
+  const databaseName = 'qadb_gateway_independent';
+  // Validate the existing disposable-database contract before creating any container.
+  const databaseUrl = requirePostgresUrl(`postgres://postgres:${password}@127.0.0.1:5432/${databaseName}`);
   passwords.push(password);
   const envFile = path.join(privateRoot, label + '.env');
-  fs.writeFileSync(envFile, `POSTGRES_PASSWORD=${password}\nPOSTGRES_USER=postgres\nPOSTGRES_DB=gateway_fixture\n`, { mode: 0o600 });
+  fs.writeFileSync(envFile, `POSTGRES_PASSWORD=${password}\nPOSTGRES_USER=postgres\nPOSTGRES_DB=${databaseName}\n`, { mode: 0o600 });
   const id = docker(['run', '--pull=never', '-d', '--name', name, '--label', `1flowbase.fixture-owner=${token}`, '--env-file', envFile,
     '-p', '127.0.0.1::5432', manifest.postgres.image, '-c', 'shared_preload_libraries=pg_stat_statements',
     '-c', 'pg_stat_statements.track=all', '-c', 'pg_stat_statements.track_planning=on']);
@@ -84,7 +88,9 @@ async function createDatabase(label) {
   owner.startTicks = statIdentity(owner.pid); ownerReceipt();
   const port = actual.NetworkSettings.Ports['5432/tcp'][0];
   if (port.HostIp !== '127.0.0.1' || [7600, 7800].includes(Number(port.HostPort))) throw Error('unsafe postgres port');
-  owner.url = `postgres://postgres:${password}@127.0.0.1:${port.HostPort}/gateway_fixture`;
+  const mappedUrl = new URL(databaseUrl);
+  mappedUrl.port = port.HostPort;
+  owner.url = requirePostgresUrl(mappedUrl.href);
   // Resolve the actual cgroup v2 path from the owned container PID, portable across runner Docker drivers.
   const group = fs.readFileSync(`/proc/${owner.pid}/cgroup`, 'utf8').split('\n').find(line => line.startsWith('0::'));
   if (!group) throw Error('cgroup v2 unavailable');
@@ -187,7 +193,7 @@ async function cell(label, variant, dimension, inputs) {
   const dir = path.join(out, label);
   fs.mkdirSync(dir, { recursive: true });
   let owner, stopLight, timer, failure = null, childResult = null;
-  let ready = null, before = null, after = null;
+  let ready = null, before = null, after = null, report = null;
   const pgSamples = [], cost = { user_us: 0, system_us: 0, wall_ms: 0, samples: 0 };
   const logs = [];
   try {
@@ -226,7 +232,17 @@ async function cell(label, variant, dimension, inputs) {
     try { result = await once(child, 'exit'); } finally { clearTimeout(watchdog); clearTimeout(forceTimer); }
     activeChild = null;
     childResult = { code: result[0], signal: result[1] };
-    clearInterval(timer); timer = null; sample();
+    clearInterval(timer); timer = null;
+    // Read the workload result first: diagnostic SQL must not replace its primary failure.
+    report = JSON.parse(fs.readFileSync(path.join(dir, 'report.json')));
+    if (report.outcome !== 'observations_collected') {
+      failure = Error(`${report.failed_phase || report.outcome}: ${report.error?.message || 'benchmark oracle or cleanup failure'}`);
+      throw failure;
+    }
+    if (failure) throw failure;
+    if (result[0] !== 0 || result[1] || !ready || !before) throw Error('missing workload evidence');
+    if (report.cleanup !== 'complete' || report.rounds.length !== 6 || report.warmup.length !== 1) throw Error('benchmark oracle or cleanup failure');
+    sample(); if (failure) throw failure;
     stopLight?.(); stopLight = null;
     after = sqlStats(owner);
     write(path.join(dir, 'sql-after.json'), after);
@@ -234,9 +250,6 @@ async function cell(label, variant, dimension, inputs) {
     write(path.join(dir, 'capture-integrity.json'), integrity);
     if (integrity.captures !== 7 * dimension.concurrency || integrity.complete !== integrity.captures || integrity.dropped !== 0 || integrity.persist_failed !== 0) throw Error('capture integrity failed');
     if (failure) throw failure;
-    if (result[0] !== 0 || result[1] || !ready || !before) throw Error('missing workload evidence');
-    const report = JSON.parse(fs.readFileSync(path.join(dir, 'report.json')));
-    if (report.outcome !== 'observations_collected' || report.cleanup !== 'complete' || report.rounds.length !== 6 || report.warmup.length !== 1) throw Error('benchmark oracle or cleanup failure');
     if (report.provenance.api_binary_sha256 !== manifest.binaries[variant].sha256 || Object.entries(manifest.plugins).some(([key,value]) => report.provenance.packages_sha256[key] !== value.sha256)) throw Error('report provenance mismatch');
     const summary = summarize(report, pgSamples, before, after);
     const light = JSON.parse(fs.readFileSync(path.join(dir, 'light-resources.json')));
@@ -251,7 +264,8 @@ async function cell(label, variant, dimension, inputs) {
   } catch (error) {
     failure ||= error;
     // Evidence stays on failure; continue subsequent ABBA cells instead of performance gating.
-    return { label, variant, dimension, outcome: 'failed', error: redactServiceLog(error.message, passwords) };
+    return { label, variant, dimension, outcome: 'failed', error: redactServiceLog(failure.message, passwords),
+      child_report: report ? { outcome: report.outcome, failed_phase: report.failed_phase ?? null, error: report.error ?? null } : null };
   } finally {
     clearInterval(timer);
     if (activeChild) { activeChild.kill('SIGINT'); await Promise.race([once(activeChild, 'exit').catch(() => {}), delay(10000)]); if (activeChild.exitCode === null) activeChild.kill('SIGKILL'); activeChild = null; }
