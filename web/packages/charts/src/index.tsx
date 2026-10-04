@@ -20,6 +20,7 @@ import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 
 import { assertSafeEChartOption } from './safe-option';
+import { useEChartResourceScope } from './lifecycle';
 import type { EChartOption, EChartValue } from './safe-option';
 
 echarts.use([
@@ -44,6 +45,8 @@ export interface EChartProps {
   readonly ariaLabel?: string;
   readonly className?: string;
   readonly option: EChartOption;
+  /** Trusted, stable component identities allow data updates without resetting interaction. */
+  readonly replaceMerge?: readonly string[];
   readonly style?: CSSProperties;
   readonly tooltipValueUnit?: string;
   readonly yAxisValueUnit?: string;
@@ -55,6 +58,7 @@ export function EChart({
   ariaLabel,
   className,
   option,
+  replaceMerge,
   style,
   onDataClick,
   tooltipValueUnit,
@@ -62,31 +66,97 @@ export function EChart({
   yAxisValueFormatters,
   seriesValueFormatters
 }: EChartProps) {
+  const resourceScope = useEChartResourceScope();
   const mountRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
 
+  const retained = useRef<{ dispose(): void } | null>(null);
+  const applied = useRef<{
+    option: string;
+    replaceMerge: string;
+    yAxisValueUnit?: string;
+    tooltipValueUnit?: string;
+    yAxisValueFormatters?: EChartProps['yAxisValueFormatters'];
+    seriesValueFormatters?: EChartProps['seriesValueFormatters'];
+  } | null>(null);
   assertSafeEChartOption(option);
+  const optionSignature = JSON.stringify(option);
+  const mergeSignature = JSON.stringify(replaceMerge ?? null);
 
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return undefined;
 
-    const chart = echarts.init(mount);
-    chartRef.current = chart;
+    let chart = chartRef.current;
+    if (!chart) {
+      chart = echarts.init(mount);
+      chartRef.current = chart;
+      applied.current = null;
+      const owned = chart;
+      let released = false;
+      let unregister: (() => void) | undefined;
+      const resource = {
+        dispose() {
+          if (released) return;
+          released = true;
+          unregister?.();
+          if (chartRef.current === owned) {
+            chartRef.current = null;
+            retained.current = null;
+            applied.current = null;
+          }
+          owned.dispose();
+        }
+      };
+      unregister = resourceScope?.register(resource);
+      retained.current = resource;
+    }
+    const activeChart = chart;
+    const animation = activeChart.getZr().animation;
+    activeChart.getZr().wakeUp();
+    const resize = () => {
+      const width = mount.clientWidth;
+      const height = mount.clientHeight;
+      if (
+        width > 0 &&
+        height > 0 &&
+        (activeChart.getWidth() !== width || activeChart.getHeight() !== height)
+      ) {
+        activeChart.resize();
+      }
+    };
     const resizeObserver =
-      typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(() => chart.resize());
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
     resizeObserver?.observe(mount);
-
+    // A hidden retained canvas can have a new allocation on reveal.
+    resize();
+    const resource = retained.current!;
     return () => {
       resizeObserver?.disconnect();
-      chartRef.current = null;
-      chart.dispose();
+      if (!resourceScope) {
+        resource.dispose();
+      } else {
+        animation.stop();
+        // Activity leaves DOM connected. A removed chart must not accumulate
+        // in its surviving page owner (e.g. switching to an empty report).
+        queueMicrotask(() => {
+          if (!mount.isConnected) resource.dispose();
+        });
+      }
     };
-  }, []);
+  }, [resourceScope]);
 
   useEffect(() => {
+    const previous = applied.current;
+    if (
+      previous?.option === optionSignature &&
+      previous.replaceMerge === mergeSignature &&
+      previous.tooltipValueUnit === tooltipValueUnit &&
+      previous.yAxisValueUnit === yAxisValueUnit &&
+      sameFormatters(previous.yAxisValueFormatters, yAxisValueFormatters) &&
+      sameFormatters(previous.seriesValueFormatters, seriesValueFormatters)
+    )
+      return;
     const yAxis =
       option.yAxis &&
       typeof option.yAxis === 'object' &&
@@ -159,11 +229,23 @@ export function EChart({
           : option.tooltip
     };
     chartRef.current?.setOption(safeOption, {
-      notMerge: true,
+      notMerge: replaceMerge === undefined,
+      ...(replaceMerge ? { replaceMerge: [...replaceMerge] } : {}),
       lazyUpdate: true
     });
+    applied.current = {
+      option: optionSignature,
+      replaceMerge: mergeSignature,
+      tooltipValueUnit,
+      yAxisValueUnit,
+      yAxisValueFormatters,
+      seriesValueFormatters
+    };
   }, [
     option,
+    optionSignature,
+    replaceMerge,
+    mergeSignature,
     tooltipValueUnit,
     yAxisValueUnit,
     yAxisValueFormatters,
@@ -190,5 +272,20 @@ export function EChart({
       role="img"
       style={style}
     />
+  );
+}
+
+function sameFormatters(
+  left: readonly ((value: number) => string)[] | undefined,
+  right: readonly ((value: number) => string)[] | undefined
+): boolean {
+  return (
+    left === right ||
+    Boolean(
+      left &&
+      right &&
+      left.length === right.length &&
+      left.every((formatter, index) => formatter === right[index])
+    )
   );
 }

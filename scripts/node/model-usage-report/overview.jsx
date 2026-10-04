@@ -109,7 +109,7 @@ export default function UsageOverview({ ctx }) {
       >
         <Text type="secondary" style={{ fontSize: 12 }}>
           {state.range
-            ? `${dayjs(state.range.started_from).format("MM-DD HH:mm")} — ${dayjs(state.range.started_to).format("MM-DD HH:mm")}`
+            ? `${dayjs(r?.started_from || state.range.started_from).format("MM-DD HH:mm")} — ${dayjs(r?.started_to || state.range.started_to).format("MM-DD HH:mm")}`
             : "用量统计"}
         </Text>
         <Filters state={state} label="模型用量总览" />
@@ -118,11 +118,12 @@ export default function UsageOverview({ ctx }) {
         <Alert
           type="error"
           showIcon
-          title="暂时无法读取报表，请重新选择时间范围"
+          title="暂时无法读取报表，请重试"
+          action={<Button onClick={state.retry}>重试</Button>}
           style={{ marginBottom: 12 }}
         />
       )}
-      <Spin spinning={state.busy}>
+      <Spin spinning={state.busy} description={state.busy ? "正在更新" : undefined}>
         <div
           style={{
             display: "grid",

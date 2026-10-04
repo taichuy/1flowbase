@@ -13,6 +13,9 @@ export interface TokenTrendPoint {
   readonly input_cache_hit_rate: number | null;
 }
 
+const percentage = (value: number) => `${value}%`;
+const replaceSeries = ['series'];
+
 type TokenField = Exclude<keyof TokenTrendPoint, 'bucket_start'>;
 export interface TokenTrendChartProps {
   readonly points: readonly TokenTrendPoint[];
@@ -80,6 +83,7 @@ export function TokenTrendChart({
     ],
     series: [
       ...fields.map(({ field, name, color }) => ({
+        id: field,
         name: labels?.[field] ?? name,
         type: 'line',
         showSymbol: points.length < 32,
@@ -91,6 +95,7 @@ export function TokenTrendChart({
         data: points.map((point) => point[field] ?? null)
       })),
       {
+        id: 'input_cache_hit_rate',
         name: labels?.input_cache_hit_rate ?? t('auto.input_cache_hit_rate'),
         type: 'line',
         yAxisIndex: 1,
@@ -112,11 +117,12 @@ export function TokenTrendChart({
       ariaLabel={ariaLabel ?? t('statistics.token_trend')}
       style={{ height, width: '100%', minWidth: 0 }}
       option={option}
+      replaceMerge={replaceSeries}
       onDataClick={onDataClick}
       yAxisValueFormatters={[formatTokenCount]}
       seriesValueFormatters={[
         ...fields.map(() => formatTokenCount),
-        (value) => `${value}%`
+        percentage
       ]}
     />
   );

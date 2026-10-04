@@ -1,3 +1,4 @@
+import { EChartResourceBoundary } from '@1flowbase/charts/lifecycle';
 import { StyleProvider, createCache } from '@ant-design/cssinjs';
 import {
   App as AntdApp,
@@ -336,18 +337,20 @@ export function FrontstageNativeTrustedBlockPortalHost({
   );
 
   return createPortal(
-    <Activity mode={active ? 'visible' : 'hidden'}>
-      {wrapWithHostProviders(
-        content,
-        providerContext,
-        styleCache,
-        moduleSources,
-        antdStylePrefix,
-        surfaceRuntime,
-        { ...providerScope, theme: runtimeMotionTheme },
-        providerWrapper
-      )}
-    </Activity>,
+    <EChartResourceBoundary>
+      <Activity mode={active ? 'visible' : 'hidden'}>
+        {wrapWithHostProviders(
+          content,
+          providerContext,
+          styleCache,
+          moduleSources,
+          antdStylePrefix,
+          surfaceRuntime,
+          { ...providerScope, theme: runtimeMotionTheme },
+          providerWrapper
+        )}
+      </Activity>
+    </EChartResourceBoundary>,
     surface.mountElement,
     renderEpoch
   );

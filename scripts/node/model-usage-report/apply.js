@@ -6,6 +6,7 @@ const {
   openTemporaryOwnerSession,
 } = require("../page-debug/auth");
 const { buildWorkflow } = require("./workflow");
+const { retainedBlockPatch } = require("./retained-block");
 const PAGE = "01a073f3-03e9-7030-86a4-371f80ebf522";
 const BLOCK = "01a07465-8419-7eb2-9335-a193bffb7558";
 const APP = "01a07410-8122-7371-a6af-2e5b60466379";
@@ -123,6 +124,7 @@ async function apply(mode) {
           output_mapping: { timeRange: "usage.timeRange" },
           runtime_descriptor: descriptor,
         };
+        Object.assign(body, retainedBlockPatch(body, i === 0));
         if (current) {
           if (i !== 0) {
             save("original-" + file, current);

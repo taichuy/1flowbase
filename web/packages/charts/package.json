@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.tsx"
+    },
+    "./lifecycle": {
+      "types": "./dist/lifecycle.d.ts",
+      "default": "./src/lifecycle.tsx"
     }
   },
   "dependencies": {

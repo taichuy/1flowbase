@@ -289,6 +289,12 @@ export default defineConfig(({ command, mode }) => {
               '@ant-design/icons-svg/lib/asn': '@ant-design/icons-svg/es/asn'
             }
           : {}),
+        '@1flowbase/charts/lifecycle': fileURLToPath(
+          new URL('../packages/charts/src/lifecycle.tsx', import.meta.url)
+        ),
+        '@1flowbase/charts': fileURLToPath(
+          new URL('../packages/charts/src/index.tsx', import.meta.url)
+        ),
         '@1flowbase/shared-types': fileURLToPath(
           new URL('../packages/shared-types/src/index.ts', import.meta.url)
         ),
