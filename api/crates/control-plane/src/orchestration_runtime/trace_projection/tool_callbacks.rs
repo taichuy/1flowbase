@@ -264,7 +264,18 @@ fn merge_tool_result_and_runtime_event(
     }
 }
 
-fn tool_payload_matches_call_id(payload: &serde_json::Value, tool_call_id: &str) -> bool {
+pub(super) fn callback_tool_call_id(tool_call: &serde_json::Value, order_key: &str) -> String {
+    tool_call
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| legacy_locator_component("tool_call", order_key, tool_call))
+}
+
+pub(super) fn tool_payload_matches_call_id(
+    payload: &serde_json::Value,
+    tool_call_id: &str,
+) -> bool {
     payload
         .get("tool_call_id")
         .or_else(|| payload.get("id"))

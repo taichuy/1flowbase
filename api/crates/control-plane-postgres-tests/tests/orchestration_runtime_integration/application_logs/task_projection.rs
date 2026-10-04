@@ -392,10 +392,13 @@ async fn issue_2035_task_projection_owns_list_and_converged_detail() {
         .unwrap();
     assert_eq!(projection_source.event_count, detail.events.len());
     assert_eq!(projection_source.node_runs, detail.node_runs);
-    assert_eq!(projection_source.task_rounds, detail.task_rounds);
+    assert_eq!(
+        projection_source.task_rounds,
+        domain::ApplicationRunTraceProjectionSource::from(&detail).task_rounds
+    );
     assert_eq!(
         projection_source.child_task_traces,
-        detail.child_task_traces
+        domain::ApplicationRunTraceProjectionSource::from(&detail).child_task_traces
     );
     let projection_from_source =
         control_plane::orchestration_runtime::trace_projection::build_application_run_trace_projection_from_source(
@@ -618,4 +621,260 @@ async fn issue_2105_failed_payload_is_not_answer_and_successful_plain_text_is() 
             assert_eq!(page.items[0].answer.as_deref(), Some("actual answer"));
         }
     }
+}
+
+/// Historical task bodies stay lossless in details while projection reads only
+/// metadata, exact answer markers, metrics and callback/native tool facts.
+#[tokio::test]
+async fn task_trace_narrow_sources_match_lossless_full_detail() {
+    let database = isolated_database().await;
+    let store = PgControlPlaneStore::new(database.connect().await.unwrap());
+    run_migrations(store.pool()).await.unwrap();
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let key = seed_application_api_key(&store, &seeded).await;
+    let mut input = task_fixture_input(&seeded, &compiled, key, "narrow task");
+    let mut members = Vec::new();
+    for (index, call_kind) in ["generate", "compact", "generate"].iter().enumerate() {
+        input.idempotency_key = Some(format!("narrow-{index}"));
+        input.application_run_log_context = Some(ApplicationRunLogContext {
+            identity_status: "identified".into(),
+            protocol: Some("openai_responses".into()),
+            call_kind: Some((*call_kind).into()),
+            thread_id: Some("narrow-thread".into()),
+            turn_id: Some("narrow-turn".into()),
+            ..Default::default()
+        });
+        members.push(
+            ApplicationPublishedFlowRunRepository::create_published_flow_run(&store, &input)
+                .await
+                .unwrap()
+                .flow_run
+                .id,
+        );
+    }
+    input.idempotency_key = Some("narrow-child".into());
+    input.title = "child title".into();
+    input.application_run_log_context = Some(ApplicationRunLogContext {
+        identity_status: "identified".into(),
+        protocol: Some("openai_responses".into()),
+        call_kind: Some("generate".into()),
+        thread_id: Some("narrow-child-thread".into()),
+        turn_id: Some("narrow-child-turn".into()),
+        subagent_kind: Some("review".into()),
+        parent_thread_id: Some("narrow-thread".into()),
+        parent_turn_id: Some("narrow-turn".into()),
+        ..Default::default()
+    });
+    let child = ApplicationPublishedFlowRunRepository::create_published_flow_run(&store, &input)
+        .await
+        .unwrap()
+        .flow_run
+        .id;
+    let body = format!("{}\0original", "historical-body".repeat(8192));
+    let mut expected_nodes = std::collections::HashMap::new();
+    let start = OffsetDateTime::now_utc();
+    for (run_index, run_id) in members.iter().copied().chain([child]).enumerate() {
+        store
+            .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
+                flow_run_id: run_id,
+                input_payload: json!({"history":body}),
+                output_payload: json!({"answer":body}),
+                error_payload: Some(json!({"detail":body})),
+            })
+            .await
+            .unwrap();
+        let markers = if run_index == 0 {
+            vec![None]
+        } else {
+            vec![
+                None,
+                Some("waiting_prefix"),
+                Some("canonical_stream_state"),
+                Some("waiting_prefix\0"),
+                Some("canonical_stream_state\\u0000"),
+                Some("ordinary"),
+                None,
+            ]
+        };
+        for (index, marker) in markers.into_iter().enumerate() {
+            let mut debug = json!({"large":body,
+                "answer_presentation":{"materialized_from": if index == 2 {marker} else {None}},
+                "visible_internal_llm_tool_trace":[{"tool_call_id":"callback-call", "route_kind":"route",
+                    "status":"succeeded", "original":"route\0body", "key\0":"exact"}]});
+            let mut node_input = json!({"history":body, "presentation":{"materialized_from":if index == 2 {None} else {marker}}});
+            if index == 3 {
+                debug["visible_internal_llm_tool_trace"] = json!("ignored\0string");
+            }
+            if index == 4 {
+                debug["visible_internal_llm_tool_trace"] = json!({"ignored\0key":"object"});
+            }
+            if index == 5 {
+                debug = json!(["non-object\0debug"]);
+            }
+            if index == 6 {
+                node_input["presentation\0"] = json!({"materialized_from":"waiting_prefix"});
+                debug = json!({"answer_presentation\0":{"materialized_from":"canonical_stream_state"},
+                    "visible_internal_llm_tool_trace":null,
+                    "visible_internal_llm_tool_trace\0":[{"tool_call_id":"callback-call"}]});
+            }
+            let node = store
+                .create_node_run(&CreateNodeRunInput {
+                    flow_run_id: run_id,
+                    node_id: if index == 0 {
+                        "llm".into()
+                    } else {
+                        "answer".into()
+                    },
+                    node_type: if index == 0 {
+                        "llm".into()
+                    } else {
+                        "answer".into()
+                    },
+                    node_alias: format!("node-{index}"),
+                    status: NodeRunStatus::Running,
+                    input_payload: node_input,
+                    debug_payload: debug.clone(),
+                    started_at: start + Duration::seconds((run_index * 20 + index) as i64),
+                })
+                .await
+                .unwrap();
+            let updated = store.update_node_run(&UpdateNodeRunInput {
+                node_run_id: node.id, status: if index == 5 {NodeRunStatus::Failed} else {NodeRunStatus::Succeeded},
+                output_payload: json!({"answer":body}), error_payload: Some(json!({"original":body})),
+                metrics_payload: json!({"usage":{"input_tokens":index as i64+3,"output_tokens":7},"exact":"metrics\0value"}),
+                debug_payload: debug, finished_at: Some(node.started_at + Duration::seconds(2)),
+            }).await.unwrap();
+            expected_nodes.insert(node.id, updated);
+            if run_index > 0 && !matches!(index, 1 | 2) {
+                let task = store.create_callback_task(&CreateCallbackTaskInput {
+                    flow_run_id: run_id, node_run_id: node.id, callback_kind: "llm_tool_calls".into(),
+                    request_payload: json!({"tool_calls":[{"id":"callback-call","name":"exec","arguments":{"text":"argument\0exact"}}]}),
+                    external_ref_payload: Some(json!({"ref":"original\0reference"})),
+                }).await.unwrap();
+                store.complete_callback_task(&CompleteCallbackTaskInput {
+                    callback_task_id: task.id,
+                    response_payload: json!({"tool_results":[{"id":"callback-call","output":"result\0exact"}]}),
+                    completed_at: node.started_at + Duration::seconds(1),
+                }).await.unwrap();
+            }
+        }
+    }
+    append_output_item(&store, members[2], json!({"type":"function_call","id":"native-id","call_id":"native-call","name":"exec","arguments":"native\0argument"})).await;
+    append_output_item(
+        &store,
+        members[2],
+        json!({"type":"function_call_output","call_id":"native-call","output":"native\0result"}),
+    )
+    .await;
+    append_output_item(&store, members[2], json!({"type":"message","id":"native-message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"final\0answer"}]})).await;
+    let detail = store
+        .get_application_run_detail(seeded.application_id, members[0])
+        .await
+        .unwrap()
+        .unwrap();
+    let source = store
+        .get_application_run_trace_projection_source(seeded.application_id, members[0])
+        .await
+        .unwrap()
+        .unwrap();
+    let converted = domain::ApplicationRunTraceProjectionSource::from(&detail);
+    assert_eq!(
+        source, converted,
+        "repository fragments must match lossless full-detail conversion"
+    );
+    for round in &detail.task_rounds {
+        assert_eq!(round.source_flow_run.input_payload, json!({"history":body}));
+        assert_eq!(round.source_flow_run.output_payload, json!({"answer":body}));
+        assert_eq!(
+            round.source_flow_run.error_payload,
+            Some(json!({"detail":body}))
+        );
+        for node in &round.node_runs {
+            assert_eq!(node, &expected_nodes[&node.id]);
+        }
+    }
+    for trace in &detail.child_task_traces {
+        assert_eq!(trace.source_flow_run.input_payload, json!({"history":body}));
+        assert_eq!(trace.source_flow_run.output_payload, json!({"answer":body}));
+        assert_eq!(
+            trace.source_flow_run.error_payload,
+            Some(json!({"detail":body}))
+        );
+        for node in &trace.node_runs {
+            assert_eq!(node, &expected_nodes[&node.id]);
+        }
+    }
+    let projected = control_plane::orchestration_runtime::trace_projection::build_application_run_trace_projection_from_source(&source).unwrap();
+    assert_eq!(projected, control_plane::orchestration_runtime::trace_projection::build_application_run_trace_projection(&detail).unwrap());
+    let source_nodes = projected
+        .nodes
+        .iter()
+        .filter(|node| {
+            matches!(
+                node.owner_kind.as_deref(),
+                Some("task_round_node_run" | "child_task_node_run")
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        source_nodes.len(),
+        15,
+        "three historical runs each expose five executions; only exact legacy markers are hidden"
+    );
+    assert_eq!(
+        source_nodes
+            .iter()
+            .map(|node| node.node_alias.as_str())
+            .collect::<Vec<_>>(),
+        ["node-0", "node-3", "node-4", "node-5", "node-6"].repeat(3),
+        "metadata query keeps round/child and per-execution timestamp order"
+    );
+    for node in source_nodes {
+        assert_eq!(
+            node.child_count, 1,
+            "each visible source execution retains its callback group"
+        );
+        let original =
+            &expected_nodes[&Uuid::parse_str(node.owner_id.as_deref().unwrap()).unwrap()];
+        assert_eq!(node.metrics_payload, original.metrics_payload);
+        assert_eq!(node.status, original.status.as_str());
+        assert_eq!(node.duration_ms, Some(2000));
+        assert_eq!(
+            node.source_trace_node_id,
+            Some(
+                control_plane::orchestration_runtime::trace_projection::trace_node_id_for_locator(
+                    original.flow_run_id,
+                    &format!("run:{}/node:{}", original.flow_run_id, original.id)
+                )
+            )
+        );
+    }
+    assert!(
+        projected
+            .contents
+            .iter()
+            .any(|content| content.payload.to_string().contains("route\\u0000body")),
+        "callback route originals stay complete"
+    );
+    assert!(
+        projected.contents.iter().any(|content| content
+            .payload
+            .to_string()
+            .contains("native\\u0000argument")),
+        "native tool originals stay complete"
+    );
+    assert_eq!(
+        store
+            .get_application_run_trace_projection_source_watermark(
+                seeded.application_id,
+                members[0]
+            )
+            .await
+            .unwrap()
+            .unwrap(),
+        control_plane::orchestration_runtime::trace_projection::trace_projection_source_watermark(
+            &detail
+        )
+    );
 }
