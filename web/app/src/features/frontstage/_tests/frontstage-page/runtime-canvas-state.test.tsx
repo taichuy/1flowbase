@@ -691,6 +691,7 @@ describe('FrontStagePage - runtime canvas state', () => {
 
   test('gates a retained nested assembly on its own validation and retries without losing DOM', async () => {
     authenticate([]);
+    vi.stubGlobal('IntersectionObserver', undefined);
     const assembly = {
       layers: [
         {
@@ -726,6 +727,7 @@ describe('FrontStagePage - runtime canvas state', () => {
           initialPageTree={tree}
           pageContent={content}
           blockRuntimeAssembly={assembly}
+          isBlockRuntimeRoute
           runtimeActive={active}
         />
       </AppProviders>
