@@ -67,8 +67,8 @@ jobs:
         shell: bash
         env:
           EXPECTED_SHA: ${{ inputs.candidate_sha }}
-          FROZEN_SOURCE_SHA: 8ac453a947708904db765b6afae6188b3b9ea04e
-          FROZEN_API_TREE: 25b773314c3c92647c45e628952d28e286e5f4e4
+          FROZEN_SOURCE_SHA: 406994b15e8392b1173211b4dc89768e4c2215be
+          FROZEN_API_TREE: f03b503cfcad036f30caf6421a7aa9d4f810327f
         run: |
           set -euo pipefail
           out=tmp/test-governance/gateway-cpu-attribution/build
