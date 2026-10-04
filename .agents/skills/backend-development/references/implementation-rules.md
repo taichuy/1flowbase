@@ -28,8 +28,8 @@ When 新增关键写资源，then 至少包含：
 
 - `apps/api-server/src/routes/<resource>.rs`
 - `crates/control-plane/src/<resource>.rs` 或 `crates/control-plane/src/<resource>/mod.rs`
-- `crates/control-plane/src/ports/<resource>.rs` 中对应的 repository trait
-- `crates/storage-durable/postgres/src/<resource>_repository.rs` 或 `crates/storage-ephemeral/src/<resource>_repository.rs`
+- `crates/control-plane-contracts/src/ports/<resource>.rs` 中对应的 adapter-facing repository trait；业务端口仍由 `control-plane` 持有
+- `crates/storage/durable/postgres/src/<resource>_repository.rs` 或 `crates/storage/ephemeral/src/<resource>_repository.rs`
 - 对应 `_tests`
 
-`dto` 可定义在 route 模块内。只有存在存储结构转换时才新增 mapper。`storage-durable/postgres/migrations` 只放数据库迁移。
+`dto` 可定义在 route 模块内。只有存在存储结构转换时才新增 mapper。`crates/storage/durable/postgres/migrations` 只放数据库迁移；路径与 port owner 以 `api/crates/AGENTS.md` 为准。

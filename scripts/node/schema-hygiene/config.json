@@ -94,6 +94,15 @@
     "writePathSource": "durable storage repositories and migration triggers maintain platform fields"
   },
   "tableReadiness": {
+    "application_template_releases": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "generated stored scope_id mirrors non-null workspace_id",
+      "backfillSource": "workspace_id",
+      "idGeneration": "portable template release repository supplies Uuid::now_v7; the additive migration backfills existing row identity",
+      "created_byGeneration": "system startup and release reservation have no actor attribution; nullable",
+      "updated_byGeneration": "system startup and release reservation have no actor attribution; nullable",
+      "writePathSource": "portable template release repository preserves workspace/template/version identity, checksum immutability and sticky success on upsert"
+    },
     "api_keys": {
       "scopeGenerationSource": "existing API key write path stores scope_id from workspace context"
     },

@@ -5,6 +5,7 @@ use crate::routes::console_interface::{
     ConsoleInterfaceTargetError,
 };
 use crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with;
+use anyhow::Context;
 use control_plane::mcp_bundle::{ImportMcpBundleCommand, PreviewMcpBundleCommand};
 use control_plane::mcp_management::McpManagementService;
 use control_plane::portable_template::PortableTemplateIdentityRepository;
@@ -80,8 +81,12 @@ impl TemplateAdapter {
             TemplateInput::ExportArchive(selection) => {
                 use base64::Engine;
                 let package = service.export(actor.user_id, selection).await?;
-                let bytes = super::archive::encode(&package)?;
-                json!({"archive_base64":base64::engine::general_purpose::STANDARD.encode(bytes),"file_name":"application-template.zip"})
+                tokio::task::spawn_blocking(move || {
+                    let bytes = super::archive::encode(&package)?;
+                    Ok::<_, anyhow::Error>(json!({"archive_base64":base64::engine::general_purpose::STANDARD.encode(bytes),"file_name":"application-template.zip"}))
+                })
+                .await
+                .context("application_template_export_encode_task")??
             }
             TemplateInput::ResolvePreview(_) | TemplateInput::ResolveInstall(_) => {
                 unreachable!("resolved before dispatch")

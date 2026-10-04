@@ -218,7 +218,7 @@ describe('SystemBackupsPanel', () => {
     });
     const { container } = renderPanel();
     const input = container.querySelector('input[type="file"]')!;
-    expect(input.getAttribute('accept')).toContain('.zip');
+    expect(input).toHaveAttribute('accept', expect.stringContaining('.zip'));
     const file = new File(
       [new Uint8Array([80, 75, 3, 4, 0, 255])],
       'template.zip',

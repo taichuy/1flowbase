@@ -11,9 +11,33 @@ Scoped authoring rollout for page `01a073f3-03e9-7030-86a4-371f80ebf522` and its
 ```sh
 node scripts/node/model-usage-report/apply.js workflow
 node scripts/node/model-usage-report/apply.js page
+# Repository tests: pure range/workflow behavior, no service or private .env.
 node --test scripts/node/model-usage-report/_tests/*.test.js
 ```
 
-`USAGE_REPO_ROOT` selects the local credentials/environment owner when using an isolated checkout; `USAGE_API_BASE` defaults to local port 7800. Evidence/backups default to `tmp/test-governance/usage-report/`. No request-log facts are modified. SQL fixtures use a transaction-local temporary table and rollback. To undo configuration, restore the recorded original workflow draft/mapping and block records through the same authoring APIs, then republish the prior workflow. Do not overwrite later user edits.
+For authoring with `apply.js`, `USAGE_REPO_ROOT` selects the local credentials/environment owner when using an isolated checkout; `USAGE_API_BASE` defaults to local port 7800. Evidence/backups default to `tmp/test-governance/usage-report/`. No request-log facts are modified. To undo configuration, restore the recorded original workflow draft/mapping and block records through the same authoring APIs, then republish the prior workflow. Do not overwrite later user edits.
+
+PostgreSQL algorithm evidence has a separate service lane:
+
+```sh
+node --test scripts/node/model-usage-report/integration/postgres.test.js
+```
+
+This requires `psql` and an explicit `API_DATABASE_URL` or `DATABASE_URL` (in that order). It never reads a private `.env`; missing configuration fails. The complete SQL algorithm executes against transaction-local temporary request-log rows and rolls back. Assertions retain currency separation, unknown usage, user aggregation, Shanghai buckets, exclusive end boundary and scope isolation. Controlled SQL variants remove the scope filter or include the end boundary; the fixture must reject both. No API deployment or credentials are needed for this lane.
+
+Published-report deployment acceptance is separate from the repository and PostgreSQL gates:
+
+```sh
+node --test scripts/node/model-usage-report/acceptance/published-report.test.js
+```
+
+Provide the database URL above plus all of these environment variables; none has a deployment default:
+
+- `USAGE_API_BASE`, `USAGE_REPORT_PATH`: HTTP(S) API base and published report path without query or fragment.
+- `USAGE_ROOT_ACCOUNT`, `USAGE_ROOT_PASSWORD`: account for a temporary owner session; the shared `page-debug` session owner revokes it in `finally`.
+- `USAGE_SCOPE_ID`, `USAGE_PAGE_ID`, `USAGE_TAB_ID`, `USAGE_BLOCK_ID`: UUIDs of the matching deployed workspace and callable report context.
+- `USAGE_STARTED_FROM`, `USAGE_STARTED_TO`: explicit interval, normalized and validated by the actual report range function.
+
+The acceptance suite compares the published response to independent request-log SQL totals and exercises the configured frontstage callable gateway. It does not create or publish a report fixture. The selected API deployment, database, scope and callable context must refer to the same report. Repository/SQL gate success alone does not verify a published deployment, and deployment acceptance must be recorded separately with its candidate and configuration context (without credentials).
 
 Issue #2252 adds the scoped retention rollout: `node scripts/node/model-usage-report/apply-retention.js`. It changes only the three existing blocks' source and signal mappings, preserves their layout/title/other configuration, backs up exact records, and rejects unknown source revisions. Use it instead of the full `apply.js page` rollout for this repair. `originals-and-plan.json` stores the original source/descriptor/mappings and `applied.json` stores the installed hashes; rollback must verify those hashes before restoring through authoring APIs.

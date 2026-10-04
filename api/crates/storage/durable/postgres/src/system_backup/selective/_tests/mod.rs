@@ -142,9 +142,16 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         .iter()
         .find(|category| category.feature_id == "system.backups")
         .unwrap();
-    assert!(backups
-        .data_tables
-        .contains(&"portable_template_identities".into()));
+    for table in [
+        "portable_template_identities",
+        "application_template_releases",
+    ] {
+        assert!(
+            backups.data_tables.contains(&table.into()),
+            "missing {table}"
+        );
+        assert!(!backups.structure_tables.contains(&table.into()));
+    }
     let all = categories
         .iter()
         .flat_map(|c| c.structure_tables.iter().chain(&c.data_tables))

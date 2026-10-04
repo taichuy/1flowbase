@@ -27,7 +27,7 @@ pub struct ExportQuery {
 pub enum TemplateRequest {
     Catalog(CatalogRequest),
     Archive(ArchiveRequest),
-    Package(PortableTemplatePackage),
+    Package(Box<PortableTemplatePackage>),
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -97,7 +97,7 @@ pub(crate) async fn list(
         ),
         Some(Err(error)) if query.cursor.is_some() => return Err(error),
         other => {
-            let builtins = releases::discover(&dependencies.application_template_root)?;
+            let builtins = releases::discover(&dependencies.application_template_root).await?;
             if let Some(Err(error)) = other {
                 if builtins.is_empty() {
                     return Err(error);
@@ -160,34 +160,19 @@ pub(crate) async fn resolve(
     request: TemplateRequest,
 ) -> Result<PortableTemplatePackage> {
     match request {
-        TemplateRequest::Package(package) => Ok(package),
-        TemplateRequest::Archive(request) => {
-            ensure!(
-                request.archive_base64.len() <= 90 * 1024 * 1024,
-                "application_template_archive_size"
-            );
-            STANDARD
-                .decode(request.archive_base64)
-                .map_err(anyhow::Error::from)
-                .and_then(|bytes| archive::decode(&bytes))
-                .map_err(|error| {
-                    tracing::debug!(error=%error,"invalid application template upload");
-                    control_plane::errors::ControlPlaneError::InvalidInput(
-                        "application_template_archive_invalid",
-                    )
-                    .into()
-                })
-        }
+        TemplateRequest::Package(package) => Ok(*package),
+        TemplateRequest::Archive(request) => decode_uploaded_archive(request.archive_base64).await,
         TemplateRequest::Catalog(request) => {
             if let Some(id) = request.catalog_id.strip_prefix("builtin:") {
-                let item = releases::discover(&dependencies.application_template_root)?
+                let item = releases::discover(&dependencies.application_template_root)
+                    .await?
                     .into_iter()
                     .find(|r| {
                         r.release.template_id == id
                             && r.release.release_version == request.release_version
                     })
                     .context("application_template_release_not_found")?;
-                return item.load();
+                return item.load().await;
             }
             let located = dependencies
                 .official_catalog_source
@@ -203,15 +188,43 @@ pub(crate) async fn resolve(
                 .official_catalog_source
                 .download_artifact_for_workspace(actor.current_workspace_id, &located.entry)
                 .await?;
-            let package = decode_verified_archive(
-                &downloaded,
-                metadata["template_id"].as_str().unwrap_or_default(),
-                request.release_version,
-                &dependencies.official_plugin_source.trusted_public_keys(),
-            )?;
-            Ok(package)
+            let template_id = metadata["template_id"]
+                .as_str()
+                .context("application_template_id")?
+                .to_owned();
+            let trusted_keys = dependencies.official_plugin_source.trusted_public_keys();
+            tokio::task::spawn_blocking(move || {
+                decode_verified_archive(
+                    &downloaded,
+                    &template_id,
+                    request.release_version,
+                    &trusted_keys,
+                )
+            })
+            .await
+            .context("application_template_verified_decode_task")?
         }
     }
+}
+
+pub(super) async fn decode_uploaded_archive(
+    archive_base64: String,
+) -> Result<PortableTemplatePackage> {
+    // Decode and checksum/decompression all run on the blocking pool. Join failures
+    // remain task errors; only invalid upload contents become the public input error.
+    tokio::task::spawn_blocking(move || {
+        let bytes = STANDARD.decode(archive_base64)?;
+        archive::decode(&bytes)
+    })
+    .await
+    .context("application_template_upload_decode_task")?
+    .map_err(|error| {
+        tracing::debug!(error=%error,"invalid application template upload");
+        control_plane::errors::ControlPlaneError::InvalidInput(
+            "application_template_archive_invalid",
+        )
+        .into()
+    })
 }
 
 pub(crate) fn decode_verified_archive(

@@ -68,6 +68,14 @@ function readMiddlewareCompose() {
   );
 }
 
+test('complete tooling lane prepares and requires the real Docker recovery fixture', () => {
+  const workflow = readQualityGateWorkflow();
+  const tooling = workflow.slice(workflow.indexOf('  repo-tooling-gate:'), workflow.indexOf('  repo-frontend-gate:'));
+  assert.match(tooling, /run: docker pull alpine:3\.20/u);
+  assert.match(tooling, /REQUIRE_DOCKER_RECOVERY_EVIDENCE: "1"/u);
+  assert.ok(tooling.indexOf('docker pull alpine:3.20') < tooling.indexOf('- uses: ./.github/actions/quality-gate'));
+});
+
 test("root_1998_pg_shards_prepare_locked_metadata_before_offline_dependency_tests", () => {
   const action = readQualityGateAction();
   const preparation = action.indexOf("- id: quality-gate-metadata-dependencies");

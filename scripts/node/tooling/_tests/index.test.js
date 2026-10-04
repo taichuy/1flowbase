@@ -146,21 +146,24 @@ test("tooling index dispatches repo-hygiene subcommand", async () => {
   assert.deepEqual(capturedArgv, ["--max-findings", "10"]);
 });
 
-test("tooling index dispatches console-route-registry-hygiene subcommand", async () => {
-  let capturedArgv = null;
-
-  const status = await main(
-    ["console-route-registry-hygiene", "--max-findings", "10"],
-    {
-      runConsoleRouteRegistryHygieneImpl(argv) {
-        capturedArgv = argv;
-        return 0;
-      },
-    },
+test("tooling index rejects the retired console route registry gate", async () => {
+  await assert.rejects(
+    () => main(["console-route-registry-hygiene", "--max-findings", "10"]),
+    /Unknown tooling command: console-route-registry-hygiene/u,
   );
+});
+
+test("tooling help omits the retired console route registry gate", async () => {
+  let stdout = "";
+  const status = await main(["--help"], {
+    writeStdout(text) {
+      stdout += text;
+    },
+  });
 
   assert.equal(status, 0);
-  assert.deepEqual(capturedArgv, ["--max-findings", "10"]);
+  assert.match(stdout, /Usage:/u);
+  assert.doesNotMatch(stdout, /console-route-registry-hygiene/u);
 });
 
 test("tooling index dispatches frontstage-governance-hygiene subcommand", async () => {

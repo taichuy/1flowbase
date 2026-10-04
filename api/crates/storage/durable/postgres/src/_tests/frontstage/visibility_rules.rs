@@ -25,16 +25,19 @@ async fn migration_creates_frontstage_page_visibility_rules() {
     .unwrap();
     assert!(table_exists);
 
+    // Filter before deparsing: concurrent fixtures can drop unrelated schemas,
+    // and SQL predicate order does not constrain pg_get_constraintdef evaluation.
     let visibility_check_count: i64 = sqlx::query_scalar(
         r#"
+        with table_checks as materialized (
+            select c.oid
+            from pg_constraint c
+            where c.conrelid = format('%I.frontstage_page_visibility_rules', $1::text)::regclass
+              and c.contype = 'c'
+        )
         select count(*)
-        from pg_constraint c
-        join pg_class r on r.oid = c.conrelid
-        join pg_namespace n on n.oid = r.relnamespace
-        where n.nspname = $1
-          and r.relname = 'frontstage_page_visibility_rules'
-          and c.contype = 'c'
-          and pg_get_constraintdef(c.oid) ilike '%visible%'
+        from table_checks c
+        where pg_get_constraintdef(c.oid) ilike '%visible%'
           and pg_get_constraintdef(c.oid) ilike '%hidden%'
         "#,
     )
@@ -48,10 +51,7 @@ async fn migration_creates_frontstage_page_visibility_rules() {
         r#"
         select count(*)
         from pg_constraint c
-        join pg_class r on r.oid = c.conrelid
-        join pg_namespace n on n.oid = r.relnamespace
-        where n.nspname = $1
-          and r.relname = 'frontstage_page_visibility_rules'
+        where c.conrelid = format('%I.frontstage_page_visibility_rules', $1::text)::regclass
           and c.contype = 'f'
         "#,
     )

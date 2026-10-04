@@ -10,7 +10,7 @@
     },
     {
       "source": "web/app/src/app/router.tsx",
-      "specifier": "../features/home/pages/HomePage",
+      "specifier": "../routes/HomeRedirect",
       "smokePaths": [
         "/"
       ]
@@ -30,13 +30,6 @@
       "specifier": "../features/me/pages/MePage",
       "smokePaths": [
         "/me"
-      ]
-    },
-    {
-      "source": "web/app/src/app/router.tsx",
-      "specifier": "../features/templates/pages/TemplatesPage",
-      "smokePaths": [
-        "/templates"
       ]
     },
     {
@@ -179,21 +172,32 @@
       "source": "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
       "specifier": "../../components/billing/PricingCatalogPanel",
       "smokePaths": [
-        "/settings/extension-center/runtime-extensions"
+        "/settings/extension-center/model-pricing"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
       "specifier": "../../components/extension-center/UiComponentCatalogPanel",
       "smokePaths": [
-        "/settings/extension-center/runtime-extensions"
+        "/settings/extension-center/ui-components"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      "specifier": "../../components/extension-center/ApplicationTemplateCatalogPanel",
+      "smokePaths": [
+        "/settings/extension-center/application-templates"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
       "specifier": "../../components/extension-center/ExtensionApplicationFlow",
       "smokePaths": [
-        "/settings/extension-center/runtime-extensions"
+        {
+          "path": "/settings/extension-center/runtime-extensions",
+          "requiresFixture": true,
+          "reason": "Open an extension application before checking this conditional lazy consumer."
+        }
       ]
     },
     {

@@ -366,71 +366,108 @@ function groupBy(values, resolveKey) {
   return groups;
 }
 
+// Follow literal relative imports from the i18n bootstrap, including its lazy
+// resource modules. This is static reachability, not evaluation of registration
+// conditions or computed module paths; disconnected registries are not included.
+function collectFrontendI18nModules(repoRoot) {
+  const sourceRoot = path.resolve(repoRoot, FRONTEND_SOURCE_ROOT);
+  const pending = [path.join(repoRoot, FRONTEND_I18N_BOOTSTRAP)];
+  const visited = new Set();
+  const modules = [];
+
+  while (pending.length > 0) {
+    const absolutePath = pending.pop();
+    if (visited.has(absolutePath) || !fs.existsSync(absolutePath)) continue;
+    visited.add(absolutePath);
+    const content = fs.readFileSync(absolutePath, 'utf8');
+    modules.push({ absolutePath, content });
+    const moduleImportPattern =
+      /\bfrom\s*['"](\.[^'"]+)['"]|\bimport\s*(?:\(\s*)?['"](\.[^'"]+)['"]/gu;
+    let match = moduleImportPattern.exec(content);
+    while (match) {
+      const importPath = match[1] || match[2];
+      const basePath = path.resolve(path.dirname(absolutePath), importPath);
+      const candidates = path.extname(basePath)
+        ? [basePath]
+        : [...FRONTEND_SOURCE_EXTENSIONS].flatMap((extension) => [
+          `${basePath}${extension}`,
+          path.join(basePath, `index${extension}`)
+        ]);
+      const resolved = candidates.find((candidate) =>
+        candidate.startsWith(`${sourceRoot}${path.sep}`)
+        && FRONTEND_SOURCE_EXTENSIONS.has(path.extname(candidate))
+        && fs.existsSync(candidate)
+        && fs.statSync(candidate).isFile()
+      );
+      if (resolved) pending.push(resolved);
+      match = moduleImportPattern.exec(content);
+    }
+  }
+  return modules;
+}
+
 function collectFrontendNamespaceOwners(repoRoot) {
-  const appI18nPath = path.join(repoRoot, FRONTEND_I18N_BOOTSTRAP);
   const ownersByNamespace = new Map();
 
-  if (!fs.existsSync(appI18nPath)) {
-    return ownersByNamespace;
-  }
+  const modules = collectFrontendI18nModules(repoRoot);
+  for (const { absolutePath: appI18nPath, content: appI18nContent } of modules) {
+    const importOwnersByBinding = new Map();
+    const staticImportPattern =
+      /import\s+([A-Za-z][A-Za-z0-9]*)\s+from\s+['"]([^'"]+\/i18n\/(?:zh_Hans|en_US)\.json)['"]/gu;
+    let staticImportMatch = staticImportPattern.exec(appI18nContent);
+    while (staticImportMatch) {
+      const [, bindingName, importPath] = staticImportMatch;
+      const importAbsolutePath = path.resolve(
+        path.dirname(appI18nPath),
+        importPath
+      );
+      const importRelativePath = normalizePath(
+        path.relative(repoRoot, importAbsolutePath)
+      );
+      const owner = ownerFromI18nImportPath(importRelativePath);
 
-  const appI18nContent = fs.readFileSync(appI18nPath, 'utf8');
-  const importOwnersByBinding = new Map();
-  const staticImportPattern =
-    /import\s+([A-Za-z][A-Za-z0-9]*)\s+from\s+['"]([^'"]+\/i18n\/(?:zh_Hans|en_US)\.json)['"]/gu;
-  let staticImportMatch = staticImportPattern.exec(appI18nContent);
-  while (staticImportMatch) {
-    const [, bindingName, importPath] = staticImportMatch;
-    const importAbsolutePath = path.resolve(
-      path.dirname(appI18nPath),
-      importPath
-    );
-    const importRelativePath = normalizePath(
-      path.relative(repoRoot, importAbsolutePath)
-    );
-    const owner = ownerFromI18nImportPath(importRelativePath);
+      if (owner?.startsWith(`${FRONTEND_SOURCE_ROOT}/`)) {
+        importOwnersByBinding.set(bindingName, owner);
+      }
 
-    if (owner?.startsWith(`${FRONTEND_SOURCE_ROOT}/`)) {
-      importOwnersByBinding.set(bindingName, owner);
+      staticImportMatch = staticImportPattern.exec(appI18nContent);
     }
 
-    staticImportMatch = staticImportPattern.exec(appI18nContent);
-  }
+    const staticNamespacePattern =
+      /([A-Za-z][A-Za-z0-9]*):\s*([A-Za-z][A-Za-z0-9]*)/gu;
+    let staticNamespaceMatch = staticNamespacePattern.exec(appI18nContent);
+    while (staticNamespaceMatch) {
+      const [, namespace, bindingName] = staticNamespaceMatch;
+      const owner = importOwnersByBinding.get(bindingName);
 
-  const staticNamespacePattern =
-    /([A-Za-z][A-Za-z0-9]*):\s*([A-Za-z][A-Za-z0-9]*)/gu;
-  let staticNamespaceMatch = staticNamespacePattern.exec(appI18nContent);
-  while (staticNamespaceMatch) {
-    const [, namespace, bindingName] = staticNamespaceMatch;
-    const owner = importOwnersByBinding.get(bindingName);
+      if (owner) {
+        ownersByNamespace.set(namespace, owner);
+      }
 
-    if (owner) {
-      ownersByNamespace.set(namespace, owner);
+      staticNamespaceMatch = staticNamespacePattern.exec(appI18nContent);
     }
 
-    staticNamespaceMatch = staticNamespacePattern.exec(appI18nContent);
-  }
+    const namespaceImportPattern =
+      /([A-Za-z][A-Za-z0-9]*):\s*\{\s*zh_Hans:\s*\(\)\s*=>\s*import\(\s*['"]([^'"]+)['"]\s*\)/gu;
+    let match = namespaceImportPattern.exec(appI18nContent);
 
-  const namespaceImportPattern =
-    /([A-Za-z][A-Za-z0-9]*):\s*\{\s*zh_Hans:\s*\(\)\s*=>\s*import\(\s*['"]([^'"]+)['"]\s*\)/gu;
-  let match = namespaceImportPattern.exec(appI18nContent);
+    while (match) {
+      const [, namespace, importPath] = match;
+      const importAbsolutePath = path.resolve(
+        path.dirname(appI18nPath),
+        importPath
+      );
+      const importRelativePath = normalizePath(
+        path.relative(repoRoot, importAbsolutePath)
+      );
+      const owner = ownerFromI18nImportPath(importRelativePath);
 
-  while (match) {
-    const [, namespace, importPath] = match;
-    const importAbsolutePath = path.resolve(
-      path.dirname(appI18nPath),
-      importPath
-    );
-    const importRelativePath = normalizePath(
-      path.relative(repoRoot, importAbsolutePath)
-    );
-    const owner = ownerFromI18nImportPath(importRelativePath);
+      if (owner?.startsWith(`${FRONTEND_SOURCE_ROOT}/`)) {
+        ownersByNamespace.set(namespace, owner);
+      }
 
-    if (owner?.startsWith(`${FRONTEND_SOURCE_ROOT}/`)) {
-      ownersByNamespace.set(namespace, owner);
+      match = namespaceImportPattern.exec(appI18nContent);
     }
-
-    match = namespaceImportPattern.exec(appI18nContent);
   }
 
   return ownersByNamespace;

@@ -366,7 +366,56 @@ async fn selective_backup_roundtrips_portable_identities_and_requires_workspace(
     .await
     .unwrap();
 
+    let template_id = "@fixture/selective-ledger";
+    let checksum = "sha256:fixture-release";
+    store
+        .record_application_template_release(workspace, template_id, 1, checksum, true)
+        .await
+        .unwrap();
+    // A subsequent failed attempt must retain an already successful release.
+    store
+        .record_application_template_release(workspace, template_id, 1, checksum, false)
+        .await
+        .unwrap();
+    store
+        .record_application_template_release(workspace, template_id, 2, checksum, false)
+        .await
+        .unwrap();
+    let release_before: Vec<Value> = sqlx::query_scalar(
+        "select to_jsonb(t) from application_template_releases t where workspace_id=$1 order by release_version",
+    )
+    .bind(workspace)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(release_before.len(), 2);
+    for release in &release_before {
+        assert!(Uuid::parse_str(release["id"].as_str().unwrap()).is_ok());
+        assert_eq!(release["workspace_id"], workspace.to_string());
+        assert_eq!(release["scope_id"], workspace.to_string());
+        assert!(release["created_at"].is_string());
+        assert!(release["updated_at"].is_string());
+        assert_eq!(release["checksum"], checksum);
+    }
+    assert_eq!(release_before[0]["successful"], true);
+    assert_eq!(release_before[1]["successful"], false);
+
     let bytes = capture(&repo, select("backups", false, true)).await;
+    let lines = archive_lines(&bytes);
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line["table"] == "application_template_releases")
+            .count(),
+        2
+    );
+    // Restore must roundtrip row identity, generated scope, timestamps, immutable
+    // checksum and both successful / unsuccessful ledger facts from the archive.
+    sqlx::query("update application_template_releases set successful=not successful, checksum='changed-checksum', created_at=created_at + interval '1 hour', updated_at=updated_at + interval '1 hour' where workspace_id=$1")
+        .bind(workspace)
+        .execute(&db)
+        .await
+        .unwrap();
     sqlx::query("update portable_template_identities set target_id=$3 where workspace_id=$1 and source_id=$2")
         .bind(workspace)
         .bind(&source_id)
@@ -386,6 +435,25 @@ async fn selective_backup_roundtrips_portable_identities_and_requires_workspace(
     .await
     .unwrap();
     assert_eq!(after, (before.0, before.1, target_id));
+    let release_after: Vec<Value> = sqlx::query_scalar(
+        "select to_jsonb(t) from application_template_releases t where workspace_id=$1 order by release_version",
+    )
+    .bind(workspace)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(release_after, release_before);
+    let releases = store
+        .load_application_template_releases(workspace, template_id)
+        .await
+        .unwrap();
+    assert_eq!(releases.len(), 2);
+    assert_eq!(releases[0].release_version, 2);
+    assert!(!releases[0].successful);
+    assert_eq!(releases[0].checksum, checksum);
+    assert_eq!(releases[1].release_version, 1);
+    assert!(releases[1].successful);
+    assert_eq!(releases[1].checksum, checksum);
 
     sqlx::query("delete from workspaces where id=$1")
         .bind(workspace)

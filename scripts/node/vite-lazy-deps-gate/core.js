@@ -238,6 +238,39 @@ function collectModuleGraphDependencies({
   };
 }
 
+// Keep helper support narrow: a lazy callback must call a local zero-argument
+// function whose entire body returns an import, directly or through a memoized flight.
+// A typeof import annotation or an unrelated prefetch is not a lazy boundary.
+function collectLazyHelperImports(source) {
+  const entries = [];
+  const lazyHelperPattern = /\b(?:React\.)?lazy\s*\(\s*\(\s*\)\s*=>\s*([A-Za-z_$][\w$]*)\s*\(\s*\)/gu;
+  const functionPattern = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(\s*\)\s*\{/gu;
+  const helpers = new Map();
+  let match = functionPattern.exec(source);
+  while (match) {
+    const bodyStart = match.index + match[0].length - 1;
+    const body = extractDelimitedContent(source, bodyStart, '{', '}');
+    if (body !== null) {
+      const direct = /^\s*return\s+import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*;?\s*$/u.exec(body);
+      const memoized = /^\s*([A-Za-z_$][\w$]*)\s*\?\?=\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*;\s*return\s+\1\s*;?\s*$/u.exec(body);
+      if (direct || memoized) {
+        helpers.set(match[1], {
+          specifier: direct ? direct[1] : memoized[2],
+          index: bodyStart + 1 + body.indexOf('import'),
+        });
+      }
+      functionPattern.lastIndex = bodyStart + body.length + 2;
+    }
+    match = functionPattern.exec(source);
+  }
+  match = lazyHelperPattern.exec(source);
+  while (match) {
+    if (helpers.has(match[1])) entries.push(helpers.get(match[1]));
+    match = lazyHelperPattern.exec(source);
+  }
+  return entries;
+}
+
 function discoverLazyImports({ repoRoot }) {
   const sourceRoot = path.join(repoRoot, 'web', 'app', 'src');
   const entries = [];
@@ -256,6 +289,14 @@ function discoverLazyImports({ repoRoot }) {
         resolvedPath: resolveSourceFile(filePath, match[1]),
       });
       match = LAZY_IMPORT_PATTERN.exec(stripped);
+    }
+    for (const helper of collectLazyHelperImports(stripped)) {
+      entries.push({
+        source: toRepoRelative(repoRoot, filePath),
+        sourceLine: lineNumberAt(stripped, helper.index),
+        specifier: helper.specifier,
+        resolvedPath: resolveSourceFile(filePath, helper.specifier),
+      });
     }
   }
 
@@ -494,8 +535,17 @@ function analyzeStaticLazyDeps({
     }
   }
 
+  const lazyEntryKeys = new Set(lazyEntries.map(manifestKey));
   for (const entry of manifest.entries) {
     findings.push(...validateManifestEntry(entry));
+    if (!lazyEntryKeys.has(manifestKey(entry))) {
+      findings.push({
+        code: 'stale-smoke-manifest',
+        source: entry.source,
+        specifier: entry.specifier,
+        message: 'Manifest entry no longer matches an actual lazy import boundary.',
+      });
+    }
   }
 
   return {

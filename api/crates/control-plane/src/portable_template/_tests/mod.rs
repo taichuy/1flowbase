@@ -47,6 +47,55 @@ fn snapshot() -> PortableTemplatePackage {
     }
 }
 
+fn package_over_former_capacity_limits() -> PortableTemplatePackage {
+    let mut package = snapshot();
+    package.data_models = (1..=1_001)
+        .map(|id| model(id, &format!("model_{id}")))
+        .collect();
+    package.pages = (2_001..=3_001).map(|id| group(id, None)).collect();
+    package.applications = (4_001..=4_101)
+        .map(|id| PortableApplication {
+            id: Uuid::from_u128(id),
+            application_type: domain::ApplicationType::Workflow,
+            workflow_trigger_type: None,
+            name: format!("Workflow {id}"),
+            description: String::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
+            flow_document: json!({"graph":{"nodes":[],"edges":[]}}),
+            mapping: None,
+            published: None,
+            schedule: None,
+            dependency_issues: vec![],
+        })
+        .collect();
+    package
+}
+
+#[test]
+fn valid_resources_are_not_rejected_by_arbitrary_template_capacity() {
+    let package = package_over_former_capacity_limits();
+    let failures = validate_portable_template(&package);
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn large_packages_still_reject_duplicate_and_nil_resource_identities() {
+    let mut package = package_over_former_capacity_limits();
+    let duplicate_id = package.data_models[0].id;
+    package.data_models[1].id = duplicate_id;
+    package.pages[0].id = Uuid::nil();
+    let failures = validate_portable_template(&package);
+    assert!(failures.contains(&format!(
+        "portable_template_duplicate_or_nil_id:{duplicate_id}"
+    )));
+    assert!(failures.contains(&format!(
+        "portable_template_duplicate_or_nil_id:{}",
+        Uuid::nil()
+    )));
+}
+
 #[test]
 fn mcp_wrappers_pull_portable_definitions_and_remap_their_target_ids() {
     let app_id = Uuid::from_u128(31);

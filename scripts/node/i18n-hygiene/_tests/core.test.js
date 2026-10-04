@@ -520,6 +520,70 @@ test('collectI18nHygieneFindings resolves statically imported frontend namespace
   assert.deepEqual(unusedKeys, ['auto.stale']);
 });
 
+for (const [entryKind, entrySource] of [
+  ['lazy resource import', "void import('./resources/registry').then(({ applicationTranslationResources }) => register(applicationTranslationResources));"],
+  ['static resource import', "import { applicationTranslationResources } from './resources/registry'; register(applicationTranslationResources);"],
+  ['resource re-export', "export { applicationTranslationResources } from './resources/registry';"],
+]) {
+  test(`collectI18nHygieneFindings follows ${entryKind} across owners without suppressing unused keys`, (t) => {
+    const repoRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'oneflowbase-i18n-split-registry-')
+    );
+    t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+    writeFile(repoRoot, 'web/app/src/shared/i18n/app-i18n.ts', entrySource);
+    writeFile(repoRoot, 'web/app/src/shared/i18n/resources/registry.ts', [
+      "import '../app-i18n';", // Cycle must not loop or lose the resource owner.
+      "import shellZh from '../../../app-shell/i18n/zh_Hans.json';",
+      "import shellEn from '../../../app-shell/i18n/en_US.json';",
+      'export const applicationTranslationResources = {',
+      '  zh_Hans: { appShell: shellZh },',
+      '  en_US: { appShell: shellEn }',
+      '};',
+    ].join('\n'));
+    // A locale import in a disconnected module is not an application namespace.
+    writeFile(repoRoot, 'web/app/src/shared/i18n/disconnected-registry.ts', [
+      "import shellZh from '../../app-shell/i18n/zh_Hans.json';",
+      'const resources = { zh_Hans: { disconnected: shellZh } };',
+    ].join('\n'));
+    writeI18nPair(repoRoot, 'web/app/src/app-shell', {
+      auto: {
+        assistant_activity_duration_minutes: '耗时',
+        assistant_settings_refresh_failed: '刷新失败',
+        stale: '失效',
+        disconnected_only: '未注册',
+        unknown_namespace_only: '未知命名空间',
+      },
+    }, {
+      auto: {
+        assistant_activity_duration_minutes: 'Duration',
+        assistant_settings_refresh_failed: 'Refresh failed',
+        stale: 'Stale',
+        disconnected_only: 'Not registered',
+        unknown_namespace_only: 'Unknown namespace',
+      },
+    });
+    writeFile(repoRoot, 'web/app/src/features/agent-flow/Assistant.tsx', [
+      "const duration = i18nText('appShell', 'auto.assistant_activity_duration_minutes');",
+      "const disconnected = i18nText('disconnected', 'auto.disconnected_only');",
+      "const unknown = i18nText('missingNamespace', 'auto.unknown_namespace_only');",
+    ].join('\n'));
+    writeFile(repoRoot, 'web/app/src/features/agent-flow/AssistantError.tsx', [
+      "const { t } = useTranslation('appShell');",
+      "const failure = t('auto.assistant_settings_refresh_failed');",
+    ].join('\n'));
+
+    const findings = collectI18nHygieneFindings({ repoRoot });
+    const unused = findings.filter((finding) => finding.rule === 'unused-i18n-key');
+
+    assert.deepEqual(unused.map((finding) => finding.key).sort(), [
+      'auto.disconnected_only', 'auto.stale', 'auto.unknown_namespace_only',
+    ]);
+    assert.ok(unused.every((finding) => finding.severity === 'warning'));
+    assert.ok(unused.every((finding) => finding.owner === 'web/app/src/app-shell'));
+    assert.equal(findings.some((finding) => finding.severity === 'error'), false);
+  });
+}
+
 test('collectI18nHygieneFindings keeps same-owner labelKey literals as frontend i18n references', () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'oneflowbase-i18n-label-key-')

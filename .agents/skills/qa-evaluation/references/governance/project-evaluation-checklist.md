@@ -28,7 +28,7 @@
 | Resource Action Kernel / Dynamic Modeling | `Resource Action Kernel` 是否仍由宿主托管，`dynamic modeling` 是否仍是元数据系统而不是 runtime 数据本身 | resource/action registry、hook pipeline、descriptor、模型发布流程、runtime engine |
 | 插件消费分类 | `HostExtension / RuntimeExtension / CapabilityPlugin` 是否仍按各自注册权、绑定方式和消费方式工作 | plugin-framework、runtime-core、host contribution、分配/绑定逻辑、provider/node/datasource/publish 配置 |
 | HostExtension 启动面 | HostExtension manifest contribution、load plan、pre-state infra provider、route/worker/migration namespace 是否仍受宿主管理 | host-extension.yaml、loader、host infrastructure registry、route/worker/migration registry、PostgreSQL extension migration tracking |
-| 工程质量门禁 | `route / service / repository / domain / mapper` 是否仍分层，`storage-durable/postgres` 内的 `storage-postgres` 是否保持 repository / mapper 拆分，`storage-durable / storage-object` 是否仍守住各自边界，验证命令和测试目录规则是否被执行 | 代码结构、storage-durable/postgres、storage-durable、storage-object 目录、测试文件、验证脚本、命令输出 |
+| 工程质量门禁 | `route / service / repository / domain / mapper` 是否仍分层，`storage/durable/postgres` 内的 `storage-durable-postgres` 是否保持 repository / mapper 拆分，`storage-durable / storage-object` 是否仍守住各自边界，验证命令和测试目录规则是否被执行 | 代码结构、storage/durable/postgres、storage-durable、storage-object 目录、测试文件、验证脚本、命令输出 |
 | 测试缺口 | 当前项目最关键的行为是否缺少自动化或手动验证覆盖 | 测试文件、命令结果、缺口清单 |
 | 目录与文件边界 | 目录规划是否仍对齐 spec，路由、壳层、feature、测试文件是否分工清楚 | 目录树、文件职责、spec 对照、行数与目录压力 |
 | Maintainability / Dead Abstraction | 是否存在过度抽象、无用代码、空转封装、过期兼容层或无真实消费者的公共入口 | 调用图、导出点、运行路径、边界职责、废弃计划、`repo-hygiene`、churn |
@@ -42,7 +42,7 @@
 - 若前端结论来自 `page-debug`，报告里应明确写出请求路由、最终 URL 和 `outputDir`
 - 不能验证的项要单独列入 `未覆盖项 / 风险`
 - 发现旧字段兼容 alias 时，必须列出 `@field-contract-compat` 标记、废弃计划、测试证据和 `repo-hygiene` warning；没有标记时按契约漂移报告
-- 发现 maintainability / dead abstraction 问题时，必须列出证据和 warning；修复、删除、合并抽象或改公共接口前，需要用户明确同意
+- 发现 maintainability / dead abstraction 问题时，必须列出证据和 warning；修复、删除、合并抽象或改公共接口须核对现有授权；未授权时再请求用户同意
 - 命中后端评估时，如果没有核对最新 `.memory/project-memory`，应在报告中明确说明结论可能存在旧口径偏差
 - 命中热点 churn 复盘时，必须输出“AI 下次如何避免”的预防层建议；不能只给业务代码修复建议
 

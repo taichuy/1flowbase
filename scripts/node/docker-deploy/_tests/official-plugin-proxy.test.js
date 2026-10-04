@@ -783,11 +783,36 @@ exit 0
 const dockerAvailable = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 const alpineImageAvailable = dockerAvailable
   && spawnSync('docker', ['image', 'inspect', 'alpine:3.20'], { stdio: 'ignore' }).status === 0;
+const requireDockerRecoveryEvidence = process.env.REQUIRE_DOCKER_RECOVERY_EVIDENCE === '1';
+
+test('required Docker recovery evidence cannot silently skip absent Docker or image fixtures', () => {
+  const fixtureBin = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-required-docker-'));
+  try {
+    for (const dockerScript of ['#!/bin/sh\nexit 1\n', '#!/bin/sh\n[ "$1" = info ]\n']) {
+      const dockerPath = path.join(fixtureBin, 'docker');
+      fs.writeFileSync(dockerPath, dockerScript, { mode: 0o755 });
+      const childEnv = { ...process.env, PATH: `${fixtureBin}${path.delimiter}${process.env.PATH || ''}`, REQUIRE_DOCKER_RECOVERY_EVIDENCE: '1' };
+      // Start an independent runner; inherited context makes Node skip all child tests.
+      delete childEnv.NODE_TEST_CONTEXT;
+      const result = spawnSync(process.execPath, [
+        '--test', '--test-reporter=tap', '--test-name-pattern=^real Docker directory bind mount', __filename,
+      ], {
+        env: childEnv,
+        encoding: 'utf8', maxBuffer: 1024 * 1024,
+      });
+      assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+      assert.match(`${result.stdout}\n${result.stderr}`, /required Docker recovery evidence needs Docker and alpine:3\.20/u);
+      assert.match(result.stdout, /not ok \d+ - real Docker directory bind mount/u);
+      assert.match(result.stdout, /^# fail 1$/mu);
+    }
+  } finally { fs.rmSync(fixtureBin, { recursive: true, force: true }); }
+});
 
 test(
   'real Docker directory bind mount permits recovery configuration atomic replacement',
-  { skip: !alpineImageAvailable },
+  { skip: !alpineImageAvailable && !requireDockerRecoveryEvidence },
   () => {
+    assert.ok(alpineImageAvailable, 'required Docker recovery evidence needs Docker and alpine:3.20');
     const recoveryOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-recovery-output-'));
     const deploymentEnv = path.join(recoveryOutput, 'deployment.env');
     fs.writeFileSync(deploymentEnv, 'API_PROVIDER_SECRET_MASTER_KEY=old\n', { mode: 0o600 });

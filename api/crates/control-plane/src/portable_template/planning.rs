@@ -17,12 +17,6 @@ pub fn validate_portable_template(package: &PortableTemplatePackage) -> Vec<Stri
     {
         failures.push("portable_template_empty".into());
     }
-    if package.pages.len() > 1000
-        || package.applications.len() > 100
-        || package.data_models.len() > 1000
-    {
-        failures.push("portable_template_limit".into());
-    }
     let mut ids = BTreeSet::new();
     for id in package
         .pages

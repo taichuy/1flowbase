@@ -589,6 +589,17 @@ async fn release_ledger_preserves_failed_retry_immutable_digest_and_workspace_sc
         .unwrap();
     assert_eq!(rows.len(), 1);
     assert!(!rows[0].successful);
+    let initial: (Uuid, Uuid, String) = sqlx::query_as(
+        "SELECT id, scope_id, created_at::text FROM application_template_releases WHERE workspace_id=$1 AND template_id=$2 AND release_version=1",
+    )
+    .bind(workspace.id)
+    .bind(id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(initial.0.get_version_num(), 7);
+    assert_eq!(initial.1, workspace.id);
+
     assert!(store
         .record_application_template_release(workspace.id, id, 1, "changed", true)
         .await
@@ -615,4 +626,16 @@ async fn release_ledger_preserves_failed_retry_immutable_digest_and_workspace_sc
         "retry reservation must not erase prior success"
     );
     assert_eq!(rows[0].checksum, "digest");
+    let after_retry: (Uuid, Uuid, String) = sqlx::query_as(
+        "SELECT id, scope_id, created_at::text FROM application_template_releases WHERE workspace_id=$1 AND template_id=$2 AND release_version=1",
+    )
+    .bind(workspace.id)
+    .bind(id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        after_retry, initial,
+        "retry must preserve platform identity and creation time"
+    );
 }
