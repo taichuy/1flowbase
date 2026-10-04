@@ -57,43 +57,63 @@ impl PgControlPlaneStore {
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| anyhow!("client trajectory flow missing"))?;
-        let linked_node = match &input.fact {
-            ClientTrajectoryFact::NodeLink { node_run_id } => Some(*node_run_id),
-            _ => None,
-        };
-        let (step_id, section_step_id) = match &input.fact {
-            ClientTrajectoryFact::Step { step } => (Some(step.id), None),
-            ClientTrajectoryFact::Section { step_id, .. } => (None, Some(*step_id)),
-            _ => (None, None),
-        };
         // Keep this as a new statement AFTER the flow lock: a writer that we
         // waited for may have committed the capture/step since our lock began.
-        let ownership = sqlx::query_as::<_, FactOwnership>(r#"
-            select
-                case when $3::uuid is null then true else
-                    exists(select 1 from node_runs where id=$3 and flow_run_id=$1)
-                end as input_node_valid,
-                case when $4::uuid is null then true else
-                    exists(select 1 from node_runs where id=$4 and flow_run_id=$1 and node_type='llm')
-                end as linked_node_valid,
-                c.flow_run_id as capture_flow_run_id,c.node_run_id as capture_node_run_id,
-                case when $5::uuid is not null then
-                    (select request_id from client_trajectory_steps where id=$5)
-                end as step_request_id,
-                case when $6::uuid is null then true else
-                    exists(select 1 from client_trajectory_steps where id=$6 and request_id=$2 and flow_run_id=$1)
-                end as section_step_valid
-            from (values (1)) as fact(singleton)
-            left join client_trajectory_captures c on c.request_id=$2
-        "#)
-        .bind(input.flow_run_id)
-        .bind(input.request_id)
-        .bind(input.node_run_id)
-        .bind(linked_node)
-        .bind(step_id)
-        .bind(section_step_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        // Specialize only by node presence and fact kind, keeping UUID values
+        // in typed binds. Inapplicable checks need no nullable planner branches.
+        let mut ownership_query = QueryBuilder::<Postgres>::new("select ");
+        if let Some(node_run_id) = input.node_run_id {
+            ownership_query
+                .push("exists(select 1 from node_runs where id=")
+                .push_bind(node_run_id)
+                .push(" and flow_run_id=")
+                .push_bind(input.flow_run_id)
+                .push(")");
+        } else {
+            ownership_query.push("true");
+        }
+        ownership_query.push(" as input_node_valid,");
+        if let ClientTrajectoryFact::NodeLink { node_run_id } = &input.fact {
+            ownership_query
+                .push("exists(select 1 from node_runs where id=")
+                .push_bind(*node_run_id)
+                .push(" and flow_run_id=")
+                .push_bind(input.flow_run_id)
+                .push(" and node_type='llm')");
+        } else {
+            ownership_query.push("true");
+        }
+        ownership_query.push(
+            " as linked_node_valid,c.flow_run_id as capture_flow_run_id,c.node_run_id as capture_node_run_id,",
+        );
+        if let ClientTrajectoryFact::Step { step } = &input.fact {
+            ownership_query
+                .push("(select request_id from client_trajectory_steps where id=")
+                .push_bind(step.id)
+                .push(")");
+        } else {
+            ownership_query.push("null::uuid");
+        }
+        ownership_query.push(" as step_request_id,");
+        if let ClientTrajectoryFact::Section { step_id, .. } = &input.fact {
+            ownership_query
+                .push("exists(select 1 from client_trajectory_steps where id=")
+                .push_bind(*step_id)
+                .push(" and request_id=")
+                .push_bind(input.request_id)
+                .push(" and flow_run_id=")
+                .push_bind(input.flow_run_id)
+                .push(")");
+        } else {
+            ownership_query.push("true");
+        }
+        ownership_query
+            .push(" as section_step_valid from (values (1)) as fact(singleton) left join client_trajectory_captures c on c.request_id=")
+            .push_bind(input.request_id);
+        let ownership = ownership_query
+            .build_query_as::<FactOwnership>()
+            .fetch_one(&mut *tx)
+            .await?;
         // Validate in the original order, including multi-invalid inputs.
         anyhow::ensure!(
             ownership.input_node_valid,
