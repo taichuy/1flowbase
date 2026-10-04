@@ -22,7 +22,7 @@
     "instance": "MCP 实例",
     "workspace": "授权工作区",
     "permission_notice": "允许客户端通过此 MCP 实例，在 API Key 的当前权限范围内调用工具。",
-    "lifecycle_notice": "连接可自动续期；API Key 到期或被撤销后，连接将失效。",
+    "lifecycle_notice": "连接可自动刷新，每次授权最长持续 30 天。授权到期、API Key 到期或撤销后，需要重新授权。",
     "approve": "同意授权并返回",
     "change_key": "使用其他 API Key",
     "deny": "拒绝授权",

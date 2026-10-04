@@ -22,7 +22,7 @@
     "instance": "MCP instance",
     "workspace": "Authorized workspace",
     "permission_notice": "Allow this client to call tools through this MCP instance within the API key’s current permissions.",
-    "lifecycle_notice": "The connection can refresh automatically. It stops working when the API key expires or is revoked.",
+    "lifecycle_notice": "The connection can refresh automatically for up to 30 days per authorization. Reauthorize when authorization or the API key expires, or the key is revoked.",
     "approve": "Authorize and return",
     "change_key": "Use another API key",
     "deny": "Deny authorization",

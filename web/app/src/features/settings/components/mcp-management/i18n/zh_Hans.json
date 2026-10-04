@@ -241,6 +241,6 @@
     "step_auth": "选择 OAuth；如需选择注册方式，使用动态客户端注册，无需手动填写客户端 ID 或密钥。",
     "step_key": "创建并连接后，在打开的 1flowbase 授权页填写 API Key，无需登录后台。",
     "step_consent": "核对工作区和 MCP 实例，点击同意授权后返回 ChatGPT。",
-    "lifecycle": "无需在本弹窗保存 API Key 即可连接 ChatGPT。访问令牌自动刷新；Key 到期或撤销后，需要使用有效 Key 重新授权。"
+    "lifecycle": "无需在本弹窗保存 API Key 即可连接 ChatGPT。访问令牌自动刷新，每次授权最长持续 30 天。授权到期、Key 到期或撤销后，需要使用有效 Key 重新授权。"
   }
 }

@@ -241,6 +241,6 @@
     "step_auth": "Choose OAuth. If a registration method is requested, choose dynamic client registration; no manual client ID or secret is needed.",
     "step_key": "After creating and connecting, enter an API key on the 1flowbase authorization page. Console sign-in is not required.",
     "step_consent": "Check the workspace and MCP instance, then authorize and return to ChatGPT.",
-    "lifecycle": "You do not need to save an API key in this dialog to connect ChatGPT. Access tokens refresh automatically. If the key expires or is revoked, reconnect using a valid key."
+    "lifecycle": "You do not need to save an API key in this dialog to connect ChatGPT. Access tokens refresh automatically for up to 30 days per authorization. When authorization or the key expires, or the key is revoked, reconnect using a valid key."
   }
 }

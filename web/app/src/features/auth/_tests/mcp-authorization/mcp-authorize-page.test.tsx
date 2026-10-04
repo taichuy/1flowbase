@@ -34,7 +34,7 @@ const approval = {
 };
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  Object.values(api).forEach((mock) => mock.mockReset());
   api.fetchMcpOAuthAuthorization.mockResolvedValue(request);
   api.verifyMcpOAuthApiKey.mockResolvedValue(approval);
   api.decideMcpOAuthAuthorization.mockImplementation(
