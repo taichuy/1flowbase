@@ -74,3 +74,7 @@ pub(super) async fn next_runtime_event_sequence(
 #[cfg(test)]
 #[path = "_tests/sequencing.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "_tests/trace_refresh.rs"]
+mod trace_refresh_tests;
