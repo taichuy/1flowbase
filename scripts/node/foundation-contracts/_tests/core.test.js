@@ -129,6 +129,11 @@ test('AC-007/009 receipt requires candidate identity and warnings stay advisory'
       foundation: 'native-react',
       status: 'passed',
       exitCode: 0,
+      executedPack: plan.packs['native-react'].fast.map((item) => item.id),
+      commands: plan.packs['native-react'].fast.map((item) => ({
+        id: item.id, exitCode: 0, error: '',
+        logPath: `tmp/test-governance/foundation-contracts/components/native-react/${item.id}.log`,
+      })),
       warnings: ['nightly browser matrix deferred'],
       warningFiles: ['tmp/test-governance/native-react.warnings.log'],
       errors: [],

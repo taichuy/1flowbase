@@ -120,6 +120,11 @@ describe('vite config', () => {
       'utf8'
     );
     const lazyOnlyDeps = [
+      '@ant-design/happy-work-theme',
+      '@rc-component/virtual-list',
+      'react-countup',
+      'react-draggable',
+      'react-infinite-scroll-component',
       '@ant-design/x-markdown',
       '@lexical/react/LexicalComposer',
       '@lexical/react/LexicalComposerContext',

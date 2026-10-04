@@ -145,6 +145,12 @@
       "line": 58,
       "snippet": "std::fs::read_to_string(path)",
       "reason": "Host fingerprint detection runs during local runtime profile identification and reads machine-id once; keep synchronous unless it moves into a hot request path."
+    },
+    {
+      "rule": "no-sensitive-serialize",
+      "file": "api/crates/control-plane/src/mcp_oauth/mod.rs",
+      "snippet": "token_hash: String,",
+      "reason": "Private Approval persistence payload is serialized only into McpOAuthRepository state; the one-way approval hash never enters AuthorizationView, VerificationView or TokenResponse. Required for atomic browser-bound one-time consent consumption; public credential DTOs remain blocked."
     }
   ]
 }

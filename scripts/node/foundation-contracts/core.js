@@ -3,6 +3,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
+const { parseCargoTestCounts } = require('../verify/cargo-test-results.js');
 
 const OUTPUT_ROOT = path.join('tmp', 'test-governance', 'foundation-contracts');
 const FOUNDATION_IDS = [
@@ -240,6 +241,38 @@ function buildFoundationPlan({ changedFiles = [], foundation = 'auto', lane = 'p
   };
 }
 
+function isCargoTestCommand(command) {
+  return command.command === 'cargo' && command.args?.[0] === 'test';
+}
+
+function validateComponentEvidence(requiredPack, result) {
+  const errors = [];
+  const requiredIds = requiredPack.map((item) => item.id);
+  const executedIds = Array.isArray(result.executedPack) ? result.executedPack : [];
+  const commands = Array.isArray(result.commands) ? result.commands : [];
+  for (const [label, ids] of [['executedPack', executedIds], ['commands', commands.map((item) => item.id)]]) {
+    if (new Set(ids).size !== ids.length) errors.push(`duplicate ${label} command IDs`);
+    if (ids.length !== requiredIds.length || requiredIds.some((id) => !ids.includes(id))
+      || ids.some((id) => !requiredIds.includes(id))) {
+      errors.push(`${label} does not match required fast pack`);
+    }
+  }
+  if (requiredIds.length === 0) errors.push('selected foundation has no required fast commands');
+  for (const required of requiredPack) {
+    const evidence = commands.find((item) => item.id === required.id);
+    if (!evidence) continue;
+    if (evidence.exitCode !== 0 || evidence.error) errors.push(`${required.id} did not execute successfully`);
+    if (typeof evidence.logPath !== 'string' || !evidence.logPath.trim()) {
+      errors.push(`${required.id} has no command log path`);
+    }
+    if (isCargoTestCommand(required) && !(Number.isInteger(evidence.passedCount)
+      && evidence.passedCount > 0 && evidence.failedCount === 0)) {
+      errors.push(`${required.id} has no executed passing Cargo tests`);
+    }
+  }
+  return errors;
+}
+
 function buildContractReceipt({ candidateSha, plan, componentResults, eventName = '' }) {
   if (!candidateSha || !candidateSha.trim()) {
     throw new Error('candidate SHA is required');
@@ -257,7 +290,8 @@ function buildContractReceipt({ candidateSha, plan, componentResults, eventName 
         status: 'failed',
         exitCode: 1,
         triggerReasons: plan.packs[foundation].triggerReasons,
-        executedPack: plan.packs[foundation].fast.map((item) => item.id),
+        executedPack: [],
+        commands: [],
         warnings: [],
         warningFiles: [],
         errors: ['missing selected foundation component receipt'],
@@ -279,15 +313,20 @@ function buildContractReceipt({ candidateSha, plan, componentResults, eventName 
         deferredEvidence: result.deferredEvidence || plan.packs[foundation].full,
       };
     }
+    const evidenceErrors = validateComponentEvidence(plan.packs[foundation].fast, result);
+    if (componentResults.filter((item) => item.foundation === foundation).length !== 1) {
+      evidenceErrors.push('duplicate selected foundation component receipts');
+    }
     return {
       foundation,
-      status: result.status,
-      exitCode: result.exitCode,
+      status: evidenceErrors.length > 0 ? 'failed' : result.status,
+      exitCode: evidenceErrors.length > 0 ? 1 : result.exitCode,
       triggerReasons: plan.packs[foundation].triggerReasons,
-      executedPack: result.executedPack || plan.packs[foundation].fast.map((item) => item.id),
+      executedPack: result.executedPack || [],
+      commands: result.commands || [],
       warnings: result.warnings || [],
       warningFiles: result.warningFiles || [],
-      errors: result.errors || [],
+      errors: [...(result.errors || []), ...evidenceErrors],
       uncovered: result.uncovered || [],
       deferredEvidence: result.deferredEvidence || plan.packs[foundation].full,
     };
@@ -387,18 +426,36 @@ function runFastPack({ repoRoot, candidateSha, plan, foundation, spawnSyncImpl =
 
   for (const item of commands) {
     const commandStartedAt = Date.now();
-    const result = spawnSyncImpl(item.command, item.args, {
-      cwd: path.resolve(repoRoot, item.cwd),
-      env: process.env,
-      stdio: 'inherit',
-    });
-    const exitCode = result.error ? 1 : (result.status ?? 1);
+    const logPath = path.join(OUTPUT_ROOT, 'components', foundation, `${item.id}.log`);
+    const absoluteLogPath = path.join(repoRoot, logPath);
+    fs.mkdirSync(path.dirname(absoluteLogPath), { recursive: true });
+    const logFd = fs.openSync(absoluteLogPath, 'w');
+    let result;
+    try {
+      result = spawnSyncImpl(item.command, item.args, {
+        cwd: path.resolve(repoRoot, item.cwd),
+        env: process.env,
+        stdio: ['ignore', logFd, logFd],
+      });
+    } catch (error) {
+      result = { status: null, error };
+    } finally {
+      fs.closeSync(logFd);
+    }
+    const counts = isCargoTestCommand(item)
+      ? parseCargoTestCounts(fs.readFileSync(absoluteLogPath, 'utf8'))
+      : { passedCount: null, failedCount: null };
+    const missingTests = isCargoTestCommand(item) && !(counts.passedCount > 0 && counts.failedCount === 0);
+    const error = result.error?.message || (missingTests ? 'no executed passing Cargo tests' : '');
+    const exitCode = result.error || missingTests ? 1 : (result.status ?? 1);
     commandResults.push({
       id: item.id,
       command: [item.command, ...item.args].join(' '),
+      logPath,
+      ...counts,
       exitCode,
       durationMs: Date.now() - commandStartedAt,
-      error: result.error?.message || '',
+      error,
     });
     if (exitCode !== 0) break;
   }

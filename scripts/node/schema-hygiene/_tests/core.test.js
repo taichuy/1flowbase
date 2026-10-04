@@ -1387,3 +1387,32 @@ test('auth split scope exemptions do not exempt unrelated business tables', () =
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 });
+
+test('OAuth protocol state keeps expiry, rotation ownership and narrowly bounded schema classifications', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const config = loadConfig(repoRoot);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({ inventory, config });
+  for (const [name, identity, columns] of [
+    ['mcp_oauth_state', ['kind', 'token_hash'], ['payload', 'expires_at']],
+    ['mcp_oauth_grants', ['id'], ['user_id', 'api_key_id', 'payload', 'expires_at', 'revoked']],
+    ['mcp_oauth_refresh_tokens', ['token_hash'], ['grant_id', 'expires_at', 'consumed']],
+  ]) {
+    const table = inventory.tables.find((item) => item.name === name);
+    assert.deepEqual(table?.primaryKey?.columns, identity);
+    for (const column of columns) assert.ok(table.columns.some((item) => item.name === column), `${name}.${column}`);
+    assert.deepEqual(report.findings.filter((item) => item.table === name), []);
+    assert.match(config.exemptions[name].reason, /OAuth|token_hash/u);
+  }
+  const refresh = inventory.tables.find((item) => item.name === 'mcp_oauth_refresh_tokens');
+  assert.ok(refresh.foreignKeys.some((key) => key.references.table === 'mcp_oauth_grants' && key.columns.includes('grant_id')));
+  const fixtureRoot = createRepoWithMigration('create table unrelated_resources (id uuid primary key);');
+  try {
+    const negative = evaluateSchemaHygiene({ inventory: collectSchemaInventory({ repoRoot: fixtureRoot }), config });
+    for (const rule of ['managed-table-created-at', 'managed-table-scope-column']) {
+      assert.ok(negative.findings.some((item) => item.table === 'unrelated_resources' && item.rule === rule));
+    }
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
