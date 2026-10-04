@@ -21,7 +21,7 @@ function execute(binary, args, options = {}) {
 }
 const docker = args => execute('docker', args);
 const owned = new Map();
-function ownerReceipt() { write(path.join(out, 'owned-containers.json'), [...owned.values()].map(({ id, name, token, pid, startTicks }) => ({ id, name, token, pid, startTicks }))); }
+function ownerReceipt() { write(path.join(out, 'owned-containers.json'), [...owned.values()].map(({ id, name, token, pid, startTicks, volumeIds }) => ({ id, name, token, pid, startTicks, volumeIds }))); }
 const passwords = [];
 let activeChild = null, interrupted = false;
 function interrupt() { interrupted = true; activeChild?.kill('SIGINT'); }
@@ -35,6 +35,17 @@ function statIdentity(pid) {
   return raw.slice(raw.lastIndexOf(')') + 2).trim().split(/\s+/)[19];
 }
 function inspect(id) { return JSON.parse(docker(['inspect', id]))[0]; }
+function anonymousVolumes(actual) {
+  const ids = actual.Mounts.filter(mount => mount.Type === 'volume').map(mount => mount.Name).sort();
+  if (ids.some(id => !/^[a-f0-9]{64}$/.test(id))) throw Error('unexpected non-anonymous fixture volume');
+  return ids;
+}
+function verifyVolumesRemoved(ids) {
+  for (const id of ids) {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw Error('invalid owned volume identity');
+    if (docker(['volume', 'ls', '--format', '{{.Name}}', '--filter', `name=^${id}$`])) throw Error('owned anonymous volume cleanup incomplete');
+  }
+}
 function guard(owner, running = true) {
   const actual = inspect(owner.id);
   if (actual.Id !== owner.id || actual.Name !== '/' + owner.name || actual.Config.Labels['1flowbase.fixture-owner'] !== owner.token) throw Error('container ownership mismatch');
@@ -44,11 +55,16 @@ function guard(owner, running = true) {
 function remove(owner) {
   const actual = guard(owner, false);
   if (actual.State.Running) guard(owner);
-  docker(['rm', '-f', owner.id]);
+  const volumeIds = anonymousVolumes(actual);
+  if (owner.volumeIds && JSON.stringify(owner.volumeIds) !== JSON.stringify(volumeIds)) throw Error('container volume identity mismatch');
+  owner.volumeIds = volumeIds; ownerReceipt();
+  docker(['rm', '-f', '-v', owner.id]);
   // Exact ID only; never broad docker pruning or name-pattern deletion.
   const remains = docker(['ps', '-aq', '--no-trunc', '--filter', `id=${owner.id}`]);
   if (remains) throw Error('owned container cleanup incomplete');
+  verifyVolumesRemoved(volumeIds);
   owned.delete(owner.id); ownerReceipt();
+  return { id: owner.id, cleanup: 'complete', anonymous_volume_ids: volumeIds, removed_volume_ids: volumeIds, volume_cleanup: 'verified_absent' };
 }
 async function createDatabase(label) {
   const token = crypto.randomUUID();
@@ -57,12 +73,13 @@ async function createDatabase(label) {
   passwords.push(password);
   const envFile = path.join(privateRoot, label + '.env');
   fs.writeFileSync(envFile, `POSTGRES_PASSWORD=${password}\nPOSTGRES_USER=postgres\nPOSTGRES_DB=gateway_fixture\n`, { mode: 0o600 });
-  const id = docker(['run', '-d', '--name', name, '--label', `1flowbase.fixture-owner=${token}`, '--env-file', envFile,
+  const id = docker(['run', '--pull=never', '-d', '--name', name, '--label', `1flowbase.fixture-owner=${token}`, '--env-file', envFile,
     '-p', '127.0.0.1::5432', manifest.postgres.image, '-c', 'shared_preload_libraries=pg_stat_statements',
     '-c', 'pg_stat_statements.track=all', '-c', 'pg_stat_statements.track_planning=on']);
   const owner = { id, name, token, envFile };
   owned.set(id, owner); ownerReceipt();
   const actual = inspect(id);
+  owner.volumeIds = anonymousVolumes(actual); ownerReceipt();
   owner.pid = actual.State.Pid;
   owner.startTicks = statIdentity(owner.pid); ownerReceipt();
   const port = actual.NetworkSettings.Ports['5432/tcp'][0];
@@ -241,7 +258,7 @@ async function cell(label, variant, dimension, inputs) {
     try { stopLight?.(); } catch (error) { failure ||= error; }
     write(path.join(dir, 'database-cgroup.json'), { period_ms: 200, cost, samples: pgSamples });
     fs.writeFileSync(path.join(dir, 'driver.log'), redactServiceLog(Buffer.concat(logs).toString('utf8'), passwords), { mode: 0o600 });
-    let cleanup = 'complete';
+    let cleanup = 'complete', databaseCleanup = null;
     if (ready) {
       try {
         // The existing fixture normally stops this process. Recover only the guarded owned API after an interrupted entry.
@@ -257,10 +274,10 @@ async function cell(label, variant, dimension, inputs) {
       } catch (error) { cleanup = 'failed'; failure ||= error; }
     }
     if (owner) {
-      try { remove(owner); } catch (error) { cleanup = 'failed'; failure ||= error; }
+      try { databaseCleanup = remove(owner); } catch (error) { cleanup = 'failed'; failure ||= error; databaseCleanup = { id: owner.id, cleanup: 'failed', anonymous_volume_ids: owner.volumeIds ?? [], volume_cleanup: 'unverified' }; }
       fs.rmSync(owner.envFile, { force: true });
     }
-    write(path.join(dir, 'cleanup.json'), { cleanup, child: childResult, error: failure ? redactServiceLog(failure.message, passwords) : null });
+    write(path.join(dir, 'cleanup.json'), { cleanup, database: databaseCleanup, child: childResult, error: failure ? redactServiceLog(failure.message, passwords) : null });
     if (cleanup !== 'complete' || failure) process.exitCode = 1;
   }
 }
@@ -295,8 +312,8 @@ main().catch(error => {
 }).finally(() => {
   const cleanup = [];
   for (const owner of owned.values()) {
-    try { remove(owner); cleanup.push({ id: owner.id, cleanup: 'complete' }); }
-    catch (error) { cleanup.push({ id: owner.id, cleanup: 'failed', error: redactServiceLog(error.message, passwords) }); process.exitCode = 1; }
+    try { cleanup.push(remove(owner)); }
+    catch (error) { cleanup.push({ id: owner.id, cleanup: 'failed', anonymous_volume_ids: owner.volumeIds ?? [], volume_cleanup: 'unverified', error: redactServiceLog(error.message, passwords) }); process.exitCode = 1; }
   }
   write(path.join(out, 'final-cleanup.json'), cleanup);
   // Upload a strict sanitized whitelist, never scratch, env files, binary inputs or raw auth responses.

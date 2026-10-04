@@ -45,6 +45,12 @@ jobs:
           run-id: 37162484674
           github-token: ${{ github.token }}
           path: tmp/ci-independent-inputs/candidate
+      - name: Pre-pull fixture PostgreSQL image within four minutes
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=15s 240s docker pull postgres:18.4
       - name: Run twelve fresh-container ABBA cells serially
         timeout-minutes: 50
         run: node scripts/node/ai-gateway-concurrency/resource-benchmark/ci-isolated/run.cjs
@@ -59,20 +65,43 @@ jobs:
           if (!fs.existsSync(file)) process.exit(0);
           const run = args => cp.execFileSync('docker', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 1048576 }).trim();
           const results = [];
-          for (const owner of JSON.parse(fs.readFileSync(file))) {
-            if (!/^[a-f0-9]{64}$/.test(owner.id) || !/^gateway-independent-[a-f0-9-]{36}$/.test(owner.name)) throw Error('invalid owner receipt');
-            const exists = run(['ps','-aq','--no-trunc','--filter',`id=${owner.id}`]);
-            if (!exists) { results.push({id:owner.id,cleanup:'already_removed'}); continue; }
-            const actual = JSON.parse(run(['inspect',owner.id]))[0];
-            if (actual.Id !== owner.id || actual.Name !== '/' + owner.name || actual.Config.Labels['1flowbase.fixture-owner'] !== owner.token) throw Error('cleanup identity mismatch');
-            if (actual.State.Running && owner.pid) {
-              const raw = fs.readFileSync(`/proc/${actual.State.Pid}/stat`,'utf8');
-              const start = raw.slice(raw.lastIndexOf(')')+2).trim().split(/\s+/)[19];
-              if (actual.State.Pid !== owner.pid || start !== owner.startTicks) throw Error('cleanup PID mismatch');
+          const owners = JSON.parse(fs.readFileSync(file));
+          const verifyVolumesRemoved = ids => {
+            for (const id of ids) {
+              if (!/^[a-f0-9]{64}$/.test(id)) throw Error('invalid owned volume identity');
+              if (run(['volume','ls','--format','{{.Name}}','--filter',`name=^${id}$`])) throw Error('owned anonymous volume cleanup incomplete');
             }
-            run(['rm','-f',owner.id]);
-            if (run(['ps','-aq','--no-trunc','--filter',`id=${owner.id}`])) throw Error('cleanup incomplete');
-            results.push({id:owner.id,cleanup:'removed'});
+          };
+          for (const owner of owners) {
+            try {
+              if (!/^[a-f0-9]{64}$/.test(owner.id) || !/^gateway-independent-[a-f0-9-]{36}$/.test(owner.name)) throw Error('invalid owner receipt');
+              const exists = run(['ps','-aq','--no-trunc','--filter',`id=${owner.id}`]);
+              if (!exists) {
+                if (!Array.isArray(owner.volumeIds)) throw Error('missing owned volume receipt');
+                verifyVolumesRemoved(owner.volumeIds);
+                results.push({id:owner.id,cleanup:'already_removed',anonymous_volume_ids:owner.volumeIds,removed_volume_ids:owner.volumeIds,volume_cleanup:'verified_absent'});
+                continue;
+              }
+              const actual = JSON.parse(run(['inspect',owner.id]))[0];
+              if (actual.Id !== owner.id || actual.Name !== '/' + owner.name || actual.Config.Labels['1flowbase.fixture-owner'] !== owner.token) throw Error('cleanup identity mismatch');
+              if (actual.State.Running && owner.pid) {
+                const raw = fs.readFileSync(`/proc/${actual.State.Pid}/stat`,'utf8');
+                const start = raw.slice(raw.lastIndexOf(')')+2).trim().split(/\s+/)[19];
+                if (actual.State.Pid !== owner.pid || start !== owner.startTicks) throw Error('cleanup PID mismatch');
+              }
+              const volumeIds = actual.Mounts.filter(mount => mount.Type === 'volume').map(mount => mount.Name).sort();
+              if (volumeIds.some(id => !/^[a-f0-9]{64}$/.test(id))) throw Error('unexpected non-anonymous fixture volume');
+              if (owner.volumeIds && JSON.stringify(owner.volumeIds) !== JSON.stringify(volumeIds)) throw Error('container volume identity mismatch');
+              owner.volumeIds = volumeIds;
+              fs.writeFileSync(file,JSON.stringify(owners,null,2),{mode:0o600});
+              run(['rm','-f','-v',owner.id]);
+              if (run(['ps','-aq','--no-trunc','--filter',`id=${owner.id}`])) throw Error('cleanup incomplete');
+              verifyVolumesRemoved(volumeIds);
+              results.push({id:owner.id,cleanup:'removed',anonymous_volume_ids:volumeIds,removed_volume_ids:volumeIds,volume_cleanup:'verified_absent'});
+            } catch (error) {
+              results.push({id:owner.id,cleanup:'failed',anonymous_volume_ids:owner.volumeIds ?? [],volume_cleanup:'unverified',error:error.message});
+              process.exitCode = 1;
+            }
           }
           const target = 'tmp/test-governance/gateway-independent-resource-published';
           fs.mkdirSync(target,{recursive:true});
