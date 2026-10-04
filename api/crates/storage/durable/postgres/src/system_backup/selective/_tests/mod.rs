@@ -145,8 +145,12 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         .unwrap();
     assert_eq!(
         mcp.data_tables,
-        ["mcp_oauth_grants", "mcp_oauth_refresh_tokens", "mcp_oauth_state"]
-            .map(String::from)
+        [
+            "mcp_oauth_grants",
+            "mcp_oauth_refresh_tokens",
+            "mcp_oauth_state"
+        ]
+        .map(String::from)
     );
     for table in &mcp.data_tables {
         assert!(!mcp.structure_tables.contains(table));

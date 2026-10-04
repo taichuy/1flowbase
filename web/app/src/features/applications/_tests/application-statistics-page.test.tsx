@@ -529,14 +529,45 @@ describe('ApplicationStatisticsPage', () => {
       </AppProviders>
     );
     await screen.findByRole('link', { name: 'Alice' });
-    fireEvent.click(screen.getAllByRole('radio', { name: 'Recorded cost' })[0]);
-    const rings = echartsMock.chart.setOption.mock.calls
-      .map((call) => call[0])
-      .filter((option) => option.series[0]?.type === 'pie')
-      .slice(-2);
-    expect(rings.map((option) => option.series[0].data[0].value)).toEqual([
-      1.25, 5600
+    const modelMetrics = within(
+      screen.getByRole('radiogroup', {
+        name: 'Requested model distribution Distribution metric'
+      })
+    );
+    const userMetrics = within(
+      screen.getByRole('radiogroup', {
+        name: 'User distribution Distribution metric'
+      })
+    );
+    const latestRing = (name: string) =>
+      echartsMock.chart.setOption.mock.calls
+        .map((call) => call[0])
+        .filter((option) =>
+          option.series[0]?.type === 'pie' &&
+          option.series[0].data.some((sector: { name: string }) => sector.name === name)
+        )
+        .at(-1);
+    expect(latestRing('model-a').series[0].data).toEqual([
+      { name: 'model-a', value: 5600 }
     ]);
+    expect(latestRing('Alice').series[0].data).toEqual([
+      { name: 'Alice', value: 5600 }
+    ]);
+    expect(modelMetrics.getByRole('radio', { name: 'Tokens' })).toBeChecked();
+    expect(userMetrics.getByRole('radio', { name: 'Tokens' })).toBeChecked();
+
+    fireEvent.click(modelMetrics.getByRole('radio', { name: 'Recorded cost' }));
+
+    // An unchanged user chart may skip setOption; bind evidence to each dimension.
+    expect(latestRing('model-a').series[0].data).toEqual([
+      { name: 'model-a', value: 1.25 }
+    ]);
+    expect(latestRing('Alice').series[0].data).toEqual([
+      { name: 'Alice', value: 5600 }
+    ]);
+    expect(modelMetrics.getByRole('radio', { name: 'Recorded cost' })).toBeChecked();
+    expect(userMetrics.getByRole('radio', { name: 'Tokens' })).toBeChecked();
+    expect(userMetrics.getByRole('radio', { name: 'Recorded cost' })).not.toBeChecked();
   });
 
   test('keeps missing cost distinct from zero and missing identities drillable', async () => {
