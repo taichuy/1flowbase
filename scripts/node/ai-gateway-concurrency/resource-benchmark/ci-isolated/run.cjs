@@ -236,7 +236,9 @@ async function cell(label, variant, dimension, inputs) {
     // Read the workload result first: diagnostic SQL must not replace its primary failure.
     report = JSON.parse(fs.readFileSync(path.join(dir, 'report.json')));
     if (report.outcome !== 'observations_collected') {
-      failure = Error(`${report.failed_phase || report.outcome}: ${report.error?.message || 'benchmark oracle or cleanup failure'}`);
+      const primaryMessage = typeof report.error === 'string' ? report.error
+        : report.error && typeof report.error === 'object' ? report.error.message : null;
+      failure = Error(`${report.failed_phase || report.outcome}: ${primaryMessage || 'benchmark oracle or cleanup failure'}`);
       throw failure;
     }
     if (failure) throw failure;
