@@ -429,3 +429,221 @@ async fn client_trajectory_ownership_error_order_and_failed_fact_atomicity() {
     assert_eq!(suffix.items[0].sequence, prefix.items[0].sequence + 2);
     assert_eq!(suffix.items[0].value, json!({"observed_at":AT}));
 }
+
+#[tokio::test]
+async fn client_trajectory_node_present_ownership_forms_and_failed_fact_atomicity() {
+    let (pool, flow) = super::super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool.clone());
+    let node = Uuid::now_v7();
+    let other_node = Uuid::now_v7();
+    let non_llm = Uuid::now_v7();
+    for (id, kind) in [(node, "llm"), (other_node, "llm"), (non_llm, "start")] {
+        sqlx::query("insert into node_runs(id,scope_id,flow_run_id,node_id,node_type,node_alias,status) select $1,scope_id,id,$1::text,$3,'fixture','succeeded' from flow_runs where id=$2")
+            .bind(id).bind(flow).bind(kind).execute(&pool).await.unwrap();
+    }
+    let request = Uuid::now_v7();
+    let other_request = Uuid::now_v7();
+    let own_step = Uuid::now_v7();
+    let other_step = Uuid::now_v7();
+    // Integrity may create a missing capture, but must still validate its node.
+    begin(&store, flow, Some(node), request).await;
+    begin(&store, flow, Some(other_node), other_request).await;
+    for (capture, owner, id) in [
+        (request, node, own_step),
+        (other_request, other_node, other_step),
+    ] {
+        append(
+            &store,
+            flow,
+            Some(owner),
+            capture,
+            step_fact(flow, Some(owner), capture, id),
+        )
+        .await;
+    }
+    section(
+        &store,
+        flow,
+        Some(node),
+        request,
+        own_step,
+        "overview",
+        json!({"prefix":"node-present"}),
+    )
+    .await;
+    append(
+        &store,
+        flow,
+        Some(node),
+        request,
+        ClientTrajectoryFact::NodeLink {
+            node_run_id: other_node,
+        },
+    )
+    .await;
+    append(
+        &store,
+        flow,
+        Some(node),
+        request,
+        ClientTrajectoryFact::ResponseLink {
+            response_id: "node-response".into(),
+        },
+    )
+    .await;
+    // Existing captures also take the Integrity form without Step/Section lookups.
+    begin(&store, flow, Some(node), request).await;
+
+    let missing = Uuid::now_v7();
+    let integrity = || ClientTrajectoryFact::Integrity {
+        status: "pending".into(),
+        dropped_count: 0,
+        persist_failed_count: 0,
+    };
+    let cases = vec![
+        // Invalid input node precedes missing capture, including Integrity's exception.
+        (
+            input(flow, Some(missing), missing, integrity()),
+            "client trajectory node scope mismatch",
+        ),
+        (
+            input(
+                flow,
+                Some(missing),
+                missing,
+                step_fact(flow, Some(missing), missing, own_step),
+            ),
+            "client trajectory node scope mismatch",
+        ),
+        (
+            input(
+                flow,
+                Some(missing),
+                missing,
+                section_fact(missing, "invalid"),
+            ),
+            "client trajectory node scope mismatch",
+        ),
+        (
+            input(
+                flow,
+                Some(missing),
+                missing,
+                ClientTrajectoryFact::NodeLink {
+                    node_run_id: non_llm,
+                },
+            ),
+            "client trajectory node scope mismatch",
+        ),
+        // A valid input node does not bypass linked-node or capture ownership.
+        (
+            input(
+                flow,
+                Some(node),
+                missing,
+                ClientTrajectoryFact::NodeLink {
+                    node_run_id: non_llm,
+                },
+            ),
+            "client trajectory node scope mismatch",
+        ),
+        (
+            input(
+                flow,
+                Some(node),
+                missing,
+                ClientTrajectoryFact::NodeLink {
+                    node_run_id: other_node,
+                },
+            ),
+            "client trajectory capture missing",
+        ),
+        (
+            input(flow, Some(node), other_request, integrity()),
+            "client trajectory capture scope mismatch",
+        ),
+        (
+            input(
+                flow,
+                Some(node),
+                other_request,
+                section_fact(missing, "invalid"),
+            ),
+            "client trajectory capture scope mismatch",
+        ),
+        // Step identity is consistent with the input; its persisted owner is not.
+        (
+            input(
+                flow,
+                Some(node),
+                request,
+                step_fact(flow, Some(node), request, other_step),
+            ),
+            "client trajectory step scope mismatch",
+        ),
+        (
+            input(
+                flow,
+                Some(node),
+                request,
+                section_fact(other_step, "overview"),
+            ),
+            "client trajectory section scope mismatch",
+        ),
+        (
+            input(flow, Some(node), request, section_fact(missing, "invalid")),
+            "client trajectory section invalid",
+        ),
+        (
+            input(flow, Some(node), request, section_fact(missing, "overview")),
+            "client trajectory section scope mismatch",
+        ),
+    ];
+    for (fact, expected) in cases {
+        let before = snapshot(&pool).await;
+        let error = store.append_client_trajectory(&fact).await.unwrap_err();
+        assert_eq!(error.to_string(), expected, "fact: {fact:?}");
+        assert_eq!(
+            snapshot(&pool).await,
+            before,
+            "failed node-present fact: {fact:?}"
+        );
+    }
+    // Successful suffix proves failed facts did not consume the high-water sequence.
+    let before_suffix: i64 =
+        sqlx::query_scalar("select runtime_event_sequence_high_water from flow_runs where id=$1")
+            .bind(flow)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    section(
+        &store,
+        flow,
+        Some(node),
+        request,
+        own_step,
+        "timing",
+        json!({"suffix":"node-present"}),
+    )
+    .await;
+    let page = store
+        .client_trajectory_page(flow, Some(node), None, 10)
+        .await
+        .unwrap();
+    assert!(page.items.iter().any(|item| item.id == own_step));
+    let prefix = store
+        .client_trajectory_section(flow, Some(node), own_step, "overview", None, 10)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(prefix.items.len(), 1);
+    assert_eq!(prefix.items[0].value, json!({"prefix":"node-present"}));
+    let suffix = store
+        .client_trajectory_section(flow, Some(node), own_step, "timing", None, 10)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(suffix.items.len(), 1);
+    assert_eq!(suffix.items[0].value, json!({"suffix":"node-present"}));
+    assert_eq!(suffix.items[0].sequence, before_suffix + 1);
+}
