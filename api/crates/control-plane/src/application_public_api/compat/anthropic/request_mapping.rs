@@ -139,7 +139,7 @@ pub(super) fn anthropic_reasoning(
                 "$.thinking.display",
                 None,
                 TranslationDecisionKind::Dropped,
-                Some("Native reasoning visibility follows runtime event semantics"),
+                Some("Native reasoning visibility follows runtime event semantics; matching Anthropic providers may restore display from source protocol context"),
                 TranslationSafeRepresentation::Present,
             );
         }

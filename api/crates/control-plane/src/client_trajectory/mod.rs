@@ -34,6 +34,7 @@ struct Frame {
     at: String,
 }
 struct Shared {
+    anthropic_protocol: AtomicBool,
     flush_delay: std::time::Duration,
     scope: Mutex<Option<Scope>>,
     binding_closed: AtomicBool,
@@ -132,6 +133,7 @@ impl ClientTrajectoryRecorder {
     ) -> Self {
         let (sender, receiver) = mpsc::channel(QUEUE_RECORDS);
         let state = Arc::new(Shared {
+            anthropic_protocol: AtomicBool::new(false),
             flush_delay,
             scope: Mutex::new(None),
             binding_closed: AtomicBool::new(false),
@@ -148,6 +150,13 @@ impl ClientTrajectoryRecorder {
         Self {
             owner: Arc::new(Owner { state, sender, id }),
         }
+    }
+    /// Select the ingress protocol before binding; archived request bytes remain unchanged.
+    pub fn use_anthropic_messages_protocol(&self) {
+        self.owner
+            .state
+            .anthropic_protocol
+            .store(true, Ordering::Release);
     }
     pub fn capture_id(&self) -> Uuid {
         self.owner.id
@@ -419,9 +428,12 @@ async fn archive_worker(
                     &mut failed,
                 )
                 .await;
-                classifier = Some(classify::Classifier::new(
-                    id, scope.flow, scope.node, transport,
-                ));
+                let mut initialized =
+                    classify::Classifier::new(id, scope.flow, scope.node, transport);
+                if state.anthropic_protocol.load(Ordering::Acquire) {
+                    initialized.use_anthropic_messages_protocol();
+                }
+                classifier = Some(initialized);
             }
             persist_node_links(repository, scope, id, state, &mut linked, &mut failed).await;
             let classifier = classifier.as_mut().expect("classifier initialized");
@@ -464,7 +476,16 @@ async fn archive_worker(
         repository.discard_unbound(id).await?;
         receipt.persisted_through = 0;
     }
-    if let (Some(scope), Some(classifier)) = (final_scope, classifier) {
+    if let (Some(scope), Some(mut classifier)) = (final_scope, classifier) {
+        let at = observed_at();
+        let mut sink = PersistenceSink {
+            repository,
+            scope,
+            id,
+            at: &at,
+            failed: &mut failed,
+        };
+        classifier.finish_anthropic_into(&at, &mut sink).await;
         decoder.finish();
         let dropped = state.dropped.load(Ordering::Acquire)
             + u64::from(

@@ -1,3 +1,5 @@
+#[path = "anthropic.rs"]
+mod anthropic;
 #[path = "chat.rs"]
 mod chat;
 use crate::ports::{
@@ -20,6 +22,8 @@ pub(super) struct Classifier {
     protocol: &'static str,
     chat_choices: BTreeMap<u64, chat::ChatChoice>,
     chat_finished: BTreeSet<u64>,
+    anthropic_usage: Value,
+    anthropic_blocks: BTreeMap<u64, anthropic::ContentBlock>,
     response_id: Option<String>,
     turn_id: Option<String>,
     pub request_seen: bool,
@@ -47,6 +51,8 @@ impl Classifier {
             protocol: "responses",
             chat_choices: BTreeMap::new(),
             chat_finished: BTreeSet::new(),
+            anthropic_usage: Value::Null,
+            anthropic_blocks: BTreeMap::new(),
             response_id: None,
             turn_id: None,
             request_seen: false,
@@ -60,6 +66,9 @@ impl Classifier {
             completed: false,
         }
     }
+    pub(super) fn use_anthropic_messages_protocol(&mut self) {
+        self.protocol = "anthropic_messages";
+    }
     pub async fn begin_request_into(&mut self, at: &str, facts: &mut impl FactSink) {
         if self.root_seen {
             return;
@@ -69,7 +78,11 @@ impl Classifier {
         let mut step = self.step(
             self.request,
             "request",
-            "Responses request",
+            if self.protocol == "anthropic_messages" {
+                "Anthropic Messages request"
+            } else {
+                "Responses request"
+            },
             "submitted",
             at,
             &Value::Null,
@@ -94,6 +107,10 @@ impl Classifier {
         }
         if kind == ClientTrajectoryFrameKind::Request {
             self.request(value, at, facts).await;
+            return;
+        }
+        if self.protocol == "anthropic_messages" {
+            self.anthropic_response(value, at, facts).await;
             return;
         }
         if self.protocol == "chat_completions"
@@ -176,18 +193,20 @@ impl Classifier {
         let Some(map) = value.as_object_mut() else {
             return;
         };
-        if map.contains_key("messages") {
+        if self.protocol != "anthropic_messages" && map.contains_key("messages") {
             self.protocol = "chat_completions";
         }
         let messages = map.remove("messages");
-        let instructions = map.remove("instructions");
+        let instructions = map.remove("instructions").or_else(|| map.remove("system"));
         let input = map.remove("input");
         let tools = map.remove("tools");
         let root_at = self.root_at.clone().unwrap_or_else(|| at.into());
         let mut root = self.step(
             self.request,
             "request",
-            if self.protocol == "chat_completions" {
+            if self.protocol == "anthropic_messages" {
+                "Anthropic Messages request"
+            } else if self.protocol == "chat_completions" {
                 "Chat Completions request"
             } else {
                 "Responses request"
@@ -242,7 +261,12 @@ impl Classifier {
         }
         if let Some(Value::Array(messages)) = messages {
             for message in messages {
-                self.chat_message(message, "submitted", at, facts).await;
+                if self.protocol == "anthropic_messages" {
+                    self.anthropic_message(message, "submitted", at, facts)
+                        .await;
+                } else {
+                    self.chat_message(message, "submitted", at, facts).await;
+                }
             }
         }
         match input {

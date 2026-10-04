@@ -587,17 +587,15 @@ fn d2_ac_004_anthropic_blocking_terminal_status_matrix() {
 }
 
 #[test]
-fn d2_ac_007_anthropic_prompt_marker_control_is_explicitly_unsupported() {
-    let marker_error = control_plane::application_public_api::compat::anthropic::translate_messages_request(
+fn anthropic_title_prompt_is_regular_protocol_content() {
+    let translated = control_plane::application_public_api::compat::anthropic::translate_messages_request(
         json!({
             "model": "1flowbase",
             "system": "Generate a concise, sentence-case title. Return JSON with a single \"title\" field",
             "messages": [{"role": "user", "content": "continue"}]
         }),
     )
-    .expect_err("prompt-marker control has no D2 canonical owner");
-    assert!(marker_error.report.has_decision(
-        "$.system",
-        control_plane::application_public_api::protocol_translation::TranslationDecisionKind::Unsupported,
-    ));
+    .expect("client title prompts are ordinary Anthropic content");
+    assert_eq!(translated.request.query, "continue");
+    assert_eq!(translated.request.system.len(), 1);
 }

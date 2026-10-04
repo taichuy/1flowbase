@@ -516,3 +516,72 @@ fn latest_tool_result_maps_to_native_query_for_callback_routing() {
         "-rw-r--r-- 1 Lw 197121 17907 Jun 12 15:25 uploads/test-01.png"
     );
 }
+
+#[test]
+fn claude_code_per_turn_system_configuration_and_adaptive_display_enter_native() {
+    let translated = translate_messages_request(json!({
+        "model":"claude-sonnet-5-5",
+        "system":[{"type":"text","text":"root instruction"}],
+        "messages":[
+            {"role":"user","content":[{"type":"text","text":"hello"}]},
+            {"role":"system","content":[{"type":"text","text":"environment","cache_control":{"type":"ephemeral"}}],
+             "output_config":{"effort":"high"}}
+        ],
+        "thinking":{"type":"adaptive","display":"updates"},
+        "safeguards":{"mode":"enabled"},
+        "context_management":{"edits":[]},
+        "stream":true
+    })).expect("current Claude Code per-turn configuration has matching protocol projection");
+    assert_eq!(translated.request.query, "hello");
+    assert_eq!(translated.request.history[0]["role"], "system");
+    assert!(translated.report.has_decision(
+        "$.messages[1].output_config",
+        TranslationDecisionKind::Exact
+    ));
+    assert_eq!(
+        translated
+            .request
+            .client_protocol_envelope
+            .as_ref()
+            .unwrap()
+            .body["safeguards"]["mode"],
+        "enabled"
+    );
+}
+
+#[test]
+fn per_turn_output_config_requires_an_object_and_other_message_keys_stay_rejected() {
+    for message in [
+        json!({"role":"system","content":"environment","output_config":"high"}),
+        json!({"role":"system","content":"environment","unknown_field":true}),
+    ] {
+        assert!(translate_messages_request(json!({
+            "model":"claude", "messages":[{"role":"user","content":"hello"}, message]
+        }))
+        .is_err());
+    }
+}
+
+#[test]
+fn compaction_resume_away_and_title_prompts_are_ordinary_text() {
+    let texts = [
+        "Your task is to create a detailed summary of the conversation so far",
+        "Your task is to create a detailed summary of the RECENT portion of the conversation",
+        "Your task is to create a detailed summary of this conversation. This summary will be placed at the start of a continuing session",
+        "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.",
+        "The user stepped away and is coming back. Write exactly 1-3 short sentences. Next: the concrete next step.",
+        "Generate a concise, sentence-case title. Return JSON with a single \"title\" field",
+    ];
+    for text in texts {
+        let translated = translate_messages_request(json!({
+            "model":"claude", "system":text,
+            "messages":[{"role":"user","content":text}]
+        }))
+        .expect("prompt text does not imply a separate control protocol");
+        assert_eq!(translated.request.query, text);
+        assert_eq!(translated.request.system_text().as_deref(), Some(text));
+        assert!(translated
+            .report
+            .has_decision("$.messages[0].content", TranslationDecisionKind::Normalized));
+    }
+}

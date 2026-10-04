@@ -48,9 +48,9 @@ async fn ac_008_anthropic_orphan_tool_result_starts_a_new_run() {
 }
 
 #[tokio::test]
-async fn d2_ac_007_anthropic_prompt_marker_is_unsupported_before_run_creation() {
+async fn anthropic_title_prompt_invokes_the_published_application() {
     let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "Anthropic Unsupported Prompt Marker Route App").await;
+    let token = setup_published_app(&app, "Anthropic Title Prompt Route App").await;
     let before = flow_run_count(state.as_ref()).await;
 
     let response = post_json(
@@ -66,8 +66,8 @@ async fn d2_ac_007_anthropic_prompt_marker_is_unsupported_before_run_creation() 
     )
     .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("unsupported_feature"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+    assert_eq!(payload["type"], json!("message"));
+    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }

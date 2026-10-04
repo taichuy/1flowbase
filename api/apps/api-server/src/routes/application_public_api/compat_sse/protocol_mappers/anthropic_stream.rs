@@ -155,13 +155,14 @@ impl AnthropicStreamMapper {
         let mut events = self.close_active_anthropic_content_block();
         events.push(event_json_sse(
             "error",
-            json!({
-                "type": "error",
-                "error": {
-                    "type": anthropic_runtime_error_type(initial_run),
-                    "message": canonical_runtime_error_message(initial_run)
-                }
-            }),
+            crate::routes::application_public_api::anthropic::error_projection::project(
+                initial_run.error.as_ref(),
+                crate::routes::application_public_api::anthropic::error_projection::runtime_status(
+                    initial_run.error.as_ref(),
+                ),
+                "api_error",
+                canonical_runtime_error_message(initial_run),
+            ),
         ));
         self.stream_state = AnthropicStreamState::Terminal;
         events
@@ -356,22 +357,6 @@ impl AnthropicStreamMapper {
     }
 }
 
-fn anthropic_runtime_error_type(run: &NativeRunResult) -> &'static str {
-    let error_code = run.error.as_ref().map(|error| error.code.as_str());
-    let status = run
-        .error
-        .as_ref()
-        .and_then(|error| error.details.get("status_code"))
-        .and_then(Value::as_u64);
-    if error_code == Some("rate_limited") || status == Some(429) {
-        "rate_limit_error"
-    } else if status == Some(529) {
-        "overloaded_error"
-    } else {
-        "api_error"
-    }
-}
-
 pub(in crate::routes::application_public_api::compat_sse) fn anthropic_delta_payload(
     index: u32,
     event_type: &str,
@@ -398,3 +383,7 @@ pub(in crate::routes::application_public_api::compat_sse) fn anthropic_delta_pay
         }),
     ))
 }
+
+#[cfg(test)]
+#[path = "_tests/anthropic_errors.rs"]
+mod error_tests;

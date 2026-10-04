@@ -100,42 +100,6 @@ pub(super) fn record_anthropic_context_management_decision(
     Ok(())
 }
 
-pub(super) fn reject_legacy_anthropic_control(
-    system_parts: &[NativePromptBlock],
-    source_path: &str,
-    report: &mut TranslationReport,
-) -> Result<(), AnthropicCompatError> {
-    if claude_code_system_control_kind(system_parts).is_none() {
-        return Ok(());
-    }
-    report.record(
-        source_path,
-        None,
-        TranslationDecisionKind::Unsupported,
-        Some("Claude Code prompt-marker control has no current canonical owner"),
-        TranslationSafeRepresentation::Redacted,
-    );
-    Err(AnthropicCompatError::unsupported("system").with_report(report.clone()))
-}
-
-pub(super) fn reject_legacy_anthropic_control_text(
-    content: &str,
-    source_path: &str,
-    report: &mut TranslationReport,
-) -> Result<(), AnthropicCompatError> {
-    if claude_code_control_kind(content).is_none() {
-        return Ok(());
-    }
-    report.record(
-        source_path,
-        None,
-        TranslationDecisionKind::Unsupported,
-        Some("Claude Code prompt-marker control has no current canonical owner"),
-        TranslationSafeRepresentation::Redacted,
-    );
-    Err(AnthropicCompatError::unsupported("messages").with_report(report.clone()))
-}
-
 pub(super) fn validate_anthropic_message(
     message: &Value,
     index: usize,
@@ -163,7 +127,7 @@ pub(super) fn validate_anthropic_message(
     );
     let unknown_fields = object
         .keys()
-        .filter(|field| !matches!(field.as_str(), "role" | "content"))
+        .filter(|field| !matches!(field.as_str(), "role" | "content" | "output_config"))
         .collect::<Vec<_>>();
     if report.record_anonymous_unknown_fields(
         &message_path,
@@ -176,6 +140,25 @@ pub(super) fn validate_anthropic_message(
         return Err(
             AnthropicCompatError::invalid("unknown Anthropic message field")
                 .with_report(report.clone()),
+        );
+    }
+
+    if let Some(output_config) = object.get("output_config") {
+        let path = format!("{message_path}.output_config");
+        if !output_config.is_object() {
+            return Err(reject_anthropic_nested_field(
+                report,
+                &path,
+                "message output_config must be an object",
+                TranslationSafeRepresentation::Present,
+            ));
+        }
+        report.record(
+            &path,
+            Some("$.client_protocol_envelope.source_request.body.messages"),
+            TranslationDecisionKind::Exact,
+            Some("per-turn configuration is preserved only by matching Anthropic protocol projection"),
+            TranslationSafeRepresentation::Redacted,
         );
     }
 
@@ -245,7 +228,7 @@ pub(super) fn validate_anthropic_message(
         }
         error.with_report(report.clone())
     })?;
-    let content_text = anthropic_text_content(content).map_err(|error| {
+    anthropic_text_content(content).map_err(|error| {
         if report
             .decisions
             .iter()
@@ -261,7 +244,6 @@ pub(super) fn validate_anthropic_message(
         }
         error.with_report(report.clone())
     })?;
-    reject_legacy_anthropic_control_text(&content_text, &content_path, report)?;
     report.record(
         &content_path,
         Some("$.query,$.history"),
