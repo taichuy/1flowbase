@@ -46,7 +46,10 @@ const runtimeAssemblyHook = vi.hoisted(() => ({
     (_input?: { assembly?: { layers: Array<{ block_id: string }> } }) => ({
       preparations: createNativePreparationSource([]),
       retryBlock: vi.fn(),
-      refreshBlock: vi.fn()
+      refreshBlock: vi.fn(),
+      isValidating: false,
+      validationError: null as Error | null,
+      retryValidation: vi.fn()
     })
   )
 }));
@@ -501,7 +504,10 @@ describe('FrontStagePage - runtime canvas state', () => {
           })
         ),
         retryBlock: vi.fn(),
-        refreshBlock: vi.fn()
+        refreshBlock: vi.fn(),
+        isValidating: false,
+        validationError: null as Error | null,
+        retryValidation: vi.fn()
       })
     );
   });
@@ -681,6 +687,83 @@ describe('FrontStagePage - runtime canvas state', () => {
     expect(
       screen.getByText('assembly-nested-drawer shell')
     ).toBeInTheDocument();
+  });
+
+  test('gates a retained nested assembly on its own validation and retries without losing DOM', async () => {
+    authenticate([]);
+    vi.stubGlobal('IntersectionObserver', undefined);
+    const assembly = {
+      layers: [
+        {
+          block_id: 'nested',
+          tab_id: 'tab-1',
+          parent_block_id: 'parent',
+          title: 'Nested',
+          presentation: 'page' as const,
+          schema_version: 1,
+          input_mapping: {},
+          output_mapping: {},
+          runtime_descriptor: {
+            renderer_version: 'v1',
+            runtime: { kind: 'native_react', entry: 'index.js' }
+          },
+          code_ref: 'nested-code',
+          source_revision: 'a'.repeat(64)
+        }
+      ]
+    };
+    const runtime =
+      runtimeAssemblyHook.useFrontstageRuntimeAssembly.getMockImplementation()!(
+        { assembly }
+      );
+    runtimeAssemblyHook.useFrontstageRuntimeAssembly.mockReturnValue(runtime);
+    const tree = [createBackendPage('page-1')];
+    const content = createPageContent();
+    const view = (active: boolean) => (
+      <AppProviders>
+        <FrontStagePage
+          workspaceId="workspace-1"
+          pageId="page-1"
+          initialPageTree={tree}
+          pageContent={content}
+          blockRuntimeAssembly={assembly}
+          isBlockRuntimeRoute
+          runtimeActive={active}
+        />
+      </AppProviders>
+    );
+    const ui = render(view(true));
+    const host = await screen.findByTestId(
+      'frontstage-native-block-root-nested'
+    );
+    await vi.waitFor(() =>
+      expect(host.shadowRoot?.textContent).toContain('source:nested')
+    );
+    const node = host.shadowRoot?.querySelector('h1');
+    ui.rerender(view(false));
+    expect(
+      runtimeAssemblyHook.useFrontstageRuntimeAssembly
+    ).toHaveBeenLastCalledWith(expect.objectContaining({ active: false }));
+    runtime.isValidating = true;
+    ui.rerender(view(true));
+    expect(host).not.toBeVisible();
+    expect(
+      runtimeAssemblyHook.useFrontstageRuntimeAssembly
+    ).toHaveBeenLastCalledWith(expect.objectContaining({ active: true }));
+    runtime.isValidating = false;
+    runtime.validationError = new Error('offline');
+    ui.rerender(view(true));
+    expect(host).not.toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: (name) => name.replace(/\s/gu, '') === i18nText('frontstage', 'auto.retry')
+      })
+    );
+    expect(runtime.retryValidation).toHaveBeenCalledOnce();
+    runtime.validationError = null;
+    ui.rerender(view(true));
+    expect(host).toBeVisible();
+    expect(host.shadowRoot?.querySelector('h1')).toBe(node);
   });
 
   test('shows manager shell and canvas placeholders', () => {

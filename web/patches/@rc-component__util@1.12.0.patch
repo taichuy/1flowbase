@@ -188,3 +188,49 @@ index 840664019cf88c791d01963b921451ee7bffa5d6..c72d05f44a45a08463b5371739731ad1
      if (focusElements.length === 0) {
        window.removeEventListener('focusin', syncFocus);
        window.removeEventListener('keydown', onWindowKeyDown, true);
+diff --git a/es/Dom/dynamicCSS.js b/es/Dom/dynamicCSS.js
+--- a/es/Dom/dynamicCSS.js
++++ b/es/Dom/dynamicCSS.js
+@@ -1,3 +1,2 @@
+ import canUseDom from "./canUseDom";
+-import contains from "./contains";
+ const APPEND_ORDER = 'data-rc-order';
+@@ -5,3 +4,4 @@
+ const MARK_KEY = `rc-util-key`;
+-const containerCache = new Map();
++// Containers belong to their mounted surfaces; this cache must not retain them.
++let containerCache = new WeakMap();
+ function getMark({
+@@ -106,3 +106,3 @@
+   // Find real container when not cached or cached container removed
+-  if (!cachedRealContainer || !contains(document, cachedRealContainer)) {
++  if (!cachedRealContainer || !cachedRealContainer.isConnected) {
+     const placeholderStyle = injectCSS('', option);
+@@ -120,3 +120,3 @@
+ export function clearContainerCache() {
+-  containerCache.clear();
++  containerCache = new WeakMap();
+ }
+diff --git a/lib/Dom/dynamicCSS.js b/lib/Dom/dynamicCSS.js
+--- a/lib/Dom/dynamicCSS.js
++++ b/lib/Dom/dynamicCSS.js
+@@ -10,3 +10,2 @@
+ var _canUseDom = _interopRequireDefault(require("./canUseDom"));
+-var _contains = _interopRequireDefault(require("./contains"));
+ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+@@ -15,3 +14,4 @@
+ const MARK_KEY = `rc-util-key`;
+-const containerCache = new Map();
++// Containers belong to their mounted surfaces; this cache must not retain them.
++let containerCache = new WeakMap();
+ function getMark({
+@@ -116,3 +116,3 @@
+   // Find real container when not cached or cached container removed
+-  if (!cachedRealContainer || !(0, _contains.default)(document, cachedRealContainer)) {
++  if (!cachedRealContainer || !cachedRealContainer.isConnected) {
+     const placeholderStyle = injectCSS('', option);
+@@ -130,3 +130,3 @@
+ function clearContainerCache() {
+-  containerCache.clear();
++  containerCache = new WeakMap();
+ }

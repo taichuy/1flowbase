@@ -7,6 +7,8 @@ import { act, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+import { FrontstageRuntimeActivityContext } from '../../lib/page-canvas/runtime-activity';
+
 import type { BlockContext, BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
 
@@ -109,6 +111,68 @@ function expectRenderedTheme(
 }
 
 describe('frontstage native trusted block declarative portal host', () => {
+  test('suspends hidden block Effects while preserving its portal, DOM and input state', async () => {
+    const root = createBlockRoot();
+    const setup = vi.fn();
+    const cleanup = vi.fn();
+    const Block: FrontstageNativeTrustedBlockReactComponent = () => {
+      const [value, setValue] = useState('');
+      useEffect(() => {
+        setup();
+        return cleanup;
+      }, []);
+      return (
+        <input
+          data-testid="retained-input"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      );
+    };
+    const plan = createPlan();
+    const ctx = createContext();
+    const view = (active: boolean) => (
+      <FrontstageRuntimeActivityContext value={active}>
+        <FrontstageNativeTrustedBlockPortalHost
+          root={root}
+          renderEpoch="retained:1"
+          plan={plan}
+          component={Block}
+          ctx={ctx}
+        />
+      </FrontstageRuntimeActivityContext>
+    );
+    const { rerender, unmount } = render(view(true));
+    const input = await shadowQueries(root).findByTestId('retained-input');
+    const shadow = root.shadowRoot;
+    const mount = shadow?.querySelector(
+      '[data-flowbase-native-trusted-block-mount]'
+    );
+    fireEvent.change(input, { target: { value: 'unsaved value' } });
+    expect(setup).toHaveBeenCalledTimes(1);
+    rerender(view(false));
+    await waitFor(() => expect(cleanup).toHaveBeenCalledTimes(1));
+    expect(root.shadowRoot).toBe(shadow);
+    expect(
+      shadow?.querySelector('[data-flowbase-native-trusted-block-mount]')
+    ).toBe(mount);
+    expect(shadow?.querySelector('[data-testid="retained-input"]')).toBe(input);
+    root.toggleAttribute('data-visibility-probe');
+    expect(input).not.toBeVisible();
+    rerender(view(true));
+    await waitFor(() => expect(setup).toHaveBeenCalledTimes(2));
+    expect(shadowQueries(root).getByTestId('retained-input')).toBe(input);
+    expect(input).toHaveValue('unsaved value');
+    // jsdom 26 does not invalidate its computed-style cache for mutations inside
+    // Shadow DOM. Touch the light-DOM host before both visibility assertions.
+    root.toggleAttribute('data-visibility-probe');
+    expect(input).toBeVisible();
+    unmount();
+    expect(cleanup).toHaveBeenCalledTimes(2);
+    expect(shadow?.childNodes).toHaveLength(0);
+    root.remove();
+  });
+
   test('D3R-AC-001 renders two ShadowRoot portals from one owner tree without a per-block React root', async () => {
     const firstRoot = createBlockRoot();
     const secondRoot = createBlockRoot();
