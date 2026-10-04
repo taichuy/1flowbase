@@ -226,5 +226,21 @@
   },
   "mcp_mapping_default_value": "默认值",
   "mcp_mapping_hidden": "隐藏",
-  "mcp_mapping_default_invalid": "请填写符合参数类型的默认值；隐藏的必填参数必须配置默认值。"
+  "mcp_mapping_default_invalid": "请填写符合参数类型的默认值；隐藏的必填参数必须配置默认值。",
+  "chatgpt": {
+    "load_error": "无法读取 ChatGPT 连接配置。",
+    "retry": "重新读取配置",
+    "not_enabled": "此部署尚未启用 ChatGPT 授权",
+    "not_enabled_help": "请联系部署管理员配置 MCP OAuth 公开地址并启用服务，再返回此处获取连接地址。",
+    "ready": "ChatGPT OAuth 配置已启用",
+    "server_url": "服务器 URL",
+    "authentication": "身份验证方式",
+    "registration": "客户端注册方式",
+    "dynamic_registration": "动态客户端注册（DCR）",
+    "step_create": "在 ChatGPT 创建自定义 MCP，粘贴上方服务器 URL。",
+    "step_auth": "选择 OAuth；如需选择注册方式，使用动态客户端注册，无需手动填写客户端 ID 或密钥。",
+    "step_key": "创建并连接后，在打开的 1flowbase 授权页填写 API Key，无需登录后台。",
+    "step_consent": "核对工作区和 MCP 实例，点击同意授权后返回 ChatGPT。",
+    "lifecycle": "无需在本弹窗保存 API Key 即可连接 ChatGPT。访问令牌自动刷新；Key 到期或撤销后，需要使用有效 Key 重新授权。"
+  }
 }

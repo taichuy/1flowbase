@@ -1,0 +1,26 @@
+.mcp-authorization-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg-page);
+}
+
+.mcp-authorization-panel {
+  width: min(100%, 540px);
+  padding: clamp(20px, 5vw, 40px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  overflow-wrap: anywhere;
+}
+
+.mcp-authorization-brand {
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.mcp-authorization-panel > [role='alert'] {
+  margin-bottom: 24px;
+}

@@ -10,5 +10,24 @@
     "fallback_submit": "Sign in",
     "fallback_title": "Welcome",
     "footer": "Powered by 1flowbase"
+  },
+  "mcp_oauth": {
+    "title": "Authorize MCP connection",
+    "introduction": "Verify and authorize with an API key. No 1flowbase console sign-in is required.",
+    "loading": "Loading authorization request",
+    "request_error": "This authorization request is invalid or expired. Return to ChatGPT and reconnect.",
+    "key_error": "Unable to verify this API key. Check its expiry, workspace and MCP permissions, then enter it again.",
+    "decision_error": "Authorization could not be completed. Verify your API key again, or reconnect from ChatGPT if the request has expired.",
+    "client": "Requesting client",
+    "instance": "MCP instance",
+    "workspace": "Authorized workspace",
+    "permission_notice": "Allow this client to call tools through this MCP instance within the API key’s current permissions.",
+    "lifecycle_notice": "The connection can refresh automatically. It stops working when the API key expires or is revoked.",
+    "approve": "Authorize and return",
+    "change_key": "Use another API key",
+    "deny": "Deny authorization",
+    "api_key": "API key",
+    "key_help": "Your key is submitted only to 1flowbase for verification. It is never sent to ChatGPT.",
+    "verify": "Verify API key"
   }
 }
