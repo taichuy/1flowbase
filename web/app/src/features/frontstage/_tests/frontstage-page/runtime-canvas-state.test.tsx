@@ -756,7 +756,7 @@ describe('FrontStagePage - runtime canvas state', () => {
     expect(host).not.toBeVisible();
     fireEvent.click(
       screen.getByRole('button', {
-        name: i18nText('frontstage', 'auto.retry')
+        name: (name) => name.replace(/\s/gu, '') === i18nText('frontstage', 'auto.retry')
       })
     );
     expect(runtime.retryValidation).toHaveBeenCalledOnce();
