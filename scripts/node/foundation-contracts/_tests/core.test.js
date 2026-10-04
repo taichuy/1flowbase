@@ -106,8 +106,6 @@ test('mcp gateway fast pack bounds database-backed test concurrency', () => {
     '-p',
     'api-server',
     'mcp_protocol_routes',
-    '--',
-    '--test-threads=4',
   ]);
 });
 

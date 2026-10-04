@@ -52,8 +52,6 @@ const FOUNDATION_DEFINITIONS = {
           '-p',
           'api-server',
           'mcp_protocol_routes',
-          '--',
-          '--test-threads=4',
         ],
         cwd: 'api',
       },
