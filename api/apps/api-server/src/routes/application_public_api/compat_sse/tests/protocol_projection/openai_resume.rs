@@ -63,7 +63,6 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
     let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     seed_flow_run_for_compat_sse_test(&base_state, &run).await;
     let state = Arc::new(ApiState {
-        mcp_oauth_issuer: base_state.mcp_oauth_issuer.clone(),
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         console_policy_reader: Arc::clone(&base_state.console_policy_reader),
@@ -325,7 +324,6 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
         ),
     );
     let state = Arc::new(ApiState {
-        mcp_oauth_issuer: base_state.mcp_oauth_issuer.clone(),
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
         console_policy_reader: Arc::clone(&base_state.console_policy_reader),

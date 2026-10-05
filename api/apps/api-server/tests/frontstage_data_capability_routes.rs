@@ -215,7 +215,6 @@ async fn fixture_state() -> (
     // Keeping the optional runtime absent avoids requiring pg_dump/pg_restore here.
     let system_backup = None;
     let state = Arc::new(ApiState {
-        mcp_oauth_issuer: None,
         store: store.clone(),
         console_policy_reader: Arc::new(store.clone()),
         system_backup,

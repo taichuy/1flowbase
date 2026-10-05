@@ -28,6 +28,7 @@ async fn post(
     cookie: Option<&str>,
 ) -> axum::response::Response {
     let mut request = Request::builder()
+        .header("host", "oauth.example.test")
         .method("POST")
         .uri(path)
         .header("content-type", "application/json")
@@ -42,10 +43,7 @@ async fn post(
 }
 async fn setup() -> (Arc<ApiState>, Router, String, String) {
     let (base, _) = test_api_state_with_database_url().await;
-    let state = Arc::new(ApiState {
-        mcp_oauth_issuer: Some(ISSUER.into()),
-        ..(*base).clone()
-    });
+    let state = base;
     let app = crate::app_with_state(state.clone());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     create_mcp_instance(&app, &cookie, &csrf).await;
@@ -75,6 +73,7 @@ async fn begin(app: &Router, client: &str) -> (String, String) {
         .clone()
         .oneshot(
             Request::builder()
+                .header("host", "oauth.example.test")
                 .uri(format!("{}?{}", url.path(), url.query().unwrap()))
                 .body(Body::empty())
                 .unwrap(),
@@ -135,6 +134,7 @@ async fn token(app: &Router, fields: &[(&str, &str)]) -> axum::response::Respons
     app.clone()
         .oneshot(
             Request::builder()
+                .header("host", "oauth.example.test")
                 .method("POST")
                 .uri("/api/public/mcp-oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded")
@@ -161,6 +161,7 @@ async fn invoke(app: &Router, bearer: &str, instance: &str) -> axum::response::R
     app.clone()
         .oneshot(
             Request::builder()
+                .header("host", "oauth.example.test")
                 .method("POST")
                 .uri(format!("/api/mcp/{instance}"))
                 .header("content-type", "application/json")
@@ -254,6 +255,7 @@ async fn oauth_browser_consent_is_key_only_origin_bound_and_one_time() {
         .clone()
         .oneshot(
             Request::builder()
+                .header("host", "oauth.example.test")
                 .method("POST")
                 .uri("/api/public/mcp-oauth/verify")
                 .header("content-type", "application/json")
@@ -366,38 +368,65 @@ async fn oauth_grants_follow_key_revocation_expiry_and_permission_changes() {
     assert_eq!(token(&app, &fields).await.status(), StatusCode::BAD_REQUEST);
 }
 #[tokio::test]
-async fn oauth_metadata_and_config_require_explicit_issuer_and_reject_malicious_registration() {
+async fn oauth_discovery_is_enabled_without_configuration_and_registration_stays_restricted() {
     let (state, _) = test_api_state_with_database_url().await;
-    let disabled = crate::app_with_state(state);
-    let response = disabled
-        .oneshot(
-            Request::builder()
-                .uri("/api/public/mcp-oauth/config?instance_id=taichuy")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(
-        json_response(response).await,
-        json!({"enabled":false,"server_url":null,"registration_method":"dynamic_client_registration","scope":"mcp:invoke"})
-    );
-    let (_state, app, _key, _client) = setup().await;
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/.well-known/oauth-protected-resource/api/mcp/taichuy")
-                .header("host", "evil.test")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(
-        json_response(response).await["authorization_servers"],
-        json!([ISSUER])
-    );
+    let app = crate::app_with_state(state);
+    for host in ["oauth.example.test", "another.example.test"] {
+        let origin = format!("https://{host}");
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/public/mcp-oauth/config?instance_id=taichuy")
+                    .header("host", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json_response(response).await,
+            json!({"enabled":true,"server_url":format!("{origin}/api/mcp/taichuy"),"registration_method":"dynamic_client_registration","scope":"mcp:invoke"})
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/.well-known/oauth-authorization-server")
+                    .header("host", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let metadata = json_response(response).await;
+        assert_eq!(metadata["issuer"], origin);
+        assert_eq!(
+            metadata["registration_endpoint"],
+            format!("{origin}/api/public/mcp-oauth/register")
+        );
+        assert_eq!(
+            metadata["code_challenge_methods_supported"],
+            json!(["S256"])
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/.well-known/oauth-protected-resource/api/mcp/taichuy")
+                    .header("host", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let resource = json_response(response).await;
+        assert_eq!(resource["authorization_servers"], json!([origin]));
+        assert_eq!(resource["resource"], format!("{origin}/api/mcp/taichuy"));
+    }
     let rejected = post(
         &app,
         "/api/public/mcp-oauth/register",
@@ -406,4 +435,108 @@ async fn oauth_metadata_and_config_require_explicit_issuer_and_reject_malicious_
     )
     .await;
     assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn oauth_request_and_tokens_cannot_move_between_public_origins() {
+    let (_state, app, key, client) = setup().await;
+    let (id, cookie) = begin(&app, &client).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/public/mcp-oauth/authorization?request_id={id}"
+                ))
+                .header("host", "other.example.test")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let code = approve(&app, &client, &key).await;
+    let mut fields = form_urlencoded::Serializer::new(String::new());
+    fields.extend_pairs([
+        ("grant_type", "authorization_code"),
+        ("client_id", &client),
+        ("code", &code),
+        ("redirect_uri", CALLBACK),
+        ("code_verifier", VERIFIER),
+    ]);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/mcp-oauth/token")
+                .header("host", "other.example.test")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(fields.finish()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    // A rejected exchange must not consume the original grant/code.
+    let response = exchange(&app, &client, &code).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let tokens = json_response(response).await;
+    let mut fields = form_urlencoded::Serializer::new(String::new());
+    fields.extend_pairs([
+        ("grant_type", "refresh_token"),
+        ("client_id", client.as_str()),
+        ("refresh_token", tokens["refresh_token"].as_str().unwrap()),
+    ]);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/public/mcp-oauth/token")
+                .header("host", "other.example.test")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(fields.finish()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let refreshed = token(
+        &app,
+        &[
+            ("grant_type", "refresh_token"),
+            ("client_id", client.as_str()),
+            ("refresh_token", tokens["refresh_token"].as_str().unwrap()),
+        ],
+    )
+    .await;
+    assert_eq!(refreshed.status(), StatusCode::OK);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/mcp/taichuy")
+                .header("host", "other.example.test")
+                .header("content-type", "application/json")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", tokens["access_token"].as_str().unwrap()),
+                )
+                .body(Body::from(
+                    json!({"jsonrpc":"2.0","id":1,"method":"initialize"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        invoke(&app, tokens["access_token"].as_str().unwrap(), "taichuy")
+            .await
+            .status(),
+        StatusCode::OK
+    );
 }

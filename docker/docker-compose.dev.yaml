@@ -32,7 +32,6 @@ services:
       API_ENV: development
       API_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1flowbase}@db:5432/${POSTGRES_DB:-1flowbase}
       API_SERVER_ADDR: 0.0.0.0:7800
-      API_MCP_OAUTH_ISSUER: ${API_MCP_OAUTH_ISSUER:-}
       API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-http://localhost:3100,http://127.0.0.1:3100}
       API_COOKIE_NAME: ${API_COOKIE_NAME:-flowbase_console_session}
       API_SESSION_TTL_DAYS: ${API_SESSION_TTL_DAYS:-7}

@@ -37,7 +37,6 @@ impl ApiEnvironment {
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
-    pub mcp_oauth_issuer: Option<String>,
     pub env: ApiEnvironment,
     pub database_url: String,
     pub database_pool_max_connections: u32,
@@ -330,16 +329,7 @@ impl ApiConfig {
                 "invalid env API_PROVIDER_SECRET_MASTER_KEY when API_ENV=production"
             ));
         }
-        let mcp_oauth_issuer = map
-            .get("API_MCP_OAUTH_ISSUER")
-            .filter(|v| !v.trim().is_empty())
-            .map(|v| {
-                control_plane::mcp_oauth::validate_issuer(v, env == ApiEnvironment::Production)
-                    .map_err(anyhow::Error::msg)
-            })
-            .transpose()?;
         Ok(Self {
-            mcp_oauth_issuer,
             env,
             database_url: get("API_DATABASE_URL")?,
             database_pool_max_connections: parse_positive_u32(

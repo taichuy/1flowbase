@@ -340,7 +340,9 @@ where
             .await?
             .ok_or_else(OAuthError::invalid)?;
         let pending: Pending = serde_json::from_value(value.clone())?;
-        if pending.browser_hash != hash(browser) {
+        if pending.browser_hash != hash(browser)
+            || resource_instance(&self.issuer, &pending.request.resource)? != pending.instance_id
+        {
             return Err(OAuthError::invalid());
         }
         Ok((value, pending))
@@ -482,6 +484,10 @@ where
             .oauth_grant(id)
             .await?
             .ok_or_else(OAuthError::grant)?;
+        // Wrong-origin requests cannot consume or revoke another origin's grant.
+        if g.resource != resource_url(&self.issuer, &g.instance_id)? {
+            return Err(OAuthError::grant());
+        }
         let result = ApiKeyService::new(self.repository.clone())
             .authenticate_user_api_key_hash(&g.key_hash)
             .await;

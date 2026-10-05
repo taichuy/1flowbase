@@ -22,6 +22,8 @@ use std::sync::Arc;
 const COOKIE: &str = "mcp_oauth_browser";
 const PREFIX: &str = "/api/public/mcp-oauth";
 type Service = crate::app_state::ApiMcpOAuthService;
+mod origin;
+pub(crate) use origin::request_issuer;
 #[derive(Debug)]
 pub struct ProtocolError(pub OAuthError);
 impl From<OAuthError> for ProtocolError {
@@ -57,17 +59,8 @@ fn no_store(mut r: Response) -> Response {
         .insert(header::PRAGMA, header::HeaderValue::from_static("no-cache"));
     r
 }
-fn issuer(state: &ApiState) -> Result<&str, ProtocolError> {
-    state
-        .mcp_oauth_issuer
-        .as_deref()
-        .ok_or(ProtocolError(OAuthError {
-            error: "temporarily_unavailable",
-            description: "MCP OAuth is not configured.",
-        }))
-}
-fn service(state: &ApiState) -> Result<Service, ProtocolError> {
-    Ok(Service::new(state.store.clone(), issuer(state)?.into()))
+fn service(state: &ApiState, headers: &HeaderMap) -> Result<Service, ProtocolError> {
+    Ok(Service::new(state.store.clone(), request_issuer(headers)?))
 }
 fn browser(headers: &HeaderMap) -> Result<String, ProtocolError> {
     let value = headers
@@ -84,11 +77,11 @@ fn browser(headers: &HeaderMap) -> Result<String, ProtocolError> {
     Ok(value.into())
 }
 fn json_input<T: serde::de::DeserializeOwned>(
-    state: &ApiState,
     headers: &HeaderMap,
     body: &Bytes,
 ) -> Result<T, ProtocolError> {
-    if headers.get(header::ORIGIN).and_then(|h| h.to_str().ok()) != Some(issuer(state)?)
+    if headers.get(header::ORIGIN).and_then(|h| h.to_str().ok())
+        != Some(request_issuer(headers)?.as_str())
         || headers
             .get(header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
@@ -139,32 +132,28 @@ pub(crate) fn route_assembly() -> ExternalRouteAssembly<Arc<ApiState>> {
         .route("/api/public/mcp-oauth/decision", post(decision))
         .route("/api/public/mcp-oauth/token", post(token))
 }
-async fn metadata(State(state): State<Arc<ApiState>>) -> Result<Response, ProtocolError> {
-    let i = issuer(&state)?;
+async fn metadata(headers: HeaderMap) -> Result<Response, ProtocolError> {
+    let i = request_issuer(&headers)?;
     Ok(no_store(Json(json!({"issuer":i,"authorization_endpoint":format!("{i}{PREFIX}/authorize"),"token_endpoint":format!("{i}{PREFIX}/token"),"registration_endpoint":format!("{i}{PREFIX}/register"),"response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],"token_endpoint_auth_methods_supported":["none"],"code_challenge_methods_supported":["S256"],"scopes_supported":[oauth::SCOPE],"authorization_response_iss_parameter_supported":true})).into_response()))
 }
 async fn protected_resource(
-    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
     Path(instance): Path<String>,
 ) -> Result<Response, ProtocolError> {
-    let i = issuer(&state)?;
-    Ok(no_store(Json(json!({"resource":oauth::resource_url(i,&instance)?,"authorization_servers":[i],"scopes_supported":[oauth::SCOPE],"bearer_methods_supported":["header"]})).into_response()))
+    let i = request_issuer(&headers)?;
+    Ok(no_store(Json(json!({"resource":oauth::resource_url(&i,&instance)?,"authorization_servers":[i],"scopes_supported":[oauth::SCOPE],"bearer_methods_supported":["header"]})).into_response()))
 }
 #[derive(Deserialize)]
 struct InstanceQuery {
     instance_id: String,
 }
 async fn config(
-    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
     query: Result<Query<InstanceQuery>, QueryRejection>,
 ) -> Result<Response, ProtocolError> {
     let Query(q) = query.map_err(|_| invalid())?;
-    let url = state
-        .mcp_oauth_issuer
-        .as_deref()
-        .map(|i| oauth::resource_url(i, &q.instance_id))
-        .transpose()?;
-    Ok(no_store(Json(json!({"enabled":url.is_some(),"server_url":url,"registration_method":"dynamic_client_registration","scope":oauth::SCOPE})).into_response()))
+    let url = oauth::resource_url(&request_issuer(&headers)?, &q.instance_id)?;
+    Ok(no_store(Json(json!({"enabled":true,"server_url":url,"registration_method":"dynamic_client_registration","scope":oauth::SCOPE})).into_response()))
 }
 async fn register(
     State(state): State<Arc<ApiState>>,
@@ -183,20 +172,21 @@ async fn register(
         return Err(invalid());
     }
     let registration: Registration = serde_json::from_slice(&body).map_err(|_| invalid())?;
-    let client = service(&state)?.register(registration).await?;
+    let client = service(&state, &headers)?.register(registration).await?;
     Ok(no_store(
         (StatusCode::CREATED, Json(client)).into_response(),
     ))
 }
 async fn authorize(
     State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
     query: Result<Query<AuthorizationRequest>, QueryRejection>,
 ) -> Result<Response, ProtocolError> {
     let Query(q) = query.map_err(|_| invalid())?;
     rate_limit(&state, "authorization", 120).await?;
     let cookie = oauth::random_token();
-    let id = service(&state)?.begin(q, &cookie).await?;
-    let i = issuer(&state)?;
+    let id = service(&state, &headers)?.begin(q, &cookie).await?;
+    let i = request_issuer(&headers)?;
     let secure = if i.starts_with("https:") {
         "; Secure"
     } else {
@@ -229,7 +219,7 @@ async fn authorization(
     let Query(q) = query.map_err(|_| invalid())?;
     Ok(no_store(
         Json(
-            service(&state)?
+            service(&state, &headers)?
                 .authorization(&q.request_id, &browser(&headers)?)
                 .await?,
         )
@@ -246,7 +236,7 @@ async fn verify(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, ProtocolError> {
-    let input: VerifyInput = json_input(&state, &headers, &body)?;
+    let input: VerifyInput = json_input(&headers, &body)?;
     rate_limit(
         &state,
         &format!("verify:{}", oauth::hash(&browser(&headers)?)),
@@ -255,7 +245,7 @@ async fn verify(
     .await?;
     Ok(no_store(
         Json(
-            service(&state)?
+            service(&state, &headers)?
                 .verify(&input.request_id, &browser(&headers)?, &input.api_key)
                 .await?,
         )
@@ -273,8 +263,8 @@ async fn decision(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, ProtocolError> {
-    let input: DecisionInput = json_input(&state, &headers, &body)?;
-    let redirect_uri = service(&state)?
+    let input: DecisionInput = json_input(&headers, &body)?;
+    let redirect_uri = service(&state, &headers)?
         .decision(
             &input.request_id,
             &browser(&headers)?,
@@ -288,11 +278,12 @@ async fn decision(
 }
 async fn token(
     State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
     form: Result<Form<TokenRequest>, FormRejection>,
 ) -> Result<Response, ProtocolError> {
     let Form(input) = form.map_err(|_| invalid())?;
     Ok(no_store(
-        Json(service(&state)?.token(input).await?).into_response(),
+        Json(service(&state, &headers)?.token(input).await?).into_response(),
     ))
 }
 #[derive(Debug, thiserror::Error)]

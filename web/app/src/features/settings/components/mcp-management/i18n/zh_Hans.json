@@ -223,7 +223,7 @@
     "load_error": "无法读取 ChatGPT 连接配置。",
     "retry": "重新读取配置",
     "not_enabled": "此部署尚未启用 ChatGPT 授权",
-    "not_enabled_help": "请联系部署管理员配置 MCP OAuth 公开地址并启用服务，再返回此处获取连接地址。",
+    "not_enabled_help": "请联系部署管理员更新服务并检查公开访问地址和反向代理路由，再返回此处获取连接地址。",
     "ready": "ChatGPT OAuth 配置已启用",
     "server_url": "服务器 URL",
     "authentication": "身份验证方式",

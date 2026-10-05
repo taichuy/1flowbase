@@ -356,7 +356,6 @@ fn validate_linked_host_console_route_assembly(
 
 #[derive(Clone)]
 pub struct ApiState {
-    pub mcp_oauth_issuer: Option<String>,
     #[cfg(test)]
     pub(crate) test_resources: Option<Arc<TestResources>>,
     pub store: MainDurableStore,

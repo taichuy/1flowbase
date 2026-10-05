@@ -223,7 +223,7 @@
     "load_error": "Unable to load the ChatGPT connection configuration.",
     "retry": "Reload configuration",
     "not_enabled": "ChatGPT authorization is not enabled on this deployment",
-    "not_enabled_help": "Ask your deployment administrator to configure the public MCP OAuth address and enable the service, then return here for the connection URL.",
+    "not_enabled_help": "Ask your deployment administrator to update the service and check the public address and reverse proxy routes, then return here for the connection URL.",
     "ready": "ChatGPT OAuth configuration is enabled",
     "server_url": "Server URL",
     "authentication": "Authentication method",
