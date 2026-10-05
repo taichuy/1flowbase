@@ -6,7 +6,7 @@
 
 - Branch: `dev`
 - Product assembly: `b208c67679bd053e4778743c589eebf9cd5cd4f9`
-- Public entry: `https://1flowbase.taichuy.cn/`
+- Public entry: 个人公网地址（域名已隐藏）
 - Browser: system Chromium `/usr/bin/google-chrome`, fresh incognito context
 - Runtime mode: Vite development server with source maps and HMR
 

@@ -27,12 +27,12 @@ API Key 不填在 ChatGPT 的客户端 ID 或客户端密钥里，也不放进�
 
 ![第一步：在 1flowbase 的 ChatGPT 连接配置中复制服务器 URL](assets/chatgpt-mcp/connect-chatgpt.png)
 
-上图来自 `https://1flowbase.taichuy.cn` 的公网实测界面。请使用自己部署的公开 HTTPS 地址。
+上图来自真实公网部署界面，个人域名已打码。下文使用官网地址 `https://1flowbase.taichuy.com/` 举例；实际连接请替换为自己部署的公开 HTTPS 地址，示例不表示官网提供该 MCP 实例。
 
 地址格式为 `https://你的域名/api/mcp/你的实例ID`。例如：
 
 ```text
-https://1flowbase.taichuy.cn/api/mcp/1flowbase
+https://1flowbase.taichuy.com/api/mcp/1flowbase
 ```
 
 以弹窗实际复制的地址为准。准备一个有效的用户 API Key；该 Key 所属的工作区应包含要连接的 MCP 实例。
@@ -214,13 +214,13 @@ MCP 要求 `structuredContent` 是 JSON 对象。新版将目录数组包装为 
 
 本教程参考当前 1flowbase 的授权流程、OpenAI 官方认证文档，以及本地 AgentDock 的自动发现、动态客户端注册和授权页面实现。
 
-教程中的 1flowbase 截图来自本次通过公网域名访问真实开发服务的浏览器操作；使用临时 API Key 授权，完成后撤销。ChatGPT 创建界面的图片为用户提供的实际截图。
+教程中的 1flowbase 截图来自本次通过公网域名访问真实开发服务的浏览器操作；使用临时 API Key 授权，完成后撤销。ChatGPT 创建界面的图片为用户提供的实际截图；截图中的个人域名已打码。
 
 已通过公网测试客户端验证：根目录发现返回 404 后，通过 `/api/` 下的发现入口完成 API Key 授权、回跳捕获、工具列举和只读调用、刷新及撤销；`mcp_list` 使用 `{"depth": 2, "limit": 100}` 返回 93 条目录项，`structuredContent` 为 JSON 对象。
 
 **真实 ChatGPT 验收已确认：2026-10-05，用户在原 ChatGPT 会话重试后明确反馈“可以了，成功了”。** 此前的 OAuth 发现和工具结果格式问题已在该公网环境解决，修复与提交关联见 [问题记录 #2280](https://github.com/taichuy/1flowbase/issues/2280)。
 
-本次确认的环境为 `https://1flowbase.taichuy.cn` 经 frpc 透传到本地 dev 服务，没有修改外层 Nginx/frpc，也没有新增必填 OAuth 环境配置。其他部署仍需更新 API 和前端，并按教程验证；未进行独立生产部署。只要现有代理能正确透传 `/api/` 与授权页，就无需为本次发现路径调整修改公网 Nginx。
+本次确认的环境为个人公网部署（域名已隐藏）经 frpc 透传到本地 dev 服务，没有修改外层 Nginx/frpc，也没有新增必填 OAuth 环境配置。其他部署仍需更新 API 和前端，并按教程验证；未进行独立生产部署。只要现有代理能正确透传 `/api/` 与授权页，就无需为本次发现路径调整修改公网 Nginx。
 
 源码与更新：[仓库接入说明](https://github.com/taichuy/1flowbase/blob/dev/docs/integrations/chatgpt-mcp.md)。
 
