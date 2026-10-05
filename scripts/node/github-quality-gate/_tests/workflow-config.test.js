@@ -300,28 +300,26 @@ test("Rust workflow caches include branch-owned AI Gateway results", () => {
   const containerWorkflow = readContainerImagesWorkflow();
   const aiGatewayWorkflow = readAiGatewayConcurrencyWorkflow();
 
-  assert.match(
-    containerWorkflow,
-    /key: rust-release-seeded-api-server-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.arch \}\}-rust-1-slim-bookworm-release-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
-  );
+  assert.match(containerWorkflow, /key: rust-downloads-api-server-v3-/u);
   assert.doesNotMatch(containerWorkflow, /plugin-runner|PLUGIN_RUNNER/u);
 
-  assert.match(workflow, /name: Restore release-seeded api-server Rust cache/u);
-  assert.match(workflow, /name: Import release-seeded api-server Rust cache/u);
+  assert.match(workflow, /name: Restore release-seeded Cargo downloads/u);
+  assert.match(workflow, /name: Import release-seeded Cargo downloads/u);
   assert.match(workflow, /name: Resolve release-seeded Rust cache architecture/u);
   assert.match(workflow, /case "\$\{RUNNER_ARCH:-X64\}" in/u);
   assert.match(workflow, /echo "cache_arch=\$cache_arch" >> "\$GITHUB_OUTPUT"/u);
   assert.match(workflow, /uses: actions\/cache\/restore@v5/u);
-  assert.match(workflow, /key: rust-release-seeded-api-server-v2-\$\{\{ runner\.os \}\}-\$\{\{ steps\.release_seed_arch\.outputs\.cache_arch \}\}-rust-1-slim-bookworm-release-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u);
-  assert.match(workflow, /tmp\/container-cache\/api-server\/\$\{\{ steps\.release_seed_arch\.outputs\.cache_arch \}\}\/target/u);
-  assert.match(workflow, /rsync -a "tmp\/container-cache\/api-server\/\$RUST_RELEASE_SEEDED_CACHE_ARCH\/target\/" "\$CARGO_TARGET_DIR\/"/u);
+  const downloadKeys = [...workflow.matchAll(/^          key: (rust-downloads-api-server-v3-[^\n]+)/gmu)];
+  assert.equal(downloadKeys.length, 4, 'all quality gate consumers use the split download cache');
+  const releaseDownloadKey = containerWorkflow.match(/^          key: (rust-downloads-api-server-v3-[^\n]+)/mu)[1];
+  for (const [, key] of downloadKeys) {
+    assert.equal(key.replace('steps.release_seed_arch.outputs.cache_arch', 'matrix.arch'), releaseDownloadKey);
+  }
+  assert.match(workflow, /rsync -a "tmp\/container-cache\/api-server\/\$RUST_RELEASE_SEEDED_CACHE_ARCH\/cargo-registry\/" "\$cargo_home\/registry\/"/u);
+  assert.doesNotMatch(workflow, /rsync -a "tmp\/container-cache\/api-server\/[^\n]*\/target\//u);
+  assert.doesNotMatch(workflow, /rust-release-seeded-api-server-v2/u);
   assert.doesNotMatch(workflow, /env:\n\s+RUST_RELEASE_SEEDED_CACHE_ARCH: \$\{\{ runner\.arch/u);
-  assert.doesNotMatch(workflow, /rust-release-seeded-[^\n]+-quality-gate-/u);
-  assert.doesNotMatch(workflow, /actions\/cache@v5[\s\S]{0,240}rust-release-seeded/u);
-  assert.doesNotMatch(
-    `${containerWorkflow}\n${workflow}`,
-    /^\s*key: rust-[^\n]*hashFiles\([^\n]*api\/\*\*\/\*\.rs/gmu,
-  );
+  assert.doesNotMatch(workflow, /actions\/cache@v5[\s\S]{0,240}rust-downloads-api-server/u);
   assert.match(
     aiGatewayWorkflow,
     /save-if: true/u,
@@ -1053,7 +1051,7 @@ test("container image publishing avoids deprecated artifact runtime and qemu cac
   );
   assert.match(
     workflow,
-    /docker run --rm[\s\S]*?--platform "linux\/\$\{\{ matrix\.arch \}\}"[\s\S]*?rust:1-slim-bookworm/u,
+    /docker run --rm[\s\S]*?--platform "linux\/\$\{\{ matrix\.arch \}\}"[\s\S]*?"\$API_RUST_BUILD_IMAGE"/u,
   );
   assert.match(
     workflow,
@@ -1193,4 +1191,58 @@ test("Host coverage lanes prepare real SDK executable fixtures before running tr
       assert.ok(fixture.includes(`MANAGED_${kind.toUpperCase()}_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_${kind}_worker`));
     }
   }
+});
+
+
+test('release target keys reuse compatible commits without crossing build environments', () => {
+  const workflow = readContainerImagesWorkflow();
+  const block = workflow.split('      - name: Restore api-server release target\n')[1]
+    .split('      - name: Build api-server binary')[0];
+  const primary = block.match(/^          key: (.+)$/mu)[1];
+  const prefixes = block.split('          restore-keys: |\n')[1].trim().split('\n').map(line => line.trim());
+  const render = (template, overrides = {}) => {
+    const values = {
+      'runner.os': 'Linux', 'matrix.arch': 'amd64', 'env.RUSTUP_TOOLCHAIN': '1.99.0',
+      'github.sha': 'commit-a',
+      "hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*')": 'recipe-a',
+      "hashFiles('api/Cargo.lock', 'api/**/Cargo.toml')": 'deps-a',
+      ...overrides,
+    };
+    return template.replace(/\$\{\{ (.*?) \}\}/gu, (_, expression) => {
+      assert.ok(Object.hasOwn(values, expression), `unknown key input: ${expression}`);
+      return values[expression];
+    });
+  };
+  const oldKey = render(primary);
+  const newCommit = { 'github.sha': 'commit-b' };
+  assert.notEqual(render(primary, newCommit), oldKey, 'source-only changes save fresh targets');
+  assert.ok(oldKey.startsWith(render(prefixes[0], newCommit)), 'previous commit is reusable');
+  const newDependencies = { "hashFiles('api/Cargo.lock', 'api/**/Cargo.toml')": 'deps-b' };
+  assert.ok(!oldKey.startsWith(render(prefixes[0], newDependencies)));
+  assert.ok(oldKey.startsWith(render(prefixes[1], newDependencies)), 'Cargo can reuse unchanged crates after dependency changes');
+  for (const change of [
+    { 'matrix.arch': 'arm64' }, { 'runner.os': 'Windows' },
+    { 'env.RUSTUP_TOOLCHAIN': '1.100.0' },
+    { "hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*')": 'recipe-b' },
+  ]) {
+    assert.ok(prefixes.every(prefix => !oldKey.startsWith(render(prefix, change))), 'incompatible targets must miss');
+  }
+});
+
+test('release builds always validate source and save successful results with timing evidence', () => {
+  const workflow = readContainerImagesWorkflow();
+  const job = workflow.split('  build-api-server-binary:\n')[1].split('\n  publish-api-server:')[0];
+  const build = job.split('      - name: Build api-server binary')[1].split('      - name: Save api-server Cargo downloads')[0];
+  assert.doesNotMatch(build, /^        if:/mu, 'a cache hit must never skip Cargo');
+  assert.match(build, /cargo build --release -p api-server --bin api-server --bin system_recovery --locked --timings/u);
+  assert.match(job, /RUSTUP_TOOLCHAIN: 1\.99\.0/u);
+  assert.match(job, /API_RUST_BUILD_IMAGE: rust:1\.99\.0-slim-bookworm@sha256:[a-f0-9]{64}/u);
+  assert.match(build, /-e RUSTUP_TOOLCHAIN/u);
+  assert.match(build, /"\$API_RUST_BUILD_IMAGE"/u);
+  assert.match(job, /name: Save api-server release target\n        if: steps\.release_target\.outputs\.cache-hit != 'true'\n        uses: actions\/cache\/save@v5/u);
+  assert.match(job, /key: \$\{\{ steps\.release_target\.outputs\.cache-primary-key \}\}/u);
+  assert.match(build, /cargo_build_seconds=/u);
+  assert.match(build, /cp -a \/workspace\/target-cache\/cargo-timings \/workspace\/reports\//u);
+  assert.match(job, /name: Upload api-server build timings\n        if: always\(\)/u);
+  assert.match(job, /name: rust-release-timings-\$\{\{ matrix\.arch \}\}/u);
 });

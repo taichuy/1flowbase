@@ -364,20 +364,37 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    env:
+      # Same official multi-arch image used by release run 37279745863 (Rust 1.99.0).
+      # Update the version and digest together; the recipe hash invalidates targets.
+      RUSTUP_TOOLCHAIN: 1.99.0
+      API_RUST_BUILD_IMAGE: rust:1.99.0-slim-bookworm@sha256:452176c0cefca88c0b3184ce85a4eb03e3d4fa05d2afb5366abcba853221019e
     steps:
       - uses: actions/checkout@v5
 
-      - name: Restore api-server Rust build cache
-        uses: actions/cache@v5
+      # Download caches are independent of the compiler; target caches are not.
+      - name: Restore api-server Cargo downloads
+        id: cargo_downloads
+        uses: actions/cache/restore@v5
         with:
           path: |
             tmp/container-cache/api-server/${{ matrix.arch }}/cargo-registry
             tmp/container-cache/api-server/${{ matrix.arch }}/cargo-git
-            tmp/container-cache/api-server/${{ matrix.arch }}/target
-          key: rust-release-seeded-api-server-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+          key: rust-downloads-api-server-v3-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('api/Cargo.lock') }}
           restore-keys: |
-            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock') }}-
-            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-
+            rust-downloads-api-server-v3-${{ runner.os }}-${{ matrix.arch }}-
+
+      # Hash the build recipe as well as Cargo configuration to isolate incompatible
+      # targets. A new commit saves fresh output even when manifests are unchanged.
+      - name: Restore api-server release target
+        id: release_target
+        uses: actions/cache/restore@v5
+        with:
+          path: tmp/container-cache/api-server/${{ matrix.arch }}/target
+          key: rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: |
+            rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-
+            rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-
 
       - name: Build api-server binary on native ${{ matrix.arch }}
         shell: bash
@@ -386,33 +403,89 @@ jobs:
 
           cache_root="tmp/container-cache/api-server/${{ matrix.arch }}"
           artifact_root="tmp/container-artifacts/api-server/${{ matrix.arch }}"
+          report_root="tmp/test-governance/rust-release/${{ matrix.arch }}"
           mkdir -p \
             "$cache_root/cargo-registry" \
             "$cache_root/cargo-git" \
             "$cache_root/target" \
-            "$artifact_root"
+            "$artifact_root" "$report_root"
+          # Docker writes as root, including when compilation fails.
+          trap 'sudo chown -R "$(id -u):$(id -g)" "$cache_root" "$report_root"' EXIT
 
           docker run --rm \
             --platform "linux/${{ matrix.arch }}" \
+            -e RUSTUP_TOOLCHAIN \
             -v "$PWD/api:/workspace/api" \
             -v "$PWD/$cache_root/cargo-registry:/usr/local/cargo/registry" \
             -v "$PWD/$cache_root/cargo-git:/usr/local/cargo/git" \
             -v "$PWD/$cache_root/target:/workspace/target-cache" \
             -v "$PWD/$artifact_root:/workspace/out" \
+            -v "$PWD/$report_root:/workspace/reports" \
             -w /workspace/api \
-            rust:1-slim-bookworm \
+            "$API_RUST_BUILD_IMAGE" \
             bash -c 'set -euo pipefail
+              rustc -Vv | tee /workspace/reports/toolchain.txt
+              cargo -V | tee -a /workspace/reports/toolchain.txt
               apt-get update
               apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config
               rm -rf /var/lib/apt/lists/*
-              CARGO_TARGET_DIR=/workspace/target-cache cargo build --release -p api-server --bin api-server --bin system_recovery
+              rm -rf /workspace/target-cache/cargo-timings
+              started=$(date +%s)
+              CARGO_TARGET_DIR=/workspace/target-cache cargo build --release -p api-server --bin api-server --bin system_recovery --locked --timings
+              echo "cargo_build_seconds=$(($(date +%s) - started))" | tee /workspace/reports/build.env
+              cp -a /workspace/target-cache/cargo-timings /workspace/reports/
               install -Dm755 /workspace/target-cache/release/api-server /workspace/out/api-server
               install -Dm755 /workspace/target-cache/release/system_recovery /workspace/out/system_recovery'
 
           sha256sum "$artifact_root/api-server" | tee "$artifact_root/api-server.sha256"
           sha256sum "$artifact_root/system_recovery" | tee "$artifact_root/system_recovery.sha256"
           ls -lh "$artifact_root/api-server" "$artifact_root/system_recovery"
-          sudo chown -R "$(id -u):$(id -g)" "$cache_root"
+          {
+            echo '### Rust release build (${{ matrix.arch }})'
+            echo "Commit: $GITHUB_SHA"
+            cat "$report_root/build.env"
+            du -sh "$cache_root"/*
+            echo 'Cache restore/save durations are recorded in the named Actions steps.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Save only successful builds. Same-SHA reruns reuse the immutable entry;
+      # different commits restore the nearest compatible entry and save a new one.
+      - name: Save api-server Cargo downloads
+        if: steps.cargo_downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            tmp/container-cache/api-server/${{ matrix.arch }}/cargo-registry
+            tmp/container-cache/api-server/${{ matrix.arch }}/cargo-git
+          key: ${{ steps.cargo_downloads.outputs.cache-primary-key }}
+
+      - name: Save api-server release target
+        if: steps.release_target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: tmp/container-cache/api-server/${{ matrix.arch }}/target
+          key: ${{ steps.release_target.outputs.cache-primary-key }}
+
+      - name: Report api-server cache reuse
+        if: always()
+        shell: bash
+        env:
+          DOWNLOAD_CACHE_KEY: ${{ steps.cargo_downloads.outputs.cache-matched-key }}
+          TARGET_CACHE_KEY: ${{ steps.release_target.outputs.cache-matched-key }}
+        run: |
+          {
+            echo "Cargo downloads restored: ${DOWNLOAD_CACHE_KEY:-miss}"
+            echo "Release target restored: ${TARGET_CACHE_KEY:-miss}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload api-server build timings
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rust-release-timings-${{ matrix.arch }}
+          path: tmp/test-governance/rust-release/${{ matrix.arch }}
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload api-server binary artifact
         uses: actions/upload-artifact@v6
