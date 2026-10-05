@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "access-control"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "domain",
  "serde",
@@ -74,7 +74,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "api-server"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "access-control",
  "anyhow",
@@ -978,7 +978,7 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "control-plane"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "access-control",
  "anyhow",
@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "control-plane-contracts"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1036,7 +1036,7 @@ dependencies = [
 
 [[package]]
 name = "control-plane-postgres-tests"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "access-control",
  "anyhow",
@@ -1062,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "control-plane-test-support"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "access-control",
  "anyhow",
@@ -1318,7 +1318,7 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1440,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "extension-contracts"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -1454,7 +1454,7 @@ dependencies = [
 
 [[package]]
 name = "extension-package-runtime"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "extension-contracts",
  "jsonschema",
@@ -2106,7 +2106,7 @@ dependencies = [
 
 [[package]]
 name = "interface-runtime"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "domain",
  "serde_json",
@@ -2581,7 +2581,7 @@ dependencies = [
 
 [[package]]
 name = "observability"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "domain",
  "serde",
@@ -2610,7 +2610,7 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "orchestration-runtime"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2787,7 +2787,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "plugin-framework"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "access-control",
  "base64",
@@ -2827,7 +2827,7 @@ checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
 name = "postgres-test-support"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "sqlx",
  "tokio",
@@ -3338,7 +3338,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-core"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3354,7 +3354,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-extension-host"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "async-trait",
  "extension-contracts",
@@ -3376,7 +3376,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-extension-sdk"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "extension-contracts",
  "serde_json",
@@ -3386,7 +3386,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-profile"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "extension-contracts",
@@ -4077,7 +4077,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "storage-durable"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4091,7 +4091,7 @@ dependencies = [
 
 [[package]]
 name = "storage-durable-postgres"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4125,7 +4125,7 @@ dependencies = [
 
 [[package]]
 name = "storage-ephemeral"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4140,7 +4140,7 @@ dependencies = [
 
 [[package]]
 name = "storage-object"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
