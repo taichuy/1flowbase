@@ -5,11 +5,11 @@ import { i18nText } from '../text';
 
 void appI18n.changeLanguage('en_US');
 
-const moduleScopeSettingsDraftLabel = i18nText('settings', 'auto.draft_alt');
+const moduleScopeSettingsExtensionLabel = i18nText('settings', 'auto.extension_center');
 
 describe('i18nText', () => {
   it('returns namespace text during module initialization', () => {
-    expect(moduleScopeSettingsDraftLabel).toBe('Draft');
+    expect(moduleScopeSettingsExtensionLabel).toBe("Extension Center");
   });
 
   it('does not return blank labels from empty translation values', () => {
