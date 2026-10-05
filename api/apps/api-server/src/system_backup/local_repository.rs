@@ -363,29 +363,49 @@ impl BackupRepository for LocalBackupRepository {
             .await
             .map_err(|_| BackupRepositoryError::Unavailable)?;
         let event_dir = journal.join(format!("{:020}", event.sequence));
-        fs::create_dir(&event_dir)
-            .await
-            .map_err(|error| match error.kind() {
-                std::io::ErrorKind::AlreadyExists => BackupRepositoryError::Conflict,
-                _ => BackupRepositoryError::Unavailable,
-            })?;
         let bytes = serde_json::to_vec(event).map_err(|_| BackupRepositoryError::Integrity)?;
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(event_dir.join("event.json"))
+        let pending = journal.join(format!(".pending-{}", Uuid::now_v7()));
+        fs::create_dir(&pending)
             .await
             .map_err(|_| BackupRepositoryError::Unavailable)?;
-        if file.write_all(&bytes).await.is_err() {
-            let _ = fs::remove_dir_all(event_dir).await;
-            return Err(BackupRepositoryError::Unavailable);
-        }
-        if file.sync_all().await.is_err() {
+        let result = async {
+            let mut file = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(pending.join("event.json"))
+                .await
+                .map_err(|_| BackupRepositoryError::Unavailable)?;
+            file.write_all(&bytes)
+                .await
+                .map_err(|_| BackupRepositoryError::Unavailable)?;
+            file.sync_all()
+                .await
+                .map_err(|_| BackupRepositoryError::Unavailable)?;
             drop(file);
-            let _ = fs::remove_dir_all(event_dir).await;
-            return Err(BackupRepositoryError::Unavailable);
+
+            // Keep existing (even corrupt/empty) committed entries immutable.
+            // Concurrent writers only publish nonempty directories, which rename
+            // cannot replace. Readers see the event only after this atomic move.
+            if fs::try_exists(&event_dir)
+                .await
+                .map_err(|_| BackupRepositoryError::Unavailable)?
+            {
+                return Err(BackupRepositoryError::Conflict);
+            }
+            fs::rename(&pending, &event_dir)
+                .await
+                .map_err(|error| match error.kind() {
+                    std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::DirectoryNotEmpty => {
+                        BackupRepositoryError::Conflict
+                    }
+                    _ => BackupRepositoryError::Unavailable,
+                })
         }
-        Ok(())
+        .await;
+        if result.is_err() {
+            let _ = fs::remove_dir_all(&pending).await;
+        }
+        result
     }
 
     async fn read_journal(
@@ -421,6 +441,21 @@ async fn read_journal_directory(
         .await
         .map_err(|_| BackupRepositoryError::Unavailable)?
     {
+        let pending = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_prefix(".pending-"))
+            .and_then(|id| Uuid::parse_str(id).ok())
+            .is_some();
+        if pending {
+            match entry.file_type().await {
+                Ok(kind) if kind.is_dir() => continue,
+                // A staged directory may be published or cleaned after enumeration.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(_) => return Err(BackupRepositoryError::Unavailable),
+                _ => {}
+            }
+        }
         paths.push(entry.path().join("event.json"));
     }
     paths.sort();

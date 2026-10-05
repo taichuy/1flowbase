@@ -29,6 +29,7 @@ use uuid::Uuid;
 use super::EnvironmentBackupKeyProvider;
 use super::{ApiRecoveryEphemeralState, LocalBackupRepository};
 
+mod journal;
 mod toolchain;
 
 fn temporary_root(label: &str) -> PathBuf {

@@ -71,8 +71,9 @@ async fn create_backup(app: &axum::Router, cookie: &str, csrf: &str) -> Uuid {
         )
         .await
         .unwrap();
-    assert_eq!(status_response.status(), StatusCode::OK);
+    let status = status_response.status();
     let status_payload = response_json(status_response).await;
+    assert_eq!(status, StatusCode::OK, "{status_payload}");
     assert_eq!(
         status_payload["data"]["backup_job_id"],
         backup_job_id.to_string()
