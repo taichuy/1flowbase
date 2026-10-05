@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import type { AgentFlowVariableGroup } from '../../api/runtime';
@@ -86,8 +86,10 @@ describe('DebugVariablesPane', () => {
     fireEvent.click(screen.getByRole('button', { name: '加载完整值' }));
 
     expect(onLoadFullValue).toHaveBeenCalledWith('artifact-1');
-    expect(await screen.findByLabelText('变量值编辑框')).toHaveValue(
-      JSON.stringify({ text: '完整内容' }, null, 2)
+    await waitFor(() =>
+      expect(screen.getByLabelText('变量值编辑框')).toHaveValue(
+        JSON.stringify({ text: '完整内容' }, null, 2)
+      )
     );
     expect(onSelectedValueChange).toHaveBeenCalledWith('node-llm.text', {
       text: '完整内容'
