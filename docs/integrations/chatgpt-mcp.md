@@ -18,7 +18,9 @@ API Key 不填在 ChatGPT 的客户端 ID 或客户端密钥里，也不放进�
 
 ## 第一步：复制 MCP 服务器 URL
 
-在 1flowbase 打开 **设置 → MCP → 连接客户端 → ChatGPT**。
+在 1flowbase 打开 **设置 → MCP → 连接客户端**，然后在下方选择 **ChatGPT** 标签。标签顺序为「通用 → ChatGPT → Codex → Claude Code → OpenCode」，默认打开「通用」。
+
+上方 API Key 输入和提示区域保持原有位置；连接 ChatGPT 无需在这里填写或保存 Key，稍后在跳转打开的授权页填写。
 
 - 显示 **OAuth 配置已启用**：复制服务器 URL。
 - 显示 **此部署尚未启用 ChatGPT 授权**：通常是旧版服务，先更新 API 与前端，见文末。

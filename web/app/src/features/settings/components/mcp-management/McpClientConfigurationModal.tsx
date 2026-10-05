@@ -379,57 +379,44 @@ export function McpClientConfigurationModal({
       destroyOnHidden
     >
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-        {clientTab !== 'chatgpt' ? (
-          <>
-            <Alert
-              type="info"
-              showIcon
-              title={i18nText(
-                'settingsMcpManagement',
-                'auto.api_key_encrypted_storage_notice'
-              )}
-              action={
-                <Button
-                  href="/settings/api-key-authentication"
-                  icon={<KeyOutlined />}
-                >
-                  {i18nText('settingsMcpManagement', 'auto.generate_api_key')}
-                </Button>
-              }
+        <Alert
+          type="info"
+          showIcon
+          title={i18nText(
+            'settingsMcpManagement',
+            'auto.api_key_encrypted_storage_notice'
+          )}
+          action={
+            <Button
+              href="/settings/api-key-authentication"
+              icon={<KeyOutlined />}
+            >
+              {i18nText('settingsMcpManagement', 'auto.generate_api_key')}
+            </Button>
+          }
+        />
+        <Form layout="vertical">
+          <Form.Item label={i18nText('settingsMcpManagement', 'auto.api_key')}>
+            <Input.Password
+              aria-label={i18nText('settingsMcpManagement', 'auto.api_key')}
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              autoComplete="off"
             />
-            <Form layout="vertical">
-              <Form.Item
-                label={i18nText('settingsMcpManagement', 'auto.api_key')}
-              >
-                <Input.Password
-                  aria-label={i18nText('settingsMcpManagement', 'auto.api_key')}
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  autoComplete="off"
-                />
-              </Form.Item>
-            </Form>
-            <Alert
-              type="warning"
-              showIcon
-              title={i18nText(
-                'settingsMcpManagement',
-                'auto.client_config_plaintext_notice'
-              )}
-            />
-          </>
-        ) : null}
+          </Form.Item>
+        </Form>
+        <Alert
+          type="warning"
+          showIcon
+          title={i18nText(
+            'settingsMcpManagement',
+            'auto.client_config_plaintext_notice'
+          )}
+        />
         <Tabs
           activeKey={clientTab}
           onChange={setClientTab}
           items={[
-            {
-              key: 'chatgpt',
-              label: 'ChatGPT',
-              children: instance ? (
-                <ChatGptConfiguration instanceId={instance.instance_id} />
-              ) : null
-            },
             {
               key: 'common',
               label: i18nText('settingsMcpManagement', 'auto.common'),
@@ -451,6 +438,13 @@ export function McpClientConfigurationModal({
                   value={configuration}
                 />
               )
+            },
+            {
+              key: 'chatgpt',
+              label: 'ChatGPT',
+              children: instance ? (
+                <ChatGptConfiguration instanceId={instance.instance_id} />
+              ) : null
             },
             {
               key: 'codex',

@@ -1683,7 +1683,7 @@ describe('McpManagementPanel', () => {
       within(screen.getByRole('dialog'))
         .getAllByRole('tab')
         .map((tab) => tab.textContent)
-    ).toEqual(['ChatGPT', '通用', 'Codex', 'Claude Code', 'OpenCode']);
+    ).toEqual(['通用', 'ChatGPT', 'Codex', 'Claude Code', 'OpenCode']);
 
     fireEvent.click(screen.getByRole('button', { name: '关 闭' }));
     fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
