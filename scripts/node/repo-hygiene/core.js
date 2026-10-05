@@ -56,7 +56,7 @@ const SKIPPED_TEST_PATTERN =
   /\b(?:describe|it|test)\.(?:skip|todo)\s*\(|\bx(?:describe|it)\s*\(/u;
 const WEAK_ASSERTION_PATTERN = /\.(?:toBeTruthy|toBeDefined)\s*\(/u;
 const TEST_TITLE_PATTERN =
-  /\b(?:describe|it|test)\s*\(\s*(['"`])([^'"`\n]+)\1/gu;
+  /\b(?:it|test)\s*\(\s*(['"`])([^'"`\n]+)\1/gu;
 const INLINE_TEST_TITLE_PATTERN =
   /^\s*(?:it|test)\s*\(\s*(['"`])([^'"`\n]+)\1/u;
 const TEST_PATH_PATTERN = /(?:^|\/)(?:_tests|tests)\//u;

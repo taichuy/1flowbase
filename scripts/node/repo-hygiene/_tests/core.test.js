@@ -232,6 +232,28 @@ test("collectRepoHygieneFindings reports duplicate test titles and oversized fil
   );
 });
 
+test("duplicate title review allows shared suite names in split scenario files", () => {
+  const repoRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "oneflowbase-repo-hygiene-suite-titles-"),
+  );
+  try {
+    for (const [file, scenario] of [["list", "lists current records"], ["editor", "edits the selected record"]]) {
+      writeFile(
+        repoRoot,
+        `web/app/src/features/example/_tests/${file}.test.ts`,
+        `describe('ResourcePage', () => { test('${scenario}', () => {}); });\n`,
+      );
+    }
+    const findings = collectRepoHygieneFindings({ repoRoot });
+    assert.deepEqual(
+      findings.filter((finding) => finding.rule === "duplicate-test-title"),
+      [],
+    );
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
 test("file size pressure excludes installed plugin copies", () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "oneflowbase-repo-hygiene-size-boundary-"),
