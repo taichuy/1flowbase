@@ -161,7 +161,7 @@ test("Delivery 1898 provider conformance pins every reusable action", () => {
   );
   assert.match(
     providerConformance,
-    /runtime-extension-host --test official_plugin_compatibility -- --ignored/u,
+    /scope: provider-conformance/u,
   );
 });
 test("verify workflow runs lightweight merge gates before one aggregate report", () => {
@@ -1245,4 +1245,21 @@ test('release builds always validate source and save successful results with tim
   assert.match(build, /cp -a \/workspace\/target-cache\/cargo-timings \/workspace\/reports\//u);
   assert.match(job, /name: Upload api-server build timings\n        if: always\(\)/u);
   assert.match(job, /name: rust-release-timings-\$\{\{ matrix\.arch \}\}/u);
+});
+
+test('manual provider conformance shares one source candidate and participates in final evidence', () => {
+  const workflow = readVerifyWorkflow();
+  const candidate = "${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}";
+  const provider = workflow.slice(workflow.indexOf('  provider-conformance:'), workflow.indexOf('  repo-tooling-gate:'));
+  assert.match(provider, /if: github.event_name == 'workflow_dispatch'/u);
+  assert.match(provider, /scope: provider-conformance/u);
+  assert.match(provider, /name: test-governance-provider-conformance/u);
+  const aggregate = workflow.slice(workflow.indexOf('  verify:'));
+  assert.match(aggregate, /needs:[\s\S]*?- provider-conformance/u);
+  assert.ok(aggregate.includes("foundation-contracts${{ github.event_name == 'workflow_dispatch' && ',provider-conformance' || '' }}"));
+  for (const job of ['repo-tooling-gate', 'repo-frontend-gate', 'repo-backend-gate', 'verify']) {
+    const block = workflow.slice(workflow.indexOf(`  ${job}:`)).split(/\n  [a-z][a-z-]+:/u)[0];
+    assert.ok(block.includes(`ref: ${candidate}`), job);
+    assert.ok(block.includes('GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}'), job);
+  }
 });

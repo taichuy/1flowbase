@@ -15,6 +15,8 @@ const {
   IMAGE_LLM_VISION_GATE_TARGETS,
 } = require("../verify/backend-targets.js");
 
+const { parseCargoTestCounts } = require("../verify/cargo-test-results.js");
+
 const FRONTEND_LAYERS = new Set(["fast", "pr", "full", "page-regression"]);
 const TEST_COMMANDS = new Set(["backend", "contracts", "frontend", "scripts"]);
 const CONTRACT_TEST_FILES = [
@@ -107,6 +109,22 @@ async function runBackend(argv = [], deps = {}) {
   return managedRunner({
     repoRoot,
     env,
+    runCommandSequenceImpl(sequenceOptions) {
+      let missingEvidence = false;
+      const status = runCommandSequence({ ...sequenceOptions,
+        onCommandComplete({ command, result }) {
+          if (!command.label.startsWith('cargo-test-image-llm-vision-')) return;
+          const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
+          if (result.status === 0 && !(counts.passedCount > 0 && counts.failedCount === 0)) {
+            missingEvidence = true;
+            (deps.writeStderr || process.stderr.write.bind(process.stderr))(
+              `${command.label}: no executed passing tests; refusing empty or failed protected Cargo gate\n`,
+            );
+          }
+        },
+      });
+      return status || (missingEvidence ? 1 : 0);
+    },
     scope: "test-backend",
     lockMode: "heavy",
     commandDisplay: "node scripts/node/test-backend.js",

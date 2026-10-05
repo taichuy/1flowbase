@@ -352,7 +352,7 @@ async function runBackend(argv = [], deps = {}) {
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,
     writeStderr: deps.writeStderr,
-    ...(options.target === 'official-i18n-seed' || (options.target === 'test' && options.shard === 'storage-postgres-1-of-4') ? {
+    ...(['all', 'image-llm-vision', 'official-i18n-seed'].includes(options.target) || (options.target === 'test' && options.shard === 'storage-postgres-1-of-4') ? {
       runCommandSequenceImpl: (sequenceOptions) => {
         let emptySelection = false;
         const status = runCommandSequence({
@@ -369,12 +369,13 @@ async function runBackend(argv = [], deps = {}) {
               }
               return;
             }
-            if (options.target !== 'official-i18n-seed') return;
+            if (!command.label.startsWith('cargo-test-image-llm-vision-')
+              && !command.label.startsWith('cargo-test-official-i18n-seed-')) return;
             const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
-            if (result.status === 0 && !(counts.passedCount > 0)) {
+            if (result.status === 0 && !(counts.passedCount > 0 && counts.failedCount === 0)) {
               emptySelection = true;
               (deps.writeStderr || process.stderr.write.bind(process.stderr))(
-                `${command.label}: no executed passing tests; refusing empty Seed gate\n`,
+                `${command.label}: no executed passing tests; refusing empty or failed protected Cargo gate\n`,
               );
             }
           },

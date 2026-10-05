@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { maskRustText, isTestOnlyCfg } = require('./source.js');
 
 const REPORT_FILE = 'rust-backend-static-gate.json';
 const PRODUCTION_ESCAPE_PATTERNS = [
@@ -35,10 +36,6 @@ function isSkippedRustPath(relativePath) {
   return isRustTestPath(relativePath) || relativePath.startsWith('api/plugins/installed/');
 }
 
-function stripStringLiterals(line) {
-  return line.replace(/"([^"\\]|\\.)*"/gu, '""');
-}
-
 function walkFiles(currentDir, collected = []) {
   if (!fs.existsSync(currentDir)) {
     return collected;
@@ -72,54 +69,30 @@ function countChar(line, char) {
 
 function buildSkippedCfgTestLines(lines) {
   const skipped = new Set();
-  let pendingCfgTest = false;
-  let inCfgTestBlock = false;
-  let cfgTestDepth = 0;
-
+  let pending = false;
+  let depth = 0;
   lines.forEach((line, index) => {
-    const lineNumber = index + 1;
     const trimmed = line.trim();
-
-    if (inCfgTestBlock) {
-      skipped.add(lineNumber);
-      cfgTestDepth += countChar(line, '{') - countChar(line, '}');
-
-      if (cfgTestDepth <= 0) {
-        inCfgTestBlock = false;
-        cfgTestDepth = 0;
-      }
-
+    if (depth > 0) {
+      skipped.add(index + 1);
+      depth += countChar(line, '{') - countChar(line, '}');
       return;
     }
-
-    if (pendingCfgTest) {
-      skipped.add(lineNumber);
-
+    if (pending) {
+      skipped.add(index + 1);
+      if (!trimmed || trimmed.startsWith('#[')) return;
       if (line.includes('{')) {
-        inCfgTestBlock = true;
-        cfgTestDepth = countChar(line, '{') - countChar(line, '}');
-
-        if (cfgTestDepth <= 0) {
-          inCfgTestBlock = false;
-          cfgTestDepth = 0;
-        }
-      }
-
-      pendingCfgTest = !inCfgTestBlock;
+        depth = countChar(line, '{') - countChar(line, '}');
+        pending = false;
+      } else if (line.includes(';')) pending = false;
       return;
     }
-
-    if (isCfgTestAttribute(trimmed)) {
-      skipped.add(lineNumber);
-      pendingCfgTest = true;
+    if (isTestOnlyCfg(trimmed)) {
+      skipped.add(index + 1);
+      pending = true;
     }
   });
-
   return skipped;
-}
-
-function isCfgTestAttribute(trimmedLine) {
-  return /^#\[cfg\((?:test|(?:all|any)\([^)]*\btest\b[^)]*\))\)\]$/u.test(trimmedLine);
 }
 
 function createFinding({ severity, rule, file, line, message, snippet }) {
@@ -139,13 +112,14 @@ function scanRustSource({ relativePath, content }) {
   }
 
   const lines = content.split(/\r?\n/u);
-  const skippedLines = buildSkippedCfgTestLines(lines);
+  const codeLines = maskRustText(content).split(/\r?\n/u);
+  const skippedLines = buildSkippedCfgTestLines(codeLines);
   const findings = [];
   let pendingSerializeDerive = false;
   let inSerializeStruct = false;
   let serializeStructDepth = 0;
 
-  lines.forEach((line, index) => {
+  codeLines.forEach((line, index) => {
     const lineNumber = index + 1;
 
     if (skippedLines.has(lineNumber)) {
@@ -160,7 +134,7 @@ function scanRustSource({ relativePath, content }) {
           file: relativePath,
           line: lineNumber,
           message: `production Rust code uses ${name}`,
-          snippet: line,
+          snippet: lines[index],
         }));
       }
     }
@@ -172,18 +146,18 @@ function scanRustSource({ relativePath, content }) {
         file: relativePath,
         line: lineNumber,
         message: 'Rust backend code uses blocking IO or blocking sleep; confirm this is outside request async paths',
-        snippet: line,
+        snippet: lines[index],
       }));
     }
 
-    if (LOGGING_PATTERN.test(line) && SENSITIVE_LOG_PATTERN.test(stripStringLiterals(line))) {
+    if (LOGGING_PATTERN.test(line) && SENSITIVE_LOG_PATTERN.test(line)) {
       findings.push(createFinding({
         severity: 'error',
         rule: 'no-sensitive-logging',
         file: relativePath,
         line: lineNumber,
         message: 'logging call appears to include sensitive material',
-        snippet: line,
+        snippet: lines[index],
       }));
     }
 
@@ -208,7 +182,7 @@ function scanRustSource({ relativePath, content }) {
           file: relativePath,
           line: lineNumber,
           message: 'serialized Rust struct exposes a sensitive field',
-          snippet: line,
+          snippet: lines[index],
         }));
       }
 

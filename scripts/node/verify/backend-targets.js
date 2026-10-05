@@ -188,7 +188,7 @@ const IMAGE_LLM_VISION_GATE_TARGETS = [
   {
     label: 'cargo-test-image-llm-vision-control-plane-routed-media-guidance',
     packageName: 'control-plane',
-    filter: 'orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_models',
+    filter: 'orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models',
   },
   {
     label: 'cargo-test-image-llm-vision-runtime-visible-media-tool',

@@ -300,3 +300,35 @@ test('OAuth consent hash persistence exception does not exempt response credenti
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 });
+
+// Legal test escape hatches must not hide the next production item.
+test('cfg exemption ends at inline blocks and external module declarations', () => {
+  for (const item of ['fn fixture() { Some(1).unwrap(); }', 'mod tests;']) {
+    const findings = scanRustSource({ relativePath: 'api/crates/domain/src/example.rs',
+      content: `#[cfg(test)]\n${item}\npub fn production() { Some(1).unwrap(); }` });
+    assert.deepEqual(findings.map(f => [f.rule, f.line]), [['no-production-escape', 3]]);
+  }
+});
+
+test('cfg logic exempts only conditions requiring test in every configuration', () => {
+  for (const [condition, exempt] of [
+    ['test', true], ['all(test, unix)', true], ['any(test, feature = "prod")', false],
+    ['all(unix, any(test, feature = "prod"))', false], ['any(test, all(test, unix))', true],
+    ['all(test, not(feature = "fixture"))', true], ['not(test)', false],
+  ]) {
+    const findings = scanRustSource({ relativePath: 'api/crates/domain/src/example.rs',
+      content: `#[cfg(${condition})]\nfn selected() { Some(1).unwrap(); }\npub fn next() { panic!("production"); }` });
+    assert.deepEqual(findings.map(f => f.line), exempt ? [3] : [2, 3], condition);
+  }
+});
+
+test('comments and Rust literals are not calls or test-module delimiters', () => {
+  const findings = scanRustSource({ relativePath: 'api/crates/domain/src/example.rs', content: [
+    '// panic!("comment")', '/* nested /* dbg!(1) */ todo!() */',
+    'const DOC: &str = r##"panic!() { \" }"##;',
+    'const TEXT: &str = "unimplemented!()";', "const BRACE: char = '}';",
+    '#[cfg(test)]', 'mod tests {', 'let message = "{";', 'Some(1).unwrap();', '}',
+    'pub fn production() { Some(1).unwrap(); }',
+  ].join('\n') });
+  assert.deepEqual(findings.map(f => [f.rule, f.line]), [['no-production-escape', 11]]);
+});

@@ -28,6 +28,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  QUALITY_GATE_TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
 
 jobs:
   provider-conformance:
@@ -55,16 +56,28 @@ jobs:
             fi
             cargo build --manifest-path "${plugin_dir}/Cargo.toml"
           done
-      - name: Execute the eight official RuntimeExtensions through the in-process host
+      - name: Execute official RuntimeExtensions through the in-process host
+        uses: ./.github/actions/quality-gate
         env:
           ONEFLOWBASE_OFFICIAL_PLUGIN_ROOT: ${{ github.workspace }}/tmp/provider-conformance/official-source
-        run: cargo test --manifest-path api/Cargo.toml -p runtime-extension-host --test official_plugin_compatibility -- --ignored
+          GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
+        with:
+          scope: provider-conformance
+          report_type: ci
+          publish_issue: "false"
+          start_postgres: "false"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test-governance-provider-conformance
+          path: tmp/test-governance
 
   repo-tooling-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
           fetch-depth: 0
       - uses: pnpm/action-setup@v5
         with:
@@ -80,6 +93,7 @@ jobs:
       - uses: ./.github/actions/quality-gate
         env:
           REQUIRE_DOCKER_RECOVERY_EVIDENCE: "1"
+          GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
         with:
           scope: repo-tooling
           report_type: ci
@@ -95,6 +109,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
       - uses: pnpm/action-setup@v5
         with:
           version: 11.5.0
@@ -105,6 +121,8 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
       - uses: ./.github/actions/quality-gate
+        env:
+          GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
         with:
           scope: repo-frontend-pr
           report_type: ci
@@ -131,8 +149,12 @@ jobs:
           - repo-backend-check-apps
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: ./.github/actions/quality-gate
+        env:
+          GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
         with:
           scope: ${{ matrix.scope }}
           report_type: ci
@@ -158,10 +180,13 @@ jobs:
       - repo-frontend-gate
       - repo-backend-gate
       - foundation-contract-gate
+      - provider-conformance
     if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
       - uses: actions/download-artifact@v6
         with:
           pattern: test-governance-*
@@ -169,9 +194,10 @@ jobs:
           merge-multiple: false
       - run: node scripts/node/cli/github-quality-gate-aggregate.js
         env:
+          GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ci
-          INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,foundation-contracts
+          INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,foundation-contracts${{ github.event_name == 'workflow_dispatch' && ',provider-conformance' || '' }}
           INPUT_PUBLISH_ISSUE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/latest' }}
           INPUT_PUBLISH_PR_COMMENT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
           INPUT_PR_NUMBER: ${{ github.event.pull_request.number }}

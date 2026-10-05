@@ -61,7 +61,7 @@ test('test-backend buildCommands uses independent cargo jobs and cargo test thre
         'control-plane',
         '--jobs',
         '4',
-        'orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_models',
+        'orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models',
         '--',
         '--test-threads=2',
       ],
@@ -236,4 +236,25 @@ test('test-backend main writes advisory warning output under tmp/test-governance
   const warningLogPath = path.join(repoRoot, 'tmp', 'test-governance', 'test-backend.warnings.log');
   assert.equal(fs.existsSync(warningLogPath), true);
   assert.match(fs.readFileSync(warningLogPath, 'utf8'), /warning: cargo test advisory/u);
+});
+
+test('backend test entry cannot accept an empty protected media selector', async () => {
+  for (const [output, expected] of [['test result: ok. 0 passed; 0 failed;', 1], ['test result: ok. 1 passed; 0 failed;', 0]]) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-media-execution-'));
+    try {
+      const status = await main([], { repoRoot, env: {},
+        runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
+        writeStdout() {}, writeStderr() {},
+        managedRunnerImpl(options) {
+          return options.runCommandSequenceImpl({ ...options,
+            spawnSyncImpl(_command, args) {
+              return { status: 0, stdout: args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models')
+                ? output : 'test result: ok. 4 passed; 0 failed;', stderr: '' };
+            },
+          });
+        },
+      });
+      assert.equal(status, expected);
+    } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+  }
 });

@@ -86,7 +86,7 @@ test('verify-backend buildCommands uses independent cargo jobs and cargo test th
         'control-plane',
         '--jobs',
         '4',
-        'orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_models',
+        'orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models',
         '--',
         '--test-threads=2',
       ],
@@ -358,7 +358,7 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
           'control-plane',
           '--jobs',
           '4',
-          'orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_models',
+          'orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models',
           '--',
           '--test-threads=2',
         ],
@@ -478,6 +478,7 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
       '#!/usr/bin/env bash',
       'printf "%s\\n" "$*" >> "$VERIFY_BACKEND_LOG"',
       'printf "warning: backend advisory\\n" >&2',
+      'if [ "$1" = test ]; then printf "test result: ok. 1 passed; 0 failed; 0 ignored;\\n"; fi',
       'exit 0',
     ].join('\n')
   );
@@ -506,7 +507,7 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
   assert.match(invocations[2], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[3], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal -- --test-threads=${expectedParallelism}`));
-  assert.match(invocations[4], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_models -- --test-threads=${expectedParallelism}`));
+  assert.match(invocations[4], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[5], new RegExp(`test -p orchestration-runtime --jobs ${expectedParallelism} visible_internal_llm_tool_media -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[6], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[7], new RegExp(`check --workspace --jobs ${expectedParallelism}`));
@@ -602,5 +603,40 @@ test('actual PostgreSQL shard CLI executes SQL evidence and rejects failed, empt
         path.join(repoRoot, 'scripts/node/model-usage-report/integration/postgres.test.js'),
       ]);
     } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+  }
+});
+
+// Each protected selector must execute; a neighbouring passing command cannot hide an empty one.
+test('image media gate rejects empty, ignored, absent and failed executions per selector', async () => {
+  for (const target of ['image-llm-vision', 'all']) {
+    for (const [output, expected] of [
+      ['test result: ok. 0 passed; 0 failed; 20 ignored;', 1],
+      ['', 1],
+      ['test result: FAILED. 1 passed; 1 failed;', 1],
+      ['test result: ok. 1 passed; 0 failed;', 0],
+      ['test result: \u001b[32mok\u001b[0m. 1 passed; 0 failed;', 0],
+    ]) {
+      const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'media-execution-'));
+      try {
+        const invocations = [];
+        const status = await main([target], {
+          repoRoot, env: {},
+          runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
+          writeStdout() {}, writeStderr() {},
+          managedRunnerImpl(options) {
+            return options.runCommandSequenceImpl({
+              ...options,
+              spawnSyncImpl(_command, args) {
+                invocations.push(args);
+                const selected = args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models');
+                return { status: 0, stdout: selected ? output : 'test result: ok. 3 passed; 0 failed;', stderr: '' };
+              },
+            });
+          },
+        });
+        assert.equal(status, expected, `${target}: ${output}`);
+        assert.ok(invocations.some(args => args.includes('orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models')));
+      } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+    }
   }
 });

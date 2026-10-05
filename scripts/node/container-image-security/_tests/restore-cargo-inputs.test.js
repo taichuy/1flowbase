@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { stripVTControlCharacters } = require('node:util');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { restoreCargoInputs } = require('../restore-cargo-inputs');
 
@@ -53,7 +54,7 @@ test('real Cargo reuses checkout inputs but rebuilds edits and reverts', t => {
       cwd: f.root, encoding: 'utf8', env: { ...process.env, CARGO_TARGET_DIR: path.join(f.root, 'target') },
     });
     assert.equal(result.status, 0, result.stderr);
-    return result.stderr;
+    return stripVTControlCharacters(result.stderr);
   };
   const run = () => execFileSync(path.join(f.root, 'target/release/cache-fixture'), { encoding: 'utf8' }).trim();
   f.restore();
@@ -90,7 +91,7 @@ test('directory-watching build scripts rebuild for added and deleted inputs', t 
       cwd: f.root, encoding: 'utf8', env: { ...process.env, CARGO_TARGET_DIR: path.join(f.root, 'target') },
     });
     assert.equal(result.status, 0, result.stderr);
-    return result.stderr;
+    return stripVTControlCharacters(result.stderr);
   };
   const run = () => execFileSync(path.join(f.root, 'target/release/cache-fixture'), { encoding: 'utf8' }).trim();
   f.restore();

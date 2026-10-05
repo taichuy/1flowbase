@@ -359,7 +359,9 @@ async fn ac_003_005_builtin_frontstage_tools_are_discoverable_and_callable() {
         }),
     )
     .await;
-    let listed = list["result"]["structuredContent"]["result"].as_array().unwrap();
+    let listed = list["result"]["structuredContent"]["result"]
+        .as_array()
+        .unwrap();
     assert!(listed
         .iter()
         .any(|item| item["id"] == json!("frontstage_read_block_source_fragment")));

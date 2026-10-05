@@ -59,6 +59,7 @@ const VALID_SCOPES = new Set([
   'coverage-backend',
   'container-images',
   'release-rollback',
+  'provider-conformance',
   ...REPO_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_API_SERVER_SHARDED_SCOPES,
@@ -82,6 +83,10 @@ function buildGateCommand({ repoRoot, scope }) {
   const command = process.execPath;
   if (scope === 'plugin-composition-2007') {
     return { command, args: [path.join(repoRoot, 'scripts/node/plugin-composition-test-batch/runner.js')], cwd: repoRoot };
+  }
+
+  if (scope === 'provider-conformance') {
+    return { command, args: [path.join(repoRoot, 'scripts/node/provider-conformance/official-packages.js')], cwd: repoRoot };
   }
 
   if (scope === 'coverage') {
