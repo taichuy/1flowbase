@@ -93,9 +93,6 @@ impl ManagedWorkers {
             }
             return Ok(mounted.handle.clone());
         }
-        if self.mounted.len() >= 4096 {
-            return Err(invalid("managed runtime identity capacity exhausted"));
-        }
         let generation = self
             .next_generation
             .checked_add(1)

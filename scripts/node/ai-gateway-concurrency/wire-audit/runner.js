@@ -9,6 +9,8 @@ const {
 } = require('../protocol-oracle/request-fidelity');
 const {
   ERROR_SURFACES,
+  ERROR_FIDELITY_ROWS,
+  assertErrorFidelityRowInventory,
   UPSTREAM_ERROR_FIXTURES,
   assertUpstreamErrorFidelity,
 } = require('../protocol-oracle/error-fidelity');
@@ -34,13 +36,12 @@ function requestFidelityInventory() {
 }
 
 function errorFidelityInventory() {
-  if (UPSTREAM_ERROR_FIXTURES.length !== 5) throw new Error('upstream error oracle must contain five fixtures');
-  if (ERROR_SURFACES.length !== 4) throw new Error('upstream error oracle must cover four public surfaces');
   return {
     schema_version: '1flowbase.ai-gateway-error-fidelity/v1',
     fixtures: UPSTREAM_ERROR_FIXTURES.map((row) => row.id),
     surfaces: ERROR_SURFACES,
-    rows: UPSTREAM_ERROR_FIXTURES.length * ERROR_SURFACES.length,
+    rows: ERROR_FIDELITY_ROWS.length,
+    row_ids: ERROR_FIDELITY_ROWS.map((row) => row.id),
   };
 }
 
@@ -100,15 +101,19 @@ function assertRequestFidelityAudit(evidence, { rawCanaries = [] } = {}) {
 }
 
 function assertErrorFidelityAudit(evidence) {
+  assertErrorFidelityRowInventory(evidence.rows ?? []);
   const rows = new Map((evidence.rows ?? []).map((row) => [`${row.fixture}:${row.surface}`, row]));
   for (const fixture of UPSTREAM_ERROR_FIXTURES) {
-    for (const surface of ERROR_SURFACES) {
+    for (const surface of fixture.surfaces ?? ERROR_SURFACES) {
       const row = rows.get(`${fixture.id}:${surface}`);
       if (!row) throw new Error(`error fidelity evidence omitted ${fixture.id}:${surface}`);
       assertUpstreamErrorFidelity(fixture, {
         nativeMessage: row.native_message,
         durableMessage: row.durable_message,
         clientMessages: [row.client_message],
+        nativeError: row.native_error,
+        durableErrorPayload: row.durable_error_payload,
+        clientErrors: row.client_error ? [row.client_error] : [],
       });
       if (fixture.id === 'retry' && row.attempts !== fixture.attempts) {
         throw new Error(`error retry evidence used ${row.attempts} attempts`);

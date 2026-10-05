@@ -25,7 +25,7 @@ function inspectClient(surface, records, success) {
   if (success ? (successCount !== 1 || failureCount !== 0 || messages.length !== 0) : (successCount !== 0 || failureCount !== 1 || messages.length !== 1)) {
     throw new Error(`${surface}: terminal/error cardinality mismatch (${successCount} success, ${failureCount} failure, ${messages.length} messages)`);
   }
-  return { messages, success_count: successCount, failure_count: failureCount, event_types: events.map((event) => event.type ?? event.object ?? 'error') };
+  return { messages, errors: events.filter((event) => event.type === 'error'), success_count: successCount, failure_count: failureCount, event_types: events.map((event) => event.type ?? event.object ?? 'error') };
 }
 
 async function observeClient(surface, target, fixture, traceId, retryKey) {
@@ -86,7 +86,7 @@ async function runGatewayErrorMatrix({ ready, mockSnapshot }, dependencies = {})
   const run = dependencies.observeRun ?? observeRun;
   const rows = [];
   for (const fixture of UPSTREAM_ERROR_FIXTURES) {
-    for (const surface of ERROR_SURFACES) {
+    for (const surface of fixture.surfaces ?? ERROR_SURFACES) {
       const row = { id: `${fixture.id}/${surface}`, fixture: fixture.id, surface, verdict: 'FAIL', attempts: [] };
       try {
         const target = ready.targets[surface === 'openai-chat-sse' ? 'openai_compatible' : surface === 'anthropic-sse' ? 'anthropic' : 'openai'];
@@ -123,6 +123,9 @@ async function runGatewayErrorMatrix({ ready, mockSnapshot }, dependencies = {})
               nativeMessage: persisted.native.error?.message,
               durableMessage: persisted.durable.error_payload?.message,
               clientMessages: projection.messages,
+              nativeError: persisted.native.error,
+              durableErrorPayload: persisted.durable.error_payload,
+              clientErrors: projection.errors,
             });
           }
           if (success && (persisted.native.error !== null || persisted.durable.error_payload !== null)) throw new Error('retry success retained an error');

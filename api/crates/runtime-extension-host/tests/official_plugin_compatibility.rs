@@ -186,8 +186,7 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
         );
         assert!(matches!(
             manifest.execution_mode,
-            PluginExecutionMode::ProcessPerCall
-                | PluginExecutionMode::StatefulProviderWorker
+            PluginExecutionMode::StatefulProviderWorker
                 | PluginExecutionMode::StatefulRuntimeWorker
         ));
         if manifest.plugin_id == "session_retry_distribution" {
@@ -200,15 +199,14 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
     assert_eq!(actual, expected);
     assert_eq!(
         modes,
-        BTreeSet::from([
-            "process_per_call",
-            "stateful_provider_worker",
-            "stateful_runtime_worker",
-        ])
+        BTreeSet::from(["stateful_provider_worker", "stateful_runtime_worker",])
     );
     assert_eq!(
         protocols,
-        BTreeSet::from(["stdio_json".to_string(), "stdio_json_worker".to_string()])
+        BTreeSet::from([
+            "stdio_json_multiplex_v1".to_string(),
+            "stdio_json_worker".to_string(),
+        ])
     );
 
     let host = RuntimeExtensionHost::new_with_artifact_resolver(
@@ -354,7 +352,7 @@ impl PluginDataPort for AffinityDataPort {
                     _ => {
                         return Err(extension_contracts::PluginDataError::invalid(
                             "fixture_operation",
-                        ))
+                        ));
                     }
                 }
             }

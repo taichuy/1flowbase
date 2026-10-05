@@ -290,6 +290,21 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
       "application_public_api",
     ),
     invocation(
+      "control-plane-client-trajectory-tests",
+      "control-plane",
+      "client_trajectory::_tests::",
+    ),
+    invocation(
+      "api-server-anthropic-error-projection-tests",
+      "api-server",
+      "routes::application_public_api::anthropic::error_projection::tests::",
+    ),
+    invocation(
+      "api-server-anthropic-stream-error-tests",
+      "api-server",
+      "routes::application_public_api::compat_sse::protocol_mappers::anthropic_stream::error_tests::",
+    ),
+    invocation(
       "control-plane-live-provider-error-tests",
       "control-plane",
       "provider_error_after_live_delta_drains_runtime_event_stream_forwarding",

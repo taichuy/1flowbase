@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { inspectClient, observeRun, runGatewayErrorMatrix } = require('../error-matrix');
-const { UPSTREAM_ERROR_FIXTURES, ERROR_SURFACES } = require('../../protocol-oracle/error-fidelity');
+const { UPSTREAM_ERROR_FIXTURES, ERROR_SURFACES, ERROR_FIDELITY_ROWS } = require('../../protocol-oracle/error-fidelity');
 
 function records(surface, message, success) {
   if (success) return surface === 'openai-chat-sse' ? [{ done: true }]
@@ -12,7 +12,7 @@ function records(surface, message, success) {
     : { type: 'error', error: { message } } }];
 }
 
-function fixtureDependencies(corrupt = false, websocketRecovery = false, omitSuccessfulWebsocketFallback = false) {
+function fixtureDependencies(corrupt = false, websocketRecovery = false, omitSuccessfulWebsocketFallback = false, standardMutation = null) {
   const entries = [];
   const runs = new Map();
   const keys = new Map();
@@ -23,35 +23,41 @@ function fixtureDependencies(corrupt = false, websocketRecovery = false, omitSuc
         const attempt = (keys.get(retryKey) ?? 0) + 1;
         keys.set(retryKey, attempt);
         const success = fixture.id === 'retry' && attempt === 2;
-        const message = fixture.body || 'upstream returned HTTP 503';
+        const message = fixture.anthropicError?.message ?? (fixture.body || 'upstream returned HTTP 503');
+        const facts = fixture.anthropicError;
+        const nativeDetails = facts ? { upstream_error: { ...facts }, raw_body: fixture.body } : null;
+        const providerDetails = facts ? { upstream_error: { ...facts }, raw_body: fixture.body } : null;
         entries.push({ sequence: entries.length + 1, event: 'arrival', transport: surface, nonce: `mock-${String(entries.length + 1).padStart(6, '0')}` });
         if (surface === 'responses-websocket' && (websocketRecovery || (success && !omitSuccessfulWebsocketFallback))) {
           entries.push({ sequence: entries.length + 1, event: 'arrival', transport: 'responses-sse', nonce: `mock-${String(entries.length + 1).padStart(6, '0')}` });
         }
         if (!success) entries.push({ sequence: entries.length + 1, event: 'settled', errorFixture: fixture.id, status: fixture.status });
-        runs.set(traceId, { run_id: traceId, native: { status: success ? 'succeeded' : 'failed', error: success ? null : { message } }, durable: { error_payload: success ? null : { message: corrupt ? message.trim() : message, ...(websocketRecovery && surface === 'responses-websocket' ? { ai_native_recovery: { provider_attempts_consumed: 2 } } : {}) } } });
-        return { http_status: 200, records: records(surface, message, success) };
+        runs.set(traceId, { run_id: traceId, native: { status: success ? 'succeeded' : 'failed', error: success ? null : { message, ...(nativeDetails ? { details: nativeDetails } : {}) } }, durable: { error_payload: success ? null : { message: corrupt ? message.trim() : message, ...(providerDetails ? { provider_details: providerDetails } : {}), ...(websocketRecovery && surface === 'responses-websocket' ? { ai_native_recovery: { provider_attempts_consumed: 2 } } : {}) } } });
+        const clientRecords = facts ? [{ data: { type: 'error', error: { type: facts.type, message }, request_id: facts.request_id } }] : records(surface, message, success);
+        if (facts && standardMutation) standardMutation(runs.get(traceId), clientRecords[0].data);
+        return { http_status: 200, records: clientRecords };
       },
       async observeRun(_target, traceId) { return runs.get(traceId); },
     },
   };
 }
 
-test('Root #1998 P7: executes all 20 online rows and four separate failed/recovered retry pairs', async () => {
+test('Root #1998 P7: executes finite online rows including standard Anthropic error and four separate failed/recovered retry pairs', async () => {
   const fixture = fixtureDependencies();
   const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
   assert.equal(result.verdict, 'PASS');
-  assert.deepEqual(result.rows.map((row) => row.id), UPSTREAM_ERROR_FIXTURES.flatMap((item) => ERROR_SURFACES.map((surface) => `${item.id}/${surface}`)));
-  assert.equal(result.rows.reduce((sum, row) => sum + row.attempts.length, 0), 24);
-  assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.run_id))).size, 24);
-  assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.upstream_nonce))).size, 24);
+  assert.deepEqual(result.rows.map((row) => row.id), ERROR_FIDELITY_ROWS.map((row) => row.id));
+  const expectedAttempts = ERROR_FIDELITY_ROWS.reduce((sum, row) => sum + UPSTREAM_ERROR_FIXTURES.find((item) => item.id === row.fixture).attempts, 0);
+  assert.equal(result.rows.reduce((sum, row) => sum + row.attempts.length, 0), expectedAttempts);
+  assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.run_id))).size, expectedAttempts);
+  assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.upstream_nonce))).size, expectedAttempts);
 });
 
 test('WebSocket recovery counts controlled upstream attempts from the durable receipt', async () => {
   const fixture = fixtureDependencies(false, true);
   const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
   assert.equal(result.verdict, 'PASS');
-  assert.equal(result.rows.length, 20);
+  assert.equal(result.rows.length, ERROR_FIDELITY_ROWS.length);
 });
 
 test('WebSocket retry success rejects a missing HTTP fallback', async () => {
@@ -64,7 +70,7 @@ test('Root #1998 P7 authenticity: durable whitespace loss fails rows while remai
   const fixture = fixtureDependencies(true);
   const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
   assert.equal(result.verdict, 'FAIL');
-  assert.equal(result.rows.length, 20);
+  assert.equal(result.rows.length, ERROR_FIDELITY_ROWS.length);
   assert.ok(result.rows.filter((row) => row.fixture === 'json').every((row) => row.verdict === 'FAIL' && /exact upstream body/u.test(row.error)));
   assert.ok(result.rows.filter((row) => row.fixture === 'empty').every((row) => row.verdict === 'PASS'));
 });
@@ -128,4 +134,26 @@ test('error matrix reads persisted error payload from trace export, not metadata
   assert.ok(calls.some(({ url }) => url.endsWith(`/${runId}/export`)));
   assert.ok(calls.every(({ url }) => !url.endsWith('/overview')));
   assert.deepEqual(calls.find(({ url }) => url.endsWith(`/${runId}/export`)).options.headers, target.durable.list_runs.headers);
+});
+
+test('standard Anthropic online row independently rejects structured and raw body corruption', async () => {
+  const mutations = [
+    (run) => { run.native.error.message = 'wrong'; },
+    (run) => { run.durable.error_payload.message = 'wrong'; },
+    (run) => { run.native.error.details.raw_body = run.native.error.details.raw_body.trim(); },
+    (run) => { run.durable.error_payload.provider_details.raw_body = 'wrong'; },
+    ...['message', 'type', 'request_id'].flatMap((field) => [
+      (run) => { run.native.error.details.upstream_error[field] = 'wrong'; },
+      (run) => { run.durable.error_payload.provider_details.upstream_error[field] = 'wrong'; },
+      (_run, client) => { (field === 'request_id' ? client : client.error)[field] = 'wrong'; },
+    ]),
+  ];
+  for (const mutation of mutations) {
+    const fixture = fixtureDependencies(false, false, false, mutation);
+    const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
+    assert.equal(result.verdict, 'FAIL');
+    const failed = result.rows.filter((row) => row.verdict === 'FAIL');
+    assert.deepEqual(failed.map((row) => row.id), ['anthropic-standard/anthropic-sse']);
+    assert.match(failed[0].error, /message|type|request_id|raw_body/u);
+  }
 });
