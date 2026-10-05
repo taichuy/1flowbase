@@ -93,10 +93,24 @@ impl IntoResponse for AnthropicRouteError {
                 StatusCode::BAD_REQUEST,
                 error_projection::project(None, StatusCode::BAD_REQUEST, &error.error_type, &error.message),
             ),
-            AnthropicRouteError::Native(error) => (
-                error.status,
-                error_projection::project(error.runtime_error.as_deref(), error.status, "api_error", &error.message),
-            ),
+            AnthropicRouteError::Native(error) => {
+                // Runtime facts use the Anthropic projection; local admission
+                // failures retain the business reason carried by NativeApiError.
+                let fallback_code = if error.runtime_error.is_some() {
+                    "api_error"
+                } else {
+                    error.code
+                };
+                (
+                    error.status,
+                    error_projection::project(
+                        error.runtime_error.as_deref(),
+                        error.status,
+                        fallback_code,
+                        &error.message,
+                    ),
+                )
+            }
             AnthropicRouteError::RequiredAction => (
                 StatusCode::CONFLICT,
                 error_projection::project(

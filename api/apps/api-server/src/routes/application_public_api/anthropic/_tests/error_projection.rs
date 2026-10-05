@@ -78,3 +78,67 @@ async fn http_boundary_preserves_status_type_message_and_request_id() {
     assert_eq!(body["error"]["message"], "Update Claude Code to continue.");
     assert_eq!(body["request_id"], "req_client");
 }
+
+#[tokio::test]
+async fn http_boundary_retains_local_admission_error_codes() {
+    use crate::routes::application_public_api::{
+        anthropic::AnthropicRouteError, native::NativeApiError,
+    };
+    use axum::response::IntoResponse;
+
+    for (status, code, message) in [
+        (
+            StatusCode::CONFLICT,
+            "application_not_published",
+            "application is not published",
+        ),
+        (
+            StatusCode::UNAUTHORIZED,
+            "not_authenticated",
+            "application API key is required",
+        ),
+    ] {
+        let response =
+            AnthropicRouteError::Native(NativeApiError::new(status, code, message)).into_response();
+        assert_eq!(response.status(), status);
+        assert!(!response.headers().contains_key("request-id"));
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            body,
+            json!({"type": "error", "error": {"type": code, "message": message}})
+        );
+    }
+}
+
+#[tokio::test]
+async fn http_boundary_keeps_runtime_rate_limit_status_projection() {
+    use crate::routes::application_public_api::{
+        anthropic::AnthropicRouteError, native::NativeApiError,
+    };
+    use axum::response::IntoResponse;
+
+    let mut native = NativeApiError::new(
+        StatusCode::TOO_MANY_REQUESTS,
+        "runtime_error",
+        "retry later",
+    );
+    native.runtime_error = Some(Box::new(NativeError {
+        code: "rate_limited".to_string(),
+        message: "retry later".to_string(),
+        details: json!({"configuration": "SECRET"}),
+    }));
+    let response = AnthropicRouteError::Native(native).into_response();
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let bytes = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        body,
+        json!({"type": "error", "error": {"type": "rate_limit_error", "message": "retry later"}})
+    );
+    assert!(!body.to_string().contains("SECRET"));
+}
