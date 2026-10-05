@@ -1,5 +1,7 @@
 # 把 1flowbase 连接到 ChatGPT：自动发现 → API Key 授权
 
+[English version](chatgpt-mcp.en.md)
+
 在 ChatGPT 填写 MCP 服务器地址、选择 OAuth。ChatGPT 自动读取认证配置；连接时打开 **1flowbase 的授权页面**。你在该页面填写自己的 **1flowbase 用户 API Key**，确认授权后返回 ChatGPT。
 
 ```text
