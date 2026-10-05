@@ -31,7 +31,11 @@ test('preserves public authority through an HTTPS tunnel and local HTTP', async 
         middlewareMode: true,
         allowedHosts: ['tunnel.example.com'],
         hmr: false,
-        proxy: { '/api': proxy, '/.well-known/oauth-': proxy }
+        proxy: {
+          '/api': proxy,
+          '/.well-known/oauth-': proxy,
+          '/.well-known/openid-configuration': proxy
+        }
       }
     });
     ingress = createHttpServer(vite.middlewares);
@@ -68,7 +72,10 @@ test('preserves public authority through an HTTPS tunnel and local HTTP', async 
     ];
     for (const route of [
       '/api/public/mcp-oauth/config',
-      '/.well-known/oauth-authorization-server'
+      '/.well-known/oauth-authorization-server/api/public/mcp-oauth',
+      '/.well-known/openid-configuration/api/public/mcp-oauth',
+      '/api/public/mcp-oauth/.well-known/openid-configuration',
+      '/api/public/mcp-oauth/protected-resource/1flowbase'
     ]) {
       for (const { headers, expected } of cases) {
         const actual = await new Promise((resolve, reject) => {

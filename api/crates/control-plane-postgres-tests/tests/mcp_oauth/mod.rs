@@ -549,8 +549,8 @@ fn metadata_challenge_resource_encoding_handles_reserved_and_negative_uri_cases(
         assert_eq!(
             metadata,
             format!(
-                "{ISSUER}/.well-known/oauth-protected-resource{}",
-                &resource[ISSUER.len()..]
+                "{ISSUER}/api/public/mcp-oauth/protected-resource/{}",
+                &resource[format!("{ISSUER}/api/mcp/").len()..]
             )
         );
         assert!(!metadata.contains(['?', '#', '"', ' ']));
@@ -558,7 +558,7 @@ fn metadata_challenge_resource_encoding_handles_reserved_and_negative_uri_cases(
     }
     assert_eq!(
         oauth::resource_metadata_url(ISSUER, "team/name").unwrap(),
-        format!("{ISSUER}/.well-known/oauth-protected-resource/api/mcp/team%2Fname")
+        format!("{ISSUER}/api/public/mcp-oauth/protected-resource/team%2Fname")
     );
     for instance in ["", ".", ".."] {
         assert!(oauth::resource_metadata_url(ISSUER, instance).is_err());

@@ -1,20 +1,20 @@
 use super::*;
 #[test]
-fn issuer_is_an_explicit_origin_and_cannot_be_a_host_header_or_path() {
+fn public_origin_requires_https_or_development_loopback_and_has_no_path() {
     assert_eq!(
-        validate_issuer("https://example.com/", true).unwrap(),
+        validate_origin("https://example.com/", true).unwrap(),
         "https://example.com"
     );
-    assert!(validate_issuer("http://example.com", false).is_err());
-    assert!(validate_issuer("http://localhost:8080", true).is_err());
-    assert!(validate_issuer("http://localhost:8080", false).is_ok());
+    assert!(validate_origin("http://example.com", false).is_err());
+    assert!(validate_origin("http://localhost:8080", true).is_err());
+    assert!(validate_origin("http://localhost:8080", false).is_ok());
     for url in [
         "https://user@example.com",
         "https://example.com/path",
         "https://example.com?x=1",
         "https://example.com#frag",
     ] {
-        assert!(validate_issuer(url, true).is_err());
+        assert!(validate_origin(url, true).is_err());
     }
 }
 #[test]
@@ -73,8 +73,8 @@ fn metadata_uri_encodes_instance_without_query_fragment_or_header_injection() {
         assert_eq!(
             metadata,
             format!(
-                "{issuer}/.well-known/oauth-protected-resource{}",
-                &resource[issuer.len()..]
+                "{issuer}/api/public/mcp-oauth/protected-resource/{}",
+                &resource[format!("{issuer}/api/mcp/").len()..]
             )
         );
         let url = url::Url::parse(&metadata).unwrap();

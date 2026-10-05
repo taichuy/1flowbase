@@ -20,10 +20,10 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 const COOKIE: &str = "mcp_oauth_browser";
-const PREFIX: &str = "/api/public/mcp-oauth";
+const PREFIX: &str = oauth::AUTHORIZATION_SERVER_PATH;
 type Service = crate::app_state::ApiMcpOAuthService;
 mod origin;
-pub(crate) use origin::request_issuer;
+pub(crate) use origin::request_origin;
 #[derive(Debug)]
 pub struct ProtocolError(pub OAuthError);
 impl From<OAuthError> for ProtocolError {
@@ -60,7 +60,7 @@ fn no_store(mut r: Response) -> Response {
     r
 }
 fn service(state: &ApiState, headers: &HeaderMap) -> Result<Service, ProtocolError> {
-    Ok(Service::new(state.store.clone(), request_issuer(headers)?))
+    Ok(Service::new(state.store.clone(), request_origin(headers)?))
 }
 fn browser(headers: &HeaderMap) -> Result<String, ProtocolError> {
     let value = headers
@@ -81,7 +81,7 @@ fn json_input<T: serde::de::DeserializeOwned>(
     body: &Bytes,
 ) -> Result<T, ProtocolError> {
     if headers.get(header::ORIGIN).and_then(|h| h.to_str().ok())
-        != Some(request_issuer(headers)?.as_str())
+        != Some(request_origin(headers)?.as_str())
         || headers
             .get(header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
@@ -119,7 +119,23 @@ async fn rate_limit(state: &ApiState, key: &str, limit: u64) -> Result<(), Proto
 }
 pub(crate) fn route_assembly() -> ExternalRouteAssembly<Arc<ApiState>> {
     ExternalRouteAssembly::new()
-        .route("/.well-known/oauth-authorization-server", get(metadata))
+        .route(
+            "/.well-known/oauth-authorization-server/api/public/mcp-oauth",
+            get(metadata),
+        )
+        .route(
+            "/.well-known/openid-configuration/api/public/mcp-oauth",
+            get(metadata),
+        )
+        // MCP discovery also supports OIDC path appending after root discovery fails.
+        .route(
+            "/api/public/mcp-oauth/.well-known/openid-configuration",
+            get(metadata),
+        )
+        .route(
+            "/api/public/mcp-oauth/protected-resource/:instance_id",
+            get(protected_resource),
+        )
         .route(
             "/.well-known/oauth-protected-resource/api/mcp/:instance_id",
             get(protected_resource),
@@ -133,15 +149,15 @@ pub(crate) fn route_assembly() -> ExternalRouteAssembly<Arc<ApiState>> {
         .route("/api/public/mcp-oauth/token", post(token))
 }
 async fn metadata(headers: HeaderMap) -> Result<Response, ProtocolError> {
-    let i = request_issuer(&headers)?;
-    Ok(no_store(Json(json!({"issuer":i,"authorization_endpoint":format!("{i}{PREFIX}/authorize"),"token_endpoint":format!("{i}{PREFIX}/token"),"registration_endpoint":format!("{i}{PREFIX}/register"),"response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],"token_endpoint_auth_methods_supported":["none"],"code_challenge_methods_supported":["S256"],"scopes_supported":[oauth::SCOPE],"authorization_response_iss_parameter_supported":true})).into_response()))
+    let i = request_origin(&headers)?;
+    Ok(no_store(Json(json!({"issuer":oauth::authorization_server_url(&i),"authorization_endpoint":format!("{i}{PREFIX}/authorize"),"token_endpoint":format!("{i}{PREFIX}/token"),"registration_endpoint":format!("{i}{PREFIX}/register"),"response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],"token_endpoint_auth_methods_supported":["none"],"code_challenge_methods_supported":["S256"],"scopes_supported":[oauth::SCOPE],"authorization_response_iss_parameter_supported":true})).into_response()))
 }
 async fn protected_resource(
     headers: HeaderMap,
     Path(instance): Path<String>,
 ) -> Result<Response, ProtocolError> {
-    let i = request_issuer(&headers)?;
-    Ok(no_store(Json(json!({"resource":oauth::resource_url(&i,&instance)?,"authorization_servers":[i],"scopes_supported":[oauth::SCOPE],"bearer_methods_supported":["header"]})).into_response()))
+    let i = request_origin(&headers)?;
+    Ok(no_store(Json(json!({"resource":oauth::resource_url(&i,&instance)?,"authorization_servers":[oauth::authorization_server_url(&i)],"scopes_supported":[oauth::SCOPE],"bearer_methods_supported":["header"]})).into_response()))
 }
 #[derive(Deserialize)]
 struct InstanceQuery {
@@ -152,7 +168,7 @@ async fn config(
     query: Result<Query<InstanceQuery>, QueryRejection>,
 ) -> Result<Response, ProtocolError> {
     let Query(q) = query.map_err(|_| invalid())?;
-    let url = oauth::resource_url(&request_issuer(&headers)?, &q.instance_id)?;
+    let url = oauth::resource_url(&request_origin(&headers)?, &q.instance_id)?;
     Ok(no_store(Json(json!({"enabled":true,"server_url":url,"registration_method":"dynamic_client_registration","scope":oauth::SCOPE})).into_response()))
 }
 async fn register(
@@ -186,7 +202,7 @@ async fn authorize(
     rate_limit(&state, "authorization", 120).await?;
     let cookie = oauth::random_token();
     let id = service(&state, &headers)?.begin(q, &cookie).await?;
-    let i = request_issuer(&headers)?;
+    let i = request_origin(&headers)?;
     let secure = if i.starts_with("https:") {
         "; Secure"
     } else {

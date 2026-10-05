@@ -27,12 +27,12 @@ API Key 不填在 ChatGPT 的客户端 ID 或客户端密钥里，也不放进�
 
 ![第一步：在 1flowbase 的 ChatGPT 连接配置中复制服务器 URL](assets/chatgpt-mcp/connect-chatgpt.png)
 
-上图是本地实测界面，`127.0.0.1` 仅用于展示。ChatGPT 实际连接要使用你公开 HTTPS 部署的 URL。
+上图来自 `https://1flowbase.taichuy.cn` 的公网实测界面。请使用自己部署的公开 HTTPS 地址。
 
 地址格式为 `https://你的域名/api/mcp/你的实例ID`。例如：
 
 ```text
-https://1flowbase2demo.taichuy.com/api/mcp/1flowbase
+https://1flowbase.taichuy.cn/api/mcp/1flowbase
 ```
 
 以弹窗实际复制的地址为准。准备一个有效的用户 API Key；该 Key 所属的工作区应包含要连接的 MCP 实例。
@@ -106,7 +106,7 @@ https://1flowbase2demo.taichuy.com/api/mcp/1flowbase
 | 现象 | 下一步 |
 | --- | --- |
 | 1flowbase 显示「此部署尚未启用 ChatGPT 授权」 | 管理员检查服务版本和部署状态，见下面部署检查 |
-| ChatGPT 发现不到 OAuth 端点 | 检查 `/.well-known/oauth-*` 是否返回 JSON；404 时检查代理路由 |
+| ChatGPT 发现不到 OAuth 端点 | 检查下文两个 `/api/public/mcp-oauth/` 元数据地址是否返回 JSON；根目录 `/.well-known/` 返回 404 不一定影响新版客户端 |
 | 元数据或 MCP 请求返回 Cloudflare 挑战 / 403 | 调整必要机器请求的 WAF 策略，保留 MCP 鉴权 |
 | 出现手填客户端 ID／密钥的要求 | 核对是否选择 DCR，而不是手动配置客户端 |
 | 授权页没有打开 | 确认创建后是否还需要点击连接或授权；检查 ChatGPT 错误提示 |
@@ -121,7 +121,7 @@ https://1flowbase2demo.taichuy.com/api/mcp/1flowbase
 
 部署包含本次默认启用调整的 API、前端和正式数据库迁移。**无需配置 OAuth 环境变量，也无需手动设置公开地址。**
 
-生产使用 HTTPS，Web、API 和授权页使用同一个公开网站地址。服务根据当前请求的网站域名生成认证地址；从哪个域名连接，就在该域名完成授权与令牌调用。公开地址改变后，应在 ChatGPT 重新建立连接。
+生产使用 HTTPS，Web、API 和授权页使用同一个公开网站地址。服务根据当前请求的网站域名生成认证地址；从哪个域名连接，就在该域名完成授权与令牌调用。公开地址改变后，应在 ChatGPT 重新建立连接。本次授权服务标识由网站根地址改为 `/api/public/mcp-oauth`，已有 ChatGPT 连接也应重新连接以更新发现配置。
 
 ### 2. 核对反向代理路由
 
@@ -130,10 +130,9 @@ Web、API 和授权页使用同一个公开网站地址：
 | 路径 | 转发目标 |
 | --- | --- |
 | `/api/` | API 服务 |
-| `/.well-known/oauth-*` | API 服务，不能返回前端 HTML |
 | `/mcp/authorize` | Web 前端 |
 
-仓库 Nginx 和 Vite 配置已包含对应路由，并保留外部访问的 `Host`。自建反向代理和旧版线上配置也需要同步；HTTPS 代理应覆盖 `X-Forwarded-Proto` 为正确的外部协议，不能把内部 API 主机名传成公开域名。Cloudflare/WAF 不能要求 ChatGPT 的元数据、注册、令牌及 MCP 机器请求完成浏览器挑战。
+仓库 Nginx 和 Vite 配置已包含对应路由。新版自动发现入口放在 `/api/` 下，不要求修改面板默认的根目录 `/.well-known/` 证书验证规则，也不需要新增 OAuth 环境配置。反向代理仍需保留外部访问的域名；HTTPS 代理应覆盖 `X-Forwarded-Proto` 为正确的外部协议，不能把内部 API 主机名传成公开域名。Cloudflare/WAF 不能要求 ChatGPT 的元数据、注册、令牌及 MCP 机器请求完成浏览器挑战。
 
 ### 3. 在浏览器检查是否真的启用
 
@@ -148,14 +147,32 @@ https://你的域名/api/public/mcp-oauth/config?instance_id=你的实例ID
 再打开：
 
 ```text
-https://你的域名/.well-known/oauth-authorization-server
-https://你的域名/.well-known/oauth-protected-resource/api/mcp/你的实例ID
+https://你的域名/api/public/mcp-oauth/.well-known/openid-configuration
+https://你的域名/api/public/mcp-oauth/protected-resource/你的实例ID
 ```
 
-两者都应返回 JSON。授权服务器元数据应包含正确的 HTTPS 地址：
+两者都应返回 JSON。
+
+自动发现过程是：
+
+```text
+ChatGPT 请求 /api/mcp/实例ID
+  → 401 响应的 WWW-Authenticate 指定 /api/public/mcp-oauth/protected-resource/实例ID
+  → 资源元数据指定授权服务 https://你的域名/api/public/mcp-oauth
+  → 客户端按协议尝试发现地址
+  → 根目录发现失败时，继续读取 /api/public/mcp-oauth/.well-known/openid-configuration
+  → 读取授权、令牌和动态注册端点
+```
+
+`/.well-known` 是协议规定的发现路径名称；这里使用 MCP 规范支持的 OpenID Connect 路径追加方式，把发现入口放在授权服务路径下。它只提供 OAuth 端点信息，不代表用户要申请 `openid` 权限，也不增加 OpenID 登录或 ID Token。
+
+面板若接管根目录 `/.well-known/`，前两个根目录发现请求可能返回 404；支持 MCP 2025-11-25 发现顺序的客户端会继续尝试上述 `/api/` 地址。若旧客户端遇到第一次 404 就停止，应升级客户端或为标准根目录发现配置转发。不能保证所有旧客户端都支持这条发现流程。
+
+授权服务器元数据应包含正确的 HTTPS 地址：
 
 | 字段 | 当前实现的路径 |
 | --- | --- |
+| `issuer` | `https://你的域名/api/public/mcp-oauth` |
 | `authorization_endpoint` | `/api/public/mcp-oauth/authorize` |
 | `token_endpoint` | `/api/public/mcp-oauth/token` |
 | `registration_endpoint` | `/api/public/mcp-oauth/register` |
@@ -176,10 +193,10 @@ https://你的域名/.well-known/oauth-protected-resource/api/mcp/你的实例ID
 
 本教程参考当前 1flowbase 的授权流程、OpenAI 官方认证文档，以及本地 AgentDock 的自动发现、动态客户端注册和授权页面实现。
 
-教程中的 1flowbase 截图来自本次本地真实 API 与浏览器操作；使用临时 API Key 授权，完成后撤销。ChatGPT 创建界面的图片为用户提供的实际截图。
+教程中的 1flowbase 截图来自本次通过公网域名访问真实开发服务的浏览器操作；使用临时 API Key 授权，完成后撤销。ChatGPT 创建界面的图片为用户提供的实际截图。
 
-本地协议验证使用测试客户端，不能代替真人 ChatGPT 账号的创建、授权回跳和工具调用验证。线上仍需部署更新后的服务及代理配置，再按第五步验证连接。
+已通过公网验证：根目录发现返回 404 后，测试客户端通过 `/api/` 下的发现入口完成 API Key 授权、回跳捕获、工具列举和只读调用、刷新及撤销。该验证不能代替真人 ChatGPT 账号的创建、授权回跳和工具调用验证。线上仍需部署更新后的 API 和前端，再按第五步验证连接。只要现有代理能正确透传 `/api/` 与授权页，就无需为本次发现路径调整修改公网 Nginx。
 
 源码与更新：[仓库接入说明](https://github.com/taichuy/1flowbase/blob/dev/docs/integrations/chatgpt-mcp.md)。
 
-参考：[OpenAI MCP 认证要求](https://developers.openai.com/apps-sdk/build/auth/)；[1flowbase 实现与验收记录](https://github.com/taichuy/1flowbase/issues/2249)。
+参考：[MCP 授权与发现顺序](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)；[OpenAI MCP 认证要求](https://developers.openai.com/apps-sdk/build/auth/)；[1flowbase 实现与验收记录](https://github.com/taichuy/1flowbase/issues/2249)。

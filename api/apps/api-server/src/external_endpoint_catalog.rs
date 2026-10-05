@@ -214,6 +214,9 @@ pub(crate) enum ExternalEndpointCatalogError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ApprovedExternalControl {
     OAuthMetadata,
+    OAuthOidcMetadata,
+    OAuthApiMetadata,
+    OAuthApiResource,
     OAuthResource,
     OAuthConfig,
     OAuthRegister,
@@ -238,8 +241,11 @@ pub(crate) enum ApprovedExternalControl {
 }
 
 impl ApprovedExternalControl {
-    const ALL: [Self; 21] = [
+    const ALL: [Self; 24] = [
         Self::OAuthMetadata,
+        Self::OAuthOidcMetadata,
+        Self::OAuthApiMetadata,
+        Self::OAuthApiResource,
         Self::OAuthResource,
         Self::OAuthConfig,
         Self::OAuthRegister,
@@ -267,7 +273,22 @@ impl ApprovedExternalControl {
             Self::OAuthMetadata => ExternalEndpointContribution::protocol_control_http(
                 "mcp-oauth-protocol-control",
                 "GET",
-                "/.well-known/oauth-authorization-server",
+                "/.well-known/oauth-authorization-server/api/public/mcp-oauth",
+            ),
+            Self::OAuthOidcMetadata => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/.well-known/openid-configuration/api/public/mcp-oauth",
+            ),
+            Self::OAuthApiMetadata => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/.well-known/openid-configuration",
+            ),
+            Self::OAuthApiResource => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/protected-resource/:instance_id",
             ),
             Self::OAuthResource => ExternalEndpointContribution::protocol_control_http(
                 "mcp-oauth-protocol-control",

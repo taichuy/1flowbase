@@ -495,7 +495,7 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                     .and_then(|v| v.to_str().ok())
                     .and_then(|v| v.strip_prefix("Bearer "));
                 if let Some(token) = token.filter(|v| v.starts_with("mcp_at_")) {
-                    let issuer = crate::routes::mcp_oauth::request_issuer(&credential.headers)?;
+                    let issuer = crate::routes::mcp_oauth::request_origin(&credential.headers)?;
                     let actor = control_plane::mcp_oauth::McpOAuthService::new(
                         credential.state.store.clone(),
                         issuer,

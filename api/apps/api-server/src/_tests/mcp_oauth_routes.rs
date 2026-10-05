@@ -120,7 +120,9 @@ async fn approve(app: &Router, client: &str, key: &str) -> String {
     assert!(url
         .query_pairs()
         .any(|(k, v)| k == "state" && v == "original-state"));
-    assert!(url.query_pairs().any(|(k, v)| k == "iss" && v == ISSUER));
+    assert!(url
+        .query_pairs()
+        .any(|(k, v)| k == "iss" && v == format!("{ISSUER}/api/public/mcp-oauth")));
     url.query_pairs()
         .find(|(k, _)| k == "code")
         .unwrap()
@@ -183,7 +185,7 @@ async fn oauth_pkce_refresh_replay_resource_and_original_pat_contract() {
     assert!(challenge.headers()["www-authenticate"]
         .to_str()
         .unwrap()
-        .contains("/.well-known/oauth-protected-resource/api/mcp/taichuy"));
+        .contains("/api/public/mcp-oauth/protected-resource/taichuy"));
     let code = approve(&app, &client, &key).await;
     let wrong = token(
         &app,
@@ -393,7 +395,7 @@ async fn oauth_discovery_is_enabled_without_configuration_and_registration_stays
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/.well-known/oauth-authorization-server")
+                    .uri("/api/public/mcp-oauth/.well-known/openid-configuration")
                     .header("host", host)
                     .body(Body::empty())
                     .unwrap(),
@@ -402,7 +404,7 @@ async fn oauth_discovery_is_enabled_without_configuration_and_registration_stays
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let metadata = json_response(response).await;
-        assert_eq!(metadata["issuer"], origin);
+        assert_eq!(metadata["issuer"], format!("{origin}/api/public/mcp-oauth"));
         assert_eq!(
             metadata["registration_endpoint"],
             format!("{origin}/api/public/mcp-oauth/register")
@@ -415,7 +417,7 @@ async fn oauth_discovery_is_enabled_without_configuration_and_registration_stays
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/.well-known/oauth-protected-resource/api/mcp/taichuy")
+                    .uri("/api/public/mcp-oauth/protected-resource/taichuy")
                     .header("host", host)
                     .body(Body::empty())
                     .unwrap(),
@@ -424,7 +426,10 @@ async fn oauth_discovery_is_enabled_without_configuration_and_registration_stays
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let resource = json_response(response).await;
-        assert_eq!(resource["authorization_servers"], json!([origin]));
+        assert_eq!(
+            resource["authorization_servers"],
+            json!([format!("{origin}/api/public/mcp-oauth")])
+        );
         assert_eq!(resource["resource"], format!("{origin}/api/mcp/taichuy"));
     }
     let rejected = post(
@@ -533,6 +538,97 @@ async fn oauth_request_and_tokens_cannot_move_between_public_origins() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        invoke(&app, tokens["access_token"].as_str().unwrap(), "taichuy")
+            .await
+            .status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn oauth_discovery_survives_root_well_known_interception() {
+    let (_state, app, key, client) = setup().await;
+    for path in [
+        "/.well-known/oauth-authorization-server/api/public/mcp-oauth",
+        "/.well-known/openid-configuration/api/public/mcp-oauth",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("host", "oauth.example.test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json_response(response).await["issuer"],
+            format!("{ISSUER}/api/public/mcp-oauth")
+        );
+    }
+    // Model the hosting panel's root-only certificate validation location.
+    let app = app.layer(axum::middleware::from_fn(
+        |request: axum::extract::Request, next: axum::middleware::Next| async move {
+            if request.uri().path().starts_with("/.well-known/") {
+                return axum::response::IntoResponse::into_response(StatusCode::NOT_FOUND);
+            }
+            next.run(request).await
+        },
+    ));
+    let challenge = invoke(&app, "invalid", "taichuy").await;
+    assert_eq!(challenge.status(), StatusCode::UNAUTHORIZED);
+    let header = challenge.headers()["www-authenticate"].to_str().unwrap();
+    let resource_metadata = header
+        .split("resource_metadata=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    let resource_metadata = url::Url::parse(resource_metadata).unwrap();
+    let get = |path: String| {
+        let app = app.clone();
+        async move {
+            app.oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("host", "oauth.example.test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+        }
+    };
+    let response = get(resource_metadata.path().to_owned()).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let resource = json_response(response).await;
+    assert_eq!(resource["resource"], format!("{ISSUER}/api/mcp/taichuy"));
+    let issuer = resource["authorization_servers"][0].as_str().unwrap();
+    assert_eq!(issuer, format!("{ISSUER}/api/public/mcp-oauth"));
+    let issuer_path = url::Url::parse(issuer).unwrap().path().to_owned();
+    // MCP 2025-11-25 specifies this priority order for path-bearing issuers.
+    for discovery in ["oauth-authorization-server", "openid-configuration"] {
+        assert_eq!(
+            get(format!("/.well-known/{discovery}{issuer_path}"))
+                .await
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    let response = get(format!("{issuer_path}/.well-known/openid-configuration")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let metadata = json_response(response).await;
+    assert_eq!(metadata["issuer"], issuer);
+    assert_eq!(metadata["token_endpoint"], format!("{issuer}/token"));
+    let code = approve(&app, &client, &key).await;
+    let response = exchange(&app, &client, &code).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let tokens = json_response(response).await;
     assert_eq!(
         invoke(&app, tokens["access_token"].as_str().unwrap(), "taichuy")
             .await

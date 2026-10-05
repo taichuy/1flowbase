@@ -120,7 +120,7 @@ async fn handle_mcp_request(
         )
         .await
         .map_err(|_| {
-            if let Some(metadata_url) = crate::routes::mcp_oauth::request_issuer(&headers)
+            if let Some(metadata_url) = crate::routes::mcp_oauth::request_origin(&headers)
                 .ok()
                 .and_then(|issuer| {
                     control_plane::mcp_oauth::resource_metadata_url(&issuer, &instance_id).ok()

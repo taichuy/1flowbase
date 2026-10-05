@@ -13,6 +13,11 @@ use time::OffsetDateTime;
 use url::Url;
 use uuid::Uuid;
 
+pub const AUTHORIZATION_SERVER_PATH: &str = "/api/public/mcp-oauth";
+pub fn authorization_server_url(origin: &str) -> String {
+    format!("{origin}{AUTHORIZATION_SERVER_PATH}")
+}
+
 pub const SCOPE: &str = "mcp:invoke";
 const REQUEST_SECONDS: i64 = 600;
 const GRANT_SECONDS: i64 = 30 * 86400;
@@ -63,8 +68,8 @@ pub fn now() -> i64 {
     OffsetDateTime::now_utc().unix_timestamp()
 }
 
-pub fn validate_issuer(value: &str, production: bool) -> std::result::Result<String, String> {
-    let url = Url::parse(value).map_err(|_| "invalid MCP OAuth issuer".to_owned())?;
+pub fn validate_origin(value: &str, production: bool) -> std::result::Result<String, String> {
+    let url = Url::parse(value).map_err(|_| "invalid MCP OAuth origin".to_owned())?;
     let loopback = matches!(
         url.host_str(),
         Some("localhost" | "127.0.0.1" | "[::1]" | "::1")
@@ -78,33 +83,38 @@ pub fn validate_issuer(value: &str, production: bool) -> std::result::Result<Str
         || url.fragment().is_some()
     {
         return Err(
-            "MCP OAuth issuer must be a trusted HTTPS origin (HTTP loopback is development-only)"
+            "MCP OAuth origin must be a trusted HTTPS origin (HTTP loopback is development-only)"
                 .into(),
         );
     }
     Ok(url.origin().ascii_serialization())
 }
-pub fn resource_url(issuer: &str, instance: &str) -> Result<String> {
+pub fn resource_url(origin: &str, instance: &str) -> Result<String> {
     if instance.trim().is_empty() || instance.len() > 255 || instance == "." || instance == ".." {
         return Err(OAuthError::invalid());
     }
-    let mut url = Url::parse(issuer).map_err(|_| OAuthError::invalid())?;
+    let mut url = Url::parse(origin).map_err(|_| OAuthError::invalid())?;
     url.path_segments_mut()
         .map_err(|_| OAuthError::invalid())?
         .extend(["api", "mcp", instance]);
     Ok(url.to_string())
 }
-/// RFC9728 path-aware metadata discovery uses the exact resource path encoding.
-pub fn resource_metadata_url(issuer: &str, instance: &str) -> Result<String> {
-    let resource = resource_url(issuer, instance)?;
+/// RFC9728 permits an explicit metadata URL advertised in WWW-Authenticate.
+/// Keep it under /api so certificate-validation locations cannot intercept it.
+pub fn resource_metadata_url(origin: &str, instance: &str) -> Result<String> {
+    let resource =
+        Url::parse(&resource_url(origin, instance)?).map_err(|_| OAuthError::invalid())?;
+    let encoded_instance = resource
+        .path()
+        .strip_prefix("/api/mcp/")
+        .ok_or_else(OAuthError::invalid)?;
     Ok(format!(
-        "{issuer}/.well-known/oauth-protected-resource{}",
-        &resource[issuer.len()..]
+        "{origin}{AUTHORIZATION_SERVER_PATH}/protected-resource/{encoded_instance}"
     ))
 }
-fn resource_instance(issuer: &str, resource: &str) -> Result<String> {
+fn resource_instance(origin: &str, resource: &str) -> Result<String> {
     let encoded = resource
-        .strip_prefix(&format!("{issuer}/api/mcp/"))
+        .strip_prefix(&format!("{origin}/api/mcp/"))
         .ok_or_else(OAuthError::invalid)?;
     // Decode a single RFC3986 path segment; a literal '+' must not become a space.
     let form = format!(
@@ -116,7 +126,7 @@ fn resource_instance(issuer: &str, resource: &str) -> Result<String> {
         .ok_or_else(OAuthError::invalid)?
         .1
         .into_owned();
-    if resource_url(issuer, &instance)? != resource {
+    if resource_url(origin, &instance)? != resource {
         return Err(OAuthError::invalid());
     }
     Ok(instance)
@@ -228,7 +238,7 @@ pub struct TokenResponse {
 
 pub struct McpOAuthService<R> {
     repository: R,
-    issuer: String,
+    origin: String,
 }
 impl<R> McpOAuthService<R>
 where
@@ -239,8 +249,8 @@ where
         + McpManagementRepository
         + WorkspaceRepository,
 {
-    pub fn new(repository: R, issuer: String) -> Self {
-        Self { repository, issuer }
+    pub fn new(repository: R, origin: String) -> Self {
+        Self { repository, origin }
     }
     pub async fn register(&self, input: Registration) -> Result<Client> {
         if input.redirect_uris.is_empty()
@@ -315,7 +325,7 @@ where
         {
             return Err(OAuthError::invalid());
         }
-        let instance_id = resource_instance(&self.issuer, &request.resource)?;
+        let instance_id = resource_instance(&self.origin, &request.resource)?;
         let id = random_token();
         let pending = Pending {
             request,
@@ -341,7 +351,7 @@ where
             .ok_or_else(OAuthError::invalid)?;
         let pending: Pending = serde_json::from_value(value.clone())?;
         if pending.browser_hash != hash(browser)
-            || resource_instance(&self.issuer, &pending.request.resource)? != pending.instance_id
+            || resource_instance(&self.origin, &pending.request.resource)? != pending.instance_id
         {
             return Err(OAuthError::invalid());
         }
@@ -475,7 +485,7 @@ where
         redirect
             .query_pairs_mut()
             .append_pair("state", &p.request.state)
-            .append_pair("iss", &self.issuer);
+            .append_pair("iss", &authorization_server_url(&self.origin));
         Ok(redirect.to_string())
     }
     async fn validate_grant(&self, id: Uuid) -> Result<(McpOAuthGrant, UserApiKeyActor)> {
@@ -485,7 +495,7 @@ where
             .await?
             .ok_or_else(OAuthError::grant)?;
         // Wrong-origin requests cannot consume or revoke another origin's grant.
-        if g.resource != resource_url(&self.issuer, &g.instance_id)? {
+        if g.resource != resource_url(&self.origin, &g.instance_id)? {
             return Err(OAuthError::grant());
         }
         let result = ApiKeyService::new(self.repository.clone())
@@ -619,7 +629,7 @@ where
             .ok_or_else(OAuthError::grant)?;
         let id = serde_json::from_value(value["grant_id"].clone())?;
         let (g, actor) = self.validate_grant(id).await?;
-        if g.instance_id != instance || g.resource != resource_url(&self.issuer, instance)? {
+        if g.instance_id != instance || g.resource != resource_url(&self.origin, instance)? {
             return Err(OAuthError::grant());
         }
         Ok(actor)

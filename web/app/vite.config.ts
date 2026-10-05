@@ -262,6 +262,7 @@ export default defineConfig(({ command, mode }) => {
       },
       proxy: {
         '/.well-known/oauth-': oauthAwareApiProxy(apiProxyTarget),
+        '/.well-known/openid-configuration': oauthAwareApiProxy(apiProxyTarget),
         '/external-npm': {
           target: externalNpmProxyTarget,
           changeOrigin: true
