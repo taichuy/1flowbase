@@ -1,4 +1,5 @@
 use axum::{
+    extract::rejection::JsonRejection,
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -47,6 +48,9 @@ where
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Some(rejection) = self.0.downcast_ref::<JsonRejection>() {
+            return (rejection.status(), rejection.body_text()).into_response();
+        }
         if let Some(error) = self
             .0
             .downcast_ref::<crate::routes::mcp_oauth::McpAuthenticationRequired>()

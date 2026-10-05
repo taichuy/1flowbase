@@ -106,6 +106,7 @@ https://1flowbase.taichuy.cn/api/mcp/1flowbase
 | 现象 | 下一步 |
 | --- | --- |
 | 1flowbase 显示「此部署尚未启用 ChatGPT 授权」 | 管理员检查服务版本和部署状态，见下面部署检查 |
+| ChatGPT 报 `MCP server ... does not implement OAuth` | 检查未认证的 POST 探测是否返回带 `WWW-Authenticate` 的 401；若返回 415／400，先更新服务 |
 | ChatGPT 发现不到 OAuth 端点 | 检查下文两个 `/api/public/mcp-oauth/` 元数据地址是否返回 JSON；根目录 `/.well-known/` 返回 404 不一定影响新版客户端 |
 | 元数据或 MCP 请求返回 Cloudflare 挑战 / 403 | 调整必要机器请求的 WAF 策略，保留 MCP 鉴权 |
 | 出现手填客户端 ID／密钥的要求 | 核对是否选择 DCR，而不是手动配置客户端 |
@@ -178,6 +179,20 @@ ChatGPT 请求 /api/mcp/实例ID
 | `registration_endpoint` | `/api/public/mcp-oauth/register` |
 
 这些是排障时核对的字段，不是要求普通用户在 ChatGPT 手工填写的配置。
+
+### 4. 核对未认证的 MCP 探测
+
+ChatGPT 的发现探测可能没有 JSON 请求头或请求体。下面请求应返回 **401**，并带有指向 `/api/public/mcp-oauth/protected-resource/实例ID` 的 `WWW-Authenticate` 响应头：
+
+```bash
+curl -i -X POST 'https://你的域名/api/mcp/你的实例ID'
+```
+
+旧版服务可能在鉴权前返回 415，导致 ChatGPT 没有取得元数据地址，最终提示服务不支持 OAuth。新版让未认证请求优先得到 OAuth challenge；已经认证的正式调用仍须使用正确的 JSON 请求格式。
+
+本地 Vite 开发代理在 `tmp/logs/web.log` 记录 `[mcp-oauth-proxy]` 诊断信息，包括请求方法、无查询参数的路径、User-Agent 和状态码，不记录 API Key、令牌或请求体。若请求被外层 Nginx 拦截而未到达开发代理，本机日志无法看见，需要核对外层已有访问日志。
+
+仅在浏览器打开网页成功，不能证明 ChatGPT 后台的发现流程成功；仅看到 MCP 的 GET 返回 405，也不能据此判断服务未实现 OAuth。
 
 ## 授权有效期和权限
 

@@ -636,3 +636,54 @@ async fn oauth_discovery_survives_root_well_known_interception() {
         StatusCode::OK
     );
 }
+
+#[tokio::test]
+async fn oauth_discovery_probe_authentication_precedes_json_rejection() {
+    let (_state, app, key, _client) = setup().await;
+    for (content_type, body) in [
+        (None, ""),
+        (Some("text/plain"), ""),
+        (Some("application/json"), "{"),
+    ] {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri("/api/mcp/taichuy")
+            .header("host", "oauth.example.test");
+        if let Some(content_type) = content_type {
+            request = request.header("content-type", content_type);
+        }
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(response.headers()["www-authenticate"]
+            .to_str()
+            .unwrap()
+            .contains(
+                "https://oauth.example.test/api/public/mcp-oauth/protected-resource/taichuy"
+            ));
+    }
+    // Authenticated clients still receive the original media-type / JSON errors.
+    for (content_type, body, status) in [
+        (None, "", StatusCode::UNSUPPORTED_MEDIA_TYPE),
+        (Some("application/json"), "{", StatusCode::BAD_REQUEST),
+    ] {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri("/api/mcp/taichuy")
+            .header("host", "oauth.example.test")
+            .header("authorization", format!("Bearer {key}"));
+        if let Some(content_type) = content_type {
+            request = request.header("content-type", content_type);
+        }
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
+        assert!(!response.headers().contains_key("www-authenticate"));
+    }
+}

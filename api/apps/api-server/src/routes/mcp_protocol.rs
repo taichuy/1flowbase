@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, State},
+    extract::{rejection::JsonRejection, Path, State},
     http::{
         header::{AUTHORIZATION, COOKIE},
         HeaderMap, StatusCode,
@@ -92,7 +92,7 @@ async fn handle_mcp_request(
     State(state): State<Arc<ApiState>>,
     Path(instance_id): Path<String>,
     headers: HeaderMap,
-    Json(request): Json<JsonRpcRequest>,
+    request: Result<Json<JsonRpcRequest>, JsonRejection>,
 ) -> Result<(StatusCode, Json<JsonRpcResponse>), ApiError> {
     let boot_snapshot = state
         .extension_boot_snapshot
@@ -132,6 +132,9 @@ async fn handle_mcp_request(
             }
         })?;
     let actor = authenticated.principal().actor().clone();
+    // Discovery probes may omit Content-Type/body. Authenticate first so they
+    // receive the OAuth challenge instead of an extractor rejection.
+    let Json(request) = request.map_err(ApiError::from)?;
     let user = state
         .store
         .find_user_by_id(actor.user_id)
