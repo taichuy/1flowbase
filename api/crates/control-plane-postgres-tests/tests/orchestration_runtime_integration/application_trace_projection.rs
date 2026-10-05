@@ -599,3 +599,83 @@ async fn issue_2106_trace_refresh_is_write_scheduled_and_revision_safe() {
         .unwrap()
         .is_none());
 }
+
+#[tokio::test]
+async fn trace_refresh_ignores_runtime_event_sequence_high_water_bumps() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        datetime!(2026-10-05 08:00:00 UTC),
+        FlowRunMode::DebugFlowRun,
+        None,
+    )
+    .await;
+    let job = store
+        .claim_application_run_trace_refresh()
+        .await
+        .unwrap()
+        .unwrap();
+    sqlx::query("delete from application_run_trace_refresh_queue where flow_run_id=$1")
+        .bind(job.flow_run_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let queued = || async {
+        sqlx::query_scalar::<_, i64>(
+            "select count(*) from application_run_trace_refresh_queue where flow_run_id=$1",
+        )
+        .bind(run.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap()
+    };
+
+    // Sequence allocation and token deltas do not change the projected tree.
+    sqlx::query("update flow_runs set runtime_event_sequence_high_water=runtime_event_sequence_high_water+1 where id=$1")
+        .bind(run.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) select $1,id,NULL,runtime_event_sequence_high_water+1,'provider_output_text_delta','runtime_item','host','host_fact','{}'::jsonb,'{}'::jsonb,'internal','durable' from flow_runs where id=$2")
+        .bind(Uuid::now_v7())
+        .bind(run.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(queued().await, 0);
+
+    // Projected flow_run facts still invalidate the projection.
+    sqlx::query("update flow_runs set status='succeeded', finished_at=now(), updated_at=now() where id=$1")
+        .bind(run.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(queued().await, 1);
+}
+
+#[tokio::test]
+async fn trace_refresh_flow_trigger_covers_every_projected_flow_run_column() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    // Only pure sequence counters may be excluded from projection invalidation.
+    let uncovered: Vec<String> = sqlx::query_scalar(
+        r#"select a.attname::text from pg_attribute a
+           where a.attrelid = 'flow_runs'::regclass and a.attnum > 0 and not a.attisdropped
+             and a.attname <> 'id' and a.attname <> 'runtime_event_sequence_high_water'
+             and not exists (
+               select 1 from pg_trigger t
+               where t.tgrelid = a.attrelid and t.tgname = 'trace_refresh_flow'
+                 and a.attnum = any(t.tgattr::int2[]))
+           order by 1"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert!(uncovered.is_empty(), "flow_runs columns missing from trace_refresh_flow: {uncovered:?}");
+}
