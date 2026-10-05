@@ -482,7 +482,10 @@ fn overview_contract_fixture_contains_metadata_without_body_or_answer_claims() {
     ] {
         assert!(!value["flow_run"].as_object().unwrap().contains_key(body));
     }
-    let adapter = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs"));
+    let adapter = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs"
+    ));
     let metadata = application_runtime_method_source(adapter, "get_flow_run_metadata");
     for body in [
         "input_payload",
@@ -619,7 +622,6 @@ fn trace_node_content_raw_payload_keeps_empty_payload_as_object() {
 
     assert_eq!(payload, serde_json::json!({}));
 }
-
 
 #[test]
 fn cache_usage_detail_aggregates_inclusive_input_across_provider_conventions() {

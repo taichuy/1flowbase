@@ -651,11 +651,13 @@ async fn trace_refresh_ignores_runtime_event_sequence_high_water_bumps() {
     assert_eq!(queued().await, 0);
 
     // Projected flow_run facts still invalidate the projection.
-    sqlx::query("update flow_runs set status='succeeded', finished_at=now(), updated_at=now() where id=$1")
-        .bind(run.id)
-        .execute(store.pool())
-        .await
-        .unwrap();
+    sqlx::query(
+        "update flow_runs set status='succeeded', finished_at=now(), updated_at=now() where id=$1",
+    )
+    .bind(run.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
     assert_eq!(queued().await, 1);
 }
 
@@ -677,5 +679,8 @@ async fn trace_refresh_flow_trigger_covers_every_projected_flow_run_column() {
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert!(uncovered.is_empty(), "flow_runs columns missing from trace_refresh_flow: {uncovered:?}");
+    assert!(
+        uncovered.is_empty(),
+        "flow_runs columns missing from trace_refresh_flow: {uncovered:?}"
+    );
 }
