@@ -192,14 +192,16 @@ fn round_cache_hit_rate(value: f64) -> Option<f64> {
 }
 
 fn application_log_cache_hit_rate_for_response(record: &Value) -> Option<f64> {
-    let total_tokens = record.get("total_tokens").and_then(Value::as_f64);
+    // Application log projections already include cached reads and writes in input_tokens.
+    // Output tokens are unrelated to input cache hits; legacy total_tokens may omit caches.
+    let input_tokens = record.get("input_tokens").and_then(Value::as_f64);
     let input_cache_hit_tokens = record.get("input_cache_hit_tokens").and_then(Value::as_f64);
 
-    if let (Some(total_tokens), Some(input_cache_hit_tokens)) =
-        (total_tokens, input_cache_hit_tokens)
+    if let (Some(input_tokens), Some(input_cache_hit_tokens)) =
+        (input_tokens, input_cache_hit_tokens)
     {
-        if total_tokens > 0.0 && total_tokens.is_finite() && input_cache_hit_tokens.is_finite() {
-            return round_cache_hit_rate(input_cache_hit_tokens / total_tokens);
+        if input_tokens > 0.0 && input_tokens.is_finite() && input_cache_hit_tokens.is_finite() {
+            return round_cache_hit_rate(input_cache_hit_tokens / input_tokens);
         }
     }
 

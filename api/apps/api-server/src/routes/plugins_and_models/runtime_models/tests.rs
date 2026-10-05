@@ -43,7 +43,8 @@ fn runtime_record_response_rounds_application_log_cache_hit_rate() {
         json!({
             "id": "run-1",
             "run_mode": "debug_flow_run",
-            "total_tokens": 49901,
+            "input_tokens": 49901,
+            "total_tokens": 59901,
             "input_cache_hit_tokens": 49063,
             "input_cache_hit_rate": 0.9505703422053232
         }),
@@ -64,6 +65,95 @@ fn runtime_record_response_does_not_fall_back_to_projected_cache_hit_rate() {
     );
 
     assert_eq!(record["input_cache_hit_rate"], Value::Null);
+}
+
+#[test]
+fn application_log_cache_hit_rate_corrects_historical_anthropic_records() {
+    // Real records previously displayed 172.41%, 123.07%, and 109.75%.
+    for model in ["application_run_log_summaries", "application_run_log_tasks"] {
+        let records = [
+            (827_119, 494_000, 286_532, 0.5973),
+            (803_199, 444_600, 361_256, 0.5535),
+            (280_611, 148_200, 135_040, 0.5281),
+        ];
+        let items = records
+            .iter()
+            .map(|&(input, hit, legacy_total, _)| {
+                json!({
+                    "input_tokens": input,
+                    "input_cache_hit_tokens": hit,
+                    "total_tokens": legacy_total
+                })
+            })
+            .collect::<Vec<_>>();
+        let list = runtime_list_response(model, items.clone(), items.len() as i64);
+        for ((item, listed), (_, _, _, expected)) in items.into_iter().zip(list.items).zip(records)
+        {
+            assert_eq!(listed["input_cache_hit_rate"], json!(expected));
+            assert_eq!(
+                runtime_record_response(model, item)["input_cache_hit_rate"],
+                json!(expected)
+            );
+        }
+    }
+}
+
+#[test]
+fn application_log_cache_hit_rate_uses_inclusive_input_without_adding_cache_twice() {
+    // OpenAI input already includes the 800 cache reads. Output must not affect the rate.
+    for output in [0, 100, 50_000] {
+        let record = runtime_record_response(
+            "application_run_log_summaries",
+            json!({
+                "input_tokens": 1000,
+                "input_cache_hit_tokens": 800,
+                "output_tokens": output,
+                "total_tokens": 1000 + output
+            }),
+        );
+        assert_eq!(record["input_cache_hit_rate"], json!(0.8));
+    }
+}
+
+#[test]
+fn application_log_cache_hit_rate_preserves_unknown_and_zero_input() {
+    for input in [Value::Null, json!(0)] {
+        let record = runtime_record_response(
+            "application_run_log_tasks",
+            json!({
+                "input_tokens": input,
+                "total_tokens": 1000,
+                "input_cache_hit_tokens": 500,
+                "input_cache_hit_rate": 0.5
+            }),
+        );
+        assert_eq!(record["input_cache_hit_rate"], Value::Null);
+    }
+    for (hit, expected) in [(0, 0.0), (1000, 1.0)] {
+        let record = runtime_record_response(
+            "application_run_log_tasks",
+            json!({
+                "input_tokens": 1000,
+                "input_cache_hit_tokens": hit,
+                "total_tokens": 2000
+            }),
+        );
+        assert_eq!(record["input_cache_hit_rate"], json!(expected));
+    }
+}
+
+#[test]
+fn application_log_task_cache_hit_rate_uses_aggregated_counts() {
+    // Two calls: 90/100 and 0/900. The combined rate is 90/1000, not their mean.
+    let record = runtime_record_response(
+        "application_run_log_tasks",
+        json!({
+            "input_tokens": 1000,
+            "input_cache_hit_tokens": 90,
+            "total_tokens": 1200
+        }),
+    );
+    assert_eq!(record["input_cache_hit_rate"], json!(0.09));
 }
 
 #[test]
