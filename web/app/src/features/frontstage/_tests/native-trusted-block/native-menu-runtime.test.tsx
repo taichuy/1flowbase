@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
-import type { MenuProps, MenuRef } from 'antd';
+import { Menu as AntdMenu, type MenuProps, type MenuRef } from 'antd';
 
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
 import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
@@ -87,10 +87,10 @@ describe('native block Menu runtime adapter', () => {
       expect(within(layer).getByText('Custom popup panel')).toBeVisible()
     );
     expect(menuRef.current).not.toBeNull();
-    expect(Menu.Item).toBeDefined();
-    expect(Menu.SubMenu).toBeDefined();
-    expect(Menu.ItemGroup).toBeDefined();
-    expect(Menu.Divider).toBeDefined();
+    expect(Menu.Item).toBe(AntdMenu.Item);
+    expect(Menu.SubMenu).toBe(AntdMenu.SubMenu);
+    expect(Menu.ItemGroup).toBe(AntdMenu.ItemGroup);
+    expect(Menu.Divider).toBe(AntdMenu.Divider);
   });
 
   test('I1928-AC-002 preserves an authored popup container', async () => {

@@ -178,10 +178,10 @@ describe('SchemaFormDrawer', () => {
     const trailing = screen.getByText('表单之后');
     expect(
       leading.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       field.compareDocumentPosition(trailing) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   test('emits submit success and failure lifecycle events', async () => {

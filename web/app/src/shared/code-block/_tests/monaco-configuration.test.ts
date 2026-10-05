@@ -39,7 +39,7 @@ test('AC-002 initializes Monaco from bundled assets instead of the public CDN', 
   });
 
   const environment = self.MonacoEnvironment;
-  expect(environment).toBeDefined();
+  expect(environment).toEqual({ getWorker: expect.any(Function) });
   const getWorker = environment!.getWorker!;
   expect(getWorker('', 'json').constructor.name).toBe('JsonWorker');
   expect(getWorker('', 'typescript').constructor.name).toBe(

@@ -1272,7 +1272,7 @@ describe('Settings data models page', () => {
     expect(
       (apiOpenRow as HTMLElement).compareDocumentPosition(apiOpenDescription) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       within(createDialog).getByRole('separator', {
         name: '调整 Data Model 抽屉宽度'
@@ -1298,7 +1298,7 @@ describe('Settings data models page', () => {
       expect(
         element.compareDocumentPosition(orderedFormElements[index + 1]) &
           Node.DOCUMENT_POSITION_FOLLOWING
-      ).toBeTruthy();
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     });
     expect(within(defaultFieldsTable).getAllByRole('row')).toHaveLength(7);
     expect(within(defaultFieldsTable).getByText('id')).toBeInTheDocument();

@@ -761,7 +761,7 @@ describe('ApplicationStatisticsPage', () => {
     expect(
       filters.compareDocumentPosition(metrics) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     const chartCount = echartsMock.init.mock.calls.length;
     fireEvent.click(screen.getByRole('radio', { name: 'past 4 weeks' }));
     await waitFor(() =>

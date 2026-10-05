@@ -249,7 +249,11 @@ describe('AC-009/012 plugin settings published page', () => {
     await waitFor(() =>
       expect(
         client.getQueryData(['settings', 'plugin-settings-page', 'previous'])
-      ).toBeDefined()
+      ).toEqual({
+        ...page,
+        route_id: 'previous',
+        source: 'export default () => <p>Old route</p>'
+      })
     );
     expect(
       screen.getByTestId('plugin-settings-page').shadowRoot?.textContent

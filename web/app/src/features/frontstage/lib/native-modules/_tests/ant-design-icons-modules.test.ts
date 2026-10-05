@@ -40,7 +40,7 @@ describe('@ant-design/icons native module inventory', () => {
     const leafId = `${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}ClockCircleOutlined`;
     const resolvedLeafId = await resolveId(leafId);
 
-    expect(resolvedLeafId).toBeTruthy();
+    expect(resolvedLeafId).toBe(`\0${leafId}`);
     expect(load(resolvedLeafId!)).toContain(
       `export { default } from ${JSON.stringify('@ant-design/icons/ClockCircleOutlined')}`
     );

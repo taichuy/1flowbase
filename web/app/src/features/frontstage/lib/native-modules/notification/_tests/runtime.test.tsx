@@ -85,10 +85,10 @@ test('static notification keys, defaults and destroy remain local to each mount'
   await b.overlay.findByText('first');
   expect(
     a.overlay.getByText('first').closest('[class*=notification-bottomLeft]')
-  ).toBeTruthy();
+  ).toBeInTheDocument();
   expect(
     b.overlay.getByText('first').closest('[class*=notification-topRight]')
-  ).toBeTruthy();
+  ).toBeInTheDocument();
   fireEvent.click(a.root.getByText('update'));
   await a.overlay.findByText('updated');
   expect(b.overlay.getByText('first')).toBeInTheDocument();

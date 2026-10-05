@@ -672,7 +672,7 @@ describe('EmbeddedAgentAssistant', () => {
     const history = await findReadyHistoryButton();
     fireEvent.click(history);
 
-    await waitFor(() => expect(emitConversation).toBeDefined());
+    await waitFor(() => expect(emitConversation).toEqual(expect.any(Function)));
     await act(async () =>
       emitConversation?.(
         {
@@ -2655,7 +2655,7 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       draftReferences[0].compareDocumentPosition(composer) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     fireEvent.click(
       screen.getAllByRole('button', {
         name: i18nText('appShell', 'auto.assistant_remove_page_reference')

@@ -72,7 +72,7 @@ describe('PageCanvas width lifecycle', () => {
       await waitFor(() => expect(observe).toHaveBeenCalledWith(measuredHost));
 
       const observedResize = resizeCallbacks.get(measuredHost);
-      expect(observedResize).toBeDefined();
+      expect(observedResize).toEqual(expect.any(Function));
       await act(async () => {
         observedResize?.(
           [

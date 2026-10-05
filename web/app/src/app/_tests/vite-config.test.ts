@@ -167,7 +167,7 @@ describe('vite config', () => {
     const optimizeInclude = source.match(
       /include:\s*\[([\s\S]*?)\],\s*needsInterop/u
     )?.[1];
-    expect(optimizeInclude).toBeDefined();
+    expect(optimizeInclude).toContain("'@ant-design/icons'");
     expect(optimizeInclude).not.toContain("'@1flowbase/api-client/auth'");
   });
 
