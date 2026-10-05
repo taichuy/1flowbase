@@ -150,7 +150,7 @@ test("Delivery 1898 provider conformance pins every reusable action", () => {
 
   assert.match(providerConformance, /uses: actions\/checkout@v6/u);
   assert.match(providerConformance, /uses: dtolnay\/rust-toolchain@stable/u);
-  assert.doesNotMatch(providerConformance, /^\s*uses:\s+[^\s@]+\s*$/mu);
+  assert.doesNotMatch(providerConformance, /^\s*uses:\s+(?!\.\/)[^\s@]+\s*$/mu);
   assert.match(
     providerConformance,
     /cargo build --manifest-path "\$\{plugin_dir\}\/Cargo\.toml"/u,
@@ -234,7 +234,7 @@ test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/
   assert.match(trigger, /target_ref:[\s\S]*base_ref:[\s\S]*foundation:[\s\S]*lane:/u);
   assert.match(
     fastWorkflow,
-    /concurrency:\n\s+group: foundation-contract-evidence-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n\s+cancel-in-progress: true/u,
+    /concurrency:\n\s+group: foundation-contract-evidence-\$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}-\$\{\{ inputs\.target_ref \|\| github\.sha \}\}-\$\{\{ inputs\.lane \|\| 'pr-evidence' \}\}\n\s+cancel-in-progress: true/u,
     "independent caller lanes must not cancel each other's foundation receipts",
   );
   assert.match(fastWorkflow, /foundation-contracts/u);
@@ -1262,4 +1262,12 @@ test('manual provider conformance shares one source candidate and participates i
     assert.ok(block.includes(`ref: ${candidate}`), job);
     assert.ok(block.includes('GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}'), job);
   }
+});
+
+test('foundation concurrency separates caller workflows, candidates and lanes', () => {
+  const workflow = readFoundationContractsWorkflow();
+  const group = workflow.match(/group: (foundation-contract-evidence-[^\n]+)/u)?.[1];
+  assert.ok(group.includes('${{ github.workflow }}'));
+  assert.ok(group.includes('${{ inputs.target_ref || github.sha }}'));
+  assert.ok(group.includes("${{ inputs.lane || 'pr-evidence' }}"));
 });

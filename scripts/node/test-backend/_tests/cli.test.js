@@ -203,7 +203,7 @@ test('test-backend main writes advisory warning output under tmp/test-governance
 
       return {
         status: 0,
-        stdout: '',
+        stdout: 'test result: ok. 1 passed; 0 failed; 0 ignored;\n',
         stderr: 'warning: cargo test advisory\n',
       };
     },

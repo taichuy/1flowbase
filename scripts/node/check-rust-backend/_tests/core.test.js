@@ -353,3 +353,18 @@ test('test-only item and field exemptions preserve adjacent production syntax', 
     assert.equal(findings[0].rule, 'no-production-escape');
   }
 });
+
+test('test-only enum variants do not mask following production discriminants', () => {
+  for (const variant of ['Test', 'Test(u8)', 'Test = { Some(0isize).unwrap() }']) {
+    const findings = scanRustSource({ relativePath: 'api/crates/domain/src/example.rs',
+      content: `enum E { #[cfg(test)] ${variant}, Production = { Some(1isize).unwrap() }, }` });
+    assert.equal(findings.length, 1, variant);
+    assert.equal(findings[0].rule, 'no-production-escape');
+  }
+});
+
+test('const-generic headers are not the body of test-only declarations', () => {
+  const findings = scanRustSource({ relativePath: 'api/crates/domain/src/example.rs',
+    content: '#[cfg(test)] impl Trait<{ 1 }> for Fixture { fn fixture() { Some(1).unwrap(); } }\nfn production() { Some(2).unwrap(); }' });
+  assert.deepEqual(findings.map(f => f.line), [2]);
+});

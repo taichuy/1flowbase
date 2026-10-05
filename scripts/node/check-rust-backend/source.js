@@ -108,24 +108,30 @@ function maskTestOnlyItems(code) {
         cursor += 1;
       } while (cursor < code.length && (brackets > 0 || code[cursor - 1] === '#'));
     }
-    const field = /^(?:pub(?:\([^)]*\))?\s+)?(?:r#)?\w+\s*:(?!:)/u.test(code.slice(cursor));
+    const declaration = code.slice(cursor).replace(/^(?:pub(?:\([^)]*\))?\s+)?(?:(?:async|unsafe|default|const)\s+)*(?:extern\s+"[^"]*"\s+)?/u, '');
+    const blockItem = /^(?:fn|mod|impl|struct|enum|trait|union|macro_rules)\b/u.test(declaration);
+    // Fields and enum variants end at commas; declarations such as const/use end at semicolons.
+    const commaItem = !blockItem && !/^(?:const|static|use|type|let)\b/u.test(code.slice(cursor));
     let parentheses = 0;
     let brackets = 0;
     let braces = 0;
     let body = false;
+    let angles = 0;
     let end = null;
     for (; cursor < code.length; cursor += 1) {
       const char = code[cursor];
-      if (char === '(') parentheses += 1;
+      if (blockItem && !body && char === '<') angles += 1;
+      else if (blockItem && !body && char === '>' && code[cursor - 1] !== '-' && angles > 0) angles -= 1;
+      else if (char === '(') parentheses += 1;
       else if (char === ')') parentheses -= 1;
       else if (char === '[') brackets += 1;
       else if (char === ']') brackets -= 1;
-      else if (char === '{') { braces += 1; body = true; }
+      else if (char === '{') { braces += 1; if (angles === 0 && parentheses === 0 && brackets === 0) body = true; }
       else if (char === '}') {
         braces -= 1;
-        if (!field && body && braces === 0 && parentheses === 0 && brackets === 0) { end = cursor + 1; break; }
+        if (blockItem && body && braces === 0 && parentheses === 0 && brackets === 0 && angles === 0) { end = cursor + 1; break; }
         if (braces < 0) break;
-      } else if ((char === ';' || (field && char === ',')) && braces === 0 && parentheses === 0 && brackets === 0) {
+      } else if ((char === ';' || (commaItem && char === ',')) && braces === 0 && parentheses === 0 && brackets === 0) {
         end = cursor + 1; break;
       }
     }
