@@ -131,6 +131,24 @@ multi-platform scan-candidate tags named `scan-<run_id>-<run_attempt>-<sha>` fro
 prebuilt artifacts. The workflow does not push the official version tag or `latest` tag from
 the build step.
 
+Rust release builds pin the compiler image and keep Cargo downloads separate from
+compiled targets. Target keys include the build recipe, architecture, toolchain,
+dependency manifests and commit; compatible prefixes restore the nearest successful
+build. Cargo still runs on every cache hit and validates changed inputs.
+
+`restore-cargo-inputs.js` stores content hashes, modes and input timestamps inside the
+target cache before compilation. It restores timestamps only for identical tracked
+files and fully accounted-for directories, avoiding checkout-only recompilation
+without hiding edits, additions, deletions or reverts. Targets and their input manifest
+are saved only after successful builds. Never replace this with Git commit timestamps.
+
+For cache verification, dispatch `api-server` on the same branch with
+`promote_official_tags=false`. The first run for a new recipe may be cold; compare it
+with a second run using its cache. Check `rust-release-timings-<arch>` artifacts,
+`input-reuse.json`, Cargo timings and cache transfer durations. A cache download by
+itself does not demonstrate compilation reuse. GitHub caches are branch-scoped;
+a beta cache is not automatically available to a sibling release branch.
+
 Before promotion, Trivy scans the candidate image with a pinned `aquasecurity/trivy-action`
 commit for action version `v0.36.0`; the action installs Trivy `v0.70.0`. `HIGH` and
 `CRITICAL` findings are written as warning evidence with `exit-code: "0"`. Reports are
