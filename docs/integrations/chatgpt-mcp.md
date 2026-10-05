@@ -216,7 +216,11 @@ MCP 要求 `structuredContent` 是 JSON 对象。新版将目录数组包装为 
 
 教程中的 1flowbase 截图来自本次通过公网域名访问真实开发服务的浏览器操作；使用临时 API Key 授权，完成后撤销。ChatGPT 创建界面的图片为用户提供的实际截图。
 
-已通过公网验证：根目录发现返回 404 后，测试客户端通过 `/api/` 下的发现入口完成 API Key 授权、回跳捕获、工具列举和只读调用、刷新及撤销。该验证不能代替真人 ChatGPT 账号的创建、授权回跳和工具调用验证。线上仍需部署更新后的 API 和前端，再按第五步验证连接。只要现有代理能正确透传 `/api/` 与授权页，就无需为本次发现路径调整修改公网 Nginx。
+已通过公网测试客户端验证：根目录发现返回 404 后，通过 `/api/` 下的发现入口完成 API Key 授权、回跳捕获、工具列举和只读调用、刷新及撤销；`mcp_list` 使用 `{"depth": 2, "limit": 100}` 返回 93 条目录项，`structuredContent` 为 JSON 对象。
+
+**真实 ChatGPT 验收已确认：2026-10-05，用户在原 ChatGPT 会话重试后明确反馈“可以了，成功了”。** 此前的 OAuth 发现和工具结果格式问题已在该公网环境解决，修复与提交关联见 [问题记录 #2280](https://github.com/taichuy/1flowbase/issues/2280)。
+
+本次确认的环境为 `https://1flowbase.taichuy.cn` 经 frpc 透传到本地 dev 服务，没有修改外层 Nginx/frpc，也没有新增必填 OAuth 环境配置。其他部署仍需更新 API 和前端，并按教程验证；未进行独立生产部署。只要现有代理能正确透传 `/api/` 与授权页，就无需为本次发现路径调整修改公网 Nginx。
 
 源码与更新：[仓库接入说明](https://github.com/taichuy/1flowbase/blob/dev/docs/integrations/chatgpt-mcp.md)。
 
