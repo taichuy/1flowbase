@@ -157,6 +157,9 @@ test("quality gate limits conversation Cargo probes to one owned database and de
       ["orchestration-runtime-semantic-route-tests", "root_1534"],
       ["orchestration-runtime-upstream-error-tests", "upstream"],
       ["control-plane-conversation-tests", "application_public_api"],
+      ["control-plane-client-trajectory-tests", "client_trajectory::_tests::"],
+      ["api-server-anthropic-error-projection-tests", "routes::application_public_api::anthropic::error_projection::tests::"],
+      ["api-server-anthropic-stream-error-tests", "routes::application_public_api::compat_sse::protocol_mappers::anthropic_stream::error_tests::"],
       [
         "control-plane-live-provider-error-tests",
         "provider_error_after_live_delta_drains_runtime_event_stream_forwarding",
@@ -320,6 +323,37 @@ test("issue_1743 quality gate selects the Anthropic reasoning round-trip fixture
         && args.at(-1) === "issue_1743";
     });
     assert.equal(matching.length, 1, `${fixture.packageName} issue_1743 gate`);
+  }
+});
+
+test("Gateway probes select current trajectory and Anthropic error behavior fixtures", () => {
+  const repoRoot = path.resolve(__dirname, "../../../../../");
+  const invocations = conversationTestInvocations(repoRoot, "postgres://fixture");
+  const fixtures = [
+    {
+      packageName: "control-plane",
+      source: "api/crates/control-plane/src/client_trajectory/_tests/anthropic.rs",
+      qualifiedName: "client_trajectory::_tests::anthropic::anthropic_stream_error_preserves_partial_content_and_error_without_fake_success",
+    },
+    {
+      packageName: "api-server",
+      source: "api/apps/api-server/src/routes/application_public_api/anthropic/_tests/error_projection.rs",
+      qualifiedName: "routes::application_public_api::anthropic::error_projection::tests::http_boundary_preserves_status_type_message_and_request_id",
+    },
+    {
+      packageName: "api-server",
+      source: "api/apps/api-server/src/routes/application_public_api/compat_sse/protocol_mappers/_tests/anthropic_errors.rs",
+      qualifiedName: "routes::application_public_api::compat_sse::protocol_mappers::anthropic_stream::error_tests::stream_failure_preserves_upstream_error_and_does_not_emit_success_terminal",
+    },
+  ];
+  for (const fixture of fixtures) {
+    const name = fixture.qualifiedName.split("::").at(-1);
+    assert.ok(fs.readFileSync(path.join(repoRoot, fixture.source), "utf8").includes(`fn ${name}(`), name);
+    const matching = invocations.filter(({ args }) => (
+      args[args.indexOf("-p") + 1] === fixture.packageName
+      && fixture.qualifiedName.includes(args.at(-1))
+    ));
+    assert.equal(matching.length, 1, fixture.qualifiedName);
   }
 });
 

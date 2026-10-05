@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { TRANSPORT } = require('../../contracts');
 const { protocolOracleInventory, readReadyManifest, runWorkflowContract } = require('../runner');
+const { ERROR_FIDELITY_ROWS } = require('../../protocol-oracle/error-fidelity');
 
 function fixtureInputs() {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-runner-'));
@@ -104,7 +105,8 @@ test('Root #1477 AC-001/004/005/006/008/009: workflow invokes the complete deter
   assert.deepEqual(inventory.protocol_context_profiles.providers, [
     'anthropic', 'openai', 'openai_compatible',
   ]);
-  assert.equal(inventory.error_fidelity.rows, 20);
+  assert.deepEqual(inventory.error_fidelity.row_ids, ERROR_FIDELITY_ROWS.map((row) => row.id));
+  assert.equal(inventory.error_fidelity.rows, inventory.error_fidelity.row_ids.length);
   assert.deepEqual(inventory.canonical_stream_regression.partitions, ['whole', 'bytewise', 'uneven']);
   assert.equal(inventory.canonical_stream_regression.successTerminalCount, 1);
   assert.equal(inventory.canonical_stream_regression.durableParity.preservesRepeatedContent, true);
@@ -127,7 +129,7 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   const calls = [];
   const result = await runWorkflowContract(inputs, {
     async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(9).fill({ verdict: 'PASS' }) }; },
-    async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: Array(20).fill({ verdict: 'PASS' }) }; },
+    async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: ERROR_FIDELITY_ROWS.map((row) => ({ ...row, verdict: 'PASS' })) }; },
     createMockUpstream(options) {
       assert.equal(options.slowChunkDelayMs, 40);
       calls.push('mock:create');
@@ -243,7 +245,7 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
   const calls = [];
   const result = await runWorkflowContract(inputs, {
     async runGatewayWebSocketLifecycle() { return { verdict: 'FAIL', rows: Array(9).fill({ verdict: 'FAIL' }) }; },
-    async runGatewayErrorMatrix() { return { verdict: 'FAIL', rows: Array(20).fill({ verdict: 'FAIL' }) }; },
+    async runGatewayErrorMatrix() { return { verdict: 'FAIL', rows: ERROR_FIDELITY_ROWS.map((row) => ({ ...row, verdict: 'FAIL' })) }; },
     createMockUpstream() {
       return {
         async start() { return { httpBaseUrl: 'http://127.0.0.1:4000', websocketBaseUrl: 'ws://127.0.0.1:4000' }; },
@@ -274,7 +276,7 @@ test('AC service logs: cleanup persistence failure makes the workflow and cleanu
   const calls = [];
   const result = await runWorkflowContract(inputs, {
     async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(9).fill({ verdict: 'PASS' }) }; },
-    async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: Array(20).fill({ verdict: 'PASS' }) }; },
+    async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: ERROR_FIDELITY_ROWS.map((row) => ({ ...row, verdict: 'PASS' })) }; },
     createMockUpstream() {
       return {
         async start() { return { httpBaseUrl: 'http://127.0.0.1:4000', websocketBaseUrl: 'ws://127.0.0.1:4000' }; },

@@ -52,6 +52,10 @@ test('AC-001/006 routes four foundations and ignores legal non-contract changes'
 
 test('routes current protocol and invocation owners without selecting unrelated settings', () => {
   for (const changedFile of [
+    'api/apps/api-server/src/routes/application_public_api/anthropic.rs',
+    'api/apps/api-server/src/routes/application_public_api/anthropic/error_projection.rs',
+    'api/apps/api-server/src/routes/application_public_api/anthropic/_tests/error_projection.rs',
+    'api/apps/api-server/src/routes/application_public_api/client_observer.rs',
     'api/apps/api-server/src/routes/application_public_api/openai.rs',
     'api/apps/api-server/src/routes/application_public_api/openai/chat_completions.rs',
     'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs',
@@ -64,6 +68,8 @@ test('routes current protocol and invocation owners without selecting unrelated 
   }
   for (const changedFile of [
     'api/crates/control-plane/src/settings/mod.rs',
+    'api/apps/api-server/src/routes/application_public_api/anthropic_settings.rs',
+    'api/apps/api-server/src/routes/application_public_api/client_observer_settings.rs',
     'api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs',
     'docs/architecture/interface-lifecycle.md',
   ]) {

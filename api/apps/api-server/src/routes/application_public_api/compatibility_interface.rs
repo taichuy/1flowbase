@@ -942,21 +942,6 @@ pub(crate) async fn invoke_typed_stream_with_principal(
     Ok(CompatibilityTypedStreamInvocation { events, completion })
 }
 
-pub(crate) async fn invoke_stream_with_principal(
-    state: Arc<ApiState>,
-    binding_id: &'static str,
-    principal: impl Into<ApplicationInvocationAuthentication>,
-    input: CompatibilityBlockingInput,
-    projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
-) -> Result<Response, NativeApiError> {
-    let principal = principal.into();
-    let application_id = principal.principal().application_id();
-    let invocation =
-        invoke_typed_stream_with_principal(Arc::clone(&state), binding_id, principal, input)
-            .await?;
-    project_stream_invocation(state, application_id, invocation, projection, None)
-}
-
 /// Responses client evidence is correlated here; content is captured at the HTTP body.
 pub(crate) async fn invoke_client_stream_with_principal(
     state: Arc<ApiState>,

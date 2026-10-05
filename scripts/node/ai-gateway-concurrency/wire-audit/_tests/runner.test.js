@@ -11,7 +11,7 @@ const {
   runWireAudit,
   vectorBodies,
 } = require('../runner');
-const { ERROR_SURFACES, UPSTREAM_ERROR_FIXTURES } = require('../../protocol-oracle/error-fidelity');
+const { ERROR_FIDELITY_ROWS, UPSTREAM_ERROR_FIXTURES } = require('../../protocol-oracle/error-fidelity');
 
 // Root AC-019/020/023/024/027: finite vectors preserve owner and observer boundaries.
 test('controlled WireAudit vectors cover tool search, hosted tools, MCP, approval, and canary paths', () => {
@@ -152,19 +152,30 @@ test('Root #1477 AC-001/004/005/006: request audit inventory is finite and fail 
   assert.throws(() => assertRequestFidelityAudit(evidence), /did not omit foreign wire context/u);
 });
 
-test('Root #1477 AC-008: error audit requires 5 fixtures across all 4 public surfaces', () => {
+test('Root #1477 AC-008: error audit requires the explicit legacy and standard Anthropic rows', () => {
   const inventory = errorFidelityInventory();
-  assert.equal(inventory.rows, 20);
-  const rows = UPSTREAM_ERROR_FIXTURES.flatMap((fixture) => ERROR_SURFACES.map((surface) => {
+  assert.equal(inventory.rows, ERROR_FIDELITY_ROWS.length);
+  assert.deepEqual(inventory.row_ids, ERROR_FIDELITY_ROWS.map((row) => row.id));
+  const rows = ERROR_FIDELITY_ROWS.map(({ fixture: fixtureId, surface }) => {
+    const fixture = UPSTREAM_ERROR_FIXTURES.find((row) => row.id === fixtureId);
     const message = fixture.body || `upstream returned HTTP ${fixture.status}`;
     return {
       fixture: fixture.id, surface, attempts: fixture.attempts,
       native_message: message, durable_message: message, client_message: message,
+      ...(fixture.anthropicError ? {
+        native_error: { message: fixture.anthropicError.message, details: { upstream_error: fixture.anthropicError, raw_body: fixture.body } },
+        durable_error_payload: { message: fixture.anthropicError.message, provider_details: { upstream_error: fixture.anthropicError, raw_body: fixture.body } },
+        client_error: { type: 'error', error: { type: fixture.anthropicError.type, message: fixture.anthropicError.message }, request_id: fixture.anthropicError.request_id },
+      } : {}),
     };
-  }));
-  assert.deepEqual(assertErrorFidelityAudit({ rows }), {
-    schema_version: '1flowbase.ai-gateway-error-fidelity-result/v1', verdict: 'PASS', rows: 20,
   });
+  assert.deepEqual(assertErrorFidelityAudit({ rows }), {
+    schema_version: '1flowbase.ai-gateway-error-fidelity-result/v1', verdict: 'PASS', rows: ERROR_FIDELITY_ROWS.length,
+  });
+  assert.throws(() => assertErrorFidelityAudit({ rows: [...rows, rows[0]] }), /duplicated/u);
+  const corrupted = structuredClone(rows);
+  corrupted.at(-1).client_error.request_id = 'lost';
+  assert.throws(() => assertErrorFidelityAudit({ rows: corrupted }), /request_id/u);
   rows.pop();
   assert.throws(() => assertErrorFidelityAudit({ rows }), /evidence omitted/u);
 });
