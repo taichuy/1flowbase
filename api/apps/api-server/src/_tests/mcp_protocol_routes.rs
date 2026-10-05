@@ -359,7 +359,7 @@ async fn ac_003_005_builtin_frontstage_tools_are_discoverable_and_callable() {
         }),
     )
     .await;
-    let listed = list["result"]["structuredContent"].as_array().unwrap();
+    let listed = list["result"]["structuredContent"]["result"].as_array().unwrap();
     assert!(listed
         .iter()
         .any(|item| item["id"] == json!("frontstage_read_block_source_fragment")));
@@ -480,7 +480,7 @@ async fn ac_003_005_builtin_frontstage_tools_are_discoverable_and_callable() {
         }),
     )
     .await;
-    assert!(contract_list["result"]["structuredContent"]
+    assert!(contract_list["result"]["structuredContent"]["result"]
         .as_array()
         .unwrap()
         .iter()
@@ -1002,7 +1002,7 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
         }),
     )
     .await;
-    let listed_items = list_payload["result"]["structuredContent"]
+    let listed_items = list_payload["result"]["structuredContent"]["result"]
         .as_array()
         .unwrap();
     assert_eq!(listed_items.len(), 2);

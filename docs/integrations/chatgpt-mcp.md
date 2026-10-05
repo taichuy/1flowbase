@@ -194,6 +194,12 @@ curl -i -X POST 'https://你的域名/api/mcp/你的实例ID'
 
 仅在浏览器打开网页成功，不能证明 ChatGPT 后台的发现流程成功；仅看到 MCP 的 GET 返回 405，也不能据此判断服务未实现 OAuth。
 
+### 5. 已连接，但调用 `mcp_list` 报格式错误
+
+若 ChatGPT 能看到工具，但调用时提示 `structuredContent: Input should be a valid dictionary`，说明授权已经进入工具调用阶段，服务的工具结果格式需要更新。
+
+MCP 要求 `structuredContent` 是 JSON 对象。新版将目录数组包装为 `{"result": [...]}`，对象结果保留原字段；文本内容也包含相同对象。更新并重启 API 后，重试 `mcp_list`（例如 `{"depth": 2, "limit": 100}`），无需修改 API Key 或代理配置。
+
 ## 授权有效期和权限
 
 - OAuth 令牌只用于指定 MCP 实例和 Key 的工作区，不能用于登录管理后台或访问其他实例。

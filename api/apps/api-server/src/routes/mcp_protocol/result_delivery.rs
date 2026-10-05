@@ -26,6 +26,10 @@ pub(crate) use paging::{inline_limit, ContinuationCursor, DEFAULT_INLINE_CHARS};
 #[path = "result_delivery/_tests/cache.rs"]
 mod cache_tests;
 
+#[cfg(test)]
+#[path = "result_delivery/_tests/protocol.rs"]
+mod protocol_tests;
+
 /// Storage dependencies for MCP result continuation and receipt delivery.
 ///
 /// The result-delivery core intentionally has no dependency on API state or
@@ -456,6 +460,13 @@ pub(crate) async fn read_result(
 }
 
 pub(crate) fn tool_result(value: Value) -> Value {
+    // MCP CallToolResult.structuredContent must be an object. Keep business
+    // values unchanged until this final protocol projection.
+    let value = if value.is_object() {
+        value
+    } else {
+        json!({"result": value})
+    };
     let text = serialized(&value);
     json!({
         "content": [{"type":"text","text":text}],
