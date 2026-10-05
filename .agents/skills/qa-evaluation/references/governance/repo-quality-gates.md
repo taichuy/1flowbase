@@ -60,7 +60,7 @@
 
 ## Executed Test Evidence
 
-后端一致性与 Seed 的定向 gate 需要至少一个已执行通过的测试；编译成功、全部 ignored 或空 filter 选择均失败。测试移到跨层 host 后使用当前 Cargo integration target，报告保留 `testTarget`，不能继续用旧 module 名获得 0 用例绿灯。
+后端一致性、Seed 和 image-llm 的每条定向 gate 命令需要至少一个已执行通过的测试；编译成功、全部 ignored 或空 filter 选择均失败。保护性 selector 重命名后同步更新 `verify/backend-targets.js`，脚本快照不能锁死已删除的测试名。`test-backend` 与 `verify-backend all/image-llm-vision` 都要拒绝单条空选择，不能用相邻命令的 passing count 代替。测试移到跨层 host 后使用当前 Cargo integration target，报告保留 `testTarget`，不能继续用旧 module 名获得 0 用例绿灯。
 
 ## Quality Rule Changes
 

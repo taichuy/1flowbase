@@ -332,3 +332,24 @@ test('comments and Rust literals are not calls or test-module delimiters', () =>
   ].join('\n') });
   assert.deepEqual(findings.map(f => [f.rule, f.line]), [['no-production-escape', 11]]);
 });
+
+test('raw-string and multiline cfg values retain legal test-only exemptions', () => {
+  for (const attribute of ['#[cfg(all(test, feature = r#"fixture"#))]', '#[cfg(\n all(test, not(feature = "fixture"))\n)]']) {
+    const findings = scanRustSource({ relativePath: 'api/crates/domain/src/example.rs',
+      content: `${attribute}\nfn fixture() { Some(1).unwrap(); }\nfn production() { panic!("bad"); }` });
+    assert.equal(findings.length, 1, attribute);
+    assert.equal(findings[0].snippet, 'fn production() { panic!("bad"); }');
+  }
+});
+
+test('test-only item and field exemptions preserve adjacent production syntax', () => {
+  for (const content of [
+    '#[cfg(test)]\nfn fixture() { Some(1).unwrap(); } pub fn production() { panic!("bad"); }',
+    '#[cfg(test)] mod tests; pub fn production() { panic!("bad"); }',
+    'let state = State {\n#[cfg(test)]\ntest_resources: None,\nvalue: Some(1).unwrap(),\n};',
+  ]) {
+    const findings = scanRustSource({ relativePath: 'api/crates/domain/src/example.rs', content });
+    assert.equal(findings.length, 1, content);
+    assert.equal(findings[0].rule, 'no-production-escape');
+  }
+});

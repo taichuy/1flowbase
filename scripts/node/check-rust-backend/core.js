@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { maskRustText, isTestOnlyCfg } = require('./source.js');
+const { maskRustText, maskTestOnlyItems } = require('./source.js');
 
 const REPORT_FILE = 'rust-backend-static-gate.json';
 const PRODUCTION_ESCAPE_PATTERNS = [
@@ -67,34 +67,6 @@ function countChar(line, char) {
   return [...line].filter((candidate) => candidate === char).length;
 }
 
-function buildSkippedCfgTestLines(lines) {
-  const skipped = new Set();
-  let pending = false;
-  let depth = 0;
-  lines.forEach((line, index) => {
-    const trimmed = line.trim();
-    if (depth > 0) {
-      skipped.add(index + 1);
-      depth += countChar(line, '{') - countChar(line, '}');
-      return;
-    }
-    if (pending) {
-      skipped.add(index + 1);
-      if (!trimmed || trimmed.startsWith('#[')) return;
-      if (line.includes('{')) {
-        depth = countChar(line, '{') - countChar(line, '}');
-        pending = false;
-      } else if (line.includes(';')) pending = false;
-      return;
-    }
-    if (isTestOnlyCfg(trimmed)) {
-      skipped.add(index + 1);
-      pending = true;
-    }
-  });
-  return skipped;
-}
-
 function createFinding({ severity, rule, file, line, message, snippet }) {
   return {
     severity,
@@ -112,8 +84,7 @@ function scanRustSource({ relativePath, content }) {
   }
 
   const lines = content.split(/\r?\n/u);
-  const codeLines = maskRustText(content).split(/\r?\n/u);
-  const skippedLines = buildSkippedCfgTestLines(codeLines);
+  const codeLines = maskTestOnlyItems(maskRustText(content)).split(/\r?\n/u);
   const findings = [];
   let pendingSerializeDerive = false;
   let inSerializeStruct = false;
@@ -121,10 +92,6 @@ function scanRustSource({ relativePath, content }) {
 
   codeLines.forEach((line, index) => {
     const lineNumber = index + 1;
-
-    if (skippedLines.has(lineNumber)) {
-      return;
-    }
 
     for (const { name, pattern } of PRODUCTION_ESCAPE_PATTERNS) {
       if (pattern.test(line)) {

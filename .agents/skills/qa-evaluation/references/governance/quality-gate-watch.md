@@ -48,7 +48,7 @@
 
 当前仓库的质量门禁自动化入口：
 
-- `.github/workflows/verify.yml`：`pull_request`、`beta` / `main` / `latest` push 触发轻量合并门禁；`workflow_dispatch` 额外用 exact main / official source SHA 验证实际插件包。
+- `.github/workflows/verify.yml`：`pull_request`、`beta` / `main` / `latest` push 触发轻量合并门禁；`workflow_dispatch` 用 exact main / official source SHA 验证实际插件包；所有主仓 checkout 和 receipt 必须绑定 main source SHA。两个必需的官方 host conformance 测试分别执行，标准 `provider-conformance` receipt 与 job dependency 一起进入最终 aggregate；普通 PR / push 不要求此手动 scope。
 - `.github/workflows/quality-gate.yml`：每日 schedule 和手动完整 quality gate；`target_branch` 默认 `latest`，接受分支、tag 或 full SHA，`scope=ci` 执行全量体检。
 - `.github/actions/quality-gate/action.yml`：复用 action，实际执行 `node scripts/node/cli/github-quality-gate.js`。
 - `scripts/node/cli/github-quality-gate.js`：生成 `quality-gate.latest.log`、`quality-gate-report.md`、`quality-gate-report.json`，有 token 时发布 GitHub issue。

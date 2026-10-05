@@ -7,6 +7,7 @@ function maskRustText(source) {
   for (let i = 0; i < source.length;) {
     const start = i;
     let quoted = false;
+    let rawQuoted = false;
     if (source.startsWith('//', i)) {
       const end = source.indexOf('\n', i);
       i = end < 0 ? source.length : end;
@@ -21,6 +22,7 @@ function maskRustText(source) {
     } else {
       const raw = source.slice(i).match(/^(?:br|cr|r)(#*)"/u);
       if (raw) {
+        rawQuoted = true;
         const end = source.indexOf(`"${raw[1]}`, i + raw[0].length);
         i = end < 0 ? source.length : end + raw[1].length + 1;
       } else if (source[i] === '"') {
@@ -38,6 +40,10 @@ function maskRustText(source) {
       } else { i += 1; continue; }
     }
     mask(start, i);
+    if (rawQuoted && i - start >= 2) {
+      chars[start] = '"';
+      chars[i - 1] = '"';
+    }
     if (quoted) {
       chars[start] = '"';
       if (source[i - 1] === '"') chars[i - 1] = '"';
@@ -82,3 +88,52 @@ function isTestOnlyCfg(attribute) {
 }
 
 module.exports = { maskRustText, isTestOnlyCfg };
+
+// Mask exactly the attributed item, preserving code after its closing delimiter.
+// Strings/comments have already been masked, so delimiters here are syntax.
+function maskTestOnlyItems(code) {
+  const chars = code.split('');
+  const attributes = /#\s*\[\s*cfg\s*\(([^\]]*)\)\s*\]/gu;
+  for (const match of code.matchAll(attributes)) {
+    if (!isTestOnlyCfg(match[0])) continue;
+    let cursor = match.index + match[0].length;
+    // Other attributes still belong to the same item.
+    while (true) {
+      while (/\s/u.test(code[cursor] || '') && cursor < code.length) cursor += 1;
+      if (code.slice(cursor, cursor + 2) !== '#[') break;
+      let brackets = 0;
+      do {
+        if (code[cursor] === '[') brackets += 1;
+        if (code[cursor] === ']') brackets -= 1;
+        cursor += 1;
+      } while (cursor < code.length && (brackets > 0 || code[cursor - 1] === '#'));
+    }
+    const field = /^(?:pub(?:\([^)]*\))?\s+)?(?:r#)?\w+\s*:(?!:)/u.test(code.slice(cursor));
+    let parentheses = 0;
+    let brackets = 0;
+    let braces = 0;
+    let body = false;
+    let end = null;
+    for (; cursor < code.length; cursor += 1) {
+      const char = code[cursor];
+      if (char === '(') parentheses += 1;
+      else if (char === ')') parentheses -= 1;
+      else if (char === '[') brackets += 1;
+      else if (char === ']') brackets -= 1;
+      else if (char === '{') { braces += 1; body = true; }
+      else if (char === '}') {
+        braces -= 1;
+        if (!field && body && braces === 0 && parentheses === 0 && brackets === 0) { end = cursor + 1; break; }
+        if (braces < 0) break;
+      } else if ((char === ';' || (field && char === ',')) && braces === 0 && parentheses === 0 && brackets === 0) {
+        end = cursor + 1; break;
+      }
+    }
+    // Unrecognized/incomplete syntax stays visible rather than hiding production code.
+    if (end === null) continue;
+    for (let i = match.index; i < end; i += 1) if (chars[i] !== '\n' && chars[i] !== '\r') chars[i] = ' ';
+  }
+  return chars.join('');
+}
+
+module.exports.maskTestOnlyItems = maskTestOnlyItems;
