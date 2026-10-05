@@ -79,9 +79,9 @@
   },
   "devDependencies": {
     "@types/react-is": "^19.3.0",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "fake-indexeddb": "^6.2.5",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.11"
   }
 }
