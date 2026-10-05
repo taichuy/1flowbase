@@ -6,7 +6,15 @@ import {
   within,
   waitFor
 } from '@testing-library/react';
-import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi
+} from 'vitest';
 
 const {
   attachConsoleAssistantRunWebSocket,
@@ -82,6 +90,15 @@ interface WindowDimensionSpy {
 
 const ASSISTANT_WINDOW_SIZE_STORAGE_KEY =
   '1flowbase.embedded_assistant.window_size';
+
+async function findReadyHistoryButton() {
+  const button = await screen.findByRole('button', {
+    name: i18nText('appShell', 'auto.assistant_history')
+  });
+  // The toolbar exists before the asynchronous settings make history available.
+  await waitFor(() => expect(button).toBeEnabled());
+  return button;
+}
 
 describe('EmbeddedAgentAssistant', () => {
   beforeAll(() => loadApplicationI18nResources());
@@ -252,12 +269,15 @@ describe('EmbeddedAgentAssistant', () => {
       expect(getConsoleAssistantSettings).toHaveBeenCalledTimes(1);
     });
     await waitFor(
-      () => expect(
-        document.querySelector('.agent-flow-editor__debug-console')
-      ).toBeInTheDocument(),
+      () =>
+        expect(
+          document.querySelector('.agent-flow-editor__debug-console')
+        ).toBeInTheDocument(),
       { timeout: 10_000 }
     );
-    expect(screen.getByTestId('debug-conversation-messages')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('debug-conversation-messages')
+    ).toBeInTheDocument();
     expect(document.querySelector('.ant-drawer')).not.toBeInTheDocument();
     expect(
       screen.getByTestId('embedded-agent-assistant-preview')
@@ -331,9 +351,7 @@ describe('EmbeddedAgentAssistant', () => {
       })
     );
 
-    const history = await screen.findByRole('button', {
-      name: i18nText('appShell', 'auto.assistant_history')
-    });
+    const history = await findReadyHistoryButton();
     fireEvent.click(history);
     expect(await screen.findByText('First conversation')).toBeInTheDocument();
     expect(
@@ -424,11 +442,7 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: i18nText('appShell', 'auto.assistant_history')
-      })
-    );
+    fireEvent.click(await findReadyHistoryButton());
 
     expect(
       await screen.findByLabelText(
@@ -484,11 +498,7 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: i18nText('appShell', 'auto.assistant_history')
-      })
-    );
+    fireEvent.click(await findReadyHistoryButton());
     fireEvent.click(await screen.findByText('Cancelled without output'));
 
     expect(
@@ -534,11 +544,7 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: i18nText('appShell', 'auto.assistant_history')
-      })
-    );
+    fireEvent.click(await findReadyHistoryButton());
     fireEvent.click(await screen.findByText('Active conversation'));
 
     await waitFor(() =>
@@ -610,19 +616,16 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: i18nText('appShell', 'auto.assistant_history')
-      })
-    );
+    fireEvent.click(await findReadyHistoryButton());
 
     expect(await screen.findByLabelText('运行中')).toBeInTheDocument();
     expect(screen.getByLabelText('等待操作')).toBeInTheDocument();
     expect(screen.getByLabelText('运行失败')).toBeInTheDocument();
     expect(
-      screen.queryByText('Completed conversation')?.closest(
-        '.ant-conversations-item'
-      )?.querySelector('[data-assistant-run-status]') ?? null
+      screen
+        .queryByText('Completed conversation')
+        ?.closest('.ant-conversations-item')
+        ?.querySelector('[data-assistant-run-status]') ?? null
     ).toBeNull();
   });
 
@@ -666,9 +669,7 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    const history = await screen.findByRole('button', {
-      name: i18nText('appShell', 'auto.assistant_history')
-    });
+    const history = await findReadyHistoryButton();
     fireEvent.click(history);
 
     await waitFor(() => expect(emitConversation).toBeDefined());
@@ -731,9 +732,7 @@ describe('EmbeddedAgentAssistant', () => {
       })
     );
 
-    const history = await screen.findByRole('button', {
-      name: i18nText('appShell', 'auto.assistant_history')
-    });
+    const history = await findReadyHistoryButton();
     const assistantWindow = screen.getByTestId(
       'embedded-agent-assistant-preview'
     ) as HTMLElement;
@@ -871,9 +870,7 @@ describe('EmbeddedAgentAssistant', () => {
       windowHeight: initialHeight - 100
     });
 
-    const history = await screen.findByRole('button', {
-      name: i18nText('appShell', 'auto.assistant_history')
-    });
+    const history = await findReadyHistoryButton();
     fireEvent.click(history);
     const historySidebar = await screen.findByTestId(
       'embedded-agent-assistant-history'
@@ -946,9 +943,7 @@ describe('EmbeddedAgentAssistant', () => {
       })
     );
 
-    const history = await screen.findByRole('button', {
-      name: i18nText('appShell', 'auto.assistant_history')
-    });
+    const history = await findReadyHistoryButton();
     const assistantWindow = screen.getByTestId(
       'embedded-agent-assistant-preview'
     ) as HTMLElement;
@@ -973,11 +968,7 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: i18nText('appShell', 'auto.assistant_history')
-      })
-    );
+    fireEvent.click(await findReadyHistoryButton());
     await screen.findByTestId('embedded-agent-assistant-history');
 
     innerWidthSpy?.mockReturnValue(640);
@@ -1028,11 +1019,7 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: i18nText('appShell', 'auto.assistant_history')
-      })
-    );
+    fireEvent.click(await findReadyHistoryButton());
     fireEvent.click(await screen.findByText('Legacy snapshot'));
 
     await waitFor(() =>
@@ -1111,11 +1098,7 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('agentFlow', 'auto.clear_preview')
       })
     ).toBeDisabled();
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: i18nText('appShell', 'auto.assistant_history')
-      })
-    );
+    fireEvent.click(await findReadyHistoryButton());
     fireEvent.click(await screen.findByText('First conversation'));
     await waitFor(() =>
       expect(getConsoleAssistantConversationMessages).toHaveBeenCalledWith(
@@ -2019,7 +2002,9 @@ describe('EmbeddedAgentAssistant', () => {
       'aria-label',
       i18nText('appShell', 'auto.assistant_activity')
     );
-    expect(await within(sidebar).findByText('Research node')).toBeInTheDocument();
+    expect(
+      await within(sidebar).findByText('Research node')
+    ).toBeInTheDocument();
     expect(
       within(sidebar).getByText(i18nText('agentFlow', 'auto.reply_directly'))
     ).toBeInTheDocument();
@@ -2190,11 +2175,7 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: i18nText('appShell', 'auto.assistant_history')
-      })
-    );
+    fireEvent.click(await findReadyHistoryButton());
     fireEvent.click(await screen.findByText('First conversation'));
     expect(await screen.findByText('历史最终回答')).toBeInTheDocument();
     expect(screen.queryByText('历史思考')).not.toBeInTheDocument();
