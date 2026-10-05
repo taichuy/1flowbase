@@ -509,11 +509,11 @@ async fn root_2007_ac_010_lane_budgets_worker_cancel_and_reap() {
     .unwrap();
     flooded.finish_unmount(&flooded_handle);
 
-    // Identity capacity is independent of active calls and never evicts an old handle.
+    // Registered identities do not consume the active-call budget or evict old handles.
     let binding = fixture.binding(&before("model"), "sleep");
     let mut identities = ManagedWorkers::default();
     let mut first = None;
-    for i in 0..4096 {
+    for i in 0..4097 {
         let id = ManagedExecutionIdentity::new(
             ManagedInstallationId::new(format!("installation-{i}")).unwrap(),
             ManagedWorkspaceId::new("workspace-1").unwrap(),
@@ -526,11 +526,10 @@ async fn root_2007_ac_010_lane_budgets_worker_cancel_and_reap() {
             first = Some(handle);
         }
     }
-    assert!(identities.mount(identity(), binding).is_err());
     assert!(identities
         .admit_hook(request(first.unwrap(), before("model")))
         .is_ok());
-    assert_eq!(identities.loaded_count(), 4096);
+    assert_eq!(identities.loaded_count(), 4097);
     identities.close_admission().unwrap();
     for scope in identities.scopes() {
         scope.dispose().await.unwrap();
