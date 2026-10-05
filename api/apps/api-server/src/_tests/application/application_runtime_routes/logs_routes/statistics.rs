@@ -247,7 +247,7 @@ async fn application_runtime_routes_logs_report_run_statistics() {
         "output_tokens": 7532,
         "count_tokens_input_tokens": null,
         "input_cache_hit_tokens": 7532,
-        "input_cache_hit_rate": 0.5,
+        "input_cache_hit_rate": 1.0,
         "unique_node_count": 3,
         "tool_callback_count": 20
     });
@@ -305,7 +305,7 @@ async fn application_runtime_routes_logs_report_run_statistics() {
     );
     assert_eq!(
         task_records["data"]["items"][0]["input_cache_hit_rate"],
-        0.5
+        1.0
     );
     let run_records = get_console_json(
         &app,

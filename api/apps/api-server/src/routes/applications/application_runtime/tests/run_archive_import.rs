@@ -299,7 +299,7 @@ fn trace_export_fixture(run_id: &str) -> ApplicationRunTraceExportResponse {
         output_tokens: Some(9),
         input_cache_hit_tokens: Some(0),
         input_cache_hit_rate: application_logs::input_cache_hit_rate_for_response(
-            Some(22),
+            Some(13),
             Some(0),
         ),
         unique_node_count: 1,

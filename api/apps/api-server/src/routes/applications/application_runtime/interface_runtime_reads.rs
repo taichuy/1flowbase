@@ -255,7 +255,7 @@ impl ApplicationRuntimeReadsAdapter {
                     output_tokens: log_summary.output_tokens,
                     input_cache_hit_tokens: log_summary.input_cache_hit_tokens,
                     input_cache_hit_rate: application_logs::input_cache_hit_rate_for_response(
-                        log_summary.total_tokens,
+                        log_summary.input_tokens,
                         log_summary.input_cache_hit_tokens,
                     ),
                     unique_node_count: log_summary.unique_node_count,

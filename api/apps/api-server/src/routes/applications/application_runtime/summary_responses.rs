@@ -121,6 +121,19 @@ fn metrics_payload_cache_hit_tokens(metrics_payload: &serde_json::Value) -> Opti
         .or_else(|| metrics_payload_usage_token(metrics_payload, "cached_input_tokens"))
 }
 
+fn metrics_payload_input_tokens(metrics_payload: &serde_json::Value) -> Option<i64> {
+    // Match the durable log projection: explicit misses identify exclusive-input providers.
+    if let Some(miss) = metrics_payload_usage_token(metrics_payload, "input_cache_miss_tokens") {
+        miss.checked_add(metrics_payload_cache_hit_tokens(metrics_payload).unwrap_or_default())?
+            .checked_add(
+                metrics_payload_usage_token(metrics_payload, "cache_write_tokens")
+                    .unwrap_or_default(),
+            )
+    } else {
+        metrics_payload_usage_token(metrics_payload, "input_tokens")
+    }
+}
+
 fn callback_task_tool_callback_count(task: &domain::CallbackTaskRecord) -> i64 {
     if task.callback_kind != "llm_tool_calls" {
         return 0;
@@ -183,9 +196,7 @@ fn application_run_statistics_for_records(
         if let Some(node_tokens) = metrics_payload_total_tokens(&node_run.metrics_payload) {
             total_tokens = Some(total_tokens.unwrap_or(0) + node_tokens);
         }
-        if let Some(node_tokens) =
-            metrics_payload_usage_token(&node_run.metrics_payload, "input_tokens")
-        {
+        if let Some(node_tokens) = metrics_payload_input_tokens(&node_run.metrics_payload) {
             input_tokens = Some(input_tokens.unwrap_or(0) + node_tokens);
         }
         if let Some(node_tokens) =
@@ -207,7 +218,7 @@ fn application_run_statistics_for_records(
         output_tokens,
         input_cache_hit_tokens,
         input_cache_hit_rate: application_logs::input_cache_hit_rate_for_response(
-            total_tokens,
+            input_tokens,
             input_cache_hit_tokens,
         ),
         unique_node_count: unique_node_ids.len() as i64,

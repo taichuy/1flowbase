@@ -619,3 +619,66 @@ fn trace_node_content_raw_payload_keeps_empty_payload_as_object() {
 
     assert_eq!(payload, serde_json::json!({}));
 }
+
+
+#[test]
+fn cache_usage_detail_aggregates_inclusive_input_across_provider_conventions() {
+    let flow_run_id = Uuid::now_v7();
+    for output in [10, 50_000] {
+        let nodes = [
+            serde_json::json!({"input_tokens": 10, "input_cache_miss_tokens": 10,
+                "cache_read_tokens": 80, "cache_write_tokens": 10, "output_tokens": output}),
+            serde_json::json!({"input_tokens": 900, "input_cache_hit_tokens": 0, "output_tokens": output}),
+        ].into_iter().map(|usage| domain::NodeRunRecord {
+            id: Uuid::now_v7(), flow_run_id,
+            node_id: "llm".into(), node_type: "llm".into(), node_alias: "LLM".into(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload: serde_json::json!({}), output_payload: serde_json::json!({}),
+            error_payload: None, debug_payload: serde_json::json!({}),
+            metrics_payload: serde_json::json!({"usage": usage}),
+            started_at: OffsetDateTime::UNIX_EPOCH, finished_at: Some(OffsetDateTime::UNIX_EPOCH),
+        }).collect::<Vec<_>>();
+        let statistics = application_run_statistics_for_records(&nodes, 0);
+        assert_eq!(statistics.input_tokens, Some(1000));
+        assert_eq!(statistics.input_cache_hit_tokens, Some(80));
+        assert_eq!(statistics.input_cache_hit_rate, Some(0.08));
+    }
+}
+
+#[test]
+fn cache_usage_detail_preserves_unknown_input_and_counts_zero_misses() {
+    assert_eq!(
+        metrics_payload_input_tokens(&serde_json::json!({"usage": {"cache_read_tokens": 50}})),
+        None
+    );
+    assert_eq!(
+        metrics_payload_input_tokens(&serde_json::json!({"usage": {
+            "input_tokens": 0, "input_cache_miss_tokens": 0, "cache_read_tokens": 50
+        }})),
+        Some(50)
+    );
+    assert_eq!(
+        metrics_payload_input_tokens(&serde_json::json!({"usage": {
+            "input_tokens": 100, "cached_input_tokens": 80
+        }})),
+        Some(100)
+    );
+}
+
+#[test]
+fn cache_usage_trace_projection_uses_input_instead_of_legacy_total() {
+    for (input, hit, total, expected) in [
+        (827_119, 494_000, 286_532, 0.5973),
+        (803_199, 444_600, 361_256, 0.5535),
+        (280_611, 148_200, 135_040, 0.5281),
+    ] {
+        let statistics =
+            to_trace_projection_statistics_response(ApplicationRunTraceProjectionStatistics {
+                input_tokens: Some(input),
+                input_cache_hit_tokens: Some(hit),
+                total_tokens: Some(total),
+                ..Default::default()
+            });
+        assert_eq!(statistics.input_cache_hit_rate, Some(expected));
+    }
+}

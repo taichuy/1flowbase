@@ -126,7 +126,7 @@ pub(super) fn to_trace_projection_statistics_response(
         output_tokens: statistics.output_tokens,
         input_cache_hit_tokens: statistics.input_cache_hit_tokens,
         input_cache_hit_rate: application_logs::input_cache_hit_rate_for_response(
-            statistics.total_tokens,
+            statistics.input_tokens,
             statistics.input_cache_hit_tokens,
         ),
         unique_node_count: statistics.unique_node_count,
