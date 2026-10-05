@@ -249,13 +249,11 @@ test('AC-009 settings locale owners have no duplicated values', () => {
 
   const expectedValues = {
     zh_Hans: {
-      application: '应用',
       actions: '操作',
       requestLogApplication: '应用',
       operation: '操作'
     },
     en_US: {
-      application: 'Application',
       actions: 'Actions',
       requestLogApplication: 'Application',
       operation: 'Operation'
@@ -281,8 +279,9 @@ test('AC-009 settings locale owners have no duplicated values', () => {
     );
 
     assert.equal(
-      applicationManagementResource.auto.application_management_application,
-      expected.application
+      Object.hasOwn(applicationManagementResource.auto, 'application_management_application'),
+      false,
+      'retired application label must not return after its UI consumer is removed'
     );
     assert.equal(
       applicationManagementResource.auto.application_management_actions,
