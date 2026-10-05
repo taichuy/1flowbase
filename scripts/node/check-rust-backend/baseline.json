@@ -32,18 +32,6 @@
     },
     {
       "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/application_runtime/runtime_debug_artifacts.rs",
-      "line": 374,
-      "snippet": ".unwrap())"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/application_runtime.rs",
-      "line": 436,
-      "snippet": "value.format(&Rfc3339).unwrap()"
-    },
-    {
-      "rule": "no-production-escape",
       "file": "api/apps/api-server/src/routes/applications/applications.rs",
       "line": 218,
       "snippet": "updated_at: variable.updated_at.format(&Rfc3339).unwrap(),"
@@ -65,12 +53,6 @@
       "file": "api/apps/api-server/src/routes/files.rs",
       "line": 326,
       "snippet": ".unwrap())"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/identity/api_keys.rs",
-      "line": 88,
-      "snippet": "value.map(|value| value.format(&Rfc3339).unwrap())"
     },
     {
       "rule": "no-production-escape",
@@ -101,24 +83,6 @@
       "file": "api/apps/api-server/src/routes/plugins_and_models/plugins.rs",
       "line": 285,
       "snippet": "value.format(&Rfc3339).unwrap()"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/plugins_and_models/plugins.rs",
-      "line": 431,
-      "snippet": "i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/plugins_and_models/plugins.rs",
-      "line": 561,
-      "snippet": "i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/plugins_and_models/plugins.rs",
-      "line": 597,
-      "snippet": "i18n_catalog: serde_json::to_value(families.i18n_catalog).unwrap(),"
     },
     {
       "rule": "no-sensitive-serialize",

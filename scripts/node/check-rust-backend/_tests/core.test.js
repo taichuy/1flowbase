@@ -241,6 +241,20 @@ test('baseline suppression survives unrelated line shifts', async () => {
   assert.equal(findings[0].suppressionReason, 'existing panic cleanup is tracked separately');
 });
 
+test('every current Rust baseline exception matches a live finding', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const baseline = JSON.parse(fs.readFileSync(
+    path.join(repoRoot, 'scripts', 'node', 'check-rust-backend', 'baseline.json'),
+    'utf8'
+  ));
+  const findings = collectRustBackendFindings({ repoRoot, includeSuppressed: true });
+  const key = (entry) => JSON.stringify([entry.rule, entry.file, entry.snippet]);
+  const liveKeys = new Set(findings.map(key));
+  const stale = baseline.allowedFindings.filter((entry) => !liveKeys.has(key(entry)));
+
+  assert.deepEqual(stale, [], 'retired code must retire its Rust lint exception');
+});
+
 test('current api routes do not contain active blocking IO warnings', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const findings = collectRustBackendFindings({ repoRoot }).filter(
