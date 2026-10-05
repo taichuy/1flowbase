@@ -1204,7 +1204,7 @@ test('release target keys reuse compatible commits without crossing build enviro
     const values = {
       'runner.os': 'Linux', 'matrix.arch': 'amd64', 'env.RUSTUP_TOOLCHAIN': '1.99.0',
       'github.sha': 'commit-a',
-      "hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*')": 'recipe-a',
+      "hashFiles('.github/workflows/container-images.yml', 'scripts/node/container-image-security/restore-cargo-inputs.js', 'api/rust-toolchain.toml', 'api/.cargo/config*')": 'recipe-a',
       "hashFiles('api/Cargo.lock', 'api/**/Cargo.toml')": 'deps-a',
       ...overrides,
     };
@@ -1223,7 +1223,7 @@ test('release target keys reuse compatible commits without crossing build enviro
   for (const change of [
     { 'matrix.arch': 'arm64' }, { 'runner.os': 'Windows' },
     { 'env.RUSTUP_TOOLCHAIN': '1.100.0' },
-    { "hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*')": 'recipe-b' },
+    { "hashFiles('.github/workflows/container-images.yml', 'scripts/node/container-image-security/restore-cargo-inputs.js', 'api/rust-toolchain.toml', 'api/.cargo/config*')": 'recipe-b' },
   ]) {
     assert.ok(prefixes.every(prefix => !oldKey.startsWith(render(prefix, change))), 'incompatible targets must miss');
   }

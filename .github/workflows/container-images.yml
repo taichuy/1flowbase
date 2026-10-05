@@ -391,10 +391,10 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: tmp/container-cache/api-server/${{ matrix.arch }}/target
-          key: rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-${{ github.sha }}
+          key: rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'scripts/node/container-image-security/restore-cargo-inputs.js', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-${{ github.sha }}
           restore-keys: |
-            rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-
-            rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-
+            rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'scripts/node/container-image-security/restore-cargo-inputs.js', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-
+            rust-release-target-v3-${{ runner.os }}-${{ matrix.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('.github/workflows/container-images.yml', 'scripts/node/container-image-security/restore-cargo-inputs.js', 'api/rust-toolchain.toml', 'api/.cargo/config*') }}-release-
 
       - name: Build api-server binary on native ${{ matrix.arch }}
         shell: bash
@@ -409,6 +409,9 @@ jobs:
             "$cache_root/cargo-git" \
             "$cache_root/target" \
             "$artifact_root" "$report_root"
+          # Content-checked input mtimes travel inside the target cache. Fresh
+          # checkouts otherwise invalidate all local crates despite a cache hit.
+          node scripts/node/container-image-security/restore-cargo-inputs.js "$cache_root/target/cargo-inputs.json" | tee "$report_root/input-reuse.json"
           # Docker writes as root, including when compilation fails.
           trap 'sudo chown -R "$(id -u):$(id -g)" "$cache_root" "$report_root"' EXIT
 
@@ -444,6 +447,7 @@ jobs:
             echo '### Rust release build (${{ matrix.arch }})'
             echo "Commit: $GITHUB_SHA"
             cat "$report_root/build.env"
+            cat "$report_root/input-reuse.json"
             du -sh "$cache_root"/*
             echo 'Cache restore/save durations are recorded in the named Actions steps.'
           } >> "$GITHUB_STEP_SUMMARY"
