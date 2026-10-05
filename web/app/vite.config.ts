@@ -1,5 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 
+import { oauthAwareApiProxy } from './vite/oauth-proxy';
+
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
@@ -259,19 +261,13 @@ export default defineConfig(({ command, mode }) => {
         ]
       },
       proxy: {
-        '/.well-known/oauth-': {
-          target: apiProxyTarget,
-          changeOrigin: false,
-          xfwd: true
-        },
+        '/.well-known/oauth-': oauthAwareApiProxy(apiProxyTarget),
         '/external-npm': {
           target: externalNpmProxyTarget,
           changeOrigin: true
         },
         '/api': {
-          target: apiProxyTarget,
-          changeOrigin: false,
-          xfwd: true,
+          ...oauthAwareApiProxy(apiProxyTarget),
           ws: true
         },
         '/v1': {
