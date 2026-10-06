@@ -50,3 +50,31 @@ test('test-only sensitive records are exempt without hiding adjacent production 
   const findings = scan('#[cfg(test)] #[derive(Serialize)] struct Fixture { token_hash: String }\n#[derive(Serialize)] struct Response { token_hash: String }');
   assert.deepEqual(findings.map(item => [item.rule, item.line]), [['no-sensitive-serialize', 2]]);
 });
+
+
+test('raw identifiers and spaced visibility preserve unconditional serde skip', () => {
+  for (const field of ['r#token_hash', 'pub (crate) token_hash', 'pub(in crate::auth) r#token_hash']) {
+    for (const skip of ['skip', 'skip_serializing']) {
+      assert.deepEqual(scan(`#[derive(Serialize)] struct Response { # [serde(${skip})] ${field}: String }`), []);
+    }
+    assert.deepEqual(scan(`#[derive(Serialize)] struct Response { ${field}: String }`).map(item => item.rule), ['no-sensitive-serialize']);
+  }
+});
+
+test('field type const bindings are not serialized fields and generic commas do not hide later fields', () => {
+  assert.deepEqual(scan(`#[derive(Serialize)] struct Public {
+    bytes: [u8; { let token_hash: usize = 1; token_hash }],
+    pair: Result<String, Vec<(u8, u8)>>,
+  }`), []);
+  assert.deepEqual(scan(`#[derive(Serialize)] struct Response {
+    pair: Result<String, Vec<(u8, u8)>>,
+    token_hash: String,
+  }`).map(item => item.rule), ['no-sensitive-serialize']);
+});
+
+test('where function bounds and spaced attributes retain the named struct owner', () => {
+  assert.deepEqual(scan(`#[derive(Serialize)]
+    # [serde(rename_all = "camelCase")]
+    struct Response<T> where T: Fn() -> String { password_hash: String, marker: T }
+  `).map(item => item.rule), ['no-sensitive-serialize']);
+});
