@@ -1,4 +1,5 @@
 import { Tabs } from 'antd';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { CreditManagementPanel } from '../../components/billing/CreditManagementPanel';
 import { MemberManagementPanel } from '../../components/MemberManagementPanel';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -10,9 +11,17 @@ export function MemberSettingsTabs({
   canManageMembers: boolean;
   canManageRoleBindings: boolean;
 }) {
+  const navigate = useNavigate();
+  const activeTab = useRouterState({
+    select: (state) => state.location.search.tabs
+  });
+
   return (
     <Tabs
-      defaultActiveKey="members"
+      activeKey={activeTab === 'credits' ? 'credits' : 'members'}
+      onChange={(tabs) =>
+        void navigate({ to: '/settings/members', search: { tabs } })
+      }
       items={[
         {
           key: 'members',

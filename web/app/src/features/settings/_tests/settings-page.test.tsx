@@ -1020,6 +1020,36 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  test('keeps the selected members tab in the URL', async () => {
+    authenticateWithPermissions(['user.view.all']);
+
+    renderApp('/settings/members');
+
+    const creditsTab = await screen.findByRole('tab', { name: '用户金额' });
+    fireEvent.click(creditsTab);
+
+    await waitFor(() => {
+      expect(window.location.search).toBe('?tabs=credits');
+      expect(creditsTab).toHaveAttribute('aria-selected', 'true');
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: '用户管理' }));
+    await waitFor(() => {
+      expect(window.location.search).toBe('?tabs=members');
+    });
+  });
+
+  test('restores the credits tab from the URL', async () => {
+    authenticateWithPermissions(['user.view.all']);
+
+    renderApp('/settings/members?tabs=credits');
+
+    expect(await screen.findByRole('tab', { name: '用户金额' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
   test('renders auth center actions and opens configuration drawer', async () => {
     authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
