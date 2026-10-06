@@ -73,7 +73,7 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
   const [ledgerUser, setLedgerUser] = useState<string | null>(null);
   const members = useQuery({
     queryKey: settingsMembersQueryKey,
-    queryFn: fetchSettingsMembers
+    queryFn: () => fetchSettingsMembers()
   });
   const accounts = useQuery({
     queryKey: settingsCreditAccountsQueryKey,
@@ -140,10 +140,7 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
         <Alert
           showIcon
           type="error"
-          message={i18nText(
-            'settings',
-            'auto.billing_credit_operation_failed'
-          )}
+          message={i18nText('settings', 'auto.billing_credit_operation_failed')}
         />
       ) : null}
       <Table
@@ -231,9 +228,7 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
       />
       <Modal
         open={target !== null}
-        title={
-          target ? moneyCommandLabel(target.command) : ''
-        }
+        title={target ? moneyCommandLabel(target.command) : ''}
         onCancel={() => setTarget(null)}
         onOk={() => form.submit()}
         confirmLoading={mutate.isPending}

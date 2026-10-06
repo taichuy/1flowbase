@@ -723,7 +723,7 @@ export function MemberManagementPanel({
               message={i18nText('settings', 'organization.members_error')}
               action={
                 <Button onClick={() => void membersQuery.refetch()}>
-                  {i18nText('settings', 'organization.retry')}
+                  {i18nText('settings', 'auto.retry_permission_data')}
                 </Button>
               }
             />

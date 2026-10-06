@@ -54,3 +54,5 @@ pub use system_backup::*;
 pub use ui_management::*;
 
 pub use control_plane_contracts::ports::plugin_contribution_authority::*;
+
+pub use control_plane_contracts::ports::{OrganizationRepository, SaveDepartmentInput};

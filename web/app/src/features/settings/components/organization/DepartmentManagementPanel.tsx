@@ -141,8 +141,13 @@ export function DepartmentManagementPanel({
           type="error"
           message={i18nText('settings', 'organization.operation_error')}
           action={
-            <Button onClick={() => void query.refetch()}>
-              {i18nText('settings', 'organization.retry')}
+            <Button
+              onClick={() => {
+                remove.reset();
+                void query.refetch();
+              }}
+            >
+              {i18nText('settings', 'auto.retry_permission_data')}
             </Button>
           }
         />

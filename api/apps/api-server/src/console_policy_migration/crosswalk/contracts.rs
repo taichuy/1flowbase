@@ -257,6 +257,11 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "billing.credit_accounts.list",
             "billing.credit_accounts.view",
             "billing.credit_ledger.list",
+            "departments.list",
+            "departments.create",
+            "departments.update",
+            "departments.delete",
+            "members.departments.replace",
             "members.create",
             "members.delete",
             "members.disable",
@@ -431,6 +436,12 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Organization grants are new authority, never inferred from historical user-management grants.
+    "departments.list",
+    "departments.create",
+    "departments.update",
+    "departments.delete",
+    "members.departments.replace",
     // Editing proxy configuration is new; historical member-state grants do not authorize it.
     "network_egress_proxies.get",
     "network_egress_proxies.update",

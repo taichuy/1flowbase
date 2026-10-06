@@ -89,6 +89,17 @@ function findMemberRow(name: RegExp) {
   return screen.findByRole('row', { name });
 }
 
+// rc-component shares test-id across ARIA heading associations in tests.
+// Locate the real dialog through its visible title, retaining save assertions.
+async function findProfileDialog(name: string) {
+  const title = await screen.findByText(`编辑用户资料 ${name}`);
+  const dialog = title.closest<HTMLElement>('[role="dialog"]');
+  if (!dialog) throw new Error('Profile title is not inside a dialog');
+  expect(dialog).toBeVisible();
+  expect(dialog).toHaveAttribute('aria-modal', 'true');
+  return dialog;
+}
+
 function ignoreCircularReferenceWarning() {
   const originalError = console.error;
   const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
@@ -309,9 +320,7 @@ describe('MemberManagementPanel', () => {
         const row = await findMemberRow(/root.*Root Name.*Root Nick/u);
         fireEvent.click(within(row).getByRole('button', { name: /编辑$/ }));
 
-        const dialog = await screen.findByRole('dialog', {
-          name: /编辑用户资料/
-        });
+        const dialog = await findProfileDialog('Root Name');
         expect(
           within(dialog).getByRole('combobox', { name: '直接角色' })
         ).toBeInTheDocument();
@@ -371,7 +380,7 @@ describe('MemberManagementPanel', () => {
         'department-1'
       )
     );
-    fireEvent.click(screen.getByRole('button', { name: '全部用户' }));
+    fireEvent.click(screen.getByRole('button', { name: /全部用户$/ }));
     await waitFor(() =>
       expect(membersApi.fetchSettingsMembers).toHaveBeenLastCalledWith(
         undefined
@@ -383,7 +392,7 @@ describe('MemberManagementPanel', () => {
     renderPanel(true);
     const row = await findMemberRow(/user.*User Name.*User Nick/u);
     fireEvent.click(within(row).getByRole('button', { name: /编辑$/ }));
-    const dialog = await screen.findByRole('dialog', { name: /编辑用户资料/ });
+    const dialog = await findProfileDialog('User Name');
     expect(
       within(dialog).getByRole('combobox', { name: '主部门' })
     ).toBeDisabled();

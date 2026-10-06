@@ -593,6 +593,7 @@ describe('ApplicationManagementPanel', () => {
     );
 
     expect(await screen.findByText('Daily Report')).toBeInTheDocument();
+    expect(membersApi.fetchSettingsMembers).toHaveBeenCalledWith();
     expect(
       screen.queryByRole('heading', { name: '应用管理' })
     ).not.toBeInTheDocument();

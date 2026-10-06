@@ -199,7 +199,7 @@ export function ApplicationManagementPanel() {
   });
   const membersQuery = useQuery({
     queryKey: settingsMembersQueryKey,
-    queryFn: fetchSettingsMembers,
+    queryFn: () => fetchSettingsMembers(),
     retry: false
   });
 

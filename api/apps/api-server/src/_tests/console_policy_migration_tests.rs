@@ -526,6 +526,19 @@ fn ac_010_live_core_crosswalk_disposes_every_current_operation() {
     let migration = compile_core_console_policy_migration_plan(registry.inventory())
         .expect("the audited Core crosswalk must compile against the live registry");
 
+    for operation in [
+        "departments.list",
+        "departments.create",
+        "departments.update",
+        "departments.delete",
+        "members.departments.replace",
+    ] {
+        let disposition = migration
+            .disposition(operation)
+            .expect("organization operation disposition");
+        assert_eq!(disposition.policy_group_id, "system.members");
+        assert!(disposition.is_default_disabled_new_operation());
+    }
     assert_eq!(
         migration.dispositions().len(),
         registry.inventory().operations.len()

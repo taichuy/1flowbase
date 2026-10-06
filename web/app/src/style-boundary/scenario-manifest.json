@@ -1881,5 +1881,141 @@
         ]
       }
     ]
+  },
+  {
+    "id": "page.settings-members.desktop",
+    "kind": "page",
+    "title": "Settings Members Desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/organization/organization-management.css",
+      "web/app/src/features/settings/components/organization/OrganizationSelector.tsx",
+      "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx",
+      "web/app/src/features/settings/components/MemberManagementPanel.tsx",
+      "web/app/src/features/settings/pages/settings-page/MemberSettingsTabs.tsx",
+      "web/app/src/style-boundary/SettingsOrganizationStyleBoundaryScene.tsx",
+      "web/app/src/style-boundary/scene-fixtures/settings/organization.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "organization-main",
+        "selector": ".organization-members",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "organization-workspace",
+        "selector": ".organization-workspace",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "page.settings-members.mobile",
+    "kind": "page",
+    "title": "Settings Members Mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/organization/organization-management.css",
+      "web/app/src/features/settings/components/organization/OrganizationSelector.tsx",
+      "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx",
+      "web/app/src/features/settings/components/MemberManagementPanel.tsx",
+      "web/app/src/features/settings/pages/settings-page/MemberSettingsTabs.tsx",
+      "web/app/src/style-boundary/SettingsOrganizationStyleBoundaryScene.tsx",
+      "web/app/src/style-boundary/scene-fixtures/settings/organization.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "organization-main",
+        "selector": ".organization-members",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "organization-workspace",
+        "selector": ".organization-workspace",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "page.settings-departments.desktop",
+    "kind": "page",
+    "title": "Settings Departments Desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/organization/organization-management.css",
+      "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx",
+      "web/app/src/features/settings/pages/settings-page/MemberSettingsTabs.tsx",
+      "web/app/src/style-boundary/SettingsOrganizationStyleBoundaryScene.tsx",
+      "web/app/src/style-boundary/scene-fixtures/settings/organization.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "organization-main",
+        "selector": ".organization-management",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "page.settings-departments.mobile",
+    "kind": "page",
+    "title": "Settings Departments Mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/organization/organization-management.css",
+      "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx",
+      "web/app/src/features/settings/pages/settings-page/MemberSettingsTabs.tsx",
+      "web/app/src/style-boundary/SettingsOrganizationStyleBoundaryScene.tsx",
+      "web/app/src/style-boundary/scene-fixtures/settings/organization.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "organization-main",
+        "selector": ".organization-management",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ]
   }
 ]

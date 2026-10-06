@@ -1,3 +1,5 @@
+import { SettingsOrganizationStyleBoundaryScene } from './SettingsOrganizationStyleBoundaryScene';
+import { seedStyleBoundaryOrganizationFetch } from './scene-fixtures/settings/organization';
 import { useLayoutEffect, type ReactNode } from 'react';
 import { Menu } from 'antd';
 
@@ -162,6 +164,30 @@ function renderVariableGroupsScene(
 }
 
 export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
+  'page.settings-members.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryOrganizationFetch();
+    return <SettingsOrganizationStyleBoundaryScene tab="members" />;
+  },
+  'page.settings-members.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryOrganizationFetch();
+    return <SettingsOrganizationStyleBoundaryScene tab="members" />;
+  },
+  'page.settings-departments.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryOrganizationFetch();
+    return <SettingsOrganizationStyleBoundaryScene tab="departments" />;
+  },
+  'page.settings-departments.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryOrganizationFetch();
+    return <SettingsOrganizationStyleBoundaryScene tab="departments" />;
+  },
   'component.variable-groups.regular': () =>
     renderVariableGroupsScene(420, 'regular'),
   'component.variable-groups.compact': () =>

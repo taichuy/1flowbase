@@ -1059,7 +1059,6 @@
     "load_error": "组织加载失败",
     "members_error": "用户加载失败",
     "operation_error": "操作未完成，请重试",
-    "retry": "重试",
     "empty": "暂无组织",
     "no_access": "暂无组织查看权限",
     "member_departments": "所属部门",

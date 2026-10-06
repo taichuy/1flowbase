@@ -464,4 +464,9 @@ describe('billing settings panels', () => {
       'csrf-123'
     );
   });
+  test('credit users are queried without passing the React Query context as a department filter', async () => {
+    renderWithProviders(<CreditManagementPanel canManage={false} />);
+    await screen.findByText('Member One');
+    expect(membersApi.fetchSettingsMembers).toHaveBeenCalledWith();
+  });
 });

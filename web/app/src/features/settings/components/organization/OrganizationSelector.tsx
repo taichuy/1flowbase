@@ -95,7 +95,7 @@ export function OrganizationSelector({
           message={i18nText('settings', 'organization.load_error')}
           action={
             <Button onClick={onRetry}>
-              {i18nText('settings', 'organization.retry')}
+              {i18nText('settings', 'auto.retry_permission_data')}
             </Button>
           }
         />

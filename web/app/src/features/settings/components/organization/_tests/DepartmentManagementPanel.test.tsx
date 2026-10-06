@@ -91,4 +91,25 @@ describe('department operations and access', () => {
       )
     );
   });
+  test('clears a failed delete notification when retrying the list successfully', async () => {
+    api.deleteSettingsDepartment.mockRejectedValueOnce(
+      new Error('delete rejected')
+    );
+    render(
+      <AppProviders>
+        <DepartmentManagementPanel
+          access={{ ...denied, can_list: true, can_delete: true }}
+        />
+      </AppProviders>
+    );
+    await screen.findByText('Engineering');
+    fireEvent.click(screen.getByRole('button', { name: /删除$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /确\s*定/ }));
+    expect(await screen.findByText('操作未完成，请重试')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /重试$/ }));
+    await waitFor(() =>
+      expect(screen.queryByText('操作未完成，请重试')).not.toBeInTheDocument()
+    );
+    expect(screen.getByText('Engineering')).toBeInTheDocument();
+  });
 });

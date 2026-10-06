@@ -53,6 +53,18 @@ describe('style boundary registry', () => {
     });
   });
 
+  test('maps organization styles to member and department scenes on both viewports', () => {
+    expect(
+      getSceneIdsForFiles([
+        'web/app/src/features/settings/components/organization/organization-management.css'
+      ])
+    ).toEqual([
+      'page.settings-members.desktop',
+      'page.settings-members.mobile',
+      'page.settings-departments.desktop',
+      'page.settings-departments.mobile'
+    ]);
+  });
   test('maps changed files to explicitly declared scenes', () => {
     expect(
       getSceneIdsForFiles(['web/app/src/routes/HomeRedirect.tsx'])
@@ -217,7 +229,9 @@ describe('style boundary registry', () => {
     expect(
       await screen.findByRole('heading', { name: '1flowbase' })
     ).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: /编辑/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /编辑/ })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('navigation', { name: 'Primary' })
     ).toBeInTheDocument();

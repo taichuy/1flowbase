@@ -1059,7 +1059,6 @@
     "load_error": "Could not load organizations",
     "members_error": "Could not load users",
     "operation_error": "The operation could not be completed. Please retry.",
-    "retry": "Retry",
     "empty": "No departments yet",
     "no_access": "You do not have permission to view departments",
     "member_departments": "Departments",

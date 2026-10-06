@@ -95,7 +95,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 async fn invoke(
     state: Arc<ApiState>,
     headers: HeaderMap,
-    binding: &str,
+    binding: &'static str,
     input: interface::OrganizationInput,
     mutating: bool,
 ) -> Result<interface::OrganizationOutput, ApiError> {
