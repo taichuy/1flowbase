@@ -106,7 +106,7 @@ describe('department operations and access', () => {
     fireEvent.click(screen.getByRole('button', { name: /删\s*除$/ }));
     fireEvent.click(await screen.findByRole('button', { name: /确\s*定$/ }));
     expect(await screen.findByText('操作未完成，请重试')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /重试$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /重\s*试$/ }));
     await waitFor(() =>
       expect(screen.queryByText('操作未完成，请重试')).not.toBeInTheDocument()
     );
