@@ -38,3 +38,7 @@ Root 负责实现/装配，范围为后端 OAuth 生命周期、前端授权页/
 2026-10-05 用户最新反馈显示 ChatGPT 已看到四个 meta tools，并进入 mcp_list 调用；当前阻塞是 CallToolResult.structuredContent 返回数组，违反协议 object 类型。Root 修复统一协议投影：对象保持原字段，非对象包装为 {"result": 原值}，文本与结构结果一致，缓存/分页原始路径保持不变。62 项 MCP 定向测试与公网测试客户端相同 depth=2/limit=100 调用通过（93条），本地 API 已重建重启；真人 ChatGPT 重试尚未验证。证据 tmp/test-governance/chatgpt-oauth/structured-content-report.md。此状态替代此前认证是否能进入工具调用尚未知的阶段判断。
 
 2026-10-05 23 用户在真实 ChatGPT 会话重试后确认“可以了，成功了”，补齐此前实际客户端验收缺口。Root 按用户要求将成功状态更新到 Wiki 与仓库教程，并以 #2280 记录公网接入修复、关联提交和验收评论。成功范围为当前 1flowbase.taichuy.cn 透传到本地 dev 的环境，不表示独立生产部署或所有客户端均验证；后续优先复核当前服务状态，无指定截止日期。
+
+2026-10-06 用户明确批准改用浏览器完整 origin 参数，而不是要求代理保留公网 Host：ChatGPT MCP URL 带 origin（协议、域名、端口），后端校验并在发现、授权和令牌流程中持续绑定。origin 是每次连接的地址上下文，不是全站设置；多个公网域名不能互相覆盖。本阶段替代“新连接必须从请求 Host 推导公网地址”的前提，旧连接仍保留原有 Host 行为。用户仍要求不改外层 Nginx/frpc、不新增必填配置；公开文档保持中英双语并隐藏个人域名。实现由 Root 在主目录 dev 完成，无指定截止日期；验收覆盖打包前端与内部 Host 改写的完整授权流程，不将开发验证冒充公网部署升级。
+
+2026-10-06 08 显式 origin 实现完成，dev 提交 4c7eda84f 已 push；Wiki 中英文及新打码截图提交 517e50a 已 push，#2280 已评论关联。12 后端、9 前端、4 transport 测试、类型检查、空 VITE_API_BASE_URL 打包和本机 Chrome 完整授权通过；测试代理重写 Host 且根发现404。主 API 7800 已重建重启。真实公网当前仍指向旧 API，未部署或同步 gateway；须同时更新实际 API 和前端，并重建 ChatGPT 连接。原用户压缩包保留，新包 tmp/test-governance/chatgpt-oauth/explicit-origin/1flowbase-web-origin.tar.gz。
