@@ -23,10 +23,22 @@
 }
 .organization-tree-label {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.organization-tree-folder {
+  flex-shrink: 0;
+}
+.organization-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .organization-count {
+  flex-shrink: 0;
   color: var(--text-tertiary);
   font-size: 12px;
 }

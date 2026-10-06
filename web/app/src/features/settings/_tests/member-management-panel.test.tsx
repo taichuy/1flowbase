@@ -95,7 +95,7 @@ async function findProfileDialog(name: string) {
   const title = await screen.findByText(`编辑用户资料 ${name}`);
   const dialog = title.closest<HTMLElement>('[role="dialog"]');
   if (!dialog) throw new Error('Profile title is not inside a dialog');
-  expect(dialog).toBeVisible();
+  await waitFor(() => expect(dialog).toBeVisible());
   expect(dialog).toHaveAttribute('aria-modal', 'true');
   return dialog;
 }

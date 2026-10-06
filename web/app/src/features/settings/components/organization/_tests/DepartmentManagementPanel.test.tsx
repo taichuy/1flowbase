@@ -103,8 +103,8 @@ describe('department operations and access', () => {
       </AppProviders>
     );
     await screen.findByText('Engineering');
-    fireEvent.click(screen.getByRole('button', { name: /删除$/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /确\s*定/ }));
+    fireEvent.click(screen.getByRole('button', { name: /删\s*除$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /确\s*定$/ }));
     expect(await screen.findByText('操作未完成，请重试')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /重试$/ }));
     await waitFor(() =>

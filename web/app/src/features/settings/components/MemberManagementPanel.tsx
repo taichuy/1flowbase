@@ -456,6 +456,7 @@ export function MemberManagementPanel({
       {
         title: i18nText('settings', 'auto.contact_information'),
         key: 'contact',
+        width: 220,
         render: (_: unknown, member: SettingsMember) => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Typography.Text style={{ fontSize: 13 }}>
@@ -751,7 +752,7 @@ export function MemberManagementPanel({
                 page * pageSize
               )}
               pagination={false}
-              scroll={{ x: 1140 }}
+              scroll={{ x: 1216 }}
               columns={columns}
               size="middle"
             />

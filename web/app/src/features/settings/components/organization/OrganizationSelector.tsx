@@ -20,7 +20,6 @@ import './organization-management.css';
 interface OrganizationNode {
   key: string;
   title: ReactNode;
-  icon: ReactNode;
   children?: OrganizationNode[];
 }
 export function OrganizationSelector({
@@ -53,10 +52,10 @@ export function OrganizationSelector({
         return [
           {
             key: row.id,
-            icon: <FolderOutlined />,
             title: (
               <span className="organization-tree-label">
-                <span>{row.name}</span>
+                <FolderOutlined className="organization-tree-folder" />
+                <span className="organization-tree-name">{row.name}</span>
                 <span className="organization-count">{row.member_count}</span>
               </span>
             ),
@@ -112,7 +111,6 @@ export function OrganizationSelector({
         >
           <Tree
             key={search ? 'search' : 'tree'}
-            showIcon
             blockNode
             defaultExpandAll
             selectedKeys={selected ? [selected] : []}
