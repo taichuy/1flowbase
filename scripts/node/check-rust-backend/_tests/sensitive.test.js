@@ -78,3 +78,15 @@ test('where function bounds and spaced attributes retain the named struct owner'
     struct Response<T> where T: Fn() -> String { password_hash: String, marker: T }
   `).map(item => item.rule), ['no-sensitive-serialize']);
 });
+
+
+test('test-only attributes share the scanner token-tree boundary including spaces', () => {
+  for (const attributes of [
+    '#[cfg(test)] # [derive(Serialize)]',
+    '# [cfg(all(test, unix))] # [derive(Serialize)]',
+    '#[cfg(test)] # [allow(dead_code)] # [derive(Serialize)]',
+  ]) {
+    assert.deepEqual(scan(`${attributes} pub (crate) struct Fixture { token_hash: String }
+      #[derive(Serialize)] pub (crate) struct Response { token_hash: String }`).map(item => item.rule), ['no-sensitive-serialize']);
+  }
+});

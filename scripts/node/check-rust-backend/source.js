@@ -100,15 +100,13 @@ function maskTestOnlyItems(code) {
     // Other attributes still belong to the same item.
     while (true) {
       while (/\s/u.test(code[cursor] || '') && cursor < code.length) cursor += 1;
-      if (code.slice(cursor, cursor + 2) !== '#[') break;
-      let brackets = 0;
-      do {
-        if (code[cursor] === '[') brackets += 1;
-        if (code[cursor] === ']') brackets -= 1;
-        cursor += 1;
-      } while (cursor < code.length && (brackets > 0 || code[cursor - 1] === '#'));
+      const attribute = /^#\s*\[/u.exec(code.slice(cursor));
+      if (!attribute) break;
+      const end = delimitedEnd(code, cursor + attribute[0].length - 1);
+      if (end === null) break;
+      cursor = end;
     }
-    const declaration = code.slice(cursor).replace(/^(?:pub(?:\([^)]*\))?\s+)?(?:(?:async|unsafe|default|const)\s+)*(?:extern\s+"[^"]*"\s+)?/u, '');
+    const declaration = code.slice(cursor).replace(/^(?:pub\b\s*(?:\([^)]*\)\s*)?)?(?:(?:async|unsafe|default|const)\s+)*(?:extern\s+"[^"]*"\s+)?/u, '');
     const blockItem = /^(?:fn|mod|impl|struct|enum|trait|union|macro_rules)\b/u.test(declaration);
     // Fields and enum variants end at commas; declarations such as const/use end at semicolons.
     const commaItem = !blockItem && !/^(?:const|static|use|type|let)\b/u.test(code.slice(cursor));

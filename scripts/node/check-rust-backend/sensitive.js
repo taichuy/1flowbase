@@ -29,7 +29,7 @@ function sensitiveOccurrences(code) {
       if (attributeEnd === null) break;
       cursor = attributeEnd;
     }
-    const declaration = /^(?:pub(?:\([^)]*\))?\s+)?struct\s+\w+\s*/u.exec(code.slice(cursor));
+    const declaration = /^(?:pub\b\s*(?:\([^)]*\)\s*)?)?struct\s+\w+\s*/u.exec(code.slice(cursor));
     if (!declaration) continue;
     cursor += declaration[0].length;
     // Skip generic bounds, including const-generic expressions, before the body.
