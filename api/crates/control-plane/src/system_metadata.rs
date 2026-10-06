@@ -565,8 +565,52 @@ pub fn role_metadata_template() -> SystemMetadataModelTemplate {
     }
 }
 
+pub fn department_metadata_template() -> SystemMetadataModelTemplate {
+    let contract = domain::builtin_data_model_contract("departments").expect("department builtin");
+    SystemMetadataModelTemplate {
+        code: "departments",
+        title: "Departments",
+        historical_title: "部门",
+        fields: contract
+            .system_field_codes
+            .iter()
+            .map(|code| {
+                let field = contract
+                    .field_contract(code)
+                    .expect("department system field");
+                let (title, historical) = match field.code {
+                    "id" => ("Department ID", "部门 ID"),
+                    "scope_id" => ("Scope ID", "作用域 ID"),
+                    "tree_partition_id" => ("Tree Partition ID", "树分区 ID"),
+                    "parent_id" => ("Parent Department ID", "上级部门 ID"),
+                    "sibling_rank" => ("Sibling Rank", "同级排序"),
+                    "name" => ("Department Name", "部门名称"),
+                    "created_at" => ("Created At", "创建时间"),
+                    "updated_at" => ("Updated At", "更新时间"),
+                    "created_by" => ("Created By", "创建人"),
+                    "updated_by" => ("Updated By", "更新人"),
+                    _ => unreachable!("department field contract"),
+                };
+                readonly_system_table_field(
+                    field.code,
+                    title,
+                    historical,
+                    field.physical_column_name,
+                    field.field_kind,
+                    field.is_required,
+                    field.is_unique,
+                )
+            })
+            .collect(),
+    }
+}
+
 pub fn system_metadata_templates() -> Vec<SystemMetadataModelTemplate> {
-    vec![user_metadata_template(), role_metadata_template()]
+    vec![
+        user_metadata_template(),
+        role_metadata_template(),
+        department_metadata_template(),
+    ]
 }
 
 pub fn system_metadata_title_references() -> Vec<SystemMetadataTitleReference> {
@@ -741,8 +785,10 @@ where
         let mut ensured = Vec::new();
 
         for model in models.into_iter().filter(|model| {
-            domain::builtin_contract_for_model(model)
-                .is_some_and(|contract| contract.kind == domain::BuiltinDataModelKind::RuntimeRead)
+            domain::builtin_contract_for_model(model).is_some_and(|contract| {
+                contract.kind == domain::BuiltinDataModelKind::RuntimeRead
+                    || contract.code == "departments"
+            })
         }) {
             if let Some(existing) = existing_grants
                 .iter()
@@ -804,7 +850,11 @@ where
                 external_table_id: None,
                 external_capability_snapshot: None,
                 template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
-                template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+                template_code: if template.code == "departments" {
+                    "ordered_tree".to_owned()
+                } else {
+                    domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned()
+                },
                 template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
                 status: domain::DataModelStatus::Published,
                 protection: registered_system_table_protection(),

@@ -201,6 +201,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         "created_at" | "updated_at" | "started_at" | "finished_at" | "completed_at"
         | "effective_from" | "effective_to" => crate::ModelFieldKind::Datetime,
         "introduction" | "content" | "reason" => crate::ModelFieldKind::Text,
+        "parent_id" | "tree_partition_id" => crate::ModelFieldKind::ManyToOne,
         "scope_id"
         | "workspace_id"
         | "application_id"
@@ -240,6 +241,7 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
                 | "default_display_role"
         ),
         "roles" => !matches!(field_code, "workspace_id" | "system_kind"),
+        "departments" => !matches!(field_code, "parent_id" | "created_by" | "updated_by"),
         "model_pricing_rules" => !matches!(
             field_code,
             "effective_to"
@@ -929,6 +931,29 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
             kind: BuiltinDataModelKind::Core,
             system_field_codes: USERS_FIELDS,
             capabilities: core_capabilities,
+        },
+        "departments" => BuiltinDataModelContract {
+            code: "departments",
+            physical_table_name: "departments",
+            kind: BuiltinDataModelKind::Core,
+            system_field_codes: &[
+                "id",
+                "scope_id",
+                "tree_partition_id",
+                "parent_id",
+                "sibling_rank",
+                "name",
+                "created_at",
+                "updated_at",
+                "created_by",
+                "updated_by",
+            ],
+            capabilities: DataModelCapabilities {
+                can_delete: false,
+                can_add_user_field: false,
+                can_update_lifecycle_status: false,
+                record: DataModelRecordCapabilities::read_only(),
+            },
         },
         "roles" => BuiltinDataModelContract {
             code: "roles",

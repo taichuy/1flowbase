@@ -293,6 +293,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(super::user_api_keys::route_assembly())
         .merge(super::workspace::route_assembly())
         .merge(super::members::route_assembly())
+        .merge(super::organization::route_assembly())
         .merge(super::billing::route_assembly())
         .merge(super::model_definitions::route_assembly())
         .merge(super::model_providers::route_assembly())
@@ -693,6 +694,12 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "console.departments.access" => Some("Read organization operation access"),
+        "departments.list" => Some("List workspace departments"),
+        "departments.create" => Some("Create a workspace department"),
+        "departments.update" => Some("Update a workspace department"),
+        "departments.delete" => Some("Delete an empty workspace department"),
+        "members.departments.replace" => Some("Replace member department assignments"),
         "system_templates.catalog" => Some("List portable template resources"),
         "system_templates.export" => Some("Export selected portable definitions"),
         "system_templates.preview" => Some("Preview portable template installation"),
@@ -836,6 +843,12 @@ fn compile_console_interface_metadata(
         };
         let summary = static_english_interface_summary(&interface_id);
         let description = match interface_id.as_str() {
+            "console.departments.access" => "Return current organization operation eligibility from effective workspace role policies.".to_owned(),
+            "departments.list" => "List departments with parent IDs, assigned role codes and distinct subtree member counts in the current workspace.".to_owned(),
+            "departments.create" => "Create a department using the ordered tree contract; assigning roles requires member role assignment eligibility.".to_owned(),
+            "departments.update" => "Update department name, parent and role assignments while rejecting cycles and cross-workspace references.".to_owned(),
+            "departments.delete" => "Delete a department only when it has no children and no assigned members.".to_owned(),
+            "members.departments.replace" => "Atomically replace a member's department assignments and require exactly one primary department when assignments exist.".to_owned(),
             "network_egress_proxies.get" => "Return public proxy configuration and configured secret field names without revealing stored credentials.".to_string(),
             "network_egress_proxies.update" => "Update the existing proxy configuration, preserve omitted secrets and keep member and route identities. The provider type cannot change.".to_string(),
             "billing.pricing_catalog.sync" => "Fetch the complete official catalog and atomically update official prices and conditional rules, insert new models, and retire duplicate official records while preserving manual rules and historical IDs.".to_string(),
@@ -1197,6 +1210,7 @@ mod tests {
             .merge(crate::routes::user_api_keys::route_assembly())
             .merge(crate::routes::workspace::route_assembly())
             .merge(crate::routes::members::route_assembly())
+            .merge(crate::routes::organization::route_assembly())
             .merge(crate::routes::model_definitions::route_assembly())
             .merge(crate::routes::model_providers::route_assembly())
             .merge(crate::routes::network_center::route_assembly())

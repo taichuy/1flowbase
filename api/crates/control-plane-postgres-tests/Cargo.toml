@@ -65,6 +65,10 @@ path = "tests/interface_lifecycle_acceptance/mod.rs"
 name = "mcp_oauth"
 path = "tests/mcp_oauth/mod.rs"
 
+[[test]]
+name = "organization_integration"
+path = "tests/organization/mod.rs"
+
 [dev-dependencies]
 access-control = { path = "../access-control" }
 anyhow.workspace = true

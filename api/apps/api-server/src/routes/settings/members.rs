@@ -5,7 +5,7 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
@@ -84,6 +84,13 @@ pub struct MemberResponse {
     pub phone_login_enabled: bool,
     pub status: String,
     pub role_codes: Vec<String>,
+    pub department_ids: Vec<String>,
+    pub primary_department_id: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct ListMembersQuery {
+    pub department_id: Option<String>,
 }
 
 pub(crate) fn hash_password(password: &str) -> Result<String, ApiError> {
@@ -130,6 +137,8 @@ pub(crate) fn to_member_response(user: domain::UserRecord) -> MemberResponse {
             domain::UserStatus::Disabled => "disabled".to_string(),
         },
         role_codes,
+        department_ids: vec![],
+        primary_department_id: None,
     }
 }
 
@@ -225,11 +234,13 @@ pub async fn list_member_role_options(
 #[utoipa::path(
     get,
     path = "/api/console/settings/members",
+    params(("department_id" = Option<String>, Query, description = "Department id, including descendants")),
     responses((status = 200, body = [MemberResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_members(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    Query(query): Query<ListMembersQuery>,
 ) -> Result<Json<ApiSuccess<Vec<MemberResponse>>>, ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -238,7 +249,9 @@ pub async fn list_members(
             state: Arc::clone(&state),
             headers,
         },
-        crate::routes::membership_interface::MembershipInput::ListMembers,
+        crate::routes::membership_interface::MembershipInput::ListMembers {
+            department_id: query.department_id,
+        },
     )
     .await?;
     let crate::routes::membership_interface::MembershipOutput::Members(items) = output else {

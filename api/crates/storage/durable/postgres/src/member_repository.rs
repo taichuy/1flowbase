@@ -136,6 +136,9 @@ impl SelfRegistrationRepository for PgControlPlaneStore {
 #[async_trait]
 impl MemberRepository for PgControlPlaneStore {
     async fn load_actor_context_for_user(&self, actor_user_id: Uuid) -> Result<ActorContext> {
+        if let Some(actor) = self.request_actor_for_user(actor_user_id)? {
+            return Ok(actor);
+        }
         let workspace_id = workspace_id_for_user(self.pool(), actor_user_id).await?;
         let tenant_id = tenant_id_for_workspace(self.pool(), workspace_id).await?;
         AuthRepository::load_actor_context(self, actor_user_id, tenant_id, workspace_id, None).await

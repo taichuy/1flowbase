@@ -22,7 +22,9 @@ use crate::{
 
 pub(crate) enum MembershipInput {
     ListMemberRoleOptions,
-    ListMembers,
+    ListMembers {
+        department_id: Option<String>,
+    },
     CreateMember(members::CreateMemberBody),
     UpdateMember {
         member_id: String,
@@ -151,7 +153,7 @@ impl InterfaceContract for MembershipInput {
                 "variant",
                 serde_json::Value::String("ListMemberRoleOptions".to_owned()),
             )]),
-            Self::ListMembers => mp::object_value(&[(
+            Self::ListMembers { .. } => mp::object_value(&[(
                 "variant",
                 serde_json::Value::String("ListMembers".to_owned()),
             )]),
@@ -625,6 +627,26 @@ pub(crate) fn membership_port(
 }
 
 impl MembershipAdapter {
+    async fn project_member(
+        &self,
+        actor: &domain::ActorContext,
+        user: domain::UserRecord,
+    ) -> Result<members::MemberResponse, ApiError> {
+        let departments = control_plane::ports::OrganizationRepository::member_departments(
+            &self.store.for_actor(actor.clone()),
+            actor.current_workspace_id,
+            user.id,
+        )
+        .await?;
+        let mut response = members::to_member_response(user);
+        response.department_ids = departments
+            .department_ids
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect();
+        response.primary_department_id = departments.primary_department_id.map(|id| id.to_string());
+        Ok(response)
+    }
     async fn execute_inner(
         &self,
         principal: &UserPrincipal,
@@ -640,13 +662,30 @@ impl MembershipAdapter {
                     roles.into_iter().map(Into::into).collect(),
                 ))
             }
-            MembershipInput::ListMembers => {
+            MembershipInput::ListMembers { department_id } => {
                 let users = MemberService::new(self.store.for_actor(actor.clone()))
                     .list_members(actor.user_id)
                     .await?;
-                Ok(MembershipOutput::Members(
-                    users.into_iter().map(members::to_member_response).collect(),
-                ))
+                let store = self.store.for_actor(actor.clone());
+                let filter = match department_id {
+                    Some(id) => Some(
+                        control_plane::ports::OrganizationRepository::department_member_ids(
+                            &store,
+                            actor.current_workspace_id,
+                            parse_member_id(&id)?,
+                        )
+                        .await?,
+                    ),
+                    None => None,
+                };
+                let mut output = Vec::new();
+                for user in users {
+                    if filter.as_ref().is_some_and(|ids| !ids.contains(&user.id)) {
+                        continue;
+                    }
+                    output.push(self.project_member(actor, user).await?);
+                }
+                Ok(MembershipOutput::Members(output))
             }
             MembershipInput::CreateMember(body) => {
                 let user = MemberService::new(self.store.for_actor(actor.clone()))
@@ -663,7 +702,9 @@ impl MembershipAdapter {
                         phone_login_enabled: body.phone_login_enabled,
                     })
                     .await?;
-                Ok(MembershipOutput::Member(members::to_member_response(user)))
+                Ok(MembershipOutput::Member(
+                    self.project_member(actor, user).await?,
+                ))
             }
             MembershipInput::UpdateMember { member_id, body } => {
                 let user = MemberService::new(self.store.for_actor(actor.clone()))
@@ -677,7 +718,9 @@ impl MembershipAdapter {
                         introduction: body.introduction,
                     })
                     .await?;
-                Ok(MembershipOutput::Member(members::to_member_response(user)))
+                Ok(MembershipOutput::Member(
+                    self.project_member(actor, user).await?,
+                ))
             }
             MembershipInput::DisableMember { member_id } => {
                 MemberService::new(self.store.for_actor(actor.clone()))

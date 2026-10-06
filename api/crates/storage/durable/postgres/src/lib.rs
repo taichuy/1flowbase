@@ -83,3 +83,5 @@ mod plugin_contribution_authority_repository;
 mod portable_template_repository;
 
 mod mcp_oauth_repository;
+
+pub mod organization_repository;

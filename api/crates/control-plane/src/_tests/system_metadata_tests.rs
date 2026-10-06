@@ -114,7 +114,11 @@ fn user_and_role_metadata_templates_match_system_table_contract() {
 
 #[test]
 fn ac_010_system_metadata_inventory_has_36_stable_english_references() {
-    let references = system_metadata_title_references();
+    // Retain the historical user/role title contract; departments are covered separately.
+    let references = system_metadata_title_references()
+        .into_iter()
+        .filter(|reference| reference.model_code != "departments")
+        .collect::<Vec<_>>();
     assert_eq!(references.len(), 36);
     assert_eq!(
         references
@@ -219,7 +223,7 @@ fn ac_010_system_metadata_inventory_has_36_stable_english_references() {
 }
 
 #[test]
-fn ac_010_machine_readable_metadata_consumer_inventory_matches_all_46_refs() {
+fn ac_010_machine_readable_metadata_consumer_inventory_matches_all_57_refs() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/metadata_i18n_consumers.json")).unwrap();
     let expected = fixture.as_array().unwrap();
@@ -245,7 +249,7 @@ fn ac_010_machine_readable_metadata_consumer_inventory_matches_all_46_refs() {
         )
         .collect::<Vec<_>>();
 
-    assert_eq!(actual.len(), 46);
+    assert_eq!(actual.len(), 57);
     assert_eq!(&actual, expected);
 }
 
@@ -263,8 +267,8 @@ async fn bootstrap_creates_builtin_user_and_role_models_once() {
         .await
         .unwrap();
 
-    assert_eq!(first.len(), 2);
-    assert_eq!(second.len(), 2);
+    assert_eq!(first.len(), 3);
+    assert_eq!(second.len(), 3);
     assert_eq!(first[0].id, second[0].id);
     assert_eq!(first[1].id, second[1].id);
 
@@ -280,7 +284,7 @@ async fn bootstrap_creates_builtin_user_and_role_models_once() {
         .find(|model| model.code == "roles")
         .expect("roles metadata model should exist");
 
-    assert_eq!(models.len(), 2);
+    assert_eq!(models.len(), 3);
     assert_eq!(users.title, "Users");
     assert_eq!(roles.title, "Roles");
     assert_eq!(users.scope_kind, DataModelScopeKind::System);
@@ -316,10 +320,17 @@ async fn bootstrap_creates_builtin_user_and_role_models_once() {
     )
     .await
     .unwrap();
-    assert_eq!(grants.len(), 2);
+    assert_eq!(grants.len(), 3);
+    let departments = models.iter().find(|m| m.code == "departments").unwrap();
+    assert_eq!(departments.template_code, "ordered_tree");
+    assert_eq!(departments.fields.len(), 10);
+    assert!(departments
+        .fields
+        .iter()
+        .all(|field| field.is_system && !field.is_writable));
     assert!(grants.iter().all(|grant| {
         grant.permission_profile == ScopeDataModelPermissionProfile::SystemAll
-            && (grant.data_model_id == users.id || grant.data_model_id == roles.id)
+            && [users.id, roles.id, departments.id].contains(&grant.data_model_id)
     }));
 }
 

@@ -180,6 +180,61 @@
     "field": "updated_at"
   },
   {
+    "key": "Departments",
+    "resource": "departments",
+    "field": null
+  },
+  {
+    "key": "Department ID",
+    "resource": "departments",
+    "field": "id"
+  },
+  {
+    "key": "Scope ID",
+    "resource": "departments",
+    "field": "scope_id"
+  },
+  {
+    "key": "Tree Partition ID",
+    "resource": "departments",
+    "field": "tree_partition_id"
+  },
+  {
+    "key": "Parent Department ID",
+    "resource": "departments",
+    "field": "parent_id"
+  },
+  {
+    "key": "Sibling Rank",
+    "resource": "departments",
+    "field": "sibling_rank"
+  },
+  {
+    "key": "Department Name",
+    "resource": "departments",
+    "field": "name"
+  },
+  {
+    "key": "Created At",
+    "resource": "departments",
+    "field": "created_at"
+  },
+  {
+    "key": "Updated At",
+    "resource": "departments",
+    "field": "updated_at"
+  },
+  {
+    "key": "Created By",
+    "resource": "departments",
+    "field": "created_by"
+  },
+  {
+    "key": "Updated By",
+    "resource": "departments",
+    "field": "updated_by"
+  },
+  {
     "key": "Attachments",
     "resource": "attachments",
     "field": null

@@ -327,3 +327,42 @@ fn ac_002_013_system_route_bindings_are_explicit_and_stable() {
         ],
     );
 }
+
+#[test]
+fn organization_console_route_assembly_keeps_each_operation_independent() {
+    assert_route_bindings(
+        &crate::routes::organization::route_assembly(),
+        &[
+            (
+                "GET",
+                "/api/console/settings/departments/access",
+                "authenticated",
+            ),
+            (
+                "GET",
+                "/api/console/settings/departments",
+                "departments.list",
+            ),
+            (
+                "POST",
+                "/api/console/settings/departments",
+                "departments.create",
+            ),
+            (
+                "PATCH",
+                "/api/console/settings/departments/:id",
+                "departments.update",
+            ),
+            (
+                "DELETE",
+                "/api/console/settings/departments/:id",
+                "departments.delete",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/members/:id/departments",
+                "members.departments.replace",
+            ),
+        ],
+    );
+}

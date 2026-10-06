@@ -206,6 +206,10 @@ pub(crate) fn production_interface_contributions(
     );
     let console_membership =
         crate::routes::membership_interface::membership_port(state.store.clone());
+    let console_organization = crate::routes::organization::interface::port(
+        state.store.clone(),
+        control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
+    );
     let console_navigation = crate::routes::navigation_interface::port(
         crate::routes::navigation_interface::ConsoleNavigationDependencies {
             navigation_cache: control_plane::navigation_cache::NavigationCache(
@@ -425,6 +429,12 @@ pub(crate) fn production_interface_contributions(
             crate::routes::console_identity_interface::compile_registry(
                 console_identity,
             )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-organization",
+            &["console.departments.access","departments.list","departments.create","departments.update","departments.delete","members.departments.replace"],
+            &["api-server.console-organization"],
+            crate::routes::organization::interface::compile_registry(console_organization)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-membership",

@@ -228,3 +228,6 @@ mod attribution_exports_tests {
 
 pub mod plugin_contribution_authority;
 pub use plugin_contribution_authority::*;
+
+pub mod organization;
+pub use organization::{Department, MemberDepartments, DEPARTMENT_MODEL_ID};

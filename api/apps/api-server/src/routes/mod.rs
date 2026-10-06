@@ -47,3 +47,5 @@ pub const PUBLIC_API_PATH_PREFIX: &str = "/api/public/";
 mod _tests;
 
 pub mod mcp_oauth;
+
+pub use settings_group::organization;

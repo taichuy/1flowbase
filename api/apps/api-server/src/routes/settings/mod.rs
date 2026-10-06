@@ -25,3 +25,5 @@ pub mod ui_management;
 pub(crate) mod ui_management_interface;
 pub mod workspace;
 pub mod workspaces;
+
+pub mod organization;
