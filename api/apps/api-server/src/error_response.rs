@@ -48,6 +48,17 @@ where
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Some(error) = self
+            .0
+            .downcast_ref::<control_plane::mcp_oauth::OAuthError>()
+        {
+            return crate::routes::mcp_oauth::ProtocolError(control_plane::mcp_oauth::OAuthError {
+                error: error.error,
+                description: error.description,
+            })
+            .into_response();
+        }
+
         if let Some(rejection) = self.0.downcast_ref::<JsonRejection>() {
             return (rejection.status(), rejection.body_text()).into_response();
         }

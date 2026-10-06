@@ -1,9 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { PublicAuthProviders } from '../../components/PublicAuthProviders';
 import { McpAuthorizePage } from '../../pages/mcp-authorization/McpAuthorizePage';
@@ -33,6 +28,7 @@ const approval = {
 };
 
 beforeEach(() => {
+  window.history.replaceState(null, '', '/');
   Object.values(api).forEach((mock) => mock.mockReset());
   api.fetchMcpOAuthAuthorization.mockResolvedValue(request);
   api.verifyMcpOAuthApiKey.mockResolvedValue(approval);
@@ -42,9 +38,20 @@ beforeEach(() => {
 });
 
 describe('API Key MCP authorization without a console session', () => {
-  test('verifies, clears Key, shows server-owned workspace, and requires a separate consent', async () => {
+  test('carries explicit origin, clears Key, shows server-owned workspace, and requires separate consent', async () => {
+    const origin = window.location.origin;
+    window.history.replaceState(
+      null,
+      '',
+      `/?${new URLSearchParams({ origin })}`
+    );
     renderPage('req');
     const key = await screen.findByLabelText('API Key');
+    expect(api.fetchMcpOAuthAuthorization).toHaveBeenCalledWith(
+      'req',
+      expect.any(AbortSignal),
+      origin
+    );
     expect(
       screen.queryByRole('button', { name: '同意授权并返回' })
     ).not.toBeInTheDocument();
@@ -52,21 +59,27 @@ describe('API Key MCP authorization without a console session', () => {
     fireEvent.click(screen.getByRole('button', { name: '验证 API Key' }));
     expect(await screen.findByText('研发工作区')).toBeInTheDocument();
     expect(screen.getByText('演示工具')).toBeInTheDocument();
-    expect(api.verifyMcpOAuthApiKey).toHaveBeenCalledWith({
-      request_id: 'req',
-      api_key: 'pat_secret_canary'
-    });
+    expect(api.verifyMcpOAuthApiKey).toHaveBeenCalledWith(
+      {
+        request_id: 'req',
+        api_key: 'pat_secret_canary'
+      },
+      origin
+    );
     expect(api.decideMcpOAuthAuthorization).not.toHaveBeenCalled();
     expect(document.body.innerHTML).not.toContain('pat_secret_canary');
     expect(window.location.href).not.toContain('pat_secret_canary');
     expect(JSON.stringify(localStorage)).not.toContain('pat_secret_canary');
     fireEvent.click(screen.getByRole('button', { name: '同意授权并返回' }));
     await waitFor(() =>
-      expect(api.decideMcpOAuthAuthorization).toHaveBeenCalledWith({
-        request_id: 'req',
-        approval_token: 'approval-secret',
-        approved: true
-      })
+      expect(api.decideMcpOAuthAuthorization).toHaveBeenCalledWith(
+        {
+          request_id: 'req',
+          approval_token: 'approval-secret',
+          approved: true
+        },
+        origin
+      )
     );
   });
 
@@ -74,10 +87,13 @@ describe('API Key MCP authorization without a console session', () => {
     renderPage('req');
     fireEvent.click(await screen.findByRole('button', { name: '拒绝授权' }));
     await waitFor(() =>
-      expect(api.decideMcpOAuthAuthorization).toHaveBeenCalledWith({
-        request_id: 'req',
-        approved: false
-      })
+      expect(api.decideMcpOAuthAuthorization).toHaveBeenCalledWith(
+        {
+          request_id: 'req',
+          approved: false
+        },
+        undefined
+      )
     );
     expect(api.verifyMcpOAuthApiKey).not.toHaveBeenCalled();
   });
@@ -93,7 +109,10 @@ describe('API Key MCP authorization without a console session', () => {
 
   test('requires a request and cannot turn a standalone page into a login', () => {
     renderPage();
-    expect(screen.getByRole('alert')).toHaveTextContent(/授权请求无效或已过期/, { normalizeWhitespace: false });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /授权请求无效或已过期/,
+      { normalizeWhitespace: false }
+    );
     expect(api.fetchMcpOAuthAuthorization).not.toHaveBeenCalled();
   });
 

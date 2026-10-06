@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{rejection::JsonRejection, Path, State},
+    extract::{rejection::JsonRejection, OriginalUri, Path, State},
     http::{
         header::{AUTHORIZATION, COOKIE},
         HeaderMap, StatusCode,
@@ -91,9 +91,20 @@ pub(crate) fn route_assembly(
 async fn handle_mcp_request(
     State(state): State<Arc<ApiState>>,
     Path(instance_id): Path<String>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
     request: Result<Json<JsonRpcRequest>, JsonRejection>,
 ) -> Result<(StatusCode, Json<JsonRpcResponse>), ApiError> {
+    let public_origin = if url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
+        .any(|(name, _)| name == "origin")
+    {
+        Some(
+            crate::routes::mcp_oauth::request_public_origin(&headers, &uri)
+                .map_err(ApiError::from)?,
+        )
+    } else {
+        None
+    };
     let boot_snapshot = state
         .extension_boot_snapshot
         .as_ref()
@@ -116,15 +127,15 @@ async fn handle_mcp_request(
                 instance_id: instance_id.clone(),
                 state: Arc::clone(&state),
                 headers: headers.clone(),
+                public_origin,
             },
         )
         .await
         .map_err(|_| {
-            if let Some(metadata_url) = crate::routes::mcp_oauth::request_origin(&headers)
-                .ok()
-                .and_then(|issuer| {
-                    control_plane::mcp_oauth::resource_metadata_url(&issuer, &instance_id).ok()
-                })
+            if let Some(metadata_url) =
+                crate::routes::mcp_oauth::request_public_origin(&headers, &uri)
+                    .ok()
+                    .and_then(|context| context.metadata(&instance_id).ok())
             {
                 ApiError::from(crate::routes::mcp_oauth::McpAuthenticationRequired { metadata_url })
             } else {

@@ -21,11 +21,25 @@ import {
 import './mcp-authorization.css';
 
 export function McpAuthorizePage({ requestId }: { requestId?: string }) {
+  const origin =
+    new URLSearchParams(window.location.search).get('origin') ?? undefined;
   // Reset all transient credentials if a different authorization request is opened.
-  return <AuthorizationForm key={requestId} requestId={requestId} />;
+  return (
+    <AuthorizationForm
+      key={`${requestId}:${origin}`}
+      requestId={requestId}
+      origin={origin}
+    />
+  );
 }
 
-function AuthorizationForm({ requestId }: { requestId?: string }) {
+function AuthorizationForm({
+  requestId,
+  origin
+}: {
+  requestId?: string;
+  origin?: string;
+}) {
   const { t } = useTranslation('auth');
   const [authorization, setAuthorization] =
     useState<McpOAuthAuthorization | null>(null);
@@ -43,7 +57,7 @@ function AuthorizationForm({ requestId }: { requestId?: string }) {
     active.current = true;
     const controller = new AbortController();
     if (requestId) {
-      void fetchMcpOAuthAuthorization(requestId, controller.signal)
+      void fetchMcpOAuthAuthorization(requestId, controller.signal, origin)
         .then((value) => {
           if (active.current && !controller.signal.aborted)
             setAuthorization(value);
@@ -59,7 +73,7 @@ function AuthorizationForm({ requestId }: { requestId?: string }) {
       active.current = false;
       controller.abort();
     };
-  }, [requestId]);
+  }, [requestId, origin]);
 
   const verify = async () => {
     if (!requestId || !apiKey.trim() || submitting.current) return;
@@ -70,10 +84,13 @@ function AuthorizationForm({ requestId }: { requestId?: string }) {
     setApiKey('');
     try {
       // Keep secrets out of query/mutation caches, URLs and browser storage.
-      const result = await verifyMcpOAuthApiKey({
-        request_id: requestId,
-        api_key: key
-      });
+      const result = await verifyMcpOAuthApiKey(
+        {
+          request_id: requestId,
+          api_key: key
+        },
+        origin
+      );
       if (active.current) setApproval(result);
     } catch {
       if (active.current) setError('key');
@@ -90,13 +107,16 @@ function AuthorizationForm({ requestId }: { requestId?: string }) {
     setError(null);
     setApiKey('');
     try {
-      const result = await decideMcpOAuthAuthorization({
-        request_id: requestId,
-        ...(approved && approval
-          ? { approval_token: approval.approval_token }
-          : {}),
-        approved
-      });
+      const result = await decideMcpOAuthAuthorization(
+        {
+          request_id: requestId,
+          ...(approved && approval
+            ? { approval_token: approval.approval_token }
+            : {}),
+          approved
+        },
+        origin
+      );
       if (active.current) window.location.replace(result.redirect_uri);
     } catch {
       if (active.current) {

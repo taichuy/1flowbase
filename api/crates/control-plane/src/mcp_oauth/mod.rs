@@ -18,6 +18,33 @@ pub fn authorization_server_url(origin: &str) -> String {
     format!("{origin}{AUTHORIZATION_SERVER_PATH}")
 }
 
+/// Explicit browser origins travel in the issuer path so standard discovery
+/// remains query-free and does not depend on proxy-preserved Host headers.
+pub fn public_authorization_server_url(origin: &str) -> String {
+    format!(
+        "{origin}{AUTHORIZATION_SERVER_PATH}/origins/{}",
+        URL_SAFE_NO_PAD.encode(origin)
+    )
+}
+pub fn public_resource_url(origin: &str, instance: &str) -> Result<String> {
+    let mut url =
+        Url::parse(&resource_url(origin, instance)?).map_err(|_| OAuthError::invalid())?;
+    url.query_pairs_mut().append_pair("origin", origin);
+    Ok(url.to_string())
+}
+pub fn public_resource_metadata_url(origin: &str, instance: &str) -> Result<String> {
+    let resource =
+        Url::parse(&resource_url(origin, instance)?).map_err(|_| OAuthError::invalid())?;
+    let instance = resource
+        .path()
+        .strip_prefix("/api/mcp/")
+        .ok_or_else(OAuthError::invalid)?;
+    Ok(format!(
+        "{}/protected-resource/{instance}",
+        public_authorization_server_url(origin)
+    ))
+}
+
 pub const SCOPE: &str = "mcp:invoke";
 const REQUEST_SECONDS: i64 = 600;
 const GRANT_SECONDS: i64 = 30 * 86400;
@@ -239,6 +266,7 @@ pub struct TokenResponse {
 pub struct McpOAuthService<R> {
     repository: R,
     origin: String,
+    explicit_origin: bool,
 }
 impl<R> McpOAuthService<R>
 where
@@ -250,7 +278,44 @@ where
         + WorkspaceRepository,
 {
     pub fn new(repository: R, origin: String) -> Self {
-        Self { repository, origin }
+        Self {
+            repository,
+            origin,
+            explicit_origin: false,
+        }
+    }
+    pub fn with_explicit_origin(mut self) -> Self {
+        self.explicit_origin = true;
+        self
+    }
+    fn resource_url(&self, instance: &str) -> Result<String> {
+        if self.explicit_origin {
+            public_resource_url(&self.origin, instance)
+        } else {
+            resource_url(&self.origin, instance)
+        }
+    }
+    fn resource_instance(&self, resource: &str) -> Result<String> {
+        let mut url = Url::parse(resource).map_err(|_| OAuthError::invalid())?;
+        if self.explicit_origin {
+            let pairs = url.query_pairs().collect::<Vec<_>>();
+            if pairs.len() != 1 || pairs[0].0 != "origin" || pairs[0].1 != self.origin {
+                return Err(OAuthError::invalid());
+            }
+            url.set_query(None);
+        }
+        let instance = resource_instance(&self.origin, url.as_str())?;
+        if self.resource_url(&instance)? != resource {
+            return Err(OAuthError::invalid());
+        }
+        Ok(instance)
+    }
+    fn authorization_server_url(&self) -> String {
+        if self.explicit_origin {
+            public_authorization_server_url(&self.origin)
+        } else {
+            authorization_server_url(&self.origin)
+        }
     }
     pub async fn register(&self, input: Registration) -> Result<Client> {
         if input.redirect_uris.is_empty()
@@ -325,7 +390,7 @@ where
         {
             return Err(OAuthError::invalid());
         }
-        let instance_id = resource_instance(&self.origin, &request.resource)?;
+        let instance_id = self.resource_instance(&request.resource)?;
         let id = random_token();
         let pending = Pending {
             request,
@@ -351,7 +416,7 @@ where
             .ok_or_else(OAuthError::invalid)?;
         let pending: Pending = serde_json::from_value(value.clone())?;
         if pending.browser_hash != hash(browser)
-            || resource_instance(&self.origin, &pending.request.resource)? != pending.instance_id
+            || self.resource_instance(&pending.request.resource)? != pending.instance_id
         {
             return Err(OAuthError::invalid());
         }
@@ -485,7 +550,7 @@ where
         redirect
             .query_pairs_mut()
             .append_pair("state", &p.request.state)
-            .append_pair("iss", &authorization_server_url(&self.origin));
+            .append_pair("iss", &self.authorization_server_url());
         Ok(redirect.to_string())
     }
     async fn validate_grant(&self, id: Uuid) -> Result<(McpOAuthGrant, UserApiKeyActor)> {
@@ -495,7 +560,7 @@ where
             .await?
             .ok_or_else(OAuthError::grant)?;
         // Wrong-origin requests cannot consume or revoke another origin's grant.
-        if g.resource != resource_url(&self.origin, &g.instance_id)? {
+        if g.resource != self.resource_url(&g.instance_id)? {
             return Err(OAuthError::grant());
         }
         let result = ApiKeyService::new(self.repository.clone())
@@ -629,7 +694,7 @@ where
             .ok_or_else(OAuthError::grant)?;
         let id = serde_json::from_value(value["grant_id"].clone())?;
         let (g, actor) = self.validate_grant(id).await?;
-        if g.instance_id != instance || g.resource != resource_url(&self.origin, instance)? {
+        if g.instance_id != instance || g.resource != self.resource_url(instance)? {
             return Err(OAuthError::grant());
         }
         Ok(actor)

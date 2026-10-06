@@ -21,7 +21,7 @@ beforeEach(() => {
   fetchConfig.mockReset();
 });
 
-test('shows trusted backend URL and DCR instructions without a Key input', async () => {
+test('requests configuration for the browser origin and shows the returned URL', async () => {
   fetchConfig.mockResolvedValue({
     enabled: true,
     server_url: 'https://trusted.example/api/mcp/demo',
@@ -32,6 +32,7 @@ test('shows trusted backend URL and DCR instructions without a Key input', async
   expect(
     await screen.findByText('https://trusted.example/api/mcp/demo')
   ).toBeInTheDocument();
+  expect(fetchConfig).toHaveBeenCalledWith('demo', window.location.origin);
   expect(screen.getByText('动态客户端注册（DCR）')).toBeInTheDocument();
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });

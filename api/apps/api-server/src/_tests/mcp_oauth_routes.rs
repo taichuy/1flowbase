@@ -687,3 +687,6 @@ async fn oauth_discovery_probe_authentication_precedes_json_rejection() {
         assert!(!response.headers().contains_key("www-authenticate"));
     }
 }
+
+#[path = "mcp_oauth_routes/explicit_origin.rs"]
+mod explicit_origin;

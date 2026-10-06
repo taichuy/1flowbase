@@ -5,9 +5,16 @@ import { fetchMcpOAuthConfiguration } from '../../../api/mcp-oauth';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 export function ChatGptConfiguration({ instanceId }: { instanceId: string }) {
+  const origin = window.location.origin;
   const config = useQuery({
-    queryKey: ['settings', 'mcp-management', 'oauth-configuration', instanceId],
-    queryFn: () => fetchMcpOAuthConfiguration(instanceId),
+    queryKey: [
+      'settings',
+      'mcp-management',
+      'oauth-configuration',
+      instanceId,
+      origin
+    ],
+    queryFn: () => fetchMcpOAuthConfiguration(instanceId, origin),
     retry: false
   });
 

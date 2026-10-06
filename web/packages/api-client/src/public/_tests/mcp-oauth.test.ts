@@ -102,3 +102,24 @@ describe('MCP OAuth public client transport', () => {
     });
   });
 });
+
+test('carries the browser origin through configuration and consent without putting the Key in a URL', async () => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(json({ enabled: true })));
+  vi.stubGlobal('fetch', fetch);
+  const origin = 'https://public.example:8443';
+  await fetchMcpOAuthConfiguration('demo', origin);
+  await fetchMcpOAuthAuthorization('request', undefined, origin);
+  await verifyMcpOAuthApiKey(
+    { request_id: 'request', api_key: 'secret_canary' },
+    origin
+  );
+  await decideMcpOAuthAuthorization(
+    { request_id: 'request', approved: false },
+    origin
+  );
+  for (const [address] of fetch.mock.calls) {
+    const url = new URL(address, origin);
+    expect(url.searchParams.get('origin')).toBe(origin);
+    expect(url.toString()).not.toContain('secret_canary');
+  }
+});

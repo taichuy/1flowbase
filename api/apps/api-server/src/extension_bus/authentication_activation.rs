@@ -337,6 +337,7 @@ impl ConsoleAuthenticationCredential {
 }
 
 pub(crate) struct McpUserApiKeyAuthenticationCredential {
+    pub(crate) public_origin: Option<crate::routes::mcp_oauth::PublicOrigin>,
     pub(crate) instance_id: String,
     pub(crate) state: Arc<ApiState>,
     pub(crate) headers: HeaderMap,
@@ -495,13 +496,23 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                     .and_then(|v| v.to_str().ok())
                     .and_then(|v| v.strip_prefix("Bearer "));
                 if let Some(token) = token.filter(|v| v.starts_with("mcp_at_")) {
-                    let issuer = crate::routes::mcp_oauth::request_origin(&credential.headers)?;
-                    let actor = control_plane::mcp_oauth::McpOAuthService::new(
+                    let context = match credential.public_origin {
+                        Some(context) => context,
+                        None => crate::routes::mcp_oauth::PublicOrigin {
+                            origin: crate::routes::mcp_oauth::request_origin(&credential.headers)?,
+                            explicit: false,
+                        },
+                    };
+                    let service = control_plane::mcp_oauth::McpOAuthService::new(
                         credential.state.store.clone(),
-                        issuer,
-                    )
-                    .authenticate(token, &credential.instance_id)
-                    .await?;
+                        context.origin,
+                    );
+                    let service = if context.explicit {
+                        service.with_explicit_origin()
+                    } else {
+                        service
+                    };
+                    let actor = service.authenticate(token, &credential.instance_id).await?;
                     return Ok(interface_runtime::UserPrincipal::new(
                         actor.actor,
                         interface_runtime::UserCredentialKind::UserApiKey {

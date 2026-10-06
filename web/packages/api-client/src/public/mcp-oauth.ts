@@ -28,39 +28,49 @@ export interface McpOAuthDecisionInput {
 
 const prefix = '/api/public/mcp-oauth';
 
-export function fetchMcpOAuthConfiguration(instance_id: string) {
+export function fetchMcpOAuthConfiguration(
+  instance_id: string,
+  origin?: string
+) {
   return apiFetch<McpOAuthConfiguration>({
-    path: `${prefix}/config?${new URLSearchParams({ instance_id })}`,
+    path: `${prefix}/config?${new URLSearchParams({ instance_id, ...(origin ? { origin } : {}) })}`,
     unwrapSuccess: false
   });
 }
 
 export function fetchMcpOAuthAuthorization(
   request_id: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  origin?: string
 ) {
   return apiFetch<McpOAuthAuthorization>({
-    path: `${prefix}/authorization?${new URLSearchParams({ request_id })}`,
+    path: `${prefix}/authorization?${new URLSearchParams({ request_id, ...(origin ? { origin } : {}) })}`,
     unwrapSuccess: false,
     signal
   });
 }
 
-export function verifyMcpOAuthApiKey(input: {
-  request_id: string;
-  api_key: string;
-}) {
+export function verifyMcpOAuthApiKey(
+  input: {
+    request_id: string;
+    api_key: string;
+  },
+  origin?: string
+) {
   return apiFetch<McpOAuthApproval>({
-    path: `${prefix}/verify`,
+    path: `${prefix}/verify${origin ? `?${new URLSearchParams({ origin })}` : ''}`,
     method: 'POST',
     body: input,
     unwrapSuccess: false
   });
 }
 
-export function decideMcpOAuthAuthorization(input: McpOAuthDecisionInput) {
+export function decideMcpOAuthAuthorization(
+  input: McpOAuthDecisionInput,
+  origin?: string
+) {
   return apiFetch<{ redirect_uri: string }>({
-    path: `${prefix}/decision`,
+    path: `${prefix}/decision${origin ? `?${new URLSearchParams({ origin })}` : ''}`,
     method: 'POST',
     body: input,
     unwrapSuccess: false

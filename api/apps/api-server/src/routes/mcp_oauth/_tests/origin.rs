@@ -49,3 +49,59 @@ fn rejects_ambiguous_authorities_and_public_http() {
     headers.append(HOST, "other.example".parse().unwrap());
     assert!(request_origin(&headers).is_err());
 }
+
+#[test]
+fn explicit_browser_origin_survives_internal_host_and_stays_query_free_in_issuer() {
+    let mut headers = HeaderMap::new();
+    headers.insert(HOST, "127.0.0.1".parse().unwrap());
+    headers.insert("x-forwarded-proto", "http".parse().unwrap());
+    let uri = "/api/mcp/demo?origin=https%3A%2F%2Fpublic.example%3A8443"
+        .parse()
+        .unwrap();
+    let context = request_public_origin(&headers, &uri).unwrap();
+    assert_eq!(context.origin, "https://public.example:8443");
+    assert!(context.explicit);
+    assert_eq!(
+        context.resource("demo").unwrap(),
+        "https://public.example:8443/api/mcp/demo?origin=https%3A%2F%2Fpublic.example%3A8443"
+    );
+    let issuer = context.issuer();
+    assert!(url::Url::parse(&issuer).unwrap().query().is_none());
+    let metadata_uri = format!("{issuer}/.well-known/openid-configuration")
+        .parse()
+        .unwrap();
+    assert_eq!(
+        request_public_origin(&headers, &metadata_uri)
+            .unwrap()
+            .origin,
+        context.origin
+    );
+}
+
+#[test]
+fn rejects_invalid_duplicate_and_conflicting_public_origins() {
+    let headers = HeaderMap::new();
+    for query in [
+        "origin=",
+        "origin=public.example",
+        "origin=http%3A%2F%2Fpublic.example",
+        "origin=https%3A%2F%2Fuser%40public.example",
+        "origin=https%3A%2F%2Fpublic.example%2Fpath",
+        "origin=https%3A%2F%2Fpublic.example%3Fx%3D1",
+        "origin=https%3A%2F%2Fpublic.example&origin=https%3A%2F%2Fother.example",
+    ] {
+        let uri = format!("/api/mcp/demo?{query}").parse().unwrap();
+        assert!(request_public_origin(&headers, &uri).is_err(), "{query}");
+    }
+    let context = PublicOrigin {
+        origin: "https://public.example".into(),
+        explicit: true,
+    };
+    let uri = format!(
+        "{}/token?origin=https%3A%2F%2Fother.example",
+        context.issuer()
+    )
+    .parse()
+    .unwrap();
+    assert!(request_public_origin(&headers, &uri).is_err());
+}

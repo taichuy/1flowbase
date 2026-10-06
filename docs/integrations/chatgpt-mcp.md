@@ -29,12 +29,12 @@ API Key 不填在 ChatGPT 的客户端 ID 或客户端密钥里，也不放进�
 
 ![第一步：在 1flowbase 的 ChatGPT 连接配置中复制服务器 URL](assets/chatgpt-mcp/connect-chatgpt.png)
 
-上图来自真实公网部署界面，个人域名已打码。下文使用官网地址 `https://1flowbase.taichuy.com/` 举例；实际连接请替换为自己部署的公开 HTTPS 地址，示例不表示官网提供该 MCP 实例。
+上图来自本次静态构建的浏览器验证，服务器 URL 已遮盖；其他历史截图的个人域名已打码。下文使用官网地址 `https://1flowbase.taichuy.com/` 举例；实际连接请替换为自己部署的公开 HTTPS 地址，示例不表示官网提供该 MCP 实例。
 
-地址格式为 `https://你的域名/api/mcp/你的实例ID`。例如：
+新版 ChatGPT 地址包含浏览器当前 origin（协议、域名与端口），后端不需要根据代理后的 Host 猜测公网地址。例如：
 
 ```text
-https://1flowbase.taichuy.com/api/mcp/1flowbase
+https://1flowbase.taichuy.com/api/mcp/1flowbase?origin=https%3A%2F%2F1flowbase.taichuy.com
 ```
 
 以弹窗实际复制的地址为准。准备一个有效的用户 API Key；该 Key 所属的工作区应包含要连接的 MCP 实例。
@@ -124,7 +124,7 @@ https://1flowbase.taichuy.com/api/mcp/1flowbase
 
 部署包含本次默认启用调整的 API、前端和正式数据库迁移。**无需配置 OAuth 环境变量，也无需手动设置公开地址。**
 
-生产使用 HTTPS，Web、API 和授权页使用同一个公开网站地址。服务根据当前请求的网站域名生成认证地址；从哪个域名连接，就在该域名完成授权与令牌调用。公开地址改变后，应在 ChatGPT 重新建立连接。本次授权服务标识由网站根地址改为 `/api/public/mcp-oauth`，已有 ChatGPT 连接也应重新连接以更新发现配置。
+生产使用 HTTPS，Web、API 和授权页使用同一个公开网站地址。前端将 `window.location.origin` 作为完整 URL 的 `origin` 参数提交，服务校验后按它生成认证地址；从哪个域名连接，就在该域名完成授权与令牌调用。没有 `origin` 参数的旧连接仍按 Host 与协议处理。公开地址改变后，应在 ChatGPT 重新建立连接。新版显式 origin 连接使用 `/api/public/mcp-oauth/origins/…` 作为授权服务标识；重新复制完整 MCP URL 并在 ChatGPT 重新连接，以更新发现配置。
 
 ### 2. 核对反向代理路由
 
@@ -135,19 +135,19 @@ Web、API 和授权页使用同一个公开网站地址：
 | `/api/` | API 服务 |
 | `/mcp/authorize` | Web 前端 |
 
-仓库 Nginx 和 Vite 配置已包含对应路由。新版自动发现入口放在 `/api/` 下，不要求修改面板默认的根目录 `/.well-known/` 证书验证规则，也不需要新增 OAuth 环境配置。反向代理仍需保留外部访问的域名；HTTPS 代理应覆盖 `X-Forwarded-Proto` 为正确的外部协议，不能把内部 API 主机名传成公开域名。Cloudflare/WAF 不能要求 ChatGPT 的元数据、注册、令牌及 MCP 机器请求完成浏览器挑战。
+仓库 Nginx 和 Vite 配置已包含对应路由。新版自动发现入口放在 `/api/` 下，不要求修改面板默认的根目录 `/.well-known/` 证书验证规则，也不需要新增 OAuth 环境配置。新版 ChatGPT URL 的 `origin` 参数会贯穿发现、注册、授权与令牌调用，即使代理把 Host 改为内部地址，也不据此覆盖该公开地址。旧版不带参数的连接仍需代理保留公网 Host 与正确的 `X-Forwarded-Proto`。Cloudflare/WAF 不能要求 ChatGPT 的元数据、注册、令牌及 MCP 机器请求完成浏览器挑战。
 
 ### 3. 在浏览器检查是否真的启用
 
 将下面地址中的域名和实例 ID 换成实际值：
 
 ```text
-https://你的域名/api/public/mcp-oauth/config?instance_id=你的实例ID
+https://你的域名/api/public/mcp-oauth/config?instance_id=你的实例ID&origin=https%3A%2F%2F你的域名
 ```
 
-应返回 `enabled: true`，并包含正确的 `server_url`。旧版服务返回 `enabled: false` 时，先更新服务；新版若返回错误，检查代理是否保留正确的域名与 HTTPS 协议。
+应返回 `enabled: true`，并包含正确的 `server_url`。旧版服务返回 `enabled: false` 时，先更新服务；新版若返回错误，检查 `origin` 参数是否包含正确协议、域名及端口；不带参数的旧连接仍需检查代理请求头。
 
-再打开：
+新版应沿 MCP 401 响应的 `WWW-Authenticate` 中 `resource_metadata` 地址读取资源元数据，再沿 `authorization_servers` 中的 issuer 读取 `issuer + /.well-known/openid-configuration`。这些地址包含自动生成的 origin 路径上下文，无需手填。下面两个固定地址用于检查旧版无 origin 参数的发现入口：
 
 ```text
 https://你的域名/api/public/mcp-oauth/.well-known/openid-configuration
@@ -156,14 +156,14 @@ https://你的域名/api/public/mcp-oauth/protected-resource/你的实例ID
 
 两者都应返回 JSON。
 
-自动发现过程是：
+新版显式 origin 自动发现过程是（路径中的 `…` 是服务生成的 origin 上下文）：
 
 ```text
-ChatGPT 请求 /api/mcp/实例ID
-  → 401 响应的 WWW-Authenticate 指定 /api/public/mcp-oauth/protected-resource/实例ID
-  → 资源元数据指定授权服务 https://你的域名/api/public/mcp-oauth
+ChatGPT 请求 /api/mcp/实例ID?origin=编码后的完整origin
+  → 401 响应的 WWW-Authenticate 指定 /api/public/mcp-oauth/origins/…/protected-resource/实例ID
+  → 资源元数据指定授权服务 https://你的域名/api/public/mcp-oauth/origins/…
   → 客户端按协议尝试发现地址
-  → 根目录发现失败时，继续读取 /api/public/mcp-oauth/.well-known/openid-configuration
+  → 根目录发现失败时，继续读取 issuer + /.well-known/openid-configuration
   → 读取授权、令牌和动态注册端点
 ```
 
@@ -182,12 +182,14 @@ ChatGPT 请求 /api/mcp/实例ID
 
 这些是排障时核对的字段，不是要求普通用户在 ChatGPT 手工填写的配置。
 
+新版端点位于上述 issuer 路径下；表格列出的固定路径仍保留给无 origin 参数的旧连接。`origin` 只接受合法完整 origin，不接受路径、账号密码、额外查询参数、片段或重复值。授权请求、授权码和令牌均绑定该地址；不会把它保存成影响其他域名的全站配置。
+
 ### 4. 核对未认证的 MCP 探测
 
-ChatGPT 的发现探测可能没有 JSON 请求头或请求体。下面请求应返回 **401**，并带有指向 `/api/public/mcp-oauth/protected-resource/实例ID` 的 `WWW-Authenticate` 响应头：
+ChatGPT 的发现探测可能没有 JSON 请求头或请求体。下面请求应返回 **401**，并带有指向该显式 origin 上下文资源元数据的 `WWW-Authenticate` 响应头：
 
 ```bash
-curl -i -X POST 'https://你的域名/api/mcp/你的实例ID'
+curl -i -X POST 'https://你的域名/api/mcp/你的实例ID?origin=https%3A%2F%2F你的域名'
 ```
 
 旧版服务可能在鉴权前返回 415，导致 ChatGPT 没有取得元数据地址，最终提示服务不支持 OAuth。新版让未认证请求优先得到 OAuth challenge；已经认证的正式调用仍须使用正确的 JSON 请求格式。
@@ -227,3 +229,9 @@ MCP 要求 `structuredContent` 是 JSON 对象。新版将目录数组包装为 
 源码与更新：[仓库接入说明](https://github.com/taichuy/1flowbase/blob/dev/docs/integrations/chatgpt-mcp.md)。
 
 参考：[MCP 授权与发现顺序](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)；[OpenAI MCP 认证要求](https://developers.openai.com/apps-sdk/build/auth/)；[1flowbase 实现与验收记录](https://github.com/taichuy/1flowbase/issues/2249)。
+
+### 显式 origin 更新验证（2026-10-06）
+
+使用空 `VITE_API_BASE_URL` 打包后的前端、真实开发 API 与本机 Chrome，模拟代理将 Host 改为 `127.0.0.1`、根目录发现返回 404。测试客户端完成发现、API Key 授权、工具调用、刷新和撤销验证；HTTPS 公网 origin 场景另由后端集成测试覆盖。本次新连接格式尚待更新公网部署后在真实 ChatGPT 重连确认，不能用上述历史验收替代。
+
+**前端和它实际连接的 API 都必须更新。** 只替换前端压缩包，旧 API 仍可能忽略 origin 并返回内部地址。更新后重新复制服务器 URL，在 ChatGPT 新建连接。

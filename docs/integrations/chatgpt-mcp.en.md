@@ -28,10 +28,10 @@ The API key field and notices remain above the tabs. You do not need to enter or
 
 The screenshots show the Chinese UI, with private deployment hostnames redacted. This guide uses the official website, `https://1flowbase.taichuy.com/`, as an example hostname. Replace it with your deployment's public HTTPS address. The example does not imply that the website hosts this MCP instance.
 
-The URL format is `https://your-domain/api/mcp/your-instance-id`. For example:
+Current ChatGPT URLs include the browser origin—scheme, hostname, and port—so the API does not need to infer the public address from rewritten proxy headers. For example:
 
 ```text
-https://1flowbase.taichuy.com/api/mcp/1flowbase
+https://1flowbase.taichuy.com/api/mcp/1flowbase?origin=https%3A%2F%2F1flowbase.taichuy.com
 ```
 
 Use the exact URL copied from your deployment. Have a valid user API key ready; its workspace must contain the MCP instance you want to connect.
@@ -121,9 +121,9 @@ The connection is complete when **authorization returns you to ChatGPT and a too
 
 Deploy the API, frontend, and database migrations from a release that includes OAuth discovery enabled by default. **No OAuth environment variables or manually configured public address are required.**
 
-Use HTTPS in production. The web app, API, and authorization page must share the same public origin. Authentication URLs are derived from the current request's public domain; authorization and token requests stay on the domain used for the connection.
+Use HTTPS in production. The web app, API, and authorization page must share the same public origin. The frontend sends `window.location.origin` in the URL's `origin` parameter. The API validates that complete origin and uses it throughout discovery and authorization. Older connections without this parameter still derive the address from Host and the forwarded scheme.
 
-Reconnect in ChatGPT if the public address changes. The authorization server identifier has moved from the website root to `/api/public/mcp-oauth`, so existing connections should also be recreated to pick up the updated discovery configuration.
+Reconnect in ChatGPT if the public address changes. Explicit-origin connections use an issuer under `/api/public/mcp-oauth/origins/…`. Copy the new complete MCP URL and recreate the ChatGPT connection to pick up this discovery configuration.
 
 ### 2. Check reverse-proxy routes
 
@@ -136,36 +136,36 @@ Use the same public origin for the web app, API, and authorization page:
 
 The repository's Nginx and Vite configurations include these routes. Current discovery endpoints live under `/api/`, so there is no need to change a hosting panel's default certificate-validation rules for the root `/.well-known/` path or add OAuth environment variables.
 
-Your reverse proxy must still preserve the public hostname. An HTTPS proxy must set `X-Forwarded-Proto` to the correct external scheme and must not substitute an internal API hostname for the public domain. Cloudflare or other WAF rules must allow ChatGPT's metadata, registration, token, and MCP requests without requiring a browser challenge.
+For current ChatGPT URLs, the explicit origin travels through discovery, registration, authorization, and token exchange even if the proxy rewrites Host to an internal address. Older URLs without the parameter still require the proxy to preserve the public hostname and correct `X-Forwarded-Proto` scheme. Cloudflare or other WAF rules must allow ChatGPT's metadata, registration, token, and MCP requests without requiring a browser challenge.
 
 ### 3. Check discovery in a browser
 
 Replace the domain and instance ID in this URL with your actual values:
 
 ```text
-https://your-domain/api/public/mcp-oauth/config?instance_id=your-instance-id
+https://your-domain/api/public/mcp-oauth/config?instance_id=your-instance-id&origin=https%3A%2F%2Fyour-domain
 ```
 
-The response should contain `enabled: true` and the correct `server_url`. If an older release returns `enabled: false`, update the service. If a current release returns an error, check that the proxy preserves the public hostname and HTTPS scheme.
+The response should contain `enabled: true` and the correct `server_url`. If an older release returns `enabled: false`, update the service. If a current release returns an error, check that the origin parameter includes the correct scheme, hostname, and port. Connections without the parameter still need correctly preserved proxy headers.
 
-Then open:
+For an explicit-origin connection, follow the `resource_metadata` URL in the MCP 401 response, then the issuer in `authorization_servers`, and read `issuer + /.well-known/openid-configuration`. These URLs carry an automatically generated origin context in their paths; do not enter it manually. The following fixed URLs check the older discovery flow without an origin parameter:
 
 ```text
 https://your-domain/api/public/mcp-oauth/.well-known/openid-configuration
 https://your-domain/api/public/mcp-oauth/protected-resource/your-instance-id
 ```
 
-Both should return JSON. Discovery follows this sequence:
+Both legacy URLs should return JSON. The explicit-origin discovery flow is (`…` represents the generated origin context):
 
 ```text
-ChatGPT requests /api/mcp/your-instance-id
+ChatGPT requests /api/mcp/your-instance-id?origin=encoded-complete-origin
   → The 401 response's WWW-Authenticate header points to
-    /api/public/mcp-oauth/protected-resource/your-instance-id
+    /api/public/mcp-oauth/origins/…/protected-resource/your-instance-id
   → Resource metadata identifies the authorization server as
-    https://your-domain/api/public/mcp-oauth
+    https://your-domain/api/public/mcp-oauth/origins/…
   → The client tries the discovery URLs in protocol order
   → If root discovery fails, it continues to
-    /api/public/mcp-oauth/.well-known/openid-configuration
+    issuer + /.well-known/openid-configuration
   → It reads the authorization, token, and client-registration endpoints
 ```
 
@@ -184,12 +184,14 @@ Authorization server metadata should use the correct public HTTPS addresses:
 
 These fields are useful for diagnostics. Users do not need to enter them individually in ChatGPT.
 
+New endpoints live under the contextual issuer above; the fixed paths in the table remain available for legacy connections. The `origin` parameter must be a complete, valid origin without credentials, a path, extra query parameters, a fragment, or duplicate values. Authorization requests, codes, and tokens are bound to that origin. It is not saved as a global setting that could override another domain.
+
 ### 4. Check the unauthenticated MCP probe
 
-ChatGPT's discovery probe may omit a JSON content type or request body. This request should return **401**, with a `WWW-Authenticate` header pointing to `/api/public/mcp-oauth/protected-resource/your-instance-id`:
+ChatGPT's discovery probe may omit a JSON content type or request body. This request should return **401**, with a `WWW-Authenticate` header pointing to the resource metadata for that explicit origin context:
 
 ```bash
-curl -i -X POST 'https://your-domain/api/mcp/your-instance-id'
+curl -i -X POST 'https://your-domain/api/mcp/your-instance-id?origin=https%3A%2F%2Fyour-domain'
 ```
 
 Older releases could return 415 before authentication, preventing ChatGPT from receiving the metadata URL and causing the “does not implement OAuth” error. Current releases return the OAuth challenge first for unauthenticated requests. Authenticated tool calls still require a valid JSON request.
@@ -218,7 +220,7 @@ The implementation uses the authorization code flow with PKCE S256 and Dynamic C
 
 This guide reflects the current 1flowbase authorization flow, OpenAI's authentication documentation, and the automatic discovery, client registration, and authorization-page implementation in the AgentDock reference project.
 
-The 1flowbase screenshots were captured from a real development service through its public URL. A temporary API key was used and revoked afterward. The ChatGPT creation screenshot was supplied by the user. Private deployment hostnames are redacted.
+The connection screenshot was refreshed during browser verification of the current static build, with the server URL masked. The other 1flowbase screenshots were captured from a real development service through its public URL. A temporary API key was used and revoked afterward. The ChatGPT creation screenshot was supplied by the user. Private deployment hostnames are redacted.
 
 A public test client completed discovery despite root discovery returning 404, then verified API key authorization, callback capture, tool listing, read-only invocation, token refresh, and revocation. Calling `mcp_list` with `{"depth": 2, "limit": 100}` returned 93 directory entries with object-valued `structuredContent`.
 
@@ -229,3 +231,9 @@ The verified environment was a privately operated deployment, with its public ho
 Source and updates: [Repository guide](https://github.com/taichuy/1flowbase/blob/dev/docs/integrations/chatgpt-mcp.en.md).
 
 References: [MCP authorization and discovery](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) · [OpenAI MCP authentication requirements](https://developers.openai.com/apps-sdk/build/auth/) · [Initial implementation and acceptance record](https://github.com/taichuy/1flowbase/issues/2249).
+
+### Explicit-origin update verification (October 6, 2026)
+
+The frontend built with an empty `VITE_API_BASE_URL`, a real development API, and installed Chrome passed a test in which the proxy rewrote Host to `127.0.0.1` and root discovery returned 404. The test client completed discovery, API key authorization, tool invocation, refresh, and revocation. Backend integration tests separately cover HTTPS public origins. The new connection format still needs a live ChatGPT reconnection check after deployment; the historical confirmation above does not establish that result.
+
+**Update both the frontend and the API it actually connects to.** Replacing only the frontend archive can leave an older API ignoring origin and returning an internal address. After updating both, copy the new server URL and create a new connection in ChatGPT.

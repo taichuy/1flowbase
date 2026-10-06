@@ -213,6 +213,13 @@ pub(crate) enum ExternalEndpointCatalogError {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ApprovedExternalControl {
+    OAuthOriginMetadata,
+    OAuthOriginOidcMetadata,
+    OAuthOriginApiMetadata,
+    OAuthOriginResource,
+    OAuthOriginRegister,
+    OAuthOriginAuthorize,
+    OAuthOriginToken,
     OAuthMetadata,
     OAuthOidcMetadata,
     OAuthApiMetadata,
@@ -241,7 +248,14 @@ pub(crate) enum ApprovedExternalControl {
 }
 
 impl ApprovedExternalControl {
-    const ALL: [Self; 24] = [
+    const ALL: [Self; 31] = [
+        Self::OAuthOriginMetadata,
+        Self::OAuthOriginOidcMetadata,
+        Self::OAuthOriginApiMetadata,
+        Self::OAuthOriginResource,
+        Self::OAuthOriginRegister,
+        Self::OAuthOriginAuthorize,
+        Self::OAuthOriginToken,
         Self::OAuthMetadata,
         Self::OAuthOidcMetadata,
         Self::OAuthApiMetadata,
@@ -270,6 +284,41 @@ impl ApprovedExternalControl {
 
     fn contribution(self) -> ExternalEndpointContribution {
         match self {
+            Self::OAuthOriginMetadata => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/.well-known/oauth-authorization-server/api/public/mcp-oauth/origins/:origin",
+            ),
+            Self::OAuthOriginOidcMetadata => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/.well-known/openid-configuration/api/public/mcp-oauth/origins/:origin",
+            ),
+            Self::OAuthOriginApiMetadata => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/origins/:origin/.well-known/openid-configuration",
+            ),
+            Self::OAuthOriginResource => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/origins/:origin/protected-resource/:instance_id",
+            ),
+            Self::OAuthOriginRegister => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "POST",
+                "/api/public/mcp-oauth/origins/:origin/register",
+            ),
+            Self::OAuthOriginAuthorize => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/origins/:origin/authorize",
+            ),
+            Self::OAuthOriginToken => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "POST",
+                "/api/public/mcp-oauth/origins/:origin/token",
+            ),
             Self::OAuthMetadata => ExternalEndpointContribution::protocol_control_http(
                 "mcp-oauth-protocol-control",
                 "GET",
