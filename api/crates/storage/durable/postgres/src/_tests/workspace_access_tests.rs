@@ -1,3 +1,5 @@
+mod department_permissions;
+
 use control_plane_contracts::ports::{
     ApplicationRepository, AuthRepository, ReplaceWorkspaceConsoleSettingsOrderInput,
     RoleRepository, WorkspaceRepository,

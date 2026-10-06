@@ -7,26 +7,14 @@ impl PgControlPlaneStore {
         workspace_id: Uuid,
         role_code: &str,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
-        let role_id: Option<Uuid> = sqlx::query_scalar(
-            r#"
-            select role.id
-            from user_role_bindings binding
-            join roles role on role.id = binding.role_id
-            where binding.user_id = $1
-              and role.code = $2
-              and (role.scope_kind = 'system' or role.workspace_id = $3)
-            limit 1
-            "#,
-        )
-        .bind(user_id)
-        .bind(role_code)
-        .bind(workspace_id)
-        .fetch_optional(self.pool())
-        .await?;
-        match role_id {
-            Some(role_id) => Ok(vec![role_console_policy_by_id(self.pool(), role_id).await?]),
-            None => Ok(Vec::new()),
+        let role_ids = self
+            .effective_role_ids(user_id, workspace_id, role_code)
+            .await?;
+        let mut policies = Vec::with_capacity(role_ids.len());
+        for role_id in role_ids {
+            policies.push(role_console_policy_by_id(self.pool(), role_id).await?);
         }
+        Ok(policies)
     }
 }
 

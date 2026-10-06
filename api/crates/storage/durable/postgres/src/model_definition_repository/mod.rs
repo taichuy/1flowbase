@@ -1202,6 +1202,9 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             Option<domain::RoleDataModelPolicyRecord>,
         )>,
     > {
+        let role_ids = self
+            .effective_role_ids(actor_user_id, workspace_id, role_code)
+            .await?;
         let rows = sqlx::query(
             r#"
             select
@@ -1225,22 +1228,17 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
               rdmp.delete_scope_override,
               rdmp.created_at as model_policy_created_at,
               rdmp.updated_at as model_policy_updated_at
-            from user_role_bindings urb
-            join roles r on r.id = urb.role_id
+            from roles r
             join role_data_policies rdp on rdp.role_id = r.id
             left join role_data_model_policies rdmp
               on rdmp.role_id = r.id
-             and rdmp.data_model_id = $3
-            where urb.user_id = $1
-              and r.code = $4
-              and (r.scope_kind = 'system' or r.workspace_id = $2)
+             and rdmp.data_model_id = $2
+            where r.id = any($1)
             order by r.scope_kind asc, r.code asc
             "#,
         )
-        .bind(actor_user_id)
-        .bind(workspace_id)
+        .bind(&role_ids)
         .bind(data_model_id)
-        .bind(role_code)
         .fetch_all(self.pool())
         .await?;
 

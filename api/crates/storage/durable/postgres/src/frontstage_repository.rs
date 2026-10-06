@@ -287,6 +287,9 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         role_code: &str,
     ) -> Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>> {
+        let role_ids = self
+            .effective_role_ids(actor_user_id, workspace_id, role_code)
+            .await?;
         let rows = sqlx::query(
             r#"
             select
@@ -300,21 +303,12 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 rules.updated_at
             from frontstage_page_visibility_rules rules
             where rules.workspace_id = $2
-              and rules.role_id in (
-                  select roles.id
-                  from user_role_bindings bindings
-                  join roles on roles.id = bindings.role_id
-                  where bindings.user_id = $1
-                    and roles.code = $3
-                    and roles.scope_kind = 'workspace'
-                    and roles.workspace_id = $2
-              )
+              and rules.role_id = any($1)
             order by rules.page_id nulls first, rules.role_id asc, rules.id asc
             "#,
         )
-        .bind(actor_user_id)
+        .bind(&role_ids)
         .bind(workspace_id)
-        .bind(role_code)
         .fetch_all(self.pool())
         .await?;
 

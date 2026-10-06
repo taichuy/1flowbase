@@ -1,3 +1,4 @@
+mod effective_roles;
 pub(crate) mod identity_binding;
 
 use anyhow::{anyhow, Result};
@@ -1122,22 +1123,19 @@ impl AuthRepository for PgControlPlaneStore {
             ));
         }
 
+        let role_ids = self
+            .effective_role_ids(user_id, workspace_id, &effective_display_role)
+            .await?;
         let permissions: Vec<String> = sqlx::query_scalar(
             r#"
             select distinct pd.code
-            from user_role_bindings urb
-            join roles r on r.id = urb.role_id
-            join role_permissions rp on rp.role_id = r.id
+            from role_permissions rp
             join permission_definitions pd on pd.id = rp.permission_id
-            where urb.user_id = $1
-              and r.code = $2
-              and (r.scope_kind = 'system' or r.workspace_id = $3)
-            order by pd.code asc
+            where rp.role_id = any($1)
+            order by pd.code
             "#,
         )
-        .bind(user_id)
-        .bind(&effective_display_role)
-        .bind(workspace_id)
+        .bind(&role_ids)
         .fetch_all(self.pool())
         .await?;
 
@@ -1173,7 +1171,7 @@ impl AuthRepository for PgControlPlaneStore {
         .bind(workspace_id)
         .fetch_optional(self.pool())
         .await?;
-        let (role_id, bound_role_code) =
+        let (_role_id, bound_role_code) =
             role.ok_or(ControlPlaneError::InvalidInput("role_code"))?;
 
         if bound_role_code == "root" {
@@ -1185,16 +1183,19 @@ impl AuthRepository for PgControlPlaneStore {
             ));
         }
 
+        let role_ids = self
+            .effective_role_ids(user_id, workspace_id, &bound_role_code)
+            .await?;
         let permissions: Vec<String> = sqlx::query_scalar(
             r#"
             select distinct pd.code
             from role_permissions rp
             join permission_definitions pd on pd.id = rp.permission_id
-            where rp.role_id = $1
+            where rp.role_id = any($1)
             order by pd.code asc
             "#,
         )
-        .bind(role_id)
+        .bind(&role_ids)
         .fetch_all(self.pool())
         .await?;
         Ok(ActorContext::scoped_in_scope(
