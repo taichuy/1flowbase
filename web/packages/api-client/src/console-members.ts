@@ -13,6 +13,8 @@ export interface ConsoleMember {
   phone_login_enabled: boolean;
   status: 'active' | 'disabled';
   role_codes: string[];
+  department_ids: string[];
+  primary_department_id: string | null;
 }
 
 export interface CreateConsoleMemberInput {
@@ -43,9 +45,16 @@ export interface ReplaceConsoleMemberRolesInput {
   role_codes: string[];
 }
 
-export function listConsoleMembers(baseUrl?: string): Promise<ConsoleMember[]> {
+export function listConsoleMembers(
+  baseUrl?: string,
+  department_id?: string
+): Promise<ConsoleMember[]> {
   return apiFetch<ConsoleMember[]>({
-    path: '/api/console/settings/members',
+    path:
+      '/api/console/settings/members' +
+      (department_id
+        ? `?department_id=${encodeURIComponent(department_id)}`
+        : ''),
     baseUrl
   });
 }

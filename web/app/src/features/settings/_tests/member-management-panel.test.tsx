@@ -33,6 +33,16 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 vi.mock('../api/members', () => membersApi);
 vi.mock('../api/roles', () => rolesApi);
+const departmentsApi = vi.hoisted(() => ({
+  settingsDepartmentsQueryKey: ['settings', 'departments'],
+  settingsMemberRoleOptionsQueryKey: ['settings', 'members', 'role-options'],
+  fetchSettingsDepartments: vi.fn(),
+  replaceSettingsMemberDepartments: vi.fn()
+}));
+vi.mock('../api/departments', () => ({
+  ...departmentsApi,
+  fetchSettingsMemberRoleOptions: rolesApi.fetchSettingsRoles
+}));
 
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
@@ -62,12 +72,14 @@ function authenticate() {
   });
 }
 
-function renderPanel() {
+function renderPanel(withDepartments = false) {
   return render(
     <AppProviders>
       <MemberManagementPanel
         canManageMembers
         canManageRoleBindings
+        canViewDepartments={withDepartments}
+        canManageMemberDepartments={withDepartments}
       />
     </AppProviders>
   );
@@ -100,6 +112,18 @@ describe('MemberManagementPanel', () => {
   beforeEach(() => {
     resetAuthStore();
     authenticate();
+    departmentsApi.fetchSettingsDepartments.mockResolvedValue([
+      {
+        id: 'department-1',
+        name: 'Engineering',
+        parent_id: null,
+        role_codes: ['operator'],
+        member_count: 8
+      }
+    ]);
+    departmentsApi.replaceSettingsMemberDepartments.mockResolvedValue(
+      undefined
+    );
     membersApi.fetchSettingsMembers.mockResolvedValue([
       {
         id: 'user-1',
@@ -113,6 +137,8 @@ describe('MemberManagementPanel', () => {
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'active',
+        department_ids: [],
+        primary_department_id: null,
         role_codes: ['root', 'member']
       },
       {
@@ -127,6 +153,8 @@ describe('MemberManagementPanel', () => {
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'active',
+        department_ids: [],
+        primary_department_id: null,
         role_codes: ['member']
       },
       {
@@ -141,6 +169,8 @@ describe('MemberManagementPanel', () => {
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'disabled',
+        department_ids: [],
+        primary_department_id: null,
         role_codes: ['member']
       }
     ]);
@@ -207,7 +237,7 @@ describe('MemberManagementPanel', () => {
       screen.getByRole('columnheader', { name: '昵称' })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('columnheader', { name: '角色' })
+      screen.queryByRole('columnheader', { name: '直接角色' })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('columnheader', { name: '用户' })
@@ -283,14 +313,14 @@ describe('MemberManagementPanel', () => {
           name: /编辑用户资料/
         });
         expect(
-          within(dialog).getByRole('combobox', { name: '角色' })
+          within(dialog).getByRole('combobox', { name: '直接角色' })
         ).toBeInTheDocument();
 
         fireEvent.change(within(dialog).getByLabelText('姓名'), {
           target: { value: 'Root Next' }
         });
         fireEvent.mouseDown(
-          within(dialog).getByRole('combobox', { name: '角色' })
+          within(dialog).getByRole('combobox', { name: '直接角色' })
         );
         const [operatorOption] = await screen.findAllByText((_, element) => {
           if (!element) {
@@ -333,4 +363,39 @@ describe('MemberManagementPanel', () => {
     },
     MEMBER_EDIT_PROFILE_TEST_TIMEOUT
   );
+  test('selecting an organization requests the server subtree and returning to all removes the filter', async () => {
+    renderPanel(true);
+    fireEvent.click(await screen.findByText('Engineering'));
+    await waitFor(() =>
+      expect(membersApi.fetchSettingsMembers).toHaveBeenCalledWith(
+        'department-1'
+      )
+    );
+    fireEvent.click(screen.getByRole('button', { name: '全部用户' }));
+    await waitFor(() =>
+      expect(membersApi.fetchSettingsMembers).toHaveBeenLastCalledWith(
+        undefined
+      )
+    );
+    expect(screen.getByText('8')).toBeInTheDocument();
+  });
+  test('department membership saves an explicit null primary for an unassigned user', async () => {
+    renderPanel(true);
+    const row = await findMemberRow(/user.*User Name.*User Nick/u);
+    fireEvent.click(within(row).getByRole('button', { name: /编辑$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /编辑用户资料/ });
+    expect(
+      within(dialog).getByRole('combobox', { name: '主部门' })
+    ).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() =>
+      expect(
+        departmentsApi.replaceSettingsMemberDepartments
+      ).toHaveBeenCalledWith(
+        'user-2',
+        { department_ids: [], primary_department_id: null },
+        'csrf-123'
+      )
+    );
+  });
 });

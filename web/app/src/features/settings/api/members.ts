@@ -23,8 +23,10 @@ export type ChangeCurrentUserPasswordInput = ChangeConsolePasswordInput;
 
 export const settingsMembersQueryKey = ['settings', 'members'] as const;
 
-export function fetchSettingsMembers(): Promise<SettingsMember[]> {
-  return listConsoleMembers();
+export function fetchSettingsMembers(
+  department_id?: string
+): Promise<SettingsMember[]> {
+  return listConsoleMembers(undefined, department_id);
 }
 
 export function createSettingsMember(
@@ -42,15 +44,24 @@ export function updateSettingsMember(
   return updateConsoleMember(memberId, input, csrfToken);
 }
 
-export function disableSettingsMember(memberId: string, csrfToken: string): Promise<void> {
+export function disableSettingsMember(
+  memberId: string,
+  csrfToken: string
+): Promise<void> {
   return disableConsoleMember(memberId, csrfToken);
 }
 
-export function enableSettingsMember(memberId: string, csrfToken: string): Promise<void> {
+export function enableSettingsMember(
+  memberId: string,
+  csrfToken: string
+): Promise<void> {
   return enableConsoleMember(memberId, csrfToken);
 }
 
-export function deleteSettingsMember(memberId: string, csrfToken: string): Promise<void> {
+export function deleteSettingsMember(
+  memberId: string,
+  csrfToken: string
+): Promise<void> {
   return deleteConsoleMember(memberId, csrfToken);
 }
 

@@ -587,7 +587,7 @@ const settingsMembersRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/members',
   validateSearch: (search: Record<string, unknown>) => ({
-    tabs: search.tabs === 'credits' ? 'credits' : 'members'
+    tabs: search.tabs === 'credits' ? 'credits' : search.tabs === 'departments' ? 'departments' : 'members'
   }),
   notFoundComponent: NotFoundPage,
   component: () => renderSettingsRoute('members')

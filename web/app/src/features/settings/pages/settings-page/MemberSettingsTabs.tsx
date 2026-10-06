@@ -1,3 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Button, Spin } from 'antd';
+import {
+  fetchSettingsDepartmentAccess,
+  settingsDepartmentAccessQueryKey
+} from '../../api/departments';
+import { DepartmentManagementPanel } from '../../components/organization/DepartmentManagementPanel';
 import { Tabs } from 'antd';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { CreditManagementPanel } from '../../components/billing/CreditManagementPanel';
@@ -5,20 +12,36 @@ import { MemberManagementPanel } from '../../components/MemberManagementPanel';
 import { i18nText } from '../../../../shared/i18n/text';
 
 export function MemberSettingsTabs({
-  canManageMembers,
-  canManageRoleBindings
+  canManageMembers
 }: {
   canManageMembers: boolean;
-  canManageRoleBindings: boolean;
 }) {
   const navigate = useNavigate();
+  const accessQuery = useQuery({
+    queryKey: settingsDepartmentAccessQueryKey,
+    queryFn: fetchSettingsDepartmentAccess
+  });
+  const departmentAccess = accessQuery.data ?? {
+    can_list: false,
+    can_create: false,
+    can_update: false,
+    can_delete: false,
+    can_assign_roles: false,
+    can_replace_member_departments: false
+  };
   const activeTab = useRouterState({
     select: (state) => state.location.search.tabs
   });
 
   return (
     <Tabs
-      activeKey={activeTab === 'credits' ? 'credits' : 'members'}
+      activeKey={
+        activeTab === 'credits'
+          ? 'credits'
+          : activeTab === 'departments'
+            ? 'departments'
+            : 'members'
+      }
       onChange={(tabs) =>
         void navigate({ to: '/settings/members', search: { tabs } })
       }
@@ -29,8 +52,31 @@ export function MemberSettingsTabs({
           children: (
             <MemberManagementPanel
               canManageMembers={canManageMembers}
-              canManageRoleBindings={canManageRoleBindings}
+              canManageRoleBindings={departmentAccess.can_assign_roles}
+              canViewDepartments={departmentAccess.can_list}
+              canManageMemberDepartments={
+                departmentAccess.can_replace_member_departments
+              }
             />
+          )
+        },
+        {
+          key: 'departments',
+          label: i18nText('settings', 'organization.management'),
+          children: accessQuery.isLoading ? (
+            <Spin />
+          ) : accessQuery.isError ? (
+            <Alert
+              type="error"
+              message={i18nText('settings', 'organization.load_error')}
+              action={
+                <Button onClick={() => void accessQuery.refetch()}>
+                  {i18nText('settings', 'organization.retry')}
+                </Button>
+              }
+            />
+          ) : (
+            <DepartmentManagementPanel access={departmentAccess} />
           )
         },
         {

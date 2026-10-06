@@ -1,14 +1,16 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
+  Alert,
   Avatar,
   Button,
   Form,
   Input,
   Modal,
   Popconfirm,
+  Pagination,
   Select,
   Space,
   Switch,
@@ -37,18 +39,34 @@ import {
   updateSettingsMember,
   type SettingsMember
 } from '../api/members';
-import { fetchSettingsRoles, settingsRolesQueryKey } from '../api/roles';
+import {
+  fetchSettingsMemberRoleOptions,
+  settingsMemberRoleOptionsQueryKey
+} from '../api/departments';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
+
+import {
+  fetchSettingsDepartments,
+  replaceSettingsMemberDepartments,
+  settingsDepartmentsQueryKey
+} from '../api/departments';
+import { OrganizationSelector } from './organization/OrganizationSelector';
+import { MemberDepartmentFields } from './organization/MemberDepartmentFields';
+import './organization/organization-management.css';
 
 const TEMP_PASSWORD = 'Temp@123456';
 
 export function MemberManagementPanel({
   canManageMembers,
-  canManageRoleBindings
+  canManageRoleBindings,
+  canViewDepartments = false,
+  canManageMemberDepartments = false
 }: {
   canManageMembers: boolean;
   canManageRoleBindings: boolean;
+  canViewDepartments?: boolean;
+  canManageMemberDepartments?: boolean;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -65,13 +83,40 @@ export function MemberManagementPanel({
   const [passwordEditMember, setPasswordEditMember] =
     useState<SettingsMember | null>(null);
 
-  const membersQuery = useQuery({
-    queryKey: settingsMembersQueryKey,
-    queryFn: fetchSettingsMembers
+  const [selectedDepartment, setSelectedDepartment] = useState<string>();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const departmentsQuery = useQuery({
+    queryKey: settingsDepartmentsQueryKey,
+    queryFn: fetchSettingsDepartments,
+    enabled: canViewDepartments
   });
+  const departments = departmentsQuery.data ?? [];
+  const membersQuery = useQuery({
+    queryKey: [...settingsMembersQueryKey, selectedDepartment],
+    queryFn: () => fetchSettingsMembers(selectedDepartment)
+  });
+  useEffect(() => {
+    setPage(1);
+  }, [selectedDepartment]);
+  useEffect(() => {
+    if (
+      departmentsQuery.isSuccess &&
+      selectedDepartment &&
+      !departments.some((department) => department.id === selectedDepartment)
+    )
+      setSelectedDepartment(undefined);
+  }, [departments, departmentsQuery.isSuccess, selectedDepartment]);
+  useEffect(() => {
+    if (
+      membersQuery.data &&
+      page > Math.max(1, Math.ceil(membersQuery.data.length / pageSize))
+    )
+      setPage(1);
+  }, [membersQuery.data, page, pageSize]);
   const rolesQuery = useQuery({
-    queryKey: settingsRolesQueryKey,
-    queryFn: fetchSettingsRoles,
+    queryKey: settingsMemberRoleOptionsQueryKey,
+    queryFn: fetchSettingsMemberRoleOptions,
     enabled: canManageRoleBindings
   });
 
@@ -102,6 +147,9 @@ export function MemberManagementPanel({
       await queryClient.invalidateQueries({
         queryKey: settingsMembersQueryKey
       });
+      await queryClient.invalidateQueries({
+        queryKey: settingsDepartmentsQueryKey
+      });
     }
   });
 
@@ -116,6 +164,9 @@ export function MemberManagementPanel({
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: settingsMembersQueryKey
+      });
+      await queryClient.invalidateQueries({
+        queryKey: settingsDepartmentsQueryKey
       });
     }
   });
@@ -132,6 +183,9 @@ export function MemberManagementPanel({
       await queryClient.invalidateQueries({
         queryKey: settingsMembersQueryKey
       });
+      await queryClient.invalidateQueries({
+        queryKey: settingsDepartmentsQueryKey
+      });
     }
   });
 
@@ -146,6 +200,9 @@ export function MemberManagementPanel({
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: settingsMembersQueryKey
+      });
+      await queryClient.invalidateQueries({
+        queryKey: settingsDepartmentsQueryKey
       });
     }
   });
@@ -166,6 +223,9 @@ export function MemberManagementPanel({
       await queryClient.invalidateQueries({
         queryKey: settingsMembersQueryKey
       });
+      await queryClient.invalidateQueries({
+        queryKey: settingsDepartmentsQueryKey
+      });
     }
   });
 
@@ -183,17 +243,19 @@ export function MemberManagementPanel({
         throw new Error('missing csrf token');
       }
 
-      const member = await updateSettingsMember(
-        memberId,
-        {
-          name: String(values.name ?? ''),
-          nickname: String(values.nickname ?? ''),
-          email: String(values.email ?? ''),
-          phone: values.phone ? String(values.phone) : null,
-          introduction: String(values.introduction ?? '')
-        },
-        csrfToken
-      );
+      const member = canManageMembers
+        ? await updateSettingsMember(
+            memberId,
+            {
+              name: String(values.name ?? ''),
+              nickname: String(values.nickname ?? ''),
+              email: String(values.email ?? ''),
+              phone: values.phone ? String(values.phone) : null,
+              introduction: String(values.introduction ?? '')
+            },
+            csrfToken
+          )
+        : profileEditMember;
 
       if (roleCodes) {
         await replaceSettingsMemberRoles(
@@ -203,11 +265,28 @@ export function MemberManagementPanel({
         );
       }
 
+      if (canManageMemberDepartments && canViewDepartments) {
+        await replaceSettingsMemberDepartments(
+          memberId,
+          {
+            department_ids: Array.isArray(values.department_ids)
+              ? values.department_ids.map(String)
+              : [],
+            primary_department_id: values.primary_department_id
+              ? String(values.primary_department_id)
+              : null
+          },
+          csrfToken
+        );
+      }
       return member;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: settingsMembersQueryKey
+      });
+      await queryClient.invalidateQueries({
+        queryKey: settingsDepartmentsQueryKey
       });
       setProfileEditMember(null);
       profileForm.resetFields();
@@ -232,6 +311,9 @@ export function MemberManagementPanel({
       await queryClient.invalidateQueries({
         queryKey: settingsMembersQueryKey
       });
+      await queryClient.invalidateQueries({
+        queryKey: settingsDepartmentsQueryKey
+      });
       passwordForm.resetFields();
       setPasswordEditMember(null);
       setAnonymous();
@@ -251,6 +333,7 @@ export function MemberManagementPanel({
 
   const handleOpenProfileEdit = useCallback(
     (member: SettingsMember) => {
+      updateMemberMutation.reset();
       setProfileEditMember(member);
       profileForm.setFieldsValue({
         name: member.name,
@@ -258,10 +341,12 @@ export function MemberManagementPanel({
         email: member.email,
         phone: member.phone,
         introduction: member.introduction,
-        role_codes: member.role_codes
+        role_codes: member.role_codes,
+        department_ids: member.department_ids,
+        primary_department_id: member.primary_department_id
       });
     },
-    [profileForm]
+    [profileForm, updateMemberMutation]
   );
 
   const handleProfileEditSubmit = useCallback(
@@ -332,8 +417,8 @@ export function MemberManagementPanel({
         align: 'center' as const,
         render: (_: unknown, member: SettingsMember) => (
           <Avatar
-            size="small"
-            style={{ backgroundColor: '#00d084', flexShrink: 0 }}
+            size={36}
+            style={{ backgroundColor: 'var(--color-primary)', flexShrink: 0 }}
           >
             {member.account.charAt(0).toUpperCase()}
           </Avatar>
@@ -396,12 +481,14 @@ export function MemberManagementPanel({
           </Tag>
         )
       },
-      ...(canManageMembers
+      ...(canManageMembers ||
+      canManageRoleBindings ||
+      (canManageMemberDepartments && canViewDepartments)
         ? [
             {
               title: i18nText('settings', 'auto.operation'),
               key: 'action',
-              width: 240,
+              width: 364,
               render: (_: unknown, member: SettingsMember) => {
                 const isRootMember = member.role_codes.includes('root');
                 const isCurrentUser = member.id === actor?.id;
@@ -415,146 +502,155 @@ export function MemberManagementPanel({
                     >
                       {i18nText('settings', 'auto.edit')}
                     </Button>
-                    {isRootMember ? (
-                      <Button
-                        size="small"
-                        icon={<KeyOutlined />}
-                        disabled={!isCurrentUser}
-                        loading={changePasswordMutation.isPending}
-                        onClick={
-                          isCurrentUser
-                            ? () => handleOpenPasswordEdit(member)
-                            : undefined
-                        }
-                      >
-                        {i18nText('settings', 'auto.reset_password')}
-                      </Button>
-                    ) : (
-                      <Popconfirm
-                        title={i18nText('settings', 'auto.reset_password')}
-                        description={i18nText(
-                          'settings',
-                          'auto.reset_password_temporary_password_needs_changed_immediately_user_logs',
-                          { value1: member.name }
-                        )}
-                        onConfirm={() =>
-                          resetPasswordMutation.mutate(member.id)
-                        }
-                        okText={i18nText('settings', 'auto.confirm_reset')}
-                        cancelText={i18nText('settings', 'auto.cancel')}
-                      >
-                        <Button
-                          size="small"
-                          icon={<KeyOutlined />}
-                          loading={resetPasswordMutation.isPending}
-                        >
-                          {i18nText('settings', 'auto.reset_password')}
-                        </Button>
-                      </Popconfirm>
-                    )}
-                    {member.status === 'active' ? (
-                      isRootMember ? (
-                        <Button
-                          size="small"
-                          color="orange"
-                          variant="outlined"
-                          icon={<StopOutlined />}
-                          disabled
-                        >
-                          {i18nText('settings', 'auto.deactivate')}
-                        </Button>
-                      ) : (
-                        <Popconfirm
-                          title={i18nText(
-                            'settings',
-                            'auto.deactivate_account'
-                          )}
-                          description={i18nText(
-                            'settings',
-                            'auto.sure_want_deactivate_s_account_deactivation_user_able_log',
-                            { value1: member.name }
-                          )}
-                          onConfirm={() => disableMutation.mutate(member.id)}
-                          okText={i18nText(
-                            'settings',
-                            'auto.confirm_deactivation'
-                          )}
-                          cancelText={i18nText('settings', 'auto.cancel')}
-                          okButtonProps={{
-                            color: 'orange',
-                            variant: 'solid'
-                          }}
-                        >
+                    {canManageMembers ? (
+                      <>
+                        {isRootMember ? (
                           <Button
                             size="small"
-                            color="orange"
-                            variant="outlined"
-                            icon={<StopOutlined />}
-                            loading={disableMutation.isPending}
+                            icon={<KeyOutlined />}
+                            disabled={!isCurrentUser}
+                            loading={changePasswordMutation.isPending}
+                            onClick={
+                              isCurrentUser
+                                ? () => handleOpenPasswordEdit(member)
+                                : undefined
+                            }
                           >
-                            {i18nText('settings', 'auto.deactivate')}
+                            {i18nText('settings', 'auto.reset_password')}
                           </Button>
-                        </Popconfirm>
-                      )
-                    ) : (
-                      <Popconfirm
-                        title={i18nText('settings', 'auto.restore_account')}
-                        description={i18nText(
-                          'settings',
-                          'auto.sure_want_restore_s_account_user_able_log',
-                          { value1: member.name }
+                        ) : (
+                          <Popconfirm
+                            title={i18nText('settings', 'auto.reset_password')}
+                            description={i18nText(
+                              'settings',
+                              'auto.reset_password_temporary_password_needs_changed_immediately_user_logs',
+                              { value1: member.name }
+                            )}
+                            onConfirm={() =>
+                              resetPasswordMutation.mutate(member.id)
+                            }
+                            okText={i18nText('settings', 'auto.confirm_reset')}
+                            cancelText={i18nText('settings', 'auto.cancel')}
+                          >
+                            <Button
+                              size="small"
+                              icon={<KeyOutlined />}
+                              loading={resetPasswordMutation.isPending}
+                            >
+                              {i18nText('settings', 'auto.reset_password')}
+                            </Button>
+                          </Popconfirm>
                         )}
-                        onConfirm={() => enableMutation.mutate(member.id)}
-                        okText={i18nText('settings', 'auto.confirm_restore')}
-                        cancelText={i18nText('settings', 'auto.cancel')}
-                        okButtonProps={{
-                          color: 'green',
-                          variant: 'solid'
-                        }}
-                      >
-                        <Button
-                          size="small"
-                          color="green"
-                          variant="outlined"
-                          icon={<CheckCircleOutlined />}
-                          loading={enableMutation.isPending}
-                        >
-                          {i18nText('settings', 'auto.restore')}
-                        </Button>
-                      </Popconfirm>
-                    )}
-                    {isRootMember || isCurrentUser ? (
-                      <Button
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        disabled
-                      >
-                        {i18nText('settings', 'auto.delete')}
-                      </Button>
-                    ) : (
-                      <Popconfirm
-                        title={i18nText('settings', 'auto.delete_member')}
-                        description={i18nText(
-                          'settings',
-                          'auto.sure_want_delete_member_account_physical_delete',
-                          { value1: member.name }
+                        {member.status === 'active' ? (
+                          isRootMember ? (
+                            <Button
+                              size="small"
+                              color="orange"
+                              variant="outlined"
+                              icon={<StopOutlined />}
+                              disabled
+                            >
+                              {i18nText('settings', 'auto.deactivate')}
+                            </Button>
+                          ) : (
+                            <Popconfirm
+                              title={i18nText(
+                                'settings',
+                                'auto.deactivate_account'
+                              )}
+                              description={i18nText(
+                                'settings',
+                                'auto.sure_want_deactivate_s_account_deactivation_user_able_log',
+                                { value1: member.name }
+                              )}
+                              onConfirm={() =>
+                                disableMutation.mutate(member.id)
+                              }
+                              okText={i18nText(
+                                'settings',
+                                'auto.confirm_deactivation'
+                              )}
+                              cancelText={i18nText('settings', 'auto.cancel')}
+                              okButtonProps={{
+                                color: 'orange',
+                                variant: 'solid'
+                              }}
+                            >
+                              <Button
+                                size="small"
+                                color="orange"
+                                variant="outlined"
+                                icon={<StopOutlined />}
+                                loading={disableMutation.isPending}
+                              >
+                                {i18nText('settings', 'auto.deactivate')}
+                              </Button>
+                            </Popconfirm>
+                          )
+                        ) : (
+                          <Popconfirm
+                            title={i18nText('settings', 'auto.restore_account')}
+                            description={i18nText(
+                              'settings',
+                              'auto.sure_want_restore_s_account_user_able_log',
+                              { value1: member.name }
+                            )}
+                            onConfirm={() => enableMutation.mutate(member.id)}
+                            okText={i18nText(
+                              'settings',
+                              'auto.confirm_restore'
+                            )}
+                            cancelText={i18nText('settings', 'auto.cancel')}
+                            okButtonProps={{
+                              color: 'green',
+                              variant: 'solid'
+                            }}
+                          >
+                            <Button
+                              size="small"
+                              color="green"
+                              variant="outlined"
+                              icon={<CheckCircleOutlined />}
+                              loading={enableMutation.isPending}
+                            >
+                              {i18nText('settings', 'auto.restore')}
+                            </Button>
+                          </Popconfirm>
                         )}
-                        onConfirm={() => deleteMutation.mutate(member.id)}
-                        okText={i18nText('settings', 'auto.confirm_delete')}
-                        cancelText={i18nText('settings', 'auto.cancel')}
-                        okButtonProps={{ danger: true }}
-                      >
-                        <Button
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          loading={deleteMutation.isPending}
-                        >
-                          {i18nText('settings', 'auto.delete')}
-                        </Button>
-                      </Popconfirm>
-                    )}
+                        {isRootMember || isCurrentUser ? (
+                          <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            disabled
+                          >
+                            {i18nText('settings', 'auto.delete')}
+                          </Button>
+                        ) : (
+                          <Popconfirm
+                            title={i18nText('settings', 'auto.delete_member')}
+                            description={i18nText(
+                              'settings',
+                              'auto.sure_want_delete_member_account_physical_delete',
+                              { value1: member.name }
+                            )}
+                            onConfirm={() => deleteMutation.mutate(member.id)}
+                            okText={i18nText('settings', 'auto.confirm_delete')}
+                            cancelText={i18nText('settings', 'auto.cancel')}
+                            okButtonProps={{ danger: true }}
+                          >
+                            <Button
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              loading={deleteMutation.isPending}
+                            >
+                              {i18nText('settings', 'auto.delete')}
+                            </Button>
+                          </Popconfirm>
+                        )}
+                      </>
+                    ) : null}
                   </Space>
                 );
               }
@@ -564,6 +660,9 @@ export function MemberManagementPanel({
     ],
     [
       canManageMembers,
+      canManageRoleBindings,
+      canManageMemberDepartments,
+      canViewDepartments,
       deleteMutation,
       disableMutation,
       enableMutation,
@@ -577,35 +676,108 @@ export function MemberManagementPanel({
 
   return (
     <SettingsSectionSurface heightMode="fill">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {canManageMembers ? (
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              type="primary"
-              icon={<UserAddOutlined />}
-              onClick={() => setCreateModalOpen(true)}
-            >
-              {i18nText('settings', 'auto.create_new_user')}
-            </Button>
-          </div>
+      <div
+        className={canViewDepartments ? 'organization-workspace' : undefined}
+      >
+        {canViewDepartments ? (
+          <OrganizationSelector
+            departments={departments}
+            selected={selectedDepartment}
+            onSelect={setSelectedDepartment}
+            loading={departmentsQuery.isLoading}
+            error={departmentsQuery.isError}
+            onRetry={() => void departmentsQuery.refetch()}
+          />
         ) : null}
+        <div className="organization-members">
+          <div className="organization-member-header">
+            <Space>
+              <Typography.Title level={4}>
+                {selectedDepartment
+                  ? departments.find(
+                      (department) => department.id === selectedDepartment
+                    )?.name
+                  : i18nText('settings', 'organization.all_members')}
+              </Typography.Title>
+              <Tag>
+                {i18nText('settings', 'organization.member_count', {
+                  count: membersQuery.data?.length ?? 0
+                })}
+              </Tag>
+            </Space>
+            {canManageMembers ? (
+              <div>
+                <Button
+                  type="primary"
+                  icon={<UserAddOutlined />}
+                  onClick={() => setCreateModalOpen(true)}
+                >
+                  {i18nText('settings', 'auto.create_new_user')}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          {membersQuery.isError ? (
+            <Alert
+              type="error"
+              message={i18nText('settings', 'organization.members_error')}
+              action={
+                <Button onClick={() => void membersQuery.refetch()}>
+                  {i18nText('settings', 'organization.retry')}
+                </Button>
+              }
+            />
+          ) : null}
+          {[
+            createMutation,
+            updateMemberMutation,
+            deleteMutation,
+            disableMutation,
+            enableMutation,
+            resetPasswordMutation,
+            changePasswordMutation
+          ].some((mutation) => mutation.isError) ? (
+            <Alert
+              type="error"
+              message={i18nText('settings', 'organization.operation_error')}
+            />
+          ) : null}
+          <div className="organization-table">
+            <Table<SettingsMember>
+              rowKey="id"
+              loading={membersQuery.isLoading}
+              dataSource={(membersQuery.data ?? []).slice(
+                (page - 1) * pageSize,
+                page * pageSize
+              )}
+              pagination={false}
+              scroll={{ x: 1140 }}
+              columns={columns}
+              size="middle"
+            />
+          </div>
 
-        <Table<SettingsMember>
-          rowKey="id"
-          loading={membersQuery.isLoading}
-          dataSource={membersQuery.data ?? []}
-          pagination={false}
-          columns={columns}
-          size="middle"
-        />
-
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {i18nText(
-            'settings',
-            'auto.resetting_password_reset_target_account_password_temporary_password_require_user'
-          )}
-        </Typography.Text>
-
+          <Pagination
+            className="organization-pagination"
+            current={page}
+            pageSize={pageSize}
+            total={membersQuery.data?.length ?? 0}
+            showSizeChanger
+            showTotal={(total) =>
+              i18nText('settings', 'organization.records', { count: total })
+            }
+            onChange={(nextPage, nextSize) => {
+              setPage(nextPage);
+              setPageSize(nextSize);
+            }}
+          />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {i18nText(
+              'settings',
+              'auto.resetting_password_reset_target_account_password_temporary_password_require_user'
+            )}
+          </Typography.Text>
+        </div>
         {/* Create Member Modal */}
         <Modal
           title={i18nText('settings', 'auto.create_new_user')}
@@ -780,7 +952,7 @@ export function MemberManagementPanel({
                   }
                 ]}
               >
-                <Input />
+                <Input disabled={!canManageMembers} />
               </Form.Item>
               <Form.Item
                 label={i18nText('settings', 'auto.nickname')}
@@ -792,7 +964,7 @@ export function MemberManagementPanel({
                   }
                 ]}
               >
-                <Input />
+                <Input disabled={!canManageMembers} />
               </Form.Item>
               <Form.Item
                 label={i18nText('settings', 'auto.email')}
@@ -811,18 +983,25 @@ export function MemberManagementPanel({
                   }
                 ]}
               >
-                <Input />
+                <Input disabled={!canManageMembers} />
               </Form.Item>
               <Form.Item
                 label={i18nText('settings', 'auto.mobile_phone_number')}
                 name="phone"
               >
-                <Input />
+                <Input disabled={!canManageMembers} />
               </Form.Item>
             </div>
+            {canViewDepartments ? (
+              <MemberDepartmentFields
+                form={profileForm}
+                departments={departments}
+                disabled={!canManageMemberDepartments}
+              />
+            ) : null}
             {canManageRoleBindings ? (
               <Form.Item
-                label={i18nText('settings', 'auto.role')}
+                label={i18nText('settings', 'organization.direct_roles')}
                 name="role_codes"
               >
                 <Select
@@ -838,7 +1017,7 @@ export function MemberManagementPanel({
               label={i18nText('settings', 'auto.personal_introduction')}
               name="introduction"
             >
-              <Input.TextArea rows={3} />
+              <Input.TextArea rows={3} disabled={!canManageMembers} />
             </Form.Item>
           </Form>
         </Modal>

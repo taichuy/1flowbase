@@ -1,0 +1,93 @@
+.organization-workspace {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+.organization-sidebar,
+.organization-members,
+.organization-management {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 0;
+}
+.organization-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.organization-sidebar h4 {
+  margin: 0;
+}
+.organization-tree-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.organization-count {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.organization-all {
+  text-align: left;
+  justify-content: flex-start;
+}
+.organization-all--selected {
+  background: var(--bg-hover);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.organization-members {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 560px;
+}
+.organization-member-header,
+.organization-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.organization-member-header h4 {
+  margin: 0;
+}
+.organization-table {
+  min-width: 0;
+  flex: 1;
+}
+.organization-pagination {
+  align-self: flex-end;
+}
+.organization-management {
+  display: grid;
+  gap: 20px;
+}
+@media (max-width: 991px) {
+  .organization-workspace {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .organization-sidebar,
+  .organization-members,
+  .organization-management {
+    padding: 16px;
+  }
+}
+@media (max-width: 768px) {
+  .organization-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .organization-sidebar {
+    max-height: 240px;
+    overflow: auto;
+  }
+  .organization-members {
+    min-height: 440px;
+  }
+  .organization-member-header {
+    flex-wrap: wrap;
+  }
+}

@@ -39,3 +39,5 @@ export * from './public-auth';
 export * from './transport';
 export * from './webmcp';
 export * from './public/mcp-oauth';
+
+export * from './console/departments';

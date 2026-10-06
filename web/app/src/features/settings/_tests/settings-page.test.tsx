@@ -378,6 +378,8 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
     changeConsolePassword: membersApi.changeCurrentUserPassword,
     replaceConsoleMemberRoles: membersApi.replaceSettingsMemberRoles,
     listConsoleRoles: rolesApi.fetchSettingsRoles,
+    listConsoleMemberRoleOptions: rolesApi.fetchSettingsRoles,
+    getConsoleDepartmentAccess: vi.fn().mockResolvedValue({ can_list: false, can_create: false, can_update: false, can_delete: false, can_replace_member_departments: false, can_assign_roles: true }),
     fetchConsoleRolePermissions: rolesApi.fetchSettingsRolePermissions,
     createConsoleRole: rolesApi.createSettingsRole,
     updateConsoleRole: rolesApi.updateSettingsRole,
@@ -1025,7 +1027,7 @@ describe('SettingsPage', () => {
 
     renderApp('/settings/members');
 
-    const creditsTab = await screen.findByRole('tab', { name: '用户金额' });
+    const creditsTab = await screen.findByRole('tab', { name: '用户余额' });
     fireEvent.click(creditsTab);
 
     await waitFor(() => {
@@ -1044,7 +1046,7 @@ describe('SettingsPage', () => {
 
     renderApp('/settings/members?tabs=credits');
 
-    expect(await screen.findByRole('tab', { name: '用户金额' })).toHaveAttribute(
+    expect(await screen.findByRole('tab', { name: '用户余额' })).toHaveAttribute(
       'aria-selected',
       'true'
     );

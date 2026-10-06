@@ -171,10 +171,7 @@ export function SettingsSectionBody({
     case 'members':
       return (
         <SettingsSectionBoundary>
-          <MemberSettingsTabs
-            canManageMembers={access.canManageMembers}
-            canManageRoleBindings={access.canManageRoles}
-          />
+          <MemberSettingsTabs canManageMembers={access.canManageMembers} />
         </SettingsSectionBoundary>
       );
     case 'system-runtime':
