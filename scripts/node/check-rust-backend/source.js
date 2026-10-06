@@ -143,3 +143,21 @@ function maskTestOnlyItems(code) {
 }
 
 module.exports.maskTestOnlyItems = maskTestOnlyItems;
+
+// Find the end of one balanced Rust token tree in already masked source.
+function delimitedEnd(code, start) {
+  const pairs = { '(': ')', '[': ']', '{': '}' };
+  if (!pairs[code[start]]) return null;
+  const stack = [];
+  for (let cursor = start; cursor < code.length; cursor += 1) {
+    const char = code[cursor];
+    if (pairs[char]) stack.push(pairs[char]);
+    else if (')]}'.includes(char)) {
+      if (stack.pop() !== char) return null;
+      if (stack.length === 0) return cursor + 1;
+    }
+  }
+  return null;
+}
+
+module.exports.delimitedEnd = delimitedEnd;

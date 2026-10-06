@@ -39,7 +39,7 @@
 
 ## Deterministic Evidence And Legal Negatives
 
-路由 fixture 必须覆盖四个基座正例，以及 docs-only、locale-only、无关 CSS 等合法反例。规则变更还必须证明：
+路由 fixture 必须覆盖四个基座正例，以及 docs-only、locale-only、无关 CSS 等合法反例。共享 `interface-runtime` / `extension-contracts` 的 Rust 源码、测试与 Cargo manifest，以及 `runtime-core` 的 `runtime_backend` Port 源码与对应测试，必须选择三个后端基座；Native React 不因此触发。crate 规则文档和无关 runtime 模块保持未选择。规则变更还必须证明：
 
 - 把 `mcp_result` 放进核心三入口会失败；
 - warning-only receipt 仍 passed，error/blocker 才 failed；

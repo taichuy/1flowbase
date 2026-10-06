@@ -14,11 +14,19 @@ const FOUNDATION_IDS = [
 ];
 const MCP_CORE_OPERATIONS = ['mcp_list', 'mcp_get', 'mcp_call'];
 
+// Shared Rust contracts and Kernel execution feed all three backend foundations.
+// Keep Native React independent and exclude crate documentation from code routing.
+function isSharedBackendContract(filePath) {
+  return /^api\/crates\/(?:interface-runtime|extension-contracts)\/(?:src\/.*\.rs|Cargo\.toml)$/u.test(filePath)
+    || /^api\/crates\/runtime-core\/(?:src\/runtime_backend(?:\/.*\.rs|\.rs)|src\/_tests\/runtime_backend_tests\.rs)$/u.test(filePath);
+}
+
 const FOUNDATION_DEFINITIONS = {
   'ai-gateway': {
     risk: 'protocol projection, transport compatibility, and provider-facing contract drift',
     matches(filePath) {
-      return /^scripts\/node\/(?:ai-gateway-concurrency|provider-conformance|verify-state-protocols)(?:\/|\.js$)/u.test(filePath)
+      return isSharedBackendContract(filePath)
+        || /^scripts\/node\/(?:ai-gateway-concurrency|provider-conformance|verify-state-protocols)(?:\/|\.js$)/u.test(filePath)
         || /^scripts\/node\/cli\/(?:ai-gateway|acp-claude-smoke)/u.test(filePath)
         || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic(?:\/|\.rs$)|client_observer\.rs$|openai(?:\/|\.rs$)|compatibility_interface(?:\/|\.rs$)|compat_sse(?:\/|\.rs$))/u.test(filePath)
         || /^api\/crates\/control-plane\/src\/(?:application_public_api|client_trajectory)(?:\/|\.rs$)/u.test(filePath)
@@ -41,7 +49,8 @@ const FOUNDATION_DEFINITIONS = {
   'mcp-gateway': {
     risk: 'tool discovery, description, invocation, ACL, mapping, and continuation drift',
     matches(filePath) {
-      return /^api\/(?:apps|crates)\/.*(?:\/|_)(?:mcp)(?:\/|_|\.|-)/iu.test(filePath)
+      return isSharedBackendContract(filePath)
+        || /^api\/(?:apps|crates)\/.*(?:\/|_)(?:mcp)(?:\/|_|\.|-)/iu.test(filePath)
         || /^scripts\/node\/(?:export-mcp-instance-to-official|mcp-)/u.test(filePath);
     },
     fast: [
@@ -65,7 +74,8 @@ const FOUNDATION_DEFINITIONS = {
   'application-backend': {
     risk: 'data model definition, physical schema, runtime API, scope/ACL, and metadata preservation drift',
     matches(filePath) {
-      return /^api\/crates\/control-plane\/src\/(?:model_definition|_tests\/model_definition)/u.test(filePath)
+      return isSharedBackendContract(filePath)
+        || /^api\/crates\/control-plane\/src\/(?:model_definition|_tests\/model_definition)/u.test(filePath)
         || /^api\/crates\/storage\/durable\/postgres\/(?:migrations\/.*model_definition|src\/(?:model_definition_repository|mappers\/model_definition_mapper)|src\/_tests\/model_definition)/u.test(filePath)
         || /^api\/apps\/api-server\/src\/(?:_tests\/application\/model_definition_routes|routes\/plugins_and_models\/(?:model_definitions|runtime_models|data_sources)|openapi(?:_interface)?\/)/u.test(filePath)
         || /^api\/crates\/runtime-core\/src\/(?:runtime_model_registry|runtime_record_repository|runtime_acl|model_metadata|_tests\/(?:runtime_model_registry_tests|runtime_acl_tests))\.rs$/u.test(filePath);
