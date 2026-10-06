@@ -3,7 +3,7 @@ use crate::{
     error_response::ApiError,
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
+        console_get, console_patch, console_put, ConsoleRouteAssembly,
     },
 };
 use axum::{

@@ -1,0 +1,77 @@
+name: Organization contract evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev, 'codex/**']
+    paths:
+      - 'api/**/organization*'
+      - 'api/**/organization/**'
+      - 'api/**/department_permissions.rs'
+      - 'api/**/effective_roles.rs'
+      - 'api/**/20261006120000_create_organization_departments.sql'
+      - '.github/workflows/organization-contracts.yml'
+  pull_request:
+    paths:
+      - 'api/**/organization*'
+      - 'api/**/organization/**'
+      - 'api/**/department_permissions.rs'
+      - 'api/**/effective_roles.rs'
+      - 'api/**/20261006120000_create_organization_departments.sql'
+      - '.github/workflows/organization-contracts.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: organization-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  organization-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      CARGO_INCREMENTAL: '0'
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: organization-contracts
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Verify organization contracts against isolated schemas
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/test-governance/organization
+          git rev-parse HEAD > tmp/test-governance/organization/candidate-sha.txt
+          export CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)"
+          cargo test --locked --manifest-path api/Cargo.toml -p domain --lib organization 2>&1 | tee tmp/test-governance/organization/domain.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib system_metadata 2>&1 | tee tmp/test-governance/organization/metadata.log
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib workspace_access_tests 2>&1 | tee tmp/test-governance/organization/permissions.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test organization_integration 2>&1 | tee tmp/test-governance/organization/integration.log
+      - name: Preserve candidate-bound evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organization-contracts-${{ github.sha }}
+          path: tmp/test-governance/organization/
+          if-no-files-found: error
