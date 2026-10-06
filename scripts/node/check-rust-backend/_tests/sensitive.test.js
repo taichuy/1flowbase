@@ -90,3 +90,16 @@ test('test-only attributes share the scanner token-tree boundary including space
       #[derive(Serialize)] pub (crate) struct Response { token_hash: String }`).map(item => item.rule), ['no-sensitive-serialize']);
   }
 });
+
+
+test('all attributes of a test-only item are masked without leaking derive to the next item', () => {
+  for (const attributes of [
+    '#[derive(Serialize)] #[cfg(test)]',
+    '# [derive(Serialize)] #[allow(dead_code)] # [cfg(test)]',
+    '#[derive(Serialize)] #[cfg(all(test, unix))] #[repr(C)]',
+  ]) {
+    const fixture = `${attributes} struct Fixture { token_hash: String }`;
+    assert.deepEqual(scan(`${fixture} struct Internal { token_hash: String }`), []);
+    assert.deepEqual(scan(`${fixture} #[derive(Serialize)] struct Response { token_hash: String }`).map(item => item.rule), ['no-sensitive-serialize']);
+  }
+});
