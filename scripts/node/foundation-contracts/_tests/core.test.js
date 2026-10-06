@@ -214,3 +214,34 @@ test('AC-001/009 foundation receipt adapts into the unified quality gate compone
   assert.equal(fs.existsSync(artifacts.logPath), true);
   assert.equal(JSON.parse(fs.readFileSync(artifacts.reportPath, 'utf8')).scope, 'foundation-contracts');
 });
+
+
+test('shared Kernel and wire contracts select the three backend foundations', () => {
+  for (const file of [
+    'api/crates/interface-runtime/src/kernel.rs',
+    'api/crates/interface-runtime/src/_tests/kernel_tests.rs',
+    'api/crates/interface-runtime/Cargo.toml',
+    'api/crates/extension-contracts/src/managed_hooks.rs',
+    'api/crates/extension-contracts/src/_tests/wire_tests.rs',
+    'api/crates/extension-contracts/Cargo.toml',
+    'api/crates/runtime-core/src/runtime_backend.rs',
+    'api/crates/runtime-core/src/runtime_backend/network_egress.rs',
+    'api/crates/runtime-core/src/_tests/runtime_backend_tests.rs',
+  ]) {
+    const plan = buildFoundationPlan({ changedFiles: [file] });
+    assert.deepEqual(plan.selectedFoundations, ['ai-gateway', 'mcp-gateway', 'application-backend'], file);
+    for (const id of plan.selectedFoundations) assert.deepEqual(plan.packs[id].triggerReasons, [`changed: ${file}`]);
+  }
+});
+
+test('shared contract routing does not select documentation or unrelated modules', () => {
+  for (const file of [
+    'api/crates/interface-runtime/AGENTS.md',
+    'api/crates/extension-contracts/README.md',
+    'api/crates/runtime-core/src/capability_slots.rs',
+    'api/crates/runtime-core/src/runtime_backend_notes.rs',
+    'api/crates/runtime-core/src/_tests/other_tests.rs',
+    'api/crates/interface-runtime/src/i18n/en_US.json',
+    'web/app/src/features/frontstage/styles.css',
+  ]) assert.deepEqual(buildFoundationPlan({ changedFiles: [file] }).selectedFoundations, [], file);
+});

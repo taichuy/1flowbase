@@ -291,7 +291,7 @@ test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/
 
   const docs = readGitHubAutomationDocs();
   assert.match(docs, /below one hour/u);
-  assert.match(docs, /fewer than three foundations repeatedly fail/u);
+  assert.match(docs, /three or fewer gates repeatedly fail online/u);
   assert.match(docs, /not\s+configured as required checks/u);
 });
 

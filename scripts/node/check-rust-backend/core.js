@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { maskRustText, maskTestOnlyItems } = require('./source.js');
+const { sensitiveOccurrences } = require('./sensitive.js');
 
 const REPORT_FILE = 'rust-backend-static-gate.json';
 const PRODUCTION_ESCAPE_PATTERNS = [
@@ -15,9 +16,6 @@ const BLOCKING_PATTERNS = [
   /\bstd::thread::sleep\s*\(/u,
   /\breqwest::blocking\b/u,
 ];
-const SENSITIVE_FIELD_PATTERN = /\b(?:password_hash|token_hash|encrypted_secret_json|secret_value|api_key_secret)\b/u;
-const SENSITIVE_LOG_PATTERN = /\b(?:password|token|secret|api_key)\b/iu;
-const LOGGING_PATTERN = /\b(?:tracing::(?:trace|debug|info|warn|error)!|println!|eprintln!)\s*\(/u;
 
 function normalizePath(filePath) {
   return filePath.split(path.sep).join('/');
@@ -63,10 +61,6 @@ function walkFiles(currentDir, collected = []) {
   return collected;
 }
 
-function countChar(line, char) {
-  return [...line].filter((candidate) => candidate === char).length;
-}
-
 function createFinding({ severity, rule, file, line, message, snippet }) {
   return {
     severity,
@@ -84,11 +78,9 @@ function scanRustSource({ relativePath, content }) {
   }
 
   const lines = content.split(/\r?\n/u);
-  const codeLines = maskTestOnlyItems(maskRustText(content)).split(/\r?\n/u);
+  const code = maskTestOnlyItems(maskRustText(content));
+  const codeLines = code.split(/\r?\n/u);
   const findings = [];
-  let pendingSerializeDerive = false;
-  let inSerializeStruct = false;
-  let serializeStructDepth = 0;
 
   codeLines.forEach((line, index) => {
     const lineNumber = index + 1;
@@ -117,61 +109,18 @@ function scanRustSource({ relativePath, content }) {
       }));
     }
 
-    if (LOGGING_PATTERN.test(line) && SENSITIVE_LOG_PATTERN.test(line)) {
-      findings.push(createFinding({
-        severity: 'error',
-        rule: 'no-sensitive-logging',
-        file: relativePath,
-        line: lineNumber,
-        message: 'logging call appears to include sensitive material',
-        snippet: lines[index],
-      }));
-    }
-
-    if (pendingSerializeDerive && /\bstruct\s+\w+/u.test(line)) {
-      inSerializeStruct = true;
-      serializeStructDepth = countChar(line, '{') - countChar(line, '}');
-      pendingSerializeDerive = false;
-
-      if (serializeStructDepth <= 0 && line.includes('}')) {
-        inSerializeStruct = false;
-        serializeStructDepth = 0;
-      }
-
-      return;
-    }
-
-    if (inSerializeStruct) {
-      if (SENSITIVE_FIELD_PATTERN.test(line)) {
-        findings.push(createFinding({
-          severity: 'error',
-          rule: 'no-sensitive-serialize',
-          file: relativePath,
-          line: lineNumber,
-          message: 'serialized Rust struct exposes a sensitive field',
-          snippet: lines[index],
-        }));
-      }
-
-      serializeStructDepth += countChar(line, '{') - countChar(line, '}');
-
-      if (serializeStructDepth <= 0 && line.includes('}')) {
-        inSerializeStruct = false;
-        serializeStructDepth = 0;
-      }
-
-      return;
-    }
-
-    if (/#\[derive\([^\]]*\bSerialize\b[^\]]*\)\]/u.test(line)) {
-      pendingSerializeDerive = true;
-      return;
-    }
-
-    if (line.trim().length > 0 && !line.trim().startsWith('#[') && !/\bstruct\s+\w+/u.test(line)) {
-      pendingSerializeDerive = false;
-    }
   });
+
+  for (const { rule, offset } of sensitiveOccurrences(code)) {
+    const lineNumber = code.slice(0, offset).split('\n').length;
+    findings.push(createFinding({
+      severity: 'error', rule, file: relativePath, line: lineNumber,
+      message: rule === 'no-sensitive-logging'
+        ? 'logging call appears to include sensitive material'
+        : 'serialized Rust struct exposes a sensitive field',
+      snippet: lines[lineNumber - 1],
+    }));
+  }
 
   return findings;
 }

@@ -46,7 +46,7 @@ node scripts/node/tooling.js check-rust-backend
 
 该静态门禁会硬拦新增的生产路径 `unwrap` / `panic` / `dbg` / `todo` / `unimplemented`、敏感字段序列化和敏感日志；阻塞 IO 等高误伤项先作为 warning 写入 `tmp/test-governance/rust-backend-static-gate.json`。历史债由 `scripts/node/check-rust-backend/baseline.json` 兜住；新增命中不应追加 baseline，除非明确登记为阶段性技术债。
 
-静态规则只扫描 Rust 代码 token：注释、普通 / raw 字符串与字符常量不构成调用；测试豁免只覆盖确定依赖 `test` 的 attributed item。`any(test, feature = "prod")` 可能进入生产，不能整体豁免。规则反例覆盖 test-only raw / 多行 cfg、外置测试模块、条件字段与同一行相邻生产 item；这仍是静态扫描，不替代 Rust 编译器与行为测试。
+静态规则只扫描 Rust 代码 token：注释、普通 / raw 字符串与字符常量不构成调用；测试豁免只覆盖确定依赖 `test` 的 attributed item。`any(test, feature = "prod")` 可能进入生产，不能整体豁免。规则反例覆盖 test-only raw / 多行 cfg、外置测试模块、条件字段与同一行相邻生产 item；敏感日志按完整 macro token tree 检查，Serialize derive 与命名字段按所属 struct 检查，不因换行或单行声明漏检；无条件 `serde(skip / skip_serializing)` 字段合法，条件 `skip_serializing_if` 不能证明凭据永不输出。静态日志文本、非 Serialize 内部记录不命中。已有私有持久化例外仍由窄 baseline 与消费者证据约束。这仍是有限静态扫描，不替代 Rust 编译器与行为测试。
 
 如果需要直接落到 Cargo，串行运行：
 

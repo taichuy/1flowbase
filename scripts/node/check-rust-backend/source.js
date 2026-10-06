@@ -93,6 +93,10 @@ module.exports = { maskRustText, isTestOnlyCfg };
 // Strings/comments have already been masked, so delimiters here are syntax.
 function maskTestOnlyItems(code) {
   const chars = code.split('');
+  const attributeSpans = [...code.matchAll(/#\s*\[/gu)].map(match => ({
+    start: match.index,
+    end: delimitedEnd(code, match.index + match[0].length - 1),
+  })).filter(span => span.end !== null);
   const attributes = /#\s*\[\s*cfg\s*\(([^\]]*)\)\s*\]/gu;
   for (const match of code.matchAll(attributes)) {
     if (!isTestOnlyCfg(match[0])) continue;
@@ -100,15 +104,13 @@ function maskTestOnlyItems(code) {
     // Other attributes still belong to the same item.
     while (true) {
       while (/\s/u.test(code[cursor] || '') && cursor < code.length) cursor += 1;
-      if (code.slice(cursor, cursor + 2) !== '#[') break;
-      let brackets = 0;
-      do {
-        if (code[cursor] === '[') brackets += 1;
-        if (code[cursor] === ']') brackets -= 1;
-        cursor += 1;
-      } while (cursor < code.length && (brackets > 0 || code[cursor - 1] === '#'));
+      const attribute = /^#\s*\[/u.exec(code.slice(cursor));
+      if (!attribute) break;
+      const end = delimitedEnd(code, cursor + attribute[0].length - 1);
+      if (end === null) break;
+      cursor = end;
     }
-    const declaration = code.slice(cursor).replace(/^(?:pub(?:\([^)]*\))?\s+)?(?:(?:async|unsafe|default|const)\s+)*(?:extern\s+"[^"]*"\s+)?/u, '');
+    const declaration = code.slice(cursor).replace(/^(?:pub\b\s*(?:\([^)]*\)\s*)?)?(?:(?:async|unsafe|default|const)\s+)*(?:extern\s+"[^"]*"\s+)?/u, '');
     const blockItem = /^(?:fn|mod|impl|struct|enum|trait|union|macro_rules)\b/u.test(declaration);
     // Fields and enum variants end at commas; declarations such as const/use end at semicolons.
     const commaItem = !blockItem && !/^(?:const|static|use|type|let)\b/u.test(code.slice(cursor));
@@ -137,9 +139,34 @@ function maskTestOnlyItems(code) {
     }
     // Unrecognized/incomplete syntax stays visible rather than hiding production code.
     if (end === null) continue;
-    for (let i = match.index; i < end; i += 1) if (chars[i] !== '\n' && chars[i] !== '\r') chars[i] = ' ';
+    // Remove the entire attributed item, including attributes preceding cfg.
+    // Otherwise a leftover derive could accidentally attach to the next item.
+    let start = match.index;
+    for (let index = attributeSpans.length - 1; index >= 0; index -= 1) {
+      const span = attributeSpans[index];
+      if (span.end <= start && /^\s*$/u.test(code.slice(span.end, start))) start = span.start;
+    }
+    for (let i = start; i < end; i += 1) if (chars[i] !== '\n' && chars[i] !== '\r') chars[i] = ' ';
   }
   return chars.join('');
 }
 
 module.exports.maskTestOnlyItems = maskTestOnlyItems;
+
+// Find the end of one balanced Rust token tree in already masked source.
+function delimitedEnd(code, start) {
+  const pairs = { '(': ')', '[': ']', '{': '}' };
+  if (!pairs[code[start]]) return null;
+  const stack = [];
+  for (let cursor = start; cursor < code.length; cursor += 1) {
+    const char = code[cursor];
+    if (pairs[char]) stack.push(pairs[char]);
+    else if (')]}'.includes(char)) {
+      if (stack.pop() !== char) return null;
+      if (stack.length === 0) return cursor + 1;
+    }
+  }
+  return null;
+}
+
+module.exports.delimitedEnd = delimitedEnd;

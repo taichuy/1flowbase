@@ -6,7 +6,7 @@ This directory owns GitHub Actions automation for repository quality gates.
 
 | Path | Purpose |
 | --- | --- |
-| `.github/workflows/verify.yml` | Automatic merge CI for `pull_request` and `push` to `main` / `latest`; runs lightweight repo tooling, frontend PR, and backend static/fmt/check gates, updates one PR report comment for same-repository pull requests, then publishes one aggregate issue only for `latest` pushes. |
+| `.github/workflows/verify.yml` | Automatic merge CI for `pull_request` and `push` to `beta` / `main` / `latest`; runs lightweight repo tooling, frontend PR, and backend static/fmt/check gates, updates one PR report comment for same-repository pull requests, then publishes one aggregate issue only for `latest` pushes. |
 | `.github/workflows/quality-gate.yml` | Manual and nightly quality gate run; full `ci` scope runs component gates, coverage gates, and container image security in parallel before one aggregate Issue report. |
 | `.github/workflows/foundation-contracts.yml` | Reusable four-foundation fast contract executor called by `verify.yml` and full `quality-gate.yml`; emits candidate-bound component evidence and remains manually dispatchable for focused reruns. |
 | `.github/workflows/ai-gateway-concurrency.yml` | Reusable and manually runnable full AI Gateway protocol conformance gate; joins full manual/nightly `ci` aggregation and does not run for every pull request. |
@@ -29,6 +29,8 @@ scope: repo-tooling
 scope: repo-frontend-pr
 scope: repo-backend-static
 scope: repo-backend-fmt
+scope: repo-backend-image-llm-vision
+scope: repo-backend-official-i18n-seed
 scope: repo-backend-check-{core-libs,runtime-storage,apps}
 component: foundation-contracts
 ```
@@ -116,7 +118,7 @@ Every fast component has a 40-minute timeout, while route and aggregate jobs use
 so the workflow execution path remains below one hour. Full AI Gateway conformance has a
 55-minute job timeout and remains available through nightly/manual orchestration.
 
-When fewer than three foundations repeatedly fail, first run the corresponding local pack,
+When three or fewer gates repeatedly fail online, first run the corresponding local pack,
 then dispatch `foundation-contracts.yml` with that single `foundation`, and only after it is
 green rerun `auto` or `all`. These checks provide evidence for administrators; they are not
 configured as required checks and do not alter branch protection or repository rulesets.
