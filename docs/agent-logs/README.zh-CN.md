@@ -28,15 +28,15 @@ node scripts/node/agent-logs-collector.js watch \
 
 只有来源明确提供的 turn ID 才建立任务：来自 `turn_context`、task/turn-start、typed usage 或 response-item passthrough metadata。初始 session 和轮次前事实等待首个可靠 turn，随后归属该轮次，事件身份不变。没有可靠 turn 的文件会报告等待来源轮次身份，不捏造用户任务，也不推进断点。前缀引用保留为事实，不复制父 rollout 来合成子任务事件。来源已内联的继承历史按 metadata/ordinal 边界标记，后端从新任务输入和 usage 中排除继承事实。
 
-Codex `response_item` user/assistant 提供对话事实；只有明确 `phase: "final_answer"` 才声明终答。commentary、工具、compaction、上下文、未知类型及原始事实保留轨迹。`event_msg` user/agent 展示镜像保存为 context，避免重复形成对话记录。结束事件只记录 task_end，不从 `last_agent_message` 制造终答。旧版本没有明确 phase 时保留未知，model/provider/phase 不猜测；只复制明确提供的 `model` 和 `model_provider`，不更名 provider 标识。
+Codex `response_item` user/assistant 提供对话事实；只有明确 `phase: "final_answer"` 才声明终答。commentary、工具、compaction、上下文、未知类型及原始事实保留轨迹。`event_msg` user/agent 展示镜像保存为 context，避免重复形成对话记录。结束事件只记录 task_end，不从 `last_agent_message` 制造终答。Codex `turn_aborted` 转换为 `kind: "task_end", phase: "cancelled"`，完整保留 raw；后端消费该来源无关的取消事实。旧版本没有明确 phase 时保留未知，model/provider/phase 不猜测；只复制明确提供的 `model` 和 `model_provider`，不更名 provider 标识。
 
-新 `token_usage_record.usage` 是带 `response_id` 的 response delta，`turn_token_usage/thread_token_usage` 的累计值保留 raw。旧 `event_msg.token_count.info.total_token_usage` 使用 `basis: "cumulative"`，`last_token_usage` 保留 raw。累计快照不能与 response delta 相加。聚合、价格和计费由后端负责，CLI 不计算费用。
+新 `token_usage_record.usage` 是带 `response_id` 的 response delta，`turn_token_usage/thread_token_usage` 的累计值保留 raw。旧 `event_msg.token_count.info.total_token_usage` 使用 `basis: "cumulative"`，`last_token_usage` 保留 raw。没有可靠 response ID 的历史累计快照只表示 session/thread 历史观察，不代表可归属的 task/response 消耗；它们保留轨迹和原始证据，不计入任务 token，也不猜测轮次增量。累计快照不能与 response delta 相加；只有可靠归属到 response 且该 response 没有 delta 时，其累计快照才能作为该 response 的用量。聚合、价格和计费由后端负责，CLI 不计算费用。
 
 ## API 与 adapter
 
 向 `POST /api/logs/v1/events` 发送 `Authorization: Bearer <application-key>`。固定 `schema_version: "1flowbase.agent-logs/v1"`；精确 JSON 字段与示例见 [English API contract](README.md#api-envelope-and-receipt)。kind 为 `system/user/assistant/tool_call/tool_result/usage/context/task_end`。usage 的 basis 为 `delta/cumulative`，可含 `response_id/input_tokens/output_tokens/input_cache_hit_tokens/cache_write_tokens/total_tokens`。
 
-成功 receipt 含 `accepted_events`、`duplicate_events`、字符串数组 `record_ids`；接受数与重复数之和必须等于完整批次事件数。服务端整批持久提交或整批失败；相同身份不同 payload 为冲突。应用 key 授权日志写入，不授权模型生成。
+成功 HTTP body 沿用 `ApiSuccess<AgentLogsReceipt>`：`{"data":{"accepted_events":1,"duplicate_events":0,"record_ids":["record-id"]},"meta":null}`。CLI 只读取 `JSON.data` 中的 receipt，不接受顶层未包装字段。data 内 receipt 含 `accepted_events`、`duplicate_events`、字符串数组 `record_ids`；接受数与重复数之和必须等于完整批次事件数。服务端整批持久提交或整批失败；相同身份不同 payload 为冲突。应用 key 授权日志写入，不授权模型生成。
 
 `--adapter /absolute/path/to/installed-adapter.cjs` 可选择已安装的可信 CommonJS 脚本。adapter 以采集进程权限执行本地代码，仅选择可信脚本。单一 loader 要求导出 `sourceClient`、`createContext(firstLine)` 和 `convert(line, context, position)`；convert 返回不含 event_id/sequence 的规范事件或 null，`position.start/end` 为字节偏移，source_task_id=null 表示等待可靠归属。共享调度负责身份、上传和断点，adapter 只转换格式、维护确定性解析上下文，不自行实现 HTTP 或 checkpoint。这是本地来源 adapter 边界，不是服务端 runtime 插槽。
 

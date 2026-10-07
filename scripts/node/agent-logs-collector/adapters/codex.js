@@ -61,12 +61,17 @@ module.exports = {
       // Turn/thread totals remain intact in raw, never added to the response delta.
     } else if (line.type === 'event_msg') {
       if (p.type === 'token_count' && p.info?.total_token_usage) {
+        // Session/thread history observation with no response attribution. The
+        // backend must not add it to task totals or infer a per-turn increment.
         event.kind = 'usage'; event.usage = usage(p.info.total_token_usage, 'cumulative');
       } else if (p.type === 'user_message' || p.type === 'agent_message') {
         // event_msg is a presentation mirror of response_item in standard rollouts.
         // Keep it in trajectory to avoid guessing content-based deduplication.
         event.content = text(p.message); event.phase = p.phase ?? null;
-      } else if (['task_complete', 'turn_complete', 'turn_aborted'].includes(p.type)) event.kind = 'task_end';
+      } else if (['task_complete', 'turn_complete', 'turn_aborted'].includes(p.type)) {
+        event.kind = 'task_end';
+        if (p.type === 'turn_aborted') event.phase = 'cancelled';
+      }
     }
     if (typeof event.occurred_at !== 'string' || !Number.isFinite(Date.parse(event.occurred_at))) throw new Error('Rollout event lacks a valid source timestamp');
     if (!inherited && event.kind === 'task_end') { context.turn = null; context.parent = null; }

@@ -23,9 +23,11 @@ async function upload(endpoint, key, envelope) {
   } catch { throw new Error('Upload failed; checkpoint retained'); }
   if (!response.ok) throw new Error(`Upload rejected (HTTP ${response.status}); checkpoint retained`);
   let receipt;
-  try { receipt = await response.json(); } catch { throw new Error('Invalid upload receipt; checkpoint retained'); }
+  try { receipt = (await response.json())?.data; } catch { throw new Error('Invalid upload receipt; checkpoint retained'); }
+  // The canonical API returns ApiSuccess<AgentLogsReceipt>: { data, meta }.
   // HTTP success alone is not a durable complete-batch acknowledgment.
-  if (!Number.isSafeInteger(receipt.accepted_events) || receipt.accepted_events < 0 ||
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) ||
+    !Number.isSafeInteger(receipt.accepted_events) || receipt.accepted_events < 0 ||
     !Number.isSafeInteger(receipt.duplicate_events) || receipt.duplicate_events < 0 ||
     receipt.accepted_events + receipt.duplicate_events !== envelope.events.length ||
     !Array.isArray(receipt.record_ids) || !receipt.record_ids.every(id => typeof id === 'string')) {
