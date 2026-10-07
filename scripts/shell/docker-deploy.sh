@@ -283,8 +283,8 @@ ensure_official_plugin_signature_required() {
 ensure_cookie_secure_default() {
   current_value="$(read_env_value API_COOKIE_SECURE ./docker/.env)"
   if [ -z "$current_value" ]; then
-    set_env_value API_COOKIE_SECURE true ./docker/.env
-    echo "Added API_COOKIE_SECURE=true to docker/.env."
+    set_env_value API_COOKIE_SECURE false ./docker/.env
+    echo "Added API_COOKIE_SECURE=false to docker/.env."
   fi
 }
 

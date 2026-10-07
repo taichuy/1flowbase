@@ -130,6 +130,7 @@ test('docker deploy shell script adds default official plugin signature policy t
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /Added API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED=true to docker\/.env/u);
   assert.match(envFile, /^API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED=true$/mu);
+  assert.match(envFile, /^API_COOKIE_SECURE=false$/mu);
 });
 
 test('docker deploy shell script can prefill official plugin signature policy', () => {
@@ -602,7 +603,7 @@ test('docker deploy assets expose external postgres configuration consistently',
     'EXTERNAL_POSTGRES_USER=postgres',
     'EXTERNAL_POSTGRES_PASSWORD=',
     'EXTERNAL_POSTGRES_SSLMODE=prefer',
-    'API_COOKIE_SECURE=true',
+    'API_COOKIE_SECURE=false',
   ]) {
     assert.match(envExample, new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}$`, 'mu'));
   }

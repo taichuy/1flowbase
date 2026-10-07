@@ -148,8 +148,8 @@ function Ensure-OfficialPluginSignatureRequired() {
 function Ensure-CookieSecureDefault() {
   $CurrentValue = Read-EnvValue "API_COOKIE_SECURE" ".\docker\.env"
   if (-not $CurrentValue) {
-    Set-EnvValue "API_COOKIE_SECURE" "true" ".\docker\.env"
-    Write-Host "Added API_COOKIE_SECURE=true to docker/.env."
+    Set-EnvValue "API_COOKIE_SECURE" "false" ".\docker\.env"
+    Write-Host "Added API_COOKIE_SECURE=false to docker/.env."
   }
 }
 

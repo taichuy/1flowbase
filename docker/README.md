@@ -97,7 +97,7 @@ docker compose -f docker-compose.external-db.yaml up -d
 
 注意：外部数据库地址必须能从 Docker 容器网络访问。`127.0.0.1` 在容器内通常指向容器自身，不是宿主机或内网数据库；如果数据库在宿主机上，按 Docker Desktop / Docker Engine 的网络规则使用可达的宿主机地址。
 
-如果通过普通 HTTP 内网地址测试登录，例如 `http://192.168.31.25:3200`，需要在 `docker/.env` 中设置：
+默认 Docker 部署使用 HTTP，并设置 `API_COOKIE_SECURE=false`。如果通过普通 HTTP 内网地址测试登录，例如 `http://192.168.31.25:3200`，可以在 `docker/.env` 中设置：
 
 ```env
 WEB_PORT=3200
@@ -105,7 +105,7 @@ API_ALLOWED_ORIGINS=http://localhost:3200,http://127.0.0.1:3200,http://192.168.3
 API_COOKIE_SECURE=false
 ```
 
-正式生产环境使用 HTTPS 时应保持 `API_COOKIE_SECURE=true`。否则浏览器会拒绝在明文 HTTP 页面保存 `Secure` session cookie，表现为登录接口返回成功，但刷新 `/api/console/me` 时仍然是未登录。
+浏览器访问入口使用 HTTPS 时（包括外层 nginx 提供 HTTPS、内部仍使用 HTTP），应设置 `API_COOKIE_SECURE=true`。此设置只要求浏览器通过 HTTPS 发送会话 Cookie，不要求内部 API 链路使用 HTTPS。普通 HTTP 入口应使用 `false`，否则浏览器可能拒绝保存 `Secure` session cookie，表现为登录接口返回成功，但刷新 `/api/console/me` 时仍然是未登录。
 
 镜像版本、端口、数据库、API 和初始化 root 账号配置都集中在 `docker/.env.example`。不再需要复制旧的分组件 env 文件。
 
