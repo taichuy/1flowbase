@@ -115,15 +115,21 @@ fn map_runtime_error(error: anyhow::Error) -> ApiError {
             Error::ParentNotFound => {
                 control_plane::errors::ControlPlaneError::NotFound("tree_parent_not_found").into()
             }
-            Error::InvalidResultLimit { .. }
-            | Error::InvalidMaxDepth { .. }
-            | Error::EmptySearchPrefix => {
+            Error::InvalidResultLimit | Error::InvalidMaxDepth | Error::EmptySearchPrefix => {
                 control_plane::errors::ControlPlaneError::InvalidInput("ordered_tree_query_input")
                     .into()
             }
-            Error::WrongTemplate
-            | Error::AncestorDepthLimitExceeded { .. }
-            | Error::NoSearchableFields => ApiServiceUnavailable("ordered_tree_unavailable").into(),
+            Error::InvalidCursor => control_plane::errors::ControlPlaneError::InvalidInput(
+                "ordered_tree_invalid_cursor",
+            )
+            .into(),
+            Error::StaleCursor => {
+                control_plane::errors::ControlPlaneError::Conflict("ordered_tree_stale_cursor")
+                    .into()
+            }
+            Error::WrongTemplate | Error::NoSearchableFields => {
+                ApiServiceUnavailable("ordered_tree_unavailable").into()
+            }
         };
     }
 

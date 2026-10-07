@@ -86,6 +86,16 @@ impl<R: OrganizationRepository + MemberRepository + RoleConsolePolicyReader>
             .list_departments(actor.current_workspace_id)
             .await
     }
+    pub async fn list_page(
+        &self,
+        actor: &domain::ActorContext,
+        input: crate::ports::DepartmentListInput,
+    ) -> Result<domain::DepartmentPage> {
+        Self::ensure(self.access(actor).await?.can_list)?;
+        self.repository
+            .list_department_page(actor.current_workspace_id, input)
+            .await
+    }
     pub async fn save(
         &self,
         actor: &domain::ActorContext,

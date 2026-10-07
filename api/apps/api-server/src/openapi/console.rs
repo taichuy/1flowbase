@@ -223,6 +223,8 @@ use utoipa::OpenApi;
         crate::routes::members::MemberResponse,
         crate::routes::organization::SaveDepartmentBody,
         crate::routes::organization::DepartmentResponse,
+        crate::routes::organization::DepartmentTreeItemResponse,
+        crate::routes::organization::DepartmentPageResponse,
         crate::routes::organization::OrganizationAccessResponse,
         crate::routes::organization::ReplaceMemberDepartmentsBody,
         crate::routes::members::ReplaceMemberRolesBody,

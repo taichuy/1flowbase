@@ -11,6 +11,18 @@ fn ordered_tree_errors_map_to_bad_request_not_found_conflict_and_unavailable() {
     let cases = [
         (
             anyhow::Error::new(
+                runtime_core::runtime_record_repository::OrderedTreeQueryError::InvalidCursor,
+            ),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            anyhow::Error::new(
+                runtime_core::runtime_record_repository::OrderedTreeQueryError::StaleCursor,
+            ),
+            StatusCode::CONFLICT,
+        ),
+        (
+            anyhow::Error::new(
                 runtime_core::runtime_engine::RuntimeModelError::InvalidOperationInput("payload"),
             ),
             StatusCode::BAD_REQUEST,

@@ -108,7 +108,38 @@ export function seedStyleBoundaryOrganizationFetch() {
         };
         break;
       case '/api/console/settings/departments':
-        data = departments;
+        data = {
+          items: departments
+            .filter((item) => {
+              const ids = url.searchParams.get('ids');
+              const prefix = url.searchParams.get('prefix');
+              return ids
+                ? ids.split(',').includes(item.id)
+                : prefix
+                  ? item.name.toLowerCase().startsWith(prefix.toLowerCase()) ||
+                    departments.some(
+                      (child) =>
+                        child.parent_id === item.id &&
+                        child.name
+                          .toLowerCase()
+                          .startsWith(prefix.toLowerCase())
+                    )
+                  : item.parent_id === url.searchParams.get('parent_id');
+            })
+            .map((item) => ({
+              ...item,
+              has_children: departments.some(
+                (child) => child.parent_id === item.id
+              ),
+              is_match:
+                !url.searchParams.get('prefix') ||
+                item.name
+                  .toLowerCase()
+                  .startsWith(url.searchParams.get('prefix')!.toLowerCase())
+            })),
+          has_more: false,
+          next_cursor: null
+        };
         break;
       case '/api/console/settings/members/role-options':
         data = [

@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
+  fetchSettingsDepartments: vi.fn(),
   createSettingsDepartment: vi.fn(),
   updateSettingsDepartment: vi.fn(),
   fetchSettingsMemberRoleOptions: vi.fn(),
@@ -82,6 +83,19 @@ describe('organization parent selector', () => {
     vi.clearAllMocks();
     resetAuthStore();
     useAuthStore.setState({ csrfToken: 'csrf' });
+    api.fetchSettingsDepartments.mockImplementation(
+      async ({ ids }: { ids?: string }) => ({
+        items: [engineering, development]
+          .filter((item) => !ids || ids.split(',').includes(item.id))
+          .map((item) => ({
+            ...item,
+            has_children: item.id === 'engineering',
+            is_match: true
+          })),
+        has_more: false,
+        next_cursor: null
+      })
+    );
     api.createSettingsDepartment.mockResolvedValue({ id: 'created' });
     api.updateSettingsDepartment.mockResolvedValue(development);
   });
@@ -112,6 +126,31 @@ describe('organization parent selector', () => {
     await waitFor(() =>
       expect(api.createSettingsDepartment).toHaveBeenCalledWith(
         { name: 'Child', parent_id: 'engineering', role_codes: [] },
+        'csrf'
+      )
+    );
+  });
+
+  test('resolves a current parent outside the loaded page', async () => {
+    renderEditor({ department: development, parent_id: null }, []);
+    await waitFor(() =>
+      expect(
+        within(parentSelect()).getByText('Engineering')
+      ).toBeInTheDocument()
+    );
+    expect(api.fetchSettingsDepartments).toHaveBeenCalledWith({
+      ids: 'engineering',
+      limit: 50
+    });
+    save();
+    await waitFor(() =>
+      expect(api.updateSettingsDepartment).toHaveBeenCalledWith(
+        'development',
+        {
+          name: 'Development',
+          parent_id: 'engineering',
+          role_codes: ['member']
+        },
         'csrf'
       )
     );

@@ -28,7 +28,9 @@ fn organization_registry_freezes_all_route_contracts_and_projections() {
     assert!(OrganizationInput::managed_projection_schema().is_some());
     assert!(OrganizationOutput::managed_projection_schema().is_some());
     assert_eq!(
-        OrganizationInput::List.project_for_managed_hook().unwrap(),
+        OrganizationInput::List(Default::default())
+            .project_for_managed_hook()
+            .unwrap(),
         serde_json::json!({"variant":"List"})
     );
 }

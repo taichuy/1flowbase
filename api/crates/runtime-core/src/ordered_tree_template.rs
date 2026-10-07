@@ -145,11 +145,11 @@ pub(crate) fn ordered_tree_template_descriptor() -> DataModelTemplateDescriptor 
             operation("create_record", DataModelOperationMethod::Post, "/api/runtime/models/{model_code}/create", "create", create_schema(), object_schema(), "ordered_tree_create_record", "Create tree node", "Create a tree node at a parent-relative position; omitted position appends a root."),
             operation("update_record", DataModelOperationMethod::Patch, "/api/runtime/models/{model_code}/update/{id}", "update", business_update_schema(), object_schema(), "ordered_tree_update_record", "Update tree node", "Update business fields without changing tree structure."),
             operation("delete_record", DataModelOperationMethod::Delete, "/api/runtime/models/{model_code}/delete/{id}", "delete", json!({ "type": "object" }), json!({ "type": "object", "required": ["deleted"], "properties": { "deleted": { "type": "boolean" } } }), "ordered_tree_delete_record", "Delete tree leaf", "Delete a node only when it has no children."),
-            operation("tree_roots", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/roots", "view", limit_schema(), array_schema(), "ordered_tree_list_roots", "List tree roots", "List roots in stable sibling order."),
-            operation("tree_children", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/children/{id}", "view", limit_schema(), array_schema(), "ordered_tree_list_children", "List tree children", "List direct children in stable sibling order."),
+            operation("tree_roots", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/roots", "view", limit_schema(), page_schema(object_schema()), "ordered_tree_list_roots", "List tree roots", "List roots in stable sibling order."),
+            operation("tree_children", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/children/{id}", "view", limit_schema(), page_schema(object_schema()), "ordered_tree_list_children", "List tree children", "List direct children in stable sibling order."),
             operation("tree_ancestors", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/ancestors/{id}", "view", json!({ "type": "object" }), array_schema(), "ordered_tree_list_ancestors", "List tree ancestors", "List ancestors from root to direct parent."),
-            operation("tree_descendants", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/descendants/{id}", "view", descendants_schema(), array_schema(), "ordered_tree_list_descendants", "List tree descendants", "List bounded descendants with depth and child markers."),
-            operation("tree_search", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/search", "view", search_schema(), array_schema(), "ordered_tree_search", "Search tree", "Search a case-insensitive business-text prefix and return ancestor context."),
+            operation("tree_descendants", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/descendants/{id}", "view", descendants_schema(), page_schema(json!({ "type": "object", "required": ["record", "depth", "has_children", "path"], "properties": { "record": object_schema(), "depth": { "type": "integer", "minimum": 1 }, "has_children": { "type": "boolean" }, "path": { "type": ["array", "null"], "items": { "type": "string", "format": "uuid" } } } })), "ordered_tree_list_descendants", "List tree descendants", "Page descendants in depth-first order; omitted max_depth traverses every depth."),
+            operation("tree_search", DataModelOperationMethod::Get, "/api/runtime/models/{model_code}/tree/search", "view", search_schema(), page_schema(json!({ "type": "object", "required": ["record", "is_match"], "properties": { "record": object_schema(), "is_match": { "type": "boolean" } } })), "ordered_tree_search", "Search tree", "Page case-insensitive business-text prefix matches with ancestor context. Limits count matches; context can repeat across pages."),
             operation("tree_move", DataModelOperationMethod::Post, "/api/runtime/models/{model_code}/tree/move/{id}", "update", move_schema(), object_schema(), "ordered_tree_move", "Move tree node", "Move a node to a parent-relative position."),
             operation("tree_delete_subtree", DataModelOperationMethod::Post, "/api/runtime/models/{model_code}/tree/delete-subtree/{id}", "delete", json!({ "type": "object", "required": ["expected_affected_count"], "properties": { "expected_affected_count": { "type": "integer", "minimum": 1 } }, "additionalProperties": false }), json!({ "type": "object", "required": ["deleted_count"], "properties": { "deleted_count": { "type": "integer" } } }), "ordered_tree_delete_subtree", "Delete tree subtree", "Delete a subtree only when its current count matches the caller expectation."),
         ],
@@ -234,14 +234,21 @@ fn business_update_schema() -> Value {
     json!({ "type": "object", "not": { "anyOf": [{ "required": ["parent_id"] }, { "required": ["sibling_rank"] }] }, "additionalProperties": true })
 }
 fn limit_schema() -> Value {
-    json!({ "type": "object", "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 100 } } })
+    json!({ "type": "object", "properties": { "cursor": { "type": "string", "description": "Opaque continuation cursor for this model, scope, partition and query. Traversal is live across requests; inserted or moved rows can change later pages. Invalid cursors return 400 and changed anchors return 409." }, "limit": { "type": "integer", "minimum": 1, "default": 100 } } })
 }
 fn descendants_schema() -> Value {
-    json!({ "type": "object", "properties": { "max_depth": { "type": "integer", "minimum": 1, "maximum": 256, "default": 32 }, "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 100 }, "include_path": { "type": "boolean", "default": false } } })
+    json!({ "type": "object", "properties": { "cursor": { "type": "string", "description": "Opaque continuation cursor for this model, scope, partition and query. Traversal is live across requests; inserted or moved rows can change later pages. Invalid cursors return 400 and changed anchors return 409." }, "max_depth": { "type": "integer", "minimum": 1 }, "limit": { "type": "integer", "minimum": 1, "default": 100 }, "include_path": { "type": "boolean", "default": false } } })
 }
 fn search_schema() -> Value {
-    json!({ "type": "object", "required": ["prefix"], "properties": { "prefix": { "type": "string", "minLength": 1 }, "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } } })
+    json!({ "type": "object", "required": ["prefix"], "properties": { "cursor": { "type": "string", "description": "Opaque continuation cursor for this model, scope, partition and query. Traversal is live across requests; inserted or moved rows can change later pages. Invalid cursors return 400 and changed anchors return 409." }, "prefix": { "type": "string", "minLength": 1 }, "limit": { "type": "integer", "minimum": 1, "default": 20 } } })
 }
 fn move_schema() -> Value {
     json!({ "type": "object", "properties": { "new_parent_id": nullable_uuid_property(), "before_id": { "type": ["string", "null"], "format": "uuid" }, "after_id": { "type": ["string", "null"], "format": "uuid" } }, "additionalProperties": false })
+}
+
+fn page_schema(items: Value) -> Value {
+    json!({ "type": "object", "required": ["items", "has_more", "next_cursor"], "properties": {
+        "items": { "type": "array", "items": items }, "has_more": { "type": "boolean" },
+        "next_cursor": { "type": ["string", "null"] }
+    } })
 }

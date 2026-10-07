@@ -82,7 +82,7 @@ async fn ordered_tree_runtime_routes_create_move_query_and_delete_with_typed_fai
         Some(&csrf),
         "POST",
         "/api/runtime/models/route_tree/create".to_owned(),
-        Some(json!({ "title": "grandchild", "parent_id": child_id })),
+        Some(json!({ "title": "child-grandchild", "parent_id": child_id })),
     )
     .await;
     assert_eq!(grandchild_status, StatusCode::CREATED);
@@ -98,9 +98,104 @@ async fn ordered_tree_runtime_routes_create_move_query_and_delete_with_typed_fai
     )
     .await;
     assert_eq!(descendants_status, StatusCode::OK);
-    assert_eq!(descendants["data"].as_array().unwrap().len(), 1);
-    assert_eq!(descendants["data"][0]["depth"], 1);
-    assert_eq!(descendants["data"][0]["path"], serde_json::Value::Null);
+    assert_eq!(descendants["data"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(descendants["data"]["items"][0]["depth"], 1);
+    assert_eq!(
+        descendants["data"]["items"][0]["path"],
+        serde_json::Value::Null
+    );
+
+    assert_eq!(descendants["data"]["has_more"], false);
+    assert!(descendants["data"]["next_cursor"].is_null());
+    let (status, first) = tree_request(
+        &app,
+        &cookie,
+        None,
+        "GET",
+        format!("/api/runtime/models/route_tree/tree/descendants/{root_id}?limit=1"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(first["data"]["items"][0]["record"]["id"], child_id);
+    assert_eq!(first["data"]["has_more"], true);
+    let descendant_cursor = first["data"]["next_cursor"].as_str().unwrap();
+    let (status, second) = tree_request(&app, &cookie, None, "GET",
+        format!("/api/runtime/models/route_tree/tree/descendants/{root_id}?limit=1001&cursor={descendant_cursor}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(second["data"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(second["data"]["items"][0]["record"]["id"], grandchild_id);
+    assert_eq!(second["data"]["items"][0]["depth"], 2);
+    assert_eq!(second["data"]["has_more"], false);
+    assert!(second["data"]["next_cursor"].is_null());
+    let (status, invalid) = tree_request(
+        &app,
+        &cookie,
+        None,
+        "GET",
+        format!("/api/runtime/models/route_tree/tree/roots?cursor={descendant_cursor}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(invalid["code"], "ordered_tree_invalid_cursor");
+    let (status, roots) = tree_request(
+        &app,
+        &cookie,
+        None,
+        "GET",
+        "/api/runtime/models/route_tree/tree/roots?limit=1001".into(),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(roots["data"]["items"][0]["id"], root_id);
+    assert_eq!(roots["data"]["has_more"], false);
+    assert!(roots["data"]["next_cursor"].is_null());
+    let (status, matches) = tree_request(
+        &app,
+        &cookie,
+        None,
+        "GET",
+        "/api/runtime/models/route_tree/tree/search?prefix=child&limit=1".into(),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        matches["data"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|node| node["is_match"] == true)
+            .count(),
+        1
+    );
+    assert_eq!(matches["data"]["has_more"], true);
+    let cursor = matches["data"]["next_cursor"].as_str().unwrap();
+    let (status, matches) = tree_request(
+        &app,
+        &cookie,
+        None,
+        "GET",
+        format!(
+            "/api/runtime/models/route_tree/tree/search?prefix=child&limit=101&cursor={cursor}"
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        matches["data"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|node| node["is_match"] == true)
+            .count(),
+        1
+    );
+    assert_eq!(matches["data"]["has_more"], false);
+    assert!(matches["data"]["next_cursor"].is_null());
 
     let (leaf_status, leaf_error) = tree_request(
         &app,
@@ -126,6 +221,33 @@ async fn ordered_tree_runtime_routes_create_move_query_and_delete_with_typed_fai
     assert_eq!(move_status, StatusCode::OK);
     assert_eq!(moved["data"]["moved"], true);
 
+    let (status, children) = tree_request(
+        &app,
+        &cookie,
+        None,
+        "GET",
+        format!("/api/runtime/models/route_tree/tree/children/{root_id}?limit=1"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(children["data"]["items"][0]["id"], grandchild_id);
+    assert_eq!(children["data"]["has_more"], true);
+    let cursor = children["data"]["next_cursor"].as_str().unwrap();
+    let (status, last_child) = tree_request(
+        &app,
+        &cookie,
+        None,
+        "GET",
+        format!("/api/runtime/models/route_tree/tree/children/{root_id}?limit=1&cursor={cursor}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(last_child["data"]["items"][0]["id"], child_id);
+    assert_eq!(last_child["data"]["has_more"], false);
+    assert!(last_child["data"]["next_cursor"].is_null());
+
     let (stale_status, stale_error) = tree_request(
         &app,
         &cookie,
@@ -149,4 +271,8 @@ async fn ordered_tree_runtime_routes_create_move_query_and_delete_with_typed_fai
     .await;
     assert_eq!(delete_status, StatusCode::OK);
     assert_eq!(deleted["data"]["deleted_count"], 3);
+    let (status, stale_cursor) = tree_request(&app, &cookie, None, "GET",
+        format!("/api/runtime/models/route_tree/tree/descendants/{root_id}?limit=1&cursor={descendant_cursor}"), None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(stale_cursor["code"], "ordered_tree_stale_cursor");
 }

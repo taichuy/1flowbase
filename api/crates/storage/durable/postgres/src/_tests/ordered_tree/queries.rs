@@ -17,13 +17,13 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+pub(super) async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
     postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
         .unwrap()
 }
 
-async fn create_workspace(store: &PgControlPlaneStore) -> Uuid {
+pub(super) async fn create_workspace(store: &PgControlPlaneStore) -> Uuid {
     let tenant_id: Uuid = sqlx::query_scalar("select id from tenants where code = 'root-tenant'")
         .fetch_one(store.pool())
         .await
@@ -39,7 +39,7 @@ async fn create_workspace(store: &PgControlPlaneStore) -> Uuid {
     workspace_id
 }
 
-async fn create_model(
+pub(super) async fn create_model(
     store: &PgControlPlaneStore,
     workspace_id: Uuid,
     suffix: &str,
@@ -69,7 +69,7 @@ async fn create_model(
     .unwrap()
 }
 
-async fn add_search_field(
+pub(super) async fn add_search_field(
     store: &PgControlPlaneStore,
     model: &domain::ModelDefinitionRecord,
 ) -> (domain::ModelDefinitionRecord, domain::ModelFieldRecord) {
@@ -106,7 +106,7 @@ async fn add_search_field(
     (model, field)
 }
 
-struct TestNode<'a> {
+pub(super) struct TestNode<'a> {
     id: Uuid,
     parent_id: Option<Uuid>,
     sibling_rank: &'a str,
@@ -114,7 +114,12 @@ struct TestNode<'a> {
 }
 
 impl<'a> TestNode<'a> {
-    fn new(id: Uuid, parent_id: Option<Uuid>, sibling_rank: &'a str, title: &'a str) -> Self {
+    pub(super) fn new(
+        id: Uuid,
+        parent_id: Option<Uuid>,
+        sibling_rank: &'a str,
+        title: &'a str,
+    ) -> Self {
         Self {
             id,
             parent_id,
@@ -124,7 +129,7 @@ impl<'a> TestNode<'a> {
     }
 }
 
-async fn insert_node(
+pub(super) async fn insert_node(
     store: &PgControlPlaneStore,
     model: &domain::ModelDefinitionRecord,
     field: &domain::ModelFieldRecord,
@@ -134,7 +139,7 @@ async fn insert_node(
     insert_node_in_partition(store, model, field, scope_id, scope_id, node).await;
 }
 
-async fn insert_node_in_partition(
+pub(super) async fn insert_node_in_partition(
     store: &PgControlPlaneStore,
     model: &domain::ModelDefinitionRecord,
     field: &domain::ModelFieldRecord,
@@ -157,11 +162,11 @@ async fn insert_node_in_partition(
     .unwrap();
 }
 
-fn record_id(record: &serde_json::Value) -> Uuid {
+pub(super) fn record_id(record: &serde_json::Value) -> Uuid {
     Uuid::parse_str(record["id"].as_str().unwrap()).unwrap()
 }
 
-fn typed_error(error: anyhow::Error) -> OrderedTreeQueryError {
+pub(super) fn typed_error(error: anyhow::Error) -> OrderedTreeQueryError {
     error
         .downcast::<OrderedTreeQueryError>()
         .expect("ordered-tree query should preserve its typed business error")
@@ -313,14 +318,15 @@ async fn subtree_impact_counts_leaf_nested_partition_and_cycle_with_typed_not_fo
             OrderedTreeBoundedListInput {
                 scope_id,
                 tree_partition_id: scope_id,
-                result_limit: 1_001,
+                result_limit: 0,
+                cursor: None,
             },
         )
         .await
         .unwrap_err();
     assert!(matches!(
         typed_error(limit_error),
-        OrderedTreeQueryError::InvalidResultLimit { .. }
+        OrderedTreeQueryError::InvalidResultLimit
     ));
 }
 
@@ -434,10 +440,12 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
                 scope_id,
                 tree_partition_id: scope_id,
                 result_limit: 10,
+                cursor: None,
             },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .items;
     assert_eq!(
         roots
             .iter()
@@ -456,10 +464,12 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
                 tree_partition_id: scope_id,
                 parent_id: root_a,
                 result_limit: 10,
+                cursor: None,
             },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .items;
     assert_eq!(
         children
             .iter()
@@ -491,10 +501,12 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
                 tree_partition_id: scope_id,
                 parent_id: root_b,
                 result_limit: 7,
+                cursor: None,
             },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .items;
     assert_eq!(
         bounded_wide
             .iter()
@@ -533,13 +545,15 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
                 scope_id,
                 tree_partition_id: scope_id,
                 node_id: root_a,
-                max_depth: 2,
+                max_depth: Some(2),
                 result_limit: 10,
                 include_path: true,
+                cursor: None,
             },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .items;
     assert_eq!(
         descendants
             .iter()
@@ -563,13 +577,15 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
                 scope_id,
                 tree_partition_id: scope_id,
                 node_id: root_a,
-                max_depth: 1,
+                max_depth: Some(1),
                 result_limit: 1,
                 include_path: false,
+                cursor: None,
             },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .items;
     assert_eq!(without_paths.len(), 1);
     assert!(without_paths[0].path.is_none());
 
@@ -580,16 +596,17 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
                 scope_id,
                 tree_partition_id: scope_id,
                 node_id: root_a,
-                max_depth: 0,
+                max_depth: Some(0),
                 result_limit: 10,
                 include_path: false,
+                cursor: None,
             },
         )
         .await
         .unwrap_err();
     assert!(matches!(
         typed_error(error),
-        OrderedTreeQueryError::InvalidMaxDepth { .. }
+        OrderedTreeQueryError::InvalidMaxDepth
     ));
     let error = store
         .list_ordered_tree_roots(
@@ -597,14 +614,15 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             OrderedTreeBoundedListInput {
                 scope_id,
                 tree_partition_id: scope_id,
-                result_limit: 1_001,
+                result_limit: 0,
+                cursor: None,
             },
         )
         .await
         .unwrap_err();
     assert!(matches!(
         typed_error(error),
-        OrderedTreeQueryError::InvalidResultLimit { .. }
+        OrderedTreeQueryError::InvalidResultLimit
     ));
     let error = store
         .list_ordered_tree_children(
@@ -614,6 +632,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
                 tree_partition_id: scope_id,
                 parent_id: foreign_node,
                 result_limit: 10,
+                cursor: None,
             },
         )
         .await
@@ -692,10 +711,12 @@ async fn prefix_search_returns_match_markers_and_ancestor_context_only() {
                 tree_partition_id: scope_id,
                 prefix: "aLpHa".to_owned(),
                 match_limit: 10,
+                cursor: None,
             },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .items;
     assert_eq!(
         output
             .iter()

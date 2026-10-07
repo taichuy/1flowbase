@@ -1,3 +1,5 @@
+import { Button } from 'antd';
+import { useDepartmentOptions } from '../../hooks/organization/useDepartmentOptions';
 import { Form, Select, Typography } from 'antd';
 import type { FormInstance } from 'antd';
 import type { SettingsDepartment } from '../../api/departments';
@@ -12,6 +14,8 @@ export function MemberDepartmentFields({
   disabled?: boolean;
 }) {
   const department_ids: string[] = Form.useWatch('department_ids', form) ?? [];
+  const options = useDepartmentOptions(department_ids, departments);
+  const available = options.departments;
   return (
     <>
       <Form.Item
@@ -21,7 +25,26 @@ export function MemberDepartmentFields({
         <Select
           mode="multiple"
           disabled={disabled}
-          options={departments.map((department) => ({
+          showSearch
+          filterOption={false}
+          onSearch={options.setPrefix}
+          loading={options.loading}
+          popupRender={(menu) => (
+            <>
+              {menu}
+              {options.error ? (
+                <Button onClick={options.reload}>
+                  {i18nText('settings', 'organization.reload')}
+                </Button>
+              ) : null}
+              {options.hasMore ? (
+                <Button onClick={options.loadMore}>
+                  {i18nText('settings', 'organization.load_more')}
+                </Button>
+              ) : null}
+            </>
+          )}
+          options={available.map((department) => ({
             value: department.id,
             label: department.name
           }))}
@@ -55,7 +78,7 @@ export function MemberDepartmentFields({
       >
         <Select
           disabled={disabled || !department_ids.length}
-          options={departments
+          options={available
             .filter((department) => department_ids.includes(department.id))
             .map((department) => ({
               value: department.id,
@@ -66,7 +89,7 @@ export function MemberDepartmentFields({
       <Typography.Paragraph type="secondary">
         {i18nText('settings', 'organization.inherited_roles_hint')}
       </Typography.Paragraph>
-      {departments
+      {available
         .filter(
           (department) =>
             department_ids.includes(department.id) &&

@@ -1,5 +1,6 @@
+import { useDepartmentTree } from '../../hooks/organization/useDepartmentTree';
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -14,7 +15,6 @@ import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
   deleteSettingsDepartment,
-  fetchSettingsDepartments,
   settingsDepartmentsQueryKey,
   type DepartmentAccess,
   type SettingsDepartment
@@ -35,12 +35,8 @@ export function DepartmentManagementPanel({
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const client = useQueryClient();
   const [draft, setDraft] = useState<DepartmentDraft>();
-  const query = useQuery({
-    queryKey: settingsDepartmentsQueryKey,
-    queryFn: fetchSettingsDepartments,
-    enabled: access.can_list
-  });
-  const data = query.data ?? [];
+  const query = useDepartmentTree(access.can_list);
+  const data = query.items;
   const tree = useMemo(() => departmentTree(data), [data]);
   const refresh = async () => {
     await Promise.all([
@@ -77,7 +73,7 @@ export function DepartmentManagementPanel({
           </Button>
         ) : null}
       </div>
-      {query.isError || remove.isError ? (
+      {query.error || remove.isError ? (
         <Alert
           type="error"
           message={i18nText('settings', 'organization.operation_error')}
@@ -85,7 +81,7 @@ export function DepartmentManagementPanel({
             <Button
               onClick={() => {
                 remove.reset();
-                void query.refetch();
+                void query.reload();
               }}
             >
               {i18nText('settings', 'auto.retry_permission_data')}
@@ -95,11 +91,16 @@ export function DepartmentManagementPanel({
       ) : null}
       <Table<DepartmentTreeRow>
         rowKey="id"
-        loading={query.isLoading}
+        loading={query.loading}
         dataSource={tree}
         pagination={false}
         scroll={{ x: 760 }}
-        expandable={{ defaultExpandAllRows: true }}
+        expandable={{
+          rowExpandable: (row) => row.has_children,
+          onExpand: (expanded, row) => {
+            if (expanded) void query.loadChildren(row.id);
+          }
+        }}
         locale={{ emptyText: i18nText('settings', 'organization.empty') }}
         columns={[
           {
@@ -151,6 +152,16 @@ export function DepartmentManagementPanel({
           }
         ]}
       />
+      <Space wrap>
+        {query.groups.map((group) => (
+          <Button key={group.parent_id ?? 'roots'} onClick={group.loadMore}>
+            {i18nText('settings', 'organization.load_more')}
+            {group.parent_id
+              ? ` · ${data.find((item) => item.id === group.parent_id)?.name ?? ''}`
+              : ''}
+          </Button>
+        ))}
+      </Space>
       {draft ? (
         <DepartmentEditorDrawer
           draft={draft}

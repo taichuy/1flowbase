@@ -8,6 +8,9 @@ export {
   deleteConsoleDepartment as deleteSettingsDepartment,
   replaceConsoleMemberDepartments as replaceSettingsMemberDepartments,
   type ConsoleDepartment as SettingsDepartment,
+  type DepartmentTreeItem,
+  type DepartmentPage,
+  type DepartmentListParams,
   type DepartmentInput,
   type MemberDepartmentsInput
 } from '@1flowbase/api-client';

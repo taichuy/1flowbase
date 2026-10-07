@@ -16,8 +16,30 @@ export interface MemberDepartmentsInput {
   primary_department_id: string | null;
 }
 const path = '/api/console/settings/departments';
-export const listConsoleDepartments = () =>
-  apiFetch<ConsoleDepartment[]>({ path });
+export interface DepartmentTreeItem extends ConsoleDepartment {
+  has_children: boolean;
+  is_match: boolean;
+}
+export interface DepartmentPage {
+  items: DepartmentTreeItem[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+export interface DepartmentListParams {
+  parent_id?: string;
+  prefix?: string;
+  ids?: string;
+  limit?: number;
+  cursor?: string;
+}
+export const listConsoleDepartments = (params: DepartmentListParams = {}) => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params))
+    if (value !== undefined) query.set(key, String(value));
+  return apiFetch<DepartmentPage>({
+    path: `${path}${query.size ? `?${query}` : ''}`
+  });
+};
 export const createConsoleDepartment = (
   body: DepartmentInput,
   csrfToken: string

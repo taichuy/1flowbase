@@ -1311,18 +1311,24 @@ fn map_block_repository_error(error: anyhow::Error) -> anyhow::Error {
             OrderedTreeQueryError::NodeNotFound | OrderedTreeQueryError::ParentNotFound => {
                 ControlPlaneError::NotFound("block_node_not_found").into()
             }
-            OrderedTreeQueryError::InvalidResultLimit { .. } => {
+            OrderedTreeQueryError::InvalidResultLimit => {
                 ControlPlaneError::InvalidInput("block_result_limit").into()
             }
-            OrderedTreeQueryError::InvalidMaxDepth { .. } => {
+            OrderedTreeQueryError::InvalidMaxDepth => {
                 ControlPlaneError::InvalidInput("block_max_depth").into()
             }
             OrderedTreeQueryError::EmptySearchPrefix => {
                 ControlPlaneError::InvalidInput("block_search_query").into()
             }
-            OrderedTreeQueryError::WrongTemplate
-            | OrderedTreeQueryError::AncestorDepthLimitExceeded { .. }
-            | OrderedTreeQueryError::NoSearchableFields => return error,
+            OrderedTreeQueryError::InvalidCursor => {
+                ControlPlaneError::InvalidInput("block_cursor").into()
+            }
+            OrderedTreeQueryError::StaleCursor => {
+                ControlPlaneError::Conflict("block_cursor_stale").into()
+            }
+            OrderedTreeQueryError::WrongTemplate | OrderedTreeQueryError::NoSearchableFields => {
+                return error
+            }
         };
         return mapped;
     }

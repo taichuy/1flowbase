@@ -1,14 +1,17 @@
-import type { SettingsDepartment } from '../../api/departments';
-export interface DepartmentTreeRow extends SettingsDepartment {
+import type { DepartmentTreeItem } from '../../api/departments';
+export interface DepartmentTreeRow extends DepartmentTreeItem {
   children?: DepartmentTreeRow[];
 }
 export function departmentTree(
-  departments: SettingsDepartment[]
+  departments: DepartmentTreeItem[]
 ): DepartmentTreeRow[] {
   const nodes = new Map(
     departments.map((department) => [
       department.id,
-      { ...department } as DepartmentTreeRow
+      {
+        ...department,
+        ...(department.has_children ? { children: [] } : {})
+      } as DepartmentTreeRow
     ])
   );
   const roots: DepartmentTreeRow[] = [];

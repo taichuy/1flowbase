@@ -122,20 +122,41 @@ function ignoreCircularReferenceWarning() {
   return () => errorSpy.mockRestore();
 }
 
+function departmentPage(
+  items: {
+    id: string;
+    name: string;
+    parent_id: string | null;
+    role_codes: string[];
+    member_count: number;
+  }[]
+) {
+  return {
+    items: items.map((item) => ({
+      ...item,
+      has_children: items.some((child) => child.parent_id === item.id),
+      is_match: true
+    })),
+    has_more: false,
+    next_cursor: null
+  };
+}
 describe('MemberManagementPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuthStore();
     authenticate();
-    departmentsApi.fetchSettingsDepartments.mockResolvedValue([
-      {
-        id: 'department-1',
-        name: 'Engineering',
-        parent_id: null,
-        role_codes: ['operator'],
-        member_count: 8
-      }
-    ]);
+    departmentsApi.fetchSettingsDepartments.mockResolvedValue(
+      departmentPage([
+        {
+          id: 'department-1',
+          name: 'Engineering',
+          parent_id: null,
+          role_codes: ['operator'],
+          member_count: 8
+        }
+      ])
+    );
     departmentsApi.replaceSettingsMemberDepartments.mockResolvedValue(
       undefined
     );
@@ -393,7 +414,9 @@ describe('MemberManagementPanel', () => {
     expect(screen.getByText('8')).toBeInTheDocument();
   });
   test('root browsing includes unassigned users and survives an empty organization or search', async () => {
-    departmentsApi.fetchSettingsDepartments.mockResolvedValue([]);
+    departmentsApi.fetchSettingsDepartments.mockResolvedValue(
+      departmentPage([])
+    );
     renderPanel(true);
     expect(await screen.findByText('User Name')).toBeInTheDocument();
     expect(screen.getByRole('tree')).toBeInTheDocument();
@@ -416,23 +439,31 @@ describe('MemberManagementPanel', () => {
     ).not.toBeInTheDocument();
   });
   test('nested departments select the API subtree without filtering or duplicating its response', async () => {
-    departmentsApi.fetchSettingsDepartments.mockResolvedValue([
-      {
-        id: 'department-1',
-        name: 'Engineering',
-        parent_id: null,
-        role_codes: [],
-        member_count: 2
-      },
-      {
-        id: 'department-2',
-        name: 'Development',
-        parent_id: 'department-1',
-        role_codes: [],
-        member_count: 1
-      }
-    ]);
+    departmentsApi.fetchSettingsDepartments.mockResolvedValue(
+      departmentPage([
+        {
+          id: 'department-1',
+          name: 'Engineering',
+          parent_id: null,
+          role_codes: [],
+          member_count: 2
+        },
+        {
+          id: 'department-2',
+          name: 'Development',
+          parent_id: 'department-1',
+          role_codes: [],
+          member_count: 1
+        }
+      ])
+    );
     renderPanel(true);
+    const engineeringNode = await screen.findByText('Engineering');
+    fireEvent.click(
+      engineeringNode
+        .closest('.ant-tree-treenode')!
+        .querySelector('.ant-tree-switcher')!
+    );
     fireEvent.click(await screen.findByText('Development'));
     await waitFor(() =>
       expect(membersApi.fetchSettingsMembers).toHaveBeenLastCalledWith(
@@ -453,15 +484,17 @@ describe('MemberManagementPanel', () => {
   });
   test('creates a root department with no parent and refreshes the organization tree and members', async () => {
     departmentsApi.createSettingsDepartment.mockImplementation(async () => {
-      departmentsApi.fetchSettingsDepartments.mockResolvedValue([
-        {
-          id: 'new-department',
-          name: 'Support',
-          parent_id: null,
-          role_codes: [],
-          member_count: 4
-        }
-      ]);
+      departmentsApi.fetchSettingsDepartments.mockResolvedValue(
+        departmentPage([
+          {
+            id: 'new-department',
+            name: 'Support',
+            parent_id: null,
+            role_codes: [],
+            member_count: 4
+          }
+        ])
+      );
       return { id: 'new-department' };
     });
     renderPanel(true, true);

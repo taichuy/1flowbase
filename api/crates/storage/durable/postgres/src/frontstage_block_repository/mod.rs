@@ -805,9 +805,11 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
                 tree_partition_id: page_id,
                 parent_id,
                 result_limit: limit,
+                cursor: None,
             },
         )
-        .await?;
+        .await?
+        .items;
         map_node_records(
             self,
             workspace_id,
@@ -875,12 +877,14 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
                 scope_id: workspace_id,
                 tree_partition_id: page_id,
                 node_id,
-                max_depth,
+                max_depth: Some(max_depth),
                 result_limit: limit,
                 include_path: true,
+                cursor: None,
             },
         )
-        .await?;
+        .await?
+        .items;
         let summaries = projections
             .iter()
             .map(|projection| decode_summary(&projection.record))
@@ -938,9 +942,11 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
                 tree_partition_id: page_id,
                 prefix: query.to_owned(),
                 match_limit: limit,
+                cursor: None,
             },
         )
-        .await?;
+        .await?
+        .items;
         let summaries = projections
             .iter()
             .map(|projection| decode_summary(&projection.record))

@@ -1074,6 +1074,8 @@
     "name_required": "Enter a department name",
     "delete_confirm": "Delete this department? It must have no child departments or members.",
     "edit": "Edit department",
-    "create": "Create department"
+    "create": "Create department",
+    "load_more": "Load more",
+    "reload": "Reload departments"
   }
 }

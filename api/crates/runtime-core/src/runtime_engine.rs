@@ -644,13 +644,12 @@ impl RuntimeEngine {
                         OrderedTreeBoundedListInput {
                             scope_id,
                             tree_partition_id,
+                            cursor: operation_optional_string(&input.query, "cursor")?,
                             result_limit: operation_u32(&input.query, "limit", 100)?,
                         },
                     )
                     .await?;
-                Ok(Value::Array(
-                    nodes.into_iter().map(|node| node.record).collect(),
-                ))
+                Ok(serde_json::to_value(nodes.map(|node| node.record))?)
             }
             Handler::ListChildren => {
                 let nodes = repository
@@ -660,13 +659,12 @@ impl RuntimeEngine {
                             scope_id,
                             tree_partition_id,
                             parent_id: operation_uuid(&input.path, "id")?,
+                            cursor: operation_optional_string(&input.query, "cursor")?,
                             result_limit: operation_u32(&input.query, "limit", 100)?,
                         },
                     )
                     .await?;
-                Ok(Value::Array(
-                    nodes.into_iter().map(|node| node.record).collect(),
-                ))
+                Ok(serde_json::to_value(nodes.map(|node| node.record))?)
             }
             Handler::ListAncestors => {
                 let nodes = repository
@@ -692,25 +690,21 @@ impl RuntimeEngine {
                             scope_id,
                             tree_partition_id,
                             node_id: operation_uuid(&input.path, "id")?,
-                            max_depth: operation_u32(&input.query, "max_depth", 32)?,
+                            max_depth: input
+                                .query
+                                .get("max_depth")
+                                .filter(|value| !value.is_null())
+                                .map(|_| operation_u32(&input.query, "max_depth", 0))
+                                .transpose()?,
+                            cursor: operation_optional_string(&input.query, "cursor")?,
                             result_limit: operation_u32(&input.query, "limit", 100)?,
                             include_path,
                         },
                     )
                     .await?;
-                Ok(Value::Array(
-                    nodes
-                        .into_iter()
-                        .map(|node| {
-                            serde_json::json!({
-                                "record": node.record,
-                                "depth": node.depth,
-                                "has_children": node.has_children,
-                                "path": node.path,
-                            })
-                        })
-                        .collect(),
-                ))
+                Ok(serde_json::to_value(nodes.map(|node| serde_json::json!({
+                    "record": node.record, "depth": node.depth, "has_children": node.has_children, "path": node.path
+                })))?)
             }
             Handler::Search => {
                 let prefix = operation_string(&input.query, "prefix")?;
@@ -721,18 +715,16 @@ impl RuntimeEngine {
                             scope_id,
                             tree_partition_id,
                             prefix,
+                            cursor: operation_optional_string(&input.query, "cursor")?,
                             match_limit: operation_u32(&input.query, "limit", 20)?,
                         },
                     )
                     .await?;
-                Ok(Value::Array(
-                    nodes
-                        .into_iter()
-                        .map(|node| {
-                            serde_json::json!({ "record": node.record, "is_match": node.is_match })
-                        })
-                        .collect(),
-                ))
+                Ok(serde_json::to_value(nodes.map(|node| {
+                    serde_json::json!({
+                        "record": node.record, "is_match": node.is_match
+                    })
+                }))?)
             }
             Handler::Move => {
                 let mut payload = operation_object(input.payload)?;
@@ -1728,5 +1720,13 @@ fn test_model_metadata() -> ModelMetadata {
             "orders",
             domain::DataModelScopeKind::Workspace,
         ),
+    }
+}
+
+fn operation_optional_string(value: &Value, key: &str) -> Result<Option<String>> {
+    match value.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        _ => Err(RuntimeModelError::InvalidOperationInput("cursor").into()),
     }
 }

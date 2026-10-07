@@ -1,3 +1,4 @@
+import { useDepartmentTree } from '../hooks/organization/useDepartmentTree';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -47,9 +48,9 @@ import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
 
 import {
-  fetchSettingsDepartments,
   replaceSettingsMemberDepartments,
-  settingsDepartmentsQueryKey
+  settingsDepartmentsQueryKey,
+  fetchSettingsDepartments
 } from '../api/departments';
 import { OrganizationSelector } from './organization/OrganizationSelector';
 import {
@@ -93,12 +94,14 @@ export function MemberManagementPanel({
   const [selectedDepartment, setSelectedDepartment] = useState<string>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const departmentsQuery = useQuery({
-    queryKey: settingsDepartmentsQueryKey,
-    queryFn: fetchSettingsDepartments,
-    enabled: canViewDepartments
+  const departmentsQuery = useDepartmentTree(canViewDepartments);
+  const departments = departmentsQuery.items;
+  const selectedDepartmentQuery = useQuery({
+    queryKey: [...settingsDepartmentsQueryKey, 'selected', selectedDepartment],
+    queryFn: () =>
+      fetchSettingsDepartments({ ids: selectedDepartment!, limit: 1 }),
+    enabled: canViewDepartments && !!selectedDepartment
   });
-  const departments = departmentsQuery.data ?? [];
   const membersQuery = useQuery({
     queryKey: [...settingsMembersQueryKey, selectedDepartment],
     queryFn: () => fetchSettingsMembers(selectedDepartment)
@@ -106,14 +109,6 @@ export function MemberManagementPanel({
   useEffect(() => {
     setPage(1);
   }, [selectedDepartment]);
-  useEffect(() => {
-    if (
-      departmentsQuery.isSuccess &&
-      selectedDepartment &&
-      !departments.some((department) => department.id === selectedDepartment)
-    )
-      setSelectedDepartment(undefined);
-  }, [departments, departmentsQuery.isSuccess, selectedDepartment]);
   useEffect(() => {
     if (
       membersQuery.data &&
@@ -692,9 +687,13 @@ export function MemberManagementPanel({
             departments={departments}
             selected={selectedDepartment}
             onSelect={setSelectedDepartment}
-            loading={departmentsQuery.isLoading}
-            error={departmentsQuery.isError}
-            onRetry={() => void departmentsQuery.refetch()}
+            loading={departmentsQuery.loading}
+            error={departmentsQuery.error}
+            onRetry={departmentsQuery.reload}
+            search={departmentsQuery.prefix}
+            onSearch={departmentsQuery.setPrefix}
+            onExpand={departmentsQuery.loadChildren}
+            groups={departmentsQuery.groups}
             onCreate={
               canCreateDepartments && departmentsQuery.isSuccess
                 ? () =>
@@ -718,9 +717,9 @@ export function MemberManagementPanel({
             <Space>
               <Typography.Title level={4}>
                 {selectedDepartment
-                  ? departments.find(
+                  ? (departments.find(
                       (department) => department.id === selectedDepartment
-                    )?.name
+                    )?.name ?? selectedDepartmentQuery.data?.items[0]?.name)
                   : i18nText('settings', 'organization.title')}
               </Typography.Title>
               <Tag>

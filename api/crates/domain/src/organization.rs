@@ -12,6 +12,22 @@ pub struct Department {
     pub member_count: i64,
 }
 
+/// A department projected for a lazy tree or a search result.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DepartmentTreeItem {
+    #[serde(flatten)]
+    pub department: Department,
+    pub has_children: bool,
+    pub is_match: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DepartmentPage {
+    pub items: Vec<DepartmentTreeItem>,
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MemberDepartments {
     pub department_ids: Vec<Uuid>,

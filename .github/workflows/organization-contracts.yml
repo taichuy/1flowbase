@@ -6,6 +6,13 @@ on:
     branches: [dev, 'codex/**']
     paths:
       - 'api/**/ordered_tree/**'
+      - 'api/**/ordered_tree_template.rs'
+      - 'api/**/runtime_record_repository.rs'
+      - 'api/**/runtime_engine.rs'
+      - 'api/**/runtime_models.rs'
+      - 'web/**/organization/**'
+      - 'web/**/departments/**'
+      - 'web/**/runtime/tree/**'
       - 'api/**/20261007120000_ordered_tree_ltree_paths.sql'
       - 'api/**/member_repository.rs'
       - 'api/**/membership_interface.rs'
@@ -18,6 +25,13 @@ on:
   pull_request:
     paths:
       - 'api/**/ordered_tree/**'
+      - 'api/**/ordered_tree_template.rs'
+      - 'api/**/runtime_record_repository.rs'
+      - 'api/**/runtime_engine.rs'
+      - 'api/**/runtime_models.rs'
+      - 'web/**/organization/**'
+      - 'web/**/departments/**'
+      - 'web/**/runtime/tree/**'
       - 'api/**/20261007120000_ordered_tree_ltree_paths.sql'
       - 'api/**/member_repository.rs'
       - 'api/**/membership_interface.rs'
@@ -82,6 +96,8 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib system_metadata 2>&1 | tee tmp/test-governance/organization/metadata.log || verification_status=1
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib workspace_access_tests 2>&1 | tee tmp/test-governance/organization/permissions.log || verification_status=1
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test organization_integration 2>&1 | tee tmp/test-governance/organization/integration.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p runtime-core --lib data_model_template_registry_tests 2>&1 | tee tmp/test-governance/organization/template.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib ordered_tree 2>&1 | tee tmp/test-governance/organization/runtime-http.log || verification_status=1
           exit "$verification_status"
       - name: Compile API consumers
         if: always()

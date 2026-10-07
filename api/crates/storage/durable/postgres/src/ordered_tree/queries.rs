@@ -1,31 +1,28 @@
 use std::collections::HashMap;
 
+use super::pagination::{Context, Cursor};
+use crate::{
+    repositories::PgControlPlaneStore,
+    runtime_record_repository::{normalize_record, projected_select_list, quote_identifier},
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
-use sqlx::{PgPool, Postgres, QueryBuilder};
+use sqlx::{PgConnection, PgPool};
 use storage_durable::{
     model_metadata::ModelMetadata,
     runtime_record_repository::{
         OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreeDescendantProjection,
         OrderedTreeDescendantsInput, OrderedTreeNodeInput, OrderedTreeNodeProjection,
-        OrderedTreeQueryError, OrderedTreeQueryRepository, OrderedTreeSearchInput,
+        OrderedTreePage, OrderedTreeQueryError, OrderedTreeQueryRepository, OrderedTreeSearchInput,
         OrderedTreeSearchProjection, OrderedTreeSubtreeImpactInput, OrderedTreeSubtreeImpactResult,
     },
 };
 use uuid::Uuid;
 
-use crate::{
-    repositories::PgControlPlaneStore,
-    runtime_record_repository::{normalize_record, projected_select_list, quote_identifier},
-};
-
 const TEMPLATE_PROVIDER: &str = "core";
 const TEMPLATE_CODE: &str = "ordered_tree";
 const TEMPLATE_VERSION: &str = "v1";
-const MAX_RESULT_LIMIT: u32 = 1_000;
-const MAX_DESCENDANT_DEPTH: u32 = 256;
-const MAX_SEARCH_MATCHES: u32 = 100;
 
 #[async_trait]
 impl OrderedTreeQueryRepository for PgControlPlaneStore {
@@ -61,50 +58,48 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         &self,
         metadata: &ModelMetadata,
         input: OrderedTreeBoundedListInput,
-    ) -> Result<Vec<OrderedTreeNodeProjection>> {
-        ensure_ordered_tree(metadata)?;
-        ensure_limit(input.result_limit, MAX_RESULT_LIMIT)?;
-        let table_name = quote_identifier(&metadata.physical_table_name)?;
-        let records: Vec<Value> = sqlx::query_scalar(&format!(
-            "select row_to_json(node) from (select {} from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id is null order by sibling_rank collate \"C\", id limit $3) node",
-            projected_select_list(metadata)?
-        ))
-        .bind(input.scope_id)
-        .bind(input.tree_partition_id)
-        .bind(i64::from(input.result_limit))
-        .fetch_all(self.pool())
+    ) -> Result<OrderedTreePage<OrderedTreeNodeProjection>> {
+        let context = Context::new(metadata, input.scope_id, input.tree_partition_id, "roots");
+        let mut tx = read_snapshot(self.pool()).await?;
+        let page = fetch_page(
+            &mut tx,
+            metadata,
+            &context,
+            input.result_limit,
+            input.cursor.as_deref(),
+        )
         .await?;
-        Ok(project_nodes(metadata, records))
+        tx.commit().await?;
+        Ok(page.map(|row| OrderedTreeNodeProjection {
+            record: normalize_record(metadata, row.0),
+        }))
     }
 
     async fn list_ordered_tree_children(
         &self,
         metadata: &ModelMetadata,
         input: OrderedTreeChildrenInput,
-    ) -> Result<Vec<OrderedTreeNodeProjection>> {
-        ensure_ordered_tree(metadata)?;
-        ensure_limit(input.result_limit, MAX_RESULT_LIMIT)?;
-        let table_name = quote_identifier(&metadata.physical_table_name)?;
-        ensure_node_exists(
-            self.pool(),
-            &table_name,
+    ) -> Result<OrderedTreePage<OrderedTreeNodeProjection>> {
+        let mut context = Context::new(
+            metadata,
             input.scope_id,
             input.tree_partition_id,
-            input.parent_id,
-            OrderedTreeQueryError::ParentNotFound,
+            "children",
+        );
+        context.node_id = Some(input.parent_id);
+        let mut tx = read_snapshot(self.pool()).await?;
+        let page = fetch_page(
+            &mut tx,
+            metadata,
+            &context,
+            input.result_limit,
+            input.cursor.as_deref(),
         )
         .await?;
-        let records: Vec<Value> = sqlx::query_scalar(&format!(
-            "select row_to_json(node) from (select {} from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id = $3 order by sibling_rank collate \"C\", id limit $4) node",
-            projected_select_list(metadata)?
-        ))
-        .bind(input.scope_id)
-        .bind(input.tree_partition_id)
-        .bind(input.parent_id)
-        .bind(i64::from(input.result_limit))
-        .fetch_all(self.pool())
-        .await?;
-        Ok(project_nodes(metadata, records))
+        tx.commit().await?;
+        Ok(page.map(|row| OrderedTreeNodeProjection {
+            record: normalize_record(metadata, row.0),
+        }))
     }
 
     async fn list_ordered_tree_ancestors(
@@ -123,8 +118,9 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
             OrderedTreeQueryError::NodeNotFound,
         )
         .await?;
+        let mut connection = self.pool().acquire().await?;
         ancestor_records(
-            self.pool(),
+            &mut connection,
             metadata,
             &table_name,
             input.scope_id,
@@ -139,139 +135,68 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         &self,
         metadata: &ModelMetadata,
         input: OrderedTreeDescendantsInput,
-    ) -> Result<Vec<OrderedTreeDescendantProjection>> {
-        ensure_ordered_tree(metadata)?;
-        ensure_limit(input.result_limit, MAX_RESULT_LIMIT)?;
-        if input.max_depth == 0 || input.max_depth > MAX_DESCENDANT_DEPTH {
-            return Err(OrderedTreeQueryError::InvalidMaxDepth {
-                max: MAX_DESCENDANT_DEPTH,
-            }
-            .into());
+    ) -> Result<OrderedTreePage<OrderedTreeDescendantProjection>> {
+        if input.max_depth == Some(0) {
+            return Err(OrderedTreeQueryError::InvalidMaxDepth.into());
         }
-        let table_name = quote_identifier(&metadata.physical_table_name)?;
-        ensure_node_exists(
-            self.pool(),
-            &table_name,
+        let mut context = Context::new(
+            metadata,
             input.scope_id,
             input.tree_partition_id,
-            input.node_id,
-            OrderedTreeQueryError::NodeNotFound,
+            "descendants",
+        );
+        context.node_id = Some(input.node_id);
+        context.max_depth = input.max_depth;
+        context.include_path = input.include_path;
+        let mut tx = read_snapshot(self.pool()).await?;
+        let page = fetch_page(
+            &mut tx,
+            metadata,
+            &context,
+            input.result_limit,
+            input.cursor.as_deref(),
         )
         .await?;
-        let rows: Vec<(Value, i32, bool, Vec<Uuid>)> = sqlx::query_as(&format!(
-            r#"
-            with descendants as (
-                select child.id,
-                       public.nlevel(child.tree_path) - public.nlevel(root.tree_path) as depth,
-                       string_to_array(public.subpath(child.tree_path, public.nlevel(root.tree_path) - 1)::text, '.')::uuid[] as id_path,
-                       array(select ancestor.sibling_rank from {table_name} ancestor
-                             where ancestor.scope_id = $1 and ancestor.tree_partition_id = $2
-                               and ancestor.id = any(string_to_array(child.tree_path::text, '.')::uuid[])
-                               and public.nlevel(ancestor.tree_path) > public.nlevel(root.tree_path)
-                             order by public.nlevel(ancestor.tree_path)) as rank_path
-                from {table_name} child
-                join {table_name} root on root.scope_id = $1 and root.tree_partition_id = $2 and root.id = $3
-                where child.scope_id = $1 and child.tree_partition_id = $2
-                  and ARRAY[child.tree_path] OPERATOR(public.<@) root.tree_path
-                  and public.nlevel(child.tree_path) > public.nlevel(root.tree_path)
-                  and public.nlevel(child.tree_path) - public.nlevel(root.tree_path) <= $4
-            )
-            select row_to_json(node), descendants.depth,
-                   exists(select 1 from {table_name} child where child.scope_id = $1 and child.tree_partition_id = $2 and child.parent_id = descendants.id),
-                   descendants.id_path
-            from descendants
-            join lateral (select {projection} from {table_name} source where source.scope_id = $1 and source.tree_partition_id = $2 and source.id = descendants.id) node on true
-            order by descendants.rank_path collate "C", descendants.id_path
-            limit $5
-            "#,
-            projection = qualified_projection(metadata, "source")?,
-        ))
-        .bind(input.scope_id)
-        .bind(input.tree_partition_id)
-        .bind(input.node_id)
-        .bind(i32::try_from(input.max_depth)?)
-        .bind(i64::from(input.result_limit))
-        .fetch_all(self.pool())
-        .await?;
-        Ok(rows
-            .into_iter()
-            .map(
-                |(record, depth, has_children, path)| OrderedTreeDescendantProjection {
-                    record: normalize_record(metadata, record),
-                    depth: depth as u32,
-                    has_children,
-                    path: input.include_path.then_some(path),
-                },
-            )
-            .collect())
+        tx.commit().await?;
+        Ok(page.map(|row| OrderedTreeDescendantProjection {
+            record: normalize_record(metadata, row.0),
+            depth: row.1 as u32,
+            has_children: row.2,
+            path: input.include_path.then_some(row.3),
+        }))
     }
 
     async fn search_ordered_tree_prefix(
         &self,
         metadata: &ModelMetadata,
         input: OrderedTreeSearchInput,
-    ) -> Result<Vec<OrderedTreeSearchProjection>> {
-        ensure_ordered_tree(metadata)?;
-        ensure_limit(input.match_limit, MAX_SEARCH_MATCHES)?;
-        let prefix = input.prefix.trim();
-        if prefix.is_empty() {
-            return Err(OrderedTreeQueryError::EmptySearchPrefix.into());
-        }
-        let searchable_fields = metadata
-            .fields
-            .iter()
-            .filter(|field| {
-                !field.is_system
-                    && matches!(
-                        field.field_kind,
-                        domain::ModelFieldKind::String
-                            | domain::ModelFieldKind::Enum
-                            | domain::ModelFieldKind::Text
-                    )
-            })
-            .collect::<Vec<_>>();
-        if searchable_fields.is_empty() {
-            return Err(OrderedTreeQueryError::NoSearchableFields.into());
-        }
-
+    ) -> Result<OrderedTreePage<OrderedTreeSearchProjection>> {
+        let mut context = Context::new(metadata, input.scope_id, input.tree_partition_id, "search");
+        context.prefix = Some(input.prefix.trim().to_owned());
+        let mut tx = read_snapshot(self.pool()).await?;
+        let page = fetch_page(
+            &mut tx,
+            metadata,
+            &context,
+            input.match_limit,
+            input.cursor.as_deref(),
+        )
+        .await?;
         let table_name = quote_identifier(&metadata.physical_table_name)?;
-        let mut builder = QueryBuilder::<Postgres>::new(format!(
-            "select id, row_to_json(node) from (select {} from {table_name} where scope_id = ",
-            projected_select_list(metadata)?
-        ));
-        builder.push_bind(input.scope_id);
-        builder.push(" and tree_partition_id = ");
-        builder.push_bind(input.tree_partition_id);
-        builder.push(" and (");
-        let pattern = format!("{}%", escape_like_prefix(prefix));
-        for (index, field) in searchable_fields.iter().enumerate() {
-            if index > 0 {
-                builder.push(" or ");
-            }
-            builder.push("lower(");
-            builder.push(quote_identifier(&field.physical_column_name)?);
-            builder.push(") collate \"C\" like lower(");
-            builder.push_bind(pattern.clone());
-            builder.push(") escape E'\\\\'");
-        }
-        builder.push(" ) order by sibling_rank collate \"C\", id limit ");
-        builder.push_bind(i64::from(input.match_limit));
-        builder.push(") node");
-        let matches: Vec<(Uuid, Value)> = builder.build_query_as().fetch_all(self.pool()).await?;
-
         let mut output = Vec::<OrderedTreeSearchProjection>::new();
         let mut indexes = HashMap::<Uuid, usize>::new();
-        for (match_id, record) in matches {
-            let ancestors = ancestor_records(
-                self.pool(),
+        for row in page.items {
+            let match_id = row.5;
+            for ancestor in ancestor_records(
+                &mut tx,
                 metadata,
                 &table_name,
                 input.scope_id,
                 input.tree_partition_id,
                 match_id,
             )
-            .await?;
-            for ancestor in ancestors {
+            .await?
+            {
                 let ancestor = normalize_record(metadata, ancestor);
                 let ancestor_id = record_id(&ancestor)?;
                 if let std::collections::hash_map::Entry::Vacant(entry) = indexes.entry(ancestor_id)
@@ -283,11 +208,12 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
                     });
                 }
             }
-
-            let record = normalize_record(metadata, record);
+            let record = normalize_record(metadata, row.0);
             if let Some(index) = indexes.get(&match_id).copied() {
-                output[index].record = record;
-                output[index].is_match = true;
+                output[index] = OrderedTreeSearchProjection {
+                    record,
+                    is_match: true,
+                };
             } else {
                 indexes.insert(match_id, output.len());
                 output.push(OrderedTreeSearchProjection {
@@ -296,8 +222,164 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
                 });
             }
         }
-        Ok(output)
+        tx.commit().await?;
+        Ok(OrderedTreePage {
+            items: output,
+            has_more: page.has_more,
+            next_cursor: page.next_cursor,
+        })
     }
+}
+
+// Rows retain the complete ordering key and tree-path fingerprint even when paths are not projected.
+type PageRow = (Value, i32, bool, Vec<Uuid>, Vec<String>, Uuid, String);
+
+async fn read_snapshot(pool: &PgPool) -> Result<sqlx::Transaction<'_, sqlx::Postgres>> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("set transaction isolation level repeatable read read only")
+        .execute(&mut *tx)
+        .await?;
+    Ok(tx)
+}
+
+async fn fetch_page(
+    conn: &mut PgConnection,
+    metadata: &ModelMetadata,
+    context: &Context,
+    limit: u32,
+    cursor: Option<&str>,
+) -> Result<OrderedTreePage<PageRow>> {
+    ensure_ordered_tree(metadata)?;
+    ensure_limit(limit)?;
+    let cursor = Cursor::decode(cursor, context)?;
+    let table = quote_identifier(&metadata.physical_table_name)?;
+    let cte = candidates(metadata, &table, context)?;
+    // Cursor errors take precedence over a missing parent/root after an earlier page.
+    let anchor = if let Some(cursor) = &cursor {
+        Some(cursor.validate(conn, &cte).await?)
+    } else {
+        None
+    };
+    if let Some(id) = context.node_id {
+        let exists: bool = sqlx::query_scalar(&format!("select exists(select 1 from {table} where scope_id = $1 and tree_partition_id = $2 and id = $3)"))
+            .bind(context.scope_id).bind(context.partition_id).bind(id).fetch_one(&mut *conn).await?;
+        if !exists {
+            return Err(if context.query == "children" {
+                OrderedTreeQueryError::ParentNotFound
+            } else {
+                OrderedTreeQueryError::NodeNotFound
+            }
+            .into());
+        }
+    }
+    let (predicate, order) = if context.query == "descendants" {
+        (
+            r#"$6::text[] is null or (candidates.rank_path collate "C", candidates.id_path) > ($6::text[] collate "C", $7::uuid[])"#,
+            r#"candidates.rank_path collate "C", candidates.id_path"#,
+        )
+    } else {
+        (
+            r#"$6::text[] is null or (candidates.sibling_rank collate "C", candidates.id) > (($6::text[])[1] collate "C", ($7::uuid[])[1])"#,
+            r#"candidates.sibling_rank collate "C", candidates.id"#,
+        )
+    };
+    let mut rows: Vec<PageRow> = sqlx::query_as(&format!(r#"{cte}
+        select row_to_json(node), candidates.depth,
+            exists(select 1 from {table} child where child.scope_id = $1 and child.tree_partition_id = $2 and child.parent_id = candidates.id),
+            candidates.id_path, candidates.rank_path, candidates.id, candidates.tree_path::text
+        from candidates
+        join lateral (select {projection} from {table} source where source.scope_id = $1 and source.tree_partition_id = $2 and source.id = candidates.id) node on true
+        where {predicate}
+        order by {order}
+        limit $8"#,
+        projection = qualified_projection(metadata, "source")?))
+        .bind(context.scope_id).bind(context.partition_id).bind(context.node_id)
+        .bind(context.max_depth.map(i64::from)).bind(context.prefix.as_ref().map(|prefix| format!("{}%", escape_like_prefix(prefix))))
+        .bind(anchor.as_ref().map(|anchor| anchor.ranks.clone())).bind(anchor.as_ref().map(|anchor| anchor.ids.clone()))
+        .bind(i64::from(limit) + 1).fetch_all(&mut *conn).await?;
+    let has_more = rows.len() > limit as usize;
+    if has_more {
+        rows.pop();
+    }
+    let next_cursor = if has_more {
+        let row = rows.last().expect("a positive limit guarantees an anchor");
+        Some(
+            Cursor::new(
+                context.clone(),
+                row.5,
+                row.4.clone(),
+                row.3.clone(),
+                row.6.clone(),
+            )?
+            .encode()?,
+        )
+    } else {
+        None
+    };
+    Ok(OrderedTreePage {
+        items: rows,
+        has_more,
+        next_cursor,
+    })
+}
+
+fn candidates(metadata: &ModelMetadata, table: &str, context: &Context) -> Result<String> {
+    // Explicitly type all shared parameters even when a query kind does not use them.
+    let parameters = "with parameters as (select $1::uuid, $2::uuid, $3::uuid, $4::bigint, $5::text), candidates as (";
+    if context.query == "descendants" {
+        return Ok(format!(
+            r#"{parameters}
+            select child.id, child.tree_path,
+                public.nlevel(child.tree_path) - public.nlevel(root.tree_path) as depth,
+                string_to_array(public.subpath(child.tree_path, public.nlevel(root.tree_path) - 1)::text, '.')::uuid[] as id_path,
+                array(select ancestor.sibling_rank from {table} ancestor
+                    where ancestor.scope_id = $1 and ancestor.tree_partition_id = $2
+                    and ancestor.id = any(string_to_array(child.tree_path::text, '.')::uuid[])
+                    and public.nlevel(ancestor.tree_path) > public.nlevel(root.tree_path)
+                    order by public.nlevel(ancestor.tree_path))::text[] as rank_path
+            from {table} child
+            join {table} root on root.scope_id = $1 and root.tree_partition_id = $2 and root.id = $3
+            where child.scope_id = $1 and child.tree_partition_id = $2
+                and ARRAY[child.tree_path] OPERATOR(public.<@) root.tree_path
+                and public.nlevel(child.tree_path) > public.nlevel(root.tree_path)
+                and ($4 is null or public.nlevel(child.tree_path) - public.nlevel(root.tree_path) <= $4)
+            )"#
+        ));
+    }
+    let filter = match context.query.as_str() {
+        "roots" => "parent_id is null".to_owned(),
+        "children" => "parent_id = $3".to_owned(),
+        "search" => {
+            if context.prefix.as_deref().is_none_or(str::is_empty) {
+                return Err(OrderedTreeQueryError::EmptySearchPrefix.into());
+            }
+            let fields = metadata
+                .fields
+                .iter()
+                .filter(|field| {
+                    !field.is_system
+                        && matches!(
+                            field.field_kind,
+                            domain::ModelFieldKind::String
+                                | domain::ModelFieldKind::Enum
+                                | domain::ModelFieldKind::Text
+                        )
+                })
+                .map(|field| {
+                    Ok(format!(
+                        "lower({}) collate \"C\" like lower($5) escape E'\\\\'",
+                        quote_identifier(&field.physical_column_name)?
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            if fields.is_empty() {
+                return Err(OrderedTreeQueryError::NoSearchableFields.into());
+            }
+            format!("({})", fields.join(" or "))
+        }
+        _ => unreachable!("page query kind is internally selected"),
+    };
+    Ok(format!("{parameters} select id, tree_path, sibling_rank, 0::integer as depth, ARRAY[id] as id_path, ARRAY[sibling_rank]::text[] as rank_path from {table} where scope_id = $1 and tree_partition_id = $2 and {filter})"))
 }
 
 fn ensure_ordered_tree(metadata: &ModelMetadata) -> Result<()> {
@@ -311,9 +393,9 @@ fn ensure_ordered_tree(metadata: &ModelMetadata) -> Result<()> {
     }
 }
 
-fn ensure_limit(limit: u32, max: u32) -> Result<()> {
-    if limit == 0 || limit > max {
-        Err(OrderedTreeQueryError::InvalidResultLimit { max }.into())
+fn ensure_limit(limit: u32) -> Result<()> {
+    if limit == 0 {
+        Err(OrderedTreeQueryError::InvalidResultLimit.into())
     } else {
         Ok(())
     }
@@ -343,7 +425,7 @@ async fn ensure_node_exists(
 }
 
 async fn ancestor_records(
-    pool: &PgPool,
+    pool: &mut sqlx::PgConnection,
     metadata: &ModelMetadata,
     table_name: &str,
     scope_id: Uuid,
@@ -359,24 +441,15 @@ async fn ancestor_records(
         join lateral (select {projection} from {table_name} source where source.scope_id = $1 and source.tree_partition_id = $2 and source.id = ancestor.id) node on true
         where target.scope_id = $1 and target.tree_partition_id = $2 and target.id = $3
         order by public.nlevel(ancestor.tree_path)
-        limit ($4 + 1)
         "#,
         projection = qualified_projection(metadata, "source")?,
     ))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(node_id)
-    .bind(i32::try_from(MAX_DESCENDANT_DEPTH)?)
     .fetch_all(pool)
     .await?;
-    if records.len() > MAX_DESCENDANT_DEPTH as usize {
-        Err(OrderedTreeQueryError::AncestorDepthLimitExceeded {
-            max: MAX_DESCENDANT_DEPTH,
-        }
-        .into())
-    } else {
-        Ok(records)
-    }
+    Ok(records)
 }
 
 fn qualified_projection(metadata: &ModelMetadata, alias: &str) -> Result<String> {
@@ -405,7 +478,7 @@ fn record_id(record: &Value) -> Result<Uuid> {
     Uuid::parse_str(id).map_err(Into::into)
 }
 
-fn escape_like_prefix(prefix: &str) -> String {
+pub(super) fn escape_like_prefix(prefix: &str) -> String {
     let mut escaped = String::with_capacity(prefix.len());
     for character in prefix.chars() {
         if matches!(character, '\\' | '%' | '_') {

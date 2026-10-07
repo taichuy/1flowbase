@@ -90,6 +90,10 @@ async fn organization_tree_scope_primary_and_delete_invariants() {
     );
     assert!(member_service.list(&member_actor).await.is_err());
     assert!(member_service
+        .list_page(&member_actor, Default::default())
+        .await
+        .is_err());
+    assert!(member_service
         .replace_member_departments(
             &member_actor,
             member.id,
@@ -433,4 +437,189 @@ async fn organization_primary_constraint_rejects_native_writer_corruption() {
             .primary_department_id,
         Some(a.id)
     );
+}
+
+#[tokio::test]
+async fn organization_pages_preserve_enrichment_selections_and_cursor_boundaries() {
+    use control_plane::ports::DepartmentListInput;
+    let (store, workspace, user) = super::support::seed_store().await;
+    let actor = store
+        .load_actor_context(user.id, workspace.tenant_id, workspace.id, None)
+        .await
+        .unwrap();
+    let service = OrganizationService::new(store.for_actor(actor.clone()));
+    let root = service
+        .save(&actor, None, "Page root".into(), None, vec![])
+        .await
+        .unwrap();
+    let child = service
+        .save(&actor, None, "Needle child".into(), Some(root.id), vec![])
+        .await
+        .unwrap();
+    let other = service
+        .save(&actor, None, "Page other".into(), None, vec![])
+        .await
+        .unwrap();
+    service
+        .replace_member_departments(
+            &actor,
+            user.id,
+            MemberDepartments {
+                department_ids: vec![child.id],
+                primary_department_id: Some(child.id),
+            },
+        )
+        .await
+        .unwrap();
+    let first = service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                limit: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].department.id, root.id);
+    assert_eq!(first.items[0].department.member_count, 1);
+    assert!(first.items[0].has_children && first.items[0].is_match && first.has_more);
+    let cursor = first.next_cursor.clone().unwrap();
+    let second = service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                limit: 1,
+                cursor: Some(cursor.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.items[0].department.id, other.id);
+    assert!(!second.items[0].has_children);
+    assert!(!second.has_more && second.next_cursor.is_none());
+    let children = service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                parent_id: Some(root.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(children.items[0].department.id, child.id);
+    let matches = service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                prefix: Some("Needle".into()),
+                limit: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches
+        .items
+        .iter()
+        .any(|i| i.department.id == root.id && !i.is_match));
+    assert!(matches
+        .items
+        .iter()
+        .any(|i| i.department.id == child.id && i.is_match));
+    assert!(service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                parent_id: Some(root.id),
+                cursor: Some(cursor.clone()),
+                ..Default::default()
+            }
+        )
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("tree_invalid_cursor"));
+    let mut lookup_ids = vec![child.id, root.id, child.id];
+    let lookup = service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                ids: Some(lookup_ids.clone()),
+                limit: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(lookup.has_more);
+    lookup_ids.reverse();
+    let lookup_last = service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                ids: Some(lookup_ids),
+                limit: 1,
+                cursor: lookup.next_cursor,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!lookup_last.has_more);
+    assert_ne!(
+        lookup.items[0].department.id,
+        lookup_last.items[0].department.id
+    );
+    assert!(service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                ids: Some(vec![Uuid::new_v4()]),
+                ..Default::default()
+            }
+        )
+        .await
+        .unwrap()
+        .items
+        .is_empty());
+    // A moved root anchor must not silently resume in its old sibling group.
+    service
+        .save(
+            &actor,
+            Some(root.id),
+            "Moved root".into(),
+            Some(other.id),
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert!(service
+        .list_page(
+            &actor,
+            DepartmentListInput {
+                cursor: Some(cursor),
+                ..Default::default()
+            }
+        )
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("tree_stale_cursor"));
+    // A mutation always returns the requested department, even outside the first page.
+    let saved = service
+        .save(
+            &actor,
+            Some(child.id),
+            "Renamed deep child".into(),
+            Some(root.id),
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert_eq!(saved.id, child.id);
+    assert_eq!(saved.name, "Renamed deep child");
 }

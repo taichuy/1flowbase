@@ -1074,6 +1074,8 @@
     "name_required": "请输入部门名称",
     "delete_confirm": "确定删除该部门？部门必须没有子部门或成员。",
     "edit": "编辑部门",
-    "create": "新增部门"
+    "create": "新增部门",
+    "load_more": "加载更多",
+    "reload": "重新加载部门"
   }
 }

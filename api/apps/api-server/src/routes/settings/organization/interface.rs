@@ -1,6 +1,6 @@
 use super::{
-    DepartmentResponse, OrganizationAccessResponse, ReplaceMemberDepartmentsBody,
-    SaveDepartmentBody,
+    DepartmentPageResponse, DepartmentResponse, OrganizationAccessResponse,
+    ReplaceMemberDepartmentsBody, SaveDepartmentBody,
 };
 use crate::{
     error_response::ApiError,
@@ -15,7 +15,7 @@ use std::sync::Arc;
 use storage_durable_postgres::MainDurableStore;
 pub(crate) enum OrganizationInput {
     Access,
-    List,
+    List(control_plane::ports::DepartmentListInput),
     Create(SaveDepartmentBody),
     Update {
         id: String,
@@ -31,7 +31,7 @@ pub(crate) enum OrganizationInput {
 }
 pub(crate) enum OrganizationOutput {
     Access(OrganizationAccessResponse),
-    Departments(Vec<DepartmentResponse>),
+    Departments(DepartmentPageResponse),
     Department(DepartmentResponse),
     Empty,
 }
@@ -47,10 +47,10 @@ impl InterfaceContract for OrganizationInput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         Some(
-            serde_json::json!({"variant":match self{Self::Access=>"Access",Self::List=>"List",Self::Create(_)=>"Create",Self::Update{..}=>"Update",Self::Delete{..}=>"Delete",Self::Replace{..}=>"Replace"}}),
+            serde_json::json!({"variant":match self{Self::Access=>"Access",Self::List(_)=>"List",Self::Create(_)=>"Create",Self::Update{..}=>"Update",Self::Delete{..}=>"Delete",Self::Replace{..}=>"Replace"}}),
         )
     }
-    const CONTRACT_VERSION: &'static str = "1";
+    const CONTRACT_VERSION: &'static str = "2";
     const CONTRACT_ID: &'static str = "console-organization-input";
 }
 impl InterfaceContract for OrganizationOutput {
@@ -68,7 +68,7 @@ impl InterfaceContract for OrganizationOutput {
             serde_json::json!({"variant":match self{Self::Access(_)=>"Access",Self::Departments(_)=>"Departments",Self::Department(_)=>"Department",Self::Empty=>"Empty"}}),
         )
     }
-    const CONTRACT_VERSION: &'static str = "1";
+    const CONTRACT_VERSION: &'static str = "2";
     const CONTRACT_ID: &'static str = "console-organization-output";
 }
 struct Adapter {
@@ -98,14 +98,9 @@ impl Adapter {
             OrganizationInput::Access => {
                 OrganizationOutput::Access(service.access(actor).await?.into())
             }
-            OrganizationInput::List => OrganizationOutput::Departments(
-                service
-                    .list(actor)
-                    .await?
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-            ),
+            OrganizationInput::List(input) => {
+                OrganizationOutput::Departments(service.list_page(actor, input).await?.into())
+            }
             OrganizationInput::Create(body) => OrganizationOutput::Department(
                 service
                     .save(

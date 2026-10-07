@@ -7,6 +7,7 @@ use crate::ordered_tree::rank::{between, rebalance, FractionalRank};
 use crate::{run_migrations, PgControlPlaneStore};
 
 mod commands;
+mod pagination;
 mod paths;
 mod prefix_indexes;
 mod queries;

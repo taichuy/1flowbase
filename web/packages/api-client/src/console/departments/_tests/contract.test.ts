@@ -21,6 +21,21 @@ describe('department wire contract', () => {
       path: '/api/console/settings/departments'
     });
   });
+  test('serializes direct children, search pages and selected IDs using the backend field names', async () => {
+    await expect(
+      listConsoleDepartments({ parent_id: 'parent', limit: 2, cursor: 'a+/=' })
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/departments?parent_id=parent&limit=2&cursor=a%2B%2F%3D'
+    });
+    await expect(
+      listConsoleDepartments({ prefix: 'Dev', cursor: 'next' })
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/departments?prefix=Dev&cursor=next'
+    });
+    await expect(listConsoleDepartments({ ids: 'a,b' })).resolves.toMatchObject(
+      { path: '/api/console/settings/departments?ids=a%2Cb' }
+    );
+  });
   test('writes parent_id and role_codes without aliases', async () => {
     const body = {
       name: 'Engineering',

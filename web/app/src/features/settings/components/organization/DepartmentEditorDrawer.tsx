@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useDepartmentOptions } from '../../hooks/organization/useDepartmentOptions';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Drawer, Form, Input, Select } from 'antd';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -62,27 +62,17 @@ export function DepartmentEditorDrawer({
       onClose();
     }
   });
-  const excluded = useMemo(() => {
-    const ids = new Set<string>();
-    if (draft.department) {
-      ids.add(draft.department.id);
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const department of departments) {
-          if (
-            department.parent_id &&
-            ids.has(department.parent_id) &&
-            !ids.has(department.id)
-          ) {
-            ids.add(department.id);
-            changed = true;
-          }
-        }
-      }
-    }
-    return ids;
-  }, [departments, draft.department]);
+  const watchedParent = Form.useWatch('parent_id', form);
+  const parent_id =
+    watchedParent === undefined
+      ? draft.department
+        ? draft.department.parent_id
+        : draft.parent_id
+      : watchedParent;
+  const options = useDepartmentOptions(
+    parent_id ? [parent_id] : [],
+    departments
+  );
   return (
     <Drawer
       title={
@@ -145,13 +135,32 @@ export function DepartmentEditorDrawer({
         >
           <Select
             allowClear
+            showSearch
+            filterOption={false}
+            onSearch={options.setPrefix}
+            loading={options.loading}
+            popupRender={(menu) => (
+              <>
+                {menu}
+                {options.error ? (
+                  <Button onClick={options.reload}>
+                    {i18nText('settings', 'organization.reload')}
+                  </Button>
+                ) : null}
+                {options.hasMore ? (
+                  <Button onClick={options.loadMore}>
+                    {i18nText('settings', 'organization.load_more')}
+                  </Button>
+                ) : null}
+              </>
+            )}
             options={[
               {
                 label: i18nText('settings', 'organization.title'),
                 value: ORGANIZATION_PARENT_VALUE
               },
-              ...departments
-                .filter((department) => !excluded.has(department.id))
+              ...options.departments
+                .filter((department) => department.id !== draft.department?.id)
                 .map((department) => ({
                   label: department.name,
                   value: department.id

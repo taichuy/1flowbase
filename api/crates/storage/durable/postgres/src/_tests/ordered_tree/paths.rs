@@ -5,8 +5,8 @@ use serde_json::json;
 use sqlx::{migrate::Migrator, PgPool};
 use storage_durable::runtime_record_repository::{
     OrderedTreeDescendantsInput, OrderedTreeMoveInput, OrderedTreeMovePosition,
-    OrderedTreeNodeInput, OrderedTreeQueryError, OrderedTreeQueryRepository,
-    OrderedTreeStructureRepository, RuntimeRecordRepository,
+    OrderedTreeNodeInput, OrderedTreeQueryRepository, OrderedTreeStructureRepository,
+    RuntimeRecordRepository,
 };
 use uuid::Uuid;
 
@@ -249,13 +249,15 @@ async fn migration_backfills_dynamic_departments_and_frontstage_with_partition_i
                 scope_id: scope,
                 tree_partition_id: scope,
                 node_id: root,
-                max_depth: 5,
+                max_depth: Some(5),
+                cursor: None,
                 result_limit: 100,
                 include_path: true,
             },
         )
         .await
         .unwrap();
+    let descendants = descendants.items;
     assert_eq!(descendants.len(), 2);
     assert_eq!(descendants[0].path, Some(vec![root, child]));
     assert_eq!(descendants[1].path, Some(vec![root, child, grandchild]));
@@ -436,7 +438,7 @@ async fn path_move_updates_whole_subtree_and_rolls_back_without_reordering_ident
 }
 
 #[tokio::test]
-async fn deep_tree_has_no_storage_depth_cap_and_preserves_ancestor_query_limit() {
+async fn deep_tree_queries_have_no_arbitrary_depth_cap() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
@@ -461,9 +463,10 @@ async fn deep_tree_has_no_storage_depth_cap_and_preserves_ancestor_query_limit()
         path(&pool, &model.physical_table_name, nodes[299]).await,
         labels(&nodes)
     );
-    let error = store
+    let metadata = runtime_metadata(&model);
+    let ancestors = store
         .list_ordered_tree_ancestors(
-            &runtime_metadata(&model),
+            &metadata,
             OrderedTreeNodeInput {
                 scope_id: scope,
                 tree_partition_id: scope,
@@ -471,11 +474,77 @@ async fn deep_tree_has_no_storage_depth_cap_and_preserves_ancestor_query_limit()
             },
         )
         .await
-        .unwrap_err();
-    assert_eq!(
-        error.downcast_ref::<OrderedTreeQueryError>(),
-        Some(&OrderedTreeQueryError::AncestorDepthLimitExceeded { max: 256 })
-    );
+        .unwrap();
+    assert_eq!(ancestors.len(), 299);
+    for (ancestor, id) in ancestors.iter().zip(&nodes) {
+        assert_eq!(ancestor.record["id"], id.to_string());
+    }
+    for max_depth in [None, Some(299), Some(300), Some(256)] {
+        let page = store
+            .list_ordered_tree_descendants(
+                &metadata,
+                OrderedTreeDescendantsInput {
+                    scope_id: scope,
+                    tree_partition_id: scope,
+                    node_id: nodes[0],
+                    max_depth,
+                    result_limit: 1000,
+                    include_path: false,
+                    cursor: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), max_depth.unwrap_or(299).min(299) as usize);
+        assert!(!page.has_more);
+        assert_eq!(page.next_cursor, None);
+        assert_eq!(
+            page.items.last().unwrap().depth,
+            max_depth.unwrap_or(299).min(299)
+        );
+    }
+    let mut cursor = None;
+    let mut depths = Vec::new();
+    let mut shallow_cursor_len = None;
+    loop {
+        let page = store
+            .list_ordered_tree_descendants(
+                &metadata,
+                OrderedTreeDescendantsInput {
+                    scope_id: scope,
+                    tree_partition_id: scope,
+                    node_id: nodes[0],
+                    max_depth: None,
+                    result_limit: 47,
+                    include_path: true,
+                    cursor,
+                },
+            )
+            .await
+            .unwrap();
+        depths.extend(page.items.iter().map(|node| node.depth));
+        if !page.has_more {
+            assert!(page.next_cursor.is_none());
+            break;
+        }
+        let next = page.next_cursor.unwrap();
+        if let Some(length) = shallow_cursor_len {
+            assert_eq!(
+                next.len(),
+                length,
+                "cursor size is independent of ancestor depth for the same query context"
+            );
+        } else {
+            shallow_cursor_len = Some(next.len());
+        }
+        assert!(next
+            .strip_prefix("ot1.")
+            .unwrap()
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'));
+        cursor = Some(next);
+    }
+    assert_eq!(depths, (1..300).collect::<Vec<_>>());
     store
         .move_ordered_tree_node(
             &runtime_metadata(&model),

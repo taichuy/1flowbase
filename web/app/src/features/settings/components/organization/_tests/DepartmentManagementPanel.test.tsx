@@ -24,20 +24,41 @@ const denied: DepartmentAccess = {
   can_assign_roles: false,
   can_replace_member_departments: false
 };
+function departmentPage(
+  items: {
+    id: string;
+    name: string;
+    parent_id: string | null;
+    role_codes: string[];
+    member_count: number;
+  }[]
+) {
+  return {
+    items: items.map((item) => ({
+      ...item,
+      has_children: items.some((child) => child.parent_id === item.id),
+      is_match: true
+    })),
+    has_more: false,
+    next_cursor: null
+  };
+}
 describe('department operations and access', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuthStore();
     useAuthStore.setState({ csrfToken: 'csrf' });
-    api.fetchSettingsDepartments.mockResolvedValue([
-      {
-        id: 'a',
-        name: 'Engineering',
-        parent_id: null,
-        role_codes: ['operator'],
-        member_count: 9
-      }
-    ]);
+    api.fetchSettingsDepartments.mockResolvedValue(
+      departmentPage([
+        {
+          id: 'a',
+          name: 'Engineering',
+          parent_id: null,
+          role_codes: ['operator'],
+          member_count: 9
+        }
+      ])
+    );
     api.createSettingsDepartment.mockResolvedValue({
       id: 'b',
       name: 'Support',
@@ -54,6 +75,58 @@ describe('department operations and access', () => {
     );
     expect(api.fetchSettingsDepartments).not.toHaveBeenCalled();
     expect(screen.getByText('暂无组织查看权限')).toBeInTheDocument();
+  });
+  test('expands an unloaded empty children array and pages that sibling group on demand', async () => {
+    api.fetchSettingsDepartments.mockImplementation(
+      async ({
+        parent_id,
+        cursor
+      }: {
+        parent_id?: string;
+        cursor?: string;
+      }) => ({
+        items: [
+          {
+            id: parent_id ? (cursor ? 'child2' : 'child') : 'root',
+            name: parent_id
+              ? cursor
+                ? 'Design'
+                : 'Development'
+              : 'Engineering',
+            parent_id: parent_id ?? null,
+            role_codes: [],
+            member_count: 3,
+            has_children: !parent_id,
+            is_match: true
+          }
+        ],
+        has_more: !!parent_id && !cursor,
+        next_cursor: parent_id && !cursor ? 'children-next' : null
+      })
+    );
+    render(
+      <AppProviders>
+        <DepartmentManagementPanel access={{ ...denied, can_list: true }} />
+      </AppProviders>
+    );
+    const root = await screen.findByText('Engineering');
+    expect(api.fetchSettingsDepartments).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Development')).not.toBeInTheDocument();
+    fireEvent.click(
+      root.closest('tr')!.querySelector('.ant-table-row-expand-icon')!
+    );
+    expect(await screen.findByText('Development')).toBeInTheDocument();
+    expect(api.fetchSettingsDepartments).toHaveBeenCalledWith({
+      parent_id: 'root',
+      limit: 50
+    });
+    fireEvent.click(screen.getByRole('button', { name: /加载更多/ }));
+    expect(await screen.findByText('Design')).toBeInTheDocument();
+    expect(api.fetchSettingsDepartments).toHaveBeenCalledWith({
+      parent_id: 'root',
+      cursor: 'children-next',
+      limit: 50
+    });
   });
   test('list-only access displays backend counts and hides every granting action', async () => {
     render(

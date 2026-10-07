@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use domain::ResourceFilterExpr;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
@@ -87,11 +88,30 @@ pub struct OrderedTreeSubtreeDeleteResult {
     pub deleted_count: u64,
 }
 
+/// A live keyset page. Search items include ancestor context, which can repeat across pages.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OrderedTreePage<T> {
+    pub items: Vec<T>,
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+}
+
+impl<T> OrderedTreePage<T> {
+    pub fn map<U>(self, mut map: impl FnMut(T) -> U) -> OrderedTreePage<U> {
+        OrderedTreePage {
+            items: self.items.into_iter().map(&mut map).collect(),
+            has_more: self.has_more,
+            next_cursor: self.next_cursor,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeBoundedListInput {
     pub scope_id: Uuid,
     pub tree_partition_id: Uuid,
     pub result_limit: u32,
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +120,7 @@ pub struct OrderedTreeChildrenInput {
     pub tree_partition_id: Uuid,
     pub parent_id: Uuid,
     pub result_limit: u32,
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,9 +147,10 @@ pub struct OrderedTreeDescendantsInput {
     pub scope_id: Uuid,
     pub tree_partition_id: Uuid,
     pub node_id: Uuid,
-    pub max_depth: u32,
+    pub max_depth: Option<u32>,
     pub result_limit: u32,
     pub include_path: bool,
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +159,7 @@ pub struct OrderedTreeSearchInput {
     pub tree_partition_id: Uuid,
     pub prefix: String,
     pub match_limit: u32,
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -192,12 +215,14 @@ pub enum OrderedTreeQueryError {
     NodeNotFound,
     #[error("ordered-tree query parent not found")]
     ParentNotFound,
-    #[error("ordered-tree query result limit must be between 1 and {max}")]
-    InvalidResultLimit { max: u32 },
-    #[error("ordered-tree descendant depth must be between 1 and {max}")]
-    InvalidMaxDepth { max: u32 },
-    #[error("ordered-tree ancestor depth exceeds hard limit {max}")]
-    AncestorDepthLimitExceeded { max: u32 },
+    #[error("ordered-tree query result limit must be positive")]
+    InvalidResultLimit,
+    #[error("ordered-tree descendant depth must be positive")]
+    InvalidMaxDepth,
+    #[error("ordered-tree cursor is invalid for this query")]
+    InvalidCursor,
+    #[error("ordered-tree cursor anchor has changed or disappeared")]
+    StaleCursor,
     #[error("ordered-tree search prefix must not be empty")]
     EmptySearchPrefix,
     #[error("ordered-tree model has no searchable text fields")]
@@ -261,13 +286,13 @@ pub trait OrderedTreeQueryRepository: Send + Sync {
         &self,
         metadata: &ModelMetadata,
         input: OrderedTreeBoundedListInput,
-    ) -> Result<Vec<OrderedTreeNodeProjection>>;
+    ) -> Result<OrderedTreePage<OrderedTreeNodeProjection>>;
 
     async fn list_ordered_tree_children(
         &self,
         metadata: &ModelMetadata,
         input: OrderedTreeChildrenInput,
-    ) -> Result<Vec<OrderedTreeNodeProjection>>;
+    ) -> Result<OrderedTreePage<OrderedTreeNodeProjection>>;
 
     async fn list_ordered_tree_ancestors(
         &self,
@@ -279,13 +304,13 @@ pub trait OrderedTreeQueryRepository: Send + Sync {
         &self,
         metadata: &ModelMetadata,
         input: OrderedTreeDescendantsInput,
-    ) -> Result<Vec<OrderedTreeDescendantProjection>>;
+    ) -> Result<OrderedTreePage<OrderedTreeDescendantProjection>>;
 
     async fn search_ordered_tree_prefix(
         &self,
         metadata: &ModelMetadata,
         input: OrderedTreeSearchInput,
-    ) -> Result<Vec<OrderedTreeSearchProjection>>;
+    ) -> Result<OrderedTreePage<OrderedTreeSearchProjection>>;
 }
 
 pub trait OrderedTreeRuntimeRepository:

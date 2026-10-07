@@ -571,7 +571,7 @@ fn descriptor_operation_definition(
             "401": { "description": "Missing or invalid API key" },
             "403": { "description": "Operation permission or scope grant denied" },
             "404": { "description": "Data Model operation not found" },
-            "409": { "description": "Data Model state or ordered-tree mutation conflict" },
+            "409": { "description": "Data Model state, ordered-tree mutation or stale cursor conflict" },
             "503": { "description": "Ordered-tree adapter or query capability unavailable" },
             "502": { "description": "RuntimeExtension returned an invalid response" }
         }),
@@ -983,11 +983,51 @@ mod tests {
             ["get"]["parameters"]
             .as_array()
             .expect("GET schema properties must project as parameters");
-        for query_name in ["max_depth", "limit", "include_path"] {
+        for query_name in ["max_depth", "limit", "include_path", "cursor"] {
             assert!(parameters.iter().any(|parameter| {
                 parameter["name"] == query_name && parameter["in"] == "query"
             }));
         }
+        for code in [
+            "tree_roots",
+            "tree_children",
+            "tree_descendants",
+            "tree_search",
+        ] {
+            let descriptor = template
+                .descriptor()
+                .operations
+                .iter()
+                .find(|operation| operation.code == code)
+                .unwrap();
+            let spec = build_operation_openapi(&model, code, &templates).unwrap();
+            let definition = &spec["paths"][operation_path(&model, descriptor)]["get"];
+            let parameters = definition["parameters"].as_array().unwrap();
+            assert!(parameters
+                .iter()
+                .any(|parameter| parameter["name"] == "cursor"));
+            assert!(
+                parameters
+                    .iter()
+                    .filter(|parameter| parameter["name"] == "limit"
+                        || parameter["name"] == "max_depth")
+                    .all(|parameter| parameter["schema"].get("maximum").is_none())
+            );
+            assert!(descriptor.output_schema["properties"]["items"].is_object());
+            assert_eq!(
+                descriptor.output_schema["properties"]["has_more"]["type"],
+                "boolean"
+            );
+            assert_eq!(
+                descriptor.output_schema["properties"]["next_cursor"]["type"],
+                serde_json::json!(["string", "null"])
+            );
+        }
+        let depth = parameters
+            .iter()
+            .find(|parameter| parameter["name"] == "max_depth")
+            .unwrap();
+        assert!(depth["schema"].get("default").is_none());
         let search = build_operation_openapi(&model, "tree_search", &templates).unwrap();
         assert!(
             search["paths"]["/api/runtime/models/orders/tree/search"]["get"]["parameters"]

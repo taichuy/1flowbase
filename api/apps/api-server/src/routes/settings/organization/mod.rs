@@ -7,13 +7,13 @@ use crate::{
     },
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 pub(crate) mod interface;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -43,6 +43,69 @@ impl From<domain::Department> for DepartmentResponse {
             parent_id: d.parent_id.map(|id| id.to_string()),
             role_codes: d.role_codes,
             member_count: d.member_count,
+        }
+    }
+}
+#[derive(Debug, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct DepartmentListQuery {
+    pub parent_id: Option<uuid::Uuid>,
+    pub prefix: Option<String>,
+    /// Comma-separated department IDs for resolving saved selections.
+    pub ids: Option<String>,
+    pub limit: Option<u32>,
+    pub cursor: Option<String>,
+}
+impl DepartmentListQuery {
+    fn into_input(self) -> Result<control_plane::ports::DepartmentListInput, ApiError> {
+        let ids = self
+            .ids
+            .map(|ids| {
+                ids.split(',')
+                    .map(|id| {
+                        uuid::Uuid::parse_str(id.trim()).map_err(|_| {
+                            control_plane::errors::ControlPlaneError::InvalidInput("ids")
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?;
+        Ok(control_plane::ports::DepartmentListInput {
+            parent_id: self.parent_id,
+            prefix: self.prefix,
+            ids,
+            limit: self.limit.unwrap_or(100),
+            cursor: self.cursor,
+        })
+    }
+}
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DepartmentTreeItemResponse {
+    #[serde(flatten)]
+    pub department: DepartmentResponse,
+    pub has_children: bool,
+    pub is_match: bool,
+}
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DepartmentPageResponse {
+    pub items: Vec<DepartmentTreeItemResponse>,
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+}
+impl From<domain::DepartmentPage> for DepartmentPageResponse {
+    fn from(page: domain::DepartmentPage) -> Self {
+        Self {
+            items: page
+                .items
+                .into_iter()
+                .map(|item| DepartmentTreeItemResponse {
+                    department: item.department.into(),
+                    has_children: item.has_children,
+                    is_match: item.is_match,
+                })
+                .collect(),
+            has_more: page.has_more,
+            next_cursor: page.next_cursor,
         }
     }
 }
@@ -130,16 +193,17 @@ pub async fn access(
     };
     Ok(Json(ApiSuccess::new(data)))
 }
-#[utoipa::path(get,path="/api/console/settings/departments",responses((status=200,body=[DepartmentResponse])))]
+#[utoipa::path(get,path="/api/console/settings/departments",params(DepartmentListQuery),responses((status=200,body=DepartmentPageResponse)))]
 pub async fn list(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-) -> Result<Json<ApiSuccess<Vec<DepartmentResponse>>>, ApiError> {
+    Query(query): Query<DepartmentListQuery>,
+) -> Result<Json<ApiSuccess<DepartmentPageResponse>>, ApiError> {
     let interface::OrganizationOutput::Departments(data) = invoke(
         state,
         headers,
         "http.console.departments.list.v1",
-        interface::OrganizationInput::List,
+        interface::OrganizationInput::List(query.into_input()?),
         false,
     )
     .await?

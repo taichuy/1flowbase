@@ -41,3 +41,5 @@ export * from './webmcp';
 export * from './public/mcp-oauth';
 
 export * from './console/departments';
+
+export * from './runtime/tree';

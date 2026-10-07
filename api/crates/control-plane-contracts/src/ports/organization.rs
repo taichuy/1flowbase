@@ -1,6 +1,27 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
+#[derive(Debug, Clone)]
+pub struct DepartmentListInput {
+    pub parent_id: Option<Uuid>,
+    pub prefix: Option<String>,
+    pub ids: Option<Vec<Uuid>>,
+    pub limit: u32,
+    pub cursor: Option<String>,
+}
+
+impl Default for DepartmentListInput {
+    fn default() -> Self {
+        Self {
+            parent_id: None,
+            prefix: None,
+            ids: None,
+            limit: 100,
+            cursor: None,
+        }
+    }
+}
+
 pub struct SaveDepartmentInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
@@ -13,6 +34,11 @@ pub struct SaveDepartmentInput {
 
 #[async_trait]
 pub trait OrganizationRepository: Send + Sync {
+    async fn list_department_page(
+        &self,
+        workspace_id: Uuid,
+        input: DepartmentListInput,
+    ) -> anyhow::Result<domain::DepartmentPage>;
     async fn list_departments(&self, workspace_id: Uuid)
         -> anyhow::Result<Vec<domain::Department>>;
     async fn save_department(

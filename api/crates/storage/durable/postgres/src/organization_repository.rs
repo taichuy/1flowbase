@@ -1,3 +1,5 @@
+mod reads;
+
 use crate::{
     ordered_tree::commands::{
         create_ordered_tree_node_in_transaction, delete_ordered_tree_leaf_in_transaction,
@@ -99,32 +101,19 @@ fn tree_error(error: anyhow::Error) -> anyhow::Error {
 #[async_trait]
 impl OrganizationRepository for PgControlPlaneStore {
     async fn list_departments(&self, workspace_id: Uuid) -> Result<Vec<Department>> {
-        let rows = sqlx::query(
-            r#"
-            select d.id,d.name,d.parent_id,
-                array(select r.code from department_role_bindings b join roles r on r.id=b.role_id
-                      where b.scope_id=$1 and b.department_id=d.id order by r.code) role_codes,
-                (select count(distinct b.user_id) from departments s join user_department_bindings b
-                    on b.department_id=s.id and b.scope_id=$1
-                    where s.scope_id=$1 and s.tree_partition_id=d.tree_partition_id
-                      and ARRAY[s.tree_path] <@ d.tree_path) member_count
-            from departments d where scope_id=$1 order by sibling_rank collate "C",id
-        "#,
-        )
-        .bind(workspace_id)
-        .fetch_all(self.pool())
-        .await?;
-        rows.into_iter()
-            .map(|r| {
-                Ok(Department {
-                    id: r.try_get("id")?,
-                    name: r.try_get("name")?,
-                    parent_id: r.try_get("parent_id")?,
-                    role_codes: r.try_get("role_codes")?,
-                    member_count: r.try_get("member_count")?,
-                })
-            })
-            .collect()
+        Ok(reads::enrich(self.pool(), workspace_id, None)
+            .await?
+            .into_iter()
+            .map(|item| item.department)
+            .collect())
+    }
+
+    async fn list_department_page(
+        &self,
+        workspace_id: Uuid,
+        input: control_plane_contracts::ports::DepartmentListInput,
+    ) -> Result<domain::DepartmentPage> {
+        reads::list_page(self, workspace_id, input).await
     }
 
     async fn save_department(&self, input: &SaveDepartmentInput) -> Result<Department> {
@@ -215,10 +204,11 @@ impl OrganizationRepository for PgControlPlaneStore {
                 .bind(Uuid::now_v7()).bind(input.workspace_id).bind(id).bind(role_id).execute(&mut *tx).await?;
         }
         tx.commit().await?;
-        self.list_departments(input.workspace_id)
+        reads::enrich(self.pool(), input.workspace_id, Some(&[id]))
             .await?
             .into_iter()
-            .find(|d| d.id == id)
+            .map(|item| item.department)
+            .next()
             .ok_or_else(|| Error::NotFound("department").into())
     }
 
