@@ -4,7 +4,7 @@ use super::*;
 pub trait OrchestrationRuntimeRepository: Send + Sync {
     async fn ingest_agent_logs(&self, _application_id: Uuid, _scope_id: Uuid, _api_key_id: Uuid, _batch: &AgentLogsBatch, _costs: &[Option<String>]) -> anyhow::Result<AgentLogsReceipt> { anyhow::bail!("ingest_agent_logs not implemented") }
     async fn application_log_record(&self, _application_id: Uuid, _record_id: Uuid) -> anyhow::Result<Option<ApplicationLogRecordOverview>> { anyhow::bail!("application_log_record not implemented") }
-    async fn record_client_trajectory_page(&self, _application_id: Uuid, _record_id: Uuid, _cursor: Option<i64>, _limit:i64) -> anyhow::Result<ClientTrajectoryPage> { anyhow::bail!("record_client_trajectory_page not implemented") }
+    async fn record_client_trajectory_page(&self, _application_id: Uuid, _record_id: Uuid, _cursor: Option<String>, _limit:i64) -> anyhow::Result<RecordClientTrajectoryPage> { anyhow::bail!("record_client_trajectory_page not implemented") }
     async fn record_client_trajectory_section(&self, _application_id: Uuid, _record_id: Uuid, _step_id:Uuid, _section:&str, _cursor:Option<i64>, _limit:i64) -> anyhow::Result<Option<ClientTrajectorySection>> { anyhow::bail!("record_client_trajectory_section not implemented") }
 
     /// Narrow current-node usage read; no context bodies or published-mode restriction.

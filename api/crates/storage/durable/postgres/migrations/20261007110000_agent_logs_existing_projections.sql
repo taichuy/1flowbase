@@ -4,12 +4,35 @@ alter table applications add constraint applications_application_type_check chec
 alter table application_run_log_tasks drop constraint application_run_log_tasks_id_fkey;
 alter table application_run_log_tasks drop constraint application_run_log_tasks_member_run_ids_check;
 alter table application_run_log_tasks drop constraint application_run_log_tasks_parent_task_run_id_fkey;
+-- Native parent references used run identity; canonicalize to the existing task
+-- anchor before giving source-neutral parent links a task owner.
+update application_run_log_tasks child set parent_task_run_id=(
+ select parent.id from application_run_log_summaries source
+ join application_run_log_tasks parent on parent.id=coalesce(source.log_task_run_id,source.flow_run_id)
+ where source.flow_run_id=child.parent_task_run_id and source.application_id=child.application_id and parent.id<>child.id
+) where child.parent_task_run_id is not null;
 alter table application_run_log_tasks add constraint application_run_log_tasks_parent_task_run_id_fkey foreign key(parent_task_run_id) references application_run_log_tasks(id) on delete set null;
 alter table application_run_log_tasks
  add column source_kind text not null default 'native' check(source_kind in ('native','imported')),
  add column source_id text, add column source_client text, add column source_session_id text, add column source_task_id text, add column parent_source_task_id text,
  add column native_run_id uuid references flow_runs(id) on delete cascade, add column cost_breakdown jsonb;
 update application_run_log_tasks set native_run_id=id;
+-- Every subsequent native projection retains its real run deletion owner.
+create function bind_application_log_native_task_owner() returns trigger language plpgsql as $$
+begin
+ if new.source_kind='native' then
+  new.native_run_id:=new.id;
+  if new.parent_task_run_id is not null then
+   select parent.id into new.parent_task_run_id from application_run_log_summaries source
+   join application_run_log_tasks parent on parent.id=coalesce(source.log_task_run_id,source.flow_run_id)
+   where source.flow_run_id=new.parent_task_run_id and source.application_id=new.application_id and parent.id<>new.id;
+  end if;
+ end if;
+ return new;
+end $$;
+create trigger application_log_native_task_owner before insert or update on application_run_log_tasks
+ for each row execute function bind_application_log_native_task_owner();
+
 create unique index application_run_log_tasks_source_identity on application_run_log_tasks(application_id,source_id,source_session_id,source_task_id) where source_kind='imported';
 alter table application_run_conversation_message_items alter column flow_run_id drop not null;
 alter table application_run_conversation_message_items add column record_id uuid references application_run_log_tasks(id) on delete cascade;

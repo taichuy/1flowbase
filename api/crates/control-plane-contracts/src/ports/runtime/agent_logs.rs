@@ -147,3 +147,40 @@ impl AgentLogsBatch {
         Ok(())
     }
 }
+
+/// Native pages retain their numeric wire position. Imported positions are opaque
+/// versioned strings encoding source sequence and immutable step identity.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum RecordClientTrajectoryCursor {
+    Native(i64),
+    Imported(String),
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordClientTrajectoryPage {
+    pub items: Vec<super::ClientTrajectoryStep>,
+    pub next_cursor: Option<RecordClientTrajectoryCursor>,
+    pub integrity: String,
+}
+impl RecordClientTrajectoryCursor {
+    pub fn imported(sequence: i64, step_id: Uuid) -> Self {
+        Self::Imported(format!("s1:{sequence}:{step_id}"))
+    }
+    pub fn imported_position(cursor: &str) -> anyhow::Result<(i64, Uuid)> {
+        let mut parts = cursor.split(':');
+        anyhow::ensure!(parts.next() == Some("s1"), "record_trajectory_cursor");
+        let sequence = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("record_trajectory_cursor"))?
+            .parse::<i64>()?;
+        let id = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("record_trajectory_cursor"))?
+            .parse::<Uuid>()?;
+        anyhow::ensure!(
+            sequence >= 0 && parts.next().is_none(),
+            "record_trajectory_cursor"
+        );
+        Ok((sequence, id))
+    }
+}

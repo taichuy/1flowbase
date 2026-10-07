@@ -3,7 +3,7 @@ use super::*;
 impl InterfaceContract for ApplicationRuntimeReadsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Record"))]),
+        Some(mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("RecordClientTrajectoryPage")),("item_count",mp::count_schema())]),mp::object_schema(&[("variant",mp::tag_schema("Record"))]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("WorkflowTrajectoryPage")),
                 ("item_count", mp::count_schema()),
@@ -1002,7 +1002,7 @@ impl InterfaceContract for ApplicationRuntimeReadsOutput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(match self {Self::Record(_) => mp::object_value(&[("variant",serde_json::json!("Record"))]),
+        Some(match self {Self::RecordClientTrajectoryPage(page)=>mp::object_value(&[("variant",serde_json::json!("RecordClientTrajectoryPage")),("item_count",serde_json::json!(page.items.len()))]),Self::Record(_) => mp::object_value(&[("variant",serde_json::json!("Record"))]),
 Self::WorkflowTrajectoryPage(value) => mp::object_value(&[("variant", serde_json::json!("WorkflowTrajectoryPage")), ("item_count", serde_json::json!(value.items.len()))]),
 Self::WorkflowTrajectoryBody(value) => mp::object_value(&[("variant", serde_json::json!("WorkflowTrajectoryBody")), ("item_count", serde_json::json!(value.sections.len()))]),
 

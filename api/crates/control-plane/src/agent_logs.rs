@@ -26,7 +26,10 @@ impl<R: BillingRepository + OrchestrationRuntimeRepository> AgentLogsService<R> 
         for event in &batch.events {
             let mut cost = None;
             if let Some(usage) = &event.usage {
-                if !event.inherited {
+                if !event.inherited
+                    && !(usage.basis == crate::ports::AgentLogUsageBasis::Cumulative
+                        && usage.response_id.as_deref().is_none_or(|id| id.is_empty()))
+                {
                     let at = time::OffsetDateTime::parse(
                         &event.occurred_at,
                         &time::format_description::well_known::Rfc3339,

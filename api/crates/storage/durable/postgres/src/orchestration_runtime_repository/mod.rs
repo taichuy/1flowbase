@@ -116,7 +116,7 @@ include!("side_effect_receipt_methods.rs");
 impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     async fn ingest_agent_logs(&self, application_id:Uuid,scope_id:Uuid,api_key_id:Uuid,batch:&control_plane_contracts::ports::AgentLogsBatch,costs:&[Option<String>])->Result<control_plane_contracts::ports::AgentLogsReceipt> { agent_logs::ingest(self,application_id,scope_id,api_key_id,batch,costs).await }
     async fn application_log_record(&self, application_id:Uuid,record_id:Uuid)->Result<Option<control_plane_contracts::ports::ApplicationLogRecordOverview>> {agent_logs::overview(self,application_id,record_id).await}
-    async fn record_client_trajectory_page(&self,application_id:Uuid,record_id:Uuid,cursor:Option<i64>,limit:i64)->Result<control_plane_contracts::ports::ClientTrajectoryPage> {agent_logs::page(self,application_id,record_id,cursor,limit).await}
+    async fn record_client_trajectory_page(&self,application_id:Uuid,record_id:Uuid,cursor:Option<String>,limit:i64)->Result<control_plane_contracts::ports::RecordClientTrajectoryPage> {agent_logs::page(self,application_id,record_id,cursor,limit).await}
     async fn record_client_trajectory_section(&self,application_id:Uuid,record_id:Uuid,step_id:Uuid,section:&str,cursor:Option<i64>,limit:i64)->Result<Option<control_plane_contracts::ports::ClientTrajectorySection>> {agent_logs::section(self,application_id,record_id,step_id,section,cursor,limit).await}
 
     async fn get_flow_run_node_usages(
@@ -1621,7 +1621,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         application_id: Uuid,
         api_key_id: Uuid,
         actor_user_id: Uuid,
-        call_ids: &[Option<String>],
+        call_ids: &[String],
     ) -> Result<Vec<domain::CallbackTaskRecord>> {
         let rows = sqlx::query(
             r#"
@@ -1700,7 +1700,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         application_id: Uuid,
         api_key_id: Uuid,
         actor_user_id: Uuid,
-        call_ids: &[Option<String>],
+        call_ids: &[String],
     ) -> Result<Vec<domain::CallbackTaskRecord>> {
         let rows = sqlx::query(
             r#"

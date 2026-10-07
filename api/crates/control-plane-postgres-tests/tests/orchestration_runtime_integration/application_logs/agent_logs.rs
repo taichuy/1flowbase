@@ -30,12 +30,7 @@ fn batch(events: Vec<AgentLogEvent>) -> AgentLogsBatch {
         events,
     }
 }
-async fn setup() -> (
-    postgres_test_support::PostgresTestSchema,
-    PgControlPlaneStore,
-    Uuid,
-    Uuid,
-) {
+async fn setup() -> (PgControlPlaneStore, Uuid, Uuid) {
     let db = isolated_database().await;
     let store = PgControlPlaneStore::new(db.connect().await.unwrap());
     run_migrations(store.pool()).await.unwrap();
@@ -56,11 +51,11 @@ async fn setup() -> (
         })
         .await
         .unwrap();
-    (db, store, scope, app.id)
+    (store, scope, app.id)
 }
 #[tokio::test]
 async fn agent_logs_atomic_replay_conflict_no_flow_no_credit_three_layers_and_usage_basis() {
-    let (_db, store, scope, app) = setup().await;
+    let (store, scope, app) = setup().await;
     let key = Uuid::now_v7();
     let service = AgentLogsService::new(store.clone());
     let mut system = event(
@@ -210,13 +205,13 @@ async fn agent_logs_atomic_replay_conflict_no_flow_no_credit_three_layers_and_us
 }
 #[tokio::test]
 async fn agent_logs_partial_usage_and_out_of_order_final_are_not_fabricated() {
-    let (_db, store, scope, app) = setup().await;
+    let (store, scope, app) = setup().await;
     let service = AgentLogsService::new(store.clone());
     let key = Uuid::now_v7();
     let mut sparse = event("sparse", 4, AgentLogEventKind::Usage, None);
     sparse.usage = Some(AgentLogUsage {
         basis: AgentLogUsageBasis::Cumulative,
-        response_id: None,
+        response_id: Some("known-response".into()),
         total_tokens: Some(20),
         input_tokens: None,
         output_tokens: None,
@@ -268,7 +263,7 @@ async fn agent_logs_partial_usage_and_out_of_order_final_are_not_fabricated() {
 
 #[tokio::test]
 async fn agent_logs_real_application_key_authentication_cannot_generate() {
-    let (_db, store, scope, app) = setup().await;
+    let (store, scope, app) = setup().await;
     let owner: Uuid = sqlx::query_scalar("select created_by from applications where id=$1")
         .bind(app)
         .fetch_one(store.pool())
@@ -309,4 +304,211 @@ async fn agent_logs_real_application_key_authentication_cannot_generate() {
         .await
         .unwrap();
     assert!(auth.authenticate_bearer_token(token).await.is_err());
+}
+
+#[tokio::test]
+async fn agent_logs_response_delta_excludes_legacy_cumulative_and_exact_cache_cost_is_neutral() {
+    let (store, scope, app) = setup().await;
+    sqlx::query("insert into model_pricing_rules(id,provider_code,upstream_model_id,input_token_unit_size,input_token_unit_price,output_token_unit_size,output_token_unit_price,cache_hit_token_unit_size,cache_hit_token_unit_price,cache_write_token_unit_size,cache_write_token_unit_price,currency_code,effective_from,timezone,weekday_mask,priority,enabled,source_kind,extensions,rules) values($1,'fixture-provider','fixture-model',1000,1.25,1000,2.5,1000,0.1,1000,1.5,'USD','2026-01-01'::timestamptz,'UTC',127,10,true,'manual','{}','[]')")
+        .bind(Uuid::now_v7()).execute(store.pool()).await.unwrap();
+    let balances:serde_json::Value=sqlx::query_scalar("select coalesce(jsonb_agg(to_jsonb(a) order by id),'[]'::jsonb) from user_credit_accounts a").fetch_one(store.pool()).await.unwrap();
+    let credits: i64 = sqlx::query_scalar("select count(*) from runtime_credit_ledger")
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    let mut delta = event("delta-response", 10, AgentLogEventKind::Usage, None);
+    delta.provider_code = Some("fixture-provider".into());
+    delta.model_id = Some("fixture-model".into());
+    delta.usage = Some(AgentLogUsage {
+        basis: AgentLogUsageBasis::Delta,
+        response_id: Some("R".into()),
+        input_tokens: Some(100),
+        output_tokens: Some(40),
+        input_cache_hit_tokens: Some(20),
+        cache_write_tokens: Some(10),
+        total_tokens: Some(140),
+    });
+    let mut legacy = delta.clone();
+    legacy.event_id = "historical-token-count".into();
+    legacy.sequence = 11;
+    legacy.usage.as_mut().unwrap().basis = AgentLogUsageBasis::Cumulative;
+    legacy.usage.as_mut().unwrap().response_id = None;
+    legacy.usage.as_mut().unwrap().total_tokens = Some(700);
+    legacy.raw = json!({"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":700}}}});
+    let service = AgentLogsService::new(store.clone());
+    let id = service
+        .ingest(app, scope, Uuid::now_v7(), batch(vec![delta, legacy]))
+        .await
+        .unwrap()
+        .record_ids[0];
+    let record = store
+        .application_log_record(app, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.total_tokens, Some(140));
+    assert_eq!(record.input_tokens, Some(100));
+    assert_eq!(
+        record
+            .cost_breakdown
+            .total_cost
+            .as_deref()
+            .map(|v| v.trim_end_matches('0')),
+        Some("0.2045")
+    );
+    assert!(sqlx::query_scalar::<_, bool>(
+        "select total_cost=0.2045 from application_run_log_tasks where id=$1"
+    )
+    .bind(id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap());
+    let page = store
+        .record_client_trajectory_page(app, id, None, 50)
+        .await
+        .unwrap();
+    let historical = page
+        .items
+        .iter()
+        .find(|s| s.item_id.as_deref() == Some("historical-token-count"))
+        .unwrap();
+    let preserved = store
+        .record_client_trajectory_section(app, id, historical.id, "overview", None, 8)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        preserved.items[0].value["usage"]["total_tokens"],
+        json!(700)
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from runtime_credit_ledger")
+            .fetch_one(store.pool())
+            .await
+            .unwrap(),
+        credits
+    );
+    assert_eq!(sqlx::query_scalar::<_,serde_json::Value>("select coalesce(jsonb_agg(to_jsonb(a) order by id),'[]'::jsonb) from user_credit_accounts a").fetch_one(store.pool()).await.unwrap(),balances);
+}
+#[tokio::test]
+async fn agent_logs_equal_sequence_pages_are_lossless_and_cancelled_is_not_success() {
+    let (store, scope, app) = setup().await;
+    let service = AgentLogsService::new(store.clone());
+    let mut end = event("abort", 10, AgentLogEventKind::TaskEnd, None);
+    end.phase = Some("cancelled".into());
+    let id = service
+        .ingest(
+            app,
+            scope,
+            Uuid::now_v7(),
+            batch(vec![
+                event("first", 10, AgentLogEventKind::ToolResult, Some("first")),
+                event("second", 10, AgentLogEventKind::ToolResult, Some("second")),
+                end,
+            ]),
+        )
+        .await
+        .unwrap()
+        .record_ids[0];
+    let mut cursor = None;
+    let mut seen = std::collections::BTreeSet::new();
+    loop {
+        let page = store
+            .record_client_trajectory_page(app, id, cursor, 1)
+            .await
+            .unwrap();
+        for item in page.items {
+            assert!(seen.insert(item.item_id.unwrap()));
+        }
+        match page.next_cursor {
+            Some(RecordClientTrajectoryCursor::Imported(next)) => cursor = Some(next),
+            None => break,
+            _ => panic!("imported numeric cursor"),
+        }
+    }
+    assert_eq!(
+        seen,
+        std::collections::BTreeSet::from([
+            "first".to_owned(),
+            "second".to_owned(),
+            "abort".to_owned()
+        ])
+    );
+    let status: String =
+        sqlx::query_scalar("select status from application_run_log_tasks where id=$1")
+            .bind(id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(status, "cancelled");
+}
+
+#[tokio::test]
+async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
+    let db = isolated_database().await;
+    let store = PgControlPlaneStore::new(db.connect().await.unwrap());
+    let before = sqlx::migrate!("../storage/durable/postgres/migrations")
+        .iter()
+        .filter(|m| m.version < 20261007110000)
+        .cloned()
+        .collect::<Vec<_>>();
+    sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(before),
+        ..sqlx::migrate::Migrator::DEFAULT
+    }
+    .run(store.pool())
+    .await
+    .unwrap();
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run(&store, &seeded, &compiled, OffsetDateTime::now_utc()).await;
+    let old: Value =
+        sqlx::query_scalar("select to_jsonb(t) from application_run_log_tasks t where id=$1")
+            .bind(run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    run_migrations(store.pool()).await.unwrap();
+    let preserved:Value=sqlx::query_scalar("select to_jsonb(t)-array['source_kind','source_id','source_client','source_session_id','source_task_id','parent_source_task_id','native_run_id','cost_breakdown'] from application_run_log_tasks t where id=$1").bind(run.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(preserved, old);
+    let record = store
+        .application_log_record(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.native_run_id, Some(run.id));
+    assert_eq!(record.source_kind, "native");
+    let native_page = store
+        .record_client_trajectory_page(seeded.application_id, run.id, None, 1)
+        .await
+        .unwrap();
+    assert!(native_page.next_cursor.is_none());
+    sqlx::query("delete from flow_runs where id=$1")
+        .bind(run.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(store
+        .application_log_record(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .is_none());
+    let fresh = seed_flow_run(&store, &seeded, &compiled, OffsetDateTime::now_utc()).await;
+    let owner: Uuid =
+        sqlx::query_scalar("select native_run_id from application_run_log_tasks where id=$1")
+            .bind(fresh.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(owner, fresh.id);
+    sqlx::query("delete from flow_runs where id=$1")
+        .bind(fresh.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(store
+        .application_log_record(seeded.application_id, fresh.id)
+        .await
+        .unwrap()
+        .is_none());
 }

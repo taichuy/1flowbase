@@ -31,7 +31,7 @@ use crate::{
 
 pub(crate) enum ApplicationRuntimeReadsInput {
     GetRecord { application_id:Uuid, record_id:Uuid },
-    RecordClientTrajectoryPage { application_id:Uuid, record_id:Uuid, query:provider_trajectory::ClientTrajectoryQuery },
+    RecordClientTrajectoryPage { application_id:Uuid, record_id:Uuid, query:provider_trajectory::RecordClientTrajectoryQuery },
     RecordClientTrajectorySection { application_id:Uuid, record_id:Uuid,step_id:Uuid,query:provider_trajectory::ClientTrajectoryQuery },
     WorkflowTrajectoryPage {
         application_id: Uuid,
@@ -136,6 +136,7 @@ pub(crate) enum ApplicationRuntimeReadsInput {
 }
 
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    RecordClientTrajectoryPage(control_plane::ports::RecordClientTrajectoryPage),
     Record(control_plane::ports::ApplicationLogRecordOverview),
     WorkflowTrajectoryPage(control_plane::ports::WorkflowTrajectoryPage),
     WorkflowTrajectoryBody(control_plane::ports::WorkflowTrajectoryBody),
@@ -816,7 +817,7 @@ impl ApplicationRuntimeReadsAdapter {
             },
             ApplicationRuntimeReadsInput::RecordClientTrajectoryPage{application_id,record_id,query} => {
                 self.visible_application(actor,application_id).await?;
-                Ok(ApplicationRuntimeReadsOutput::ClientTrajectoryPage(self.store.record_client_trajectory_page(application_id,record_id,query.cursor,query.limit.unwrap_or(50)).await?))
+                Ok(ApplicationRuntimeReadsOutput::RecordClientTrajectoryPage(self.store.record_client_trajectory_page(application_id,record_id,query.cursor,query.limit.unwrap_or(50)).await?))
             },
             ApplicationRuntimeReadsInput::RecordClientTrajectorySection{application_id,record_id,step_id,query} => {
                 self.visible_application(actor,application_id).await?;

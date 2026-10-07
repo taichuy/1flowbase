@@ -598,7 +598,7 @@ impl PgControlPlaneStore {
             anyhow::ensure!(
                 step.id == row.get::<Uuid, _>("id")
                     && step.request_id == input.request_id
-                    && step.flow_run_id == input.flow_run_id
+                    && step.flow_run_id == Some(input.flow_run_id)
                     && step.node_run_id == input.node_run_id,
                 "client historical step scope mismatch"
             );

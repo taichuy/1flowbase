@@ -30,3 +30,24 @@ fn optional_agent_usage_rejects_negative_counts_without_capacity_guesses() {
     batch.events = vec![event; 1001];
     assert!(batch.validate().is_ok());
 }
+
+#[test]
+fn agent_logs_lossless_cursor_wire_preserves_native_numbers_and_imported_ties() {
+    let id = uuid::Uuid::now_v7();
+    let cursor = RecordClientTrajectoryCursor::imported(10, id);
+    assert_eq!(
+        serde_json::to_value(RecordClientTrajectoryCursor::Native(10)).unwrap(),
+        json!(10)
+    );
+    let token = serde_json::to_value(cursor)
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        RecordClientTrajectoryCursor::imported_position(&token).unwrap(),
+        (10, id)
+    );
+    assert!(RecordClientTrajectoryCursor::imported_position("10").is_err());
+    assert!(RecordClientTrajectoryCursor::imported_position(&format!("s1:10:{id}:extra")).is_err());
+}

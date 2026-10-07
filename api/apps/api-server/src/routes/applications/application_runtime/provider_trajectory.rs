@@ -214,12 +214,15 @@ pub async fn get_log_record(State(state):State<Arc<ApiState>>,headers:HeaderMap,
     let interface_runtime_reads::ApplicationRuntimeReadsOutput::Record(record)=output else {unreachable!("record binding output")};
     Ok(Json(ApiSuccess::new(record)))
 }
+#[derive(Debug,Default,Deserialize)]
+pub struct RecordClientTrajectoryQuery {pub cursor:Option<String>,pub limit:Option<i64>}
+
 /// List recorded client trajectory for a source-neutral log record.
 /// Reads bounded client occurrence summaries for Native and imported records without loading source bodies.
-#[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}/client-trajectory",params(("id"=Uuid,Path),("record_id"=Uuid,Path),("cursor"=Option<i64>,Query),("limit"=Option<i64>,Query)),responses((status=200,body=serde_json::Value)))]
-pub async fn list_record_client_trajectory(State(state):State<Arc<ApiState>>,headers:HeaderMap,Path((application_id,record_id)):Path<(Uuid,Uuid)>,Query(query):Query<ClientTrajectoryQuery>)->Result<Json<ApiSuccess<control_plane::ports::ClientTrajectoryPage>>,ApiError> {
+#[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}/client-trajectory",params(("id"=Uuid,Path),("record_id"=Uuid,Path),("cursor"=Option<String>,Query),("limit"=Option<i64>,Query)),responses((status=200,body=serde_json::Value)))]
+pub async fn list_record_client_trajectory(State(state):State<Arc<ApiState>>,headers:HeaderMap,Path((application_id,record_id)):Path<(Uuid,Uuid)>,Query(query):Query<RecordClientTrajectoryQuery>)->Result<Json<ApiSuccess<control_plane::ports::RecordClientTrajectoryPage>>,ApiError> {
     let output=crate::routes::console_interface::invoke(Arc::clone(&state),"http.console.applications.runtime.record.client-trajectory.list.v1",crate::extension_bus::ConsoleAuthenticationCredential::Protocol{state,headers},interface_runtime_reads::ApplicationRuntimeReadsInput::RecordClientTrajectoryPage{application_id,record_id,query}).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ClientTrajectoryPage(page)=output else {unreachable!("record trajectory binding output")};
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RecordClientTrajectoryPage(page)=output else {unreachable!("record trajectory binding output")};
     Ok(Json(ApiSuccess::new(page)))
 }
 /// Get one recorded client trajectory section.

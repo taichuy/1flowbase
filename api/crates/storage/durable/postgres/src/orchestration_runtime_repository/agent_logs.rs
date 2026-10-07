@@ -172,6 +172,7 @@ async fn refresh_task(
     let mut user = None;
     let mut final_output = None;
     let mut ended = false;
+    let mut cancelled = false;
     let mut parent = None;
     let mut usage_groups: BTreeMap<String, Vec<&(AgentLogEvent, Option<String>)>> = BTreeMap::new();
     for item in &events {
@@ -200,9 +201,15 @@ async fn refresh_task(
         }
         if e.kind == AgentLogEventKind::TaskEnd {
             ended = true;
+            cancelled = e.phase.as_deref() == Some("cancelled");
         }
         if let Some(u) = &e.usage {
             if e.inherited {
+                continue;
+            }
+            if u.basis == AgentLogUsageBasis::Cumulative
+                && u.response_id.as_deref().is_none_or(|id| id.is_empty())
+            {
                 continue;
             }
             usage_groups
@@ -283,7 +290,9 @@ async fn refresh_task(
     let last = events
         .last()
         .ok_or_else(|| anyhow!("agent_logs.empty_record"))?;
-    let status = if ended || final_output.is_some() {
+    let status = if cancelled {
+        "cancelled"
+    } else if ended || final_output.is_some() {
         "succeeded"
     } else {
         "running"
@@ -296,7 +305,7 @@ async fn refresh_task(
         "in_progress"
     };
     let final_text = final_output.as_ref().map(|(s, _)| s);
-    sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),title),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=case when $5='succeeded' then $12::timestamptz end,updated_at=now(),parent_source_task_id=$13,parent_task_run_id=(select p.id from application_run_log_tasks p where p.application_id=$1 and p.source_id=application_run_log_tasks.source_id and p.source_session_id=application_run_log_tasks.source_session_id and p.source_task_id=$13 and p.id<>$2) where application_id=$1 and id=$2")
+    sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),title),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=case when $5 in ('succeeded','cancelled') then $12::timestamptz end,updated_at=now(),parent_source_task_id=$13,parent_task_run_id=(select p.id from application_run_log_tasks p where p.application_id=$1 and p.source_id=application_run_log_tasks.source_id and p.source_session_id=application_run_log_tasks.source_session_id and p.source_task_id=$13 and p.id<>$2) where application_id=$1 and id=$2")
         .bind(application_id).bind(record_id).bind(user).bind(final_text).bind(status).bind(outcome).bind(totals[0]).bind(totals[1]).bind(totals[2]).bind(totals[3]).bind(if cost_complete {Some(total_cost.to_string())}else{None}).bind(&last.0.occurred_at).bind(parent).execute(&mut **tx).await?;
     sqlx::query("delete from application_run_conversation_message_items where application_id=$1 and record_id=$2").bind(application_id).bind(record_id).execute(&mut **tx).await?;
     for m in messages {
@@ -350,20 +359,36 @@ pub(super) async fn page(
     store: &PgControlPlaneStore,
     application_id: Uuid,
     record_id: Uuid,
-    cursor: Option<i64>,
+    cursor: Option<String>,
     limit: i64,
-) -> Result<ClientTrajectoryPage> {
+) -> Result<RecordClientTrajectoryPage> {
     let native = record_native_run(store, application_id, record_id)
         .await?
         .ok_or(ControlPlaneError::NotFound("log_record"))?;
     if let Some(run) = native {
-        return store
+        let cursor = cursor
+            .map(|c| c.parse::<i64>())
+            .transpose()
+            .map_err(|_| ControlPlaneError::InvalidInput("record_trajectory_cursor"))?;
+        let page = store
             .read_client_trajectory_page(run, None, cursor, limit)
-            .await;
+            .await?;
+        return Ok(RecordClientTrajectoryPage {
+            items: page.items,
+            next_cursor: page.next_cursor.map(RecordClientTrajectoryCursor::Native),
+            integrity: page.integrity,
+        });
     }
+    let position = cursor
+        .as_deref()
+        .map(RecordClientTrajectoryCursor::imported_position)
+        .transpose()
+        .map_err(|_| ControlPlaneError::InvalidInput("record_trajectory_cursor"))?;
+    let sequence = position.map(|p| p.0);
+    let step_id = position.map(|p| p.1);
     let limit = limit.clamp(1, 100);
-    let rows=sqlx::query("select runtime_original_json(s.metadata,s.raw_json_payloads,'metadata') as body from client_trajectory_steps s join application_run_log_tasks t on t.id=s.record_id where t.application_id=$1 and t.id=$2 and ($3::bigint is null or s.event_sequence>$3) order by s.event_sequence,s.id limit $4")
-        .bind(application_id).bind(record_id).bind(cursor).bind(limit+1).fetch_all(store.pool()).await?;
+    let rows=sqlx::query("select runtime_original_json(s.metadata,s.raw_json_payloads,'metadata') as body from client_trajectory_steps s join application_run_log_tasks t on t.id=s.record_id where t.application_id=$1 and t.id=$2 and ($3::bigint is null or (s.event_sequence,s.id)>($3,$4::uuid)) order by s.event_sequence,s.id limit $5")
+        .bind(application_id).bind(record_id).bind(sequence).bind(step_id).bind(limit+1).fetch_all(store.pool()).await?;
     let mut items = rows
         .into_iter()
         .map(|r| serde_json::from_value::<ClientTrajectoryStep>(r.get("body")).map_err(Into::into))
@@ -371,11 +396,13 @@ pub(super) async fn page(
     let more = items.len() > limit as usize;
     items.truncate(limit as usize);
     let next_cursor = if more {
-        items.last().map(|i| i.sequence)
+        items
+            .last()
+            .map(|s| RecordClientTrajectoryCursor::imported(s.sequence, s.id))
     } else {
         None
     };
-    Ok(ClientTrajectoryPage {
+    Ok(RecordClientTrajectoryPage {
         items,
         next_cursor,
         integrity: "complete".into(),
