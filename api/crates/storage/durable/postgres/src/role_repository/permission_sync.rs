@@ -7,10 +7,30 @@ use control_plane_contracts::{
     ports::ConsolePermissionCatalogRepository, CompiledConsolePolicyCatalog,
     CompiledConsolePolicyGroup,
 };
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 use super::role_console_policy_by_id;
 use crate::repositories::PgControlPlaneStore;
+
+/// Seed a newly created Admin from the published catalog. The publication lock is held by
+/// the caller; existing grants are never replaced and full groups need no operation rows.
+pub(crate) async fn seed_admin_console_policy(
+    tx: &mut Transaction<'_, Postgres>,
+    role_id: Uuid,
+) -> Result<()> {
+    sqlx::query(
+        r#"insert into role_console_group_policies
+        (id, role_id, group_kind, group_id, enabled, strategy)
+        select gen_random_uuid(), $1, group_kind, group_id, true, 'full'
+        from console_permission_catalog_groups
+        on conflict (role_id, group_kind, group_id) do nothing"#,
+    )
+    .bind(role_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
 
 #[async_trait]
 impl ConsolePermissionCatalogRepository for PgControlPlaneStore {
@@ -113,6 +133,16 @@ impl ConsolePermissionCatalogRepository for PgControlPlaneStore {
             }
         }
         if !initialized {
+            // Bootstrap runs before the first catalog publication. Only initialize pristine
+            // default Admin roles here; subsequent publications never backfill the baseline.
+            sqlx::query("lock table roles, role_console_group_policies, role_console_operation_policies in share row exclusive mode")
+                .execute(&mut *tx).await?;
+            let admin_ids: Vec<Uuid> = sqlx::query_scalar(
+                "select id from roles where scope_kind = 'workspace' and code = 'admin' and auto_grant_new_permissions = true and not exists (select 1 from role_console_group_policies where role_id = roles.id) order by id"
+            ).fetch_all(&mut *tx).await?;
+            for role_id in admin_ids {
+                seed_admin_console_policy(&mut tx, role_id).await?;
+            }
             sqlx::query("update console_permission_catalog_sync set initialized = true where singleton = true")
                 .execute(&mut *tx).await?;
         }

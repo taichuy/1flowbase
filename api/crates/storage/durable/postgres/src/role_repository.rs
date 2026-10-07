@@ -43,3 +43,5 @@ use data_policy::{
 };
 
 pub(crate) use console_policy::role_console_policy_by_id;
+
+pub(crate) use permission_sync::seed_admin_console_policy;

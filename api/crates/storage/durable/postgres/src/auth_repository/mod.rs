@@ -189,6 +189,13 @@ async fn upsert_role_templates(
     roles: impl IntoIterator<Item = domain::RoleTemplate>,
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
+    // Share publication order with catalog synchronization, including workspaces created
+    // after boot. Acquire this before writing roles to avoid a table-lock inversion.
+    sqlx::query(
+        "select initialized from console_permission_catalog_sync where singleton = true for update",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
 
     for role in roles {
         let scope_kind = match role.scope_kind {
@@ -258,6 +265,9 @@ async fn upsert_role_templates(
         };
 
         if inserted_role_id.is_some() {
+            if role.scope_kind == RoleScopeKind::Workspace && role.code == "admin" {
+                crate::role_repository::seed_admin_console_policy(&mut tx, role_id).await?;
+            }
             for permission_code in role.permissions {
                 sqlx::query(
                     r#"

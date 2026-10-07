@@ -336,3 +336,134 @@ async fn ac_002_row_grants_use_compiled_scope_and_preserve_explicit_own_scope() 
         );
     }
 }
+
+#[tokio::test]
+async fn fresh_admin_receives_full_baseline_and_new_permissions_without_resetting_edits() {
+    let (store, workspace) = fixture().await;
+    control_plane_test_support::upsert_builtin_roles(&store, workspace)
+        .await
+        .unwrap();
+    let receiver_before = policy(&store, workspace, "receiver").await;
+    sync_console_permission_catalog(&store, &inventory(BASE))
+        .await
+        .unwrap();
+    let admin = policy(&store, workspace, "admin").await;
+    assert_eq!(admin.groups().len(), BASE.len());
+    for (g, id) in BASE {
+        assert!(allowed(&admin, g, id));
+        let grant = admin
+            .groups()
+            .iter()
+            .find(|row| row.group() == &group(g))
+            .unwrap();
+        assert!(grant.enabled());
+        assert_eq!(grant.strategy(), domain::ConsolePolicyStrategy::Full);
+    }
+    assert!(policy(&store, workspace, "member")
+        .await
+        .groups()
+        .is_empty());
+    assert_eq!(policy(&store, workspace, "receiver").await, receiver_before);
+
+    save(
+        &store,
+        workspace,
+        "admin",
+        vec![
+            RoleConsoleGroupPolicy::custom(
+                group("other.existing"),
+                vec![operation("existing.old", false)],
+            ),
+            RoleConsoleGroupPolicy::disabled(group("other.closed")),
+            RoleConsoleGroupPolicy::full(group("other.full")),
+        ],
+    )
+    .await;
+    let before_restart = policy(&store, workspace, "admin").await;
+    control_plane_test_support::upsert_builtin_roles(&store, workspace)
+        .await
+        .unwrap();
+    sync_console_permission_catalog(&store, &inventory(BASE))
+        .await
+        .unwrap();
+    assert_eq!(policy(&store, workspace, "admin").await, before_restart);
+    let mut next = BASE.to_vec();
+    next.extend_from_slice(&[
+        ("other.existing", "existing.future"),
+        ("other.closed", "closed.future"),
+        ("other.full", "full.future"),
+        ("other.future", "future.read"),
+    ]);
+    sync_console_permission_catalog(&store, &inventory(&next))
+        .await
+        .unwrap();
+    let admin = policy(&store, workspace, "admin").await;
+    assert!(allowed(&admin, "other.existing", "existing.future"));
+    assert!(allowed(&admin, "other.full", "full.future"));
+    assert!(allowed(&admin, "other.future", "future.read"));
+    assert!(!allowed(&admin, "other.existing", "existing.old"));
+    assert!(!allowed(&admin, "other.closed", "closed.future"));
+    assert!(!allowed(&admin, "other.absent", "absent.old"));
+
+    sqlx::query("update roles set auto_grant_new_permissions = false where id = $1")
+        .bind(admin.role_id())
+        .execute(store.pool())
+        .await
+        .unwrap();
+    control_plane_test_support::upsert_builtin_roles(&store, workspace)
+        .await
+        .unwrap();
+    next.extend_from_slice(&[
+        ("other.existing", "existing.opted_out"),
+        ("other.opted_out", "opted_out.read"),
+    ]);
+    sync_console_permission_catalog(&store, &inventory(&next))
+        .await
+        .unwrap();
+    let admin = policy(&store, workspace, "admin").await;
+    assert!(!allowed(&admin, "other.existing", "existing.opted_out"));
+    assert!(!allowed(&admin, "other.opted_out", "opted_out.read"));
+}
+
+#[tokio::test]
+async fn workspace_admin_created_after_catalog_publication_receives_full_baseline() {
+    let (store, _) = fixture().await;
+    sync_console_permission_catalog(&store, &inventory(BASE))
+        .await
+        .unwrap();
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "later-workspace")
+        .await
+        .unwrap();
+    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
+        .await
+        .unwrap();
+    let admin = policy(&store, workspace.id, "admin").await;
+    assert_eq!(admin.groups().len(), BASE.len());
+    for (g, id) in BASE {
+        assert!(allowed(&admin, g, id));
+    }
+    assert!(policy(&store, workspace.id, "member")
+        .await
+        .groups()
+        .is_empty());
+    save(
+        &store,
+        workspace.id,
+        "admin",
+        vec![RoleConsoleGroupPolicy::disabled(group("other.existing"))],
+    )
+    .await;
+    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
+        .await
+        .unwrap();
+    sync_console_permission_catalog(&store, &inventory(BASE))
+        .await
+        .unwrap();
+    assert!(!allowed(
+        &policy(&store, workspace.id, "admin").await,
+        "other.existing",
+        "existing.old"
+    ));
+}
