@@ -193,7 +193,9 @@ async fn refresh_task(
                 AgentLogEventKind::User => {
                     user = Some(content.clone());
                 }
-                AgentLogEventKind::Assistant if e.phase.as_deref() == Some("final_answer") => {
+                AgentLogEventKind::Assistant | AgentLogEventKind::TaskEnd
+                    if e.phase.as_deref() == Some("final_answer") && !content.trim().is_empty() =>
+                {
                     final_output = Some((content.clone(), e.sequence));
                 }
                 _ => {}

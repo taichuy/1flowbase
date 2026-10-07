@@ -262,6 +262,232 @@ async fn agent_logs_partial_usage_and_out_of_order_final_are_not_fabricated() {
 }
 
 #[tokio::test]
+async fn agent_logs_completion_final_is_single_replay_safe_and_sequence_ordered() {
+    let (store, scope, app) = setup().await;
+    let service = AgentLogsService::new(store.clone());
+    let key = Uuid::now_v7();
+    let mut completion = event(
+        "completion-final",
+        10,
+        AgentLogEventKind::TaskEnd,
+        Some("declared final"),
+    );
+    completion.phase = Some("final_answer".into());
+    let id = service
+        .ingest(app, scope, key, batch(vec![completion.clone()]))
+        .await
+        .unwrap()
+        .record_ids[0];
+    let completion_only = store
+        .application_log_record(app, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(completion_only.outcome, "final_answer_observed");
+    assert_eq!(completion_only.messages.len(), 1);
+    assert_eq!(completion_only.messages[0].role, "assistant");
+    assert_eq!(completion_only.messages[0].content, "declared final");
+    assert_eq!(completion_only.messages[0].sequence, 10);
+
+    let user = event("question", 1, AgentLogEventKind::User, Some("question"));
+    let ordinary = event(
+        "ordinary",
+        2,
+        AgentLogEventKind::Assistant,
+        Some("progress"),
+    );
+    let mut overlap = event(
+        "assistant-final",
+        8,
+        AgentLogEventKind::Assistant,
+        Some("declared final"),
+    );
+    overlap.phase = Some("final_answer".into());
+    let mut older_completion = completion.clone();
+    older_completion.event_id = "older-completion".into();
+    older_completion.sequence = 3;
+    older_completion.content = Some("older final".into());
+    service
+        .ingest(
+            app,
+            scope,
+            key,
+            batch(vec![overlap.clone(), ordinary.clone(), user.clone()]),
+        )
+        .await
+        .unwrap();
+    service
+        .ingest(app, scope, key, batch(vec![older_completion.clone()]))
+        .await
+        .unwrap();
+    let replay = service
+        .ingest(
+            app,
+            scope,
+            key,
+            batch(vec![
+                completion.clone(),
+                older_completion,
+                overlap,
+                ordinary,
+                user,
+            ]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replay.accepted_events, 0);
+    assert_eq!(replay.duplicate_events, 5);
+    let record = store
+        .application_log_record(app, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.outcome, "final_answer_observed");
+    assert_eq!(record.messages.len(), 2);
+    assert_eq!(record.messages[0].role, "user");
+    assert_eq!(record.messages[0].content, "question");
+    assert_eq!(record.messages[1].role, "assistant");
+    assert_eq!(record.messages[1].content, "declared final");
+    assert_eq!(record.messages[1].sequence, 10);
+    let task: (String, Option<String>) =
+        sqlx::query_as("select status,final_output from application_run_log_tasks where id=$1")
+            .bind(id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(task, ("succeeded".into(), Some("declared final".into())));
+    let page = store
+        .record_client_trajectory_page(app, id, None, 20)
+        .await
+        .unwrap();
+    assert_eq!(page.items.len(), 5);
+    assert_eq!(
+        page.items
+            .iter()
+            .map(|s| s.item_id.as_deref().unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            "question",
+            "ordinary",
+            "older-completion",
+            "assistant-final",
+            "completion-final"
+        ]
+    );
+    let completion_step = page.items.last().unwrap();
+    let raw = store
+        .record_client_trajectory_section(app, id, completion_step.id, "raw", None, 8)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        raw.items[0].value,
+        serde_json::to_value(completion).unwrap()
+    );
+}
+
+#[tokio::test]
+async fn agent_logs_undeclared_empty_cancelled_and_inherited_completions_have_no_final() {
+    let (store, scope, app) = setup().await;
+    let service = AgentLogsService::new(store.clone());
+    let key = Uuid::now_v7();
+    for (case, phase, content, inherited, status, outcome) in [
+        (
+            "undeclared",
+            None,
+            Some("arbitrary text"),
+            false,
+            "succeeded",
+            "no_final_answer",
+        ),
+        (
+            "no-content",
+            Some("final_answer"),
+            None,
+            false,
+            "succeeded",
+            "no_final_answer",
+        ),
+        (
+            "empty",
+            Some("final_answer"),
+            Some(""),
+            false,
+            "succeeded",
+            "no_final_answer",
+        ),
+        (
+            "blank",
+            Some("final_answer"),
+            Some(" \n "),
+            false,
+            "succeeded",
+            "no_final_answer",
+        ),
+        (
+            "cancelled",
+            Some("cancelled"),
+            Some("must not be final"),
+            false,
+            "cancelled",
+            "no_final_answer",
+        ),
+        (
+            "inherited",
+            Some("final_answer"),
+            Some("historic final"),
+            true,
+            "running",
+            "in_progress",
+        ),
+    ] {
+        let mut ordinary = event(
+            &format!("{case}-assistant"),
+            1,
+            AgentLogEventKind::Assistant,
+            Some("arbitrary assistant"),
+        );
+        ordinary.source_task_id = case.into();
+        let mut completion = event(
+            &format!("{case}-completion"),
+            2,
+            AgentLogEventKind::TaskEnd,
+            content,
+        );
+        completion.source_task_id = case.into();
+        completion.phase = phase.map(Into::into);
+        completion.inherited = inherited;
+        let id = service
+            .ingest(app, scope, key, batch(vec![ordinary, completion]))
+            .await
+            .unwrap()
+            .record_ids[0];
+        let record = store
+            .application_log_record(app, id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            record.messages.is_empty(),
+            "{case} must not manufacture a final"
+        );
+        assert_eq!(record.outcome, outcome, "{case}");
+        let task: (String, Option<String>) =
+            sqlx::query_as("select status,final_output from application_run_log_tasks where id=$1")
+                .bind(id)
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(task, (status.into(), None), "{case}");
+        let page = store
+            .record_client_trajectory_page(app, id, None, 20)
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), 2, "{case} must retain original facts");
+    }
+}
+
+#[tokio::test]
 async fn agent_logs_real_application_key_authentication_cannot_generate() {
     let (store, scope, app) = setup().await;
     let owner: Uuid = sqlx::query_scalar("select created_by from applications where id=$1")

@@ -23,6 +23,9 @@ pub struct AgentLogEvent {
     pub occurred_at: String,
     pub kind: AgentLogEventKind,
     pub content: Option<String>,
+    /// Source declaration: `final_answer` with nonempty content on assistant or
+    /// task_end supplies the final answer; `cancelled` on task_end marks cancellation.
+    /// Conversation projects only the last eligible non-inherited final declaration.
     pub phase: Option<String>,
     pub name: Option<String>,
     pub call_id: Option<String>,
