@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 export function useProgressiveTrajectory(
   active: boolean,
   pages: {
+    data?: { pages: unknown[] };
     hasNextPage: boolean;
     isFetching: boolean;
     isError: boolean;
@@ -11,9 +12,18 @@ export function useProgressiveTrajectory(
   }
 ) {
   const { hasNextPage, isFetching, isError, fetchNextPage } = pages;
+  // Immediate responses can batch fetching transitions; completed pages still advance.
+  const completedPageCount = pages.data?.pages.length ?? 0;
   useEffect(() => {
     if (!active || !hasNextPage || isFetching || isError) return;
     const timer = window.setTimeout(() => void fetchNextPage(), 100);
     return () => window.clearTimeout(timer);
-  }, [active, hasNextPage, isFetching, isError, fetchNextPage]);
+  }, [
+    active,
+    completedPageCount,
+    hasNextPage,
+    isFetching,
+    isError,
+    fetchNextPage
+  ]);
 }
