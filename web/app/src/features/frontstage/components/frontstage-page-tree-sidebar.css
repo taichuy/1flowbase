@@ -267,18 +267,7 @@
 }
 
 @media (max-width: 991px) {
-  .frontstage-page-tree-sidebar {
-    height: auto;
-    min-height: auto;
-    padding-inline: 0;
-  }
-
-  .frontstage-page-tree-sidebar__tree {
-    overflow: visible;
-  }
-}
-
-@media (max-width: 767px) {
+  /* The app-shell navigation drawer owns the page tree in compact layouts. */
   .frontstage-page-tree-sidebar {
     display: none;
   }
