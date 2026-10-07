@@ -1,18 +1,22 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Space, Switch, Typography } from 'antd';
+import { Space, Switch, Tag, Typography } from 'antd';
+
+import type { ApplicationDetail } from '../../api/applications';
 
 import type { ApplicationApiPublication } from '../../api/public-api';
 
 export function ApplicationApiStatusBar({
   publication,
+  apiStatus,
   loading,
   onTogglePublished,
   toolbar,
   children
 }: {
   publication: ApplicationApiPublication | null;
+  apiStatus?: ApplicationDetail['sections']['api'];
   loading?: boolean;
   onTogglePublished?: (published: boolean) => void;
   toolbar?: ReactNode;
@@ -29,13 +33,21 @@ export function ApplicationApiStatusBar({
       <div className="application-api-status__header">
         <Space className="application-api-status__summary" align="center" wrap>
           <Typography.Text strong>{t('auto.public_api')}</Typography.Text>
-          <Switch
-            checked={published}
-            loading={loading}
-            checkedChildren={t('auto.publication_published')}
-            unCheckedChildren={t('auto.publication_draft')}
-            onChange={onTogglePublished}
-          />
+          {apiStatus ? (
+            <Tag>
+              {apiStatus.api_enabled
+                ? t('agent_logs.api_enabled')
+                : t('agent_logs.api_disabled')}
+            </Tag>
+          ) : (
+            <Switch
+              checked={published}
+              loading={loading}
+              checkedChildren={t('auto.publication_published')}
+              unCheckedChildren={t('auto.publication_draft')}
+              onChange={onTogglePublished}
+            />
+          )}
           {publication ? (
             <Typography.Text type="secondary">
               active publication v{publication.version_sequence}

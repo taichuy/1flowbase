@@ -507,27 +507,36 @@ impl ApplicationDocsAdapter {
         let application = ApplicationService::new(actor_store.clone())
             .get_application(actor.user_id, application_id)
             .await?;
-        let active_publication = ApplicationPublicationService::new(actor_store)
-            .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
-            .await
-            .ok();
+        let log_collection = application.application_type == domain::ApplicationType::AgentLogs;
+        let active_publication = if log_collection {
+            None
+        } else {
+            ApplicationPublicationService::new(actor_store)
+                .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
+                .await
+                .ok()
+        };
         Ok(ApplicationPublicDocsContext {
             application,
             active_publication,
             locale: locale.as_str().to_string(),
-            assistant_operations: [
-                "assistant_start_run_stream",
-                "assistant_create_websocket_ticket",
-                "assistant_runs_websocket",
-            ]
-            .into_iter()
-            .filter_map(|operation_id| {
-                Some(ApplicationSessionOperation {
-                    operation: self.api_docs.operation(operation_id)?,
-                    spec: self.api_docs.operation_spec(operation_id)?.clone(),
+            assistant_operations: if log_collection {
+                Vec::new()
+            } else {
+                [
+                    "assistant_start_run_stream",
+                    "assistant_create_websocket_ticket",
+                    "assistant_runs_websocket",
+                ]
+                .into_iter()
+                .filter_map(|operation_id| {
+                    Some(ApplicationSessionOperation {
+                        operation: self.api_docs.operation(operation_id)?,
+                        spec: self.api_docs.operation_spec(operation_id)?.clone(),
+                    })
                 })
-            })
-            .collect(),
+                .collect()
+            },
         })
     }
 }

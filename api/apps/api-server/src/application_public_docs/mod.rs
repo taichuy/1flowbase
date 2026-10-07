@@ -6,6 +6,7 @@ use crate::openapi_docs::{
     DocsCatalog, DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation,
 };
 
+mod agent_logs;
 mod schemas;
 
 use schemas::{
@@ -79,31 +80,28 @@ pub fn build_application_public_docs_catalog(
     context: &ApplicationPublicDocsContext,
 ) -> DocsCatalog {
     let locale = docs_locale(context);
-    let operations = public_operations();
-    let mut categories = [
-        (
-            NATIVE_CATEGORY_ID,
-            category_label(NATIVE_CATEGORY_ID, locale),
-        ),
-        (
-            OPENAI_CATEGORY_ID,
-            category_label(OPENAI_CATEGORY_ID, locale),
-        ),
-        (
-            ANTHROPIC_CATEGORY_ID,
-            category_label(ANTHROPIC_CATEGORY_ID, locale),
-        ),
-    ]
-    .into_iter()
-    .map(|(id, label)| DocsCatalogCategory {
-        id: id.to_string(),
-        label: label.unwrap_or(id).to_string(),
-        operation_count: operations
-            .iter()
-            .filter(|operation| operation.category_id == id)
-            .count(),
-    })
-    .collect::<Vec<_>>();
+    let operations = public_operations(context);
+    let category_ids: &[&str] =
+        if context.application.application_type == domain::ApplicationType::AgentLogs {
+            &[agent_logs::CATEGORY_ID]
+        } else {
+            &[
+                NATIVE_CATEGORY_ID,
+                OPENAI_CATEGORY_ID,
+                ANTHROPIC_CATEGORY_ID,
+            ]
+        };
+    let mut categories = category_ids
+        .iter()
+        .map(|id| DocsCatalogCategory {
+            id: (*id).to_string(),
+            label: category_label(id, locale).unwrap_or(id).to_string(),
+            operation_count: operations
+                .iter()
+                .filter(|operation| operation.category_id == *id)
+                .count(),
+        })
+        .collect::<Vec<_>>();
     if context.application.application_type == domain::ApplicationType::AgentFlow
         && !context.assistant_operations.is_empty()
     {
@@ -148,7 +146,7 @@ pub fn build_application_public_docs_category_operations(
                 .collect(),
         });
     }
-    let operations = public_operations()
+    let operations = public_operations(context)
         .iter()
         .filter(|operation| operation.category_id == category_id)
         .map(|operation| to_catalog_operation(operation, locale))
@@ -171,7 +169,7 @@ pub fn build_application_public_docs_category_spec(
     if category_id == ASSISTANT_CATEGORY_ID {
         return build_assistant_category_spec(context);
     }
-    let operations = public_operations()
+    let operations = public_operations(context)
         .iter()
         .filter(|operation| operation.category_id == category_id)
         .collect::<Vec<_>>();
@@ -192,7 +190,7 @@ pub fn build_application_public_docs_operation_spec(
     {
         return Some(decorate_assistant_spec(context, operation.spec.clone()));
     }
-    public_operations()
+    public_operations(context)
         .iter()
         .find(|operation| operation.id == operation_id)
         .map(|operation| openapi_spec(context, vec![operation]))
@@ -314,6 +312,8 @@ impl DocTextResolver {
             ("application_public_api.anthropic.count_message_tokens", DocsLocale::EnUs) => {
                 "Count Anthropic-compatible message input tokens"
             }
+            (agent_logs::DOC_KEY, DocsLocale::ZhHans) => "采集客户端 Agent 日志",
+            (agent_logs::DOC_KEY, DocsLocale::EnUs) => "Ingest client agent logs",
             _ => "Public API operation",
         }
     }
@@ -398,6 +398,8 @@ impl DocTextResolver {
             ("application_public_api.anthropic.count_message_tokens", DocsLocale::EnUs) => {
                 "Translates an Anthropic Messages request into the active published binding's provider CountTokens call. When native provider counting is unavailable, the host derives input_tokens from a total local estimate carrying method, coverage, unknown_block_count, and fallback_reason; an unbound target still returns an explicit error and never creates a Native public run."
             }
+            (agent_logs::DOC_KEY, DocsLocale::ZhHans) => "将版本化事件批次写入当前应用的日志、对话与客户端轨迹。",
+            (agent_logs::DOC_KEY, DocsLocale::EnUs) => "Persist a versioned event batch into this application's logs, conversation, and client trajectory.",
             _ => "Public API operation.",
         }
     }
@@ -639,6 +641,8 @@ fn category_label(category_id: &str, locale: DocsLocale) -> Option<&'static str>
         (OPENAI_CATEGORY_ID, DocsLocale::EnUs) => Some("OpenAI Compatible API"),
         (ANTHROPIC_CATEGORY_ID, DocsLocale::EnUs) => Some("Anthropic Compatible API"),
         (ASSISTANT_CATEGORY_ID, DocsLocale::EnUs) => Some("Browser Session Assistant API"),
+        (agent_logs::CATEGORY_ID, DocsLocale::ZhHans) => Some("日志采集 API"),
+        (agent_logs::CATEGORY_ID, DocsLocale::EnUs) => Some("Log ingestion API"),
         _ => None,
     }
 }
@@ -704,7 +708,7 @@ fn openapi_spec(
         "x-1flowbase-application": {
             "id": context.application.id,
             "name": context.application.name,
-            "api_enabled": context
+            "api_enabled": context.application.application_type == domain::ApplicationType::AgentLogs || context
                 .active_publication
                 .as_ref()
                 .map(|publication| publication.api_enabled)
@@ -713,11 +717,11 @@ fn openapi_spec(
                 .active_publication
                 .as_ref()
                 .map(|publication| publication.version_sequence),
-            "mapping": context
-                .active_publication
-                .as_ref()
-                .map(mapping_summary)
-                .unwrap_or_else(|| json!({"status": "not_published"}))
+            "mapping": if context.application.application_type == domain::ApplicationType::AgentLogs {
+                Value::Null
+            } else {
+                context.active_publication.as_ref().map(mapping_summary).unwrap_or_else(|| json!({"status": "not_published"}))
+            }
         }
     })
 }
@@ -783,6 +787,12 @@ fn operation_security(category_id: &str) -> Value {
 
 fn application_description(context: &ApplicationPublicDocsContext) -> String {
     let locale = docs_locale(context);
+    if context.application.application_type == domain::ApplicationType::AgentLogs {
+        return match locale {
+            DocsLocale::ZhHans => format!("{} 的日志采集 API。使用应用 API 密钥接入，无需发布应用。", context.application.name),
+            DocsLocale::EnUs => format!("Log ingestion API for {}. Authenticate with an application API key; no publication is required.", context.application.name),
+        };
+    }
     let publication = context
         .active_publication
         .as_ref()
@@ -830,6 +840,9 @@ fn application_title(context: &ApplicationPublicDocsContext) -> String {
 }
 
 fn publication_version(context: &ApplicationPublicDocsContext) -> String {
+    if context.application.application_type == domain::ApplicationType::AgentLogs {
+        return "v1".to_string();
+    }
     context
         .active_publication
         .as_ref()
@@ -858,8 +871,12 @@ fn security_scheme_description(locale: DocsLocale) -> &'static str {
     }
 }
 
-fn public_operations() -> &'static [PublicOperation] {
-    PUBLIC_OPERATION_REGISTRY
+fn public_operations(context: &ApplicationPublicDocsContext) -> &'static [PublicOperation] {
+    if context.application.application_type == domain::ApplicationType::AgentLogs {
+        agent_logs::OPERATIONS
+    } else {
+        PUBLIC_OPERATION_REGISTRY
+    }
 }
 
 static PUBLIC_OPERATION_REGISTRY: &[PublicOperation] = &[
@@ -1014,7 +1031,7 @@ mod tests {
         let mut ids = HashSet::new();
         let mut routes = HashSet::new();
 
-        for operation in public_operations() {
+        for operation in public_operations(context) {
             assert!(ids.insert(operation.id), "duplicate operation id");
             assert!(
                 routes.insert((operation.method, operation.path)),
@@ -1051,7 +1068,7 @@ mod tests {
             .as_object()
             .expect("global openapi paths should be an object");
 
-        for operation in public_operations() {
+        for operation in public_operations(context) {
             let Some(path_item) = paths.get(operation.path) else {
                 panic!("global openapi missing path {}", operation.path);
             };

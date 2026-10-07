@@ -124,23 +124,48 @@ function renderWithProviders(ui: ReactNode) {
 }
 
 describe('ApplicationApiPage', () => {
-  test('Agent Logs reuses application keys and exposes admitted ingestion without publication', async () => {
+  test('Agent Logs reuses the docs workspace and key dialog without publication', async () => {
     renderWithProviders(
       <ApplicationApiPage
         application={{ ...application, application_type: 'agent_logs' }}
       />
     );
-    expect(await screen.findByText('日志采集 API')).toBeInTheDocument();
-    expect(
-      screen.getByText(/POST .*\/api\/logs\/v1\/events/)
-    ).toBeInTheDocument();
+    const statusBar = await screen.findByRole('region', {
+      name: '公开 API 状态'
+    });
+    expect(within(statusBar).getByText('已启用')).toBeVisible();
+    expect(screen.getByText('docs explorer')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('API Keys')).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     await waitFor(() =>
       expect(publicApi.fetchApplicationApiKeys).toHaveBeenCalledWith('app-1')
     );
+    fireEvent.click(
+      within(statusBar).getByRole('button', { name: 'API 密钥' })
+    );
+    expect(await screen.findByRole('dialog')).toBeVisible();
     expect(publicApi.fetchApplicationApiPublication).not.toHaveBeenCalled();
     expect(publicApi.fetchApplicationApiMapping).not.toHaveBeenCalled();
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     expect(publicApi.publishApplicationApiVersion).not.toHaveBeenCalled();
+  });
+
+  test('Agent Logs API availability follows the backend section', async () => {
+    renderWithProviders(
+      <ApplicationApiPage
+        application={{
+          ...application,
+          application_type: 'agent_logs',
+          sections: {
+            ...application.sections,
+            api: { ...application.sections.api, api_enabled: false }
+          }
+        }}
+      />
+    );
+    expect(await screen.findByText('未启用')).toBeVisible();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(publicApi.fetchApplicationApiPublication).not.toHaveBeenCalled();
   });
 
   beforeEach(async () => {

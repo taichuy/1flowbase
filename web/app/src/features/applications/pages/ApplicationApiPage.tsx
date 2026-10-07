@@ -1,7 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Space, Typography } from 'antd';
-import { useTranslation } from 'react-i18next';
-import { getApplicationsApiBaseUrl } from '../api/applications';
+import { App } from 'antd';
 
 import { i18nText } from '../../../shared/i18n/text';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
@@ -23,25 +21,28 @@ import { ApplicationApiKeysPanel } from '../components/api/ApplicationApiKeysPan
 import { ApplicationApiStatusBar } from '../components/api/ApplicationApiStatusBar';
 import './application-api-page.css';
 
-function PublishedApplicationApiPage({
+export function ApplicationApiPage({
   application
 }: {
   application: ApplicationDetail;
 }) {
   const { modal } = App.useApp();
+  const isLogCollection = application.application_type === 'agent_logs';
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
   const docsToolbarId = `application-api-docs-toolbar-${application.id}`;
   const publicationQuery = useQuery({
     queryKey: applicationApiPublicationQueryKey(application.id),
     queryFn: () => fetchApplicationApiPublication(application.id),
-    retry: false
+    retry: false,
+    enabled: !isLogCollection
   });
   const mappingQuery = useQuery({
     queryKey: applicationApiMappingQueryKey(application.id),
-    queryFn: () => fetchApplicationApiMapping(application.id)
+    queryFn: () => fetchApplicationApiMapping(application.id),
+    enabled: !isLogCollection
   });
-  const publication = publicationQuery.data ?? null;
+  const publication = isLogCollection ? null : (publicationQuery.data ?? null);
   const invalidatePublication = () => {
     void queryClient.invalidateQueries({
       queryKey: applicationApiPublicationQueryKey(application.id)
@@ -73,7 +74,7 @@ function PublishedApplicationApiPage({
     });
   };
 
-  if (!publication && publicationQuery.isLoading) {
+  if (!isLogCollection && !publication && publicationQuery.isLoading) {
     return <LoadingState compact />;
   }
 
@@ -81,6 +82,7 @@ function PublishedApplicationApiPage({
     <div className="application-api-page">
       <ApplicationApiStatusBar
         publication={publication}
+        apiStatus={isLogCollection ? application.sections.api : undefined}
         loading={publishMutation.isPending || revertToDraftMutation.isPending}
         onTogglePublished={(published) => {
           if (published) {
@@ -108,75 +110,5 @@ function PublishedApplicationApiPage({
         toolbarPortalId={docsToolbarId}
       />
     </div>
-  );
-}
-
-export function ApplicationApiPage({
-  application
-}: {
-  application: ApplicationDetail;
-}) {
-  const { t } = useTranslation('applications');
-  const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
-  if (application.application_type !== 'agent_logs') {
-    return <PublishedApplicationApiPage application={application} />;
-  }
-  const endpoint = `${getApplicationsApiBaseUrl()}/api/logs/v1/events`;
-  return (
-    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Typography.Title level={4}>
-        {t('agent_logs.ingest_api')}
-      </Typography.Title>
-      <Typography.Paragraph>
-        {t('agent_logs.api_description')}
-      </Typography.Paragraph>
-      <Typography.Text code copyable>{`POST ${endpoint}`}</Typography.Text>
-      <Typography.Paragraph>{t('agent_logs.api_auth')}</Typography.Paragraph>
-      <ApplicationApiKeysPanel
-        applicationId={application.id}
-        csrfToken={csrfToken}
-        onCreatedToken={() => undefined}
-      />
-      <Typography.Title level={5}>
-        {t('agent_logs.request_body')}
-      </Typography.Title>
-      <Typography.Paragraph>
-        {t('agent_logs.envelope_description')}
-      </Typography.Paragraph>
-      <pre>
-        {JSON.stringify(
-          {
-            schema_version: '1flowbase.agent-logs/v1',
-            source_id: 'collector-installation',
-            source_client: 'codex',
-            events: [
-              {
-                event_id: 'event-1',
-                source_session_id: 'session-1',
-                source_task_id: 'turn-1',
-                parent_source_task_id: null,
-                sequence: 1,
-                occurred_at: '2026-10-07T08:00:00Z',
-                kind: 'user',
-                content: 'Hello',
-                phase: null,
-                name: null,
-                call_id: null,
-                model_id: null,
-                provider_code: null,
-                usage: null,
-                inherited: false,
-                raw: {}
-              }
-            ]
-          },
-          null,
-          2
-        )}
-      </pre>
-      <Typography.Paragraph>
-        {t('agent_logs.receipt_description')}
-      </Typography.Paragraph>
-    </Space>
   );
 }
