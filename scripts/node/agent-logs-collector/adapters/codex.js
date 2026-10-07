@@ -71,6 +71,11 @@ module.exports = {
       } else if (['task_complete', 'turn_complete', 'turn_aborted'].includes(p.type)) {
         event.kind = 'task_end';
         if (p.type === 'turn_aborted') event.phase = 'cancelled';
+        else if (typeof p.last_agent_message === 'string' && p.last_agent_message.trim()) {
+          // TurnComplete explicitly declares this text; it is not inferred from
+          // response-item order. Generic backend projection owns final overlap.
+          event.phase = 'final_answer'; event.content = p.last_agent_message;
+        }
       }
     }
     if (typeof event.occurred_at !== 'string' || !Number.isFinite(Date.parse(event.occurred_at))) throw new Error('Rollout event lacks a valid source timestamp');

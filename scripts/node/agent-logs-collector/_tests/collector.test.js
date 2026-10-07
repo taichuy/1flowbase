@@ -107,7 +107,8 @@ test('typed response delta, old cumulative observations, inherited and root turn
   assert.equal(convert(message('assistant', 'no phase')).phase, null);
   assert.equal(convert(row('event_msg', { type: 'agent_message', message: 'mirror', phase: 'final_answer' })).kind, 'context');
   assert.equal(convert(row('compacted', { message: 'summary', replacement_history: [] })).kind, 'context');
-  assert.equal(convert(row('event_msg', { type: 'task_complete', last_agent_message: 'not fabricated final' })).content, null);
+  const completed = convert(row('event_msg', { type: 'task_complete', turn_id: 'child-turn', last_agent_message: 'source-declared final' }));
+  assert.equal(completed.content, 'source-declared final'); assert.equal(completed.phase, 'final_answer');
   const unknown = codex.createContext(meta('unknown', { model_provider: null }));
   assert.equal(codex.convert(message('assistant', 'x'), unknown, { start: 10 }).provider_code, null);
 });
@@ -209,4 +210,70 @@ test('transport preserves response delta plus unattributed historical cumulative
   assert.deepEqual(events[1].usage, { basis: 'cumulative', input_tokens: 600, output_tokens: 100, total_tokens: 700 });
   assert.equal(Object.hasOwn(events[1].usage, 'response_id'), false);
   assert.deepEqual(events[1].raw, historical);
+});
+
+// Authentic persisted protocol shape: EventMsg TurnComplete uses task_complete,
+// accepts turn_complete as a wire alias, and carries turn_id/last_agent_message.
+test('both Codex completion aliases preserve explicitly declared final text and real turn ownership', () => {
+  for (const type of ['task_complete', 'turn_complete']) {
+    const context = codex.createContext(meta('child'));
+    codex.convert(row('turn_context', { turn_id: 'child-turn', root_turn_id: 'root-turn', model: 'source-model' }), context, { start: 1 });
+    const source = row('event_msg', { type, turn_id: 'child-turn', last_agent_message: '  Declared final\ntext  ',
+      started_at: 1791360000, completed_at: 1791360001 });
+    const event = codex.convert(source, context, { start: 2 });
+    assert.equal(event.kind, 'task_end'); assert.equal(event.phase, 'final_answer');
+    assert.equal(event.content, '  Declared final\ntext  ');
+    assert.equal(event.source_session_id, 'child'); assert.equal(event.source_task_id, 'child-turn');
+    assert.equal(event.parent_source_task_id, 'root-turn'); assert.deepEqual(event.raw, source);
+    assert.equal(context.turn, null);
+  }
+});
+
+test('bare completion and cancellation never infer final text; inherited declared final stays inherited', () => {
+  for (const type of ['task_complete', 'turn_complete']) {
+    for (const value of [undefined, null, '', '   ', 17]) {
+      const context = codex.createContext(meta());
+      codex.convert(turn('real-turn'), context, { start: 1 });
+      const payload = { type, turn_id: 'real-turn' };
+      if (value !== undefined) payload.last_agent_message = value;
+      const source = row('event_msg', payload);
+      const event = codex.convert(source, context, { start: 2 });
+      assert.equal(event.kind, 'task_end'); assert.equal(event.content, null); assert.equal(event.phase, null);
+      assert.equal(event.source_task_id, 'real-turn'); assert.deepEqual(event.raw, source);
+    }
+  }
+  const context = codex.createContext(meta());
+  codex.convert(turn('real-turn'), context, { start: 1 });
+  const cancelled = row('event_msg', { type: 'turn_aborted', turn_id: 'real-turn', last_agent_message: 'must not promote abort text' });
+  const abort = codex.convert(cancelled, context, { start: 2 });
+  assert.equal(abort.kind, 'task_end'); assert.equal(abort.phase, 'cancelled'); assert.equal(abort.content, null);
+  assert.deepEqual(abort.raw, cancelled);
+  const child = codex.createContext(meta('child', { subagent_history_start_ordinal: 4 }));
+  const inheritedSource = row('event_msg', { type: 'task_complete', turn_id: 'parent-turn', last_agent_message: 'parent final' }, { ordinal: 3 });
+  const inherited = codex.convert(inheritedSource, child, { start: 3 });
+  assert.equal(inherited.inherited, true); assert.equal(inherited.source_task_id, null);
+  assert.equal(inherited.phase, 'final_answer'); assert.equal(inherited.content, 'parent final');
+  assert.deepEqual(inherited.raw, inheritedSource); assert.equal(child.turn, null);
+});
+
+test('transport preserves phase-less assistant plus declared completion and modern overlapping final facts', async t => {
+  const f = await fixture(t);
+  const phaseLess = message('assistant', 'ordinary phase-less response');
+  const completionOnly = row('event_msg', { type: 'task_complete', turn_id: 'completion-turn', last_agent_message: 'declared completion-only final' });
+  const assistantFinal = message('assistant', 'modern final', 'final_answer');
+  const overlappingCompletion = row('event_msg', { type: 'turn_complete', turn_id: 'modern-turn', last_agent_message: 'modern final' });
+  await fs.writeFile(path.join(f.source, 'completion.jsonl'), encode([meta(), turn('completion-turn'), phaseLess, completionOnly,
+    turn('modern-turn'), assistantFinal, overlappingCompletion]));
+  assert.equal((await collect(f.options)).uploaded, 7);
+  const events = f.received.flatMap(value => value.batch.events);
+  const ordinary = events.find(event => event.content === 'ordinary phase-less response');
+  assert.equal(ordinary.kind, 'assistant'); assert.equal(ordinary.phase, null); assert.deepEqual(ordinary.raw, phaseLess);
+  const declared = events.find(event => event.source_task_id === 'completion-turn' && event.kind === 'task_end');
+  assert.equal(declared.phase, 'final_answer'); assert.equal(declared.content, 'declared completion-only final');
+  assert.deepEqual(declared.raw, completionOnly);
+  const overlap = events.filter(event => event.source_task_id === 'modern-turn' && event.phase === 'final_answer');
+  assert.equal(overlap.length, 2); assert.deepEqual(overlap.map(event => event.kind), ['assistant', 'task_end']);
+  assert.deepEqual(overlap.map(event => event.raw), [assistantFinal, overlappingCompletion]);
+  // The adapter preserves both authentic facts; generic backend chooses one
+  // conversation final while keeping both originals in the client trajectory.
 });
