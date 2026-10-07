@@ -447,6 +447,7 @@ fn archive_entry_template(entry: ApplicationArchiveEntry) -> AgentFlowTemplatePa
 
 fn parse_archive_application_type(value: &str) -> Result<domain::ApplicationType> {
     match value {
+        "agent_logs" => Ok(domain::ApplicationType::AgentLogs),
         "agent_flow" => Ok(domain::ApplicationType::AgentFlow),
         "workflow" => Ok(domain::ApplicationType::Workflow),
         _ => Err(ControlPlaneError::InvalidInput("application.application_type").into()),

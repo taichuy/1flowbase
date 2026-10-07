@@ -69,14 +69,14 @@ impl PgControlPlaneStore {
             input.sort_order.as_deref(),
         );
         let total = sqlx::query_scalar::<_, i64>(
-            "select count(*)::bigint from application_run_log_tasks where application_id=$1 and is_root and ($2::timestamptz is null or created_at>=$2)",
+            "select count(*)::bigint from application_run_log_tasks where application_id=$1 and source_kind='native' and is_root and ($2::timestamptz is null or created_at>=$2)",
         )
         .bind(application_id)
         .bind(created_after)
         .fetch_one(self.pool())
         .await?;
         let rows = sqlx::query(&format!(
-            "select {} from application_run_log_tasks where application_id=$1 and is_root and ($2::timestamptz is null or created_at>=$2) order by {order_by} limit $3 offset $4",
+            "select {} from application_run_log_tasks where application_id=$1 and source_kind='native' and is_root and ($2::timestamptz is null or created_at>=$2) order by {order_by} limit $3 offset $4",
             APPLICATION_RUN_LOG_TASK_SUMMARY_COLUMNS
         ))
         .bind(application_id)

@@ -479,7 +479,7 @@ impl Classifier {
             origin: origin.into(),
             protocol: self.protocol.into(),
             transport: self.transport,
-            flow_run_id: self.flow,
+            flow_run_id: Some(self.flow),
             node_run_id: self.node,
             parent_id: Some(self.request),
             call_id: None,

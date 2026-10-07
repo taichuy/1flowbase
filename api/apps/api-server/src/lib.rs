@@ -371,6 +371,7 @@ fn console_router_with_assembly(
     let router = external_route_assembly::ExternalRouteAssembly::new()
         .route("/health", external_route_assembly::get(health))
         .merge(routes::application_public_api::compatible_route_assembly())
+        .merge(routes::application_public_api::agent_logs::route_assembly())
         .nest(
             "/api/agent/v1",
             routes::application_public_api::route_assembly(),

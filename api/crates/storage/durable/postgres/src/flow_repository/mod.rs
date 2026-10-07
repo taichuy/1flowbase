@@ -249,6 +249,7 @@ async fn ensure_application_exists(
     };
 
     match application_type.as_str() {
+        "agent_logs" => Ok(domain::ApplicationType::AgentLogs),
         "agent_flow" => Ok(domain::ApplicationType::AgentFlow),
         "workflow" => Ok(domain::ApplicationType::Workflow),
         _ => Err(ControlPlaneError::InvalidInput("application_type").into()),

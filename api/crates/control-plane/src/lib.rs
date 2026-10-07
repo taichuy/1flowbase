@@ -73,3 +73,5 @@ pub mod portable_template;
 pub mod mcp_oauth;
 
 pub mod organization;
+
+pub mod agent_logs;

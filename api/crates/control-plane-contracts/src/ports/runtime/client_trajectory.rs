@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub enum ClientTrajectoryTransport {
     Http,
     Websocket,
+    File,
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -36,7 +37,7 @@ pub struct ClientTrajectoryStep {
     pub origin: String,
     pub protocol: String,
     pub transport: ClientTrajectoryTransport,
-    pub flow_run_id: Uuid,
+    pub flow_run_id: Option<Uuid>,
     pub node_run_id: Option<Uuid>,
     pub parent_id: Option<Uuid>,
     pub call_id: Option<String>,

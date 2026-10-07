@@ -427,6 +427,7 @@ const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
 ];
 
 const APPLICATION_RUN_LOG_TASKS_FIELDS: &[&str] = &[
+    "source_kind", "source_client", "source_session_id", "source_task_id", "native_run_id", "cost_breakdown",
     "total_cost",
     "id",
     "application_id",

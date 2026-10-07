@@ -629,6 +629,9 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-reads",
             &[
+                "applications.runtime.record.get",
+                "applications.runtime.record.client-trajectory.list",
+                "applications.runtime.record.client-trajectory.section.get",
                 "applications.runtime.workflow-trajectory.list",
                 "applications.runtime.workflow-trajectory.body.get",
                 "applications.runtime.client-trajectory.list",
@@ -1671,6 +1674,12 @@ pub(crate) fn production_interface_contributions(
                     },
                 ),
             )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.application-agent-logs",
+            &["application.logs.events.ingest"],
+            &["api-server.application-agent-logs"],
+            crate::routes::application_public_api::agent_logs::compile_registry(state.store.clone())?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.native-read",

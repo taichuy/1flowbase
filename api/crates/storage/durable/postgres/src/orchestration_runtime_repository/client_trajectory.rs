@@ -35,7 +35,7 @@ impl PgControlPlaneStore {
     ) -> Result<()> {
         if let ClientTrajectoryFact::Step { step } = &input.fact {
             anyhow::ensure!(
-                step.flow_run_id == input.flow_run_id
+                step.flow_run_id == Some(input.flow_run_id)
                     && step.node_run_id == input.node_run_id
                     && step.request_id == input.request_id,
                 "client trajectory scope mismatch"

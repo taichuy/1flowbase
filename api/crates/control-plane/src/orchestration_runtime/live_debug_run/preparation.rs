@@ -260,6 +260,7 @@ where
             .await?;
 
         let mut compiled_plan = match application.application_type {
+            domain::ApplicationType::AgentLogs => return Err(crate::errors::ControlPlaneError::InvalidInput("application_type").into()),
             domain::ApplicationType::AgentFlow => {
                 orchestration_runtime::compiler::FlowCompiler::compile(
                     editor_state.flow.id,

@@ -224,6 +224,15 @@ fn normalize_application_log_cache_hit_rate(record: &mut Value) {
 }
 
 fn normalize_application_run_observability(record: &mut Value) {
+    if record.get("source_kind").and_then(Value::as_str)==Some("imported") {
+        let principal=serde_json::json!({"kind":"application_api_key","id":record.get("api_key_id").cloned().unwrap_or(Value::Null),"display_name":record.get("api_key_name_snapshot").cloned().unwrap_or(Value::Null)});
+        if let Some(object)=record.as_object_mut(){
+            object.insert("execution_stage".into(),Value::String("collected".into()));
+            object.insert("invocation_source".into(),Value::String("client_collector".into()));
+            object.insert("principal".into(),principal);
+        }
+        return;
+    }
     let Some(run_mode) = record
         .get("run_mode")
         .cloned()

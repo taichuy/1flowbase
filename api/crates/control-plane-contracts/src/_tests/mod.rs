@@ -10,3 +10,5 @@ mod persistence_projection_contract_tests;
 mod provider_transport_digest_tests;
 mod runtime_persistence_contract_tests;
 mod workflow_trajectory_contract;
+
+mod agent_logs_contract_tests;

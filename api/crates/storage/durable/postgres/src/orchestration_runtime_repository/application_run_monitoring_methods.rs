@@ -549,6 +549,7 @@ impl PgControlPlaneStore {
             , logs as (
                 select
                     case run_mode
+                        when 'imported' then 'client_collector'
                         when 'published_api_run' then 'agent_flow_api'
                         when 'assistant_execution' then 'assistant'
                         when 'workflow_http_run' then 'workflow_http'

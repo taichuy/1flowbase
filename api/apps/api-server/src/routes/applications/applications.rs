@@ -27,6 +27,7 @@ pub(crate) mod interface;
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ApplicationTypeDto {
+    AgentLogs,
     /// Conversational Agent Flow exposed through native runs and AI Gateway-compatible APIs.
     AgentFlow,
     /// Workflow invoked by an extension endpoint or schedule trigger.
@@ -36,6 +37,7 @@ pub enum ApplicationTypeDto {
 impl From<domain::ApplicationType> for ApplicationTypeDto {
     fn from(value: domain::ApplicationType) -> Self {
         match value {
+            domain::ApplicationType::AgentLogs => Self::AgentLogs,
             domain::ApplicationType::AgentFlow => Self::AgentFlow,
             domain::ApplicationType::Workflow => Self::Workflow,
         }
@@ -45,6 +47,7 @@ impl From<domain::ApplicationType> for ApplicationTypeDto {
 impl ApplicationTypeDto {
     fn into_domain(self) -> domain::ApplicationType {
         match self {
+            Self::AgentLogs => domain::ApplicationType::AgentLogs,
             Self::AgentFlow => domain::ApplicationType::AgentFlow,
             Self::Workflow => domain::ApplicationType::Workflow,
         }

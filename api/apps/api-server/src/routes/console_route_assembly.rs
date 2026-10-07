@@ -694,6 +694,9 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "applications.runtime.record.get" => Some("Get source-neutral log record"),
+        "applications.runtime.record.client-trajectory.list" => Some("List recorded client trajectory"),
+        "applications.runtime.record.client-trajectory.section.get" => Some("Get recorded client trajectory section"),
         "console.departments.access" => Some("Read organization operation access"),
         "departments.list" => Some("List workspace departments"),
         "departments.create" => Some("Create a workspace department"),

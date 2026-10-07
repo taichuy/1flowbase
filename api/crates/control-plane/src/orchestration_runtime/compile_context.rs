@@ -393,6 +393,7 @@ fn application_run_level_variables(
     environment_variables: &[domain::ApplicationEnvironmentVariable],
 ) -> Vec<orchestration_runtime::compiler::FlowCompileRunLevelVariable> {
     let mut declarations = match application_type {
+        domain::ApplicationType::AgentLogs => vec![],
         domain::ApplicationType::AgentFlow => vec![
             run_level_variable("sys", "conversation_id", "string"),
             run_level_variable("sys", "dialog_count", "number"),

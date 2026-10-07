@@ -704,7 +704,7 @@ async fn workflow_requests_link_exact_calls_and_focus_without_reading_bodies() {
                 origin: if output { "emitted" } else { "submitted" }.into(),
                 protocol: "openai-responses-v1".into(),
                 transport: ClientTrajectoryTransport::Http,
-                flow_run_id: flow,
+                flow_run_id: Some(flow),
                 node_run_id: None,
                 parent_id: if output { Some(request) } else { None },
                 call_id: None,

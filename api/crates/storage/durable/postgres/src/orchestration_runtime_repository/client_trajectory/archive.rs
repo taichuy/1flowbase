@@ -22,6 +22,7 @@ impl PgControlPlaneStore {
         anyhow::ensure!(!input.frames.is_empty(), "client archive empty part");
         let transport = match input.transport {
             ClientTrajectoryTransport::Http => "http",
+            ClientTrajectoryTransport::File => "file",
             ClientTrajectoryTransport::Websocket => "websocket",
         };
         let mut tx = self.pool().begin().await?;

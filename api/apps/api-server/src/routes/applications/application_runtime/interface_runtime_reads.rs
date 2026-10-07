@@ -30,6 +30,9 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
+    GetRecord { application_id:Uuid, record_id:Uuid },
+    RecordClientTrajectoryPage { application_id:Uuid, record_id:Uuid, query:provider_trajectory::ClientTrajectoryQuery },
+    RecordClientTrajectorySection { application_id:Uuid, record_id:Uuid,step_id:Uuid,query:provider_trajectory::ClientTrajectoryQuery },
     WorkflowTrajectoryPage {
         application_id: Uuid,
         run_id: Uuid,
@@ -133,6 +136,7 @@ pub(crate) enum ApplicationRuntimeReadsInput {
 }
 
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    Record(control_plane::ports::ApplicationLogRecordOverview),
     WorkflowTrajectoryPage(control_plane::ports::WorkflowTrajectoryPage),
     WorkflowTrajectoryBody(control_plane::ports::WorkflowTrajectoryBody),
     ClientTrajectoryPage(control_plane::ports::ClientTrajectoryPage),
@@ -806,6 +810,18 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ApplicationRuntimeReadsInput::GetRecord{application_id,record_id} => {
+                self.visible_application(actor,application_id).await?;
+                Ok(ApplicationRuntimeReadsOutput::Record(self.store.application_log_record(application_id,record_id).await?.ok_or(ControlPlaneError::NotFound("log_record"))?))
+            },
+            ApplicationRuntimeReadsInput::RecordClientTrajectoryPage{application_id,record_id,query} => {
+                self.visible_application(actor,application_id).await?;
+                Ok(ApplicationRuntimeReadsOutput::ClientTrajectoryPage(self.store.record_client_trajectory_page(application_id,record_id,query.cursor,query.limit.unwrap_or(50)).await?))
+            },
+            ApplicationRuntimeReadsInput::RecordClientTrajectorySection{application_id,record_id,step_id,query} => {
+                self.visible_application(actor,application_id).await?;
+                Ok(ApplicationRuntimeReadsOutput::ClientTrajectorySection(self.store.record_client_trajectory_section(application_id,record_id,step_id,query.section.as_deref().unwrap_or("overview"),query.cursor,query.limit.unwrap_or(8)).await?.ok_or(ControlPlaneError::NotFound("client_trajectory_section"))?))
+            },
             ApplicationRuntimeReadsInput::WorkflowTrajectoryPage {
                 application_id,
                 run_id,
@@ -985,6 +1001,9 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.get",binding_id:"http.console.applications.runtime.record.get.v1",method:"GET",path:"/api/console/applications/:id/logs/records/:record_id",mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.client-trajectory.list",binding_id:"http.console.applications.runtime.record.client-trajectory.list.v1",method:"GET",path:"/api/console/applications/:id/logs/records/:record_id/client-trajectory",mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.client-trajectory.section.get",binding_id:"http.console.applications.runtime.record.client-trajectory.section.get.v1",method:"GET",path:"/api/console/applications/:id/logs/records/:record_id/client-trajectory/:step_id",mutating:false },
     ConsoleInterfaceDeclaration { interface_id: "applications.runtime.workflow-trajectory.list", binding_id: "http.console.applications.runtime.workflow-trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/workflow-trajectory", mutating: false },
     ConsoleInterfaceDeclaration { interface_id: "applications.runtime.workflow-trajectory.body.get", binding_id: "http.console.applications.runtime.workflow-trajectory.body.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/workflow-trajectory/:event_id", mutating: false },
     ConsoleInterfaceDeclaration { interface_id: "applications.runtime.client-trajectory.list", binding_id: "http.console.applications.runtime.client-trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/client-trajectory", mutating: false },

@@ -579,6 +579,7 @@ where
             .get_application(actor.workspace_id, actor.application_id)
             .await
             .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+            .filter(|application| application.application_type==domain::ApplicationType::AgentFlow)
             .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
         Ok(())
     }

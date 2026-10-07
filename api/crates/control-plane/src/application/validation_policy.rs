@@ -240,7 +240,7 @@ pub(super) fn create_application_workflow_trigger_type(
     workflow_trigger_type: Option<domain::WorkflowTriggerType>,
 ) -> Option<domain::WorkflowTriggerType> {
     match application_type {
-        domain::ApplicationType::AgentFlow => None,
+        domain::ApplicationType::AgentFlow | domain::ApplicationType::AgentLogs => None,
         domain::ApplicationType::Workflow => {
             Some(workflow_trigger_type.unwrap_or(domain::WorkflowTriggerType::Extension))
         }
@@ -281,6 +281,10 @@ pub(super) fn planned_sections(
         },
     };
     sections.api = product_api_section(application_type, workflow_trigger_type, sections.api);
+    if application_type == domain::ApplicationType::AgentLogs {
+        sections.orchestration.status="unavailable".into();sections.orchestration.subject_status="not_applicable".into();
+        sections.logs.status="available".into();sections.logs.runs_capability_status="available".into();sections.logs.run_object_kind="application_log_record".into();
+    }
     sections
 }
 
@@ -302,6 +306,12 @@ pub(super) fn product_api_section(
 ) -> domain::ApplicationApiSection {
     match (application_type, workflow_trigger_type) {
         (domain::ApplicationType::AgentFlow, _) => agent_flow_api,
+        (domain::ApplicationType::AgentLogs, _) => domain::ApplicationApiSection {
+            status: "available".into(), credential_kind: "application_api_key".into(),
+            invoke_routing_mode: "api_key_bound_application".into(),
+            invoke_path_template: Some("/api/logs/v1/events".into()),
+            api_capability_status: "enabled".into(), credentials_status: agent_flow_api.credentials_status,
+        },
         (domain::ApplicationType::Workflow, Some(domain::WorkflowTriggerType::Extension)) => {
             domain::ApplicationApiSection {
                 status: "available".to_string(),

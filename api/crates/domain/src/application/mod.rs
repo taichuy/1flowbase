@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub enum ApplicationType {
     AgentFlow,
     Workflow,
+    AgentLogs,
 }
 
 impl ApplicationType {
@@ -13,6 +14,7 @@ impl ApplicationType {
         match self {
             Self::AgentFlow => "agent_flow",
             Self::Workflow => "workflow",
+            Self::AgentLogs => "agent_logs",
         }
     }
 }

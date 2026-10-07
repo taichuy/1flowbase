@@ -17,6 +17,7 @@ pub fn default_flow_document_for_application(
     match application_type {
         ApplicationType::AgentFlow => default_agent_flow_document(flow_id),
         ApplicationType::Workflow => default_workflow_document(flow_id),
+        ApplicationType::AgentLogs => serde_json::Value::Null,
     }
 }
 

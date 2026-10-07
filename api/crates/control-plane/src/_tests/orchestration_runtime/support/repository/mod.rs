@@ -547,7 +547,7 @@ impl InMemoryOrchestrationRuntimeRepository {
                 workspace_id: Uuid::nil(),
                 application_type,
                 workflow_trigger_type: match application_type {
-                    domain::ApplicationType::AgentFlow => None,
+                    domain::ApplicationType::AgentFlow | domain::ApplicationType::AgentLogs => None,
                     domain::ApplicationType::Workflow => {
                         Some(domain::WorkflowTriggerType::Extension)
                     }

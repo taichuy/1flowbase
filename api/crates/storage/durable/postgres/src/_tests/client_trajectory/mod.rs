@@ -73,7 +73,7 @@ fn step(
         origin: origin.into(),
         protocol: "responses".into(),
         transport: ClientTrajectoryTransport::Http,
-        flow_run_id: flow,
+        flow_run_id: Some(flow),
         node_run_id: node,
         parent_id: if id == request { None } else { Some(request) },
         call_id: Some("actual-call-id".into()),

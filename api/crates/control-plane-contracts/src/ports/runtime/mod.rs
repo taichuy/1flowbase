@@ -39,3 +39,6 @@ pub use client_trajectory::*;
 
 pub mod workflow_observation;
 pub use workflow_observation::*;
+
+pub mod agent_logs;
+pub use agent_logs::*;
