@@ -17,14 +17,29 @@ const OWNER: &str = "api-server.application-agent-logs";
 struct Input(AgentLogsBatch);
 struct Output(AgentLogsReceipt);
 struct TargetError(ApiError);
-macro_rules! contract {($ty:ty,$id:literal)=>{impl InterfaceContract for $ty {
- const CONTRACT_ID:&'static str=$id;const CONTRACT_VERSION:&'static str="1";
- fn managed_projection_schema()->Option<serde_json::Value>{Some(serde_json::json!({"type":"object","properties":{"kind":{"const":$id}},"required":["kind"],"additionalProperties":false}))}
- fn project_for_managed_hook(&self)->Option<serde_json::Value>{Some(serde_json::json!({"kind":$id}))}
-}}}
+macro_rules! contract {
+    ($ty:ty, $id:literal) => {
+        impl InterfaceContract for $ty {
+            const CONTRACT_ID: &'static str = $id;
+            const CONTRACT_VERSION: &'static str = "1";
+            fn managed_projection_schema() -> Option<serde_json::Value> {
+                use crate::extension_bus::managed_projection as mp;
+                Some(mp::object_schema(&[("kind", mp::tag_schema($id))]))
+            }
+            fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+                Some(serde_json::json!({"kind": $id}))
+            }
+        }
+    };
+}
 contract!(Input, "application-agent-logs-input");
 contract!(Output, "application-agent-logs-output");
 contract!(TargetError, "application-agent-logs-error");
+
+#[cfg(test)]
+#[path = "agent_logs/_tests/managed_projection.rs"]
+mod managed_projection_tests;
+
 struct Handler(MainDurableStore);
 impl InterfaceHandler<Input, Output, TargetError, ApplicationPrincipal> for Handler {
     fn invoke(
