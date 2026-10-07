@@ -10,10 +10,10 @@ docker compose up -d
 
 访问 `http://localhost:3100`。初始账号为 `root`，初始密码为
 `change-me-root-password`，登录后修改密码。该配置需要 API 镜像内置
-`/usr/local/lib/1flowbase/initialize.cjs` 和 `/usr/local/bin/1flowbase-api-start`；
+`/usr/local/bin/1flowbase-initialize` 和 `/usr/local/bin/1flowbase-api-start`；
 本配置发布前的旧镜像不包含这些脚本。
 
-初始化服务执行 API 镜像内置脚本，创建挂载目录和 `config/.env`，随机生成独立的
+初始化服务执行 API 镜像内置的 POSIX Shell 脚本，不依赖 Node.js，创建挂载目录和 `config/.env`，随机生成独立的
 数据库密码与加密主密钥，然后退出。PostgreSQL 和 API 读取保存的配置，重建容器
 不会重置配置。配置应与数据库和上传文件一起保留；已有数据库缺少原配置时启动会失败。
 

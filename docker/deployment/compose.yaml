@@ -92,8 +92,7 @@ services:
     image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
     user: 0:0
     entrypoint:
-    - node
-    - /usr/local/lib/1flowbase/initialize.cjs
+    - /usr/local/bin/1flowbase-initialize
     volumes:
     - ./config:/config
     - ./api/storage:/app/api/storage

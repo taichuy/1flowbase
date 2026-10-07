@@ -10,10 +10,11 @@ docker compose up -d
 
 Open `http://localhost:3100`. The initial account is `root` and the initial password is
 `change-me-root-password`; change it after signing in. This recipe requires an API
-image containing `/usr/local/lib/1flowbase/initialize.cjs` and
+image containing `/usr/local/bin/1flowbase-initialize` and
 `/usr/local/bin/1flowbase-api-start`. Images published before this recipe do not contain them.
 
-The initialization service runs a script built into the API image. It creates mounted
+The initialization service runs a POSIX shell script built into the API image without
+using Node.js. It creates mounted
 directories and `config/.env`, generates a separate database password and encryption
 master key, then exits. PostgreSQL and the API read the saved configuration.
 Recreating containers preserves it. Keep the configuration together with the database

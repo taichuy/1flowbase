@@ -5,7 +5,14 @@ const os = require('node:os');
 const path = require('node:path');
 const { parseEnv } = require('node:util');
 const { spawnSync } = require('node:child_process');
-const { initialize } = require('../initialize.cjs');
+
+function initialize(options) {
+  const result = spawnSync('/bin/sh', [path.resolve(__dirname, '../initialize.sh'),
+    options.configRoot, options.postgresRoot, `${options.owner.uid}:${options.owner.gid}`,
+    ...options.writableDirectories], { env: { PATH: process.env.PATH, ...options.env }, encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(result.stderr || result.error?.message || 'Initialization failed');
+  return { created: result.stdout.includes('Generated persistent configuration'), file: path.join(options.configRoot, '.env') };
+}
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flowbase-deployment-'));
