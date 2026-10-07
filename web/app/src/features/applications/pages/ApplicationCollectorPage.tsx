@@ -23,7 +23,10 @@ export function ApplicationCollectorPage({
     queryFn: fetchApplicationCatalog,
     retry: false
   });
-  const endpoint = `${getApplicationsApiBaseUrl().replace(/\/$/, '')}/api/logs/v1/events`;
+  const endpoint = new URL(
+    `${getApplicationsApiBaseUrl().replace(/\/$/, '')}/api/logs/v1/events`,
+    window.location.origin
+  ).href;
   const collectors = catalog.data?.collectors;
   const selected = collectors?.find(
     (collector) => collector.collector_code === collectorCode

@@ -14,7 +14,7 @@ import type {
 
 const api = vi.hoisted(() => ({
   fetchApplicationCatalog: vi.fn(),
-  getApplicationsApiBaseUrl: () => 'https://console.example.com',
+  getApplicationsApiBaseUrl: vi.fn(),
   applicationCatalogQueryKey: ['applications', 'catalog']
 }));
 const clipboard = vi.hoisted(() => ({ copyTextToClipboard: vi.fn() }));
@@ -62,6 +62,7 @@ const renderPage = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   api.fetchApplicationCatalog.mockResolvedValue(catalog);
+  api.getApplicationsApiBaseUrl.mockReturnValue('https://console.example.com');
   clipboard.copyTextToClipboard.mockResolvedValue(undefined);
 });
 
@@ -128,6 +129,33 @@ test('OS selection copies the selected public installer command, never the crede
     expect(clipboard.copyTextToClipboard).toHaveBeenLastCalledWith(command)
   );
 });
+
+test.each([
+  { base: '', prefix: '', label: 'same-origin empty base' },
+  {
+    base: '/console-proxy/',
+    prefix: '/console-proxy',
+    label: 'relative API prefix'
+  }
+])(
+  '$label produces an absolute endpoint in both installer commands',
+  async ({ base, prefix }) => {
+    api.getApplicationsApiBaseUrl.mockReturnValue(base);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '安装采集器' }));
+    const endpoint = `${window.location.origin}${prefix}/api/logs/v1/events`;
+    expect(endpoint).toMatch(/^https?:\/\//);
+    const shellCommand = document.querySelector('pre')!.textContent!;
+    expect(shellCommand).toContain(`--endpoint '${endpoint}'`);
+    expect(shellCommand).toContain(collector.shell_installer_url);
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'Windows (PowerShell)' })
+    );
+    const powershellCommand = document.querySelector('pre')!.textContent!;
+    expect(powershellCommand).toContain(`-Endpoint '${endpoint}'`);
+    expect(powershellCommand).toContain(collector.powershell_installer_url);
+  }
+);
 
 test('loading, error and retry retain filter and do not offer stale installation', async () => {
   let reject!: (reason: Error) => void;
