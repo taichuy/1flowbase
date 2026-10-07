@@ -37,7 +37,20 @@ export interface ConsoleWorkflowTriggerTypeOption {
   label: string;
 }
 
+export interface ConsoleApplicationCollector {
+  collector_code: string;
+  source_client: string;
+  display_name: string;
+  description: string;
+  version: string;
+  execution_target: 'client';
+  documentation_url: string;
+  shell_installer_url: string;
+  powershell_installer_url: string;
+}
+
 export interface ConsoleApplicationCatalog {
+  collectors: ConsoleApplicationCollector[];
   types: ConsoleApplicationTypeOption[];
   workflow_triggers: ConsoleWorkflowTriggerTypeOption[];
   tags: ConsoleApplicationTagCatalogEntry[];

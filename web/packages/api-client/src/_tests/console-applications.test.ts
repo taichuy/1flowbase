@@ -46,7 +46,20 @@ describe('console application management client', () => {
           label: 'Extension'
         }
       ],
-      tags: []
+      tags: [],
+      collectors: [
+        {
+          collector_code: 'codex-logs-collector',
+          source_client: 'codex',
+          display_name: 'Codex',
+          description: 'Collect local sessions',
+          version: '0.1.0',
+          execution_target: 'client',
+          documentation_url: 'https://example.com/README.en.md',
+          shell_installer_url: 'https://example.com/install.sh',
+          powershell_installer_url: 'https://example.com/install.ps1'
+        }
+      ]
     } satisfies ConsoleApplicationCatalog;
 
     expect(fixture.workflow_triggers[0]).toEqual({
@@ -56,6 +69,9 @@ describe('console application management client', () => {
     await expect(getConsoleApplicationCatalog()).resolves.toMatchObject({
       path: '/api/console/applications/catalog'
     });
+    vi.mocked(transport.apiFetch).mockResolvedValueOnce(fixture);
+    await expect(getConsoleApplicationCatalog()).resolves.toEqual(fixture);
+    expect(fixture.collectors[0]).not.toHaveProperty('installed');
   });
 
   test('AC-004 requests the unified Application node catalog with exact contract fields', async () => {

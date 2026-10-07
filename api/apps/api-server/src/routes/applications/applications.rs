@@ -211,8 +211,23 @@ pub struct WorkflowTriggerTypeOptionResponse {
     pub label: String,
 }
 
+/// Curated client-side collectors compatible with the application log ingestion API.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationCollectorResponse {
+    pub collector_code: String,
+    pub source_client: String,
+    pub display_name: String,
+    pub description: String,
+    pub version: String,
+    pub execution_target: String,
+    pub documentation_url: String,
+    pub shell_installer_url: String,
+    pub powershell_installer_url: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApplicationCatalogResponse {
+    pub collectors: Vec<ApplicationCollectorResponse>,
     pub types: Vec<ApplicationTypeOptionResponse>,
     /// Closed Workflow trigger set: extension and schedule only.
     pub workflow_triggers: Vec<WorkflowTriggerTypeOptionResponse>,

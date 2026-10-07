@@ -1,7 +1,14 @@
-import { Link } from '@tanstack/react-router';
-import { Space, Typography } from 'antd';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Button, Empty, Skeleton, Tabs, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { getApplicationsApiBaseUrl } from '../api/applications';
+import {
+  applicationCatalogQueryKey,
+  fetchApplicationCatalog,
+  getApplicationsApiBaseUrl
+} from '../api/applications';
+import { CollectorInstallation } from '../components/collector/CollectorInstallation';
+import '../components/collector/application-collector.css';
 
 export function ApplicationCollectorPage({
   applicationId
@@ -9,42 +16,116 @@ export function ApplicationCollectorPage({
   applicationId: string;
 }) {
   const { t } = useTranslation('applications');
-  const endpoint = `${getApplicationsApiBaseUrl()}/api/logs/v1/events`;
-  const command = (mode: 'import' | 'watch') =>
-    `node scripts/node/agent-logs-collector.js ${mode} --endpoint "${endpoint}" --source "$HOME/.codex/sessions" --state "$HOME/.codex/agent-logs-state.json" --source-id "codex-local"`;
+  const [sourceClient, setSourceClient] = useState('all');
+  const [collectorCode, setCollectorCode] = useState<string | null>(null);
+  const catalog = useQuery({
+    queryKey: applicationCatalogQueryKey,
+    queryFn: fetchApplicationCatalog,
+    retry: false
+  });
+  const endpoint = `${getApplicationsApiBaseUrl().replace(/\/$/, '')}/api/logs/v1/events`;
+  const collectors = catalog.data?.collectors;
+  const selected = collectors?.find(
+    (collector) => collector.collector_code === collectorCode
+  );
   return (
-    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+    <div className="application-collector">
       <Typography.Title level={4}>{t('agent_logs.collector')}</Typography.Title>
-      <Typography.Paragraph>
+      <Typography.Paragraph type="secondary">
         {t('agent_logs.collector_description')}
       </Typography.Paragraph>
-      <Typography.Paragraph>
-        {t('agent_logs.collector_installation')}
-      </Typography.Paragraph>
-      <Link to="/applications/$applicationId/api" params={{ applicationId }}>
-        {t('agent_logs.open_api_keys')}
-      </Link>
-      <Typography.Paragraph>
-        {t('agent_logs.collector_key')}
-      </Typography.Paragraph>
-      <Typography.Text code copyable>
-        {
-          'read -rsp "FLOWBASE_AGENT_LOGS_API_KEY: " FLOWBASE_AGENT_LOGS_API_KEY; export FLOWBASE_AGENT_LOGS_API_KEY'
-        }
-      </Typography.Text>
-      <Typography.Title level={5}>
-        {t('agent_logs.import_history')}
-      </Typography.Title>
-      <Typography.Text code copyable>
-        {command('import')}
-      </Typography.Text>
-      <Typography.Title level={5}>{t('agent_logs.watch')}</Typography.Title>
-      <Typography.Text code copyable>
-        {command('watch')}
-      </Typography.Text>
-      <Typography.Paragraph>
-        {t('agent_logs.collector_paths')}
-      </Typography.Paragraph>
-    </Space>
+      <Tabs
+        activeKey={sourceClient}
+        onChange={(key) => {
+          setSourceClient(key);
+          setCollectorCode(null);
+        }}
+        items={[
+          { key: 'all', label: t('agent_logs.all_collectors') },
+          { key: 'codex', label: 'Codex' }
+        ]}
+      />
+      {catalog.isPending ? (
+        <div role="status" aria-label={t('agent_logs.collectors_loading')}>
+          <Skeleton active />
+        </div>
+      ) : catalog.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          title={t('agent_logs.collectors_error')}
+          action={
+            <Button onClick={() => void catalog.refetch()}>
+              {t('agent_logs.retry_collectors')}
+            </Button>
+          }
+        />
+      ) : collectors && selected ? (
+        <CollectorInstallation
+          collector={selected}
+          applicationId={applicationId}
+          endpoint={endpoint}
+          onBack={() => setCollectorCode(null)}
+        />
+      ) : (
+        collectors && (
+          <>
+            {collectors.filter(
+              (collector) =>
+                sourceClient === 'all' ||
+                collector.source_client === sourceClient
+            ).length === 0 ? (
+              <Empty description={t('agent_logs.no_collectors')} />
+            ) : (
+              <div className="application-collector__catalog">
+                {collectors
+                  .filter(
+                    (collector) =>
+                      sourceClient === 'all' ||
+                      collector.source_client === sourceClient
+                  )
+                  .map((collector) => (
+                    <article
+                      key={collector.collector_code}
+                      className="application-collector__card"
+                    >
+                      <div className="application-collector__identity">
+                        <span
+                          className="application-collector__logo"
+                          aria-hidden="true"
+                        >
+                          C
+                        </span>
+                        <div>
+                          <Typography.Title level={5}>
+                            {collector.display_name}
+                          </Typography.Title>
+                          <Typography.Text type="secondary">
+                            {t('agent_logs.collector_version', {
+                              version: collector.version
+                            })}
+                          </Typography.Text>
+                        </div>
+                      </div>
+                      <Typography.Paragraph>
+                        {collector.description}
+                      </Typography.Paragraph>
+                      <Button
+                        type="primary"
+                        block
+                        onClick={() =>
+                          setCollectorCode(collector.collector_code)
+                        }
+                      >
+                        {t('agent_logs.install_collector')}
+                      </Button>
+                    </article>
+                  ))}
+              </div>
+            )}
+          </>
+        )
+      )}
+    </div>
   );
 }

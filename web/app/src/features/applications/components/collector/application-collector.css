@@ -1,0 +1,119 @@
+.application-collector {
+  width: 100%;
+  padding: 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+}
+.application-collector__catalog {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.application-collector__card {
+  padding: 24px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+}
+.application-collector__identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.application-collector__identity > div {
+  flex: 1;
+  min-width: 0;
+}
+.application-collector__logo {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  background: var(--bg-hover);
+  color: var(--color-primary);
+  font-size: 24px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+.application-collector__installation {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 32px;
+  margin-top: 16px;
+}
+.application-collector__steps {
+  min-width: 0;
+}
+.application-collector__step {
+  display: flex;
+  gap: 16px;
+  margin-top: 24px;
+}
+.application-collector__step > div {
+  min-width: 0;
+  flex: 1;
+}
+.application-collector__number {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  color: var(--color-primary);
+  font-size: 20px;
+  font-weight: 600;
+}
+.application-collector__command {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  text-align: right;
+}
+.application-collector__command pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+  color: var(--text-primary);
+  font:
+    13px/1.6 'SFMono-Regular',
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+}
+.application-collector__benefits {
+  padding: 24px;
+  background: var(--bg-elevated);
+  border-radius: 12px;
+  align-self: start;
+}
+.application-collector__benefit {
+  display: flex;
+  gap: 16px;
+}
+.application-collector__benefit > span {
+  color: var(--color-primary);
+  font-size: 24px;
+}
+@media (max-width: 900px) {
+  .application-collector__installation {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .application-collector {
+    padding: 16px;
+  }
+  .application-collector__catalog {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .application-collector__identity {
+    flex-wrap: wrap;
+  }
+}
