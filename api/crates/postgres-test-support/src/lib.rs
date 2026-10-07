@@ -29,10 +29,17 @@ impl PostgresTestSchema {
             .execute(&mut connection)
             .await?;
         connection.close().await?;
-        let database_url = PgConnectOptions::from_str(database.database_url())?
-            .options([("search_path", format!("{schema_name},public"))])
-            .to_url_lossy()
-            .to_string();
+        // PgConnectOptions::to_url_lossy does not serialize startup options.
+        // Keep the explicit encoded option in the caller-visible connection URL.
+        let query_separator = if database.database_url().contains('?') {
+            '&'
+        } else {
+            '?'
+        };
+        let database_url = format!(
+            "{}{query_separator}options=-csearch_path%3D{schema_name}%2Cpublic",
+            database.database_url()
+        );
         Ok(Self {
             database,
             database_url,
@@ -72,8 +79,10 @@ impl PostgresTestSchema {
 /// Owns a whole temporary database for destructive migrations and backup/restore
 /// fixtures. `PostgresTestSchema` reuses this database boundary and adds its own
 /// schema/search path; logical restore fixtures use the database owner directly.
+/// The test role requires CREATEDB and CONNECT to the existing `postgres`
+/// maintenance database, which remains available if a proof-owned parent is dropped.
 pub struct PostgresTestDatabase {
-    admin_database_url: String,
+    cleanup_options: PgConnectOptions,
     database_url: String,
     database_name: String,
 }
@@ -93,7 +102,9 @@ impl PostgresTestDatabase {
             .to_url_lossy()
             .to_string();
         Ok(Self {
-            admin_database_url: admin_database_url.to_owned(),
+            // Keep typed startup options and credentials: a lossy URL round-trip
+            // would discard options, and the supplied database may be temporary.
+            cleanup_options: admin_options.database("postgres"),
             database_url,
             database_name,
         })
@@ -117,7 +128,7 @@ impl PostgresTestDatabase {
 
 impl Drop for PostgresTestDatabase {
     fn drop(&mut self) {
-        let admin_database_url = self.admin_database_url.clone();
+        let cleanup_options = self.cleanup_options.clone();
         let database_name = self.database_name.clone();
         if !database_name.starts_with("test_backup_") {
             eprintln!("refusing to drop non-temporary PostgreSQL database {database_name}");
@@ -138,7 +149,7 @@ impl Drop for PostgresTestDatabase {
                 };
                 let result = runtime.block_on(async {
                     tokio::time::timeout(Duration::from_secs(30), async {
-                        let mut connection = PgConnection::connect(&admin_database_url).await?;
+                        let mut connection = PgConnection::connect_with(&cleanup_options).await?;
                         sqlx::query(
                             "select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()",
                         )

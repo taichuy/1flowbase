@@ -1,5 +1,9 @@
 use super::{PostgresTestDatabase, PostgresTestSchema};
-use sqlx::PgPool;
+use sqlx::{
+    postgres::{PgConnectOptions, PgPoolOptions},
+    PgPool,
+};
+use std::str::FromStr;
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -27,6 +31,11 @@ async fn ac_001_drop_removes_the_test_schema() {
         .await
         .unwrap();
     assert_eq!(actual_database, database_name);
+    let actual_schema: String = sqlx::query_scalar("select current_schema()")
+        .fetch_one(&test_pool)
+        .await
+        .unwrap();
+    assert_eq!(actual_schema, schema_name);
     let exists: bool =
         sqlx::query_scalar("select exists(select 1 from pg_namespace where nspname=$1)")
             .bind(&schema_name)
@@ -96,6 +105,12 @@ async fn historical_migrations_preserve_parent_public_metadata_and_cleanup_owned
     let inner_name = inner.database_name().to_owned();
     let schema_name = inner.schema_name().to_owned();
     let inner_pool = inner.connect().await.unwrap();
+    let before_migration: (String, String) =
+        sqlx::query_as("select current_database(), current_schema()")
+            .fetch_one(&inner_pool)
+            .await
+            .unwrap();
+    assert_eq!(before_migration, (inner_name.clone(), schema_name.clone()));
     // Executes the actual 20260413103000 unqualified DROP statements and all
     // subsequent migrations, including the AgentLogs model-field registration.
     sqlx::migrate!("../storage/durable/postgres/migrations")
@@ -140,5 +155,49 @@ async fn historical_migrations_preserve_parent_public_metadata_and_cleanup_owned
     drop(parent);
     let admin = PgPool::connect(&base_url).await.unwrap();
     assert!(!database_exists(&admin, &parent_name).await);
+    admin.close().await;
+}
+
+#[tokio::test]
+async fn inner_panic_cleanup_survives_disappearance_of_owned_parent_database() {
+    let base_url = base_database_url();
+    let stable_options = PgConnectOptions::from_str(&base_url)
+        .unwrap()
+        .database("postgres");
+    let admin = PgPoolOptions::new()
+        .connect_with(stable_options)
+        .await
+        .unwrap();
+    let parent = PostgresTestDatabase::create(&base_url).await.unwrap();
+    let parent_name = parent.database_name().to_owned();
+    let inner = PostgresTestSchema::create(parent.database_url())
+        .await
+        .unwrap();
+    let inner_name = inner.database_name().to_owned();
+    let inner_schema = inner.schema_name().to_owned();
+    let inner_pool = inner.connect().await.unwrap();
+    assert!(database_exists(&admin, &parent_name).await);
+    assert!(database_exists(&admin, &inner_name).await);
+
+    // Drop the parent's owner while the inner pool still owns live connections.
+    // An inner cleanup tied to that URL would now fail to connect.
+    drop(parent);
+    assert!(!database_exists(&admin, &parent_name).await);
+    let actual: (String, String) = sqlx::query_as("select current_database(), current_schema()")
+        .fetch_one(&inner_pool)
+        .await
+        .unwrap();
+    assert_eq!(actual, (inner_name.clone(), inner_schema));
+    assert!(database_exists(&admin, &inner_name).await);
+    let panic = tokio::spawn(async move {
+        let _inner_pool = inner_pool;
+        panic!("intentional inner panic after parent database removal");
+    })
+    .await;
+    assert!(panic.unwrap_err().is_panic());
+    assert!(
+        !database_exists(&admin, &inner_name).await,
+        "inner panic must clean up through the stable maintenance database"
+    );
     admin.close().await;
 }
