@@ -145,10 +145,14 @@ async fn migration_backfills_dynamic_departments_and_frontstage_with_partition_i
     }
     let page = Uuid::now_v7();
     let tab = Uuid::now_v7();
+    // The deferred page/tab invariant is checked at commit, so create both
+    // legacy resources atomically just as the production page command does.
+    let mut page_tx = pool.begin().await.unwrap();
     sqlx::query("insert into frontstage_pages (id, workspace_id, kind, title, placement, content_presentation, rank, slug) values ($1, $2, 'page', 'Path Fixture', 'topbar', 'tabs', 'U', 'path-fixture')")
-        .bind(page).bind(scope).execute(&pool).await.unwrap();
+        .bind(page).bind(scope).execute(&mut *page_tx).await.unwrap();
     sqlx::query("insert into frontstage_page_tabs (id, workspace_id, page_id, rank, is_default, document_root_uid) values ($1, $2, $3, 'U', true, 'path-fixture-root')")
-        .bind(tab).bind(scope).bind(page).execute(&pool).await.unwrap();
+        .bind(tab).bind(scope).bind(page).execute(&mut *page_tx).await.unwrap();
+    page_tx.commit().await.unwrap();
     let block_root = Uuid::now_v7();
     let block_child = Uuid::now_v7();
     let block_grandchild = Uuid::now_v7();
@@ -179,6 +183,20 @@ async fn migration_backfills_dynamic_departments_and_frontstage_with_partition_i
         let indexed: bool = sqlx::query_scalar("select exists(select 1 from pg_indexes where schemaname = current_schema() and tablename = $1 and indexdef like '%USING gist%' and indexdef like '%ARRAY[tree_path]%')")
             .bind(table).fetch_one(&pool).await.unwrap();
         assert!(indexed, "{table} must have its path GiST index");
+        let default: Option<String> = sqlx::query_scalar("select column_default from information_schema.columns where table_schema = current_schema() and table_name = $1 and column_name = 'tree_path'")
+            .bind(table).fetch_one(&pool).await.unwrap();
+        assert!(
+            default.is_none(),
+            "the backfill sentinel must not remain a write default"
+        );
+        let empty_paths: i64 = sqlx::query_scalar(&format!(
+            "select count(*) from \"{table}\" where public.nlevel(tree_path) = 0"
+        ))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(empty_paths, 0);
+
         // Old native writers still move and rename trees consistently.
         let mut tx = pool.begin().await.unwrap();
         sqlx::query(&format!(
@@ -272,8 +290,8 @@ async fn migration_rejects_cycles_missing_parents_and_reserved_column_conflicts(
         )
         .await;
         if corruption == "metadata" {
-            sqlx::query("insert into model_fields (id, data_model_id, code, title, physical_column_name, field_kind) values ($1, $2, 'tree_path', 'User path', 'user_path', 'string')")
-                .bind(Uuid::now_v7()).bind(model.id).execute(&pool).await.unwrap();
+            sqlx::query("insert into model_fields (id, data_model_id, scope_id, code, title, physical_column_name, field_kind) values ($1, $2, $3, 'tree_path', 'User path', 'user_path', 'string')")
+                .bind(Uuid::now_v7()).bind(model.id).bind(scope).execute(&pool).await.unwrap();
         } else if corruption == "column" {
             sqlx::query(&format!(
                 "alter table \"{}\" add column tree_path text",
@@ -708,5 +726,48 @@ async fn path_read_and_subtree_move_emit_explain_buffers_evidence() {
     eprintln!(
         "ltree evidence: nodes=515 moved=65 read={} move={}",
         read, movement
+    );
+}
+
+// F1: index construction must also accept pre-column tuple versions still
+// required by an older snapshot. Updating an indexed rank forces a non-HOT
+// version; the snapshot touches another table so it does not block tree DDL.
+#[tokio::test]
+async fn migration_indexes_recently_dead_versions_without_null_array_elements() {
+    let (pool, _store, model, scope) = legacy_fixture().await;
+    let root = Uuid::now_v7();
+    insert_dynamic(
+        &pool,
+        &model.physical_table_name,
+        scope,
+        scope,
+        root,
+        None,
+        "U",
+    )
+    .await;
+    let mut old_snapshot = pool.begin().await.unwrap();
+    sqlx::query("set transaction isolation level repeatable read")
+        .execute(&mut *old_snapshot)
+        .await
+        .unwrap();
+    let _: i64 = sqlx::query_scalar("select count(*) from tenants")
+        .fetch_one(&mut *old_snapshot)
+        .await
+        .unwrap();
+    sqlx::query(&format!(
+        "update \"{}\" set sibling_rank = 'k' where id = $1",
+        model.physical_table_name
+    ))
+    .bind(root)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let migrated = run_migrations(&pool).await;
+    old_snapshot.rollback().await.unwrap();
+    migrated.unwrap();
+    assert_eq!(
+        path(&pool, &model.physical_table_name, root).await,
+        labels(&[root])
     );
 }

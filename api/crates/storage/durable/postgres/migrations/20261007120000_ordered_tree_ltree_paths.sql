@@ -76,7 +76,12 @@ begin
     select n.nspname, c.relname into strict target_schema, target_table
       from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.oid = target;
     execute format('lock table %I.%I in access exclusive mode', target_schema, target_table);
-    execute format('alter table %I.%I add column tree_path public.ltree', target_schema, target_table);
+    -- CREATE INDEX also visits recently-dead non-HOT tuple versions. A
+    -- nullable ADD COLUMN would expose ARRAY[NULL] from those old versions,
+    -- which the array GiST opclass rejects even after the live rows are filled.
+    -- The transaction-only empty-path default supplies every old version with
+    -- a non-null missing value; unreachable live rows retain this sentinel.
+    execute format('alter table %I.%I add column tree_path public.ltree not null default %L::public.ltree', target_schema, target_table, '');
     execute format($backfill$
         with recursive paths(id, scope_id, tree_partition_id, tree_path) as (
             select id, scope_id, tree_partition_id, replace(id::text, '-', '')::public.ltree
@@ -90,15 +95,15 @@ begin
         update %1$I.%2$I node set tree_path = paths.tree_path from paths
         where node.id = paths.id and node.scope_id = paths.scope_id and node.tree_partition_id = paths.tree_partition_id
     $backfill$, target_schema, target_table);
-    execute format('select count(*) from %I.%I where tree_path is null', target_schema, target_table) into unresolved;
+    execute format('select count(*) from %I.%I where public.nlevel(tree_path) = 0', target_schema, target_table) into unresolved;
     if unresolved <> 0 then
         raise exception 'ordered-tree path backfill failed for %: % unreachable rows (cycle or missing scoped parent)', target, unresolved using errcode = '23514';
     end if;
-    execute format('alter table %I.%I alter column tree_path set not null', target_schema, target_table);
     -- Scalar ltree GiST leaves retain the full path and can hit the page
     -- limit on deep UUID trees. The one-element array opclass stores only a
     -- fixed-size lossy signature; PostgreSQL rechecks the exact path predicate.
     execute format('create index %I on %I.%I using gist ((ARRAY[tree_path]) public.gist__ltree_ops)', 'idx_ot_path_' || replace(model_id::text, '-', ''), target_schema, target_table);
+    execute format('alter table %I.%I alter column tree_path drop default', target_schema, target_table);
     execute format('create trigger ordered_tree_path_before before insert or update or delete on %I.%I for each row execute function %I.ordered_tree_maintain_path(%L)', target_schema, target_table, current_schema(), model_id::text);
     execute format('create trigger ordered_tree_path_after after update of parent_id on %I.%I for each row execute function %I.ordered_tree_maintain_path(%L)', target_schema, target_table, current_schema(), model_id::text);
 end $$;

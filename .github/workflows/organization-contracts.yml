@@ -71,17 +71,20 @@ jobs:
           set -euo pipefail
           mkdir -p tmp/test-governance/organization
           git rev-parse HEAD > tmp/test-governance/organization/candidate-sha.txt
+          verification_status=0
           export CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS ltree WITH SCHEMA public'
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts 2>&1 | tee tmp/test-governance/organization/contracts.log
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib ordered_tree -- --nocapture 2>&1 | tee tmp/test-governance/organization/tree.log
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib _tests::frontstage::block_nodes 2>&1 | tee tmp/test-governance/organization/block-tree.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib _tests::member 2>&1 | tee tmp/test-governance/organization/members.log
-          cargo test --locked --manifest-path api/Cargo.toml -p domain --lib organization 2>&1 | tee tmp/test-governance/organization/domain.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib system_metadata 2>&1 | tee tmp/test-governance/organization/metadata.log
-          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib workspace_access_tests 2>&1 | tee tmp/test-governance/organization/permissions.log
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test organization_integration 2>&1 | tee tmp/test-governance/organization/integration.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts 2>&1 | tee tmp/test-governance/organization/contracts.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib ordered_tree -- --nocapture 2>&1 | tee tmp/test-governance/organization/tree.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib _tests::frontstage::block_nodes 2>&1 | tee tmp/test-governance/organization/block-tree.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib _tests::member 2>&1 | tee tmp/test-governance/organization/members.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p domain --lib organization 2>&1 | tee tmp/test-governance/organization/domain.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib system_metadata 2>&1 | tee tmp/test-governance/organization/metadata.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib workspace_access_tests 2>&1 | tee tmp/test-governance/organization/permissions.log || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test organization_integration 2>&1 | tee tmp/test-governance/organization/integration.log || verification_status=1
+          exit "$verification_status"
       - name: Compile API consumers
+        if: always()
         run: |
           set -euo pipefail
           export CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)"
