@@ -660,9 +660,32 @@ impl ApplicationRepository for PgControlPlaneStore {
             r#"
             delete from flow_runs
             where application_id = $1
+              and exists (
+                  select 1 from applications
+                  where id = flow_runs.application_id and workspace_id = $2
+              )
             "#,
         )
         .bind(input.application_id)
+        .bind(input.workspace_id)
+        .execute(&mut *tx)
+        .await?;
+
+        // Imported directories have task ownership rather than a flow owner.
+        // Finish their record cascades before the application removes canonical
+        // bodies still referenced by client sections.
+        sqlx::query(
+            r#"
+            delete from application_run_log_tasks task
+            using applications application
+            where task.application_id = application.id
+              and application.id = $1
+              and application.workspace_id = $2
+              and task.source_kind = 'imported'
+            "#,
+        )
+        .bind(input.application_id)
+        .bind(input.workspace_id)
         .execute(&mut *tx)
         .await?;
 
