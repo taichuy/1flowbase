@@ -910,6 +910,8 @@ async fn application_type_catalog(
         resolve_request_text_with(store, bootstrap_workspace_id, locale, "Agent Flow").await?;
     let workflow =
         resolve_request_text_with(store, bootstrap_workspace_id, locale, "Workflow").await?;
+    let agent_logs =
+        resolve_request_text_with(store, bootstrap_workspace_id, locale, "Agent Logs").await?;
     Ok(vec![
         ApplicationTypeOptionResponse {
             value: ApplicationTypeDto::AgentFlow,
@@ -918,6 +920,10 @@ async fn application_type_catalog(
         ApplicationTypeOptionResponse {
             value: ApplicationTypeDto::Workflow,
             label: workflow,
+        },
+        ApplicationTypeOptionResponse {
+            value: ApplicationTypeDto::AgentLogs,
+            label: agent_logs,
         },
     ])
 }
