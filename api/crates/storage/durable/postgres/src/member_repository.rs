@@ -512,7 +512,7 @@ impl MemberRepository for PgControlPlaneStore {
                 select 1 from departments root
                 join departments child on child.scope_id=root.scope_id
                   and child.tree_partition_id=root.tree_partition_id
-                  and child.tree_path <@ root.tree_path
+                  and ARRAY[child.tree_path] <@ root.tree_path
                 join user_department_bindings b on b.scope_id=child.scope_id and b.department_id=child.id
                 where root.scope_id=$1 and root.id=$2 and b.user_id=u.id
               ))

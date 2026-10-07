@@ -107,7 +107,7 @@ impl OrganizationRepository for PgControlPlaneStore {
                 (select count(distinct b.user_id) from departments s join user_department_bindings b
                     on b.department_id=s.id and b.scope_id=$1
                     where s.scope_id=$1 and s.tree_partition_id=d.tree_partition_id
-                      and s.tree_path <@ d.tree_path) member_count
+                      and ARRAY[s.tree_path] <@ d.tree_path) member_count
             from departments d where scope_id=$1 order by sibling_rank collate "C",id
         "#,
         )
@@ -303,7 +303,7 @@ impl OrganizationRepository for PgControlPlaneStore {
         }
         Ok(sqlx::query_scalar(r#"select distinct b.user_id from departments root
             join departments s on s.scope_id=root.scope_id and s.tree_partition_id=root.tree_partition_id
-                and s.tree_path <@ root.tree_path
+                and ARRAY[s.tree_path] <@ root.tree_path
             join user_department_bindings b on b.department_id=s.id and b.scope_id=root.scope_id
             where root.scope_id=$1 and root.id=$2 order by b.user_id"#)
             .bind(workspace_id).bind(department_id).fetch_all(self.pool()).await?)
