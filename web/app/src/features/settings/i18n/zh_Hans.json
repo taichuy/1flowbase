@@ -1053,7 +1053,6 @@
     "title": "组织",
     "management": "组织管理",
     "search": "搜索组织",
-    "all_members": "全部用户",
     "member_count": "共 {{count}} 名用户",
     "records": "共 {{count}} 条记录",
     "load_error": "组织加载失败",

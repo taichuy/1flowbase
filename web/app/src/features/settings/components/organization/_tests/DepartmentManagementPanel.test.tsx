@@ -91,6 +91,34 @@ describe('department operations and access', () => {
       )
     );
   });
+  test('editing retains existing department roles without assignment permission', async () => {
+    api.updateSettingsDepartment.mockResolvedValue({ id: 'a' });
+    render(
+      <AppProviders>
+        <DepartmentManagementPanel
+          access={{ ...denied, can_list: true, can_update: true }}
+        />
+      </AppProviders>
+    );
+    await screen.findByText('Engineering');
+    fireEvent.click(screen.getByRole('button', { name: /编\s*辑$/ }));
+    expect(screen.getByLabelText('部门名称')).toHaveValue('Engineering');
+    expect(
+      screen.queryByRole('combobox', { name: '部门角色' })
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('部门名称'), {
+      target: { value: 'Renamed' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() =>
+      expect(api.updateSettingsDepartment).toHaveBeenCalledWith(
+        'a',
+        { name: 'Renamed', parent_id: null, role_codes: ['operator'] },
+        'csrf'
+      )
+    );
+    expect(api.createSettingsDepartment).not.toHaveBeenCalled();
+  });
   test('clears a failed delete notification when retrying the list successfully', async () => {
     api.deleteSettingsDepartment.mockRejectedValueOnce(
       new Error('delete rejected')

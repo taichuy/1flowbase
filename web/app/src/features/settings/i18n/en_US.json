@@ -1053,7 +1053,6 @@
     "title": "Organization",
     "management": "Organization management",
     "search": "Search organization",
-    "all_members": "All users",
     "member_count": "{{count}} users",
     "records": "{{count}} records",
     "load_error": "Could not load organizations",

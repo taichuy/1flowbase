@@ -70,6 +70,22 @@ const members: ConsoleMember[] = [
     role_codes: ['member'],
     department_ids: ['operations'],
     primary_department_id: 'operations'
+  },
+  {
+    id: 'boundary-member-unassigned',
+    account: 'taylor',
+    email: 'taylor@example.com',
+    phone: null,
+    name: 'Taylor Lee',
+    nickname: 'Taylor',
+    introduction: '',
+    default_display_role: null,
+    email_login_enabled: true,
+    phone_login_enabled: false,
+    status: 'active',
+    role_codes: ['member'],
+    department_ids: [],
+    primary_department_id: null
   }
 ];
 export function seedStyleBoundaryOrganizationFetch() {

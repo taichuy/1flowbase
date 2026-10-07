@@ -1891,6 +1891,7 @@
       "height": 900
     },
     "impactFiles": [
+      "web/app/src/features/settings/components/organization/DepartmentEditorDrawer.tsx",
       "web/app/src/features/settings/components/organization/organization-management.css",
       "web/app/src/features/settings/components/organization/OrganizationSelector.tsx",
       "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx",
@@ -1931,6 +1932,7 @@
       "height": 844
     },
     "impactFiles": [
+      "web/app/src/features/settings/components/organization/DepartmentEditorDrawer.tsx",
       "web/app/src/features/settings/components/organization/organization-management.css",
       "web/app/src/features/settings/components/organization/OrganizationSelector.tsx",
       "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx",
@@ -1971,6 +1973,7 @@
       "height": 900
     },
     "impactFiles": [
+      "web/app/src/features/settings/components/organization/DepartmentEditorDrawer.tsx",
       "web/app/src/features/settings/components/organization/organization-management.css",
       "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx",
       "web/app/src/features/settings/pages/settings-page/MemberSettingsTabs.tsx",
@@ -1999,6 +2002,7 @@
       "height": 844
     },
     "impactFiles": [
+      "web/app/src/features/settings/components/organization/DepartmentEditorDrawer.tsx",
       "web/app/src/features/settings/components/organization/organization-management.css",
       "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx",
       "web/app/src/features/settings/pages/settings-page/MemberSettingsTabs.tsx",

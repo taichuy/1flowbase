@@ -42,15 +42,6 @@
   color: var(--text-tertiary);
   font-size: 12px;
 }
-.organization-all {
-  text-align: left;
-  justify-content: flex-start;
-}
-.organization-all--selected {
-  background: var(--bg-hover);
-  color: var(--color-primary);
-  font-weight: 600;
-}
 .organization-members {
   display: flex;
   flex-direction: column;
@@ -91,6 +82,9 @@
 @media (max-width: 768px) {
   .organization-workspace {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .organization-create-button {
+    min-height: 44px;
   }
   .organization-sidebar {
     max-height: 240px;

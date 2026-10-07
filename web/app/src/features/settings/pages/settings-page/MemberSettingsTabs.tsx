@@ -54,6 +54,7 @@ export function MemberSettingsTabs({
               canManageMembers={canManageMembers}
               canManageRoleBindings={departmentAccess.can_assign_roles}
               canViewDepartments={departmentAccess.can_list}
+              canCreateDepartments={departmentAccess.can_create}
               canManageMemberDepartments={
                 departmentAccess.can_replace_member_departments
               }

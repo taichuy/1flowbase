@@ -37,6 +37,8 @@ const departmentsApi = vi.hoisted(() => ({
   settingsDepartmentsQueryKey: ['settings', 'departments'],
   settingsMemberRoleOptionsQueryKey: ['settings', 'members', 'role-options'],
   fetchSettingsDepartments: vi.fn(),
+  createSettingsDepartment: vi.fn(),
+  updateSettingsDepartment: vi.fn(),
   replaceSettingsMemberDepartments: vi.fn()
 }));
 vi.mock('../api/departments', () => ({
@@ -72,13 +74,14 @@ function authenticate() {
   });
 }
 
-function renderPanel(withDepartments = false) {
+function renderPanel(withDepartments = false, canCreateDepartments = false) {
   return render(
     <AppProviders>
       <MemberManagementPanel
         canManageMembers
         canManageRoleBindings
         canViewDepartments={withDepartments}
+        canCreateDepartments={canCreateDepartments}
         canManageMemberDepartments={withDepartments}
       />
     </AppProviders>
@@ -121,6 +124,7 @@ function ignoreCircularReferenceWarning() {
 
 describe('MemberManagementPanel', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     resetAuthStore();
     authenticate();
     departmentsApi.fetchSettingsDepartments.mockResolvedValue([
@@ -380,13 +384,165 @@ describe('MemberManagementPanel', () => {
         'department-1'
       )
     );
-    fireEvent.click(screen.getByRole('button', { name: /全部用户$/ }));
+    fireEvent.click(within(screen.getByRole('tree')).getByText('组织'));
     await waitFor(() =>
       expect(membersApi.fetchSettingsMembers).toHaveBeenLastCalledWith(
         undefined
       )
     );
     expect(screen.getByText('8')).toBeInTheDocument();
+  });
+  test('root browsing includes unassigned users and survives an empty organization or search', async () => {
+    departmentsApi.fetchSettingsDepartments.mockResolvedValue([]);
+    renderPanel(true);
+    expect(await screen.findByText('User Name')).toBeInTheDocument();
+    expect(screen.getByRole('tree')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('tree')).getByText('组织')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /全部用户/ })
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: '组织' })).toHaveLength(2);
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索组织' }), {
+      target: { value: 'missing' }
+    });
+    expect(
+      within(screen.getByRole('tree')).getByText('组织')
+    ).toBeInTheDocument();
+    expect(membersApi.fetchSettingsMembers).toHaveBeenLastCalledWith(undefined);
+    expect(
+      screen.queryByRole('button', { name: /新增部门/ })
+    ).not.toBeInTheDocument();
+  });
+  test('nested departments select the API subtree without filtering or duplicating its response', async () => {
+    departmentsApi.fetchSettingsDepartments.mockResolvedValue([
+      {
+        id: 'department-1',
+        name: 'Engineering',
+        parent_id: null,
+        role_codes: [],
+        member_count: 2
+      },
+      {
+        id: 'department-2',
+        name: 'Development',
+        parent_id: 'department-1',
+        role_codes: [],
+        member_count: 1
+      }
+    ]);
+    renderPanel(true);
+    fireEvent.click(await screen.findByText('Development'));
+    await waitFor(() =>
+      expect(membersApi.fetchSettingsMembers).toHaveBeenLastCalledWith(
+        'department-2'
+      )
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Development' })
+    ).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('tree')).getByText('Engineering'));
+    await waitFor(() =>
+      expect(membersApi.fetchSettingsMembers).toHaveBeenLastCalledWith(
+        'department-1'
+      )
+    );
+    expect(await screen.findByText('User Name')).toBeInTheDocument();
+    expect(screen.getAllByText('User Name')).toHaveLength(1);
+  });
+  test('creates a root department with no parent and refreshes the organization tree and members', async () => {
+    departmentsApi.createSettingsDepartment.mockImplementation(async () => {
+      departmentsApi.fetchSettingsDepartments.mockResolvedValue([
+        {
+          id: 'new-department',
+          name: 'Support',
+          parent_id: null,
+          role_codes: [],
+          member_count: 4
+        }
+      ]);
+      return { id: 'new-department' };
+    });
+    renderPanel(true, true);
+    fireEvent.click(await screen.findByRole('button', { name: /新增部门/ }));
+    fireEvent.change(screen.getByLabelText('部门名称'), {
+      target: { value: ' Support ' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() =>
+      expect(departmentsApi.createSettingsDepartment).toHaveBeenCalledWith(
+        { name: 'Support', parent_id: null, role_codes: [] },
+        'csrf-123'
+      )
+    );
+    expect(await screen.findByText('Support')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(membersApi.fetchSettingsMembers.mock.calls.length).toBeGreaterThan(
+        1
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByLabelText('部门名称')).not.toBeInTheDocument()
+    );
+  });
+  test('allows changing the parent when creating from the root', async () => {
+    departmentsApi.createSettingsDepartment.mockResolvedValue({ id: 'child' });
+    renderPanel(true, true);
+    fireEvent.click(await screen.findByRole('button', { name: /新增部门/ }));
+    fireEvent.change(screen.getByLabelText('部门名称'), {
+      target: { value: 'Support' }
+    });
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '上级部门' }));
+    const [option] = await screen.findAllByText((_, element) =>
+      Boolean(
+        element?.matches('.ant-select-item-option-content') &&
+        element.textContent === 'Engineering'
+      )
+    );
+    fireEvent.click(option);
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() =>
+      expect(departmentsApi.createSettingsDepartment).toHaveBeenCalledWith(
+        { name: 'Support', parent_id: 'department-1', role_codes: [] },
+        'csrf-123'
+      )
+    );
+  });
+  test('defaults to the selected parent and preserves the draft on failure for a successful retry', async () => {
+    departmentsApi.createSettingsDepartment
+      .mockRejectedValueOnce(new Error('create rejected'))
+      .mockResolvedValueOnce({ id: 'child' });
+    renderPanel(true, true);
+    fireEvent.click(await screen.findByText('Engineering'));
+    await waitFor(() =>
+      expect(membersApi.fetchSettingsMembers).toHaveBeenLastCalledWith(
+        'department-1'
+      )
+    );
+    fireEvent.click(screen.getByRole('button', { name: /新增部门/ }));
+    fireEvent.change(screen.getByLabelText('部门名称'), {
+      target: { value: 'Child' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    expect(await screen.findByText('操作未完成，请重试')).toBeInTheDocument();
+    expect(screen.getByLabelText('部门名称')).toHaveValue('Child');
+    expect(departmentsApi.createSettingsDepartment).toHaveBeenCalledWith(
+      { name: 'Child', parent_id: 'department-1', role_codes: [] },
+      'csrf-123'
+    );
+    const beforeRetry = membersApi.fetchSettingsMembers.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() =>
+      expect(departmentsApi.createSettingsDepartment).toHaveBeenCalledTimes(2)
+    );
+    await waitFor(() =>
+      expect(screen.queryByLabelText('部门名称')).not.toBeInTheDocument()
+    );
+    expect(membersApi.fetchSettingsMembers.mock.calls.length).toBeGreaterThan(
+      beforeRetry
+    );
   });
   test('department membership saves an explicit null primary for an unassigned user', async () => {
     renderPanel(true);

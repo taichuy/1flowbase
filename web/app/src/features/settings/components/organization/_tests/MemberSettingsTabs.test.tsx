@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   access: vi.fn(),
-  tab: 'members'
+  tab: 'members',
+  memberProps: vi.fn()
 }));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
@@ -14,7 +15,10 @@ vi.mock('../../../api/departments', () => ({
   settingsDepartmentAccessQueryKey: ['settings', 'departments', 'access']
 }));
 vi.mock('../../MemberManagementPanel', () => ({
-  MemberManagementPanel: () => <div>Members content</div>
+  MemberManagementPanel: (props: { canCreateDepartments?: boolean }) => {
+    mocks.memberProps(props);
+    return <div>Members content</div>;
+  }
 }));
 vi.mock('../../billing/CreditManagementPanel', () => ({
   CreditManagementPanel: () => <div>Credits content</div>
@@ -26,6 +30,7 @@ import { AppProviders } from '../../../../../app/AppProviders';
 import { MemberSettingsTabs } from '../../../pages/settings-page/MemberSettingsTabs';
 describe('member settings tabs', () => {
   beforeEach(() => {
+    mocks.memberProps.mockClear();
     mocks.tab = 'members';
     mocks.access.mockResolvedValue({
       can_list: true,
@@ -55,6 +60,29 @@ describe('member settings tabs', () => {
       })
     );
   });
+  test.each([false, true])(
+    'passes can_create=%s from department access to the member creation entry',
+    async (can_create) => {
+      mocks.access.mockResolvedValue({
+        can_list: true,
+        can_create,
+        can_update: false,
+        can_delete: false,
+        can_assign_roles: false,
+        can_replace_member_departments: false
+      });
+      render(
+        <AppProviders>
+          <MemberSettingsTabs canManageMembers />
+        </AppProviders>
+      );
+      await waitFor(() =>
+        expect(mocks.memberProps).toHaveBeenLastCalledWith(
+          expect.objectContaining({ canCreateDepartments: can_create })
+        )
+      );
+    }
+  );
   test('restores the departments tab from URL query state', async () => {
     mocks.tab = 'departments';
     render(

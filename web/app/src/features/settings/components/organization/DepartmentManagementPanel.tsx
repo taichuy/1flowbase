@@ -3,12 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
-  Drawer,
   Empty,
-  Form,
-  Input,
   Popconfirm,
-  Select,
   Space,
   Table,
   Typography
@@ -17,22 +13,19 @@ import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
-  createSettingsDepartment,
   deleteSettingsDepartment,
   fetchSettingsDepartments,
   settingsDepartmentsQueryKey,
-  updateSettingsDepartment,
-  type DepartmentInput,
   type DepartmentAccess,
   type SettingsDepartment
-} from '../../api/departments';
-import {
-  fetchSettingsMemberRoleOptions,
-  settingsMemberRoleOptionsQueryKey
 } from '../../api/departments';
 export type { DepartmentAccess } from '../../api/departments';
 import { settingsMembersQueryKey } from '../../api/members';
 import { departmentTree, type DepartmentTreeRow } from './department-tree';
+import {
+  DepartmentEditorDrawer,
+  type DepartmentDraft
+} from './DepartmentEditorDrawer';
 import './organization-management.css';
 export function DepartmentManagementPanel({
   access
@@ -41,20 +34,11 @@ export function DepartmentManagementPanel({
 }) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const client = useQueryClient();
-  const [form] = Form.useForm<DepartmentInput>();
-  const [draft, setDraft] = useState<{
-    department?: SettingsDepartment;
-    parent_id: string | null;
-  }>();
+  const [draft, setDraft] = useState<DepartmentDraft>();
   const query = useQuery({
     queryKey: settingsDepartmentsQueryKey,
     queryFn: fetchSettingsDepartments,
     enabled: access.can_list
-  });
-  const rolesQuery = useQuery({
-    queryKey: settingsMemberRoleOptionsQueryKey,
-    queryFn: fetchSettingsMemberRoleOptions,
-    enabled: access.can_list && access.can_assign_roles
   });
   const data = query.data ?? [];
   const tree = useMemo(() => departmentTree(data), [data]);
@@ -64,26 +48,6 @@ export function DepartmentManagementPanel({
       client.invalidateQueries({ queryKey: settingsMembersQueryKey })
     ]);
   };
-  const save = useMutation({
-    mutationFn: async (values: DepartmentInput) => {
-      if (!csrfToken) throw new Error('missing csrf token');
-      const input = {
-        name: values.name.trim(),
-        parent_id: values.parent_id ?? null,
-        role_codes: access.can_assign_roles
-          ? (values.role_codes ?? [])
-          : (draft?.department?.role_codes ?? [])
-      };
-      return draft?.department
-        ? updateSettingsDepartment(draft.department.id, input, csrfToken)
-        : createSettingsDepartment(input, csrfToken);
-    },
-    onSuccess: async () => {
-      await refresh();
-      setDraft(undefined);
-      form.resetFields();
-    }
-  });
   const remove = useMutation({
     mutationFn: (id: string) => {
       if (!csrfToken) throw new Error('missing csrf token');
@@ -95,31 +59,8 @@ export function DepartmentManagementPanel({
     department?: SettingsDepartment,
     parent_id: string | null = null
   ) => {
-    save.reset();
     setDraft({ department, parent_id });
-    form.setFieldsValue({
-      name: department?.name ?? '',
-      parent_id: department?.parent_id ?? parent_id,
-      role_codes: department?.role_codes ?? []
-    });
   };
-  const excluded = new Set<string>();
-  if (draft?.department) {
-    excluded.add(draft.department.id);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const department of data)
-        if (
-          department.parent_id &&
-          excluded.has(department.parent_id) &&
-          !excluded.has(department.id)
-        ) {
-          excluded.add(department.id);
-          changed = true;
-        }
-    }
-  }
   if (!access.can_list)
     return (
       <Empty description={i18nText('settings', 'organization.no_access')} />
@@ -210,85 +151,14 @@ export function DepartmentManagementPanel({
           }
         ]}
       />
-      <Drawer
-        title={
-          draft?.department
-            ? i18nText('settings', 'organization.edit')
-            : i18nText('settings', 'organization.create')
-        }
-        open={Boolean(draft)}
-        onClose={() => {
-          setDraft(undefined);
-          form.resetFields();
-        }}
-        width={480}
-        styles={{ wrapper: { maxWidth: '100vw' } }}
-        extra={
-          <Button
-            type="primary"
-            loading={save.isPending}
-            onClick={() => form.submit()}
-          >
-            {i18nText('settings', 'auto.save')}
-          </Button>
-        }
-      >
-        {save.isError ? (
-          <Alert
-            type="error"
-            message={i18nText('settings', 'organization.operation_error')}
-          />
-        ) : null}
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(values) => save.mutate(values)}
-        >
-          <Form.Item
-            name="name"
-            label={i18nText('settings', 'organization.name')}
-            rules={[
-              {
-                required: true,
-                whitespace: true,
-                message: i18nText('settings', 'organization.name_required')
-              }
-            ]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="parent_id"
-            label={i18nText('settings', 'organization.parent')}
-          >
-            <Select
-              allowClear
-              options={data
-                .filter((department) => !excluded.has(department.id))
-                .map((department) => ({
-                  label: department.name,
-                  value: department.id
-                }))}
-            />
-          </Form.Item>
-          {access.can_assign_roles ? (
-            <Form.Item
-              name="role_codes"
-              label={i18nText('settings', 'organization.department_roles')}
-              extra={i18nText('settings', 'organization.inherited_roles_hint')}
-            >
-              <Select
-                mode="multiple"
-                loading={rolesQuery.isLoading}
-                disabled={rolesQuery.isError}
-                options={(rolesQuery.data ?? [])
-                  .filter((role) => role.code !== 'root')
-                  .map((role) => ({ label: role.name, value: role.code }))}
-              />
-            </Form.Item>
-          ) : null}
-        </Form>
-      </Drawer>
+      {draft ? (
+        <DepartmentEditorDrawer
+          draft={draft}
+          departments={data}
+          canAssignRoles={access.can_assign_roles}
+          onClose={() => setDraft(undefined)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   ConfigProvider,
-  Empty,
   Input,
   Spin,
   Tree,
@@ -11,6 +10,7 @@ import {
   theme
 } from 'antd';
 import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import TeamOutlined from '@ant-design/icons/es/icons/TeamOutlined';
 import type { SettingsDepartment } from '../../api/departments';
@@ -22,13 +22,15 @@ interface OrganizationNode {
   title: ReactNode;
   children?: OrganizationNode[];
 }
+const ORGANIZATION_ROOT_KEY = 'organization-browse-root';
 export function OrganizationSelector({
   departments,
   selected,
   onSelect,
   loading,
   error,
-  onRetry
+  onRetry,
+  onCreate
 }: {
   departments: SettingsDepartment[];
   selected?: string;
@@ -36,6 +38,7 @@ export function OrganizationSelector({
   loading: boolean;
   error: boolean;
   onRetry: () => void;
+  onCreate?: () => void;
 }) {
   const [search, setSearch] = useState('');
   const { token } = theme.useToken();
@@ -63,13 +66,37 @@ export function OrganizationSelector({
           }
         ];
       });
-    return present(departmentTree(departments));
+    return [
+      {
+        key: ORGANIZATION_ROOT_KEY,
+        title: (
+          <span className="organization-tree-label">
+            <TeamOutlined />
+            <span className="organization-tree-name">
+              {i18nText('settings', 'organization.title')}
+            </span>
+          </span>
+        ),
+        children: present(departmentTree(departments))
+      }
+    ];
   }, [departments, search]);
   return (
     <aside className="organization-sidebar">
-      <Typography.Title level={4}>
-        {i18nText('settings', 'organization.title')}
-      </Typography.Title>
+      <div className="organization-toolbar">
+        <Typography.Title level={4}>
+          {i18nText('settings', 'organization.title')}
+        </Typography.Title>
+        {onCreate ? (
+          <Button
+            className="organization-create-button"
+            icon={<PlusOutlined />}
+            onClick={onCreate}
+          >
+            {i18nText('settings', 'organization.create')}
+          </Button>
+        ) : null}
+      </div>
       <Input
         prefix={<SearchOutlined />}
         value={search}
@@ -78,14 +105,6 @@ export function OrganizationSelector({
         aria-label={i18nText('settings', 'organization.search')}
         allowClear
       />
-      <Button
-        type="text"
-        className={`organization-all${selected ? '' : ' organization-all--selected'}`}
-        icon={<TeamOutlined />}
-        onClick={() => onSelect()}
-      >
-        {i18nText('settings', 'organization.all_members')}
-      </Button>
       {loading ? (
         <Spin />
       ) : error ? (
@@ -98,34 +117,31 @@ export function OrganizationSelector({
             </Button>
           }
         />
-      ) : departments.length ? (
-        <ConfigProvider
-          theme={{
-            components: {
-              Tree: {
-                nodeSelectedBg: token.colorPrimaryBg,
-                nodeSelectedColor: token.colorPrimaryText
-              }
+      ) : null}
+      <ConfigProvider
+        theme={{
+          components: {
+            Tree: {
+              nodeSelectedBg: token.colorPrimaryBg,
+              nodeSelectedColor: token.colorPrimaryText
             }
+          }
+        }}
+      >
+        <Tree
+          key={`${search ? 'search' : 'tree'}:${departments.map((department) => department.id).join(',')}`}
+          blockNode
+          defaultExpandAll
+          selectedKeys={[selected ?? ORGANIZATION_ROOT_KEY]}
+          treeData={treeData}
+          onSelect={(keys) => {
+            if (keys.length)
+              onSelect(
+                keys[0] === ORGANIZATION_ROOT_KEY ? undefined : String(keys[0])
+              );
           }}
-        >
-          <Tree
-            key={search ? 'search' : 'tree'}
-            blockNode
-            defaultExpandAll
-            selectedKeys={selected ? [selected] : []}
-            treeData={treeData}
-            onSelect={(keys) => {
-              if (keys.length) onSelect(String(keys[0]));
-            }}
-          />
-        </ConfigProvider>
-      ) : (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={i18nText('settings', 'organization.empty')}
         />
-      )}
+      </ConfigProvider>
     </aside>
   );
 }

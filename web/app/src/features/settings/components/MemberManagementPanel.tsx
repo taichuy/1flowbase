@@ -52,6 +52,10 @@ import {
   settingsDepartmentsQueryKey
 } from '../api/departments';
 import { OrganizationSelector } from './organization/OrganizationSelector';
+import {
+  DepartmentEditorDrawer,
+  type DepartmentDraft
+} from './organization/DepartmentEditorDrawer';
 import { MemberDepartmentFields } from './organization/MemberDepartmentFields';
 import './organization/organization-management.css';
 
@@ -61,11 +65,13 @@ export function MemberManagementPanel({
   canManageMembers,
   canManageRoleBindings,
   canViewDepartments = false,
+  canCreateDepartments = false,
   canManageMemberDepartments = false
 }: {
   canManageMembers: boolean;
   canManageRoleBindings: boolean;
   canViewDepartments?: boolean;
+  canCreateDepartments?: boolean;
   canManageMemberDepartments?: boolean;
 }) {
   const navigate = useNavigate();
@@ -83,6 +89,7 @@ export function MemberManagementPanel({
   const [passwordEditMember, setPasswordEditMember] =
     useState<SettingsMember | null>(null);
 
+  const [departmentDraft, setDepartmentDraft] = useState<DepartmentDraft>();
   const [selectedDepartment, setSelectedDepartment] = useState<string>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -688,6 +695,22 @@ export function MemberManagementPanel({
             loading={departmentsQuery.isLoading}
             error={departmentsQuery.isError}
             onRetry={() => void departmentsQuery.refetch()}
+            onCreate={
+              canCreateDepartments && departmentsQuery.isSuccess
+                ? () =>
+                    setDepartmentDraft({
+                      parent_id: selectedDepartment ?? null
+                    })
+                : undefined
+            }
+          />
+        ) : null}
+        {departmentDraft && canViewDepartments && canCreateDepartments ? (
+          <DepartmentEditorDrawer
+            draft={departmentDraft}
+            departments={departments}
+            canAssignRoles={canManageRoleBindings}
+            onClose={() => setDepartmentDraft(undefined)}
           />
         ) : null}
         <div className="organization-members">
@@ -698,7 +721,7 @@ export function MemberManagementPanel({
                   ? departments.find(
                       (department) => department.id === selectedDepartment
                     )?.name
-                  : i18nText('settings', 'organization.all_members')}
+                  : i18nText('settings', 'organization.title')}
               </Typography.Title>
               <Tag>
                 {i18nText('settings', 'organization.member_count', {
