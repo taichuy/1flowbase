@@ -283,7 +283,7 @@ test('imported records reuse total trajectory and lazy sections without a native
     );
   const loader: ConversationLogTraceLoader = {
     sourceKind: 'imported',
-    loadClientTrajectory,
+    loadRecordClientTrajectory: loadClientTrajectory,
     loadClientTrajectorySection
   };
   render(
@@ -330,4 +330,107 @@ test('imported records reuse total trajectory and lazy sections without a native
   expect(
     screen.queryByRole('button', { name: '打开内部调用' })
   ).not.toBeInTheDocument();
+});
+
+test('record trajectory preserves equal-sequence steps and follows opaque cursors without ordering or parsing them', async () => {
+  const before = 's1:9:018f0000-0000-7000-8000-000000000001';
+  const equalSequence = 's1:10:018f0000-0000-7000-8000-000000000002';
+  const step = (
+    id: string,
+    sequence: number,
+    name: string
+  ): ClientTrajectoryStep => ({
+    ...tool,
+    id,
+    sequence,
+    name,
+    flow_run_id: null,
+    transport: 'file',
+    parent_id: null,
+    available_sections: ['parameters']
+  });
+  const loadRecordClientTrajectory = vi
+    .fn()
+    .mockImplementation((_record, _scope, cursor) => {
+      if (cursor === undefined)
+        return Promise.resolve({
+          items: [step('step-before', 9, 'previous')],
+          next_cursor: before,
+          integrity: 'complete'
+        });
+      if (cursor === before)
+        return Promise.resolve({
+          items: [step('step-first', 10, 'same-sequence-first')],
+          next_cursor: equalSequence,
+          integrity: 'complete'
+        });
+      if (cursor === equalSequence)
+        return Promise.resolve({
+          items: [step('step-second', 10, 'same-sequence-second')],
+          next_cursor: null,
+          integrity: 'complete'
+        });
+      throw new Error('Cursor was changed by consumer');
+    });
+  const loadClientTrajectory = vi.fn();
+  const loadClientTrajectorySection = vi
+    .fn()
+    .mockResolvedValue({
+      request_id: root.id,
+      evidence_scope: 'step',
+      step_id: 'step-second',
+      section: 'parameters',
+      items: [{ sequence: 10, value: 'second same-sequence body' }],
+      next_cursor: null
+    });
+  const loader: ConversationLogTraceLoader = {
+    sourceKind: 'imported',
+    loadRecordClientTrajectory,
+    loadClientTrajectory,
+    loadClientTrajectorySection
+  };
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <ProviderTrajectory runId="record-equal" loader={loader} />
+    </QueryClientProvider>
+  );
+  fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  expect(
+    await screen.findByRole('button', {
+      name: '工具调用 · same-sequence-first'
+    })
+  ).toBeInTheDocument();
+  const second = await screen.findByRole('button', {
+    name: '工具调用 · same-sequence-second'
+  });
+  expect(loadRecordClientTrajectory).toHaveBeenCalledWith(
+    'record-equal',
+    undefined,
+    before,
+    undefined
+  );
+  expect(loadRecordClientTrajectory).toHaveBeenCalledWith(
+    'record-equal',
+    undefined,
+    equalSequence,
+    undefined
+  );
+  expect(loadRecordClientTrajectory).toHaveBeenCalledTimes(3);
+  expect(loadClientTrajectory).not.toHaveBeenCalled();
+  expect(loadClientTrajectorySection).not.toHaveBeenCalled();
+  fireEvent.click(second);
+  expect(
+    await screen.findByText('second same-sequence body')
+  ).toBeInTheDocument();
+  expect(loadClientTrajectorySection).toHaveBeenCalledWith(
+    'record-equal',
+    'step-second',
+    'parameters',
+    undefined,
+    undefined
+  );
 });

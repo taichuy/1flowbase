@@ -1,4 +1,5 @@
 import {
+  type RecordClientTrajectoryCursor,
   getConsoleApplicationLogRecord,
   getConsoleApplicationLogRecordClientTrajectory,
   getConsoleApplicationLogRecordClientTrajectorySection,
@@ -121,7 +122,7 @@ export function fetchApplicationLogRecord(
 export function fetchApplicationLogRecordClientTrajectory(
   applicationId: string,
   recordId: string,
-  cursor?: number,
+  cursor?: RecordClientTrajectoryCursor,
   options?: ClientTrajectoryOptions
 ) {
   return getConsoleApplicationLogRecordClientTrajectory(

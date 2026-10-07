@@ -42,7 +42,7 @@ export function createApplicationLogTraceLoader(
   if (sourceKind === 'imported') {
     return {
       sourceKind,
-      loadClientTrajectory: (recordId, _nodeRunId, cursor, options) =>
+      loadRecordClientTrajectory: (recordId, _nodeRunId, cursor, options) =>
         fetchApplicationLogRecordClientTrajectory(
           applicationId,
           recordId,

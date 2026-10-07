@@ -1,7 +1,7 @@
 import { apiFetch } from '../../transport';
 import type {
   ClientTrajectoryOptions,
-  ClientTrajectoryPage,
+  ClientTrajectoryStep,
   ClientTrajectorySection
 } from './client-trajectory';
 
@@ -22,6 +22,12 @@ export interface ConsoleApplicationLogRecordOverview {
   cost_breakdown: { total_cost: string | null };
   available_views: Array<'conversation' | 'client_trajectory'>;
 }
+export type RecordClientTrajectoryCursor = number | string;
+export interface RecordClientTrajectoryPage {
+  items: ClientTrajectoryStep[];
+  next_cursor: RecordClientTrajectoryCursor | null;
+  integrity: string;
+}
 const recordPath = (applicationId: string, recordId: string) =>
   `/api/console/applications/${applicationId}/logs/records/${recordId}`;
 export function getConsoleApplicationLogRecord(
@@ -37,7 +43,7 @@ export function getConsoleApplicationLogRecord(
 export function getConsoleApplicationLogRecordClientTrajectory(
   applicationId: string,
   recordId: string,
-  cursor?: number,
+  cursor?: RecordClientTrajectoryCursor,
   options?: ClientTrajectoryOptions,
   baseUrl?: string
 ) {
@@ -48,7 +54,7 @@ export function getConsoleApplicationLogRecordClientTrajectory(
   if (options?.request_id) query.set('request_id', options.request_id);
   if (options?.focus_step_id && cursor === undefined)
     query.set('focus_step_id', options.focus_step_id);
-  return apiFetch<ClientTrajectoryPage>({
+  return apiFetch<RecordClientTrajectoryPage>({
     path: `${recordPath(applicationId, recordId)}/client-trajectory?${query}`,
     baseUrl
   });

@@ -4,6 +4,8 @@ import type {
   WorkflowTrajectoryOptions,
   ConsoleApplicationLogRecordOverview,
   ClientTrajectoryPage,
+  RecordClientTrajectoryPage,
+  RecordClientTrajectoryCursor,
   ClientTrajectoryOptions,
   ClientTrajectorySection,
   ProviderTrajectoryBody
@@ -130,6 +132,12 @@ export interface ConversationLogTraceLoader {
   ) => Promise<WorkflowTrajectoryBody>;
   loadArtifact?: (artifactRef: string) => Promise<unknown>;
   loadArtifacts?: import('../detail/last-run/runtime-debug-payload').RuntimeDebugArtifactBatchLoader;
+  loadRecordClientTrajectory?: (
+    recordId: string,
+    nodeRunId?: string,
+    cursor?: RecordClientTrajectoryCursor,
+    options?: ClientTrajectoryOptions
+  ) => Promise<RecordClientTrajectoryPage>;
   loadClientTrajectory?: (
     runId: string,
     nodeRunId?: string,

@@ -6,6 +6,7 @@ import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import type {
+  RecordClientTrajectoryCursor,
   ClientTrajectoryStep,
   ClientTrajectoryOptions
 } from '@1flowbase/api-client';
@@ -53,14 +54,33 @@ export function ClientTrajectoryWorkspace({
   const drag = useRef<{ x: number; width: number } | null>(null);
   const rows = useRef(new Map<string, HTMLButtonElement>());
   const pages = useInfiniteQuery({
-    queryKey: ['client-trajectory', runId, scope ?? 'run', options],
-    enabled: active && Boolean(loader.loadClientTrajectory),
-    initialPageParam: undefined as number | undefined,
+    queryKey: [
+      loader.loadRecordClientTrajectory
+        ? 'record-client-trajectory'
+        : 'client-trajectory',
+      runId,
+      scope ?? 'run',
+      options
+    ],
+    enabled:
+      active &&
+      Boolean(loader.loadRecordClientTrajectory || loader.loadClientTrajectory),
+    initialPageParam: undefined as RecordClientTrajectoryCursor | undefined,
     queryFn: ({ pageParam }) =>
-      loader.loadClientTrajectory!(runId, scope, pageParam, options),
+      loader.loadRecordClientTrajectory
+        ? loader.loadRecordClientTrajectory(runId, scope, pageParam, options)
+        : loader.loadClientTrajectory!(
+            runId,
+            scope,
+            pageParam as number | undefined,
+            options
+          ),
     getNextPageParam: (page, _pages, cursor) =>
       page.next_cursor != null &&
-      (cursor === undefined || page.next_cursor > cursor)
+      (typeof page.next_cursor === 'string'
+        ? page.next_cursor !== cursor
+        : cursor === undefined ||
+          (typeof cursor === 'number' && page.next_cursor > cursor))
         ? page.next_cursor
         : undefined,
     staleTime: 60_000,

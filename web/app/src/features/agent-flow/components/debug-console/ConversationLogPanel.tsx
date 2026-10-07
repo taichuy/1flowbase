@@ -396,7 +396,8 @@ function ConversationTrace({
   const traceRunId = message.detailRunId ?? message.runId;
 
   if (
-    traceLoader?.loadClientTrajectory &&
+    (traceLoader?.loadRecordClientTrajectory ||
+      traceLoader?.loadClientTrajectory) &&
     !traceLoader.loadTree &&
     traceRunId
   ) {

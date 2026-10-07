@@ -657,7 +657,8 @@ function RunConversation({
         assistantMessageActions={(message) => (
           <>
             {(traceLoader?.loadWorkflowTrajectory ||
-              traceLoader?.loadClientTrajectory) &&
+              traceLoader?.loadClientTrajectory ||
+              traceLoader?.loadRecordClientTrajectory) &&
             message.canOpenDetail !== false &&
             (message.detailRunId ?? message.runId) ? (
               <ProviderTrajectory
