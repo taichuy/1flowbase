@@ -19,6 +19,7 @@ test('both commands pin installed version and current platform assets and quote 
   )!;
   expect(shell).toContain("o'\\''h");
   expect(shell).toContain('trap');
+  expect(shell).toContain('--max-redirs 0');
   expect(shell).toContain(' -o "$installer" && bash "$installer"');
   expect(shell).toContain("--release-base 'https://example.com/assets'");
   expect(shell).toContain("--version '0.1.0'");
@@ -30,7 +31,9 @@ test('both commands pin installed version and current platform assets and quote 
     'https://example.com'
   )!;
   expect(powershell).toContain("o''h");
-  expect(powershell).toContain('Invoke-WebRequest -UseBasicParsing');
+  expect(powershell).toContain(
+    'Invoke-WebRequest -UseBasicParsing -MaximumRedirection 0'
+  );
   expect(powershell).toContain(
     'powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer'
   );
