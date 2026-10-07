@@ -644,7 +644,8 @@
   box-sizing: border-box;
 }
 
-@media (max-width: 767px) {
+/* Match SectionPageLayout's lg breakpoint so compact pages share this drawer. */
+@media (max-width: 991px) {
   .app-shell-header.ant-layout-header {
     align-items: center;
     gap: 8px;
@@ -711,7 +712,8 @@
     max-width: none;
   }
 
-  .app-shell-mode-actions .app-shell-design-menu.ant-menu-horizontal
+  .app-shell-mode-actions
+    .app-shell-design-menu.ant-menu-horizontal
     > .ant-menu-item {
     width: 42px;
   }
