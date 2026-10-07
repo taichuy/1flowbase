@@ -58,6 +58,11 @@ import {
 import { getApplicationsApiBaseUrl } from './applications';
 
 export type ApplicationRunSummary = {
+  source_kind?: 'native' | 'imported' | null;
+  source_client?: string | null;
+  source_session_id?: string | null;
+  source_task_id?: string | null;
+  native_run_id?: string | null;
   log_conversation_id: string | null;
   log_task_run_id: string | null;
   parent_run_id: string | null;
@@ -73,9 +78,13 @@ export type ApplicationRunSummary = {
   id: string;
   application_id: string;
   scope_id: string;
-  run_mode: ConsoleApplicationRunSummary['run_mode'];
-  execution_stage: ConsoleApplicationRunSummary['execution_stage'];
-  invocation_source: ConsoleApplicationRunSummary['invocation_source'];
+  run_mode: ConsoleApplicationRunSummary['run_mode'] | 'imported';
+  execution_stage:
+    | ConsoleApplicationRunSummary['execution_stage']
+    | 'collected';
+  invocation_source:
+    | ConsoleApplicationRunSummary['invocation_source']
+    | 'client_collector';
   principal: ConsoleApplicationRunSummary['principal'];
   status: string;
   target_node_id: string | null;
@@ -1126,6 +1135,14 @@ function toApplicationRunSummary(
   const id = stringField(record, 'id');
 
   return {
+    source_kind: optionalStringField(
+      record,
+      'source_kind'
+    ) as ApplicationRunSummary['source_kind'],
+    source_client: optionalStringField(record, 'source_client'),
+    source_session_id: optionalStringField(record, 'source_session_id'),
+    source_task_id: optionalStringField(record, 'source_task_id'),
+    native_run_id: optionalStringField(record, 'native_run_id'),
     id,
     application_id: stringField(record, 'application_id'),
     scope_id: stringField(record, 'scope_id'),

@@ -341,5 +341,25 @@
     "all_agent_flow_applications": "All Agent Flow applications",
     "import_target_application": "Select the import target application",
     "application": "Application"
+  },
+  "agent_logs": {
+    "collector": "Collection CLI",
+    "ingest_api": "Log ingestion API",
+    "api_description": "Send collected client events to this application. Ingestion is available without publishing the application.",
+    "api_auth": "Authenticate with this application’s API key in the Authorization: Bearer header. The key grants log ingestion for this application.",
+    "request_body": "Request body",
+    "envelope_description": "Use the versioned event envelope. source_id and event_id must remain stable on retries. assistant events with phase final_answer supply the final response; commentary and tools remain in the trajectory.",
+    "receipt_description": "A successful response returns accepted_events, duplicate_events and record_ids. The complete batch is durable before acknowledgement; advance the checkpoint only after success.",
+    "collector_description": "Import historical Codex JSONL sessions or continuously collect new events into this application.",
+    "collector_installation": "Run these commands from a 1flowbase source checkout containing scripts/node/agent-logs-collector.js, with Node.js installed. The collector is delivered with the source repository.",
+    "open_api_keys": "Manage this application’s API keys",
+    "collector_key": "Create a key on the API page, then enter it through the shell prompt below. The command does not print the key.",
+    "import_history": "Import history",
+    "watch": "Watch new events",
+    "collector_paths": "Choose your local session file or directory for --source; archived sessions may be imported separately. Keep --state and --source-id stable for retries and resume. The collector uploads the selected source content.",
+    "record_id": "Record ID",
+    "source_client": "Source client",
+    "collected": "Collected observation",
+    "client_collector": "Client collector"
   }
 }

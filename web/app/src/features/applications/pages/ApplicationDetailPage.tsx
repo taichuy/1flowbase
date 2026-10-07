@@ -46,6 +46,11 @@ const ApplicationApiPage = lazy(() =>
     default: module.ApplicationApiPage
   }))
 );
+const ApplicationCollectorPage = lazy(() =>
+  import('./ApplicationCollectorPage').then((module) => ({
+    default: module.ApplicationCollectorPage
+  }))
+);
 const WorkflowExtensionApiPage = lazy(() =>
   import('./WorkflowExtensionApiPage').then((module) => ({
     default: module.WorkflowExtensionApiPage
@@ -126,6 +131,19 @@ export function ApplicationDetailPage({
   }
 
   const application = detailQuery.data;
+  if (
+    application.application_type === 'agent_logs' &&
+    (requestedSectionKey === 'orchestration' ||
+      requestedSectionKey === 'monitoring')
+  ) {
+    return (
+      <Navigate
+        to="/applications/$applicationId/logs"
+        params={{ applicationId }}
+        replace
+      />
+    );
+  }
   const isWorkflow = application.application_type === 'workflow';
 
   if (
@@ -142,7 +160,12 @@ export function ApplicationDetailPage({
   }
 
   const content =
-    requestedSectionKey === 'orchestration' ? (
+    requestedSectionKey === 'collector' &&
+    application.application_type === 'agent_logs' ? (
+      <ApplicationSectionBoundary>
+        <ApplicationCollectorPage applicationId={applicationId} />
+      </ApplicationSectionBoundary>
+    ) : requestedSectionKey === 'orchestration' ? (
       isWorkflow ? (
         <div className="workflow-orchestration-page">
           <ApplicationSectionBoundary>

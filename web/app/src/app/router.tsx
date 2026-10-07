@@ -17,6 +17,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Result } from 'antd';
 import { Suspense, lazy, useState, type ReactNode } from 'react';
 
+import {
+  applicationDetailQueryKey,
+  fetchApplicationDetail
+} from '../features/applications/api/applications';
+import { getApplicationDefaultSection } from '../features/applications/lib/application-sections';
 import type { ApplicationSectionKey } from '../features/applications/lib/application-sections';
 import {
   fetchFrontstagePageTree,
@@ -117,9 +122,25 @@ function ShellLayout() {
 function ApplicationIndexRedirect() {
   const { applicationId } = applicationIndexRoute.useParams();
 
+  const detail = useQuery({
+    queryKey: applicationDetailQueryKey(applicationId),
+    queryFn: () => fetchApplicationDetail(applicationId)
+  });
+  if (detail.isPending) return <LoadingState />;
+  if (detail.isError)
+    return (
+      <Result
+        status="error"
+        title={i18nText('applications', 'auto.application_load_failed')}
+      />
+    );
   return (
     <Navigate
-      to="/applications/$applicationId/orchestration"
+      to={
+        getApplicationDefaultSection(detail.data.application_type) === 'logs'
+          ? '/applications/$applicationId/logs'
+          : '/applications/$applicationId/orchestration'
+      }
       params={{ applicationId }}
       replace
     />
@@ -203,6 +224,20 @@ const applicationApiRoute = createRoute({
       <ApplicationSectionRoute
         applicationId={applicationId}
         requestedSectionKey="api"
+      />
+    );
+  }
+});
+
+const applicationCollectorRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/applications/$applicationId/collector',
+  component: () => {
+    const { applicationId } = applicationCollectorRoute.useParams();
+    return (
+      <ApplicationSectionRoute
+        applicationId={applicationId}
+        requestedSectionKey="collector"
       />
     );
   }
@@ -587,7 +622,12 @@ const settingsMembersRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/members',
   validateSearch: (search: Record<string, unknown>) => ({
-    tabs: search.tabs === 'credits' ? 'credits' : search.tabs === 'departments' ? 'departments' : 'members'
+    tabs:
+      search.tabs === 'credits'
+        ? 'credits'
+        : search.tabs === 'departments'
+          ? 'departments'
+          : 'members'
   }),
   notFoundComponent: NotFoundPage,
   component: () => renderSettingsRoute('members')
@@ -771,6 +811,7 @@ const routeTree = rootRoute.addChildren([
   shellRoute.addChildren([
     homeRoute,
     applicationIndexRoute,
+    applicationCollectorRoute,
     applicationOrchestrationRoute,
     applicationApiRoute,
     applicationLogsRoute,

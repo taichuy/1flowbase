@@ -139,23 +139,31 @@ export function ProviderTrajectory({
               </header>
               {open ? (
                 <>
-                  <Segmented
-                    className="client-trajectory__source"
-                    value={source}
-                    onChange={(value) =>
-                      switchSource(value as 'client' | 'native')
-                    }
-                    options={[
-                      {
-                        value: 'client',
-                        label: i18nText('agentFlow', 'client_trajectory.client')
-                      },
-                      {
-                        value: 'native',
-                        label: i18nText('agentFlow', 'client_trajectory.native')
+                  {loader.loadWorkflowTrajectory ? (
+                    <Segmented
+                      className="client-trajectory__source"
+                      value={source}
+                      onChange={(value) =>
+                        switchSource(value as 'client' | 'native')
                       }
-                    ]}
-                  />
+                      options={[
+                        {
+                          value: 'client',
+                          label: i18nText(
+                            'agentFlow',
+                            'client_trajectory.client'
+                          )
+                        },
+                        {
+                          value: 'native',
+                          label: i18nText(
+                            'agentFlow',
+                            'client_trajectory.native'
+                          )
+                        }
+                      ]}
+                    />
+                  ) : null}
                   {views.map((view, index) => (
                     <div
                       className="trajectory-window__view"
@@ -176,13 +184,18 @@ export function ProviderTrajectory({
                               : undefined
                           }
                           loader={loader}
-                          onInternal={(step, scope) =>
-                            navigate({
-                              source: 'native',
-                              runId: step.flow_run_id,
-                              nodeRunId: scope,
-                              request_id: step.request_id
-                            })
+                          onInternal={
+                            loader.loadWorkflowTrajectory
+                              ? (step, scope) => {
+                                  if (step.flow_run_id)
+                                    navigate({
+                                      source: 'native',
+                                      runId: step.flow_run_id,
+                                      nodeRunId: scope,
+                                      request_id: step.request_id
+                                    });
+                                }
+                              : undefined
                           }
                         />
                       ) : (

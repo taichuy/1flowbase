@@ -2,6 +2,7 @@ import type {
   WorkflowTrajectoryPage,
   WorkflowTrajectoryBody,
   WorkflowTrajectoryOptions,
+  ConsoleApplicationLogRecordOverview,
   ClientTrajectoryPage,
   ClientTrajectoryOptions,
   ClientTrajectorySection,
@@ -117,6 +118,7 @@ export interface ConversationLogRunOverview {
 }
 
 export interface ConversationLogTraceLoader {
+  sourceKind?: 'native' | 'imported';
   loadWorkflowTrajectory?: (
     runId: string,
     cursor?: string,
@@ -148,13 +150,13 @@ export interface ConversationLogTraceLoader {
     cursor?: number,
     view?: 'semantic' | 'protocol'
   ) => Promise<ProviderTrajectoryBody>;
-  loadTree: (runId: string) => Promise<ConversationLogTraceTree>;
-  loadChildren: (
+  loadTree?: (runId: string) => Promise<ConversationLogTraceTree>;
+  loadChildren?: (
     runId: string,
     traceNodeId: string,
     cursor?: string
   ) => Promise<ConversationLogTraceNodeChildren>;
-  loadContent: (
+  loadContent?: (
     runId: string,
     traceNodeId: string
   ) => Promise<ConversationLogTraceNodeContent>;
@@ -176,7 +178,10 @@ export interface ConversationLogOverviewLoader {
     runId: string,
     section: 'input_payload' | 'output_payload'
   ) => Promise<Record<string, unknown>>;
-  loadOverview: (runId: string) => Promise<ConversationLogRunOverview>;
+  loadRecordOverview?: (
+    recordId: string
+  ) => Promise<ConsoleApplicationLogRecordOverview>;
+  loadOverview?: (runId: string) => Promise<ConversationLogRunOverview>;
 }
 
 export function mapTraceSummaryToTraceItem(

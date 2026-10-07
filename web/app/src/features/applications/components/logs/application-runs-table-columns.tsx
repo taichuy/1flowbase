@@ -42,6 +42,7 @@ function executionStageLabel(
   value: ApplicationRunSummary['execution_stage'],
   t: TFunction<'applications'>
 ) {
+  if (value === 'collected') return t('agent_logs.collected');
   return value === 'published'
     ? t('auto.publication_published')
     : t('auto.execution_stage_debug');
@@ -52,6 +53,8 @@ function invocationSourceLabel(
   t: TFunction<'applications'>
 ) {
   switch (value) {
+    case 'client_collector':
+      return t('agent_logs.client_collector');
     case 'agent_flow_api':
       return t('auto.invocation_source_agent_flow_api');
     case 'assistant':
@@ -93,6 +96,14 @@ export function getApplicationRunsTableColumns(
       width: 240,
       ellipsis: true,
       render: (value) => (value ? `${value}` : '-')
+    },
+    {
+      key: 'source_client',
+      title: t('agent_logs.source_client'),
+      dataIndex: 'source_client',
+      width: 150,
+      defaultVisibility: 'hidden',
+      render: (value) => value ?? '—'
     },
     {
       key: 'task_summary',

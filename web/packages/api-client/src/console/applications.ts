@@ -4,7 +4,7 @@ import type {
 } from '../application-public-api';
 import { apiFetch, apiFetchVoid } from '../transport';
 
-export type ConsoleApplicationType = 'agent_flow' | 'workflow';
+export type ConsoleApplicationType = 'agent_flow' | 'workflow' | 'agent_logs';
 export type ConsoleWorkflowTriggerType = 'extension' | 'schedule';
 export type CreateConsoleWorkflowTriggerConfig =
   | {
@@ -23,8 +23,7 @@ export interface ConsoleApplicationTag {
   name: string;
 }
 
-export interface ConsoleApplicationTagCatalogEntry
-  extends ConsoleApplicationTag {
+export interface ConsoleApplicationTagCatalogEntry extends ConsoleApplicationTag {
   application_count: number;
 }
 

@@ -249,7 +249,7 @@ export function ApplicationListPage() {
         const [entry] = imported.results;
         if (imported.results.length === 1 && entry.status === 'succeeded') {
           window.location.assign(
-            `/applications/${entry.result.application.id}/orchestration`
+            `/applications/${entry.result.application.id}`
           );
         }
       }
@@ -326,7 +326,7 @@ export function ApplicationListPage() {
     async (applicationId: string) => {
       await queryClient.invalidateQueries({ queryKey: applicationsQueryKey });
       messageApi.success(t('auto.template_imported'));
-      window.location.assign(`/applications/${applicationId}/orchestration`);
+      window.location.assign(`/applications/${applicationId}`);
     },
     [messageApi, queryClient, t]
   );
@@ -538,7 +538,7 @@ export function ApplicationListPage() {
           const typeLabel =
             typeLabels.get(application.application_type) ??
             application.application_type;
-          const applicationHref = `/applications/${application.id}/orchestration`;
+          const applicationHref = `/applications/${application.id}/${application.application_type === 'agent_logs' ? 'logs' : 'orchestration'}`;
           const actionItems: MenuProps['items'] = [
             {
               key: 'export_template',
@@ -799,9 +799,7 @@ export function ApplicationListPage() {
         intent={{
           kind: 'create',
           onCreated: (applicationId) => {
-            window.location.assign(
-              `/applications/${applicationId}/orchestration`
-            );
+            window.location.assign(`/applications/${applicationId}`);
           }
         }}
       />

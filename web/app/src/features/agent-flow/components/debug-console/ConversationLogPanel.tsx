@@ -1,3 +1,5 @@
+import type { ConsoleApplicationLogRecordOverview } from '@1flowbase/api-client';
+import { ClientTrajectoryWorkspace } from './trajectory/client/ClientTrajectoryWorkspace';
 import { TraceActivityDetailContext } from './trajectory/activities/activity-model';
 import { ProviderTrajectory } from './trajectory/ProviderTrajectory';
 import {
@@ -128,12 +130,14 @@ function ConversationLogDetailContent({
   onLoadArtifact,
   onLoadArtifacts,
   overview,
+  record,
   overviewLoader
 }: {
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   overview?: ConversationLogRunOverview;
+  record?: ConsoleApplicationLogRecordOverview;
   overviewLoader?: ConversationLogOverviewLoader;
   traceLoader?: ConversationLogTraceLoader;
 }) {
@@ -150,30 +154,32 @@ function ConversationLogDetailContent({
 
   return (
     <div className="agent-flow-editor__conversation-log-tab">
-      <div className="agent-flow-editor__conversation-log-json-list">
-        <NodeRunPayloadSections
-          key={message.detailRunId ?? message.runId ?? message.id}
-          defaultCollapsed={Boolean(overview)}
-          onLoadSection={
-            overviewLoader?.loadPayload &&
-            (message.detailRunId ?? message.runId)
-              ? (section) => {
-                  if (section === 'debug_payload') return Promise.resolve({});
-                  return overviewLoader.loadPayload!(
-                    message.detailRunId ?? message.runId!,
-                    section
-                  );
-                }
-              : undefined
-          }
-          debugPayload={{}}
-          includeDebugPayload={false}
-          inputPayload={buildDetailInput(message)}
-          outputPayload={buildDetailOutput(message)}
-          onLoadArtifact={onLoadArtifact}
-          onLoadArtifacts={onLoadArtifacts}
-        />
-      </div>
+      {!record ? (
+        <div className="agent-flow-editor__conversation-log-json-list">
+          <NodeRunPayloadSections
+            key={message.detailRunId ?? message.runId ?? message.id}
+            defaultCollapsed={Boolean(overview)}
+            onLoadSection={
+              overviewLoader?.loadPayload &&
+              (message.detailRunId ?? message.runId)
+                ? (section) => {
+                    if (section === 'debug_payload') return Promise.resolve({});
+                    return overviewLoader.loadPayload!(
+                      message.detailRunId ?? message.runId!,
+                      section
+                    );
+                  }
+                : undefined
+            }
+            debugPayload={{}}
+            includeDebugPayload={false}
+            inputPayload={buildDetailInput(message)}
+            outputPayload={buildDetailOutput(message)}
+            onLoadArtifact={onLoadArtifact}
+            onLoadArtifacts={onLoadArtifacts}
+          />
+        </div>
+      ) : null}
       <section
         aria-label={i18nText('agentFlow', 'auto.metadata')}
         className="agent-flow-editor__conversation-log-metadata"
@@ -185,57 +191,90 @@ function ConversationLogDetailContent({
         </div>
         <Descriptions
           column={1}
-          items={[
-            {
-              key: 'runId',
-              label: i18nText('agentFlow', 'auto.run_id'),
-              children: overview?.flow_run.id ?? message.runId ?? '—'
-            },
-            {
-              key: 'status',
-              label: i18nText('agentFlow', 'auto.status'),
-              children: overview?.flow_run.status ?? message.status
-            },
-            {
-              key: 'compatibilityMode',
-              label: i18nText('agentFlow', 'auto.agreement'),
-              children: overviewCompatibilityModeLabel(message, overview)
-            },
-            {
-              key: 'totalTokens',
-              label: i18nText('agentFlow', 'auto.total_tokens'),
-              children: formatNullableNumber(
-                overview?.statistics?.total_tokens ??
-                  message.statistics?.total_tokens
-              )
-            },
-            {
-              key: 'uniqueNodeCount',
-              label: i18nText('agentFlow', 'auto.real_number_nodes'),
-              children: formatNullableNumber(
-                overview?.statistics?.unique_node_count ??
-                  message.statistics?.unique_node_count
-              )
-            },
-            {
-              key: 'toolCallbackCount',
-              label: i18nText('agentFlow', 'auto.number_tool_callbacks'),
-              children: formatNullableNumber(
-                overview?.statistics?.tool_callback_count ??
-                  message.statistics?.tool_callback_count
-              )
-            },
-            {
-              key: 'startedAt',
-              label: i18nText('agentFlow', 'auto.start_time'),
-              children: formatTimestamp(startedAt)
-            },
-            {
-              key: 'finishedAt',
-              label: i18nText('agentFlow', 'auto.end_time'),
-              children: formatTimestamp(finishedAt)
-            }
-          ]}
+          items={
+            record
+              ? [
+                  {
+                    key: 'record_id',
+                    label: i18nText('applications', 'agent_logs.record_id'),
+                    children: record.record_id
+                  },
+                  {
+                    key: 'source_client',
+                    label: i18nText('applications', 'agent_logs.source_client'),
+                    children: record.source_client ?? '—'
+                  },
+                  {
+                    key: 'status',
+                    label: i18nText('agentFlow', 'auto.status'),
+                    children: record.outcome
+                  },
+                  {
+                    key: 'total_tokens',
+                    label: i18nText('agentFlow', 'auto.total_tokens'),
+                    children: formatNullableNumber(record.total_tokens)
+                  },
+                  {
+                    key: 'total_cost',
+                    label: i18nText('applications', 'auto.total_cost'),
+                    children:
+                      record.cost_breakdown.total_cost != null
+                        ? `${formatNumber(Number(record.cost_breakdown.total_cost), { maximumSignificantDigits: 21 })} $`
+                        : '—'
+                  }
+                ]
+              : [
+                  {
+                    key: 'runId',
+                    label: i18nText('agentFlow', 'auto.run_id'),
+                    children: overview?.flow_run.id ?? message.runId ?? '—'
+                  },
+                  {
+                    key: 'status',
+                    label: i18nText('agentFlow', 'auto.status'),
+                    children: overview?.flow_run.status ?? message.status
+                  },
+                  {
+                    key: 'compatibilityMode',
+                    label: i18nText('agentFlow', 'auto.agreement'),
+                    children: overviewCompatibilityModeLabel(message, overview)
+                  },
+                  {
+                    key: 'totalTokens',
+                    label: i18nText('agentFlow', 'auto.total_tokens'),
+                    children: formatNullableNumber(
+                      overview?.statistics?.total_tokens ??
+                        message.statistics?.total_tokens
+                    )
+                  },
+                  {
+                    key: 'uniqueNodeCount',
+                    label: i18nText('agentFlow', 'auto.real_number_nodes'),
+                    children: formatNullableNumber(
+                      overview?.statistics?.unique_node_count ??
+                        message.statistics?.unique_node_count
+                    )
+                  },
+                  {
+                    key: 'toolCallbackCount',
+                    label: i18nText('agentFlow', 'auto.number_tool_callbacks'),
+                    children: formatNullableNumber(
+                      overview?.statistics?.tool_callback_count ??
+                        message.statistics?.tool_callback_count
+                    )
+                  },
+                  {
+                    key: 'startedAt',
+                    label: i18nText('agentFlow', 'auto.start_time'),
+                    children: formatTimestamp(startedAt)
+                  },
+                  {
+                    key: 'finishedAt',
+                    label: i18nText('agentFlow', 'auto.end_time'),
+                    children: formatTimestamp(finishedAt)
+                  }
+                ]
+          }
           size="small"
         />
       </section>
@@ -260,12 +299,28 @@ function ConversationLogLazyDetail({
 }) {
   const overviewQuery = useQuery({
     queryKey: ['conversation-log-run-overview', overviewRunId],
-    queryFn: () => overviewLoader.loadOverview(overviewRunId),
+    enabled: Boolean(overviewLoader.loadOverview),
+    queryFn: () => overviewLoader.loadOverview!(overviewRunId),
     refetchOnWindowFocus: false,
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
 
-  if (overviewQuery.isLoading) {
+  const recordQuery = useQuery({
+    queryKey: ['conversation-log-record-overview', overviewRunId],
+    enabled: Boolean(overviewLoader.loadRecordOverview),
+    queryFn: () => overviewLoader.loadRecordOverview!(overviewRunId),
+    refetchOnWindowFocus: false,
+    staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
+  });
+  if (overviewQuery.isError || recordQuery.isError) {
+    return (
+      <Alert
+        type="error"
+        title={i18nText('agentFlow', 'auto.loading_failed')}
+      />
+    );
+  }
+  if (overviewQuery.isLoading || recordQuery.isLoading) {
     return (
       <div className="agent-flow-editor__conversation-log-empty">
         <Spin />
@@ -277,6 +332,7 @@ function ConversationLogLazyDetail({
     <ConversationLogDetailContent
       message={message}
       overview={overviewQuery.data}
+      record={recordQuery.data}
       overviewLoader={overviewLoader}
       traceLoader={traceLoader}
       onLoadArtifact={onLoadArtifact}
@@ -339,7 +395,16 @@ function ConversationTrace({
 }) {
   const traceRunId = message.detailRunId ?? message.runId;
 
-  if (traceLoader && traceRunId) {
+  if (
+    traceLoader?.loadClientTrajectory &&
+    !traceLoader.loadTree &&
+    traceRunId
+  ) {
+    return (
+      <ClientTrajectoryWorkspace runId={traceRunId} loader={traceLoader} />
+    );
+  }
+  if (traceLoader?.loadTree && traceRunId) {
     return (
       <LazyConversationTrace
         key={`${message.id}:${traceRunId}`}
@@ -422,7 +487,7 @@ function LazyConversationTrace({
   const [loadFailed, setLoadFailed] = useState(false);
   const traceTreeQuery = useQuery({
     queryKey: ['conversation-log-trace-tree', runId],
-    queryFn: () => traceLoader.loadTree(runId),
+    queryFn: () => traceLoader.loadTree!(runId),
     refetchOnWindowFocus: false,
     refetchOnMount: 'always',
     refetchInterval: (query) => {
@@ -438,7 +503,7 @@ function LazyConversationTrace({
     setLoadingMore(true);
     setLoadFailed(false);
     try {
-      const page = await traceLoader.loadChildren(
+      const page = await traceLoader.loadChildren!(
         runId,
         'root',
         rootPageInfo.next_cursor
@@ -609,7 +674,7 @@ function FlattenedToolModeTraceNodeChild({
       node.trace_node_id
     ],
     queryFn: () =>
-      traceLoader.loadChildren(runId, node.trace_node_id, undefined),
+      traceLoader.loadChildren!(runId, node.trace_node_id, undefined),
     refetchOnWindowFocus: false,
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
@@ -683,7 +748,7 @@ export function LazyTraceNodeItem({
       runId,
       node.trace_node_id
     ],
-    queryFn: () => traceLoader.loadContent(runId, node.trace_node_id),
+    queryFn: () => traceLoader.loadContent!(runId, node.trace_node_id),
     refetchOnWindowFocus: false,
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
@@ -716,7 +781,7 @@ export function LazyTraceNodeItem({
       node.trace_node_id
     ],
     queryFn: () =>
-      traceLoader.loadChildren(runId, node.trace_node_id, undefined),
+      traceLoader.loadChildren!(runId, node.trace_node_id, undefined),
     refetchOnWindowFocus: false,
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
@@ -740,7 +805,7 @@ export function LazyTraceNodeItem({
 
     dispatchChildrenState({ type: 'load_more_started' });
     try {
-      const nextPage = await traceLoader.loadChildren(
+      const nextPage = await traceLoader.loadChildren!(
         runId,
         node.trace_node_id,
         cursor

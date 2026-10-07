@@ -341,5 +341,25 @@
     "all_agent_flow_applications": "全部 Agent Flow 应用",
     "import_target_application": "选择导入目标应用",
     "application": "应用"
+  },
+  "agent_logs": {
+    "collector": "采集 CLI",
+    "ingest_api": "日志采集 API",
+    "api_description": "将客户端采集事件写入当前应用，无需发布应用即可采集。",
+    "api_auth": "使用当前应用的 API Key，通过 Authorization: Bearer 请求头认证。该 Key 用于此应用的日志采集。",
+    "request_body": "请求体",
+    "envelope_description": "使用带版本的事件信封，重试时保持 source_id 和 event_id 稳定。assistant 事件的 phase 为 final_answer 时提供最终回答；中间说明和工具事实保留在轨迹中。",
+    "receipt_description": "成功响应返回 accepted_events、duplicate_events 和 record_ids。整个批次持久化后才确认成功；仅在成功后推进采集进度。",
+    "collector_description": "导入历史 Codex JSONL 会话，或持续采集新事件到当前应用。",
+    "collector_installation": "在包含 scripts/node/agent-logs-collector.js 的 1flowbase 源码仓库中运行以下命令，并安装 Node.js。采集器随源码仓库交付。",
+    "open_api_keys": "管理当前应用的 API Key",
+    "collector_key": "在 API 页面创建 Key，然后通过下方 shell 提示输入。该命令不会打印 Key。",
+    "import_history": "导入历史",
+    "watch": "持续采集",
+    "collector_paths": "通过 --source 选择本地会话文件或目录；归档会话可单独导入。重试和恢复时保持 --state 与 --source-id 稳定。采集器会上传所选来源的内容。",
+    "record_id": "记录 ID",
+    "source_client": "来源客户端",
+    "collected": "采集观察",
+    "client_collector": "客户端采集"
   }
 }

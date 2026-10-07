@@ -40,7 +40,8 @@ describe('ApplicationFormModal create intent', () => {
         {
           value: 'workflow',
           label: 'Workflow'
-        }
+        },
+        { value: 'agent_logs', label: 'Agent Logs' }
       ],
       workflow_triggers: [
         {
@@ -94,6 +95,36 @@ describe('ApplicationFormModal create intent', () => {
       screen.queryByRole('textbox', { name: '图标背景' })
     ).not.toBeInTheDocument();
   }, 10_000);
+
+  test('creates Agent Logs without orchestration or a workflow trigger', async () => {
+    render(
+      <AppProviders>
+        <ApplicationFormModal
+          open
+          csrfToken="csrf-123"
+          onClose={vi.fn()}
+          intent={{ kind: 'create', onCreated: vi.fn() }}
+        />
+      </AppProviders>
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /Agent Logs/i }));
+    fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
+      target: { value: 'Collected logs' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '创建应用' }));
+    await waitFor(() =>
+      expect(applicationsApi.createApplication).toHaveBeenCalledWith(
+        expect.objectContaining({
+          application_type: 'agent_logs',
+          workflow_trigger_type: null,
+          name: 'Collected logs'
+        }),
+        'csrf-123'
+      )
+    );
+    expect(publicApi.saveApplicationApiMapping).not.toHaveBeenCalled();
+    expect(publicApi.saveWorkflowScheduleTrigger).not.toHaveBeenCalled();
+  });
 
   test('creates extension workflows with their initial trigger configuration', async () => {
     const onCreated = vi.fn();

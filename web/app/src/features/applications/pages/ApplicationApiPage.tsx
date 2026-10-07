@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App } from 'antd';
+import { App, Space, Typography } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { getApplicationsApiBaseUrl } from '../api/applications';
 
 import { i18nText } from '../../../shared/i18n/text';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
@@ -21,7 +23,7 @@ import { ApplicationApiKeysPanel } from '../components/api/ApplicationApiKeysPan
 import { ApplicationApiStatusBar } from '../components/api/ApplicationApiStatusBar';
 import './application-api-page.css';
 
-export function ApplicationApiPage({
+function PublishedApplicationApiPage({
   application
 }: {
   application: ApplicationDetail;
@@ -106,5 +108,75 @@ export function ApplicationApiPage({
         toolbarPortalId={docsToolbarId}
       />
     </div>
+  );
+}
+
+export function ApplicationApiPage({
+  application
+}: {
+  application: ApplicationDetail;
+}) {
+  const { t } = useTranslation('applications');
+  const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
+  if (application.application_type !== 'agent_logs') {
+    return <PublishedApplicationApiPage application={application} />;
+  }
+  const endpoint = `${getApplicationsApiBaseUrl()}/api/logs/v1/events`;
+  return (
+    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+      <Typography.Title level={4}>
+        {t('agent_logs.ingest_api')}
+      </Typography.Title>
+      <Typography.Paragraph>
+        {t('agent_logs.api_description')}
+      </Typography.Paragraph>
+      <Typography.Text code copyable>{`POST ${endpoint}`}</Typography.Text>
+      <Typography.Paragraph>{t('agent_logs.api_auth')}</Typography.Paragraph>
+      <ApplicationApiKeysPanel
+        applicationId={application.id}
+        csrfToken={csrfToken}
+        onCreatedToken={() => undefined}
+      />
+      <Typography.Title level={5}>
+        {t('agent_logs.request_body')}
+      </Typography.Title>
+      <Typography.Paragraph>
+        {t('agent_logs.envelope_description')}
+      </Typography.Paragraph>
+      <pre>
+        {JSON.stringify(
+          {
+            schema_version: '1flowbase.agent-logs/v1',
+            source_id: 'collector-installation',
+            source_client: 'codex',
+            events: [
+              {
+                event_id: 'event-1',
+                source_session_id: 'session-1',
+                source_task_id: 'turn-1',
+                parent_source_task_id: null,
+                sequence: 1,
+                occurred_at: '2026-10-07T08:00:00Z',
+                kind: 'user',
+                content: 'Hello',
+                phase: null,
+                name: null,
+                call_id: null,
+                model_id: null,
+                provider_code: null,
+                usage: null,
+                inherited: false,
+                raw: {}
+              }
+            ]
+          },
+          null,
+          2
+        )}
+      </pre>
+      <Typography.Paragraph>
+        {t('agent_logs.receipt_description')}
+      </Typography.Paragraph>
+    </Space>
   );
 }

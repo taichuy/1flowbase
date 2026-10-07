@@ -72,7 +72,10 @@ function fixture(namespace: string | null = null, protocol = 'responses') {
                 available_sections: ['result']
               }
             ]
-          : [{ ...root, protocol }, { ...tool, namespace, protocol }],
+          : [
+              { ...root, protocol },
+              { ...tool, namespace, protocol }
+            ],
         next_cursor: cursor ? null : 2,
         integrity: 'complete'
       })
@@ -241,5 +244,90 @@ test('Chat toolbar uses backend protocol classification', async () => {
     screen.queryByText('Responses', {
       selector: '.client-trajectory__protocol'
     })
+  ).not.toBeInTheDocument();
+});
+
+test('imported records reuse total trajectory and lazy sections without a native run or internal calls', async () => {
+  const loadClientTrajectory = vi.fn().mockResolvedValue({
+    items: [
+      {
+        ...tool,
+        flow_run_id: null,
+        transport: 'file',
+        preview: 'Intermediate reasoning',
+        available_sections: ['parameters', 'raw']
+      }
+    ],
+    next_cursor: null,
+    integrity: 'complete'
+  });
+  const loadClientTrajectorySection = vi
+    .fn()
+    .mockImplementation((_record, stepId, section) =>
+      Promise.resolve({
+        request_id: 'session-1',
+        evidence_scope: 'step',
+        step_id: stepId,
+        section,
+        items: [
+          {
+            sequence: 2,
+            value:
+              section === 'parameters'
+                ? 'tool input from source'
+                : { original: 'source event' }
+          }
+        ],
+        next_cursor: null
+      })
+    );
+  const loader: ConversationLogTraceLoader = {
+    sourceKind: 'imported',
+    loadClientTrajectory,
+    loadClientTrajectorySection
+  };
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <ProviderTrajectory runId="record-1" loader={loader} />
+    </QueryClientProvider>
+  );
+  expect(loadClientTrajectory).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  const call = await screen.findByRole('button', {
+    name: '工具调用 · exec_command'
+  });
+  expect(loadClientTrajectorySection).not.toHaveBeenCalled();
+  expect(screen.queryByText('内部调用')).not.toBeInTheDocument();
+  fireEvent.click(call);
+  expect(await screen.findByText('tool input from source')).toBeInTheDocument();
+  await waitFor(() =>
+    expect(loadClientTrajectorySection).toHaveBeenCalledWith(
+      'record-1',
+      'call-1',
+      'parameters',
+      undefined,
+      undefined
+    )
+  );
+  expect(screen.getByText('responses · file')).toBeInTheDocument();
+  expect(
+    loadClientTrajectorySection.mock.calls.some((args) => args[2] === 'raw')
+  ).toBe(false);
+  fireEvent.click(screen.getByRole('tab', { name: '原始协议' }));
+  await waitFor(() =>
+    expect(loadClientTrajectorySection).toHaveBeenCalledWith(
+      'record-1',
+      'call-1',
+      'raw',
+      undefined,
+      undefined
+    )
+  );
+  expect(
+    screen.queryByRole('button', { name: '打开内部调用' })
   ).not.toBeInTheDocument();
 });

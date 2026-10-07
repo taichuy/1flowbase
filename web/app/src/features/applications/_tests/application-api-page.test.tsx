@@ -124,6 +124,25 @@ function renderWithProviders(ui: ReactNode) {
 }
 
 describe('ApplicationApiPage', () => {
+  test('Agent Logs reuses application keys and exposes admitted ingestion without publication', async () => {
+    renderWithProviders(
+      <ApplicationApiPage
+        application={{ ...application, application_type: 'agent_logs' }}
+      />
+    );
+    expect(await screen.findByText('日志采集 API')).toBeInTheDocument();
+    expect(
+      screen.getByText(/POST .*\/api\/logs\/v1\/events/)
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(publicApi.fetchApplicationApiKeys).toHaveBeenCalledWith('app-1')
+    );
+    expect(publicApi.fetchApplicationApiPublication).not.toHaveBeenCalled();
+    expect(publicApi.fetchApplicationApiMapping).not.toHaveBeenCalled();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(publicApi.publishApplicationApiVersion).not.toHaveBeenCalled();
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.mocked(copy).mockResolvedValue(true);
@@ -453,7 +472,9 @@ describe('ApplicationApiPage', () => {
     const tokenDialog = screen.getByRole('dialog', {
       name: '保存这次创建的 API Key'
     });
-    fireEvent.click(within(tokenDialog).getByLabelText('关闭', { selector: 'button' }));
+    fireEvent.click(
+      within(tokenDialog).getByLabelText('关闭', { selector: 'button' })
+    );
 
     await waitFor(() => {
       expect(

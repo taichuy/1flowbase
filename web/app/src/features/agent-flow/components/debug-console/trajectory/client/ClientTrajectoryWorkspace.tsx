@@ -498,7 +498,7 @@ export function ClientTrajectoryWorkspace({
                 }}
               />
             </div>
-            {onInternal ? (
+            {onInternal && selectedStep.flow_run_id ? (
               <Button
                 type="link"
                 onClick={() => onInternal(selectedStep, scope)}
@@ -509,6 +509,7 @@ export function ClientTrajectoryWorkspace({
             <ClientTrajectoryDetail
               key={selectedStep.id}
               step={selectedStep}
+              runId={runId}
               loader={loader}
               nodeRunId={scope}
               onRelated={(id) => {

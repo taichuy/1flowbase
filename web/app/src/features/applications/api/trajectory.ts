@@ -1,4 +1,7 @@
 import {
+  getConsoleApplicationLogRecord,
+  getConsoleApplicationLogRecordClientTrajectory,
+  getConsoleApplicationLogRecordClientTrajectorySection,
   getConsoleWorkflowTrajectory,
   getConsoleWorkflowTrajectoryBody,
   type WorkflowTrajectoryOptions,
@@ -101,6 +104,47 @@ export function fetchWorkflowTrajectoryBody(
     applicationId,
     runId,
     eventId,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function fetchApplicationLogRecord(
+  applicationId: string,
+  recordId: string
+) {
+  return getConsoleApplicationLogRecord(
+    applicationId,
+    recordId,
+    getApplicationsApiBaseUrl()
+  );
+}
+export function fetchApplicationLogRecordClientTrajectory(
+  applicationId: string,
+  recordId: string,
+  cursor?: number,
+  options?: ClientTrajectoryOptions
+) {
+  return getConsoleApplicationLogRecordClientTrajectory(
+    applicationId,
+    recordId,
+    cursor,
+    options,
+    getApplicationsApiBaseUrl()
+  );
+}
+export function fetchApplicationLogRecordClientTrajectorySection(
+  applicationId: string,
+  recordId: string,
+  stepId: string,
+  section: string,
+  cursor?: number
+) {
+  return getConsoleApplicationLogRecordClientTrajectorySection(
+    applicationId,
+    recordId,
+    stepId,
+    section,
+    cursor,
     getApplicationsApiBaseUrl()
   );
 }

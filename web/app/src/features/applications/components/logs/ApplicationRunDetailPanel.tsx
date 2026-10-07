@@ -4,7 +4,7 @@ import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
 import { useQuery } from '@tanstack/react-query';
-import { App, Button, Tooltip, theme } from 'antd';
+import { Alert, App, Button, Empty, Spin, Tooltip, theme } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentFlowDebugConsole } from '../../../agent-flow/components/debug-console/AgentFlowDebugConsole';
@@ -24,6 +24,7 @@ import {
   type ApplicationRunConversationMessagesPage,
   type ApplicationRunConversationOutputState
 } from '../../api/runtime';
+import { fetchApplicationLogRecord } from '../../api/trajectory';
 import { isActiveRunStatus } from '../../lib/run-status';
 import './application-run-detail-panel.css';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -382,6 +383,7 @@ function RunConversation({
   requested_model_id,
   reasoning_effort,
   logConversationId,
+  recordId,
   onClose,
   onOpenMessageLog,
   onOpenRunTrace,
@@ -394,6 +396,7 @@ function RunConversation({
   requested_model_id?: string | null;
   reasoning_effort?: string | null;
   logConversationId?: string | null;
+  recordId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
   onOpenRunTrace?: () => void;
@@ -413,7 +416,14 @@ function RunConversation({
   const loadingPreviousConversationRef = useRef(false);
   const conversationScopeGeneration = useRef(0);
   const observedNewestCursorRef = useRef<string | null>(null);
+  const recordQuery = useQuery({
+    queryKey: ['application-log-record', applicationId, recordId],
+    enabled: Boolean(recordId),
+    queryFn: () => fetchApplicationLogRecord(applicationId, recordId!),
+    refetchOnWindowFocus: false
+  });
   const initialConversationQuery = useQuery({
+    enabled: !recordId,
     queryKey:
       conversationScope && logConversationId
         ? applicationLogConversationMessagesQueryKey(
@@ -454,10 +464,25 @@ function RunConversation({
   );
   const outputState = latestConversationPage?.output_state ?? null;
   const messages = useMemo(
-    () => buildConversationMessages(conversationItems, outputState),
-    [conversationItems, outputState]
+    (): AgentFlowDebugMessage[] =>
+      recordId
+        ? (recordQuery.data?.messages ?? []).map((item) => ({
+            id: `record-${recordId}-${item.sequence}`,
+            role: item.role as AgentFlowDebugMessage['role'],
+            content: item.content,
+            status: 'completed',
+            runId: recordQuery.data!.native_run_id,
+            detailRunId: recordId,
+            canOpenDetail:
+              recordQuery.data!.available_views.includes('client_trajectory'),
+            rawOutput: null,
+            traceSummary: []
+          }))
+        : buildConversationMessages(conversationItems, outputState),
+    [conversationItems, outputState, recordId, recordQuery.data]
   );
-  const refreshable = conversationRefreshable(conversationItems, outputState);
+  const refreshable =
+    !recordId && conversationRefreshable(conversationItems, outputState);
   // The scope switch is a conversation-level action: it belongs to the last
   // turn, so it appears once, at the end of the conversation.
   const lastConversationMessageId = useMemo(
@@ -609,6 +634,16 @@ function RunConversation({
 
   return (
     <div className="application-run-detail__conversation-pane">
+      {recordId && recordQuery.isLoading ? <Spin /> : null}
+      {(recordId ? recordQuery.isError : initialConversationQuery.isError) ? (
+        <Alert
+          type="error"
+          title={i18nText('agentFlow', 'auto.loading_failed')}
+        />
+      ) : null}
+      {recordId && recordQuery.isSuccess && messages.length === 0 ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : null}
       {initialConversationQuery.isSuccess &&
       messages.length === 0 &&
       onOpenRunTrace ? (
@@ -621,7 +656,8 @@ function RunConversation({
         closeLabel={i18nText('applications', 'auto.close_run_details')}
         assistantMessageActions={(message) => (
           <>
-            {traceLoader?.loadWorkflowTrajectory &&
+            {(traceLoader?.loadWorkflowTrajectory ||
+              traceLoader?.loadClientTrajectory) &&
             message.canOpenDetail !== false &&
             (message.detailRunId ?? message.runId) ? (
               <ProviderTrajectory
@@ -664,7 +700,11 @@ function RunConversation({
         runContext={runConversationContext}
         showClearAction={false}
         showComposer={false}
-        status={conversationSessionStatus(conversationItems, outputState)}
+        status={
+          recordId
+            ? 'completed'
+            : conversationSessionStatus(conversationItems, outputState)
+        }
         stopping={false}
         subtitle={<RunIdSubtitle runId={runId} />}
         title={i18nText('applications', 'auto.run_details')}
@@ -674,9 +714,9 @@ function RunConversation({
         onOpenMessageLog={(message) => {
           void handleOpenMessageLog(message);
         }}
-        onOpenResumeTimeline={onOpenResumeTimeline}
+        onOpenResumeTimeline={recordId ? undefined : onOpenResumeTimeline}
         onReachConversationTop={() => {
-          void loadPreviousConversationPage();
+          if (!recordId) void loadPreviousConversationPage();
         }}
         onStopRun={() => {}}
         onSubmitPrompt={() => {}}
@@ -709,6 +749,7 @@ export function ApplicationRunDetailPanel({
   requested_model_id,
   reasoning_effort,
   logConversationId,
+  recordId,
   onClose,
   onOpenMessageLog,
   onOpenRunTrace,
@@ -721,6 +762,7 @@ export function ApplicationRunDetailPanel({
   requested_model_id?: string | null;
   reasoning_effort?: string | null;
   logConversationId?: string | null;
+  recordId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
   onOpenRunTrace?: () => void;
@@ -744,6 +786,7 @@ export function ApplicationRunDetailPanel({
             requested_model_id={requested_model_id}
             reasoning_effort={reasoning_effort}
             logConversationId={logConversationId}
+            recordId={recordId}
             onClose={onClose}
             onOpenMessageLog={onOpenMessageLog}
             onOpenRunTrace={onOpenRunTrace}

@@ -10,7 +10,10 @@ import {
   statisticsFilterKeys
 } from '../../../lib/statistics-log-filters';
 import type { ConsoleApplicationType } from '@1flowbase/api-client';
-import { fetchRunPayload } from '../../../api/trajectory';
+import {
+  fetchApplicationLogRecord,
+  fetchRunPayload
+} from '../../../api/trajectory';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
@@ -445,6 +448,24 @@ export function ApplicationLogsWorkspace({
           run.application_id
       });
     }
+    if (applicationType === 'agent_logs') {
+      const defaults = new Set([
+        'title',
+        'source_client',
+        'requested_model_id',
+        'status',
+        'total_cost',
+        'total_tokens',
+        'started_at',
+        'action'
+      ]);
+      return columns.map((column) => ({
+        ...column,
+        defaultVisibility: defaults.has(column.key)
+          ? ('visible' as const)
+          : ('hidden' as const)
+      }));
+    }
     return applicationIds
       ? columns.map((column) => ({
           ...column,
@@ -453,10 +474,14 @@ export function ApplicationLogsWorkspace({
             : ('hidden' as const)
         }))
       : columns;
-  }, [applicationIds, applications, t]);
+  }, [applicationIds, applications, applicationType, t]);
   const runsTableConfiguration = useApplicationRunsTableConfiguration(
     runsTableColumns,
-    applicationIds ? 'applications.logs.all-agent-flow-runs' : undefined
+    applicationIds
+      ? 'applications.logs.all-agent-flow-runs'
+      : applicationType === 'agent_logs'
+        ? 'applications.logs.agent-logs-runs'
+        : undefined
   );
   const titleIncludes = keywordSearch.trim();
   const runsInput: FetchApplicationRunsInput = useMemo(
@@ -996,9 +1021,37 @@ export function ApplicationLogsWorkspace({
     </div>
   ) : null;
 
+  const isRecordSource =
+    applicationType === 'agent_logs' ||
+    runs.find((run) => run.id === selectedRunId)?.source_kind === 'imported';
   const traceLoader = createApplicationLogTraceLoader(
-    applicationId || selectedApplicationId
+    applicationId || selectedApplicationId,
+    isRecordSource ? 'imported' : 'native'
   );
+  const overviewLoader = isRecordSource
+    ? {
+        loadRecordOverview: (recordId: string) =>
+          fetchApplicationLogRecord(
+            applicationId || selectedApplicationId,
+            recordId
+          )
+      }
+    : {
+        loadPayload: (
+          runId: string,
+          section: 'input_payload' | 'output_payload'
+        ) =>
+          fetchRunPayload(
+            applicationId || selectedApplicationId,
+            runId,
+            section
+          ),
+        loadOverview: (runId: string) =>
+          fetchApplicationRunOverview(
+            applicationId || selectedApplicationId,
+            runId
+          )
+      };
 
   const logsHeader = (
     <div className="application-logs-page__header">
@@ -1080,41 +1133,46 @@ export function ApplicationLogsWorkspace({
           onChange={changeKeywordSearch}
         />
         <div className="application-logs-page__filter-actions">
-          <Tooltip title={t('auto.export_selected_runs_trace_dump')}>
-            <Button
-              aria-label={t('auto.export_selected_runs_trace_dump')}
-              disabled={selectedVisibleRunIds.length === 0}
-              icon={<UploadOutlined aria-hidden="true" />}
-              loading={exportingSelectedRuns}
-              onClick={() => {
-                void exportSelectedRuns();
-              }}
-            />
-          </Tooltip>
-          <input
-            ref={archiveImportInputRef}
-            accept="application/json,.json,application/zip,.zip"
-            data-testid="application-logs-archive-import-input"
-            aria-label={t('auto.import_run_archive')}
-            onChange={handleArchiveImportInputChange}
-            style={{ display: 'none' }}
-            type="file"
-          />
-          <Tooltip title={t('auto.import_run_archive')}>
-            <Button
-              aria-label={t('auto.import_run_archive')}
-              disabled={
-                archiveImportState !== null ||
-                (applicationIds !== undefined && applications.length === 0)
-              }
-              icon={<DownloadOutlined aria-hidden="true" />}
-              onClick={() =>
-                applicationId
-                  ? archiveImportInputRef.current?.click()
-                  : setImportTargetOpen(true)
-              }
-            />
-          </Tooltip>
+          {applicationType !== 'agent_logs' ? (
+            <>
+              {' '}
+              <Tooltip title={t('auto.export_selected_runs_trace_dump')}>
+                <Button
+                  aria-label={t('auto.export_selected_runs_trace_dump')}
+                  disabled={selectedVisibleRunIds.length === 0}
+                  icon={<UploadOutlined aria-hidden="true" />}
+                  loading={exportingSelectedRuns}
+                  onClick={() => {
+                    void exportSelectedRuns();
+                  }}
+                />
+              </Tooltip>
+              <input
+                ref={archiveImportInputRef}
+                accept="application/json,.json,application/zip,.zip"
+                data-testid="application-logs-archive-import-input"
+                aria-label={t('auto.import_run_archive')}
+                onChange={handleArchiveImportInputChange}
+                style={{ display: 'none' }}
+                type="file"
+              />
+              <Tooltip title={t('auto.import_run_archive')}>
+                <Button
+                  aria-label={t('auto.import_run_archive')}
+                  disabled={
+                    archiveImportState !== null ||
+                    (applicationIds !== undefined && applications.length === 0)
+                  }
+                  icon={<DownloadOutlined aria-hidden="true" />}
+                  onClick={() =>
+                    applicationId
+                      ? archiveImportInputRef.current?.click()
+                      : setImportTargetOpen(true)
+                  }
+                />
+              </Tooltip>
+            </>
+          ) : null}
           <Tooltip title={t('auto.refresh_logs')}>
             <Button
               aria-label={t('auto.refresh_logs')}
@@ -1171,7 +1229,9 @@ export function ApplicationLogsWorkspace({
           configuration={runsTableConfiguration}
           columns={runsTableColumns}
           runs={runs}
-          rowSelection={runsRowSelection}
+          rowSelection={
+            applicationType === 'agent_logs' ? undefined : runsRowSelection
+          }
           selectedRunId={selectedRunId}
           onPageChange={changePage}
           onSelectRun={selectRun}
@@ -1264,27 +1324,19 @@ export function ApplicationLogsWorkspace({
                     )
                   }
                   traceLoader={traceLoader}
-                  overviewLoader={{
-                    loadPayload: (runId, section) =>
-                      fetchRunPayload(
-                        applicationId || selectedApplicationId,
-                        runId,
-                        section
-                      ),
-                    loadOverview: (runId) =>
-                      fetchApplicationRunOverview(
-                        applicationId || selectedApplicationId,
-                        runId
-                      )
-                  }}
+                  overviewLoader={overviewLoader}
                   exportingRun={
                     exportingRunId ===
                     (openConversationLogMessage.detailRunId ??
                       openConversationLogMessage.runId)
                   }
-                  onExportRun={(runId) => {
-                    void exportRunTraceDump(runId);
-                  }}
+                  onExportRun={
+                    isRecordSource
+                      ? undefined
+                      : (runId) => {
+                          void exportRunTraceDump(runId);
+                        }
+                  }
                 />
               </div>
             </ApplicationLogsFloatingWindow>
@@ -1371,6 +1423,7 @@ export function ApplicationLogsWorkspace({
               ) : (
                 <ApplicationRunDetailPanel
                   traceLoader={traceLoader}
+                  recordId={isRecordSource ? selectedRunId : undefined}
                   applicationId={applicationId || selectedApplicationId}
                   requested_model_id={
                     runs.find((run) => run.id === selectedRunId)

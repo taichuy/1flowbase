@@ -17,8 +17,8 @@ export interface ClientTrajectoryStep {
   status: string;
   origin: string;
   protocol: string;
-  transport: 'http' | 'websocket';
-  flow_run_id: string;
+  transport: 'http' | 'websocket' | 'file';
+  flow_run_id: string | null;
   node_run_id: string | null;
   parent_id: string | null;
   call_id: string | null;

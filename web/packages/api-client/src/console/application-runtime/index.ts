@@ -9,3 +9,5 @@ export {
 export * from './trajectory';
 
 export * from './client-trajectory';
+
+export * from './records';

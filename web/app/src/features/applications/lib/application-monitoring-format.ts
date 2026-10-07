@@ -107,6 +107,8 @@ function formatTrendBucket(
 
 function sourceLabel(source: string) {
   switch (source) {
+    case 'client_collector':
+      return i18nText('applications', 'agent_logs.client_collector');
     case 'agent_flow_api':
       return i18nText('applications', 'auto.invocation_source_agent_flow_api');
     case 'assistant':

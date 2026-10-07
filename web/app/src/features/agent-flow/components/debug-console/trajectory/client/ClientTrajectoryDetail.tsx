@@ -11,11 +11,13 @@ import { sectionLabel } from './presentation';
 /** Renders backend-selected sections; never reconstructs protocol facts from Native. */
 export function ClientTrajectoryDetail({
   step,
+  runId,
   loader,
   nodeRunId,
   onRelated
 }: {
   step: ClientTrajectoryStep;
+  runId?: string;
   loader: ConversationLogTraceLoader;
   nodeRunId?: string;
   onRelated: (id: string) => void;
@@ -32,7 +34,7 @@ export function ClientTrajectoryDetail({
   const pages = useInfiniteQuery({
     queryKey: [
       'client-trajectory-section',
-      step.flow_run_id,
+      runId ?? step.flow_run_id,
       nodeRunId,
       step.id,
       section
@@ -44,7 +46,7 @@ export function ClientTrajectoryDetail({
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       loader.loadClientTrajectorySection!(
-        step.flow_run_id,
+        (runId ?? step.flow_run_id)!,
         step.id,
         section,
         nodeRunId,
