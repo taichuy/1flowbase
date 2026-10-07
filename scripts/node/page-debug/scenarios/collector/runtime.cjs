@@ -115,6 +115,19 @@ async function run(cmd,args,name,env) {
   await run('bash',[localScript,'--endpoint',base+'/api/logs/v1/events','--release-base',base+installed.asset_base_url,'--installation-id',applicationId,'--install-dir',path.join(out,'private/client'),'--source',path.join(out,'private/codex'),'--no-start'],'local-cli-install',{...env,FLOWBASE_AGENT_LOGS_API_KEY:'proof-only-key'});
   assert.match(execFileSync(path.join(out,'private/client/bin/codex-logs-collector'),['--version'],{encoding:'utf8'}),/0\.1\.0/);
   assert.equal(remote.requests.length,remoteCount,'terminal installation must not contact remote');
+  // Clear process catalog caches: retained DB/package still owns offline metadata.
+  await owner.dispose(); owner=null;
+  await stop(api);
+  api=start(binary,[],root+'/api','api-offline-restart',env);
+  await ready(base+'/health');
+  owner=await openTemporaryOwnerSession({apiBaseUrl:base,account:env.BOOTSTRAP_ROOT_ACCOUNT,password});
+  const offlineCatalog=await request('GET','/api/console/applications/catalog');assert.equal(offlineCatalog.status,200);
+  const retained=offlineCatalog.body.data.collectors.find(entry=>entry.catalog_id===installed.catalog_id);
+  assert.equal(retained.installation_status,'installed');assert.equal(retained.installed_version,'0.1.0');
+  const restartedRemoteCount=remote.requests.length;
+  assert.equal((await fetch(base+retained.shell_installer_url)).status,200);
+  assert.equal(remote.requests.length,restartedRemoteCount);
+  receipt.checks.push({name:'offline catalog survives API restart and retains local download URLs',status:'pass'});
   // Signed tamper authenticity: a retained archive changed on disk loses all usable URLs.
   const inventory=await request('GET','/api/console/settings/extension-center/installed?category=runtime-extensions');assert.equal(inventory.status,200);
   const local=inventory.body.data.entries.find(entry=>entry.id===installed.extension_installation_id);assert.ok(local?.local_path);
