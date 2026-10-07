@@ -1,24 +1,18 @@
-# Agent Logs source collector
+# Agent Logs native collector
 
-This repository includes a runnable **source CLI**, not a published npm package. Use Node.js 20 or newer and a checkout containing `scripts/node/agent-logs-collector.js` and its sibling directory. No dependency installation is required. A future distributable package must be released separately; do not use an invented `npx` package name.
+[中文](README.zh-CN.md)
 
-Create an Agent Logs application, obtain its application API key, and set `FLOWBASE_AGENT_LOGS_API_KEY` through your shell or secret manager. The key is not accepted as a command argument and is not printed. Select a local source explicitly; the collector does not search your home directory.
+Open an Agent Logs application's **Collector CLI** page and select Codex. Copy the Shell or PowerShell install command, execute it on the computer running Codex, and enter the application API Key locally when prompted. The official Rust executable does not require Node.js, a Rust toolchain or a repository checkout.
 
-```bash
-node scripts/node/agent-logs-collector.js import \
-  --endpoint https://your-host/api/logs/v1/events \
-  --source /your/chosen/codex-directory \
-  --state /your/private/agent-logs-state.json
+The installer downloads a checksummed native release, saves private configuration and starts a user background service. Linux uses user systemd, macOS uses LaunchAgent and Windows uses a user scheduled task. It resumes when the same user logs in after a reboot. If a supported service is unavailable, installation reports that explicitly; `--no-start` allows manual process supervision.
 
-node scripts/node/agent-logs-collector.js watch \
-  --endpoint https://your-host/api/logs/v1/events \
-  --source /your/chosen/codex-directory \
-  --state /your/private/agent-logs-state.json
-```
+Each application uses its own installation ID and checkpoint. The default Codex root is installation-time `CODEX_HOME` or `~/.codex`; only `sessions` and `archived_sessions` are read, including existing history and future complete records. Custom source paths are supported. Installation and collection do not modify Codex source logs.
 
-Choose the Codex root containing both `sessions` and `archived_sessions` to include historical and archived rollouts. A single `.jsonl` file is also supported. All selected JSONL files are scanned recursively; symlinks are skipped to avoid escaping the selected directory or following cycles. There is no total event/file cap. `--batch-size` sets the transport batch size (default 100); `--interval-ms` sets watch polling (default 2000). `watch` retries failed collection on subsequent polls. `import` exits unsuccessfully on an upload/parse/checkpoint error. `--help` lists all options.
+The API Key is entered locally and stored in private `config.json`, not embedded in download URLs or CLI arguments. Upload sends it only to the specified 1flowbase endpoint as a Bearer header. The endpoint is the exact `/api/logs/v1/events` URL; use HTTPS across a network. Redirects are refused.
 
-The endpoint is the complete ingest URL. HTTP is available for local development; use HTTPS when transmitting application credentials over a network. Redirects are refused. The state stores source identity, endpoint, source-client identity and acknowledged offsets, without the API key or conversation text. Protect the source files and state as local private data. Preserve the state and generated `source_id` for resumptions. `--source-id` provides an explicit stable installation identity and must agree with existing state. Use a separate state for a different endpoint or adapter. Run only one collector per state; after an abnormal process termination, verify that no collector is active before removing the adjacent `.lock` file.
+[Official installation, upgrade and uninstall instructions](https://github.com/taichuy/1flowbase-official-plugins/blob/main/runtime-extensions/@taichuy/codex-logs-collector/README.en.md)
+
+Native commands are `codex-logs-collector import --config PATH` and `codex-logs-collector watch --config PATH`. Retain `state.json` and its generated source identity across reinstalls. A checkpoint has one process owner; OS advisory locks are released automatically after a crash. Reconfiguration can rotate the key, while changing endpoint/source requires a separate installation.
 
 ## Durability and source meaning
 
@@ -62,30 +56,10 @@ Codex `response_item` user/assistant messages provide conversation facts. An ass
 
 Send `POST /api/logs/v1/events` with `Authorization: Bearer <application-key>`. `task_end` with `phase: "final_answer"` and nonempty content declares source completion final text; `phase: "cancelled"` declares cancellation without final content. The event kinds are `system`, `user`, `assistant`, `tool_call`, `tool_result`, `usage`, `context`, and `task_end`. Usage contains `basis: "delta" | "cumulative"` and optional `response_id`, `input_tokens`, `output_tokens`, `input_cache_hit_tokens`, `cache_write_tokens`, `total_tokens`.
 
-The canonical HTTP success body is `ApiSuccess<AgentLogsReceipt>`: `{"data":{"accepted_events":1,"duplicate_events":0,"record_ids":["record-id"]},"meta":null}`. The collector reads the receipt only from `JSON.data`; unwrapped top-level fields are not accepted. The receipt inside `data` contains `accepted_events`, `duplicate_events`, and string-array `record_ids`. Accepted plus duplicate counts must equal the complete batch size. The server commits the entire batch or rejects it; conflicting payloads under an existing identity are errors. An application API key authorizes ingestion, not model generation.
+The canonical HTTP success body is `ApiSuccess<AgentLogsReceipt>`: `{"data":{"accepted_events":1,"duplicate_events":0,"record_ids":["00000000-0000-0000-0000-000000000001"]},"meta":null}`. The collector reads the receipt only from `JSON.data`; unwrapped top-level fields are not accepted. The receipt inside `data` contains `accepted_events`, `duplicate_events`, and string-array `record_ids`. Accepted plus duplicate counts must equal the complete batch size. The server commits the entire batch or rejects it; conflicting payloads under an existing identity are errors. An application API key authorizes ingestion, not model generation.
 
 ## Local adapter boundary
 
-`--adapter /absolute/path/to/installed-adapter.cjs` selects a trusted installed CommonJS script. Custom adapters execute local code with the collector's privileges; select scripts you trust. The single loader requires this interface:
+The official shared Rust `agent-logs-collector` SDK owns source scanning, stable event identity, HTTP upload, full ACK validation, exclusive checkpoint ownership and durable persistence. Codex implements the SDK's source adapter interface and only converts its private format. It uses canonical Rust DTOs from a pinned main-repository revision, rather than duplicating protocol fields.
 
-```js
-module.exports = {
-  sourceClient: 'my-client',
-  createContext(firstLine) { return {}; },
-  convert(line, context, position) {
-    // Return a normalized envelope event without event_id/sequence, or null.
-    // position.start/end are byte offsets. Do not perform HTTP/checkpoint writes.
-    // source_task_id=null postpones ownership until a reliable turn arrives.
-  }
-};
-```
-
-The shared scheduler supplies stable event identity and sequence, uploads and checkpoints. Adapters only convert format facts and maintain deterministic parsing context. This is a local source adapter boundary, not a server plugin/runtime slot. The bundled Codex adapter was checked against the locally supplied Codex Rust protocol/history definitions; source-version drift and absent metadata remain explicit limitations.
-
-Behavior fixtures (run by the centralized QA batch):
-
-```bash
-node --test scripts/node/agent-logs-collector/_tests/collector.test.js
-```
-
-See [中文说明](README.zh-CN.md).
+The old repository Node collector remains a development fixture oracle and is not the user installation entry. Native source and recovery tests run in the official plugin repository with `cargo test --locked --manifest-path sdk/agent-logs-collector/Cargo.toml` and `cargo test --locked --manifest-path runtime-extensions/@taichuy/codex-logs-collector/Cargo.toml`. Installation fixtures use synthetic logs and a local mock HTTP endpoint.

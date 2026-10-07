@@ -1,24 +1,18 @@
-# Agent Logs 源码采集 CLI
+# Agent Logs 原生采集器
 
-仓库提供可直接执行的 **源码 CLI**，当前不声明已有 npm 发布包。使用 Node.js 20 或更高版本，保留 `scripts/node/agent-logs-collector.js` 与同名目录；无需安装额外依赖。源码交付和未来发布包是两件事，不要使用未经发布的 `npx` 包名。
+[English](README.md)
 
-创建 Agent Logs 应用后，通过 shell 或密钥管理器设置 `FLOWBASE_AGENT_LOGS_API_KEY`。密钥不作为命令参数，不输出到日志。来源路径由用户明确选择，CLI 不会自动扫描用户主目录。
+在 Agent Logs 应用的 **采集 CLI** 页面选择 Codex，复制 Shell 或 PowerShell 安装命令，在运行 Codex 的用户电脑执行，并在本地终端输入应用 API Key。官方 Rust 可执行程序不要求安装 Node.js、Rust 工具链或检出源码。
 
-```bash
-node scripts/node/agent-logs-collector.js import \
-  --endpoint https://your-host/api/logs/v1/events \
-  --source /your/chosen/codex-directory \
-  --state /your/private/agent-logs-state.json
+安装器下载并校验原生发行，保存私有配置，启动用户级后台服务。Linux 使用用户 systemd，macOS 使用 LaunchAgent，Windows 使用用户计划任务；同一用户重启登录后恢复。没有可用后台机制时明确报告；`--no-start` 可配置后交给自己的进程管理器运行。
 
-node scripts/node/agent-logs-collector.js watch \
-  --endpoint https://your-host/api/logs/v1/events \
-  --source /your/chosen/codex-directory \
-  --state /your/private/agent-logs-state.json
-```
+每个应用 ID 对应独立安装和断点。默认来源是安装时的 `CODEX_HOME`，未设置时使用 `~/.codex`，只读取 `sessions` 和 `archived_sessions` 中的已有历史及后续完整记录；支持自定义来源路径。不修改 Codex 配置或源日志。
 
-选择包含 `sessions` 和 `archived_sessions` 的 Codex 根目录即可导入历史及归档数据，也可指定单个 `.jsonl` 文件。递归扫描全部选中 JSONL，不设文件数或事件总量上限；跳过符号链接以防离开指定目录或产生递归环。`--batch-size` 只控制传输批次大小（默认 100），`--interval-ms` 控制 watch 轮询间隔（默认 2000）。watch 失败后下轮重试，import 出现上传、解析或断点错误会失败退出。全部选项见 `--help`。
+Key 在本地输入并保存到私有 `config.json`，不出现在下载安装 URL 或 CLI 参数中。上传仅通过 Bearer header 发送给指定 1flowbase 端点。端点是完整 `/api/logs/v1/events` URL；网络传输应使用 HTTPS，上传拒绝重定向。
 
-`--endpoint` 必须是完整 ingest 地址。HTTP 可用于本地开发，跨网络传输应用密钥使用 HTTPS，CLI 拒绝重定向。断点保存来源身份、目标地址、客户端类型和已确认偏移，不保存密钥或对话正文。来源和断点属于本地私有数据。恢复时保留断点及生成的 `source_id`；`--source-id` 可显式指定稳定安装身份，但必须与已有断点一致。更换 endpoint 或 adapter 使用独立断点。同一断点只允许一个采集进程；异常退出后，确认没有活跃采集进程再删除相邻 `.lock` 文件。
+[官方安装、升级与卸载说明](https://github.com/taichuy/1flowbase-official-plugins/blob/main/runtime-extensions/@taichuy/codex-logs-collector/README.md)
+
+原生命令为 `codex-logs-collector import --config PATH` 和 `codex-logs-collector watch --config PATH`。升级保留 `state.json` 及其自动生成的来源身份。一个断点只能由一个进程持有；异常退出由操作系统释放锁，无需删除断点。重新配置可更换 Key，改变 endpoint/source 使用独立安装。
 
 ## 恢复与来源语义
 
@@ -36,12 +30,8 @@ Codex `response_item` user/assistant 提供对话事实；明确标记 `phase: "
 
 向 `POST /api/logs/v1/events` 发送 `Authorization: Bearer <application-key>`。固定 `schema_version: "1flowbase.agent-logs/v1"`；精确 JSON 字段与示例见 [English API contract](README.md#api-envelope-and-receipt)。`task_end` 携带 `phase: "final_answer"` 和非空 content 时声明来源完成终答，`phase: "cancelled"` 表示取消且不含终答文本。kind 为 `system/user/assistant/tool_call/tool_result/usage/context/task_end`。usage 的 basis 为 `delta/cumulative`，可含 `response_id/input_tokens/output_tokens/input_cache_hit_tokens/cache_write_tokens/total_tokens`。
 
-成功 HTTP body 沿用 `ApiSuccess<AgentLogsReceipt>`：`{"data":{"accepted_events":1,"duplicate_events":0,"record_ids":["record-id"]},"meta":null}`。CLI 只读取 `JSON.data` 中的 receipt，不接受顶层未包装字段。data 内 receipt 含 `accepted_events`、`duplicate_events`、字符串数组 `record_ids`；接受数与重复数之和必须等于完整批次事件数。服务端整批持久提交或整批失败；相同身份不同 payload 为冲突。应用 key 授权日志写入，不授权模型生成。
+成功 HTTP body 沿用 `ApiSuccess<AgentLogsReceipt>`：`{"data":{"accepted_events":1,"duplicate_events":0,"record_ids":["00000000-0000-0000-0000-000000000001"]},"meta":null}`。CLI 只读取 `JSON.data` 中的 receipt，不接受顶层未包装字段。data 内 receipt 含 `accepted_events`、`duplicate_events`、UUID 字符串数组 `record_ids`；接受数与重复数之和必须等于完整批次事件数。服务端整批持久提交或整批失败；相同身份不同 payload 为冲突。应用 key 授权日志写入，不授权模型生成。
 
-`--adapter /absolute/path/to/installed-adapter.cjs` 可选择已安装的可信 CommonJS 脚本。adapter 以采集进程权限执行本地代码，仅选择可信脚本。单一 loader 要求导出 `sourceClient`、`createContext(firstLine)` 和 `convert(line, context, position)`；convert 返回不含 event_id/sequence 的规范事件或 null，`position.start/end` 为字节偏移，source_task_id=null 表示等待可靠归属。共享调度负责身份、上传和断点，adapter 只转换格式、维护确定性解析上下文，不自行实现 HTTP 或 checkpoint。这是本地来源 adapter 边界，不是服务端 runtime 插槽。
+官方共享 Rust `agent-logs-collector` SDK 负责来源扫描、事件稳定身份、HTTP 上传、完整 ACK、断点排他与持久化。Codex 插件只实现来源适配接口和格式转换，直接引用主仓锁定 revision 的 canonical Rust DTO，不复制协议定义。
 
-内置 adapter 对照用户提供的本地 Codex Rust protocol/history 定义；来源版本漂移和缺少明确元数据仍是适用边界。集中 QA 执行 fixtures：
-
-```bash
-node --test scripts/node/agent-logs-collector/_tests/collector.test.js
-```
+旧仓库 Node 采集器保留为开发 fixture oracle，不是用户安装入口。原生来源与恢复测试在官方插件仓库执行 `cargo test --locked --manifest-path sdk/agent-logs-collector/Cargo.toml` 和 `cargo test --locked --manifest-path runtime-extensions/@taichuy/codex-logs-collector/Cargo.toml`；安装 fixture 使用合成日志和本地 mock HTTP 端点。
