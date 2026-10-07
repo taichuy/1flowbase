@@ -14,6 +14,8 @@ import {
 } from '../../api/departments';
 import { settingsMembersQueryKey } from '../../api/members';
 
+const ORGANIZATION_PARENT_VALUE = 'organization-browse-root';
+
 export interface DepartmentDraft {
   department?: SettingsDepartment;
   parent_id: string | null;
@@ -134,15 +136,27 @@ export function DepartmentEditorDrawer({
         <Form.Item
           name="parent_id"
           label={i18nText('settings', 'organization.parent')}
+          getValueProps={(value: string | null | undefined) => ({
+            value: value ?? ORGANIZATION_PARENT_VALUE
+          })}
+          normalize={(value: string | undefined) =>
+            value === ORGANIZATION_PARENT_VALUE ? null : (value ?? null)
+          }
         >
           <Select
             allowClear
-            options={departments
-              .filter((department) => !excluded.has(department.id))
-              .map((department) => ({
-                label: department.name,
-                value: department.id
-              }))}
+            options={[
+              {
+                label: i18nText('settings', 'organization.title'),
+                value: ORGANIZATION_PARENT_VALUE
+              },
+              ...departments
+                .filter((department) => !excluded.has(department.id))
+                .map((department) => ({
+                  label: department.name,
+                  value: department.id
+                }))
+            ]}
           />
         </Form.Item>
         {canAssignRoles ? (
