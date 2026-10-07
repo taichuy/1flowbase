@@ -41,7 +41,7 @@ export function ApplicationCollectorPage({
           setCollectorCode(null);
         }}
         items={[
-          { key: 'all', label: t('agent_logs.all_collectors') },
+          { key: 'all', label: t('auto.all') },
           { key: 'codex', label: 'Codex' }
         ]}
       />

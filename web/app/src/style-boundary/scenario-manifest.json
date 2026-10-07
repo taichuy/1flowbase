@@ -2021,5 +2021,205 @@
         ]
       }
     ]
+  },
+  {
+    "id": "component.application-collector-catalog.desktop",
+    "kind": "component",
+    "title": "Application Collector Catalog (desktop)",
+    "impactFiles": [
+      "web/app/src/features/applications/pages/ApplicationCollectorPage.tsx",
+      "web/app/src/features/applications/components/collector/CollectorInstallation.tsx",
+      "web/app/src/features/applications/components/collector/application-collector.css",
+      "web/app/src/style-boundary/scene-fixtures/collector.tsx"
+    ],
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "boundaryNodes": [
+      {
+        "id": "collector-surface",
+        "selector": ".application-collector",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "block"
+          }
+        ]
+      },
+      {
+        "id": "collector-catalog",
+        "selector": ".application-collector__catalog",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "collector-content-in-surface",
+        "type": "within_container",
+        "subjectSelector": ".application-collector__catalog",
+        "containerSelector": ".application-collector"
+      }
+    ]
+  },
+  {
+    "id": "component.application-collector-catalog.mobile",
+    "kind": "component",
+    "title": "Application Collector Catalog (mobile)",
+    "impactFiles": [
+      "web/app/src/features/applications/pages/ApplicationCollectorPage.tsx",
+      "web/app/src/features/applications/components/collector/CollectorInstallation.tsx",
+      "web/app/src/features/applications/components/collector/application-collector.css",
+      "web/app/src/style-boundary/scene-fixtures/collector.tsx"
+    ],
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "boundaryNodes": [
+      {
+        "id": "collector-surface",
+        "selector": ".application-collector",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "block"
+          }
+        ]
+      },
+      {
+        "id": "collector-catalog",
+        "selector": ".application-collector__catalog",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "collector-content-in-surface",
+        "type": "within_container",
+        "subjectSelector": ".application-collector__catalog",
+        "containerSelector": ".application-collector"
+      }
+    ]
+  },
+  {
+    "id": "component.application-collector-installation.desktop",
+    "kind": "component",
+    "title": "Application Collector Installation (desktop)",
+    "impactFiles": [
+      "web/app/src/features/applications/pages/ApplicationCollectorPage.tsx",
+      "web/app/src/features/applications/components/collector/CollectorInstallation.tsx",
+      "web/app/src/features/applications/components/collector/application-collector.css",
+      "web/app/src/style-boundary/scene-fixtures/collector.tsx"
+    ],
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "boundaryNodes": [
+      {
+        "id": "collector-surface",
+        "selector": ".application-collector",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "block"
+          }
+        ]
+      },
+      {
+        "id": "collector-installation",
+        "selector": ".application-collector__installation",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "collector-command",
+        "selector": ".application-collector__command pre",
+        "propertyAssertions": [
+          {
+            "property": "white-space",
+            "expected": "pre-wrap"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "collector-content-in-surface",
+        "type": "within_container",
+        "subjectSelector": ".application-collector__installation",
+        "containerSelector": ".application-collector"
+      }
+    ]
+  },
+  {
+    "id": "component.application-collector-installation.mobile",
+    "kind": "component",
+    "title": "Application Collector Installation (mobile)",
+    "impactFiles": [
+      "web/app/src/features/applications/pages/ApplicationCollectorPage.tsx",
+      "web/app/src/features/applications/components/collector/CollectorInstallation.tsx",
+      "web/app/src/features/applications/components/collector/application-collector.css",
+      "web/app/src/style-boundary/scene-fixtures/collector.tsx"
+    ],
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "boundaryNodes": [
+      {
+        "id": "collector-surface",
+        "selector": ".application-collector",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "block"
+          }
+        ]
+      },
+      {
+        "id": "collector-installation",
+        "selector": ".application-collector__installation",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "collector-command",
+        "selector": ".application-collector__command pre",
+        "propertyAssertions": [
+          {
+            "property": "white-space",
+            "expected": "pre-wrap"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "collector-content-in-surface",
+        "type": "within_container",
+        "subjectSelector": ".application-collector__installation",
+        "containerSelector": ".application-collector"
+      }
+    ]
   }
 ]

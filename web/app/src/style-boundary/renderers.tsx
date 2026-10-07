@@ -1,3 +1,7 @@
+import {
+  CollectorStyleBoundaryScene,
+  seedStyleBoundaryCollectorFetch
+} from './scene-fixtures/collector';
 import { SettingsOrganizationStyleBoundaryScene } from './SettingsOrganizationStyleBoundaryScene';
 import { seedStyleBoundaryOrganizationFetch } from './scene-fixtures/settings/organization';
 import { useLayoutEffect, type ReactNode } from 'react';
@@ -164,6 +168,30 @@ function renderVariableGroupsScene(
 }
 
 export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
+  'component.application-collector-catalog.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryCollectorFetch();
+    return <CollectorStyleBoundaryScene installation={false} />;
+  },
+  'component.application-collector-catalog.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryCollectorFetch();
+    return <CollectorStyleBoundaryScene installation={false} />;
+  },
+  'component.application-collector-installation.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryCollectorFetch();
+    return <CollectorStyleBoundaryScene installation={true} />;
+  },
+  'component.application-collector-installation.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryCollectorFetch();
+    return <CollectorStyleBoundaryScene installation={true} />;
+  },
   'page.settings-members.desktop': () => {
     seedStyleBoundaryCommonFetch();
     seedStyleBoundaryAuth();

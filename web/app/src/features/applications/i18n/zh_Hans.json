@@ -352,7 +352,6 @@
     "client_collector": "客户端采集",
     "api_enabled": "已启用",
     "api_disabled": "未启用",
-    "all_collectors": "全部",
     "install_collector": "安装采集器",
     "collector_version": "版本 {{version}}",
     "documentation": "查看文档",

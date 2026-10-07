@@ -43,7 +43,11 @@ export function CollectorInstallation({
   };
   return (
     <>
-      <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>
+      <Button
+        type="text"
+        icon={<ArrowLeftOutlined aria-hidden="true" />}
+        onClick={onBack}
+      >
         {t('agent_logs.back_to_collectors')}
       </Button>
       <div className="application-collector__installation">
@@ -115,7 +119,10 @@ export function CollectorInstallation({
               </Radio.Group>
               <div className="application-collector__command">
                 <pre>{command}</pre>
-                <Button icon={<CopyOutlined />} onClick={copyCommand}>
+                <Button
+                  icon={<CopyOutlined aria-hidden="true" />}
+                  onClick={copyCommand}
+                >
                   {t('agent_logs.copy_command')}
                 </Button>
               </div>
@@ -141,7 +148,7 @@ export function CollectorInstallation({
         >
           <Space orientation="vertical" size={24}>
             <div className="application-collector__benefit">
-              <CheckOutlined />
+              <CheckOutlined aria-hidden="true" />
               <div>
                 <Typography.Title level={5}>
                   {t('agent_logs.automatic_collection')}
@@ -152,7 +159,7 @@ export function CollectorInstallation({
               </div>
             </div>
             <div className="application-collector__benefit">
-              <SafetyOutlined />
+              <SafetyOutlined aria-hidden="true" />
               <div>
                 <Typography.Title level={5}>
                   {t('agent_logs.local_key')}
@@ -163,7 +170,7 @@ export function CollectorInstallation({
               </div>
             </div>
             <div className="application-collector__benefit">
-              <FileTextOutlined />
+              <FileTextOutlined aria-hidden="true" />
               <div>
                 <Typography.Title level={5}>
                   {t('agent_logs.open_source')}

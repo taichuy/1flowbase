@@ -144,7 +144,7 @@ test('loading, error and retry retain filter and do not offer stale installation
   expect(
     screen.queryByRole('button', { name: '安装采集器' })
   ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '重试' }));
+  fireEvent.click(screen.getByRole('button', { name: /^重\s*试$/ }));
   expect(
     await screen.findByRole('button', { name: '安装采集器' })
   ).toBeInTheDocument();

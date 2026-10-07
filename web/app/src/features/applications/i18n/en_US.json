@@ -352,7 +352,6 @@
     "client_collector": "Client collector",
     "api_enabled": "Enabled",
     "api_disabled": "Disabled",
-    "all_collectors": "All",
     "install_collector": "Install collector",
     "collector_version": "Version {{version}}",
     "documentation": "View documentation",
