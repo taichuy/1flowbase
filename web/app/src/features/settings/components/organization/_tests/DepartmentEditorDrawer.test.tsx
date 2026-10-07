@@ -147,7 +147,7 @@ describe('organization parent selector', () => {
         const clear =
           parentSelect().querySelector<HTMLElement>('.ant-select-clear');
         if (!clear) throw new Error('Parent clear action is missing');
-        fireEvent.mouseDown(clear);
+        fireEvent.click(clear);
       }
       expect(within(parentSelect()).getByText('组织')).toBeInTheDocument();
       save();
