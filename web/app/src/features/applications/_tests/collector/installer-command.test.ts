@@ -23,6 +23,15 @@ test('shell and PowerShell commands quote public parameters and clean temporary 
     'application-two'
   );
   expect(powershell).toContain("o''h");
+  expect(powershell).toContain('Invoke-WebRequest -UseBasicParsing');
+  expect(powershell).toContain(
+    'powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer'
+  );
+  expect(powershell).toContain(
+    'if ($LASTEXITCODE -ne 0) { throw "Collector installation failed (exit $LASTEXITCODE)" }'
+  );
+  expect(powershell).not.toContain('& $installer');
+  expect(powershell).not.toContain('Set-ExecutionPolicy');
   expect(powershell).toContain('Remove-Item -LiteralPath');
   expect(powershell).toContain("-InstallationId 'application-two'");
   expect(shell + powershell).not.toMatch(/api_key|API_KEY|node scripts|npx/);
