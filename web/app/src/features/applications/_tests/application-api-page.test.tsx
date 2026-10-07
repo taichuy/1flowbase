@@ -144,7 +144,7 @@ describe('ApplicationApiPage', () => {
     fireEvent.click(
       within(statusBar).getByRole('button', { name: 'API 密钥' })
     );
-    expect(await screen.findByRole('dialog')).toBeVisible();
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeVisible());
     expect(publicApi.fetchApplicationApiPublication).not.toHaveBeenCalled();
     expect(publicApi.fetchApplicationApiMapping).not.toHaveBeenCalled();
     expect(publicApi.publishApplicationApiVersion).not.toHaveBeenCalled();
