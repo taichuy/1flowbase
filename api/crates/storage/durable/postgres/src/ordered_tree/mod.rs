@@ -1,5 +1,5 @@
 pub(crate) mod commands;
 mod pagination;
-mod queries;
+pub(crate) mod queries;
 pub mod rank;
 pub(crate) mod schema;

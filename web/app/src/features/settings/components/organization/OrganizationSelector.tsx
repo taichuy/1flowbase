@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type Key, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -49,6 +49,9 @@ export function OrganizationSelector({
   onRetry: () => void;
   onCreate?: () => void;
 }) {
+  const [expandedKeys, setExpandedKeys] = useState<Key[]>([
+    ORGANIZATION_ROOT_KEY
+  ]);
   const searching = Boolean(search.trim());
   const { token } = theme.useToken();
   const treeData = useMemo(() => {
@@ -108,6 +111,7 @@ export function OrganizationSelector({
     return [
       {
         key: ORGANIZATION_ROOT_KEY,
+        isLeaf: false,
         title: (
           <span className="organization-tree-label">
             <TeamOutlined />
@@ -151,7 +155,12 @@ export function OrganizationSelector({
           type="error"
           message={i18nText('settings', 'organization.load_error')}
           action={
-            <Button onClick={onRetry}>
+            <Button
+              onClick={() => {
+                setExpandedKeys([ORGANIZATION_ROOT_KEY]);
+                onRetry();
+              }}
+            >
               {i18nText('settings', 'auto.retry_permission_data')}
             </Button>
           }
@@ -170,17 +179,14 @@ export function OrganizationSelector({
         <Tree
           key={searching ? `search:${search.trim()}` : 'tree'}
           blockNode
-          defaultExpandedKeys={
-            searching
-              ? departments.map((item) => item.id).concat(ORGANIZATION_ROOT_KEY)
-              : [ORGANIZATION_ROOT_KEY]
-          }
           expandedKeys={
             searching
               ? departments.map((item) => item.id).concat(ORGANIZATION_ROOT_KEY)
-              : undefined
+              : expandedKeys
           }
-          onExpand={(_, { expanded, node }) => {
+          autoExpandParent={false}
+          onExpand={(keys, { expanded, node }) => {
+            if (!searching) setExpandedKeys(keys);
             if (expanded && !searching && node.key !== ORGANIZATION_ROOT_KEY)
               void onExpand(String(node.key));
           }}

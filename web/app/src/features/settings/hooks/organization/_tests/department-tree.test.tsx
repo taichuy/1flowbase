@@ -89,6 +89,45 @@ describe('organization lazy tree', () => {
       }
     );
   });
+  test('keeps the virtual root expanded after async data and preserves user expansion across updates', async () => {
+    const root = department('root', 'Engineering', null, true);
+    const child = department('child', 'Development', 'root');
+    const view = (items: ReturnType<typeof department>[]) => (
+      <AppProviders>
+        <OrganizationSelector
+          departments={items}
+          onSelect={vi.fn()}
+          loading={false}
+          error={false}
+          onRetry={vi.fn()}
+          search=""
+          onSearch={vi.fn()}
+          onExpand={async () => {}}
+          groups={[]}
+        />
+      </AppProviders>
+    );
+    const { rerender } = render(view([]));
+    rerender(view([root]));
+    const engineering = await screen.findByText('Engineering');
+    fireEvent.click(
+      engineering
+        .closest('.ant-tree-treenode')!
+        .querySelector('.ant-tree-switcher')!
+    );
+    rerender(view([root, child]));
+    expect(await screen.findByText('Development')).toBeInTheDocument();
+    rerender(view([root, child, department('child2', 'Design', 'root')]));
+    expect(await screen.findByText('Design')).toBeInTheDocument();
+    fireEvent.click(
+      engineering
+        .closest('.ant-tree-treenode')!
+        .querySelector('.ant-tree-switcher')!
+    );
+    rerender(view([root, child, department('child3', 'Support', 'root')]));
+    expect(screen.queryByText('Support')).not.toBeInTheDocument();
+    expect(screen.queryByText('Development')).not.toBeInTheDocument();
+  });
   test('keeps spaces while typing a multiword department and normalizes only the request', async () => {
     render(
       <AppProviders>

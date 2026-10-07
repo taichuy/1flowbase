@@ -59,20 +59,10 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         metadata: &ModelMetadata,
         input: OrderedTreeBoundedListInput,
     ) -> Result<OrderedTreePage<OrderedTreeNodeProjection>> {
-        let context = Context::new(metadata, input.scope_id, input.tree_partition_id, "roots");
         let mut tx = read_snapshot(self.pool()).await?;
-        let page = fetch_page(
-            &mut tx,
-            metadata,
-            &context,
-            input.result_limit,
-            input.cursor.as_deref(),
-        )
-        .await?;
+        let page = list_ordered_tree_roots_in_snapshot(&mut tx, metadata, input).await?;
         tx.commit().await?;
-        Ok(page.map(|row| OrderedTreeNodeProjection {
-            record: normalize_record(metadata, row.0),
-        }))
+        Ok(page)
     }
 
     async fn list_ordered_tree_children(
@@ -80,26 +70,10 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         metadata: &ModelMetadata,
         input: OrderedTreeChildrenInput,
     ) -> Result<OrderedTreePage<OrderedTreeNodeProjection>> {
-        let mut context = Context::new(
-            metadata,
-            input.scope_id,
-            input.tree_partition_id,
-            "children",
-        );
-        context.node_id = Some(input.parent_id);
         let mut tx = read_snapshot(self.pool()).await?;
-        let page = fetch_page(
-            &mut tx,
-            metadata,
-            &context,
-            input.result_limit,
-            input.cursor.as_deref(),
-        )
-        .await?;
+        let page = list_ordered_tree_children_in_snapshot(&mut tx, metadata, input).await?;
         tx.commit().await?;
-        Ok(page.map(|row| OrderedTreeNodeProjection {
-            record: normalize_record(metadata, row.0),
-        }))
+        Ok(page)
     }
 
     async fn list_ordered_tree_ancestors(
@@ -171,64 +145,119 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         metadata: &ModelMetadata,
         input: OrderedTreeSearchInput,
     ) -> Result<OrderedTreePage<OrderedTreeSearchProjection>> {
-        let mut context = Context::new(metadata, input.scope_id, input.tree_partition_id, "search");
-        context.prefix = Some(input.prefix.trim().to_owned());
         let mut tx = read_snapshot(self.pool()).await?;
-        let page = fetch_page(
-            &mut tx,
+        let page = search_ordered_tree_prefix_in_snapshot(&mut tx, metadata, input).await?;
+        tx.commit().await?;
+        Ok(page)
+    }
+}
+
+/// The caller owns a read-only repeatable-read transaction spanning this query and any enrichment.
+pub(crate) async fn list_ordered_tree_roots_in_snapshot(
+    connection: &mut PgConnection,
+    metadata: &ModelMetadata,
+    input: OrderedTreeBoundedListInput,
+) -> Result<OrderedTreePage<OrderedTreeNodeProjection>> {
+    let context = Context::new(metadata, input.scope_id, input.tree_partition_id, "roots");
+    let page = fetch_page(
+        &mut *connection,
+        metadata,
+        &context,
+        input.result_limit,
+        input.cursor.as_deref(),
+    )
+    .await?;
+    Ok(page.map(|row| OrderedTreeNodeProjection {
+        record: normalize_record(metadata, row.0),
+    }))
+}
+
+/// The caller owns a read-only repeatable-read transaction spanning this query and any enrichment.
+pub(crate) async fn list_ordered_tree_children_in_snapshot(
+    connection: &mut PgConnection,
+    metadata: &ModelMetadata,
+    input: OrderedTreeChildrenInput,
+) -> Result<OrderedTreePage<OrderedTreeNodeProjection>> {
+    let mut context = Context::new(
+        metadata,
+        input.scope_id,
+        input.tree_partition_id,
+        "children",
+    );
+    context.node_id = Some(input.parent_id);
+    let page = fetch_page(
+        &mut *connection,
+        metadata,
+        &context,
+        input.result_limit,
+        input.cursor.as_deref(),
+    )
+    .await?;
+    Ok(page.map(|row| OrderedTreeNodeProjection {
+        record: normalize_record(metadata, row.0),
+    }))
+}
+
+/// The caller owns a read-only repeatable-read transaction spanning this query and any enrichment.
+pub(crate) async fn search_ordered_tree_prefix_in_snapshot(
+    connection: &mut PgConnection,
+    metadata: &ModelMetadata,
+    input: OrderedTreeSearchInput,
+) -> Result<OrderedTreePage<OrderedTreeSearchProjection>> {
+    let mut context = Context::new(metadata, input.scope_id, input.tree_partition_id, "search");
+    context.prefix = Some(input.prefix.trim().to_owned());
+    let page = fetch_page(
+        &mut *connection,
+        metadata,
+        &context,
+        input.match_limit,
+        input.cursor.as_deref(),
+    )
+    .await?;
+    let table_name = quote_identifier(&metadata.physical_table_name)?;
+    let mut output = Vec::<OrderedTreeSearchProjection>::new();
+    let mut indexes = HashMap::<Uuid, usize>::new();
+    for row in page.items {
+        let match_id = row.5;
+        for ancestor in ancestor_records(
+            &mut *connection,
             metadata,
-            &context,
-            input.match_limit,
-            input.cursor.as_deref(),
+            &table_name,
+            input.scope_id,
+            input.tree_partition_id,
+            match_id,
         )
-        .await?;
-        let table_name = quote_identifier(&metadata.physical_table_name)?;
-        let mut output = Vec::<OrderedTreeSearchProjection>::new();
-        let mut indexes = HashMap::<Uuid, usize>::new();
-        for row in page.items {
-            let match_id = row.5;
-            for ancestor in ancestor_records(
-                &mut tx,
-                metadata,
-                &table_name,
-                input.scope_id,
-                input.tree_partition_id,
-                match_id,
-            )
-            .await?
-            {
-                let ancestor = normalize_record(metadata, ancestor);
-                let ancestor_id = record_id(&ancestor)?;
-                if let std::collections::hash_map::Entry::Vacant(entry) = indexes.entry(ancestor_id)
-                {
-                    entry.insert(output.len());
-                    output.push(OrderedTreeSearchProjection {
-                        record: ancestor,
-                        is_match: false,
-                    });
-                }
-            }
-            let record = normalize_record(metadata, row.0);
-            if let Some(index) = indexes.get(&match_id).copied() {
-                output[index] = OrderedTreeSearchProjection {
-                    record,
-                    is_match: true,
-                };
-            } else {
-                indexes.insert(match_id, output.len());
+        .await?
+        {
+            let ancestor = normalize_record(metadata, ancestor);
+            let ancestor_id = record_id(&ancestor)?;
+            if let std::collections::hash_map::Entry::Vacant(entry) = indexes.entry(ancestor_id) {
+                entry.insert(output.len());
                 output.push(OrderedTreeSearchProjection {
-                    record,
-                    is_match: true,
+                    record: ancestor,
+                    is_match: false,
                 });
             }
         }
-        tx.commit().await?;
-        Ok(OrderedTreePage {
-            items: output,
-            has_more: page.has_more,
-            next_cursor: page.next_cursor,
-        })
+        let record = normalize_record(metadata, row.0);
+        if let Some(index) = indexes.get(&match_id).copied() {
+            output[index] = OrderedTreeSearchProjection {
+                record,
+                is_match: true,
+            };
+        } else {
+            indexes.insert(match_id, output.len());
+            output.push(OrderedTreeSearchProjection {
+                record,
+                is_match: true,
+            });
+        }
     }
+    Ok(OrderedTreePage {
+        items: output,
+        has_more: page.has_more,
+        next_cursor: page.next_cursor,
+    })
 }
 
 // Rows retain the complete ordering key and tree-path fingerprint even when paths are not projected.

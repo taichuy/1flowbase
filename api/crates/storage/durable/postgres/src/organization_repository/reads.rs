@@ -1,11 +1,15 @@
 use super::{metadata, PgControlPlaneStore};
+use crate::ordered_tree::queries::{
+    list_ordered_tree_children_in_snapshot, list_ordered_tree_roots_in_snapshot,
+    search_ordered_tree_prefix_in_snapshot,
+};
 use anyhow::Result;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use control_plane_contracts::{ports::DepartmentListInput, ControlPlaneContractError as Error};
 use domain::{Department, DepartmentPage, DepartmentTreeItem};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::{PgPool, Row};
+use sqlx::{Executor, PgConnection, Postgres, Row};
 use std::collections::HashMap;
 use storage_durable::runtime_record_repository::{
     OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreePage, OrderedTreeQueryError,
@@ -13,8 +17,8 @@ use storage_durable::runtime_record_repository::{
 };
 use uuid::Uuid;
 
-pub(super) async fn enrich(
-    pool: &PgPool,
+pub(super) async fn enrich<'e, E: Executor<'e, Database = Postgres>>(
+    executor: E,
     scope_id: Uuid,
     ids: Option<&[Uuid]>,
 ) -> Result<Vec<DepartmentTreeItem>> {
@@ -33,7 +37,7 @@ pub(super) async fn enrich(
     )
     .bind(scope_id)
     .bind(ids)
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     rows.into_iter()
         .map(|r| {
@@ -83,22 +87,26 @@ pub(super) async fn list_page(
         return Err(Error::InvalidInput("department_query").into());
     }
     let model = metadata(scope_id);
+    let mut tx = store.pool().begin().await?;
+    sqlx::query("set transaction isolation level repeatable read read only")
+        .execute(&mut *tx)
+        .await?;
     let page: OrderedTreePage<(Uuid, bool)> = if let Some(ids) = input.ids {
-        lookup_page(store.pool(), scope_id, ids, input.limit, input.cursor).await?
+        lookup_page(&mut tx, scope_id, ids, input.limit, input.cursor).await?
     } else if let Some(prefix) = input.prefix {
-        let page = store
-            .search_ordered_tree_prefix(
-                &model,
-                OrderedTreeSearchInput {
-                    scope_id,
-                    tree_partition_id: scope_id,
-                    prefix,
-                    match_limit: input.limit,
-                    cursor: input.cursor,
-                },
-            )
-            .await
-            .map_err(query_error)?;
+        let page = search_ordered_tree_prefix_in_snapshot(
+            &mut tx,
+            &model,
+            OrderedTreeSearchInput {
+                scope_id,
+                tree_partition_id: scope_id,
+                prefix,
+                match_limit: input.limit,
+                cursor: input.cursor,
+            },
+        )
+        .await
+        .map_err(query_error)?;
         OrderedTreePage {
             items: page
                 .items
@@ -110,30 +118,30 @@ pub(super) async fn list_page(
         }
     } else {
         let page = if let Some(parent_id) = input.parent_id {
-            store
-                .list_ordered_tree_children(
-                    &model,
-                    OrderedTreeChildrenInput {
-                        scope_id,
-                        tree_partition_id: scope_id,
-                        parent_id,
-                        result_limit: input.limit,
-                        cursor: input.cursor,
-                    },
-                )
-                .await
+            list_ordered_tree_children_in_snapshot(
+                &mut tx,
+                &model,
+                OrderedTreeChildrenInput {
+                    scope_id,
+                    tree_partition_id: scope_id,
+                    parent_id,
+                    result_limit: input.limit,
+                    cursor: input.cursor,
+                },
+            )
+            .await
         } else {
-            store
-                .list_ordered_tree_roots(
-                    &model,
-                    OrderedTreeBoundedListInput {
-                        scope_id,
-                        tree_partition_id: scope_id,
-                        result_limit: input.limit,
-                        cursor: input.cursor,
-                    },
-                )
-                .await
+            list_ordered_tree_roots_in_snapshot(
+                &mut tx,
+                &model,
+                OrderedTreeBoundedListInput {
+                    scope_id,
+                    tree_partition_id: scope_id,
+                    result_limit: input.limit,
+                    cursor: input.cursor,
+                },
+            )
+            .await
         }
         .map_err(query_error)?;
         OrderedTreePage {
@@ -147,7 +155,7 @@ pub(super) async fn list_page(
         }
     };
     let ids: Vec<_> = page.items.iter().map(|(id, _)| *id).collect();
-    let mut enriched: HashMap<_, _> = enrich(store.pool(), scope_id, Some(&ids))
+    let mut enriched: HashMap<_, _> = enrich(&mut *tx, scope_id, Some(&ids))
         .await?
         .into_iter()
         .map(|item| (item.department.id, item))
@@ -163,6 +171,7 @@ pub(super) async fn list_page(
             Ok(item)
         })
         .collect::<Result<_>>()?;
+    tx.commit().await?;
     Ok(DepartmentPage {
         items,
         has_more: page.has_more,
@@ -190,7 +199,7 @@ struct LookupCursor {
 }
 
 async fn lookup_page(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     scope_id: Uuid,
     mut ids: Vec<Uuid>,
     limit: u32,
@@ -216,17 +225,13 @@ async fn lookup_page(
             Ok(cursor.after)
         })
         .transpose()?;
-    let mut tx = pool.begin().await?;
-    sqlx::query("set transaction isolation level repeatable read read only")
-        .execute(&mut *tx)
-        .await?;
     if let Some(after) = after {
         let exists: bool = sqlx::query_scalar(
             "select exists(select 1 from departments where scope_id=$1 and id=$2)",
         )
         .bind(scope_id)
         .bind(after)
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *conn)
         .await?;
         if !exists {
             return Err(Error::Conflict("tree_stale_cursor").into());
@@ -234,8 +239,7 @@ async fn lookup_page(
     }
     let mut matches: Vec<Uuid> = sqlx::query_scalar(
         "select id from departments where scope_id=$1 and id=any($2) and ($3::uuid is null or id>$3) order by id limit $4"
-    ).bind(scope_id).bind(&ids).bind(after).bind(i64::from(limit)+1).fetch_all(&mut *tx).await?;
-    tx.commit().await?;
+    ).bind(scope_id).bind(&ids).bind(after).bind(i64::from(limit)+1).fetch_all(&mut *conn).await?;
     let has_more = matches.len() as u64 > u64::from(limit);
     if has_more {
         matches.pop();

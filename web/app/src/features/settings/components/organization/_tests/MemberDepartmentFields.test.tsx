@@ -56,15 +56,15 @@ function Harness({
   );
 }
 describe('member department invariants', () => {
-  beforeEach(() =>
+  beforeEach(() => {
     fetchDepartments.mockImplementation(async ({ ids }: { ids?: string }) => ({
       items: departments
         .filter((item) => !ids || ids.split(',').includes(item.id))
         .map((item) => ({ ...item, is_match: true, has_children: false })),
       has_more: false,
       next_cursor: null
-    }))
-  );
+    }));
+  });
   test('retains and resolves existing selections absent from the first page', async () => {
     const submit = vi.fn();
     render(
