@@ -25,6 +25,10 @@ docs/superpowers/specs/history
 # Docker local runtime state
 docker/volumes/
 docker/.env
+docker/deployment/config/
+docker/deployment/api/
+docker/deployment/postgres/
+docker/deployment/web/
 docker/.env.local
 docker/middleware.env
 docker/api/api.env

@@ -1,5 +1,7 @@
 # 1flowbase Docker
 
+全新部署也可使用 [单文件 Compose 入口](deployment/README_CN.md)，由 API 镜像内置脚本初始化挂载目录和配置；需要包含该脚本的新版本镜像。
+
 ## 仅启动中间件
 
 ```powershell

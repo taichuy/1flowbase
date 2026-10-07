@@ -1,0 +1,109 @@
+name: 1flowbase
+services:
+  api:
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+      init:
+        condition: service_completed_successfully
+    entrypoint:
+    - /usr/local/bin/1flowbase-api-start
+    environment:
+      API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-http://localhost:3100,http://127.0.0.1:3100}
+      API_APPLICATION_TEMPLATE_AUTO_UPDATE: 'true'
+      API_COOKIE_NAME: flowbase_console_session
+      API_COOKIE_SECURE: ${API_COOKIE_SECURE:-false}
+      API_DATABASE_POOL_MAX_CONNECTIONS: '5'
+      API_ENV: production
+      API_HOST_EXTENSION_DROPIN_ROOT: /app/api/plugins/host-extension/dropins
+      API_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT_SECONDS: '300'
+      API_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT_SECONDS: '8'
+      API_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT_SECONDS: '2'
+      API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL: ''
+      API_OFFICIAL_PLUGIN_REGISTRY_URL: https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/official-registry.json
+      API_OFFICIAL_PLUGIN_REPOSITORY: taichuy/1flowbase-official-plugins
+      API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED: 'true'
+      API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON: '[{"key_id":"official-key-2026-04","algorithm":"ed25519","public_key_pem":"-----BEGIN
+        PUBLIC KEY-----\nMCowBQYDK2VwAyEAuk3oonNd85FNP8CBRKj8RVvpdbhreoJiCguEJXPSgwg=\n-----END
+        PUBLIC KEY-----"}]'
+      API_PLUGIN_ALLOW_UNVERIFIED_FILESYSTEM_DROPINS: 'false'
+      API_PLUGIN_ALLOW_UPLOADED_HOST_EXTENSIONS: 'false'
+      API_PLUGIN_SET: default
+      API_PROVIDER_INSTALL_ROOT: /app/api/plugins
+      API_SECRET_RESOLVER: env
+      API_SERVER_ADDR: 0.0.0.0:7800
+      API_SESSION_TTL_DAYS: '7'
+      API_SYSTEM_BACKUP_PASSWORD: ''
+      BOOTSTRAP_ROOT_ACCOUNT: ${BOOTSTRAP_ROOT_ACCOUNT:-root}
+      BOOTSTRAP_ROOT_EMAIL: root@example.com
+      BOOTSTRAP_ROOT_NAME: Root
+      BOOTSTRAP_ROOT_NICKNAME: Root
+      BOOTSTRAP_WORKSPACE_NAME: 1flowbase
+      RUST_LOG: info
+    expose:
+    - '7800'
+    image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
+    restart: unless-stopped
+    volumes:
+    - ./config:/config:ro
+    - ./api/storage:/app/api/storage
+    - ./api/plugins/packages:/app/api/plugins/packages
+    - ./api/plugins/installed:/app/api/plugins/installed
+    - ./api/plugins/host-extension/dropins:/app/api/plugins/host-extension/dropins
+  db:
+    command:
+    - postgres
+    - -c
+    - max_connections=300
+    environment:
+      POSTGRES_DB: 1flowbase
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /config/postgres-password
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-1flowbase}
+      timeout: 3s
+      interval: 5s
+      retries: 20
+    image: postgres:18-alpine
+    restart: unless-stopped
+    shm_size: '536870912'
+    volumes:
+    - ./postgres/data/pgdata:/var/lib/postgresql
+    - ./config:/config:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+  web:
+    depends_on:
+      api:
+        condition: service_started
+        required: true
+    image: ghcr.io/taichuy/1flowbase-web:${FLOWBASE_WEB_VERSION:-latest}
+    ports:
+    - ${WEB_PORT:-3100}:80
+    restart: unless-stopped
+    volumes:
+    - ./web/external-npm:/usr/share/nginx/html/external-npm:ro
+  init:
+    image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
+    user: 0:0
+    entrypoint:
+    - node
+    - /usr/local/lib/1flowbase/initialize.cjs
+    volumes:
+    - ./config:/config
+    - ./api/storage:/app/api/storage
+    - ./api/plugins/packages:/app/api/plugins/packages
+    - ./api/plugins/installed:/app/api/plugins/installed
+    - ./api/plugins/host-extension/dropins:/app/api/plugins/host-extension/dropins
+    - ./postgres/data/pgdata:/pgdata:ro
+    restart: 'no'
+    environment:
+      BOOTSTRAP_ROOT_ACCOUNT: ${BOOTSTRAP_ROOT_ACCOUNT:-root}
+      BOOTSTRAP_ROOT_PASSWORD: ${BOOTSTRAP_ROOT_PASSWORD:-change-me-root-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      API_PROVIDER_SECRET_MASTER_KEY: ${API_PROVIDER_SECRET_MASTER_KEY:-}

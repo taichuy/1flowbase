@@ -88,6 +88,8 @@ ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
     API_APPLICATION_TEMPLATE_ROOT=/app/api/resources/application-templates
 
 COPY api/plugins /app/api/plugins
+COPY docker/deployment/initialize.cjs /usr/local/lib/1flowbase/initialize.cjs
+COPY --chmod=0755 docker/deployment/api-start.sh /usr/local/bin/1flowbase-api-start
 COPY --from=model-pricing-bootstrap /model-pricing /app/api/resources/model-pricing
 COPY --from=application-template-bootstrap /application-templates /app/api/resources/application-templates
 RUN mkdir -p \
