@@ -48,6 +48,10 @@ async function main() {
       assert.ok(text.includes('bash "$installer"')); assert.ok(text.includes(applicationId));
       assert.ok(text.includes('/api/logs/v1/events')); assert.ok(!text.includes('?api_key='));
       const shellCommand = await page.locator('.application-collector__command pre').innerText();
+      const endpoint = shellCommand.match(/--endpoint '([^']+)'/)?.[1];
+      assert.match(endpoint || '', /^https?:\/\//);
+      assert.ok(new URL(endpoint).pathname.endsWith('/api/logs/v1/events'));
+      if (process.env.COLLECTOR_EXPECTED_ENDPOINT) assert.equal(endpoint, process.env.COLLECTOR_EXPECTED_ENDPOINT);
       await page.getByRole('button', { name: /复制命令|Copy command/ }).click();
       await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected), shellCommand);
       const overflow = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
@@ -56,13 +60,14 @@ async function main() {
       await page.getByText('Windows (PowerShell)', { exact: true }).click();
       text = await page.locator('body').innerText();
       assert.ok(text.includes('-Endpoint')); assert.ok(text.includes('-InstallationId'));
+      assert.equal(text.match(/-Endpoint '([^']+)'/)?.[1], endpoint);
       await page.screenshot({ path: path.join(out, `${name}-powershell.png`), fullPage: true });
-      const keys = page.getByRole('link', { name: /API Key/ }).first();
+      const keys = page.getByRole('link', { name: /API Key/i }).first();
       assert.equal(await keys.getAttribute('href'), `/applications/${applicationId}/api`);
       await page.getByRole('button', { name: /返回|Back/ }).click();
       await install.waitFor();
       assert.deepEqual(errors, []);
-      receipts.push({ name, viewport, overflow, errors, status: 'pass', filter: 'codex', clipboard: 'exact shell command', collector: catalog.collectors[0] });
+      receipts.push({ name, viewport, overflow, errors, status: 'pass', filter: 'codex', endpoint, clipboard: 'exact shell command', collector: catalog.collectors[0] });
       await context.close();
     }
     await fs.writeFile(path.join(out, 'receipt.json'), JSON.stringify({ source_sha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim(), application_id: applicationId, web_base_url: webBaseUrl, api_base_url: apiBaseUrl, receipts }, null, 2));
