@@ -5,7 +5,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Radio,
   Select,
   Space,
   Switch,
@@ -374,15 +373,12 @@ export function ApplicationFormModal({
             </Form.Item>
           ) : (
             <Form.Item label={t('auto.type')} name="application_type">
-              <Radio.Group>
-                <Space orientation="vertical" size="small">
-                  {(catalogQuery.data?.types ?? []).map((option) => (
-                    <Radio key={option.value} value={option.value}>
-                      {option.label}
-                    </Radio>
-                  ))}
-                </Space>
-              </Radio.Group>
+              <Select<ConsoleApplicationType>
+                options={(catalogQuery.data?.types ?? []).map((option) => ({
+                  value: option.value,
+                  label: option.label
+                }))}
+              />
             </Form.Item>
           )}
 

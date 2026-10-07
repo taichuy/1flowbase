@@ -27,6 +27,14 @@ import { AppProviders } from '../../../app/AppProviders';
 
 import { ApplicationFormModal } from '../components/ApplicationFormModal';
 
+async function selectApplicationType(label: string) {
+  fireEvent.mouseDown(await screen.findByRole('combobox', { name: '类型' }));
+  const option = await screen.findByText(label, {
+    selector: '.ant-select-item-option-content'
+  });
+  fireEvent.click(option);
+}
+
 describe('ApplicationFormModal create intent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,7 +81,8 @@ describe('ApplicationFormModal create intent', () => {
 
     expect(await screen.findByText('新建应用')).toBeInTheDocument();
     expect(await screen.findByText('Agent Flow')).toBeInTheDocument();
-    expect(screen.getByText('Workflow')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: '类型' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByText('后端 Agent Flow 描述')).not.toBeInTheDocument();
     expect(screen.queryByText('后端 Workflow 描述')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '名称' })).toBeInTheDocument();
@@ -107,7 +116,7 @@ describe('ApplicationFormModal create intent', () => {
         />
       </AppProviders>
     );
-    fireEvent.click(await screen.findByRole('radio', { name: /Agent Logs/i }));
+    await selectApplicationType('Agent Logs');
     fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
       target: { value: 'Collected logs' }
     });
@@ -140,7 +149,7 @@ describe('ApplicationFormModal create intent', () => {
       </AppProviders>
     );
 
-    fireEvent.click(await screen.findByRole('radio', { name: /Workflow/i }));
+    await selectApplicationType('Workflow');
     expect(screen.queryByText('后端扩展触发描述')).not.toBeInTheDocument();
     expect(
       await screen.findByRole('textbox', { name: '/api/ex/' })
@@ -186,16 +195,16 @@ describe('ApplicationFormModal create intent', () => {
       </AppProviders>
     );
 
-    fireEvent.click(await screen.findByRole('radio', { name: /Workflow/i }));
+    await selectApplicationType('Workflow');
     const triggerTypeSelect = await screen.findByRole('combobox', {
       name: '触发方式'
     });
     fireEvent.mouseDown(triggerTypeSelect);
-    const triggerOptions = document.querySelectorAll<HTMLElement>(
-      '.ant-select-item-option'
+    fireEvent.click(
+      await screen.findByText('定时调度', {
+        selector: '.ant-select-item-option-content'
+      })
     );
-    expect(triggerOptions).toHaveLength(2);
-    fireEvent.click(triggerOptions[1]);
     const cronInput = await screen.findByRole('textbox', {
       name: 'Cron 表达式'
     });
