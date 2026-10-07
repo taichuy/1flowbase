@@ -3,6 +3,44 @@ use serde_json::json;
 use api_server::openapi_docs::{build_api_docs_registry, paginate_category_operations};
 
 #[test]
+fn canonical_agent_logs_ingest_uses_defined_application_bearer_credential() {
+    let registry = api_server::openapi_docs::build_default_api_docs_registry().unwrap();
+    let spec = registry.operation_spec("ingest_events").unwrap();
+    assert_eq!(
+        spec["paths"]["/api/logs/v1/events"]["post"]["security"],
+        json!([{ "applicationApiKey": [] }])
+    );
+    let schemes = spec["components"]["securitySchemes"].as_object().unwrap();
+    assert_eq!(schemes.len(), 1);
+    let credential = &schemes["applicationApiKey"];
+    assert_eq!(credential["type"], "http");
+    assert_eq!(credential["scheme"], "bearer");
+    assert_eq!(credential["bearerFormat"], "Application API Key");
+    let description = credential["description"].as_str().unwrap();
+    assert!(description.contains("bound to the target application and workspace"));
+}
+
+#[test]
+fn registry_rejects_undefined_ingest_security_scheme() {
+    let canonical = json!({
+        "openapi": "3.1.0",
+        "info": { "title": "T", "version": "1" },
+        "paths": {
+            "/api/logs/v1/events": {
+                "post": {
+                    "operationId": "ingest_events",
+                    "security": [{ "undefinedApplicationCredential": [] }],
+                    "responses": { "200": { "description": "Accepted" } }
+                }
+            }
+        }
+    });
+    let error = build_api_docs_registry(canonical).expect_err("undefined credential must fail");
+    assert!(error.to_string().contains("missing security scheme"));
+    assert!(error.to_string().contains("undefinedApplicationCredential"));
+}
+
+#[test]
 fn registry_requires_operation_id_for_every_operation() {
     let canonical = json!({
         "openapi": "3.1.0",

@@ -2,6 +2,7 @@ use utoipa::OpenApi;
 
 #[derive(OpenApi)]
 #[openapi(
+    modifiers(&ApplicationApiKeySecurity),
     paths(
         crate::routes::applications::list_applications,
         crate::routes::applications::get_application_catalog,
@@ -231,3 +232,27 @@ use utoipa::OpenApi;
     ))
 )]
 pub(super) struct ApplicationOpenApi;
+
+struct ApplicationApiKeySecurity;
+
+impl utoipa::Modify for ApplicationApiKeySecurity {
+    fn modify(&self, document: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+
+        document
+            .components
+            .get_or_insert_with(Default::default)
+            .add_security_scheme(
+                "applicationApiKey",
+                SecurityScheme::Http(
+                    HttpBuilder::new()
+                        .scheme(HttpAuthScheme::Bearer)
+                        .bearer_format("Application API Key")
+                        .description(Some(
+                            "Use Authorization: Bearer with an application API key bound to the target application and workspace.",
+                        ))
+                        .build(),
+                ),
+            );
+    }
+}

@@ -144,7 +144,7 @@ pub(crate) fn compile_registry(
 
 /// Ingest client agent log facts.
 /// Atomically persists a versioned event batch with application-scoped replay identity without executing a model or debiting credits.
-#[utoipa::path(post,path="/api/logs/v1/events",request_body=serde_json::Value,responses((status=200,body=serde_json::Value),(status=409,description="Source event payload conflicts with an existing receipt")),security(("bearerAuth"=[])))]
+#[utoipa::path(post,path="/api/logs/v1/events",request_body=serde_json::Value,responses((status=200,body=serde_json::Value),(status=409,description="Source event payload conflicts with an existing receipt")),security(("applicationApiKey"=[])))]
 pub async fn ingest_events(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
