@@ -17,7 +17,11 @@ alter table application_run_log_tasks
  add column source_id text, add column source_client text, add column source_session_id text, add column source_task_id text, add column parent_source_task_id text,
  add column native_run_id uuid references flow_runs(id) on delete cascade, add column cost_breakdown jsonb;
 update application_run_log_tasks set native_run_id=id;
--- Every subsequent native projection retains its real run deletion owner.
+-- Preserve the original summary->task cascade through the nullable Native
+-- association; imported tasks have neither a summary nor a flow owner.
+alter table application_run_log_tasks add constraint application_run_log_tasks_native_summary_fkey
+ foreign key(native_run_id) references application_run_log_summaries(flow_run_id) on delete cascade;
+-- Every subsequent native projection retains its real summary and run owners.
 create function bind_application_log_native_task_owner() returns trigger language plpgsql as $$
 begin
  if new.source_kind='native' then

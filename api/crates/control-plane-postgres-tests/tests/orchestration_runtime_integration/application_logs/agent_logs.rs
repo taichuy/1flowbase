@@ -461,7 +461,23 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
     .unwrap();
     let seeded = seed_runtime_base(&store).await;
     let compiled = seed_compiled_plan(&store, &seeded).await;
-    let run = seed_flow_run(&store, &seeded, &compiled, OffsetDateTime::now_utc()).await;
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        OffsetDateTime::now_utc(),
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    let old_summary_exists: bool = sqlx::query_scalar(
+        "select exists(select 1 from application_run_log_summaries where flow_run_id=$1)",
+    )
+    .bind(run.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(old_summary_exists, "Native summary must precede migration");
     let old: Value =
         sqlx::query_scalar("select to_jsonb(t) from application_run_log_tasks t where id=$1")
             .bind(run.id)
@@ -483,6 +499,37 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
         .await
         .unwrap();
     assert!(native_page.next_cursor.is_none());
+
+    let imported_app = store
+        .create_application(&CreateApplicationInput {
+            actor_user_id: seeded.actor_user_id,
+            workspace_id: seeded.workspace_id,
+            application_type: ApplicationType::AgentLogs,
+            workflow_trigger_type: None,
+            workflow_trigger_config: None,
+            name: "Imported lifecycle isolation".into(),
+            description: "fixture".into(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
+        })
+        .await
+        .unwrap();
+    let receipt = AgentLogsService::new(store.clone())
+        .ingest(
+            imported_app.id,
+            seeded.workspace_id,
+            Uuid::now_v7(),
+            batch(vec![event(
+                "imported",
+                1,
+                AgentLogEventKind::User,
+                Some("retained"),
+            )]),
+        )
+        .await
+        .unwrap();
+    let imported_id = receipt.record_ids[0];
     sqlx::query("delete from flow_runs where id=$1")
         .bind(run.id)
         .execute(store.pool())
@@ -493,7 +540,15 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
         .await
         .unwrap()
         .is_none());
-    let fresh = seed_flow_run(&store, &seeded, &compiled, OffsetDateTime::now_utc()).await;
+    let fresh = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        OffsetDateTime::now_utc(),
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
     let owner: Uuid =
         sqlx::query_scalar("select native_run_id from application_run_log_tasks where id=$1")
             .bind(fresh.id)
@@ -501,14 +556,68 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
             .await
             .unwrap();
     assert_eq!(owner, fresh.id);
-    sqlx::query("delete from flow_runs where id=$1")
-        .bind(fresh.id)
-        .execute(store.pool())
-        .await
-        .unwrap();
+    let deleted_summary =
+        sqlx::query("delete from application_run_log_summaries where flow_run_id=$1")
+            .bind(fresh.id)
+            .execute(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(deleted_summary.rows_affected(), 1);
     assert!(store
         .application_log_record(seeded.application_id, fresh.id)
         .await
         .unwrap()
         .is_none());
+    let fresh_flow_exists: bool =
+        sqlx::query_scalar("select exists(select 1 from flow_runs where id=$1)")
+            .bind(fresh.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert!(
+        fresh_flow_exists,
+        "summary deletion must own the task cascade"
+    );
+
+    let fresh_flow_owned = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        OffsetDateTime::now_utc(),
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    let fresh_flow_record = store
+        .application_log_record(seeded.application_id, fresh_flow_owned.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(fresh_flow_record.native_run_id, Some(fresh_flow_owned.id));
+    sqlx::query("delete from flow_runs where id=$1")
+        .bind(fresh_flow_owned.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(store
+        .application_log_record(seeded.application_id, fresh_flow_owned.id)
+        .await
+        .unwrap()
+        .is_none());
+    let imported = store
+        .application_log_record(imported_app.id, imported_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(imported.source_kind, "imported");
+    assert_eq!(imported.native_run_id, None);
+    assert_eq!(imported.messages[0].content, "retained");
+    let imported_fake_summary_exists: bool = sqlx::query_scalar(
+        "select exists(select 1 from application_run_log_summaries where flow_run_id=$1)",
+    )
+    .bind(imported_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(!imported_fake_summary_exists);
 }
