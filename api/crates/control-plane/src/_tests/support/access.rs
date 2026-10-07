@@ -174,7 +174,11 @@ impl MemberRepository for MemoryMemberRepository {
         Ok(())
     }
 
-    async fn list_members(&self, _workspace_id: Uuid) -> Result<Vec<UserRecord>> {
+    async fn list_members(
+        &self,
+        _workspace_id: Uuid,
+        _department_id: Option<Uuid>,
+    ) -> Result<Vec<UserRecord>> {
         Ok(Vec::new())
     }
 

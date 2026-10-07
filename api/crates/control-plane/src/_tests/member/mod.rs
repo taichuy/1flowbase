@@ -47,7 +47,7 @@ async fn ac_011_members_policy_only_allows_list_and_create_without_legacy_featur
         .await;
     let service = MemberService::new(repository.clone());
 
-    assert!(service.list_members(actor.user_id).await.is_ok());
+    assert!(service.list_members(actor.user_id, None).await.is_ok());
     service
         .create_member(create_member_command(actor.user_id, "policy-member"))
         .await
@@ -64,7 +64,7 @@ async fn ac_011_members_legacy_feature_grant_does_not_authorize_list_or_create()
     repository.set_actor_context(actor.clone()).await;
     let service = MemberService::new(repository);
 
-    assert!(service.list_members(actor.user_id).await.is_err());
+    assert!(service.list_members(actor.user_id, None).await.is_err());
     assert!(service
         .create_member(create_member_command(actor.user_id, "legacy-member"))
         .await

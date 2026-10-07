@@ -130,6 +130,62 @@ async fn organization_tree_scope_primary_and_delete_invariants() {
         )
         .await
         .unwrap();
+    // The filtered list is produced by the real repository, without fetching every
+    // workspace user then filtering in the HTTP layer. Multiple matching memberships
+    // still yield one user, with the same direct roles as the unfiltered projection.
+    let all = control_plane::ports::MemberRepository::list_members(&store, workspace.id, None)
+        .await
+        .unwrap();
+    assert!(all.iter().any(|record| record.id == user.id)); // unassigned owner
+    let filtered =
+        control_plane::ports::MemberRepository::list_members(&store, workspace.id, Some(root.id))
+            .await
+            .unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].id, member.id);
+    assert_eq!(
+        filtered[0].roles,
+        all.iter()
+            .find(|record| record.id == member.id)
+            .unwrap()
+            .roles
+    );
+    assert!(
+        control_plane::ports::MemberRepository::list_members(&store, other.id, Some(root.id))
+            .await
+            .is_err()
+    );
+    assert!(control_plane::ports::MemberRepository::list_members(
+        &store,
+        workspace.id,
+        Some(Uuid::now_v7())
+    )
+    .await
+    .is_err());
+    let batched = store
+        .members_departments(workspace.id, &[user.id, member.id])
+        .await
+        .unwrap();
+    assert_eq!(batched[&user.id], MemberDepartments::default());
+    assert_eq!(
+        batched[&member.id],
+        store
+            .member_departments(workspace.id, member.id)
+            .await
+            .unwrap()
+    );
+    assert!(store
+        .members_departments(workspace.id, &[])
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store
+            .members_departments(other.id, &[member.id])
+            .await
+            .unwrap()[&member.id],
+        MemberDepartments::default()
+    );
     let departments = service.list(&actor).await.unwrap();
     assert_eq!(
         departments

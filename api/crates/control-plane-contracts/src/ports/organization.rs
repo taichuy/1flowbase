@@ -29,6 +29,11 @@ pub trait OrganizationRepository: Send + Sync {
         workspace_id: Uuid,
         user_id: Uuid,
     ) -> anyhow::Result<domain::MemberDepartments>;
+    async fn members_departments(
+        &self,
+        workspace_id: Uuid,
+        user_ids: &[Uuid],
+    ) -> anyhow::Result<std::collections::BTreeMap<Uuid, domain::MemberDepartments>>;
     async fn department_member_ids(
         &self,
         workspace_id: Uuid,

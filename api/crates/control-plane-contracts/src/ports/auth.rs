@@ -487,7 +487,11 @@ pub trait MemberRepository: Send + Sync {
         target_user_id: Uuid,
         role_codes: &[String],
     ) -> anyhow::Result<()>;
-    async fn list_members(&self, workspace_id: Uuid) -> anyhow::Result<Vec<UserRecord>>;
+    async fn list_members(
+        &self,
+        workspace_id: Uuid,
+        department_id: Option<Uuid>,
+    ) -> anyhow::Result<Vec<UserRecord>>;
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()>;
 }
 

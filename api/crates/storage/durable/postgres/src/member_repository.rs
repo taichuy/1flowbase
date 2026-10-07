@@ -17,7 +17,7 @@ use crate::{
         insert_password_identities_for_connection, insert_password_local_identities,
         replace_password_local_contact_identities,
     },
-    auth_repository::map_user_row,
+    auth_repository::{map_user_row, map_user_rows},
     repositories::{
         is_root_user, primary_workspace_id, tenant_id_for_workspace, workspace_id_for_user,
         PgControlPlaneStore,
@@ -482,7 +482,23 @@ impl MemberRepository for PgControlPlaneStore {
         Ok(())
     }
 
-    async fn list_members(&self, workspace_id: Uuid) -> Result<Vec<domain::UserRecord>> {
+    async fn list_members(
+        &self,
+        workspace_id: Uuid,
+        department_id: Option<Uuid>,
+    ) -> Result<Vec<domain::UserRecord>> {
+        if let Some(id) = department_id {
+            let exists: bool = sqlx::query_scalar(
+                "select exists(select 1 from departments where scope_id=$1 and id=$2)",
+            )
+            .bind(workspace_id)
+            .bind(id)
+            .fetch_one(self.pool())
+            .await?;
+            if !exists {
+                return Err(ControlPlaneError::NotFound("department").into());
+            }
+        }
         let rows = sqlx::query(
             r#"
             select
@@ -492,19 +508,22 @@ impl MemberRepository for PgControlPlaneStore {
             from workspace_memberships tm
             join users u on u.id = tm.user_id
             where tm.workspace_id = $1
+              and ($2::uuid is null or exists (
+                select 1 from departments root
+                join departments child on child.scope_id=root.scope_id
+                  and child.tree_partition_id=root.tree_partition_id
+                  and child.tree_path <@ root.tree_path
+                join user_department_bindings b on b.scope_id=child.scope_id and b.department_id=child.id
+                where root.scope_id=$1 and root.id=$2 and b.user_id=u.id
+              ))
             order by tm.created_at asc, u.created_at asc
             "#,
         )
         .bind(workspace_id)
+        .bind(department_id)
         .fetch_all(self.pool())
         .await?;
-
-        let mut members = Vec::with_capacity(rows.len());
-        for row in rows {
-            members.push(map_user_row(self.pool(), row).await?);
-        }
-
-        Ok(members)
+        map_user_rows(self.pool(), rows).await
     }
 
     async fn append_audit_log(&self, event: &AuditLogRecord) -> Result<()> {

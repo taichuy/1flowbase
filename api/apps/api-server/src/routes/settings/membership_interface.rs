@@ -663,28 +663,33 @@ impl MembershipAdapter {
                 ))
             }
             MembershipInput::ListMembers { department_id } => {
+                let department_id = department_id.as_deref().map(parse_member_id).transpose()?;
                 let users = MemberService::new(self.store.for_actor(actor.clone()))
-                    .list_members(actor.user_id)
+                    .list_members(actor.user_id, department_id)
                     .await?;
-                let store = self.store.for_actor(actor.clone());
-                let filter = match department_id {
-                    Some(id) => Some(
-                        control_plane::ports::OrganizationRepository::department_member_ids(
-                            &store,
-                            actor.current_workspace_id,
-                            parse_member_id(&id)?,
-                        )
-                        .await?,
-                    ),
-                    None => None,
-                };
-                let mut output = Vec::new();
-                for user in users {
-                    if filter.as_ref().is_some_and(|ids| !ids.contains(&user.id)) {
-                        continue;
-                    }
-                    output.push(self.project_member(actor, user).await?);
-                }
+                let user_ids: Vec<_> = users.iter().map(|user| user.id).collect();
+                let mut departments =
+                    control_plane::ports::OrganizationRepository::members_departments(
+                        &self.store.for_actor(actor.clone()),
+                        actor.current_workspace_id,
+                        &user_ids,
+                    )
+                    .await?;
+                let output = users
+                    .into_iter()
+                    .map(|user| {
+                        let membership = departments.remove(&user.id).unwrap_or_default();
+                        let mut response = members::to_member_response(user);
+                        response.department_ids = membership
+                            .department_ids
+                            .into_iter()
+                            .map(|id| id.to_string())
+                            .collect();
+                        response.primary_department_id =
+                            membership.primary_department_id.map(|id| id.to_string());
+                        response
+                    })
+                    .collect();
                 Ok(MembershipOutput::Members(output))
             }
             MembershipInput::CreateMember(body) => {

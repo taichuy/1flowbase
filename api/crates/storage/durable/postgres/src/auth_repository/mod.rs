@@ -87,14 +87,51 @@ fn map_api_key_row(row: sqlx::postgres::PgRow) -> Result<ApiKeyRecord> {
 
 pub(crate) async fn map_user_row(pool: &PgPool, row: sqlx::postgres::PgRow) -> Result<UserRecord> {
     let user_id = row.get("id");
-    let roles = load_bound_roles(pool, user_id)
-        .await?
+    let roles = load_bound_roles(pool, user_id).await?;
+    Ok(map_user_row_with_roles(row, roles))
+}
+
+pub(crate) async fn map_user_rows(
+    pool: &PgPool,
+    rows: Vec<sqlx::postgres::PgRow>,
+) -> Result<Vec<UserRecord>> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.get("id")).collect();
+    let roles = sqlx::query(
+        "select b.user_id,r.code,r.name,r.scope_kind,r.workspace_id from user_role_bindings b join roles r on r.id=b.role_id where b.user_id=any($1) order by r.scope_kind,r.code"
+    ).bind(&ids).fetch_all(pool).await?;
+    let mut by_user = std::collections::HashMap::<Uuid, Vec<BoundRole>>::new();
+    for row in roles {
+        by_user
+            .entry(row.get("user_id"))
+            .or_default()
+            .push(BoundRole {
+                code: row.get("code"),
+                name: row.get("name"),
+                scope_kind: decode_role_scope_kind(row.get::<String, _>("scope_kind").as_str()),
+                workspace_id: row.get("workspace_id"),
+            });
+    }
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let roles = by_user
+                .remove(&row.get::<Uuid, _>("id"))
+                .unwrap_or_default();
+            map_user_row_with_roles(row, roles)
+        })
+        .collect())
+}
+
+fn map_user_row_with_roles(row: sqlx::postgres::PgRow, roles: Vec<BoundRole>) -> UserRecord {
+    let roles = roles
         .into_iter()
         .map(|role| (role.code, role.name, role.scope_kind, role.workspace_id))
         .collect();
-
-    Ok(PgMemberMapper::to_user_record(StoredMemberRow {
-        id: user_id,
+    PgMemberMapper::to_user_record(StoredMemberRow {
+        id: row.get("id"),
         account: row.get("account"),
         email: row.get("email"),
         phone: row.get("phone"),
@@ -111,7 +148,7 @@ pub(crate) async fn map_user_row(pool: &PgPool, row: sqlx::postgres::PgRow) -> R
         status: row.get("status"),
         session_version: row.get("session_version"),
         roles,
-    }))
+    })
 }
 
 async fn auto_grant_role_scopes(tx: &mut Transaction<'_, Postgres>) -> Result<Vec<(Uuid, Uuid)>> {

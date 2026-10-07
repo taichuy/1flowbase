@@ -99,19 +99,21 @@ fn tree_error(error: anyhow::Error) -> anyhow::Error {
 #[async_trait]
 impl OrganizationRepository for PgControlPlaneStore {
     async fn list_departments(&self, workspace_id: Uuid) -> Result<Vec<Department>> {
-        let rows = sqlx::query(r#"
-            with recursive descendants(root_id,id) as (
-                select id,id from departments where scope_id=$1
-                union all
-                select d.root_id,c.id from descendants d join departments c on c.parent_id=d.id where c.scope_id=$1
-            )
+        let rows = sqlx::query(
+            r#"
             select d.id,d.name,d.parent_id,
                 array(select r.code from department_role_bindings b join roles r on r.id=b.role_id
                       where b.scope_id=$1 and b.department_id=d.id order by r.code) role_codes,
-                (select count(distinct b.user_id) from descendants s join user_department_bindings b
-                    on b.department_id=s.id and b.scope_id=$1 where s.root_id=d.id) member_count
+                (select count(distinct b.user_id) from departments s join user_department_bindings b
+                    on b.department_id=s.id and b.scope_id=$1
+                    where s.scope_id=$1 and s.tree_partition_id=d.tree_partition_id
+                      and s.tree_path <@ d.tree_path) member_count
             from departments d where scope_id=$1 order by sibling_rank collate "C",id
-        "#).bind(workspace_id).fetch_all(self.pool()).await?;
+        "#,
+        )
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
         rows.into_iter()
             .map(|r| {
                 Ok(Department {
@@ -259,6 +261,31 @@ impl OrganizationRepository for PgControlPlaneStore {
         })
     }
 
+    async fn members_departments(
+        &self,
+        workspace_id: Uuid,
+        user_ids: &[Uuid],
+    ) -> Result<std::collections::BTreeMap<Uuid, MemberDepartments>> {
+        let mut members = user_ids
+            .iter()
+            .map(|id| (*id, MemberDepartments::default()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        if user_ids.is_empty() {
+            return Ok(members);
+        }
+        let rows: Vec<(Uuid,Uuid,bool)> = sqlx::query_as(
+            "select user_id,department_id,is_primary from user_department_bindings where scope_id=$1 and user_id=any($2) order by user_id,department_id"
+        ).bind(workspace_id).bind(user_ids).fetch_all(self.pool()).await?;
+        for (user_id, department_id, is_primary) in rows {
+            let member = members.entry(user_id).or_default();
+            member.department_ids.push(department_id);
+            if is_primary {
+                member.primary_department_id = Some(department_id);
+            }
+        }
+        Ok(members)
+    }
+
     async fn department_member_ids(
         &self,
         workspace_id: Uuid,
@@ -274,10 +301,11 @@ impl OrganizationRepository for PgControlPlaneStore {
         if !exists {
             return Err(Error::NotFound("department").into());
         }
-        Ok(sqlx::query_scalar(r#"with recursive subtree(id) as (
-            select id from departments where scope_id=$1 and id=$2 union all
-            select c.id from departments c join subtree s on c.parent_id=s.id where c.scope_id=$1
-        ) select distinct b.user_id from user_department_bindings b join subtree s on s.id=b.department_id where b.scope_id=$1"#)
+        Ok(sqlx::query_scalar(r#"select distinct b.user_id from departments root
+            join departments s on s.scope_id=root.scope_id and s.tree_partition_id=root.tree_partition_id
+                and s.tree_path <@ root.tree_path
+            join user_department_bindings b on b.department_id=s.id and b.scope_id=root.scope_id
+            where root.scope_id=$1 and root.id=$2 order by b.user_id"#)
             .bind(workspace_id).bind(department_id).fetch_all(self.pool()).await?)
     }
 

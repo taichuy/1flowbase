@@ -89,7 +89,11 @@ where
         Self { repository }
     }
 
-    pub async fn list_members(&self, actor_user_id: Uuid) -> Result<Vec<domain::UserRecord>> {
+    pub async fn list_members(
+        &self,
+        actor_user_id: Uuid,
+        department_id: Option<Uuid>,
+    ) -> Result<Vec<domain::UserRecord>> {
         let actor = self
             .repository
             .load_actor_context_for_user(actor_user_id)
@@ -97,7 +101,7 @@ where
         self.ensure_console_operation(&actor, MEMBERS_LIST_OPERATION_ID)
             .await?;
         self.repository
-            .list_members(actor.current_workspace_id)
+            .list_members(actor.current_workspace_id, department_id)
             .await
     }
 
