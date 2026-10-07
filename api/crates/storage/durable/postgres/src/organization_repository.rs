@@ -48,6 +48,19 @@ fn metadata(scope_id: Uuid) -> ModelMetadata {
         sort_order: 10,
         availability_status: domain::MetadataAvailabilityStatus::Available,
     };
+    // Query projections are driven by metadata, including system identity.
+    // Commands generate this field; clients must never write it.
+    let id_field = domain::ModelFieldRecord {
+        code: "id".into(),
+        title: "ID".into(),
+        physical_column_name: "id".into(),
+        is_system: true,
+        is_writable: false,
+        is_unique: true,
+        api_required: false,
+        sort_order: 0,
+        ..field.clone()
+    };
     ModelMetadata {
         model_id: domain::DEPARTMENT_MODEL_ID,
         model_code: "departments".into(),
@@ -63,7 +76,7 @@ fn metadata(scope_id: Uuid) -> ModelMetadata {
         template_version: "v1".into(),
         physical_table_name: "departments".into(),
         scope_column_name: "scope_id".into(),
-        fields: vec![field],
+        fields: vec![id_field, field],
         record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::runtime_model(
             "departments",

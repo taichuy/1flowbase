@@ -13,7 +13,7 @@ use sqlx::{Executor, PgConnection, Postgres, Row};
 use std::collections::HashMap;
 use storage_durable::runtime_record_repository::{
     OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreePage, OrderedTreeQueryError,
-    OrderedTreeQueryRepository, OrderedTreeSearchInput,
+    OrderedTreeSearchInput,
 };
 use uuid::Uuid;
 

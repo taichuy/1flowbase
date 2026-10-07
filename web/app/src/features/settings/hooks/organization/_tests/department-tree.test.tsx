@@ -226,6 +226,6 @@ describe('organization lazy tree', () => {
     await waitFor(() =>
       expect(screen.queryByText('组织加载失败')).not.toBeInTheDocument()
     );
-    expect(screen.getAllByText('Engineering')).toHaveLength(1);
+    expect(await screen.findAllByText('Engineering')).toHaveLength(1);
   });
 });
