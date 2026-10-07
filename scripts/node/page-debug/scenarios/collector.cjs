@@ -11,7 +11,7 @@ async function main() {
   const webBaseUrl = process.env.COLLECTOR_WEB_BASE_URL || 'http://127.0.0.1:3100';
   const apiBaseUrl = process.env.COLLECTOR_API_BASE_URL || 'http://127.0.0.1:7800';
   const applicationId = process.env.COLLECTOR_APPLICATION_ID || '01a11699-d833-7373-b825-91d9916896b8';
-  const out = process.env.COLLECTOR_EVIDENCE_DIR || path.join(repoRoot, 'tmp/test-governance/agent-logs-native-collector/browser');
+  const out = process.env.COLLECTOR_EVIDENCE_DIR || path.join(repoRoot, 'tmp/test-governance/agent-logs-platform-distribution/browser');
   const playwright = createRequire(path.join(repoRoot, 'web/package.json'))('playwright');
   await fs.mkdir(out, { recursive: true });
   const storageStatePath = path.join(out, 'temporary-storage-state.json');
@@ -24,32 +24,50 @@ async function main() {
     await fs.chmod(storageStatePath, 0o600);
     cleanupProbe = await playwright.request.newContext({ storageState: storageStatePath });
     browser = await playwright.chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/usr/bin/google-chrome', headless: true });
-    for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mobile', { width: 390, height: 844 }]]) {
+    for (const [name, language, viewport] of [['desktop-zh', 'zh', { width: 1440, height: 1000 }], ['mobile-zh', 'zh', { width: 390, height: 844 }], ['desktop-en', 'en', { width: 1440, height: 1000 }], ['mobile-en', 'en', { width: 390, height: 844 }]]) {
       const context = await browser.newContext({ storageState: storageStatePath, viewport });
       await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: webBaseUrl });
       const page = await context.newPage();
       const errors = []; page.on('pageerror', error => errors.push(error.message));
-      await page.goto(`${webBaseUrl}/applications/${applicationId}/collector`, { waitUntil: 'domcontentloaded' });
-      const install = page.getByRole('button', { name: /安装采集器|Install collector/ });
-      await install.waitFor({ state: 'visible', timeout: 30000 });
-      const catalogResponse = await context.request.get(`${apiBaseUrl}/api/console/applications/catalog`);
+      await page.goto(`${webBaseUrl}/applications/${applicationId}/collector?language=${language}`, { waitUntil: 'domcontentloaded' });
+      const install = page.getByRole('button', { name: /安装到 1flowbase|Install in 1flowbase/ });
+      const download = page.getByRole('button', { name: /下载采集 CLI|Download collector CLI/ });
+      await page.getByRole('tab', { name: 'Codex', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+      let catalogResponse = await context.request.get(`${apiBaseUrl}/api/console/applications/catalog`);
       assert.equal(catalogResponse.status(), 200);
-      const catalog = (await catalogResponse.json()).data;
+      let catalog = (await catalogResponse.json()).data;
       assert.deepEqual(catalog.collectors.map(item => item.collector_code), ['codex-logs-collector']);
       assert.equal(catalog.collectors[0].execution_target, 'client');
       await page.getByRole('tab', { name: 'Codex', exact: true }).click();
-      await install.waitFor({ state: 'visible' });
-      assert.equal(await page.getByText('Codex', { exact: true }).count() > 0, true);
-      assert.equal(/node scripts\/node\/agent-logs-collector|已安装/.test(await page.locator('body').innerText()), false);
+      if (catalog.collectors[0].installation_status === 'not_installed') {
+        assert.equal(await page.locator('.application-collector__command pre').count(), 0);
+        await page.screenshot({ path: path.join(out, `${name}-uninstalled.png`), fullPage: true });
+        await install.click();
+        await page.getByText('macOS / Linux (Shell)', { exact: true }).waitFor({ timeout: 60000 });
+        catalogResponse = await context.request.get(`${apiBaseUrl}/api/console/applications/catalog`);
+        assert.equal(catalogResponse.status(), 200);
+        catalog = (await catalogResponse.json()).data;
+        await page.getByRole('button', { name: /返回|Back/ }).click();
+      }
+      assert.equal(catalog.collectors[0].installation_status, 'installed');
+      assert.equal(catalog.collectors[0].installed_version, '0.1.0');
+      assert.ok(catalog.collectors[0].shell_installer_url.startsWith('/api/public/client-collectors/'));
+      await download.waitFor({ state: 'visible' });
       await page.screenshot({ path: path.join(out, `${name}-catalog.png`), fullPage: true });
-      await install.click();
+      await download.click();
       await page.getByText('macOS / Linux (Shell)', { exact: true }).waitFor();
       let text = await page.locator('body').innerText();
       assert.ok(text.includes('bash "$installer"')); assert.ok(text.includes(applicationId));
       assert.ok(text.includes('/api/logs/v1/events')); assert.ok(!text.includes('?api_key='));
+      assert.ok(!text.includes('github.com'));
+      assert.ok(text.includes('--release-base'));
       const shellCommand = await page.locator('.application-collector__command pre').innerText();
       const endpoint = shellCommand.match(/--endpoint '([^']+)'/)?.[1];
       assert.match(endpoint || '', /^https?:\/\//);
+      const releaseBase = shellCommand.match(/--release-base '([^']+)'/)?.[1];
+      assert.equal(releaseBase, webBaseUrl + catalog.collectors[0].asset_base_url);
+      assert.ok(shellCommand.includes(webBaseUrl + catalog.collectors[0].shell_installer_url));
+      assert.ok(shellCommand.includes('--max-redirs 0'));
       assert.ok(new URL(endpoint).pathname.endsWith('/api/logs/v1/events'));
       if (process.env.COLLECTOR_EXPECTED_ENDPOINT) assert.equal(endpoint, process.env.COLLECTOR_EXPECTED_ENDPOINT);
       await page.getByRole('button', { name: /复制命令|Copy command/ }).click();
@@ -61,13 +79,15 @@ async function main() {
       text = await page.locator('body').innerText();
       assert.ok(text.includes('-Endpoint')); assert.ok(text.includes('-InstallationId'));
       assert.equal(text.match(/-Endpoint '([^']+)'/)?.[1], endpoint);
+      assert.equal(text.match(/-ReleaseBase '([^']+)'/)?.[1], releaseBase);
+      assert.ok(text.includes('-MaximumRedirection 0'));
       await page.screenshot({ path: path.join(out, `${name}-powershell.png`), fullPage: true });
       const keys = page.getByRole('link', { name: /API Key/i }).first();
       assert.equal(await keys.getAttribute('href'), `/applications/${applicationId}/api`);
       await page.getByRole('button', { name: /返回|Back/ }).click();
-      await install.waitFor();
+      await download.waitFor();
       assert.deepEqual(errors, []);
-      receipts.push({ name, viewport, overflow, errors, status: 'pass', filter: 'codex', endpoint, clipboard: 'exact shell command', collector: catalog.collectors[0] });
+      receipts.push({ name, language, viewport, overflow, errors, status: 'pass', filter: 'codex', endpoint, clipboard: 'exact shell command', collector: catalog.collectors[0] });
       await context.close();
     }
     await fs.writeFile(path.join(out, 'receipt.json'), JSON.stringify({ source_sha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim(), application_id: applicationId, web_base_url: webBaseUrl, api_base_url: apiBaseUrl, receipts }, null, 2));

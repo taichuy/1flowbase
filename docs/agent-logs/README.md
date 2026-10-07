@@ -2,6 +2,8 @@
 
 [中文](README.zh-CN.md)
 
+The collector has two installation stages. First, install the signed distribution package from the remote extension catalog **in 1flowbase**. Then open its **Download collector CLI** detail and run the command on your computer. The installer, native archive, checksums and documentation are served by your own 1flowbase at version-pinned URLs. They remain available if the remote repository is offline. “Installed in platform” describes the retained distribution package; it does not indicate that a client process is online.
+
 Open an Agent Logs application's **Collector CLI** page and select Codex. Copy the Shell or PowerShell install command, execute it on the computer running Codex, and enter the application API Key locally when prompted. The official Rust executable does not require Node.js, a Rust toolchain or a repository checkout.
 
 The installer downloads a checksummed native release, saves private configuration and starts a user background service. Linux uses user systemd, macOS uses LaunchAgent and Windows uses a user scheduled task. It resumes when the same user logs in after a reboot. If a supported service is unavailable, installation reports that explicitly; `--no-start` allows manual process supervision.

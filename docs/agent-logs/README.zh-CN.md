@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+采集器分两步安装：先从远程扩展目录**安装到 1flowbase**，再打开“下载采集 CLI”详情，在运行 Codex 的本机执行命令。安装器、原生包、校验文件和文档均从当前 1flowbase 的版本固定 URL 下载；远程仓库不可用时，已安装版本仍可下载。“平台已安装”表示分发包已留存在平台，不表示用户本机已安装或在线。
+
 在 Agent Logs 应用的 **采集 CLI** 页面选择 Codex，复制 Shell 或 PowerShell 安装命令，在运行 Codex 的用户电脑执行，并在本地终端输入应用 API Key。官方 Rust 可执行程序不要求安装 Node.js、Rust 工具链或检出源码。
 
 安装器下载并校验原生发行，保存私有配置，启动用户级后台服务。Linux 使用用户 systemd，macOS 使用 LaunchAgent，Windows 使用用户计划任务；同一用户重启登录后恢复。没有可用后台机制时明确报告；`--no-start` 可配置后交给自己的进程管理器运行。
