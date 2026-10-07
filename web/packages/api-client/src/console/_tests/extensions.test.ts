@@ -321,3 +321,26 @@ describe('extension center client contract', () => {
     expect(getConsoleExtensionRiskChallenge(error)).toEqual(challenge);
   });
 });
+
+test('collector installation preserves authenticated existing mutation and configured API base', async () => {
+  const request = vi
+    .spyOn(transport, 'apiFetch')
+    .mockResolvedValue({} as never);
+  await installConsoleExtension(
+    {
+      category: 'runtime-extensions',
+      catalog_id: 'runtime-extensions:taichuy/codex-logs-collector',
+      version: '0.1.0'
+    },
+    'collector-csrf',
+    false,
+    'https://platform.example/prefix'
+  );
+  expect(request).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      baseUrl: 'https://platform.example/prefix',
+      path: '/api/console/settings/extension-center/install',
+      csrfToken: 'collector-csrf'
+    })
+  );
+});

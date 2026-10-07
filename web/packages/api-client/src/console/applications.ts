@@ -44,9 +44,18 @@ export interface ConsoleApplicationCollector {
   description: string;
   version: string;
   execution_target: 'client';
-  documentation_url: string;
-  shell_installer_url: string;
-  powershell_installer_url: string;
+  catalog_id: string;
+  category: 'runtime-extensions';
+  installation_status: 'not_installed' | 'installed' | 'missing';
+  installed_version: string | null;
+  extension_installation_id: string | null;
+  installable: boolean;
+  can_install: boolean;
+  can_update: boolean;
+  asset_base_url: string | null;
+  documentation_url: string | null;
+  shell_installer_url: string | null;
+  powershell_installer_url: string | null;
 }
 
 export interface ConsoleApplicationCatalog {

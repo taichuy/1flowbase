@@ -388,10 +388,12 @@ export function installConsoleExtension(
     risk_override?: ConsoleExtensionRiskOverride;
   },
   csrfToken: string,
-  update = false
+  update = false,
+  baseUrl?: string
 ) {
   return apiFetch<ConsoleExtensionInstallResponse>({
     path: `${BASE}/${update ? 'update' : 'install'}`,
+    baseUrl,
     method: 'POST',
     body: input,
     csrfToken

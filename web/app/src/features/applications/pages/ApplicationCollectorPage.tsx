@@ -1,14 +1,39 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Skeleton, Tabs, Typography } from 'antd';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  getConsoleExtensionRiskChallenge,
+  type ConsoleApplicationCollector,
+  type ConsoleExtensionCompatibilityOverride,
+  type ConsoleExtensionRiskOverride
+} from '@1flowbase/api-client';
+import {
+  Alert,
+  App,
+  Button,
+  Empty,
+  Skeleton,
+  Space,
+  Tabs,
+  Tag,
+  Typography
+} from 'antd';
 import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '../../../state/auth-store';
 import {
   applicationCatalogQueryKey,
   fetchApplicationCatalog,
-  getApplicationsApiBaseUrl
+  getApplicationsApiBaseUrl,
+  installApplicationCollector
 } from '../api/applications';
 import { CollectorInstallation } from '../components/collector/CollectorInstallation';
 import '../components/collector/application-collector.css';
+
+type InstallOperation = {
+  collector: ConsoleApplicationCollector;
+  update: boolean;
+  risk_override?: ConsoleExtensionRiskOverride;
+  compatibility_override?: ConsoleExtensionCompatibilityOverride;
+};
 
 export function ApplicationCollectorPage({
   applicationId
@@ -16,20 +41,129 @@ export function ApplicationCollectorPage({
   applicationId: string;
 }) {
   const { t } = useTranslation('applications');
+  const { modal } = App.useApp();
+  const csrfToken = useAuthStore((state) => state.csrfToken);
+  const queryClient = useQueryClient();
   const [sourceClient, setSourceClient] = useState('all');
-  const [collectorCode, setCollectorCode] = useState<string | null>(null);
+  const [catalogId, setCatalogId] = useState<string | null>(null);
+  const [installError, setInstallError] = useState(false);
   const catalog = useQuery({
     queryKey: applicationCatalogQueryKey,
     queryFn: fetchApplicationCatalog,
     retry: false
   });
-  const endpoint = new URL(
-    `${getApplicationsApiBaseUrl().replace(/\/$/, '')}/api/logs/v1/events`,
+  const apiBaseUrl = new URL(
+    getApplicationsApiBaseUrl() || window.location.origin,
     window.location.origin
-  ).href;
+  ).href.replace(/\/$/, '');
+  const endpoint = `${apiBaseUrl}/api/logs/v1/events`;
   const collectors = catalog.data?.collectors;
   const selected = collectors?.find(
-    (collector) => collector.collector_code === collectorCode
+    (collector) => collector.catalog_id === catalogId
+  );
+  const install = useMutation({
+    mutationFn: async (operation: InstallOperation) => {
+      if (!csrfToken) throw new Error('authenticated session required');
+      return installApplicationCollector(
+        {
+          category: operation.collector.category,
+          catalog_id: operation.collector.catalog_id,
+          version: operation.collector.version,
+          risk_override: operation.risk_override,
+          compatibility_override: operation.compatibility_override
+        },
+        csrfToken,
+        operation.update
+      );
+    },
+    onMutate: () => setInstallError(false),
+    onSuccess: async (_, operation) => {
+      await queryClient.invalidateQueries({
+        queryKey: applicationCatalogQueryKey
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['settings', 'extension-center']
+      });
+      setCatalogId(operation.collector.catalog_id);
+    },
+    onError: (error, operation) => {
+      const challenge = getConsoleExtensionRiskChallenge(error);
+      if (
+        !challenge ||
+        operation.risk_override ||
+        operation.compatibility_override
+      ) {
+        setInstallError(true);
+        return;
+      }
+      const allowed = challenge.warnings.every(
+        (warning) => warning.overridable
+      );
+      modal.confirm({
+        title: t('agent_logs.install_confirmation'),
+        content: (
+          <Space orientation="vertical">
+            {challenge.warnings.map((warning) => (
+              <Typography.Text key={warning.code}>
+                {warning.message}
+              </Typography.Text>
+            ))}
+            {challenge.compatibility && (
+              <Typography.Paragraph>
+                {t('agent_logs.host_requirement', {
+                  version: challenge.compatibility.minimum_host_version
+                })}
+              </Typography.Paragraph>
+            )}
+          </Space>
+        ),
+        okText: t('agent_logs.confirm_platform_install'),
+        okButtonProps: { disabled: !allowed },
+        onOk: () =>
+          install.mutateAsync({
+            ...operation,
+            ...(challenge.warnings.length
+              ? {
+                  risk_override: {
+                    reason: 'user_confirmed',
+                    acknowledged_warnings: challenge.warnings.map(
+                      (warning) => warning.code
+                    )
+                  }
+                }
+              : {}),
+            ...(challenge.compatibility
+              ? {
+                  compatibility_override: {
+                    reason: challenge.compatibility.reason,
+                    acknowledged_current_host_version:
+                      challenge.compatibility.current_host_version,
+                    acknowledged_minimum_host_version:
+                      challenge.compatibility.minimum_host_version
+                  }
+                }
+              : {})
+          })
+      });
+    }
+  });
+  const statusLabel = (collector: ConsoleApplicationCollector) => {
+    switch (collector.installation_status) {
+      case 'installed':
+        return t('agent_logs.platform_installed');
+      case 'missing':
+        return t('agent_logs.platform_missing');
+      case 'not_installed':
+        return t('agent_logs.platform_not_installed');
+    }
+  };
+  const tabs = Array.from(
+    new Map(
+      collectors?.map((collector) => [
+        collector.source_client,
+        collector.display_name
+      ])
+    ).entries()
   );
   return (
     <div className="application-collector">
@@ -41,13 +175,20 @@ export function ApplicationCollectorPage({
         activeKey={sourceClient}
         onChange={(key) => {
           setSourceClient(key);
-          setCollectorCode(null);
+          setCatalogId(null);
         }}
         items={[
           { key: 'all', label: t('auto.all') },
-          { key: 'codex', label: 'Codex' }
+          ...tabs.map(([key, label]) => ({ key, label }))
         ]}
       />
+      {installError && (
+        <Alert
+          type="error"
+          showIcon
+          title={t('agent_logs.platform_install_failed')}
+        />
+      )}
       {catalog.isPending ? (
         <div role="status" aria-label={t('agent_logs.collectors_loading')}>
           <Skeleton active />
@@ -63,71 +204,133 @@ export function ApplicationCollectorPage({
             </Button>
           }
         />
-      ) : collectors && selected ? (
+      ) : selected?.installation_status === 'installed' ? (
         <CollectorInstallation
           collector={selected}
           applicationId={applicationId}
           endpoint={endpoint}
-          onBack={() => setCollectorCode(null)}
+          apiBaseUrl={apiBaseUrl}
+          onBack={() => setCatalogId(null)}
         />
       ) : (
-        collectors && (
-          <>
-            {collectors.filter(
-              (collector) =>
-                sourceClient === 'all' ||
-                collector.source_client === sourceClient
-            ).length === 0 ? (
-              <Empty description={t('agent_logs.no_collectors')} />
-            ) : (
-              <div className="application-collector__catalog">
-                {collectors
-                  .filter(
-                    (collector) =>
-                      sourceClient === 'all' ||
-                      collector.source_client === sourceClient
-                  )
-                  .map((collector) => (
-                    <article
-                      key={collector.collector_code}
-                      className="application-collector__card"
-                    >
-                      <div className="application-collector__identity">
-                        <span
-                          className="application-collector__logo"
-                          aria-hidden="true"
-                        >
-                          C
-                        </span>
-                        <div>
-                          <Typography.Title level={5}>
-                            {collector.display_name}
-                          </Typography.Title>
-                          <Typography.Text type="secondary">
-                            {t('agent_logs.collector_version', {
-                              version: collector.version
-                            })}
-                          </Typography.Text>
-                        </div>
-                      </div>
-                      <Typography.Paragraph>
-                        {collector.description}
-                      </Typography.Paragraph>
-                      <Button
-                        type="primary"
-                        block
-                        onClick={() =>
-                          setCollectorCode(collector.collector_code)
-                        }
+        collectors &&
+        (collectors.filter(
+          (collector) =>
+            sourceClient === 'all' || collector.source_client === sourceClient
+        ).length === 0 ? (
+          <Empty description={t('agent_logs.no_collectors')} />
+        ) : (
+          <div className="application-collector__catalog">
+            {collectors
+              .filter(
+                (collector) =>
+                  sourceClient === 'all' ||
+                  collector.source_client === sourceClient
+              )
+              .map((collector) => {
+                const updating = !!collector.installed_version;
+                const busy =
+                  install.isPending &&
+                  install.variables.collector.catalog_id ===
+                    collector.catalog_id;
+                return (
+                  <article
+                    key={collector.catalog_id}
+                    className="application-collector__card"
+                  >
+                    <div className="application-collector__identity">
+                      <span
+                        className="application-collector__logo"
+                        aria-hidden="true"
                       >
-                        {t('agent_logs.install_collector')}
-                      </Button>
-                    </article>
-                  ))}
-              </div>
-            )}
-          </>
-        )
+                        {collector.display_name.slice(0, 1)}
+                      </span>
+                      <div>
+                        <Typography.Title level={5}>
+                          {collector.display_name}
+                        </Typography.Title>
+                        <Typography.Text type="secondary">
+                          {t('agent_logs.collector_version', {
+                            version: collector.version
+                          })}
+                        </Typography.Text>
+                      </div>
+                      <Tag>{statusLabel(collector)}</Tag>
+                    </div>
+                    <Typography.Paragraph>
+                      {collector.description}
+                    </Typography.Paragraph>
+                    <Typography.Paragraph type="secondary">
+                      {t('agent_logs.platform_status_description')}
+                    </Typography.Paragraph>
+                    {collector.installation_status === 'missing' && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        title={t('agent_logs.package_unavailable')}
+                      />
+                    )}
+                    {collector.installation_status === 'installed' ? (
+                      <Space
+                        orientation="vertical"
+                        className="application-collector__actions"
+                      >
+                        <Button
+                          type="primary"
+                          block
+                          onClick={() => setCatalogId(collector.catalog_id)}
+                        >
+                          {t('agent_logs.download_cli')}
+                        </Button>
+                        {collector.installable &&
+                          collector.version !== collector.installed_version && (
+                            <Button
+                              block
+                              loading={busy}
+                              disabled={
+                                !collector.can_update ||
+                                !csrfToken ||
+                                install.isPending
+                              }
+                              onClick={() =>
+                                install.mutate({ collector, update: true })
+                              }
+                            >
+                              {t('agent_logs.update_platform_package')}
+                            </Button>
+                          )}
+                      </Space>
+                    ) : (
+                      collector.installation_status === 'not_installed' && (
+                        <Button
+                          type="primary"
+                          block
+                          loading={busy}
+                          disabled={
+                            !collector.installable ||
+                            !collector.can_install ||
+                            !csrfToken ||
+                            install.isPending
+                          }
+                          onClick={() =>
+                            install.mutate({ collector, update: updating })
+                          }
+                        >
+                          {t('agent_logs.install_collector')}
+                        </Button>
+                      )
+                    )}
+                    {collector.installation_status !== 'installed' &&
+                      !collector.can_install && (
+                        <Typography.Paragraph type="secondary">
+                          {t('agent_logs.install_permission_required')}
+                        </Typography.Paragraph>
+                      )}
+                  </article>
+                );
+              })}
+          </div>
+        ))
       )}
     </div>
   );

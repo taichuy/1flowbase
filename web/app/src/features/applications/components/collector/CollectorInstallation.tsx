@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { App, Button, Radio, Space, Typography } from 'antd';
+import { Alert, App, Button, Radio, Space, Typography } from 'antd';
 import ArrowLeftOutlined from '@ant-design/icons/es/icons/ArrowLeftOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
@@ -18,11 +18,13 @@ export function CollectorInstallation({
   collector,
   applicationId,
   endpoint,
+  apiBaseUrl,
   onBack
 }: {
   collector: ConsoleApplicationCollector;
   applicationId: string;
   endpoint: string;
+  apiBaseUrl: string;
   onBack: () => void;
 }) {
   const { t } = useTranslation('applications');
@@ -33,9 +35,14 @@ export function CollectorInstallation({
     collector,
     operatingSystem,
     endpoint,
-    applicationId
+    applicationId,
+    apiBaseUrl
   );
+  const documentationUrl = collector.documentation_url
+    ? `${apiBaseUrl.replace(/\/$/, '')}${collector.documentation_url}`
+    : undefined;
   const copyCommand = () => {
+    if (!command) return;
     void copyTextToClipboard(command).then(
       () => message.success(t('agent_logs.command_copied')),
       () => message.error(t('agent_logs.command_copy_failed'))
@@ -68,7 +75,7 @@ export function CollectorInstallation({
               </Typography.Text>
             </div>
             <Typography.Link
-              href={collector.documentation_url}
+              href={documentationUrl}
               target="_blank"
               rel="noreferrer"
             >
@@ -117,15 +124,23 @@ export function CollectorInstallation({
                   Windows (PowerShell)
                 </Radio.Button>
               </Radio.Group>
-              <div className="application-collector__command">
-                <pre>{command}</pre>
-                <Button
-                  icon={<CopyOutlined aria-hidden="true" />}
-                  onClick={copyCommand}
-                >
-                  {t('agent_logs.copy_command')}
-                </Button>
-              </div>
+              {command ? (
+                <div className="application-collector__command">
+                  <pre>{command}</pre>
+                  <Button
+                    icon={<CopyOutlined aria-hidden="true" />}
+                    onClick={copyCommand}
+                  >
+                    {t('agent_logs.copy_command')}
+                  </Button>
+                </div>
+              ) : (
+                <Alert
+                  type="warning"
+                  showIcon
+                  title={t('agent_logs.package_unavailable')}
+                />
+              )}
             </div>
           </section>
           <section className="application-collector__step">
@@ -179,7 +194,7 @@ export function CollectorInstallation({
                   {t('agent_logs.open_source_description')}
                 </Typography.Paragraph>
                 <Typography.Link
-                  href={collector.documentation_url}
+                  href={documentationUrl}
                   target="_blank"
                   rel="noreferrer"
                 >

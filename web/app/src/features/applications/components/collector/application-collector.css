@@ -7,13 +7,16 @@
 }
 .application-collector__catalog {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
 }
 .application-collector__card {
   padding: 24px;
   border: 1px solid var(--border-default);
   border-radius: 12px;
+}
+.application-collector__actions {
+  width: 100%;
 }
 .application-collector__identity {
   display: flex;
@@ -112,6 +115,9 @@
   }
   .application-collector__catalog {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .application-collector__actions {
+    width: 100%;
   }
   .application-collector__identity {
     flex-wrap: wrap;

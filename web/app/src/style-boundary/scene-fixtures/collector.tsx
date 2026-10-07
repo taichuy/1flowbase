@@ -20,12 +20,22 @@ const collector: ConsoleApplicationCollector = {
   description: '采集本地 Codex 对话日志并上传到当前应用。',
   version: '0.1.0',
   execution_target: 'client',
+  catalog_id: 'runtime-extensions:taichuy/codex-logs-collector',
+  category: 'runtime-extensions',
+  installation_status: 'installed',
+  installed_version: '0.1.0',
+  extension_installation_id: 'collector-style-fixture',
+  installable: true,
+  can_install: true,
+  can_update: true,
+  asset_base_url:
+    '/api/public/client-collectors/taichuy/codex-logs-collector/0.1.0/assets',
   documentation_url:
-    'https://github.com/taichuy/1flowbase-official-plugins/blob/main/runtime-extensions/@taichuy/codex-logs-collector/README.md',
+    '/api/public/client-collectors/taichuy/codex-logs-collector/0.1.0/assets/README.md',
   shell_installer_url:
-    'https://github.com/taichuy/1flowbase-official-plugins/releases/download/codex-logs-collector-v0.1.0/install.sh',
+    '/api/public/client-collectors/taichuy/codex-logs-collector/0.1.0/assets/install.sh',
   powershell_installer_url:
-    'https://github.com/taichuy/1flowbase-official-plugins/releases/download/codex-logs-collector-v0.1.0/install.ps1'
+    '/api/public/client-collectors/taichuy/codex-logs-collector/0.1.0/assets/install.ps1'
 };
 const catalog: ConsoleApplicationCatalog = {
   types: [{ value: 'agent_logs', label: 'Agent Logs' }],
@@ -69,6 +79,7 @@ export function CollectorStyleBoundaryScene({
               collector={collector}
               applicationId={applicationId}
               endpoint="https://console.example.com/api/logs/v1/events"
+              apiBaseUrl="https://console.example.com"
               onBack={() => undefined}
             />
           </div>

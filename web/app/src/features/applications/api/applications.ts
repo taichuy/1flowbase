@@ -7,6 +7,7 @@ import {
   getConsoleApplicationCatalog,
   getDefaultApiBaseUrl,
   importConsoleApplicationArchive,
+  installConsoleExtension,
   importConsoleInstalledApplicationExtension,
   listConsoleApplicationEnvironmentVariables,
   listConsoleApplications,
@@ -246,6 +247,19 @@ export function importApplicationArchive(
       description: input.description
     },
     csrfToken,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function installApplicationCollector(
+  input: Parameters<typeof installConsoleExtension>[0],
+  csrfToken: string,
+  update = false
+) {
+  return installConsoleExtension(
+    input,
+    csrfToken,
+    update,
     getApplicationsApiBaseUrl()
   );
 }
