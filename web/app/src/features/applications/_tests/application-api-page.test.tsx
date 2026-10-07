@@ -158,7 +158,10 @@ describe('ApplicationApiPage', () => {
           application_type: 'agent_logs',
           sections: {
             ...application.sections,
-            api: { ...application.sections.api, api_enabled: false }
+            api: {
+              ...application.sections.api,
+              api_capability_status: 'disabled'
+            }
           }
         }}
       />

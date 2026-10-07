@@ -1031,7 +1031,10 @@ mod tests {
         let mut ids = HashSet::new();
         let mut routes = HashSet::new();
 
-        for operation in public_operations(context) {
+        for operation in PUBLIC_OPERATION_REGISTRY
+            .iter()
+            .chain(agent_logs::OPERATIONS)
+        {
             assert!(ids.insert(operation.id), "duplicate operation id");
             assert!(
                 routes.insert((operation.method, operation.path)),
@@ -1068,7 +1071,10 @@ mod tests {
             .as_object()
             .expect("global openapi paths should be an object");
 
-        for operation in public_operations(context) {
+        for operation in PUBLIC_OPERATION_REGISTRY
+            .iter()
+            .chain(agent_logs::OPERATIONS)
+        {
             let Some(path_item) = paths.get(operation.path) else {
                 panic!("global openapi missing path {}", operation.path);
             };

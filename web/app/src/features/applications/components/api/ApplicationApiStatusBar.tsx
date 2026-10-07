@@ -35,7 +35,7 @@ export function ApplicationApiStatusBar({
           <Typography.Text strong>{t('auto.public_api')}</Typography.Text>
           {apiStatus ? (
             <Tag>
-              {apiStatus.api_enabled
+              {apiStatus.api_capability_status === 'enabled'
                 ? t('agent_logs.api_enabled')
                 : t('agent_logs.api_disabled')}
             </Tag>
