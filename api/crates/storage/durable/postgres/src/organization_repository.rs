@@ -14,7 +14,7 @@ use control_plane_contracts::{
     ControlPlaneContractError as Error,
 };
 use domain::{Department, MemberDepartments};
-use sqlx::{Postgres, Row, Transaction};
+use sqlx::{Postgres, Transaction};
 use storage_durable::{
     model_metadata::ModelMetadata,
     resource_descriptor::ResourceDescriptor,

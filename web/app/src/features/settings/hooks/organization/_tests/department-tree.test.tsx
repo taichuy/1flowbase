@@ -222,7 +222,7 @@ describe('organization lazy tree', () => {
     fetchDepartments.mockRejectedValueOnce(new Error('stale anchor'));
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
     expect(await screen.findByText('组织加载失败')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
     await waitFor(() =>
       expect(screen.queryByText('组织加载失败')).not.toBeInTheDocument()
     );

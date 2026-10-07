@@ -578,7 +578,7 @@ async fn organization_pages_preserve_enrichment_selections_and_cursor_boundaries
         .list_page(
             &actor,
             DepartmentListInput {
-                ids: Some(vec![Uuid::new_v4()]),
+                ids: Some(vec![Uuid::now_v7()]),
                 ..Default::default()
             }
         )
