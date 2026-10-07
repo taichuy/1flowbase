@@ -7,7 +7,10 @@ use sqlx::migrate::Migrator;
 use storage_durable::runtime_record_repository::RuntimeRecordRepository;
 use uuid::Uuid;
 
-use super::{create_ordered_tree_model, create_workspace, isolated_database, runtime_metadata};
+use super::{
+    create_legacy_ordered_tree_model, create_ordered_tree_model, create_workspace,
+    isolated_database, runtime_metadata,
+};
 use crate::{run_migrations, PgControlPlaneStore};
 
 const DROP_TEXT_PREFIX_INDEXES_MIGRATION_VERSION: i64 = 20260811150000;
@@ -115,7 +118,7 @@ async fn migration_drops_legacy_ordered_tree_text_prefix_indexes() {
         .unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     let scope_id = create_workspace(&store).await;
-    let model = create_ordered_tree_model(&store, scope_id).await;
+    let model = create_legacy_ordered_tree_model(&store, scope_id).await;
     let field = add_text_field(&store, model.id).await;
     let index_name = format!("idx_ot_prefix_{}", field.id.simple());
 

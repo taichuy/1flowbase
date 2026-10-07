@@ -268,6 +268,15 @@ async fn subtree_impact_counts_leaf_nested_partition_and_cycle_with_typed_not_fo
         assert_eq!(typed_error(error), OrderedTreeQueryError::NodeNotFound);
     }
 
+    // Deliberately corrupt adjacency while retaining the last valid projection:
+    // normal writers are now required to reject cycles at the database boundary.
+    sqlx::query(&format!(
+        "alter table \"{}\" disable trigger ordered_tree_path_before",
+        model.physical_table_name
+    ))
+    .execute(store.pool())
+    .await
+    .unwrap();
     sqlx::query(&format!(
         "update \"{}\" set parent_id = $1 where scope_id = $2 and tree_partition_id = $2 and id = $3",
         model.physical_table_name
@@ -275,6 +284,13 @@ async fn subtree_impact_counts_leaf_nested_partition_and_cycle_with_typed_not_fo
     .bind(leaf)
     .bind(scope_id)
     .bind(root)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(&format!(
+        "alter table \"{}\" enable trigger ordered_tree_path_before",
+        model.physical_table_name
+    ))
     .execute(store.pool())
     .await
     .unwrap();

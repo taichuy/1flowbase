@@ -7,6 +7,7 @@ use crate::ordered_tree::rank::{between, rebalance, FractionalRank};
 use crate::{run_migrations, PgControlPlaneStore};
 
 mod commands;
+mod paths;
 mod prefix_indexes;
 mod queries;
 
@@ -172,7 +173,10 @@ async fn ordered_tree_template_creates_catalog_constraints_indexes_and_system_fi
     .fetch_all(store.pool())
     .await
     .unwrap();
-    assert_eq!(columns.len(), 9);
+    assert_eq!(columns.len(), 10);
+    assert!(columns
+        .iter()
+        .any(|column| column.0 == "tree_path" && column.1 == "USER-DEFINED" && column.2 == "NO"));
     assert!(columns.iter().any(|column| {
         column.0 == "tree_partition_id" && column.1 == "uuid" && column.2 == "NO"
     }));
@@ -248,6 +252,7 @@ async fn ordered_tree_template_creates_catalog_constraints_indexes_and_system_fi
     assert_eq!(
         index_names,
         vec![
+            format!("idx_ot_path_{model_uuid}"),
             format!("idx_ot_siblings_{model_uuid}"),
             format!("pk_ot_{model_uuid}"),
             format!("uq_ot_root_rank_{model_uuid}"),
@@ -292,4 +297,21 @@ async fn ordered_tree_template_creates_catalog_constraints_indexes_and_system_fi
         .fields
         .iter()
         .any(|field| { matches!(field.code.as_str(), "depth" | "path" | "has_children") }));
+}
+
+// Current create-table code calls the path installer; this test-only stub
+// reproduces legacy DDL before the installer migration existed. It never
+// supplies a path or stands in for post-migration behavior assertions.
+async fn create_legacy_ordered_tree_model(
+    store: &PgControlPlaneStore,
+    scope_id: Uuid,
+) -> domain::ModelDefinitionRecord {
+    sqlx::raw_sql("create function ordered_tree_install_path(regclass, uuid) returns void language plpgsql as $$ begin return; end $$;")
+        .execute(store.pool()).await.unwrap();
+    let model = create_ordered_tree_model(store, scope_id).await;
+    sqlx::query("drop function ordered_tree_install_path(regclass, uuid)")
+        .execute(store.pool())
+        .await
+        .unwrap();
+    model
 }

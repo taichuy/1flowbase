@@ -101,6 +101,11 @@ pub(crate) async fn create_table(
     ))
     .execute(&mut **tx)
     .await?;
+    sqlx::query("select ordered_tree_install_path($1::regclass, $2)")
+        .bind(&table_name)
+        .bind(model.id)
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 

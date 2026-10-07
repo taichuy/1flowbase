@@ -511,6 +511,11 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             .physical_column_name
             .clone()
             .unwrap_or_else(|| build_physical_column_name(&input.code));
+        if crate::ordered_tree::schema::matches(&model)
+            && (input.code == "tree_path" || physical_column_name == "tree_path")
+        {
+            return Err(ControlPlaneError::InvalidInput("reserved ordered-tree field").into());
+        }
         if input.apply_physical_schema && is_platform_runtime_column(&physical_column_name) {
             return Err(ControlPlaneError::InvalidInput("physical_column_name").into());
         }
@@ -730,6 +735,13 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         &self,
         input: &ReconcileSystemModelFieldInput,
     ) -> Result<domain::ModelFieldRecord> {
+        if input.physical_column_name == "tree_path" {
+            let ordered_tree: bool = sqlx::query_scalar("select exists(select 1 from model_definitions where id = $1 and template_provider = 'core' and template_code = 'ordered_tree' and template_version = 'v1')")
+                .bind(input.model_id).fetch_one(self.pool()).await?;
+            if ordered_tree {
+                return Err(ControlPlaneError::InvalidInput("reserved ordered-tree field").into());
+            }
+        }
         let row = sqlx::query(
             r#"
             update model_fields

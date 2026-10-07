@@ -358,18 +358,11 @@ async fn load_ordered_tree_subtree_snapshot(
 ) -> Result<OrderedTreeSubtreeSnapshot> {
     let node_ids_child_before_parent: Vec<Uuid> = sqlx::query_scalar(&format!(
         r#"
-        with recursive subtree(id, depth, path) as (
-            select id, 0, array[id]
-            from {table_name}
-            where scope_id = $1 and tree_partition_id = $2 and id = $3
-            union all
-            select child.id, subtree.depth + 1, subtree.path || child.id
-            from {table_name} child
-            join subtree on child.parent_id = subtree.id
-            where child.scope_id = $1 and child.tree_partition_id = $2
-              and not child.id = any(subtree.path)
-        )
-        select id from subtree order by depth desc, id
+        select node.id from {table_name} node
+        join {table_name} root on root.scope_id = $1 and root.tree_partition_id = $2 and root.id = $3
+        where node.scope_id = $1 and node.tree_partition_id = $2
+          and ARRAY[node.tree_path] OPERATOR(public.<@) root.tree_path
+        order by public.nlevel(node.tree_path) desc, node.id
         "#
     ))
     .bind(scope_id)
@@ -481,18 +474,12 @@ async fn ensure_acyclic_move(
     };
     let creates_cycle: bool = sqlx::query_scalar(&format!(
         r#"
-        with recursive ancestors(id, parent_id, path) as (
-            select id, parent_id, array[id]
-            from {table_name}
-            where scope_id = $1 and tree_partition_id = $2 and id = $3
-            union all
-            select parent.id, parent.parent_id, ancestors.path || parent.id
-            from {table_name} parent
-            join ancestors on parent.id = ancestors.parent_id
-            where parent.scope_id = $1 and parent.tree_partition_id = $2
-              and not parent.id = any(ancestors.path)
+        select exists(
+            select 1 from {table_name} parent
+            join {table_name} node on node.scope_id = $1 and node.tree_partition_id = $2 and node.id = $4
+            where parent.scope_id = $1 and parent.tree_partition_id = $2 and parent.id = $3
+              and ARRAY[parent.tree_path] OPERATOR(public.<@) node.tree_path
         )
-        select exists(select 1 from ancestors where id = $4)
         "#
     ))
     .bind(scope_id)
@@ -681,9 +668,13 @@ async fn insert_node(
         "updated_by".to_owned(),
         "parent_id".to_owned(),
         "sibling_rank".to_owned(),
+        "tree_path".to_owned(),
     ]);
     let mut fields = Vec::with_capacity(payload.len());
     for (field_code, value) in payload {
+        if field_code == "tree_path" {
+            return Err(OrderedTreeCommandError::FieldNotWritable(field_code.clone()).into());
+        }
         let field = metadata
             .field_by_code(field_code)
             .ok_or_else(|| anyhow!("undeclared field code: {field_code}"))?;

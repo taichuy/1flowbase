@@ -436,10 +436,12 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
             && metadata.template_code == "ordered_tree"
             && metadata.template_version == "v1"
         {
-            if let Some(field_code) = payload
-                .keys()
-                .find(|field_code| matches!(field_code.as_str(), "parent_id" | "sibling_rank"))
-            {
+            if let Some(field_code) = payload.keys().find(|field_code| {
+                matches!(
+                    field_code.as_str(),
+                    "parent_id" | "sibling_rank" | "tree_partition_id" | "tree_path"
+                )
+            }) {
                 return Err(storage_durable::runtime_record_repository::OrderedTreeCommandError::FieldNotWritable(
                     field_code.clone(),
                 )

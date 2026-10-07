@@ -38,18 +38,10 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         let table_name = quote_identifier(&metadata.physical_table_name)?;
         let affected_count: i64 = sqlx::query_scalar(&format!(
             r#"
-            with recursive subtree(id, path) as (
-                select id, array[id]
-                from {table_name}
-                where scope_id = $1 and tree_partition_id = $2 and id = $3
-                union all
-                select child.id, subtree.path || child.id
-                from {table_name} child
-                join subtree on child.parent_id = subtree.id
-                where child.scope_id = $1 and child.tree_partition_id = $2
-                  and not child.id = any(subtree.path)
-            )
-            select count(*)::bigint from subtree
+            select count(*)::bigint from {table_name} node
+            join {table_name} root on root.scope_id = $1 and root.tree_partition_id = $2 and root.id = $3
+            where node.scope_id = $1 and node.tree_partition_id = $2
+              and ARRAY[node.tree_path] OPERATOR(public.<@) root.tree_path
             "#,
         ))
         .bind(input.scope_id)
@@ -168,20 +160,21 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         .await?;
         let rows: Vec<(Value, i32, bool, Vec<Uuid>)> = sqlx::query_as(&format!(
             r#"
-            with recursive descendants(id, depth, id_path, rank_path) as (
-                select child.id, 1, array[$3, child.id], array[child.sibling_rank]
+            with descendants as (
+                select child.id,
+                       public.nlevel(child.tree_path) - public.nlevel(root.tree_path) as depth,
+                       string_to_array(public.subpath(child.tree_path, public.nlevel(root.tree_path) - 1)::text, '.')::uuid[] as id_path,
+                       array(select ancestor.sibling_rank from {table_name} ancestor
+                             where ancestor.scope_id = $1 and ancestor.tree_partition_id = $2
+                               and ancestor.id = any(string_to_array(child.tree_path::text, '.')::uuid[])
+                               and public.nlevel(ancestor.tree_path) > public.nlevel(root.tree_path)
+                             order by public.nlevel(ancestor.tree_path)) as rank_path
                 from {table_name} child
+                join {table_name} root on root.scope_id = $1 and root.tree_partition_id = $2 and root.id = $3
                 where child.scope_id = $1 and child.tree_partition_id = $2
-                  and child.parent_id = $3
-                union all
-                select child.id, descendants.depth + 1,
-                       descendants.id_path || child.id,
-                       descendants.rank_path || child.sibling_rank
-                from {table_name} child
-                join descendants on child.parent_id = descendants.id
-                where child.scope_id = $1 and child.tree_partition_id = $2
-                  and descendants.depth < $4
-                  and not child.id = any(descendants.id_path)
+                  and ARRAY[child.tree_path] OPERATOR(public.<@) root.tree_path
+                  and public.nlevel(child.tree_path) > public.nlevel(root.tree_path)
+                  and public.nlevel(child.tree_path) - public.nlevel(root.tree_path) <= $4
             )
             select row_to_json(node), descendants.depth,
                    exists(select 1 from {table_name} child where child.scope_id = $1 and child.tree_partition_id = $2 and child.parent_id = descendants.id),
@@ -359,25 +352,13 @@ async fn ancestor_records(
 ) -> Result<Vec<Value>> {
     let records: Vec<Value> = sqlx::query_scalar(&format!(
         r#"
-        with recursive ancestors(id, parent_id, depth, path) as (
-            select parent.id, parent.parent_id, 0, array[parent.id]
-            from {table_name} node
-            join {table_name} parent on parent.scope_id = node.scope_id
-                and parent.tree_partition_id = node.tree_partition_id
-                and parent.id = node.parent_id
-            where node.scope_id = $1 and node.tree_partition_id = $2 and node.id = $3
-            union all
-            select parent.id, parent.parent_id, ancestors.depth + 1, ancestors.path || parent.id
-            from {table_name} parent
-            join ancestors on parent.id = ancestors.parent_id
-            where parent.scope_id = $1 and parent.tree_partition_id = $2
-              and not parent.id = any(ancestors.path)
-              and cardinality(ancestors.path) <= $4
-        )
         select row_to_json(node)
-        from ancestors
-        join lateral (select {projection} from {table_name} source where source.scope_id = $1 and source.tree_partition_id = $2 and source.id = ancestors.id) node on true
-        order by ancestors.depth desc
+        from {table_name} target
+        join {table_name} ancestor on ancestor.scope_id = $1 and ancestor.tree_partition_id = $2
+          and ancestor.id = any(string_to_array(target.tree_path::text, '.')::uuid[]) and ancestor.id <> target.id
+        join lateral (select {projection} from {table_name} source where source.scope_id = $1 and source.tree_partition_id = $2 and source.id = ancestor.id) node on true
+        where target.scope_id = $1 and target.tree_partition_id = $2 and target.id = $3
+        order by public.nlevel(ancestor.tree_path)
         limit ($4 + 1)
         "#,
         projection = qualified_projection(metadata, "source")?,

@@ -16,6 +16,18 @@ impl PostgresTestSchema {
     pub async fn create(base_database_url: &str) -> Result<Self, sqlx::Error> {
         let schema_name = format!("test_{}", Uuid::now_v7().simple());
         let mut connection = PgConnection::connect(base_database_url).await?;
+        // Extension objects outlive individual test schemas. Serialize the
+        // initial installation before parallel migration fixtures start.
+        let mut extension_tx = connection.begin().await?;
+        sqlx::query(
+            "select pg_advisory_xact_lock(hashtextextended('1flowbase:extension:ltree', 0))",
+        )
+        .execute(&mut *extension_tx)
+        .await?;
+        sqlx::query("create extension if not exists ltree with schema public")
+            .execute(&mut *extension_tx)
+            .await?;
+        extension_tx.commit().await?;
         sqlx::query(&format!(r#"create schema "{schema_name}""#))
             .execute(&mut connection)
             .await?;
@@ -26,8 +38,9 @@ impl PostgresTestSchema {
         } else {
             '?'
         };
-        let database_url =
-            format!("{base_database_url}{query_separator}options=-csearch_path%3D{schema_name}");
+        let database_url = format!(
+            "{base_database_url}{query_separator}options=-csearch_path%3D{schema_name}%2Cpublic"
+        );
 
         Ok(Self {
             base_database_url: base_database_url.to_owned(),
