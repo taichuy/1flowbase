@@ -385,6 +385,21 @@ where
             .repository
             .load_actor_context_for_user(actor_user_id)
             .await?;
+        self.load_application_for_non_crud_console_operation_for_actor(
+            &actor,
+            application_id,
+            operation,
+        )
+        .await
+    }
+
+    /// Preserve the authenticated current workspace instead of inferring a membership.
+    pub async fn load_application_for_non_crud_console_operation_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        operation: ApplicationNonCrudConsoleOperation,
+    ) -> Result<domain::ApplicationRecord> {
         let application = self
             .repository
             .get_application(actor.current_workspace_id, application_id)
@@ -394,11 +409,11 @@ where
             Vec::new()
         } else {
             self.repository
-                .load_role_console_policies_for_user(&actor)
+                .load_role_console_policies_for_user(actor)
                 .await?
         };
         ensure_existing_application_non_crud_console_operation(
-            &actor,
+            actor,
             &application,
             &policies,
             operation,

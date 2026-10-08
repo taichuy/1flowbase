@@ -66,6 +66,7 @@ use utoipa::OpenApi;
         crate::routes::application_runtime::complete_callback_task,
         crate::routes::application_runtime::start_node_debug_preview,
         crate::routes::application_runtime::list_application_runs,
+        crate::routes::application_runtime::logs_delete::delete_logs,
         crate::routes::application_runtime::list_application_conversation_messages,
         crate::routes::application_runtime::list_application_run_conversation_messages,
         crate::routes::application_runtime::export_application_run_trace_dump,

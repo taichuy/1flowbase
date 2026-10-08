@@ -1,7 +1,7 @@
 use std::{collections::HashSet, convert::Infallible, sync::Arc};
 
 use access_control::{
-    APPLICATIONS_LOGS_EXPORT_OPERATION_ID, APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
+    APPLICATIONS_LOGS_DELETE_OPERATION_ID, APPLICATIONS_LOGS_EXPORT_OPERATION_ID, APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
     APPLICATIONS_RUN_OPERATION_ID, APPLICATIONS_UPDATE_OPERATION_ID,
     APPLICATIONS_VIEW_OPERATION_ID,
 };
@@ -31,7 +31,7 @@ use crate::{
     error_response::ApiError,
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_get, console_post, console_put, ConsoleRouteAssembly,
+        console_delete, console_get, console_post, console_put, ConsoleRouteAssembly,
     },
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
@@ -45,6 +45,7 @@ use provider_trajectory::{
 };
 mod application_log_cache;
 mod application_logs;
+pub(crate) mod logs_delete;
 pub(crate) mod application_monitoring;
 pub(crate) mod archive;
 pub(crate) mod debug_variable_cache;
@@ -92,6 +93,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .route("/applications/:id/logs", console_delete(logs_delete::delete_logs, ConsoleOperation(APPLICATIONS_LOGS_DELETE_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id", console_get(get_log_record, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/client-trajectory", console_get(list_record_client_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/client-trajectory/:step_id", console_get(get_record_client_trajectory_section, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))

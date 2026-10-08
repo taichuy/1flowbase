@@ -802,6 +802,12 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-logs-delete",
+            &["applications.logs.delete"],
+            &["api-server.console-application-logs-delete"],
+            crate::routes::application_runtime::logs_delete::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-archive",
             &[
                 "applications.runtime.archive.run.export",

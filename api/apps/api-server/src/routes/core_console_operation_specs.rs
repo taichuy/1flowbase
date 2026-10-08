@@ -104,6 +104,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     ),
     settings("applications.logs.export", "system.applications"),
     settings("applications.logs.import", "system.applications"),
+    settings("applications.logs.delete", "system.applications"),
     settings(
         "applications.orchestration.template.export",
         "system.applications",

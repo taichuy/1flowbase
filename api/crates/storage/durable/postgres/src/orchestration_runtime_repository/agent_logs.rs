@@ -16,6 +16,11 @@ pub(super) async fn ingest(
         "agent_logs.cost_snapshot"
     );
     let mut tx = store.pool().begin().await?;
+    // Lock application before source identity so deletion cannot interleave any ingest.
+    sqlx::query("select pg_advisory_xact_lock_shared(hashtextextended($1,0))")
+        .bind(format!("agent-logs-application:{application_id}"))
+        .execute(&mut *tx)
+        .await?;
     // Serializes the entire identity namespace, including creation and parent binding.
     sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(format!("agent-logs:{application_id}:{}", batch.source_id))

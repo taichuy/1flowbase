@@ -68,6 +68,7 @@ use crate::repositories::PgControlPlaneStore;
 
 mod client_trajectory;
 mod agent_logs;
+mod agent_logs_delete;
 mod detail_queries;
 mod json_storage;
 mod task_trace_sources;
@@ -114,6 +115,9 @@ include!("side_effect_receipt_methods.rs");
 
 #[async_trait]
 impl OrchestrationRuntimeRepository for PgControlPlaneStore {
+    async fn delete_agent_logs(&self, application_id: Uuid, scope_id: Uuid, scope: &control_plane_contracts::ports::AgentLogsDeleteScope) -> Result<control_plane_contracts::ports::AgentLogsDeleteReceipt> {
+        agent_logs_delete::delete(self, application_id, scope_id, scope).await
+    }
     async fn ingest_agent_logs(&self, application_id:Uuid,scope_id:Uuid,api_key_id:Uuid,batch:&control_plane_contracts::ports::AgentLogsBatch,costs:&[Option<String>])->Result<control_plane_contracts::ports::AgentLogsReceipt> { agent_logs::ingest(self,application_id,scope_id,api_key_id,batch,costs).await }
     async fn application_log_record(&self, application_id:Uuid,record_id:Uuid)->Result<Option<control_plane_contracts::ports::ApplicationLogRecordOverview>> {agent_logs::overview(self,application_id,record_id).await}
     async fn record_client_trajectory_page(&self,application_id:Uuid,record_id:Uuid,cursor:Option<String>,limit:i64)->Result<control_plane_contracts::ports::RecordClientTrajectoryPage> {agent_logs::page(self,application_id,record_id,cursor,limit).await}

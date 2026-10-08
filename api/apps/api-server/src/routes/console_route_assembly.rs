@@ -694,6 +694,7 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "applications.logs.delete" => Some("Delete imported agent log records"),
         "applications.runtime.record.get" => Some("Get source-neutral log record"),
         "applications.runtime.record.client-trajectory.list" => Some("List recorded client trajectory"),
         "applications.runtime.record.client-trajectory.section.get" => Some("Get recorded client trajectory section"),
@@ -846,6 +847,7 @@ fn compile_console_interface_metadata(
         };
         let summary = static_english_interface_summary(&interface_id);
         let description = match interface_id.as_str() {
+            "applications.logs.delete" => "Delete complete imported turns from an agent_logs application only, using explicit all_time mode or a half-open [started_at_from,started_at_to) RFC3339 time_range. Preserve the application, keys, credits and other applications.".to_owned(),
             "console.departments.access" => "Return current organization operation eligibility from effective workspace role policies.".to_owned(),
             "departments.list" => "List departments with parent IDs, assigned role codes and distinct subtree member counts in the current workspace.".to_owned(),
             "departments.create" => "Create a department using the ordered tree contract; assigning roles requires member role assignment eligibility.".to_owned(),

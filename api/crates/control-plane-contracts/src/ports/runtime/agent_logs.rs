@@ -190,3 +190,41 @@ impl RecordClientTrajectoryCursor {
         Ok((sequence, id))
     }
 }
+
+/// Explicit deletion scope; an omitted mode can never mean all retained history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AgentLogsDeleteScope {
+    AllTime {},
+    TimeRange {
+        started_at_from: String,
+        started_at_to: String,
+    },
+}
+impl AgentLogsDeleteScope {
+    /// Imported turns are selected by task start time, using [from, to).
+    pub fn bounds(&self) -> anyhow::Result<Option<(time::OffsetDateTime, time::OffsetDateTime)>> {
+        match self {
+            Self::AllTime {} => Ok(None),
+            Self::TimeRange {
+                started_at_from,
+                started_at_to,
+            } => {
+                let from = time::OffsetDateTime::parse(
+                    started_at_from,
+                    &time::format_description::well_known::Rfc3339,
+                )?;
+                let to = time::OffsetDateTime::parse(
+                    started_at_to,
+                    &time::format_description::well_known::Rfc3339,
+                )?;
+                anyhow::ensure!(from < to, "agent_logs_delete_time_range");
+                Ok(Some((from, to)))
+            }
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentLogsDeleteReceipt {
+    pub deleted_records: u64,
+}

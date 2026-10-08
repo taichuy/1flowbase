@@ -34,6 +34,8 @@ fn batch(events: Vec<AgentLogEvent>) -> AgentLogsBatch {
 
 #[path = "agent_logs/field_projection.rs"]
 mod field_projection;
+#[path = "agent_logs/deletion.rs"]
+mod deletion;
 async fn setup() -> (PgControlPlaneStore, Uuid, Uuid) {
     let db = isolated_database().await;
     let store = PgControlPlaneStore::new(db.connect().await.unwrap());

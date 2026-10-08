@@ -10,6 +10,7 @@ pub enum ApplicationNonCrudConsoleOperation {
     Run,
     LogsExport,
     LogsImport,
+    LogsDelete,
     OrchestrationTemplateExport,
     OrchestrationTemplateImport,
     OrchestrationVersionRestore,
@@ -23,6 +24,7 @@ impl ApplicationNonCrudConsoleOperation {
             Self::Run => access_control::APPLICATIONS_RUN_OPERATION_ID,
             Self::LogsExport => access_control::APPLICATIONS_LOGS_EXPORT_OPERATION_ID,
             Self::LogsImport => access_control::APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
+            Self::LogsDelete => access_control::APPLICATIONS_LOGS_DELETE_OPERATION_ID,
             Self::OrchestrationTemplateExport => {
                 access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID
             }

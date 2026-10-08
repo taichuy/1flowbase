@@ -110,3 +110,43 @@ impl<R: BillingRepository + OrchestrationRuntimeRepository> AgentLogsService<R> 
             })
     }
 }
+
+impl<R> AgentLogsService<R>
+where
+    R: crate::ports::ApplicationRepository + OrchestrationRuntimeRepository + Clone,
+{
+    /// Authorized Console command: remove imported records, preserving the application.
+    pub async fn delete(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        scope: crate::ports::AgentLogsDeleteScope,
+    ) -> Result<crate::ports::AgentLogsDeleteReceipt> {
+        scope.bounds().map_err(|_| {
+            crate::errors::ControlPlaneError::InvalidInput("agent_logs_delete_time_range")
+        })?;
+        let application = crate::application::ApplicationService::new(self.repository.clone())
+            .load_application_for_non_crud_console_operation_for_actor(
+                actor,
+                application_id,
+                crate::application::ApplicationNonCrudConsoleOperation::LogsDelete,
+            )
+            .await?;
+        if application.application_type != domain::ApplicationType::AgentLogs {
+            return Err(crate::errors::ControlPlaneError::InvalidInput(
+                "agent_logs_application_type",
+            )
+            .into());
+        }
+        self.repository
+            .delete_agent_logs(application_id, application.workspace_id, &scope)
+            .await
+            .map_err(|error| match error.to_string().as_str() {
+                "agent_logs.application_type" => {
+                    crate::errors::ControlPlaneError::InvalidInput("agent_logs_application_type")
+                        .into()
+                }
+                _ => error,
+            })
+    }
+}

@@ -70,3 +70,48 @@ fn agent_logs_lossless_cursor_wire_preserves_native_numbers_and_imported_ties() 
     assert!(RecordClientTrajectoryCursor::imported_position("10").is_err());
     assert!(RecordClientTrajectoryCursor::imported_position(&format!("s1:10:{id}:extra")).is_err());
 }
+
+#[test]
+fn agent_logs_delete_requires_explicit_mode_and_strict_rfc3339_range() {
+    for bad in [
+        json!({}),
+        json!({"mode":"everything"}),
+        json!({"mode":"all_time","started_at_from":"2026-10-07T00:00:00Z"}),
+        json!({"mode":"time_range"}),
+        json!({"mode":"time_range","started_at_from":"2026-10-07T00:00:00Z"}),
+    ] {
+        assert!(serde_json::from_value::<AgentLogsDeleteScope>(bad).is_err());
+    }
+    assert!(
+        serde_json::from_value::<AgentLogsDeleteScope>(json!({"mode":"all_time"}))
+            .unwrap()
+            .bounds()
+            .unwrap()
+            .is_none()
+    );
+    for (from, to) in [
+        ("bad", "2026-10-08T00:00:00Z"),
+        ("2026-10-07", "2026-10-08T00:00:00Z"),
+        ("2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z"),
+        ("2026-10-08T00:00:00Z", "2026-10-07T00:00:00Z"),
+    ] {
+        assert!(AgentLogsDeleteScope::TimeRange {
+            started_at_from: from.into(),
+            started_at_to: to.into()
+        }
+        .bounds()
+        .is_err());
+    }
+    let (from, to) = AgentLogsDeleteScope::TimeRange {
+        started_at_from: "2026-10-07T08:00:00+08:00".into(),
+        started_at_to: "2026-10-08T00:00:00Z".into(),
+    }
+    .bounds()
+    .unwrap()
+    .unwrap();
+    assert!(from < to);
+    assert_eq!(
+        serde_json::to_value(AgentLogsDeleteReceipt { deleted_records: 3 }).unwrap(),
+        json!({"deleted_records":3})
+    );
+}
