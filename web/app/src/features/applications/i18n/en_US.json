@@ -345,7 +345,6 @@
   "agent_logs": {
     "collector": "Collection CLI",
     "collector_description": "Install the collector package in 1flowbase, then download its CLI to your computer to upload logs to this application.",
-    "open_api_keys": "Manage this application’s API keys",
     "record_id": "Record ID",
     "source_client": "Source client",
     "collected": "Collected observation",
@@ -355,10 +354,9 @@
     "install_collector": "Install in 1flowbase",
     "collector_version": "Version {{version}}",
     "documentation": "View documentation",
-    "back_to_collectors": "Back to collectors",
     "installation_steps": "Installation steps",
     "prepare_key": "Prepare an API key",
-    "prepare_key_description": "Create or copy a key for this application on the API page. Enter it only when the installer prompts in your local terminal.",
+    "prepare_key_description": "Paste a key for this application or generate one. It stays on this page only; the copied install command includes it.",
     "install_command": "Copy the installation command",
     "install_command_description": "Choose your operating system and run the command locally. The installer downloads the collector from your 1flowbase and guides you through local configuration.",
     "operating_system": "Operating system",
@@ -371,7 +369,7 @@
     "automatic_collection": "Automatic collection",
     "automatic_collection_description": "Upload new Codex session events in the background after local setup.",
     "local_key": "Local credentials",
-    "local_key_description": "Your API key is configured on your device and authenticates uploads to this application. It is not included in installer URLs or commands.",
+    "local_key_description": "The key is not stored in browser storage or download URLs. The installer saves it in private configuration on your device.",
     "open_source": "Open source",
     "open_source_description": "Your 1flowbase serves the installer, native collector and checksum files. Read the installation guide for the installed version.",
     "collectors_loading": "Loading collectors",
@@ -389,6 +387,10 @@
     "install_permission_required": "Extension installation permission is required. Ask an administrator to install this package.",
     "install_confirmation": "Confirm collector installation risks",
     "confirm_platform_install": "Confirm platform installation",
-    "host_requirement": "This package requires platform version {{version}} or newer."
+    "host_requirement": "This package requires platform version {{version}} or newer.",
+    "generate_key": "Generate key",
+    "collector_key_name": "Collector CLI: {{client}}",
+    "key_generation_failed": "Could not generate an API key. Try again or check your application permissions.",
+    "enter_application_key": "Enter an API key for this application"
   }
 }

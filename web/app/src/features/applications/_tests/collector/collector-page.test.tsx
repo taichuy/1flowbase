@@ -18,6 +18,16 @@ const api = vi.hoisted(() => ({
   getApplicationsApiBaseUrl: vi.fn(),
   applicationCatalogQueryKey: ['applications', 'catalog']
 }));
+const publicApi = vi.hoisted(() => ({
+  createApplicationApiKey: vi.fn(),
+  applicationApiKeysQueryKey: (id: string) => [
+    'applications',
+    id,
+    'public-api',
+    'keys'
+  ]
+}));
+vi.mock('../../api/public-api', () => publicApi);
 const clipboard = vi.hoisted(() => ({ copyTextToClipboard: vi.fn() }));
 vi.mock('../../api/applications', () => api);
 vi.mock('../../../../shared/ui/clipboard/copy-text', () => clipboard);
@@ -87,6 +97,10 @@ beforeEach(() => {
     installation: { id: 'installation-one' }
   });
   clipboard.copyTextToClipboard.mockResolvedValue(undefined);
+  publicApi.createApplicationApiKey.mockResolvedValue({
+    id: 'key-one',
+    token: 'proof-generated-key'
+  });
 });
 
 test('collector tab directly opens version-pinned local CLI detail and returns to all collectors', async () => {
@@ -101,10 +115,13 @@ test('collector tab directly opens version-pinned local CLI detail and returns t
     screen.queryByRole('button', { name: '下载采集 CLI' })
   ).not.toBeInTheDocument();
   expect(screen.getByRole('region', { name: '安装步骤' })).toBeInTheDocument();
+  expect(screen.getByLabelText('API 密钥')).toHaveValue('');
   expect(
-    screen.getByRole('link', { name: '管理当前应用的 API Key' })
-  ).toHaveAttribute('href', `/applications/${applicationId}/api`);
-  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    screen.queryByRole('button', { name: '返回采集器目录' })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('link', { name: '管理当前应用的 API Key' })
+  ).not.toBeInTheDocument();
   const command = document.querySelector('pre')!.textContent!;
   expect(command).toContain(
     `https://console.example.com${assetBase}/install.sh`
@@ -116,7 +133,7 @@ test('collector tab directly opens version-pinned local CLI detail and returns t
     "--endpoint 'https://console.example.com/api/logs/v1/events'"
   );
   expect(command).not.toMatch(/github|node |api_key|API_KEY|sk-/);
-  fireEvent.click(screen.getByRole('button', { name: '返回采集器目录' }));
+  fireEvent.click(screen.getByRole('tab', { name: '全部' }));
   expect(
     screen.getByRole('button', { name: '下载采集 CLI' })
   ).toBeInTheDocument();
@@ -325,7 +342,7 @@ test('update keeps current pinned download version until a genuine platform upda
   renderPage();
   fireEvent.click(await screen.findByRole('button', { name: '下载采集 CLI' }));
   expect(document.querySelector('pre')).toHaveTextContent("--version '0.1.0'");
-  fireEvent.click(screen.getByRole('button', { name: '返回采集器目录' }));
+  fireEvent.click(screen.getByRole('tab', { name: '全部' }));
   fireEvent.click(screen.getByRole('button', { name: '更新平台采集包' }));
   await waitFor(() =>
     expect(api.installApplicationCollector).toHaveBeenCalledWith(
@@ -390,4 +407,109 @@ test('empty backend catalog does not invent any collector or tab', async () => {
     await screen.findByText('暂无可用的受支持采集器。')
   ).toBeInTheDocument();
   expect(screen.queryByRole('tab', { name: 'Codex' })).not.toBeInTheDocument();
+});
+
+test('entered key stays in the detail only and is copied through installer environment with a masked preview', async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
+  const storage = vi.spyOn(Storage.prototype, 'setItem');
+  fireEvent.change(screen.getByLabelText('API 密钥'), {
+    target: { value: "proof-key'o$()" }
+  });
+  expect(document.querySelector('pre')).not.toHaveTextContent('proof-key');
+  fireEvent.click(screen.getByRole('button', { name: '复制命令' }));
+  await waitFor(() =>
+    expect(clipboard.copyTextToClipboard).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "FLOWBASE_AGENT_LOGS_API_KEY='proof-key'\\''o$()'"
+      )
+    )
+  );
+  expect(publicApi.createApplicationApiKey).not.toHaveBeenCalled();
+  expect(storage).not.toHaveBeenCalled();
+  storage.mockRestore();
+  fireEvent.click(screen.getByRole('radio', { name: 'Windows (PowerShell)' }));
+  expect(screen.getByLabelText('API 密钥')).toHaveValue("proof-key'o$()");
+  fireEvent.click(screen.getByRole('button', { name: '复制命令' }));
+  await waitFor(() =>
+    expect(clipboard.copyTextToClipboard).toHaveBeenLastCalledWith(
+      expect.stringContaining(
+        "$env:FLOWBASE_AGENT_LOGS_API_KEY = 'proof-key''o$()'"
+      )
+    )
+  );
+  fireEvent.click(screen.getByRole('tab', { name: '全部' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Codex' }));
+  expect(screen.getByLabelText('API 密钥')).toHaveValue('');
+});
+
+test('quick generation creates the current application key once and fills its one-time token', async () => {
+  let resolve!: (value: unknown) => void;
+  publicApi.createApplicationApiKey.mockReturnValueOnce(
+    new Promise((res) => {
+      resolve = res;
+    })
+  );
+  renderPage();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
+  const generateButton = screen.getByRole('button', { name: '快速生成 Key' });
+  fireEvent.click(generateButton);
+  expect(generateButton).toBeDisabled();
+  expect(publicApi.createApplicationApiKey).toHaveBeenCalledExactlyOnceWith(
+    applicationId,
+    '采集 CLI：Codex',
+    'csrf-collector-test'
+  );
+  await act(async () =>
+    resolve({ id: 'key-one', token: 'proof-generated-key' })
+  );
+  expect(screen.getByLabelText('API 密钥')).toHaveValue('proof-generated-key');
+  expect(document.querySelector('pre')).not.toHaveTextContent(
+    'proof-generated-key'
+  );
+  fireEvent.click(screen.getByRole('button', { name: '复制命令' }));
+  await waitFor(() =>
+    expect(clipboard.copyTextToClipboard).toHaveBeenLastCalledWith(
+      expect.stringContaining(
+        "FLOWBASE_AGENT_LOGS_API_KEY='proof-generated-key'"
+      )
+    )
+  );
+});
+
+test('generation failure preserves an entered key and allows retry', async () => {
+  publicApi.createApplicationApiKey.mockRejectedValueOnce(
+    new Error('forbidden')
+  );
+  renderPage();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
+  fireEvent.change(screen.getByLabelText('API 密钥'), {
+    target: { value: 'existing-key' }
+  });
+  fireEvent.click(screen.getByRole('button', { name: '快速生成 Key' }));
+  expect(
+    await screen.findByText('无法生成 API Key，请重试或检查应用权限。')
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText('API 密钥')).toHaveValue('existing-key');
+  fireEvent.click(screen.getByRole('button', { name: '快速生成 Key' }));
+  await waitFor(() =>
+    expect(screen.getByLabelText('API 密钥')).toHaveValue('proof-generated-key')
+  );
+});
+
+test('without authenticated CSRF generation is disabled while a pasted key remains usable', async () => {
+  useAuthStore.setState({ csrfToken: null });
+  renderPage();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
+  expect(screen.getByRole('button', { name: '快速生成 Key' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('API 密钥'), {
+    target: { value: 'pasted-key' }
+  });
+  fireEvent.click(screen.getByRole('button', { name: '复制命令' }));
+  await waitFor(() =>
+    expect(clipboard.copyTextToClipboard).toHaveBeenCalledWith(
+      expect.stringContaining('pasted-key')
+    )
+  );
+  expect(publicApi.createApplicationApiKey).not.toHaveBeenCalled();
 });

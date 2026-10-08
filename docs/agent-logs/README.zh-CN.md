@@ -4,13 +4,13 @@
 
 采集器分两步安装：先从远程扩展目录**安装到 1flowbase**，再打开“下载采集 CLI”详情，在运行 Codex 的本机执行命令。安装器、原生包、校验文件和文档均从当前 1flowbase 的版本固定 URL 下载；远程仓库不可用时，已安装版本仍可下载。“平台已安装”表示分发包已留存在平台，不表示用户本机已安装或在线。
 
-在 Agent Logs 应用的 **采集 CLI** 页面选择 Codex，复制 Shell 或 PowerShell 安装命令，在运行 Codex 的用户电脑执行，并在本地终端输入应用 API Key。官方 Rust 可执行程序不要求安装 Node.js、Rust 工具链或检出源码。
+在 Agent Logs 应用的 **采集 CLI** 页面点击 Codex 页签进入详情；“全部”页签回到目录。可以粘贴当前应用的 API Key，或点击“快速生成 Key”创建并回填一个真实应用 Key。复制 Shell 或 PowerShell 安装命令，在运行 Codex 的用户电脑执行；未填写 Key 时，安装器仍会在本地终端提示输入。官方 Rust 可执行程序不要求安装 Node.js、Rust 工具链或检出源码。
 
 安装器下载并校验原生发行，保存私有配置，启动用户级后台服务。Linux 使用用户 systemd，macOS 使用 LaunchAgent，Windows 使用用户计划任务；同一用户重启登录后恢复。没有可用后台机制时明确报告；`--no-start` 可配置后交给自己的进程管理器运行。
 
 每个应用 ID 对应独立安装和断点。默认来源是安装时的 `CODEX_HOME`，未设置时使用 `~/.codex`，只读取 `sessions` 和 `archived_sessions` 中的已有历史及后续完整记录；支持自定义来源路径。不修改 Codex 配置或源日志。
 
-Key 在本地输入并保存到私有 `config.json`，不出现在下载安装 URL 或 CLI 参数中。上传仅通过 Bearer header 发送给指定 1flowbase 端点。端点是完整 `/api/logs/v1/events` URL；网络传输应使用 HTTPS，上传拒绝重定向。
+输入框只保留当前详情页内存，刷新或离开详情后清空，不写入浏览器存储或查询缓存。命令预览遮住 Key，复制命令使用真实值，通过 `FLOWBASE_AGENT_LOGS_API_KEY` 环境变量交给本地安装器；Key 不出现在下载 URL 或安装器 CLI 参数中。安装器将 Key 保存到本机私有 `config.json`。快速生成的 Key 可在应用 API 页面管理或撤销。上传仅通过 Bearer header 发送给指定 1flowbase 端点。端点是完整 `/api/logs/v1/events` URL；网络传输应使用 HTTPS，上传拒绝重定向。
 
 [官方安装、升级与卸载说明](https://github.com/taichuy/1flowbase-official-plugins/blob/main/runtime-extensions/@taichuy/codex-logs-collector/README.md)
 

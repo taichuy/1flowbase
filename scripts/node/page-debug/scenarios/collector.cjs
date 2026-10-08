@@ -56,7 +56,7 @@ async function main() {
       await page.getByText('macOS / Linux (Shell)', { exact: true }).waitFor();
       assert.equal(await collectorTab.getAttribute('aria-selected'), 'true');
       assert.equal(await download.count(), 0, 'collector tab opens detail directly');
-      await page.getByRole('button', { name: /返回|Back/ }).click();
+      await allTab.click();
       assert.equal(await allTab.getAttribute('aria-selected'), 'true');
       await download.waitFor({ state: 'visible' });
       await page.screenshot({ animations: 'disabled', path: path.join(out, `${name}-catalog.png`), fullPage: true });
@@ -97,19 +97,48 @@ async function main() {
       assert.equal(text.match(/-ReleaseBase '([^']+)'/)?.[1], releaseBase);
       assert.ok(text.includes('-MaximumRedirection 0'));
       await page.screenshot({ animations: 'disabled', path: path.join(out, `${name}-powershell.png`), fullPage: true });
-      const keys = page.getByRole('link', { name: /API Key/i }).first();
-      assert.equal(await keys.getAttribute('href'), `/applications/${applicationId}/api`);
+      const keyInput = page.getByPlaceholder(/输入当前应用的 API Key|Enter an API key for this application/);
+      assert.equal(await page.getByRole('button', { name: /返回采集器目录|Back to collectors/ }).count(), 0);
+      assert.equal(await keyInput.inputValue(), '');
+      const proofKey = 'collector-ui-proof-key';
+      await keyInput.fill(proofKey);
+      assert.ok(!(await page.locator('.application-collector__command pre').innerText()).includes(proofKey));
+      await page.getByRole('button', { name: /复制命令|Copy command/ }).click();
+      await page.waitForFunction(key => navigator.clipboard.readText().then(value => value.includes("$env:FLOWBASE_AGENT_LOGS_API_KEY = '" + key + "'")), proofKey);
+      assert.ok(!(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).includes(proofKey));
+      if (name === 'desktop-zh') {
+        const createdResponse = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/applications/${applicationId}/api-keys`));
+        await page.getByRole('button', { name: /快速生成 Key|Generate key/ }).click();
+        const response = await createdResponse;
+        assert.equal(response.status(), 201);
+        const created = (await response.json()).data;
+        try {
+          await page.waitForFunction(({ label, token }) => document.querySelector(`input[placeholder="${label}"]`)?.value === token, { label: '输入当前应用的 API Key', token: created.token });
+          assert.ok(!(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).includes(created.token), 'generated token absent from browser storage');
+          assert.ok(!(await page.locator('.application-collector__command pre').innerText()).includes(created.token), 'preview masks generated token');
+          await page.getByRole('button', { name: /复制命令|Copy command/ }).click();
+          assert.ok((await page.evaluate(() => navigator.clipboard.readText())).includes(created.token), 'copied command includes generated key');
+        } finally {
+          const revoked = await context.request.delete(`${apiBaseUrl}/api/console/applications/${applicationId}/api-keys/${created.id}`, { headers: { 'x-csrf-token': response.request().headers()['x-csrf-token'] } });
+          assert.equal(revoked.status(), 204, 'proof-created key revoked');
+        }
+      }
       await allTab.click();
       await download.waitFor();
       assert.equal(await page.locator('.application-collector__command pre').count(), 0);
       await collectorTab.click();
       await page.getByText('macOS / Linux (Shell)', { exact: true }).waitFor();
       assert.equal(await download.count(), 0);
-      await page.getByRole('button', { name: /返回|Back/ }).click();
+      assert.equal(await keyInput.inputValue(), '', 'leaving detail clears key');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await collectorTab.click();
+      await keyInput.waitFor();
+      assert.equal(await keyInput.inputValue(), '', 'reload clears key');
+      await allTab.click();
       await download.waitFor();
       assert.equal(await allTab.getAttribute('aria-selected'), 'true');
       assert.deepEqual(errors, []);
-      receipts.push({ name, language, viewport, overflow, errors, status: 'pass', tab_navigation: 'collector tab and card open same detail; all and back restore directory', endpoint, clipboard: 'exact shell command', collector: catalog.collectors[0] });
+      receipts.push({ name, language, viewport, overflow, errors, status: 'pass', tab_navigation: 'collector tab/card detail; all directory; transient key/copy; first-scene real generation/revoke', endpoint, clipboard: 'exact shell command', collector: catalog.collectors[0] });
       await context.close();
     }
     await fs.writeFile(path.join(out, 'receipt.json'), JSON.stringify({ source_sha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim(), application_id: applicationId, web_base_url: webBaseUrl, api_base_url: apiBaseUrl, receipts }, null, 2));

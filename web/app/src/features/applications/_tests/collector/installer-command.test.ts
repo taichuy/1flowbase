@@ -70,3 +70,73 @@ test('missing local URL cannot generate even with installed metadata', () => {
     )
   ).toBeNull();
 });
+
+test('provided key uses quoted process environment without changing public download URLs', () => {
+  const key = "proof'key $() `data`";
+  const shell = collectorInstallerCommand(
+    collector,
+    'shell',
+    'https://example.com/api/logs/v1/events',
+    'application',
+    'https://example.com',
+    key
+  )!;
+  expect(shell).toContain(
+    "FLOWBASE_AGENT_LOGS_API_KEY='proof'\\''key $() `data`' bash"
+  );
+  const ps = collectorInstallerCommand(
+    collector,
+    'powershell',
+    'https://example.com/api/logs/v1/events',
+    'application',
+    'https://example.com',
+    key
+  )!;
+  expect(ps).toContain(
+    "$env:FLOWBASE_AGENT_LOGS_API_KEY = 'proof''key $() `data`'"
+  );
+  expect(ps).toContain(
+    '$previousCollectorKey = $env:FLOWBASE_AGENT_LOGS_API_KEY'
+  );
+  expect(ps).toContain(
+    'finally { $env:FLOWBASE_AGENT_LOGS_API_KEY = $previousCollectorKey;'
+  );
+  expect(shell + ps).not.toContain('?api_key=');
+  expect(shell + ps).not.toContain('-ApiKey');
+});
+
+test('shell command delivers a literal key only to the installer and does not execute its contents', async () => {
+  const { mkdtemp, readFile, access, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const directory = await mkdtemp(join(tmpdir(), 'collector-key-proof-'));
+  const key = 'proof\'key\n$(touch "$COLLECTOR_PROOF_DIR/injected") `data`';
+  try {
+    const command = collectorInstallerCommand(
+      collector,
+      'shell',
+      'https://example.com/api/logs/v1/events',
+      'application',
+      'https://example.com',
+      key
+    )!;
+    const stubs = `curl() { printf '%s' "$*" > "$COLLECTOR_PROOF_DIR/download-args"; }
+bash() { printf '%s' "$FLOWBASE_AGENT_LOGS_API_KEY" > "$COLLECTOR_PROOF_DIR/key"; printf '%s' "$*" > "$COLLECTOR_PROOF_DIR/installer-args"; }
+`;
+    execFileSync('bash', ['-c', stubs + command], {
+      env: { ...process.env, COLLECTOR_PROOF_DIR: directory },
+      timeout: 10000
+    });
+    expect(await readFile(join(directory, 'key'), 'utf8')).toBe(key);
+    expect(
+      await readFile(join(directory, 'download-args'), 'utf8')
+    ).not.toContain('proof');
+    expect(
+      await readFile(join(directory, 'installer-args'), 'utf8')
+    ).not.toContain('proof');
+    await expect(access(join(directory, 'injected'))).rejects.toThrow();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

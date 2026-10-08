@@ -345,7 +345,6 @@
   "agent_logs": {
     "collector": "采集 CLI",
     "collector_description": "先将采集器安装到 1flowbase，再从当前平台下载 CLI 到客户端，上传当前应用的对话日志。",
-    "open_api_keys": "管理当前应用的 API Key",
     "record_id": "记录 ID",
     "source_client": "来源客户端",
     "collected": "采集观察",
@@ -355,10 +354,9 @@
     "install_collector": "安装到 1flowbase",
     "collector_version": "版本 {{version}}",
     "documentation": "查看文档",
-    "back_to_collectors": "返回采集器目录",
     "installation_steps": "安装步骤",
     "prepare_key": "准备 API Key",
-    "prepare_key_description": "在 API 页面创建或复制当前应用的 Key。仅在本机终端的安装提示中输入 Key。",
+    "prepare_key_description": "输入或快速生成当前应用的 Key。Key 仅保留在当前页面，复制的安装命令会包含它。",
     "install_command": "复制安装命令",
     "install_command_description": "选择操作系统，在本机终端运行命令。安装程序从当前 1flowbase 下载采集器，并提示完成本地配置。",
     "operating_system": "操作系统",
@@ -371,7 +369,7 @@
     "automatic_collection": "自动采集",
     "automatic_collection_description": "完成本地配置后，在后台上传新增的 Codex 会话事件。",
     "local_key": "本地凭据",
-    "local_key_description": "API Key 在设备上配置，用于向当前应用认证上传，不进入安装链接或命令。",
+    "local_key_description": "Key 不写入浏览器存储或下载链接；安装后保存在本机私有配置中。",
     "open_source": "开源透明",
     "open_source_description": "安装脚本、原生采集器和校验文件由当前 1flowbase 提供，可查看对应版本的安装说明。",
     "collectors_loading": "正在加载采集器",
@@ -389,6 +387,10 @@
     "install_permission_required": "需要扩展中心安装权限，请联系管理员安装采集包。",
     "install_confirmation": "确认采集包安装风险",
     "confirm_platform_install": "确认安装到平台",
-    "host_requirement": "此采集包要求平台版本至少为 {{version}}。"
+    "host_requirement": "此采集包要求平台版本至少为 {{version}}。",
+    "generate_key": "快速生成 Key",
+    "collector_key_name": "采集 CLI：{{client}}",
+    "key_generation_failed": "无法生成 API Key，请重试或检查应用权限。",
+    "enter_application_key": "输入当前应用的 API Key"
   }
 }

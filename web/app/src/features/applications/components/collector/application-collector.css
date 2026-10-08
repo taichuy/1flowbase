@@ -70,6 +70,20 @@
   font-size: 20px;
   font-weight: 600;
 }
+.application-collector__key-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.application-collector__key-header h5 {
+  margin: 0;
+}
+.application-collector__key-error {
+  margin-top: 12px;
+}
 .application-collector__command {
   margin-top: 16px;
   padding: 16px;

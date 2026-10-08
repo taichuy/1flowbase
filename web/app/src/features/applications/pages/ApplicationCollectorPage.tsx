@@ -208,11 +208,11 @@ export function ApplicationCollectorPage({
         />
       ) : selected?.installation_status === 'installed' ? (
         <CollectorInstallation
+          key={`${applicationId}:${selected.catalog_id}`}
           collector={selected}
           applicationId={applicationId}
           endpoint={endpoint}
           apiBaseUrl={apiBaseUrl}
-          onBack={() => setCatalogId(null)}
         />
       ) : (
         visibleCollectors &&

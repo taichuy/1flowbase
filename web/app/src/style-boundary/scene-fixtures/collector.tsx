@@ -80,7 +80,6 @@ export function CollectorStyleBoundaryScene({
               applicationId={applicationId}
               endpoint="https://console.example.com/api/logs/v1/events"
               apiBaseUrl="https://console.example.com"
-              onBack={() => undefined}
             />
           </div>
         ) : (
