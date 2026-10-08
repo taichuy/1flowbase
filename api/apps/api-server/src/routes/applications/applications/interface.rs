@@ -912,74 +912,18 @@ pub(crate) fn compile_registry(
     )
 }
 
+// The hook inventory uses metadata; the HTTP DTO retains the complete collector catalog.
 fn collector_projection_schema() -> serde_json::Value {
     use crate::extension_bus::managed_projection as mp;
-    let nullable = || serde_json::json!({"anyOf":[mp::text_schema(), {"type":"null"}]});
-    serde_json::json!({"type":"array","items":mp::object_schema(&[
-        ("collector_code",mp::text_schema()), ("source_client",mp::text_schema()), ("display_name",mp::text_schema()),
-        ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("version",mp::text_schema()), ("execution_target",mp::text_schema()),
-        ("catalog_id",mp::text_schema()), ("category",mp::text_schema()), ("installation_status",mp::text_schema()),
-        ("installed_version",nullable()), ("extension_installation_id",nullable()),
-        ("installable",serde_json::json!({"type":"boolean"})), ("can_install",serde_json::json!({"type":"boolean"})), ("can_update",serde_json::json!({"type":"boolean"})),
-        ("asset_base_url",nullable()), ("documentation_url",nullable()), ("shell_installer_url",nullable()), ("powershell_installer_url",nullable()),
-    ])})
+    mp::object_schema(&[("item_count", mp::count_schema())])
 }
+
 fn collector_projection(collectors: &[ApplicationCollectorResponse]) -> Option<serde_json::Value> {
     use crate::extension_bus::managed_projection as mp;
-    fn nullable(value: Option<&String>) -> Option<serde_json::Value> {
-        Some(match value {
-            Some(value) => crate::extension_bus::managed_projection::text(value)?,
-            None => serde_json::Value::Null,
-        })
-    }
-    Some(serde_json::Value::Array(
-        collectors
-            .iter()
-            .map(|item| {
-                Some(mp::object_value(&[
-                    ("collector_code", mp::text(&item.collector_code)?),
-                    ("source_client", mp::text(&item.source_client)?),
-                    ("display_name", mp::text(&item.display_name)?),
-                    (
-                        "description",
-                        mp::object_value(&[(
-                            "byte_count",
-                            serde_json::json!(item.description.len()),
-                        )]),
-                    ),
-                    ("version", mp::text(&item.version)?),
-                    ("execution_target", mp::text(&item.execution_target)?),
-                    ("catalog_id", mp::text(&item.catalog_id)?),
-                    ("category", mp::text(&item.category)?),
-                    ("installation_status", mp::text(&item.installation_status)?),
-                    (
-                        "installed_version",
-                        nullable(item.installed_version.as_ref())?,
-                    ),
-                    (
-                        "extension_installation_id",
-                        nullable(item.extension_installation_id.as_ref())?,
-                    ),
-                    ("installable", serde_json::json!(item.installable)),
-                    ("can_install", serde_json::json!(item.can_install)),
-                    ("can_update", serde_json::json!(item.can_update)),
-                    ("asset_base_url", nullable(item.asset_base_url.as_ref())?),
-                    (
-                        "documentation_url",
-                        nullable(item.documentation_url.as_ref())?,
-                    ),
-                    (
-                        "shell_installer_url",
-                        nullable(item.shell_installer_url.as_ref())?,
-                    ),
-                    (
-                        "powershell_installer_url",
-                        nullable(item.powershell_installer_url.as_ref())?,
-                    ),
-                ]))
-            })
-            .collect::<Option<Vec<_>>>()?,
-    ))
+    Some(mp::object_value(&[(
+        "item_count",
+        serde_json::json!(collectors.len()),
+    )]))
 }
 
 async fn application_type_catalog(
