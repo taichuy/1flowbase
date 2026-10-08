@@ -258,9 +258,16 @@ fn workflow_data_model_document(
     bindings: Value,
 ) -> Value {
     let mut document = workflow_document(flow_id);
+    document["graph"]["nodes"][0]["config"]["input_fields"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({
+            "key": "record_id", "label": "Record ID", "inputType": "text",
+            "valueType": "string", "required": false
+        }));
     document["graph"]["nodes"][1] = data_model_node("node-transform", action, config, bindings);
     document["graph"]["nodes"][2]["bindings"]["ticket_id"] = json!({
-        "kind": "constant", "value": "done"
+        "kind": "selector", "value": ["node-workflow-start", "customer_id"]
     });
     document
 }
@@ -285,7 +292,7 @@ async fn workflow_data_model_preview_creates_reads_updates_and_deletes_real_reco
         ("list", json!({})),
     ] {
         let bindings = if matches!(action, "get" | "update" | "delete") {
-            json!({"record_id": {"kind": "selector", "value": ["supplied", "record_id"]}})
+            json!({"record_id": {"kind": "selector", "value": ["node-workflow-start", "record_id"]}})
         } else {
             json!({})
         };
@@ -294,7 +301,7 @@ async fn workflow_data_model_preview_creates_reads_updates_and_deletes_real_reco
                 actor_user_id: seeded.actor_user_id,
                 application_id: seeded.application_id,
                 node_id: "node-transform".to_string(),
-                input_payload: json!({"supplied": {"record_id": record_id}}),
+                input_payload: json!({"node-workflow-start": {"record_id": record_id}}),
                 document_snapshot: Some(workflow_data_model_document(
                     seeded.flow_id,
                     action,
