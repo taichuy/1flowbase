@@ -174,6 +174,10 @@ async fn refresh_task(
     let mut ended = false;
     let mut cancelled = false;
     let mut parent = None;
+    let mut model_id = None;
+    let mut reasoning_effort = None;
+    let mut system_contents = Vec::new();
+    let mut system_sequence = None;
     let mut usage_groups: BTreeMap<String, Vec<&(AgentLogEvent, Option<String>)>> = BTreeMap::new();
     for item in &events {
         let e = &item.0;
@@ -183,13 +187,20 @@ async fn refresh_task(
         if e.inherited && e.kind != AgentLogEventKind::System {
             continue;
         }
+        if !e.inherited {
+            if e.model_id.is_some() {
+                model_id = e.model_id.clone();
+            }
+            if e.reasoning_effort.is_some() {
+                reasoning_effort = e.reasoning_effort.clone();
+            }
+        }
         if let Some(content) = &e.content {
             match e.kind {
-                AgentLogEventKind::System => messages.push(AgentLogMessage {
-                    role: "system".into(),
-                    content: content.clone(),
-                    sequence: e.sequence,
-                }),
+                AgentLogEventKind::System => {
+                    system_sequence.get_or_insert(e.sequence);
+                    system_contents.push(content.as_str());
+                }
                 AgentLogEventKind::User => {
                     user = Some(content.clone());
                 }
@@ -219,6 +230,13 @@ async fn refresh_task(
                 .or_default()
                 .push(item);
         }
+    }
+    if let Some(sequence) = system_sequence {
+        messages.push(AgentLogMessage {
+            role: "system".into(),
+            content: system_contents.join("\n\n"),
+            sequence,
+        });
     }
     if let Some(e) = events
         .iter()
@@ -307,8 +325,8 @@ async fn refresh_task(
         "in_progress"
     };
     let final_text = final_output.as_ref().map(|(s, _)| s);
-    sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),title),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=case when $5 in ('succeeded','cancelled') then $12::timestamptz end,updated_at=now(),parent_source_task_id=$13,parent_task_run_id=(select p.id from application_run_log_tasks p where p.application_id=$1 and p.source_id=application_run_log_tasks.source_id and p.source_session_id=application_run_log_tasks.source_session_id and p.source_task_id=$13 and p.id<>$2) where application_id=$1 and id=$2")
-        .bind(application_id).bind(record_id).bind(user).bind(final_text).bind(status).bind(outcome).bind(totals[0]).bind(totals[1]).bind(totals[2]).bind(totals[3]).bind(if cost_complete {Some(total_cost.to_string())}else{None}).bind(&last.0.occurred_at).bind(parent).execute(&mut **tx).await?;
+    sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),title),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=case when $5 in ('succeeded','cancelled') then $12::timestamptz end,updated_at=now(),parent_source_task_id=$13,parent_task_run_id=(select p.id from application_run_log_tasks p where p.application_id=$1 and p.source_id=application_run_log_tasks.source_id and p.source_session_id=application_run_log_tasks.source_session_id and p.source_task_id=$13 and p.id<>$2),requested_model_id=$14,reasoning_effort=$15 where application_id=$1 and id=$2")
+        .bind(application_id).bind(record_id).bind(user).bind(final_text).bind(status).bind(outcome).bind(totals[0]).bind(totals[1]).bind(totals[2]).bind(totals[3]).bind(if cost_complete {Some(total_cost.to_string())}else{None}).bind(&last.0.occurred_at).bind(parent).bind(model_id).bind(reasoning_effort).execute(&mut **tx).await?;
     sqlx::query("delete from application_run_conversation_message_items where application_id=$1 and record_id=$2").bind(application_id).bind(record_id).execute(&mut **tx).await?;
     for m in messages {
         sqlx::query("insert into application_run_conversation_message_items(id,scope_id,application_id,record_id,display_sequence,source_kind,role,content,can_open_detail,is_current,status,started_at) select $1,scope_id,application_id,id,$3,'current_run',$4,$5,false,true,status,started_at from application_run_log_tasks where id=$2")

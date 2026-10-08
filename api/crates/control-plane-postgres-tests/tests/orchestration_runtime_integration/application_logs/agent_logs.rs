@@ -16,6 +16,7 @@ fn event(id: &str, sequence: i64, kind: AgentLogEventKind, content: Option<&str>
         name: None,
         call_id: None,
         model_id: Some("unknown-model".into()),
+        reasoning_effort: None,
         provider_code: Some("unknown-provider".into()),
         usage: None,
         inherited: false,
@@ -30,6 +31,9 @@ fn batch(events: Vec<AgentLogEvent>) -> AgentLogsBatch {
         events,
     }
 }
+
+#[path = "agent_logs/field_projection.rs"]
+mod field_projection;
 async fn setup() -> (PgControlPlaneStore, Uuid, Uuid) {
     let db = isolated_database().await;
     let store = PgControlPlaneStore::new(db.connect().await.unwrap());

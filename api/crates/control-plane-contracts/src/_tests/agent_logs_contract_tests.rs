@@ -16,6 +16,25 @@ fn agent_logs_frozen_optional_usage_and_transport_contract() {
         .validate()
         .is_err());
 }
+
+#[test]
+fn agent_logs_reasoning_effort_is_optional_without_changing_old_event_identity() {
+    let payload = json!({"event_id":"e","source_session_id":"s","source_task_id":"t","parent_source_task_id":null,"sequence":0,"occurred_at":"2026-10-07T08:00:00Z","kind":"context","content":null,"phase":null,"name":null,"call_id":null,"model_id":"source-model","provider_code":null,"usage":null,"inherited":false,"raw":{}});
+    let mut event: AgentLogEvent = serde_json::from_value(payload.clone()).unwrap();
+    assert_eq!(event.reasoning_effort, None);
+    assert_eq!(serde_json::to_value(&event).unwrap(), payload);
+    event.reasoning_effort = Some("medium".into());
+    let mut expected = payload;
+    expected["reasoning_effort"] = json!("medium");
+    assert_eq!(serde_json::to_value(&event).unwrap(), expected);
+    assert_eq!(
+        serde_json::from_value::<AgentLogEvent>(expected)
+            .unwrap()
+            .reasoning_effort
+            .as_deref(),
+        Some("medium")
+    );
+}
 #[test]
 fn optional_agent_usage_rejects_negative_counts_without_capacity_guesses() {
     let mut event:AgentLogEvent=serde_json::from_value(json!({"event_id":"e","source_session_id":"s","source_task_id":"t","sequence":1,"occurred_at":"2026-10-07T08:00:00Z","kind":"usage","inherited":false,"usage":{"basis":"delta","total_tokens":-1}})).unwrap();

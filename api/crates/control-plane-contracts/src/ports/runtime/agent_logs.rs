@@ -30,6 +30,9 @@ pub struct AgentLogEvent {
     pub name: Option<String>,
     pub call_id: Option<String>,
     pub model_id: Option<String>,
+    /// Source-declared effort; omission preserves the canonical identity of v1 events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
     pub provider_code: Option<String>,
     pub usage: Option<AgentLogUsage>,
     #[serde(default)]
