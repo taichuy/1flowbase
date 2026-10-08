@@ -15,11 +15,13 @@ use crate::output_schema::{history_messages_schema, output_schema_is_llm_context
 use crate::payload_builder::PublicOutputContract;
 
 mod code_runtime_config;
+mod diagnostics;
 mod node_compilation;
 mod selector_paths;
 mod topology;
 pub(crate) mod variable_aggregator_contract;
 
+pub use diagnostics::{FlowValidationError, NodeDiagnostic};
 pub use node_compilation::js_dependency_lookup_key;
 pub use topology::FlowCompiler;
 
@@ -28,13 +30,13 @@ pub fn ensure_plan_execution_contract(plan: &CompiledPlan) -> Result<()> {
         .into_iter()
         .next()
     {
-        bail!(issue.message);
+        return Err(FlowValidationError::from_issues([&issue]).into());
     }
     if let Some(issue) = topology::validate_executable_node_types(&plan.nodes)
         .into_iter()
         .next()
     {
-        bail!(issue.message);
+        return Err(FlowValidationError::from_issues([&issue]).into());
     }
     Ok(())
 }

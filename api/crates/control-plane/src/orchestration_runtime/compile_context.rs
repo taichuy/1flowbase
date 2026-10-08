@@ -442,7 +442,14 @@ pub(super) fn ensure_compiled_plan_runnable(
     compiled_plan: &orchestration_runtime::compiled_plan::CompiledPlan,
 ) -> Result<()> {
     if let Some(issue) = compiled_plan.compile_issues.first() {
-        return Err(ControlPlaneError::InvalidInput(compile_issue_field(issue)).into());
+        return Err(
+            anyhow::Error::new(ControlPlaneError::InvalidInput(compile_issue_field(issue)))
+                .context(
+                    orchestration_runtime::compiler::FlowValidationError::from_issues(
+                        &compiled_plan.compile_issues,
+                    ),
+                ),
+        );
     }
     orchestration_runtime::compiler::ensure_plan_execution_contract(compiled_plan)?;
 
@@ -460,7 +467,17 @@ pub(super) fn ensure_compiled_plan_runnable_for_node(
         .find(|issue| target_node_scope.contains(issue.node_id.as_str()));
 
     if let Some(issue) = blocking_issue {
-        return Err(ControlPlaneError::InvalidInput(compile_issue_field(issue)).into());
+        return Err(
+            anyhow::Error::new(ControlPlaneError::InvalidInput(compile_issue_field(issue)))
+                .context(
+                    orchestration_runtime::compiler::FlowValidationError::from_issues(
+                        compiled_plan
+                            .compile_issues
+                            .iter()
+                            .filter(|issue| target_node_scope.contains(issue.node_id.as_str())),
+                    ),
+                ),
+        );
     }
 
     Ok(())

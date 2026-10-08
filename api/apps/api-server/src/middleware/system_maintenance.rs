@@ -92,6 +92,7 @@ fn maintenance_unavailable() -> Response {
             code: "system_maintenance".to_owned(),
             message: "system writes are temporarily fenced for recovery".to_owned(),
             inventory: None,
+            details: None,
         }),
     )
         .into_response()

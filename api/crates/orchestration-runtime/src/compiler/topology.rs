@@ -80,6 +80,7 @@ impl FlowCompiler {
             document,
             context,
         )
+        .map_err(FlowValidationError::at_document)
     }
 
     pub fn compile_workflow(
@@ -95,6 +96,7 @@ impl FlowCompiler {
             document,
             context,
         )
+        .map_err(FlowValidationError::at_document)
     }
 
     fn compile_for_kind(
@@ -210,7 +212,13 @@ pub(super) fn build_nodes_and_topology(
     let mut compile_issues = Vec::new();
 
     for node in node_values {
-        let compiled = compile_node(node, context, &mut compile_issues)?;
+        let compiled = compile_node(node, context, &mut compile_issues).map_err(|error| {
+            FlowValidationError::at_node(
+                node.get("id").and_then(Value::as_str).unwrap_or(""),
+                "",
+                error,
+            )
+        })?;
 
         if nodes.contains_key(&compiled.node_id) {
             bail!("duplicate node id: {}", compiled.node_id);
@@ -351,7 +359,9 @@ pub(super) fn build_nodes_and_topology(
         );
     }
 
-    validate_variable_aggregator_topology(document, context, &nodes)?;
+    super::variable_aggregator_contract::validate_variable_aggregator_topology(
+        document, context, &nodes,
+    )?;
     compile_issues.extend(validate_variable_scope_contracts(&nodes));
     compile_issues.extend(validate_llm_context_policies(&nodes));
     compile_issues.extend(validate_executable_node_types(&nodes));
@@ -359,60 +369,7 @@ pub(super) fn build_nodes_and_topology(
     Ok((nodes, compiled_edges, topological_order, compile_issues))
 }
 
-fn validate_variable_aggregator_topology(
-    document: &Value,
-    context: &FlowCompileContext,
-    nodes: &BTreeMap<String, CompiledNode>,
-) -> Result<()> {
-    for node in nodes
-        .values()
-        .filter(|node| node.node_type == "variable_aggregator")
-    {
-        let binding = node
-            .bindings
-            .get("groups")
-            .ok_or_else(|| anyhow!("node {} is missing bindings.groups", node.node_id))?;
-        let groups =
-            crate::compiler::variable_aggregator_contract::variable_aggregator_groups(binding)?;
-        for group in groups {
-            for selector in group.candidates {
-                let output = variable_aggregator_output_for_selector(
-                    document, context, nodes, &selector,
-                )
-                .with_context(|| {
-                    format!(
-                        "node {} variable_aggregator group {} selector {} has no valid declared type",
-                        node.node_id,
-                        group.key,
-                        selector.join(".")
-                    )
-                })?;
-                let actual = crate::compiler::variable_aggregator_contract::normalized_variable_group_value_type(&output.value_type).ok_or_else(|| {
-                    anyhow!(
-                        "node {} variable_aggregator group {} selector {} uses forbidden upstream valueType {}",
-                        node.node_id,
-                        group.key,
-                        selector.join("."),
-                        output.value_type
-                    )
-                })?;
-                if actual != group.value_type {
-                    bail!(
-                        "node {} variable_aggregator group {} expects valueType {} but selector {} declares {}",
-                        node.node_id,
-                        group.key,
-                        group.value_type,
-                        selector.join("."),
-                        output.value_type
-                    );
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn variable_aggregator_output_for_selector(
+pub(super) fn variable_aggregator_output_for_selector(
     document: &Value,
     context: &FlowCompileContext,
     nodes: &BTreeMap<String, CompiledNode>,
@@ -517,26 +474,38 @@ pub(super) fn validate_variable_scope_contracts(
     let mut issues = Vec::new();
 
     for node in nodes.values() {
-        for selector in node
-            .bindings
-            .values()
-            .flat_map(|binding| binding.selector_paths.iter())
-        {
-            validate_variable_selector(nodes, node, selector, &mut issues);
+        for (key, binding) in &node.bindings {
+            let path = format!("/bindings/{}", diagnostics::pointer_segment(key));
+            for selector in &binding.selector_paths {
+                validate_variable_selector(nodes, node, selector, &path, &mut issues);
+            }
         }
 
         if let Some(selector) = context_policy_selector(node) {
-            validate_variable_selector(nodes, node, &selector, &mut issues);
+            validate_variable_selector(
+                nodes,
+                node,
+                &selector,
+                "/config/context_policy",
+                &mut issues,
+            );
         }
 
         if node.node_type == "llm" {
             match node.protocol_context_reference() {
                 Ok(Some(reference)) => {
-                    validate_variable_selector(nodes, node, reference.selector_path(), &mut issues);
+                    validate_variable_selector(
+                        nodes,
+                        node,
+                        reference.selector_path(),
+                        "/config/protocol_context",
+                        &mut issues,
+                    );
                     validate_protocol_context_reference(nodes, node, &reference, &mut issues);
                 }
                 Ok(None) => {}
                 Err(error) => issues.push(CompileIssue {
+                    field_path: None,
                     node_id: node.node_id.clone(),
                     code: CompileIssueCode::InvalidLlmContextSelector,
                     message: format!(
@@ -567,6 +536,7 @@ fn validate_protocol_context_reference(
     };
     if RUN_LEVEL_VARIABLE_NAMESPACES.contains(&source_id.as_str()) {
         issues.push(CompileIssue {
+            field_path: None,
             node_id: target.node_id.clone(),
             code: CompileIssueCode::InvalidLlmContextSelector,
             message: format!(
@@ -589,6 +559,7 @@ fn validate_protocol_context_reference(
         "start" | "workflow_start" | "code"
     ) {
         issues.push(CompileIssue {
+            field_path: None,
             node_id: target.node_id.clone(),
             code: CompileIssueCode::InvalidLlmContextSelector,
             message: format!(
@@ -602,6 +573,7 @@ fn validate_protocol_context_reference(
 
     let Some(output) = output_for_selector(nodes, selector) else {
         issues.push(CompileIssue {
+            field_path: None,
             node_id: target.node_id.clone(),
             code: CompileIssueCode::InvalidLlmContextSelector,
             message: format!(
@@ -614,6 +586,7 @@ fn validate_protocol_context_reference(
     };
     if output.value_type != extension_contracts::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE {
         issues.push(CompileIssue {
+            field_path: None,
             node_id: target.node_id.clone(),
             code: CompileIssueCode::IncompatibleLlmContextSchema,
             message: format!(
@@ -629,6 +602,7 @@ fn validate_variable_selector(
     nodes: &BTreeMap<String, CompiledNode>,
     target: &CompiledNode,
     selector: &[String],
+    field_path: &str,
     issues: &mut Vec<CompileIssue>,
 ) {
     let Some(source_id) = selector.first() else {
@@ -640,6 +614,7 @@ fn validate_variable_selector(
 
     let Some(source) = nodes.get(source_id) else {
         issues.push(CompileIssue {
+            field_path: Some(field_path.to_owned()),
             node_id: target.node_id.clone(),
             code: CompileIssueCode::InvalidSelectorSource,
             message: format!(
@@ -653,6 +628,7 @@ fn validate_variable_selector(
 
     if !node_depends_on(nodes, &target.node_id, source_id) {
         issues.push(CompileIssue {
+            field_path: Some(field_path.to_owned()),
             node_id: target.node_id.clone(),
             code: CompileIssueCode::SelectorSourceNotReachable,
             message: format!(
@@ -678,6 +654,7 @@ fn validate_variable_selector(
     }
 
     issues.push(CompileIssue {
+        field_path: Some(field_path.to_owned()),
         node_id: target.node_id.clone(),
         code: CompileIssueCode::SelectorOutputNotFound,
         message: format!(
@@ -722,6 +699,7 @@ pub(super) fn validate_executable_node_types(
         .values()
         .filter(|node| !EXECUTABLE_NODE_TYPES.contains(&node.node_type.as_str()))
         .map(|node| CompileIssue {
+            field_path: None,
             node_id: node.node_id.clone(),
             code: CompileIssueCode::UnsupportedNodeType,
             message: format!(
@@ -962,6 +940,7 @@ fn validate_llm_context_policies(nodes: &BTreeMap<String, CompiledNode>) -> Vec<
             }
             let Some(output) = output_for_selector(nodes, &selector) else {
                 return Some(CompileIssue {
+                    field_path: None,
                     node_id: node.node_id.clone(),
                     code: CompileIssueCode::InvalidLlmContextSelector,
                     message: format!(
@@ -973,6 +952,7 @@ fn validate_llm_context_policies(nodes: &BTreeMap<String, CompiledNode>) -> Vec<
             };
 
             (!output_schema_is_llm_context_messages(&output)).then(|| CompileIssue {
+                field_path: None,
                 node_id: node.node_id.clone(),
                 code: CompileIssueCode::IncompatibleLlmContextSchema,
                 message: format!(
@@ -1016,6 +996,7 @@ fn materialize_visible_internal_llm_tool_targets(
                 .filter(|value| !value.is_empty());
             let Some(connector_id) = connector_id else {
                 issues.push(CompileIssue {
+                    field_path: None,
                     node_id: node_id.clone(),
                     code: CompileIssueCode::InvalidVisibleInternalLlmTool,
                     message: format!(
@@ -1035,6 +1016,7 @@ fn materialize_visible_internal_llm_tool_targets(
 
             if matching_edges.is_empty() {
                 issues.push(CompileIssue {
+                    field_path: None,
                     node_id: node_id.clone(),
                     code: CompileIssueCode::InvalidVisibleInternalLlmTool,
                     message: format!(
@@ -1048,6 +1030,7 @@ fn materialize_visible_internal_llm_tool_targets(
                 .unwrap_or_else(|| TOOL_MODE_AGENT.to_string());
             if matching_edges.len() > 1 && tool_mode != TOOL_MODE_FUSION {
                 issues.push(CompileIssue {
+                    field_path: None,
                     node_id: node_id.clone(),
                     code: CompileIssueCode::InvalidVisibleInternalLlmTool,
                     message: format!(
@@ -1099,6 +1082,7 @@ fn validate_visible_internal_llm_tool_branches(
             if let Some(mode) = visible_internal_llm_tool_mode_value(tool) {
                 if mode != TOOL_MODE_AGENT && mode != TOOL_MODE_FUSION {
                     issues.push(CompileIssue {
+                        field_path: None,
                         node_id: node.node_id.clone(),
                         code: CompileIssueCode::InvalidVisibleInternalLlmTool,
                         message: format!(
@@ -1113,6 +1097,7 @@ fn validate_visible_internal_llm_tool_branches(
                     && policy != EXTERNAL_TOOL_POLICY_INHERITED
                 {
                     issues.push(CompileIssue {
+                        field_path: None,
                         node_id: node.node_id.clone(),
                         code: CompileIssueCode::InvalidVisibleInternalLlmTool,
                         message: format!(
@@ -1146,6 +1131,7 @@ fn validate_visible_internal_llm_tool_branches(
 
             if tool_result_node_ids.is_empty() {
                 issues.push(CompileIssue {
+                    field_path: None,
                     node_id: node.node_id.clone(),
                     code: CompileIssueCode::InvalidVisibleInternalLlmTool,
                     message: format!(
@@ -1155,6 +1141,7 @@ fn validate_visible_internal_llm_tool_branches(
                 });
             } else if tool_result_node_ids.len() > 1 {
                 issues.push(CompileIssue {
+                    field_path: None,
                     node_id: node.node_id.clone(),
                     code: CompileIssueCode::InvalidVisibleInternalLlmTool,
                     message: format!(
@@ -1176,6 +1163,7 @@ fn validate_visible_internal_llm_tool_branches(
 
                     if reachable_node.node_type == "llm" {
                         issues.push(CompileIssue {
+                            field_path: None,
                             node_id: node.node_id.clone(),
                             code: CompileIssueCode::InvalidVisibleInternalLlmTool,
                             message: format!(

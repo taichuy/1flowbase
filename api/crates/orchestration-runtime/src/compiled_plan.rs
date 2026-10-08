@@ -374,6 +374,8 @@ pub enum CompileIssueCode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompileIssue {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field_path: Option<String>,
     pub node_id: String,
     pub code: CompileIssueCode,
     pub message: String,

@@ -1,7 +1,11 @@
-use anyhow::{anyhow, bail, Result};
+use std::collections::BTreeMap;
+
+use super::topology::variable_aggregator_output_for_selector;
+use super::{FlowCompileContext, FlowValidationError};
+use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
 
-use crate::compiled_plan::{CompiledBinding, CompiledOutput};
+use crate::compiled_plan::{CompiledBinding, CompiledNode, CompiledOutput};
 
 pub(crate) const VARIABLE_GROUPS_BINDING_KIND: &str = "variable_groups";
 pub(crate) const VARIABLE_GROUP_VALUE_TYPES: &[&str] =
@@ -116,27 +120,54 @@ pub(crate) fn variable_aggregator_groups(
 }
 
 pub(crate) fn validate_variable_aggregator_outputs(
+    node_id: &str,
     groups: &[VariableAggregatorGroup<'_>],
     outputs: &[CompiledOutput],
 ) -> Result<()> {
     if outputs.len() != groups.len() {
-        bail!("variable_aggregator outputs must match groups in order and count");
+        return Err(FlowValidationError::node(
+            node_id,
+            "variable_aggregator_output_mismatch",
+            "/outputs",
+            "variable_aggregator outputs must match groups in order and count",
+            Some(serde_json::json!({ "count": groups.len() })),
+        )
+        .into());
     }
-    for (group, output) in groups.iter().zip(outputs) {
-        if output.key != group.key
-            || output.title != group.key
-            || output.value_type != group.value_type
-            || output.selector.len() != 1
-            || output.selector[0] != group.key
-            || output.json_schema.is_some()
-        {
-            bail!(
-                "variable_aggregator output {} must be {{key: {}, title: {}, valueType: {}}}",
-                group.key,
-                group.key,
-                group.key,
-                group.value_type
-            );
+    for (index, (group, output)) in groups.iter().zip(outputs).enumerate() {
+        let checks = [
+            ("key", output.key != group.key, serde_json::json!(group.key)),
+            (
+                "title",
+                output.title != group.key,
+                serde_json::json!(group.key),
+            ),
+            (
+                "valueType",
+                output.value_type != group.value_type,
+                serde_json::json!(group.value_type),
+            ),
+            (
+                "selector",
+                output.selector.len() != 1 || output.selector[0] != group.key,
+                serde_json::json!([group.key]),
+            ),
+            ("jsonSchema", output.json_schema.is_some(), Value::Null),
+        ];
+        for (field, invalid, expected) in checks {
+            if invalid {
+                return Err(FlowValidationError::node(
+                    node_id,
+                    "variable_aggregator_output_mismatch",
+                    &format!("/outputs/{index}/{field}"),
+                    format!(
+                        "variable_aggregator output {field} must match group {}",
+                        group.key
+                    ),
+                    Some(expected),
+                )
+                .into());
+            }
         }
     }
     Ok(())
@@ -149,4 +180,50 @@ pub(crate) fn normalized_variable_group_value_type(value_type: &str) -> Option<&
     VARIABLE_GROUP_VALUE_TYPES
         .contains(&value_type)
         .then_some(value_type)
+}
+
+pub(super) fn validate_variable_aggregator_topology(
+    document: &Value,
+    context: &FlowCompileContext,
+    nodes: &BTreeMap<String, CompiledNode>,
+) -> Result<()> {
+    for node in nodes
+        .values()
+        .filter(|node| node.node_type == "variable_aggregator")
+    {
+        let binding = node
+            .bindings
+            .get("groups")
+            .ok_or_else(|| anyhow!("node {} is missing bindings.groups", node.node_id))?;
+        let groups =
+            crate::compiler::variable_aggregator_contract::variable_aggregator_groups(binding)?;
+        for (group_index, group) in groups.into_iter().enumerate() {
+            for (candidate_index, selector) in group.candidates.into_iter().enumerate() {
+                let path =
+                    format!("/bindings/groups/value/{group_index}/candidates/{candidate_index}");
+                let output = variable_aggregator_output_for_selector(document, context, nodes, &selector)
+                    .with_context(|| format!(
+                        "node {} variable_aggregator group {} selector {} has no valid declared type",
+                        node.node_id, group.key, selector.join("."),
+                    ))
+                    .map_err(|error| FlowValidationError::at_node(&node.node_id, &path, error))?;
+                let actual = crate::compiler::variable_aggregator_contract::normalized_variable_group_value_type(&output.value_type)
+                    .ok_or_else(|| FlowValidationError::node(
+                        &node.node_id, "variable_aggregator_candidate_type_mismatch", &path,
+                        format!("node {} variable_aggregator group {} selector {} uses forbidden upstream valueType {}",
+                            node.node_id, group.key, selector.join("."), output.value_type),
+                        Some(serde_json::json!(group.value_type)),
+                    ))?;
+                if actual != group.value_type {
+                    return Err(FlowValidationError::node(
+                        &node.node_id, "variable_aggregator_candidate_type_mismatch", &path,
+                        format!("node {} variable_aggregator group {} expects valueType {} but selector {} declares {}",
+                            node.node_id, group.key, group.value_type, selector.join("."), output.value_type),
+                        Some(serde_json::json!(group.value_type)),
+                    ).into());
+                }
+            }
+        }
+    }
+    Ok(())
 }

@@ -179,6 +179,7 @@ fn push_code_isolation_issue(
     reason: &str,
 ) {
     compile_issues.push(CompileIssue {
+        field_path: None,
         node_id: node_id.to_string(),
         code: CompileIssueCode::InvalidCodeIsolationProfile,
         message: format!("code isolation profile field `{field}` is invalid: {reason}"),
@@ -223,6 +224,7 @@ pub(super) fn validate_code_imports(
     };
     let Some(imports) = imports.as_array() else {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::InvalidJsDependencyImport,
             message: format!("node {node_id} config.imports must be an array of alias strings"),
@@ -237,6 +239,7 @@ pub(super) fn validate_code_imports(
             .filter(|value| !value.is_empty())
         else {
             compile_issues.push(CompileIssue {
+                field_path: None,
                 node_id: node_id.to_string(),
                 code: CompileIssueCode::InvalidJsDependencyImport,
                 message: format!(
@@ -249,6 +252,7 @@ pub(super) fn validate_code_imports(
         let key = js_dependency_lookup_key(target, alias);
         if !context.js_dependencies.contains_key(&key) {
             compile_issues.push(CompileIssue {
+            field_path: None,
                 node_id: node_id.to_string(),
                 code: CompileIssueCode::JsDependencyImportNotEnabled,
                 message: format!(

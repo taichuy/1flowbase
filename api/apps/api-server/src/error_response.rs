@@ -28,6 +28,8 @@ pub struct ErrorBody {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inventory: Option<BackupSourceInventoryErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -90,6 +92,7 @@ impl IntoResponse for ApiError {
                     status: StatusCode::CONFLICT.as_u16(),
                     code: "system_backup_source_inventory_invalid".to_owned(),
                     message: "A required backup artifact cannot be restored.".to_owned(),
+                    details: None,
                     inventory: Some(BackupSourceInventoryErrorDetails {
                         reason: error.reason.as_str().to_owned(),
                         installation_id: error.installation_id.to_string(),
@@ -112,6 +115,35 @@ impl IntoResponse for ApiError {
                     code: "system_maintenance_busy".to_owned(),
                     message: "A system maintenance operation is already active.".to_owned(),
                     inventory: None,
+                    details: None,
+                }),
+            )
+                .into_response();
+        }
+
+        if let Some(validation) = self
+            .0
+            .downcast_ref::<orchestration_runtime::compiler::FlowValidationError>()
+        {
+            let diagnostics = validation
+                .diagnostics
+                .iter()
+                .cloned()
+                .map(|mut diagnostic| {
+                    diagnostic.message = sanitize_error_message(&diagnostic.message);
+                    diagnostic
+                })
+                .collect::<Vec<_>>();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorBody {
+                    status: 400,
+                    code: "flow_validation_failed".to_owned(),
+                    message: sanitize_error_message(&validation.to_string()),
+                    inventory: None,
+                    details: Some(
+                        serde_json::json!({ "phase": "validation", "diagnostics": diagnostics }),
+                    ),
                 }),
             )
                 .into_response();
@@ -194,6 +226,7 @@ impl IntoResponse for ApiError {
                 code: code.to_string(),
                 message,
                 inventory: None,
+                details: None,
             }),
         )
             .into_response()
@@ -219,3 +252,7 @@ fn sanitize_error_message(message: &str) -> String {
     }
     sanitized
 }
+
+#[cfg(test)]
+#[path = "error_response/_tests/node_diagnostics.rs"]
+mod node_diagnostics_tests;

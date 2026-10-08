@@ -213,6 +213,7 @@ pub fn validate_answer_presentation(plan: &CompiledPlan) -> Vec<CompileIssue> {
         for (_, node_id, output_path) in &outputs {
             if !seen.insert(((*node_id).to_string(), (*output_path).to_vec())) {
                 issues.push(CompileIssue {
+                    field_path: None,
                     node_id: presentation.answer_node_id.clone(),
                     code: CompileIssueCode::DuplicateAnswerPresentationReference,
                     message: format!(
@@ -227,6 +228,7 @@ pub fn validate_answer_presentation(plan: &CompiledPlan) -> Vec<CompileIssue> {
             for (_, right_node_id, _) in outputs.iter().skip(position + 1) {
                 if depends_on(plan, left_node_id, right_node_id) {
                     issues.push(CompileIssue {
+            field_path: None,
                         node_id: presentation.answer_node_id.clone(),
                         code: CompileIssueCode::InvalidAnswerPresentationOrder,
                         message: format!(

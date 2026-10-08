@@ -403,3 +403,63 @@ fn prerequisite_description_fails_closed_when_not_visible_enabled_or_in_scope() 
         );
     }
 }
+
+#[tokio::test]
+async fn node_diagnostics_api_to_mcp_preserves_structured_configuration_error() {
+    use axum::response::IntoResponse;
+    use orchestration_runtime::compiler::{FlowValidationError, NodeDiagnostic};
+    let response = crate::error_response::ApiError(anyhow::Error::new(FlowValidationError {
+        diagnostics: vec![NodeDiagnostic {
+            node_id: Some("upstream-code".into()),
+            code: "invalid_selector_source".into(),
+            field_path: "/bindings/name".into(),
+            message: "Selector missing.name references an unknown source node".into(),
+            expected: None,
+        }],
+    }))
+    .into_response();
+    let VirtualToolOutcome::Error {
+        data: Some(data), ..
+    } = target_interface_failure(response).await
+    else {
+        panic!("configuration error must stay an MCP error");
+    };
+    assert_eq!(data["http_status"], 400);
+    assert_eq!(data["target_code"], "flow_validation_failed");
+    assert_eq!(
+        data["target_details"]["diagnostics"][0]["node_id"],
+        "upstream-code"
+    );
+    assert_eq!(
+        data["target_details"]["diagnostics"][0]["field_path"],
+        "/bindings/name"
+    );
+    assert_eq!(data["retry_original"], false);
+}
+
+#[tokio::test]
+async fn node_diagnostics_mcp_does_not_forward_auth_or_server_details() {
+    for status in [
+        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
+        StatusCode::INTERNAL_SERVER_ERROR,
+    ] {
+        let response = Response::builder()
+            .status(status)
+            .body(axum::body::Body::from(
+                json!({
+                    "code":"test_error", "details":{"diagnostics":[{"message":"private"}]},
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let VirtualToolOutcome::Error {
+            data: Some(data), ..
+        } = target_interface_failure(response).await
+        else {
+            panic!("must remain an error");
+        };
+        assert!(data.get("target_details").is_none());
+        assert!(!data.to_string().contains("private"));
+    }
+}

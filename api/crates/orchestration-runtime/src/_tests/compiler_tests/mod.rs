@@ -449,3 +449,5 @@ mod bindings_and_outputs;
 mod branches;
 mod code_runtime;
 mod provider_and_plugin;
+
+mod diagnostics;

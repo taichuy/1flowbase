@@ -53,14 +53,16 @@ pub(super) fn compile_node(
             );
         }
     }
-    let bindings = compile_bindings(&active_bindings)
-        .with_context(|| format!("failed to compile bindings for node {node_id}"))?;
+    let bindings = compile_bindings(&node_id, &active_bindings)
+        .with_context(|| format!("failed to compile bindings for node {node_id}"))
+        .map_err(|error| FlowValidationError::at_node(&node_id, "/bindings", error))?;
     let mut outputs = compile_outputs(
         node.get("outputs")
             .and_then(Value::as_array)
             .ok_or_else(|| anyhow!("node {node_id} missing outputs"))?,
     )
-    .with_context(|| format!("failed to compile outputs for node {node_id}"))?;
+    .with_context(|| format!("failed to compile outputs for node {node_id}"))
+    .map_err(|error| FlowValidationError::at_node(&node_id, "/outputs", error))?;
     if node_type == "code" {
         for output in &mut outputs {
             if output.selector.len() == 1 && output.selector[0] == output.key {
@@ -76,6 +78,7 @@ pub(super) fn compile_node(
     }
     if node_type == "unresolved_node" {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.clone(),
             code: CompileIssueCode::UnresolvedNode,
             message: unresolved_node_message(&node_id, &config),
@@ -121,15 +124,22 @@ fn validate_variable_aggregator_contract(
             "node {node_id} variable_aggregator legacy candidates/value bindings are not supported"
         );
     }
-    let binding = bindings
-        .get("groups")
-        .ok_or_else(|| anyhow!("node {node_id} variable_aggregator is missing bindings.groups"))?;
+    let binding = bindings.get("groups").ok_or_else(|| {
+        FlowValidationError::node(
+            node_id,
+            "invalid_node_configuration",
+            "/bindings/groups",
+            format!("node {node_id} variable_aggregator is missing bindings.groups"),
+            None,
+        )
+    })?;
     let groups = crate::compiler::variable_aggregator_contract::variable_aggregator_groups(binding)
         .with_context(|| {
             format!("node {node_id} has an invalid variable_aggregator groups contract")
-        })?;
+        })
+        .map_err(|error| FlowValidationError::at_node(node_id, "/bindings/groups", error))?;
     crate::compiler::variable_aggregator_contract::validate_variable_aggregator_outputs(
-        &groups, outputs,
+        node_id, &groups, outputs,
     )
     .with_context(|| format!("node {node_id} has an invalid variable_aggregator output contract"))
 }
@@ -145,6 +155,7 @@ fn validate_native_sql_config(
         .and_then(Value::as_str);
     match data_source_instance_id {
         None | Some("") => compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingDataSourceInstance,
             message: format!("node {node_id} is missing config.data_source_instance_id"),
@@ -152,6 +163,7 @@ fn validate_native_sql_config(
         Some("main") => {}
         Some(value) if uuid::Uuid::parse_str(value).is_ok() => {}
         Some(_) => compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::InvalidDataSourceInstance,
             message: format!("node {node_id} has an invalid config.data_source_instance_id"),
@@ -163,6 +175,7 @@ fn validate_native_sql_config(
         .is_some_and(|binding| binding.kind == "templated_text" && binding.raw_value.is_string())
     {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingNativeSql,
             message: format!("node {node_id} is missing bindings.sql templated_text"),
@@ -261,12 +274,14 @@ fn compile_llm_runtime(
 
     let Some(provider_code) = provider_code else {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingProviderInstance,
             message: format!("node {node_id} is missing config.model_provider.provider_code"),
         });
         if model.is_none() {
             compile_issues.push(CompileIssue {
+                field_path: None,
                 node_id: node_id.to_string(),
                 code: CompileIssueCode::MissingModel,
                 message: format!("node {node_id} is missing config.model_provider.model_id"),
@@ -277,6 +292,7 @@ fn compile_llm_runtime(
 
     let Some(model) = model else {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingModel,
             message: format!("node {node_id} is missing config.model_provider.model_id"),
@@ -324,6 +340,7 @@ fn resolve_fixed_model_provider_instances<'a>(
 ) -> Option<Vec<&'a FlowCompileProviderInstance>> {
     if !context.provider_families.contains_key(provider_code) {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::ProviderInstanceNotFound,
             message: format!("provider {provider_code} was not found"),
@@ -339,6 +356,7 @@ fn resolve_fixed_model_provider_instances<'a>(
 
     if candidates.is_empty() {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::ProviderInstanceNotFound,
             message: format!("provider {provider_code} has no included runtime instance"),
@@ -360,6 +378,7 @@ fn resolve_fixed_model_provider_instances<'a>(
 
     if model_candidates.is_empty() {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::ModelNotAvailable,
             message: format!("model {model} is not available for provider {provider_code}"),
@@ -401,6 +420,7 @@ fn resolve_fixed_model_provider_instances<'a>(
     }
 
     compile_issues.push(CompileIssue {
+        field_path: None,
         node_id: node_id.to_string(),
         code: CompileIssueCode::ProviderInstanceNotReady,
         message: format!("provider {provider_code} has no runnable instance for model {model}"),
@@ -441,6 +461,7 @@ fn compile_failover_queue_runtime(
 
     if queue_template_id.is_none() {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingProviderInstance,
             message: format!("node {node_id} is missing config.model_provider.queue_template_id"),
@@ -506,6 +527,7 @@ fn compile_failover_queue_target(
 
     let Some(provider_instance_id) = provider_instance_id else {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingProviderInstance,
             message: format!(
@@ -516,6 +538,7 @@ fn compile_failover_queue_target(
     };
     let Some(upstream_model_id) = upstream_model_id else {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingModel,
             message: format!("node {node_id} failover target {index} is missing upstream_model_id"),
@@ -524,6 +547,7 @@ fn compile_failover_queue_target(
     };
     let Some(provider_instance) = context.provider_instances.get(&provider_instance_id) else {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::ProviderInstanceNotFound,
             message: format!(
@@ -538,6 +562,7 @@ fn compile_failover_queue_target(
         || !provider_instance.included_in_main
     {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::ProviderInstanceNotReady,
             message: format!(
@@ -552,6 +577,7 @@ fn compile_failover_queue_target(
             .contains(&upstream_model_id)
     {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::ModelNotAvailable,
             message: format!(
@@ -593,6 +619,7 @@ fn compile_plugin_runtime(
     )?;
     if schema_version != NODE_CONTRIBUTION_SCHEMA_VERSION {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::UnsupportedPluginContributionSchemaVersion,
             message: format!(
@@ -669,6 +696,7 @@ fn compile_plugin_runtime(
     );
     let Some(contribution) = context.node_contributions.get(&lookup_key) else {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingPluginContribution,
             message: format!(
@@ -682,6 +710,7 @@ fn compile_plugin_runtime(
         || contribution.package_id != package_id
     {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingPluginContribution,
             message: format!("node {node_id} contribution identity no longer matches registry"),
@@ -690,6 +719,7 @@ fn compile_plugin_runtime(
 
     if contribution.dependency_status != "ready" {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::PluginContributionDependencyNotReady,
             message: format!(
@@ -703,6 +733,7 @@ fn compile_plugin_runtime(
         || contribution.compiled_contribution_hash != compiled_contribution_hash
     {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::PluginContributionChecksumMismatch,
             message: format!(
@@ -715,6 +746,7 @@ fn compile_plugin_runtime(
         || compiled_outputs != output_schema_snapshot
     {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::PluginContributionOutputSchemaMismatch,
             message: format!(
@@ -750,6 +782,7 @@ fn compile_output_schema_snapshot(
         .and_then(Value::as_array)
     else {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code: CompileIssueCode::MissingOutputSchemaSnapshot,
             message: format!("node {node_id} missing output_schema_snapshot.outputs"),
@@ -761,6 +794,7 @@ fn compile_output_schema_snapshot(
         Ok(outputs) => Some(outputs),
         Err(error) => {
             compile_issues.push(CompileIssue {
+                field_path: None,
                 node_id: node_id.to_string(),
                 code: CompileIssueCode::PluginContributionOutputSchemaMismatch,
                 message: format!("node {node_id} has invalid output_schema_snapshot: {error}"),
@@ -786,6 +820,7 @@ fn required_plugin_string(
 
     if value.is_none() {
         compile_issues.push(CompileIssue {
+            field_path: None,
             node_id: node_id.to_string(),
             code,
             message: format!("node {node_id} missing {field}"),
@@ -810,36 +845,37 @@ pub fn js_dependency_lookup_key(target: &str, alias: &str) -> String {
 }
 
 fn compile_bindings(
+    node_id: &str,
     binding_values: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, CompiledBinding>> {
     let mut bindings = BTreeMap::new();
-
     for (binding_key, binding_value) in binding_values {
-        let kind = required_string(binding_value, "kind")
-            .with_context(|| format!("binding {binding_key} missing kind"))?;
-        let raw_value = binding_value.get("value").cloned().unwrap_or(Value::Null);
-        let i18n_text_ref =
-            if kind == "i18n_text" {
+        let parsed = (|| -> Result<CompiledBinding> {
+            let kind = required_string(binding_value, "kind")
+                .with_context(|| format!("binding {binding_key} missing kind"))?;
+            let raw_value = binding_value.get("value").cloned().unwrap_or(Value::Null);
+            let i18n_text_ref = if kind == "i18n_text" {
                 Some(compile_i18n_text_ref(binding_value).with_context(|| {
                     format!("binding {binding_key} has invalid i18n_text payload")
                 })?)
             } else {
                 None
             };
-        let selector_paths = extract_selector_paths(kind, &raw_value)
-            .with_context(|| format!("binding {binding_key} has invalid selector payload"))?;
-
-        bindings.insert(
-            binding_key.clone(),
-            CompiledBinding {
+            let selector_paths = extract_selector_paths(kind, &raw_value)
+                .with_context(|| format!("binding {binding_key} has invalid selector payload"))?;
+            Ok(CompiledBinding {
                 i18n_text_ref,
                 kind: kind.to_string(),
                 raw_value,
                 selector_paths,
-            },
+            })
+        })();
+        let path = format!("/bindings/{}", diagnostics::pointer_segment(binding_key));
+        bindings.insert(
+            binding_key.clone(),
+            parsed.map_err(|error| FlowValidationError::at_node(node_id, &path, error))?,
         );
     }
-
     Ok(bindings)
 }
 

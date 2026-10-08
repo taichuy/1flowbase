@@ -442,3 +442,62 @@ async fn workflow_node_preview_rejects_non_object_input_before_creating_a_run() 
         .await
         .is_empty());
 }
+
+#[tokio::test]
+async fn workflow_node_diagnostics_report_upstream_failure_without_creating_runs() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_workflow_application_with_flow("Diagnostic Workflow")
+        .await;
+    let mut document = workflow_document(seeded.flow_id);
+    document["graph"]["nodes"][1]["bindings"]["template"]["value"] =
+        json!("{{ missing-node.result }}");
+    let error = service
+        .start_node_debug_preview(StartNodeDebugPreviewCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            node_id: "node-workflow-end".to_string(),
+            input_payload: json!({"node-transform":{"ticket_id":"already-supplied"}}),
+            document_snapshot: Some(document),
+            debug_session_id: None,
+        })
+        .await
+        .unwrap_err();
+    let diagnostic = &error
+        .downcast_ref::<orchestration_runtime::compiler::FlowValidationError>()
+        .expect("validation must retain structured diagnostics")
+        .diagnostics[0];
+    assert_eq!(diagnostic.node_id.as_deref(), Some("node-transform"));
+    assert_eq!(diagnostic.code, "invalid_selector_source");
+    assert_eq!(diagnostic.field_path, "/bindings/template");
+    assert!(service
+        .application_runs(seeded.application_id)
+        .await
+        .is_empty());
+}
+
+#[tokio::test]
+async fn workflow_node_diagnostics_unrelated_soft_issue_does_not_block_target_preview() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_workflow_application_with_flow("Scoped Diagnostic Workflow")
+        .await;
+    let mut document = workflow_document(seeded.flow_id);
+    document["graph"]["nodes"].as_array_mut().unwrap().push(json!({
+        "id":"unrelated","type":"template_transform","alias":"Unrelated","containerId":null,
+        "config":{},"bindings":{"template":{"kind":"templated_text","value":"{{ missing.result }}"}},
+        "outputs":[{"key":"result","title":"Result","valueType":"string"}]
+    }));
+    let preview = service
+        .start_node_debug_preview(StartNodeDebugPreviewCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            node_id: "node-transform".to_string(),
+            input_payload: json!({"node-workflow-start":{"customer_id":"C1"}}),
+            document_snapshot: Some(document),
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(preview.node_run.status, domain::NodeRunStatus::Succeeded);
+}
