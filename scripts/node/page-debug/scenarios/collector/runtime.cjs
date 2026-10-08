@@ -85,6 +85,25 @@ async function run(cmd,args,name,env) {
   receipt.runtime={api_pid:api.pid,web_pid:frontend.pid,api_port:7801,web_port:3102};
   owner=await openTemporaryOwnerSession({apiBaseUrl:base,account:env.BOOTSTRAP_ROOT_ACCOUNT,password});
   assert.equal((await request('GET','/api/console/applications/catalog',undefined,false)).status,401);
+  // Controlled malformed packages exercise real upload admission before any installation.
+  const negativeStage=path.join(out,'private/negative');fs.mkdirSync(negativeStage,{recursive:true});
+  fs.writeFileSync(path.join(negativeStage,'collector-manifest.json'),JSON.stringify(remote.manifest));
+  fs.writeFileSync(path.join(negativeStage,'safe'),'not a declared member');
+  fs.symlinkSync('safe',path.join(negativeStage,'linked'));
+  const negativeCases=[
+    {name:'missing-members',args:['collector-manifest.json']},
+    {name:'duplicate-manifest',args:['collector-manifest.json','collector-manifest.json']},
+    {name:'symlink-member',args:['collector-manifest.json','linked']},
+    {name:'traversal-member',args:['--transform=s#safe#../escape#','collector-manifest.json','safe']}
+  ];
+  for(const fixture of negativeCases){
+    const file=path.join(negativeStage,fixture.name+'.tar.gz');
+    execFileSync('tar',['-czf',file,'-C',negativeStage,...fixture.args],{stdio:'ignore'});
+    const form=new FormData();form.append('category','runtime-extensions');form.append('file',new Blob([fs.readFileSync(file)]),fixture.name+'.tar.gz');
+    const response=await fetch(base+'/api/console/settings/extension-center/upload',{method:'POST',headers:{cookie:owner.cookie,'x-csrf-token':owner.csrfToken},body:form});
+    assert.ok(response.status>=400&&response.status<500,fixture.name+' must reject as client error, got '+response.status);
+    receipt.checks.push({name:'malformed upload '+fixture.name,status:'pass',http_status:response.status});
+  }
   const before=await request('GET','/api/console/applications/catalog');assert.equal(before.status,200);
   const pending=before.body.data.collectors.find(item=>item.collector_code==='codex-logs-collector');assert.ok(pending);
   assert.equal(pending.installation_status,'not_installed');assert.equal(pending.can_install,true);assert.equal(pending.asset_base_url,null);
@@ -96,6 +115,8 @@ async function run(cmd,args,name,env) {
   const installed=after.body.data.collectors.find(item=>item.catalog_id===pending.catalog_id);
   assert.equal(installed.installation_status,'installed');assert.equal(installed.installed_version,'0.1.0');assert.ok(installed.extension_installation_id);
   const installInput={category:installed.category,catalog_id:installed.catalog_id,version:installed.installed_version};
+  const runtimeRows=dock(['exec',container,'psql','-U','postgres','-d','collector_proof','-Atc',"SELECT COUNT(*) FROM extension_installations WHERE id = '"+installed.extension_installation_id+"' AND plugin_id IS NULL AND contract_version IS NULL AND protocol IS NULL AND application_action = 'none'"]);assert.equal(runtimeRows,'1');
+  for(const table of ['plugin_assignments','plugin_worker_leases','plugin_tasks'])assert.equal(dock(['exec',container,'psql','-U','postgres','-d','collector_proof','-Atc',"SELECT COUNT(*) FROM "+table+" WHERE installation_id = '"+installed.extension_installation_id+"'"]),'0');
   remote.disable();const remoteCount=remote.requests.length;
   const offlineExisting=await request('POST','/api/console/settings/extension-center/install',installInput);assert.equal(offlineExisting.status,200);
   assert.equal(offlineExisting.body.data.local_artifact_was_present,true);assert.equal(offlineExisting.body.data.node_plugin_installation_id,null);
