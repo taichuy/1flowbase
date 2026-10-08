@@ -5,6 +5,8 @@ use crate::ports::{
 use anyhow::Result;
 use uuid::Uuid;
 
+mod pricing;
+
 pub struct AgentLogsService<R> {
     repository: R,
 }
@@ -24,74 +26,16 @@ impl<R: BillingRepository + OrchestrationRuntimeRepository> AgentLogsService<R> 
             .map_err(|_| crate::errors::ControlPlaneError::InvalidInput("agent_logs_batch"))?;
         let mut costs = Vec::with_capacity(batch.events.len());
         for event in &batch.events {
-            let mut cost = None;
-            if let Some(usage) = &event.usage {
-                if !event.inherited
-                    && !(usage.basis == crate::ports::AgentLogUsageBasis::Cumulative
-                        && usage.response_id.as_deref().is_none_or(|id| id.is_empty()))
-                {
-                    let at = time::OffsetDateTime::parse(
-                        &event.occurred_at,
-                        &time::format_description::well_known::Rfc3339,
-                    )?;
-                    if let Some(rule) = crate::billing::resolve_pricing_rule(
-                        &self.repository,
-                        event.provider_code.as_deref().unwrap_or(""),
-                        event.model_id.as_deref().unwrap_or(""),
-                        at,
-                    )
-                    .await?
-                    {
-                        let all_zero =
-                            control_plane_contracts::billing::policy::parse_rules(&rule.rules)?
-                                .is_empty()
-                                && rule.input_token_unit_price.is_zero()
-                                && rule.output_token_unit_price.is_zero()
-                                && rule.cache_hit_token_unit_price.is_zero()
-                                && rule.cache_write_token_unit_price.is_zero();
-                        if all_zero
-                            && [
-                                usage.total_tokens,
-                                usage.input_tokens,
-                                usage.output_tokens,
-                                usage.input_cache_hit_tokens,
-                                usage.cache_write_tokens,
-                            ]
-                            .into_iter()
-                            .any(|v| v.is_some())
-                        {
-                            cost = Some("0".to_owned());
-                        } else if let (
-                            Some(input_tokens),
-                            Some(output_tokens),
-                            Some(input_cache_hit_tokens),
-                            Some(cache_write_tokens),
-                        ) = (
-                            usage.input_tokens,
-                            usage.output_tokens,
-                            usage.input_cache_hit_tokens,
-                            usage.cache_write_tokens,
-                        ) {
-                            cost = Some(
-                                crate::billing::rate_token_usage_at(
-                                    &rule,
-                                    &crate::billing::TokenUsage {
-                                        input_tokens,
-                                        output_tokens,
-                                        input_cache_hit_tokens,
-                                        cache_write_tokens,
-                                        ..Default::default()
-                                    },
-                                    at,
-                                )?
-                                .total_cost
-                                .to_string(),
-                            );
-                        }
-                    }
-                }
-            }
-            costs.push(cost);
+            costs.push(
+                pricing::rate_usage(
+                    &self.repository,
+                    event.model_id.as_deref(),
+                    &event.occurred_at,
+                    event.usage.as_ref(),
+                    event.inherited,
+                )
+                .await?,
+            );
         }
         self.repository
             .ingest_agent_logs(application_id, scope_id, api_key_id, &batch, &costs)
@@ -108,6 +52,43 @@ impl<R: BillingRepository + OrchestrationRuntimeRepository> AgentLogsService<R> 
                 }
                 _ => error,
             })
+    }
+
+    /// Trusted maintenance command. Source facts and all non-cost projections remain intact.
+    pub async fn reprice_next_record(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        after: Option<Uuid>,
+    ) -> Result<Option<crate::ports::AgentLogsRepriceRecordReceipt>> {
+        let Some(record) = self
+            .repository
+            .next_agent_log_pricing_record(application_id, scope_id, after)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let mut costs = Vec::with_capacity(record.events.len());
+        for event in &record.events {
+            let cost = pricing::rate_usage(
+                &self.repository,
+                event.model_id.as_deref(),
+                &event.occurred_at,
+                Some(&event.usage),
+                event.inherited,
+            )
+            .await?;
+            costs.push((event.event_id.clone(), cost));
+        }
+        let changed_events = self
+            .repository
+            .reprice_agent_log_record(application_id, scope_id, record.record_id, &costs)
+            .await?;
+        Ok(Some(crate::ports::AgentLogsRepriceRecordReceipt {
+            record_id: record.record_id,
+            usage_events: record.events.len(),
+            changed_events,
+        }))
     }
 }
 

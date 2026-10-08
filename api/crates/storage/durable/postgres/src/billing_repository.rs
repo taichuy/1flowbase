@@ -457,6 +457,27 @@ impl BillingRepository for PgControlPlaneStore {
         rows.into_iter().map(pricing_rule).collect()
     }
 
+    async fn match_agent_log_pricing_rules(
+        &self,
+        upstream_model_id: &str,
+        at: OffsetDateTime,
+    ) -> Result<Vec<PricingRule>> {
+        let rows = sqlx::query(
+            &(PRICING_SELECT.to_owned()
+                + r#" where (upstream_model_id = $1
+                    or (provider_code = 'zero' and upstream_model_id = 'any'))
+                and enabled = true
+                and effective_from <= $2 and (effective_to is null or effective_to > $2)
+                order by case when upstream_model_id = $1 then 0 else 1 end,
+                    provider_code, priority desc, effective_from desc, id"#),
+        )
+        .bind(upstream_model_id)
+        .bind(at)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(pricing_rule).collect()
+    }
+
     async fn upsert_pricing_rule(&self, input: &UpsertPricingRuleInput) -> Result<PricingRule> {
         input.rule.validate()?;
         let rule = &input.rule;

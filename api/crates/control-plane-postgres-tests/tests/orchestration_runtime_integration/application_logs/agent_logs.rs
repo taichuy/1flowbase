@@ -38,6 +38,8 @@ mod field_projection;
 mod deletion;
 #[path = "agent_logs/bulk_lifecycle.rs"]
 mod bulk_lifecycle;
+#[path = "agent_logs/pricing.rs"]
+mod pricing;
 async fn setup() -> (PgControlPlaneStore, Uuid, Uuid) {
     let db = isolated_database().await;
     let store = PgControlPlaneStore::new(db.connect().await.unwrap());
@@ -809,7 +811,7 @@ async fn agent_logs_response_delta_excludes_legacy_cumulative_and_exact_cache_co
         .await
         .unwrap();
     let mut delta = event("delta-response", 10, AgentLogEventKind::Usage, None);
-    delta.provider_code = Some("fixture-provider".into());
+    delta.provider_code = Some("unrelated-client-profile".into());
     delta.model_id = Some("fixture-model".into());
     delta.usage = Some(AgentLogUsage {
         basis: AgentLogUsageBasis::Delta,

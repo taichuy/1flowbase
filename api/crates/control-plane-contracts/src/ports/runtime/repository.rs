@@ -2,6 +2,10 @@ use super::*;
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    /// Internal application-scoped maintenance, with an immutable record-ID cursor.
+    async fn next_agent_log_pricing_record(&self, _application_id: Uuid, _scope_id: Uuid, _after: Option<Uuid>) -> anyhow::Result<Option<AgentLogPricingRecord>> { anyhow::bail!("next_agent_log_pricing_record not implemented") }
+    /// Update rated receipts and only their cost projection under ingest/delete locks.
+    async fn reprice_agent_log_record(&self, _application_id: Uuid, _scope_id: Uuid, _record_id: Uuid, _costs: &[(String, Option<String>)]) -> anyhow::Result<u64> { anyhow::bail!("reprice_agent_log_record not implemented") }
     async fn delete_agent_logs(&self, _application_id: Uuid, _scope_id: Uuid, _scope: &AgentLogsDeleteScope) -> anyhow::Result<AgentLogsDeleteReceipt> { anyhow::bail!("delete_agent_logs not implemented") }
     async fn ingest_agent_logs(&self, _application_id: Uuid, _scope_id: Uuid, _api_key_id: Uuid, _batch: &AgentLogsBatch, _costs: &[Option<String>]) -> anyhow::Result<AgentLogsReceipt> { anyhow::bail!("ingest_agent_logs not implemented") }
     async fn application_log_record(&self, _application_id: Uuid, _record_id: Uuid) -> anyhow::Result<Option<ApplicationLogRecordOverview>> { anyhow::bail!("application_log_record not implemented") }

@@ -37,3 +37,10 @@ Codex `response_item` user/assistant 提供对话事实；明确标记 `phase: "
 官方共享 Rust `agent-logs-collector` SDK 负责来源扫描、事件稳定身份、HTTP 上传、完整 ACK、断点排他与持久化。Codex 插件只实现来源适配接口和格式转换，直接引用主仓锁定 revision 的 canonical Rust DTO，不复制协议定义。
 
 旧仓库 Node 采集器保留为开发 fixture oracle，不是用户安装入口。原生来源与恢复测试在官方插件仓库执行 `cargo test --locked --manifest-path sdk/agent-logs-collector/Cargo.toml` 和 `cargo test --locked --manifest-path runtime-extensions/@taichuy/codex-logs-collector/Cargo.toml`；安装 fixture 使用合成日志和本地 mock HTTP 端点。
+
+
+## 采集费用估算
+
+采集费用只按 `model_id` 精确匹配已有价格规则，`provider_code` 保留来源信息，不参与定价筛选。启用、事件时间和本地时窗均需有效；多个命中沿用价格列表的稳定顺序：供应商代码升序、优先级降序、生效时间降序、规则 ID 升序，取第一条。缺价格复用 `zero/any`，真实用量缺失时不补造费用。采集只记录估算，不扣余额；实际模型调用的供应商计费规则保持独立。
+
+历史费用不会因价格配置变化自动重写。数据库维护者可显式运行 `agent_logs_reprice --application-id UUID --scope-id UUID`（通过私有环境变量 `API_DATABASE_URL` 提供数据库连接）。该命令按记录 ID 顺序从已保存的最小用量事实重算，仅更新费用；不重建消息或轨迹、不改事件身份/正文/Token，不重置断点或重复上传。每条记录原子提交，失败后可安全重跑。

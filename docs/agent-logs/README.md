@@ -65,3 +65,10 @@ The canonical HTTP success body is `ApiSuccess<AgentLogsReceipt>`: `{"data":{"ac
 The official shared Rust `agent-logs-collector` SDK owns source scanning, stable event identity, HTTP upload, full ACK validation, exclusive checkpoint ownership and durable persistence. Codex implements the SDK's source adapter interface and only converts its private format. It uses canonical Rust DTOs from a pinned main-repository revision, rather than duplicating protocol fields.
 
 The old repository Node collector remains a development fixture oracle and is not the user installation entry. Native source and recovery tests run in the official plugin repository with `cargo test --locked --manifest-path sdk/agent-logs-collector/Cargo.toml` and `cargo test --locked --manifest-path runtime-extensions/@taichuy/codex-logs-collector/Cargo.toml`. Installation fixtures use synthetic logs and a local mock HTTP endpoint.
+
+
+## Imported cost estimates
+
+Imported costs match existing pricing rules by the exact `model_id` only. `provider_code` remains source metadata and does not filter prices. Rules must be enabled and valid at the event time, including their local time windows. If several rules match, the first eligible rule in the pricing list's stable order wins: provider code ascending, priority descending, effective start descending, then rule ID ascending. Missing prices use `zero/any`; missing usage is not fabricated. Estimates never debit balances. Native model invocations retain their separate provider-based billing behavior.
+
+Price configuration changes do not automatically rewrite historical estimates. A database maintainer can explicitly run `agent_logs_reprice --application-id UUID --scope-id UUID`, supplying `API_DATABASE_URL` through a private environment variable. The command reads minimal persisted usage facts in record-ID order and updates costs only. It preserves messages, trajectories, event identities, bodies, tokens, and collector checkpoints, without re-uploading logs. Each record commits atomically; failed runs can be safely repeated.

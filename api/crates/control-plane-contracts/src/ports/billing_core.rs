@@ -193,6 +193,13 @@ pub trait BillingRepository: Send + Sync {
         upstream_model_id: &str,
         at: OffsetDateTime,
     ) -> anyhow::Result<Vec<PricingRule>>;
+    /// Imported estimates match exact model IDs across providers. Exact candidates
+    /// precede zero/any, in the same stable order as the pricing-rule list.
+    async fn match_agent_log_pricing_rules(
+        &self,
+        upstream_model_id: &str,
+        at: OffsetDateTime,
+    ) -> anyhow::Result<Vec<PricingRule>>;
     async fn upsert_pricing_rule(
         &self,
         input: &UpsertPricingRuleInput,

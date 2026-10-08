@@ -75,6 +75,28 @@ pub struct AgentLogsReceipt {
     pub duplicate_events: usize,
     pub record_ids: Vec<Uuid>,
 }
+
+/// Internal maintenance projection; does not load conversation or raw bodies.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentLogPricingEvent {
+    pub event_id: String,
+    pub sequence: i64,
+    pub occurred_at: String,
+    pub model_id: Option<String>,
+    pub inherited: bool,
+    pub usage: AgentLogUsage,
+}
+#[derive(Debug, Clone)]
+pub struct AgentLogPricingRecord {
+    pub record_id: Uuid,
+    pub events: Vec<AgentLogPricingEvent>,
+}
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentLogsRepriceRecordReceipt {
+    pub record_id: Uuid,
+    pub usage_events: usize,
+    pub changed_events: u64,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentLogMessage {
     pub role: String,

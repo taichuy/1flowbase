@@ -109,6 +109,14 @@ impl BillingRepository for RecordingBillingRepository {
         unreachable!("credit command service fixture does not match pricing rules")
     }
 
+    async fn match_agent_log_pricing_rules(
+        &self,
+        _upstream_model_id: &str,
+        _at: OffsetDateTime,
+    ) -> anyhow::Result<Vec<PricingRule>> {
+        unreachable!("credit command fixture does not estimate imported logs")
+    }
+
     async fn upsert_pricing_rule(
         &self,
         _input: &UpsertPricingRuleInput,

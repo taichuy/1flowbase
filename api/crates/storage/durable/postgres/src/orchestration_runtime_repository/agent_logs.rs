@@ -1,4 +1,5 @@
 use super::*;
+pub(super) mod reprice;
 use control_plane_contracts::ports::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -265,8 +266,9 @@ async fn refresh_task(
     }
     let mut totals = [None::<i64>; 4];
     let mut complete = [true; 4];
-    let mut total_cost = rust_decimal::Decimal::ZERO;
-    let mut cost_complete = !usage_groups.is_empty();
+    let total_cost = reprice::total_cost(events.iter().filter_map(|(event, cost)| {
+        event.usage.as_ref().map(|usage| (usage, event.inherited, cost.as_deref()))
+    }))?;
     for group in usage_groups.values() {
         let deltas = group
             .iter()
@@ -278,7 +280,7 @@ async fn refresh_task(
         } else {
             deltas
         };
-        for (e, cost) in selected {
+        for (e, _) in selected {
             let u = e.usage.as_ref().unwrap();
             for (index, value) in [
                 u.total_tokens,
@@ -299,11 +301,6 @@ async fn refresh_task(
                 } else {
                     complete[index] = false;
                 }
-            }
-            if let Some(cost) = cost {
-                total_cost += cost.parse::<rust_decimal::Decimal>()?;
-            } else {
-                cost_complete = false;
             }
         }
     }
@@ -331,7 +328,7 @@ async fn refresh_task(
     };
     let final_text = final_output.as_ref().map(|(s, _)| s);
     sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),title),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=case when $5 in ('succeeded','cancelled') then $12::timestamptz end,updated_at=now(),parent_source_task_id=$13,parent_task_run_id=(select p.id from application_run_log_tasks p where p.application_id=$1 and p.source_id=application_run_log_tasks.source_id and p.source_session_id=application_run_log_tasks.source_session_id and p.source_task_id=$13 and p.id<>$2),requested_model_id=$14,reasoning_effort=$15 where application_id=$1 and id=$2")
-        .bind(application_id).bind(record_id).bind(user).bind(final_text).bind(status).bind(outcome).bind(totals[0]).bind(totals[1]).bind(totals[2]).bind(totals[3]).bind(if cost_complete {Some(total_cost.to_string())}else{None}).bind(&last.0.occurred_at).bind(parent).bind(model_id).bind(reasoning_effort).execute(&mut **tx).await?;
+        .bind(application_id).bind(record_id).bind(user).bind(final_text).bind(status).bind(outcome).bind(totals[0]).bind(totals[1]).bind(totals[2]).bind(totals[3]).bind(total_cost).bind(&last.0.occurred_at).bind(parent).bind(model_id).bind(reasoning_effort).execute(&mut **tx).await?;
     sqlx::query("delete from application_run_conversation_message_items where application_id=$1 and record_id=$2").bind(application_id).bind(record_id).execute(&mut **tx).await?;
     for m in messages {
         sqlx::query("insert into application_run_conversation_message_items(id,scope_id,application_id,record_id,display_sequence,source_kind,role,content,can_open_detail,is_current,status,started_at) select $1,scope_id,application_id,id,$3,'current_run',$4,$5,false,true,status,started_at from application_run_log_tasks where id=$2")

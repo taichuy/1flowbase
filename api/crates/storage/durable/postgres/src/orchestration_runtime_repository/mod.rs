@@ -115,6 +115,12 @@ include!("side_effect_receipt_methods.rs");
 
 #[async_trait]
 impl OrchestrationRuntimeRepository for PgControlPlaneStore {
+    async fn next_agent_log_pricing_record(&self, application_id: Uuid, scope_id: Uuid, after: Option<Uuid>) -> Result<Option<control_plane_contracts::ports::AgentLogPricingRecord>> {
+        agent_logs::reprice::next_record(self, application_id, scope_id, after).await
+    }
+    async fn reprice_agent_log_record(&self, application_id: Uuid, scope_id: Uuid, record_id: Uuid, costs: &[(String, Option<String>)]) -> Result<u64> {
+        agent_logs::reprice::apply(self, application_id, scope_id, record_id, costs).await
+    }
     async fn delete_agent_logs(&self, application_id: Uuid, scope_id: Uuid, scope: &control_plane_contracts::ports::AgentLogsDeleteScope) -> Result<control_plane_contracts::ports::AgentLogsDeleteReceipt> {
         agent_logs_delete::delete(self, application_id, scope_id, scope).await
     }
