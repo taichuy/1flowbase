@@ -1,12 +1,16 @@
 -- Keep bulk reclamation atomic without retaining one advisory lock per content body.
--- Canonical inserts and last-reference reclamation use the same application aggregate lock.
+-- Agent Logs has an application ingest/delete gate and can share one aggregate lock.
+-- Native reference owners retain their per-content lock and established lock order.
 create or replace function reclaim_observation_body() returns trigger language plpgsql as $$
-declare candidate uuid := (to_jsonb(OLD)->>TG_ARGV[0])::uuid; application uuid;
+declare candidate uuid := (to_jsonb(OLD)->>TG_ARGV[0])::uuid; application uuid; hash text; application_kind text;
 begin
     if candidate is null or not exists(select 1 from runtime_observation_body_ownership where content_id=candidate) then return null; end if;
-    select application_id into application from runtime_canonical_contents where id=candidate;
+    select c.application_id,c.content_hash,a.application_type into application,hash,application_kind
+      from runtime_canonical_contents c left join applications a on a.id=c.application_id where c.id=candidate;
     if not found then return null; end if;
-    perform pg_advisory_xact_lock(hashtextextended('canonical-runtime-application:'||application::text,0));
+    perform pg_advisory_xact_lock(hashtextextended(
+      case when application_kind='agent_logs' then 'canonical-runtime-application:'||application::text
+      else 'canonical-runtime:'||application::text||':'||hash end,0));
     perform 1 from runtime_canonical_contents where id=candidate for update;
     delete from runtime_canonical_contents c where c.id=candidate
       and not exists(select 1 from runtime_events e where e.observation_body_content_id=c.id)

@@ -151,3 +151,55 @@ async fn agent_logs_canonical_writer_and_reclaim_share_lock_without_blocking_oth
         .unwrap()
         .unwrap();
 }
+
+#[tokio::test]
+async fn agent_logs_fix_preserves_native_same_body_lock_and_independent_body_writes() {
+    use std::time::Duration;
+    let (store, _, _) = setup().await;
+    let native = seed_runtime_base(&store).await;
+    let content = json!({"native":"same body"});
+    let input = PutCanonicalRuntimeContentInput {
+        scope_id: native.workspace_id,
+        application_id: native.application_id,
+        content,
+    };
+    let first = store.put_canonical_runtime_content(&input).await.unwrap();
+    let mut tx = store.pool().begin().await.unwrap();
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!(
+            "canonical-runtime:{}:{}",
+            native.application_id, first.content_hash
+        ))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let writer_store = store.clone();
+    let mut writer =
+        tokio::spawn(async move { writer_store.put_canonical_runtime_content(&input).await });
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), &mut writer)
+            .await
+            .is_err()
+    );
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        store.put_canonical_runtime_content(&PutCanonicalRuntimeContentInput {
+            scope_id: native.workspace_id,
+            application_id: native.application_id,
+            content: json!({"native":"independent body"}),
+        }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), &mut writer)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+            .id,
+        first.id
+    );
+}

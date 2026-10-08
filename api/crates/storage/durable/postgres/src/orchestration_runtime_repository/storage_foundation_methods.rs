@@ -82,10 +82,11 @@ async fn put_canonical_runtime_content_with_creation(
     content: &Value,
 ) -> Result<(Uuid, String, i64, bool)> {
     let (content_hash, byte_size) = canonical_runtime_json_identity(content)?;
-    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
-        // The lifecycle owner shares one application aggregate lock with reclamation.
-        // Per-content transaction locks grow with bulk deletion size and exhaust PG's lock pool.
-        .bind(format!("canonical-runtime-application:{application_id}"))
+    // Agent Logs orders its ingest/delete application gate before canonical content writes.
+    // Retain native per-content locks: native reference owners have different lock orders.
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended(case when application_type='agent_logs' then 'canonical-runtime-application:'||id::text else 'canonical-runtime:'||id::text||':'||$2 end,0)) from applications where id=$1")
+        .bind(application_id)
+        .bind(&content_hash)
         .execute(&mut **tx)
         .await?;
     let inserted = sqlx::query_scalar::<_, Uuid>(
