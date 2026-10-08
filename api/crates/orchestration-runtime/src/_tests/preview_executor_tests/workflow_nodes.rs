@@ -295,3 +295,159 @@ async fn data_model_preview_missing_explicit_pool_cannot_perform_a_write() {
     assert!(invoker.records.lock().unwrap().is_empty());
     assert!(invoker.calls.lock().unwrap().is_empty());
 }
+
+struct HttpPreviewInvoker {
+    lease: Mutex<Option<crate::execution_engine::HttpRequestClientLease>>,
+    acquired: Mutex<Vec<(std::time::Duration, bool)>>,
+    deny: bool,
+}
+struct PreviewLeaseReleaser(Arc<std::sync::atomic::AtomicUsize>);
+#[async_trait]
+impl crate::execution_engine::HttpRequestClientLeaseReleaser for PreviewLeaseReleaser {
+    async fn release(self: Box<Self>) -> Result<()> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+}
+#[async_trait]
+impl ProviderInvoker for HttpPreviewInvoker {
+    async fn invoke_llm(
+        &self,
+        _: &CompiledLlmRuntime,
+        _: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        panic!("HTTP preview cannot replay provider nodes")
+    }
+    async fn acquire_http_node_client(
+        &self,
+        timeout: std::time::Duration,
+        verify_ssl: bool,
+    ) -> Result<Option<crate::execution_engine::HttpRequestClientLease>> {
+        self.acquired.lock().unwrap().push((timeout, verify_ssl));
+        if self.deny {
+            anyhow::bail!("host network egress denied");
+        }
+        Ok(self.lease.lock().unwrap().take())
+    }
+}
+#[async_trait]
+impl CapabilityInvoker for HttpPreviewInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _: &crate::compiled_plan::CompiledPluginRuntime,
+        _: Value,
+        _: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        panic!("HTTP preview cannot execute capabilities")
+    }
+}
+#[async_trait]
+impl CodeInvoker for HttpPreviewInvoker {
+    async fn invoke_code_node(
+        &self,
+        _: &CompiledCodeRuntime,
+        _: Value,
+        _: Value,
+    ) -> Result<CodeInvocationOutput> {
+        panic!("HTTP preview cannot execute code")
+    }
+}
+fn http_plan(url: &str) -> CompiledPlan {
+    let mut plan = target_plan("http_request", BTreeMap::new());
+    plan.nodes.get_mut("node-llm").unwrap().config = json!({
+        "method": "GET", "url": url, "body_type": "none", "timeout_ms": 1000,
+        "verify_ssl": false
+    });
+    plan
+}
+
+#[tokio::test]
+async fn http_preview_uses_and_releases_host_proxy_client() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy = format!("http://{}", listener.local_addr().unwrap());
+    let request = Arc::new(Mutex::new(String::new()));
+    let captured = request.clone();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut bytes = [0u8; 4096];
+        let mut headers = Vec::new();
+        while !headers.windows(4).any(|window| window == b"\r\n\r\n") {
+            let count = stream.read(&mut bytes).await.unwrap();
+            assert!(
+                count > 0 && headers.len() < 16384,
+                "expected bounded HTTP request headers"
+            );
+            headers.extend_from_slice(&bytes[..count]);
+        }
+        *captured.lock().unwrap() = String::from_utf8_lossy(&headers).into_owned();
+        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\"host\":true}\n").await.unwrap();
+    });
+    let released = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let invoker = HttpPreviewInvoker {
+        lease: Mutex::new(Some(crate::execution_engine::HttpRequestClientLease::new(
+            reqwest::Client::builder()
+                .proxy(reqwest::Proxy::all(&proxy).unwrap())
+                .build()
+                .unwrap(),
+            Box::new(PreviewLeaseReleaser(released.clone())),
+        ))),
+        acquired: Mutex::new(Vec::new()),
+        deny: false,
+    };
+    let result = preview_executor::run_node_preview(
+        &http_plan("http://preview-origin.invalid/host-route"),
+        "node-llm",
+        &json!({}),
+        &invoker,
+    )
+    .await;
+    server.abort();
+    let preview = result.unwrap();
+    assert!(!preview.is_failed(), "{:?}", preview.error_payload);
+    assert_eq!(preview.node_output["status_code"], 200);
+    assert!(request
+        .lock()
+        .unwrap()
+        .starts_with("GET http://preview-origin.invalid/host-route "));
+    assert_eq!(
+        *invoker.acquired.lock().unwrap(),
+        vec![(std::time::Duration::from_millis(1000), false)]
+    );
+    assert_eq!(released.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn http_preview_preserves_egress_denial_and_releases_client_on_execution_error() {
+    for deny in [true, false] {
+        let released = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let invoker = HttpPreviewInvoker {
+            lease: Mutex::new(Some(crate::execution_engine::HttpRequestClientLease::new(
+                reqwest::Client::new(),
+                Box::new(PreviewLeaseReleaser(released.clone())),
+            ))),
+            acquired: Mutex::new(Vec::new()),
+            deny,
+        };
+        let preview = preview_executor::run_node_preview(
+            &http_plan("not-a-valid-url"),
+            "node-llm",
+            &json!({}),
+            &invoker,
+        )
+        .await
+        .unwrap();
+        assert!(preview.is_failed());
+        if deny {
+            assert!(preview.error_payload.as_ref().unwrap()["message"]
+                .as_str()
+                .unwrap()
+                .contains("host network egress denied"));
+        }
+        assert_eq!(invoker.acquired.lock().unwrap().len(), 1);
+        assert_eq!(
+            released.load(std::sync::atomic::Ordering::SeqCst),
+            usize::from(!deny)
+        );
+    }
+}

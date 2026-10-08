@@ -416,3 +416,29 @@ async fn workflow_data_model_preview_preserves_scope_denial() {
         .unwrap()
         .contains("permission denied"));
 }
+
+#[tokio::test]
+async fn workflow_node_preview_rejects_non_object_input_before_creating_a_run() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_workflow_application_with_flow("Invalid Preview Workflow")
+        .await;
+    let result = service
+        .start_node_debug_preview(StartNodeDebugPreviewCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            node_id: "node-transform".to_string(),
+            input_payload: json!([]),
+            document_snapshot: Some(workflow_document(seeded.flow_id)),
+            debug_session_id: None,
+        })
+        .await;
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("input payload must be an object"));
+    assert!(service
+        .application_runs(seeded.application_id)
+        .await
+        .is_empty());
+}

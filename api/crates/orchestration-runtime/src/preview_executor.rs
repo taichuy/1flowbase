@@ -7,7 +7,7 @@ use crate::{
     binding_runtime::{render_templated_bindings, resolve_node_inputs},
     compiled_plan::CompiledPlan,
     execution_engine::{
-        execute_code_node, execute_http_request_node, execute_llm_node,
+        execute_code_node, execute_http_request_node_with_provider_invoker, execute_llm_node,
         execute_variable_assignment_node, materialize_start_builtin_defaults, resolved_native_sql,
         start_flow_debug_run_with_runtime_context_and_lifecycle,
         variable_aggregator::{
@@ -291,9 +291,14 @@ where
             Vec::new(),
         )
     } else if node.node_type == "http_request" {
-        let execution =
-            execute_http_request_node(node, &resolved_inputs, &variable_pool, http_file_persister)
-                .await?;
+        let execution = execute_http_request_node_with_provider_invoker(
+            node,
+            &resolved_inputs,
+            &variable_pool,
+            http_file_persister,
+            Some(invoker),
+        )
+        .await?;
         (
             execution.output_payload,
             execution.error_payload,

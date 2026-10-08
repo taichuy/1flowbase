@@ -830,6 +830,18 @@ where
         )
         .await?;
         ensure_compiled_plan_runnable_for_node(&compiled_plan, &command.node_id)?;
+        let mut preview_input = command.input_payload.clone();
+        if application.application_type == domain::ApplicationType::Workflow {
+            let variables = self
+                .repository
+                .list_application_environment_variables(application.workspace_id, application.id)
+                .await?;
+            preview_input = live_debug_run::freeze_run_input_environment(
+                preview_input,
+                &variables,
+                &application,
+            );
+        }
         let started_at = OffsetDateTime::now_utc();
         let compiled_record = self
             .repository
@@ -873,20 +885,10 @@ where
             flow_run.id,
             flow_execution_context.clone(),
         );
-        let mut preview_input = command.input_payload.clone();
         if application.application_type == domain::ApplicationType::Workflow {
-            let variables = self
-                .repository
-                .list_application_environment_variables(application.workspace_id, application.id)
-                .await?;
-            preview_input = live_debug_run::freeze_run_input_environment(
-                preview_input,
-                &variables,
-                &application,
-            );
             let pool = preview_input
                 .as_object_mut()
-                .ok_or_else(|| anyhow!("input payload must be an object"))?;
+                .expect("preview input is validated and environment freezing preserves an object");
             live_debug_run::inject_system_variables(
                 pool,
                 &flow_run,
