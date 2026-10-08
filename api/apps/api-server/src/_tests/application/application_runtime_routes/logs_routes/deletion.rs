@@ -76,6 +76,18 @@ async fn agent_logs_delete_console_route_requires_auth_csrf_scope_and_rejects_na
         )
         .await
         .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        deletion_request(
+            &app,
+            id,
+            Some(&cookie),
+            Some("invalid-csrf-token"),
+            Some(json!({"mode":"all_time"}))
+        )
+        .await
+        .status(),
         StatusCode::FORBIDDEN
     );
     for body in [
