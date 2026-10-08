@@ -513,3 +513,21 @@ test('without authenticated CSRF generation is disabled while a pasted key remai
   );
   expect(publicApi.createApplicationApiKey).not.toHaveBeenCalled();
 });
+
+test('failed command copy explains the usable manual fallback for a masked key preview', async () => {
+  clipboard.copyTextToClipboard.mockRejectedValueOnce(
+    new Error('clipboard unavailable')
+  );
+  renderPage();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
+  fireEvent.change(screen.getByLabelText('API 密钥'), {
+    target: { value: 'proof-key' }
+  });
+  fireEvent.click(screen.getByRole('button', { name: '复制命令' }));
+  expect(
+    await screen.findByText(
+      '无法复制命令，请重试，或清空 Key 后手动复制命令，在本机终端输入 Key。'
+    )
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText('API 密钥')).toHaveValue('proof-key');
+});

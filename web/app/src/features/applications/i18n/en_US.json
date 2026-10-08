@@ -362,7 +362,7 @@
     "operating_system": "Operating system",
     "copy_command": "Copy command",
     "command_copied": "Installation command copied",
-    "command_copy_failed": "Could not copy the command. Select and copy the command manually.",
+    "command_copy_failed": "Could not copy the command. Try again, or clear the key and copy the command text manually; the local installer will prompt for it.",
     "start_collecting": "Start collecting",
     "start_collecting_description": "Complete the local configuration prompts. The installer starts background collection; open the logs page to view uploaded conversations.",
     "collector_benefits": "Collector information",

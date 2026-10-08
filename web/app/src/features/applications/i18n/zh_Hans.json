@@ -362,7 +362,7 @@
     "operating_system": "操作系统",
     "copy_command": "复制命令",
     "command_copied": "安装命令已复制",
-    "command_copy_failed": "无法复制命令，请选择命令文本手动复制。",
+    "command_copy_failed": "无法复制命令，请重试，或清空 Key 后手动复制命令，在本机终端输入 Key。",
     "start_collecting": "开始采集",
     "start_collecting_description": "完成本地配置提示后，安装程序启动后台采集；打开日志页面查看上传的对话。",
     "collector_benefits": "采集器说明",
