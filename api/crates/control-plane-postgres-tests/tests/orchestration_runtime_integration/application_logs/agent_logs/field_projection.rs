@@ -1,6 +1,37 @@
 use super::*;
 
 #[tokio::test]
+async fn agent_logs_native_model_snapshot_keeps_the_native_summary_owner() {
+    let db = isolated_database().await;
+    let store = PgControlPlaneStore::new(db.connect().await.unwrap());
+    run_migrations(store.pool()).await.unwrap();
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        OffsetDateTime::now_utc(),
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    sqlx::query("update application_run_log_summaries set requested_model_id='native-model',reasoning_effort='high' where flow_run_id=$1")
+        .bind(run.id).execute(store.pool()).await.unwrap();
+    // A direct task write cannot override the native anchor's request snapshot.
+    sqlx::query("update application_run_log_tasks set requested_model_id='other-model',reasoning_effort='low' where id=$1")
+        .bind(run.id).execute(store.pool()).await.unwrap();
+    let fields: (Option<String>, Option<String>) = sqlx::query_as(
+        "select requested_model_id,reasoning_effort from application_run_log_tasks where id=$1",
+    )
+    .bind(run.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(fields, (Some("native-model".into()), Some("high".into())));
+}
+
+#[tokio::test]
 async fn agent_logs_project_source_model_effort_and_one_compressed_turn() {
     let (store, scope, app) = setup().await;
     let service = AgentLogsService::new(store.clone());
