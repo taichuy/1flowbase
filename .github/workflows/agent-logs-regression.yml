@@ -77,6 +77,11 @@ jobs:
         run: |
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p api-server agent_logs_delete > tmp/test-governance/agent-logs-regression/console.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/console.log; exit 1; }
+      - name: Existing canonical storage and native consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration storage_foundation > tmp/test-governance/agent-logs-regression/canonical.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/canonical.log; exit 1; }
       - uses: actions/upload-artifact@v6
         if: always()
         with:
