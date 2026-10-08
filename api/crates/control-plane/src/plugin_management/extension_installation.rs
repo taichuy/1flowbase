@@ -122,8 +122,8 @@ fn compare_installed_extension_versions(
 pub struct ExtensionInstallationService<R> {
     managed_removal:
         Option<std::sync::Arc<dyn control_plane_contracts::ports::ManagedArtifactRemovalGuard>>,
-    repository: R,
-    install_root: PathBuf,
+    pub(super) repository: R,
+    pub(super) install_root: PathBuf,
 }
 
 impl<R> ExtensionInstallationService<R> {
