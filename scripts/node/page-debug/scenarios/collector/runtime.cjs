@@ -83,6 +83,7 @@ async function run(cmd,args,name,env) {
   api=start(binary,[],root+'/api','api',env); frontend=start(process.execPath,[root+'/web/app/node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','3102','--strictPort'],root+'/web/app','web',env);
   await ready(base+'/health'); await ready(web+'/__1flowbase_dev_ready');
   receipt.runtime={api_pid:api.pid,web_pid:frontend.pid,api_port:7801,web_port:3102};
+  receipt.checks.push(require('./migration-proof.cjs').verifyCollectorMigration({root,container,manifest:remote.manifest}));
   owner=await openTemporaryOwnerSession({apiBaseUrl:base,account:env.BOOTSTRAP_ROOT_ACCOUNT,password});
   assert.equal((await request('GET','/api/console/applications/catalog',undefined,false)).status,401);
   // Controlled malformed packages exercise real upload admission before any installation.
