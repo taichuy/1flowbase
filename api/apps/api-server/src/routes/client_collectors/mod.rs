@@ -126,7 +126,7 @@ fn asset_stream(
     reader: tokio::io::DuplexStream,
     completion: tokio::sync::oneshot::Receiver<std::io::Result<()>>,
     size: u64,
-) -> impl futures_util::Stream<Item = Result<bytes::Bytes, std::io::Error>> {
+) -> impl futures_util::Stream<Item = Result<axum::body::Bytes, std::io::Error>> {
     futures_util::stream::try_unfold(
         (reader, completion, size),
         |(mut reader, completion, remaining)| async move {
@@ -149,7 +149,7 @@ fn asset_stream(
             })?;
             buffer.truncate(read);
             Ok::<_, std::io::Error>(Some((
-                bytes::Bytes::from(buffer),
+                axum::body::Bytes::from(buffer),
                 (reader, completion, remaining),
             )))
         },
