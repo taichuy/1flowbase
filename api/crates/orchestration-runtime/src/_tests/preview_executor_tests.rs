@@ -721,3 +721,6 @@ async fn ac_006_preview_executor_runs_sql_with_the_same_output_contract() {
     );
     assert!(outcome.error_payload.is_none());
 }
+
+#[path = "preview_executor_tests/workflow_nodes.rs"]
+mod workflow_nodes;

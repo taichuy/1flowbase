@@ -232,6 +232,8 @@ pub fn map_proxy_arguments(
     local_arguments: &Value,
     input_mapping: &Value,
 ) -> Result<Value, McpUpstreamClientError> {
+    domain::mcp_management::validate_mcp_call_parameters(input_mapping)
+        .map_err(|error| McpUpstreamClientError::Protocol(error.to_owned()))?;
     let mappings = parse_mapping_entries(input_mapping, "local_path", "remote_path")?;
     domain::mcp_management::apply_mcp_field_mapping(local_arguments, &mappings)
         .map_err(|error| McpUpstreamClientError::Protocol(error.to_string()))
@@ -280,6 +282,10 @@ fn parse_mapping_entries(
         })?;
     entries
         .iter()
+        .filter(|entry| {
+            source_field != "local_path"
+                || entry.pointer("/source/kind").and_then(Value::as_str) != Some("mcp_call")
+        })
         .map(|entry| {
             let source_path = entry
                 .get(source_field)
@@ -1045,6 +1051,28 @@ mod tests {
             error,
             McpUpstreamClientError::DiscoveryBudgetExceeded("deadline")
         ));
+    }
+
+    #[test]
+    fn proxy_call_controls_are_not_forwarded_as_remote_arguments() {
+        let mapping = json!({
+            "interface_parameters": [
+                {"name":"des_id","required":false,"source":{"kind":"mcp_call"}},
+                {"name":"max_inline_chars","required":false,"source":{"kind":"mcp_call"}},
+                {"name":"response_fields","required":false,"source":{"kind":"mcp_call"}}
+            ],
+            "mappings": [
+                {"local_path":"city","remote_path":"location","required":true},
+                {"interface_param":"des_id","mcp_param":"des_id","required":true,"source":{"kind":"mcp_call","path":"des_id","tool_id":"instructions"}}
+            ]
+        });
+        assert_eq!(
+            map_proxy_arguments(&json!({"city":"Shanghai"}), &mapping).unwrap(),
+            json!({"location":"Shanghai"})
+        );
+        let mut invalid = mapping;
+        invalid["mappings"][1]["hidden"] = json!(true);
+        assert!(map_proxy_arguments(&json!({"city":"Shanghai"}), &invalid).is_err());
     }
 
     #[test]

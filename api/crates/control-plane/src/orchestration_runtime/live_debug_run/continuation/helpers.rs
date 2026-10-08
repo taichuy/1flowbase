@@ -1,6 +1,6 @@
 use serde_json::{json, Map, Value};
 
-pub(super) fn inject_system_variables(
+pub(in crate::orchestration_runtime) fn inject_system_variables(
     variable_pool: &mut Map<String, Value>,
     flow_run: &domain::FlowRunRecord,
     application_type: domain::ApplicationType,
@@ -77,7 +77,7 @@ pub(super) fn inject_system_variables(
     }
 }
 
-pub(super) fn compiled_plan_start_node_id(
+pub(in crate::orchestration_runtime) fn compiled_plan_start_node_id(
     compiled_plan: &orchestration_runtime::compiled_plan::CompiledPlan,
 ) -> Option<&str> {
     compiled_plan

@@ -165,7 +165,7 @@ fn provider_tool(name: &str, operation: McpLlmOperation) -> Value {
             }),
         ),
         McpLlmOperation::Get => (
-            "Get the current description, schemas, risk information, and des_id for a visible tool in this MCP instance.",
+            "Get the current description, schemas, risk information, and des_id for a visible tool in this MCP instance. If description_tool_id is returned, get that tool and use its current des_id.",
             json!({
                 "type": "object",
                 "properties": {"tool_id": {"type": "string"}},
@@ -187,7 +187,7 @@ fn provider_tool(name: &str, operation: McpLlmOperation) -> Value {
             }),
         ),
         McpLlmOperation::Call => (
-            "Call a visible tool in this MCP instance after inspecting it.",
+            "Call a visible tool in this MCP instance after mcp_get. When des_id_required is true, explicitly supply the current des_id from description_tool_id when configured, or from this tool otherwise.",
             json!({
                 "type": "object",
                 "properties": {

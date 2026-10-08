@@ -18,6 +18,9 @@ use super::super::{
 
 mod engine;
 mod helpers;
+pub(in crate::orchestration_runtime) use helpers::{
+    compiled_plan_start_node_id, inject_system_variables,
+};
 mod native_recovery;
 
 use super::{fail_flow_run, load_run_detail, project_committed_terminal};

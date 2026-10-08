@@ -6,6 +6,7 @@ use regex::Regex;
 use uuid::Uuid;
 
 mod commands;
+mod description_check;
 mod llm_registration;
 mod upstream_contract;
 pub use commands::{
@@ -539,7 +540,10 @@ where
             .repository
             .list_mcp_tool_bindings(&instance_record_ids)
             .await?;
-        let tools = self.repository.list_mcp_tools(workspace_id).await?;
+        let mut tools = self.repository.list_mcp_tools(workspace_id).await?;
+        for tool in &mut tools {
+            tool.des_id_required = domain::mcp_management::mcp_des_id_required(&tool.input_mapping);
+        }
         let discovery_policies = self
             .repository
             .list_mcp_instance_discovery_policies(&instance_record_ids)
@@ -872,7 +876,7 @@ where
             &interface.parameter_descriptors,
         )
         .map_err(ControlPlaneError::InvalidInput)?;
-        let des_id_required = false;
+        let des_id_required = domain::mcp_management::mcp_des_id_required(&command.input_mapping);
         self.repository
             .create_mcp_tool(&CreateMcpToolInput {
                 id: Uuid::now_v7(),
@@ -932,7 +936,7 @@ where
             &interface.parameter_descriptors,
         )
         .map_err(ControlPlaneError::InvalidInput)?;
-        let des_id_required = false;
+        let des_id_required = domain::mcp_management::mcp_des_id_required(&command.input_mapping);
         self.repository
             .update_mcp_tool(&UpdateMcpToolInput {
                 actor_user_id: command.actor_user_id,
@@ -1004,6 +1008,7 @@ where
                 "output_mapping",
             )?;
         }
+        let des_id_required = domain::mcp_management::mcp_des_id_required(&command.input_mapping);
         self.repository
             .update_mcp_tool(&UpdateMcpToolInput {
                 actor_user_id: command.actor_user_id,
@@ -1022,7 +1027,7 @@ where
                 permission_code: None,
                 risk_level: command.risk_level,
                 des_id: normalize_des_id(command.des_id),
-                des_id_required: false,
+                des_id_required,
                 status: command.status,
             })
             .await
@@ -1034,11 +1039,13 @@ where
         tool_id: &str,
     ) -> Result<domain::McpToolRecord> {
         let actor = self.authorize_view(actor_user_id).await?;
-        Ok(self
+        let mut tool = self
             .repository
             .get_mcp_tool(actor.current_workspace_id, tool_id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("mcp_tool"))?)
+            .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
+        tool.des_id_required = domain::mcp_management::mcp_des_id_required(&tool.input_mapping);
+        Ok(tool)
     }
 
     pub async fn refresh_tool_description(
@@ -1231,26 +1238,6 @@ where
             .await
     }
 
-    pub async fn description_check(
-        &self,
-        actor_user_id: Uuid,
-        tool_id: &str,
-        des_id: Option<&str>,
-    ) -> Result<domain::McpDescriptionCheckResult> {
-        let actor = self.authorize_view(actor_user_id).await?;
-        let tool = self
-            .repository
-            .get_mcp_tool(actor.current_workspace_id, tool_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
-        let accepted = !tool.des_id_required || des_id.is_some_and(|value| value == tool.des_id);
-        Ok(domain::McpDescriptionCheckResult {
-            accepted,
-            current_des_id: Some(tool.des_id),
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
     pub async fn list_items(
         &self,
         actor_user_id: Uuid,

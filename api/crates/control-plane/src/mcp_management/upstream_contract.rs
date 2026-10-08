@@ -151,11 +151,23 @@ pub(super) fn validate_proxy_mapping_contract(
     target_field: &'static str,
     error_field: &'static str,
 ) -> Result<()> {
+    if source_field == "local_path" {
+        domain::mcp_management::validate_mcp_call_parameters(mapping)
+            .map_err(ControlPlaneError::InvalidInput)?;
+    }
     let entries = mapping
         .get("mappings")
         .and_then(serde_json::Value::as_array)
         .ok_or(ControlPlaneError::InvalidInput(error_field))?;
     for entry in entries {
+        if source_field == "local_path"
+            && entry
+                .pointer("/source/kind")
+                .and_then(serde_json::Value::as_str)
+                == Some("mcp_call")
+        {
+            continue;
+        }
         let object = entry
             .as_object()
             .ok_or(ControlPlaneError::InvalidInput(error_field))?;

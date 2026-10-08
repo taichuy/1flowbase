@@ -24,6 +24,9 @@ use serde_json::{json, Value};
 use storage_durable_postgres::MainDurableStore;
 
 use super::{input_schema, result_delivery};
+
+#[path = "virtual_ui/description_guard.rs"]
+mod description_guard;
 use crate::{
     error_response::ApiError,
     middleware::require_session::{with_server_delegated_request_context, RequestContext},
@@ -33,6 +36,7 @@ use crate::{
         McpDebugExecuteBody, McpDebugResponseMode,
     },
 };
+use description_guard::{description_tool, validate_tool_call_controls};
 
 const MCP_LIST: &str = portable_meta_tool_name("mcp_list");
 const MCP_GET: &str = portable_meta_tool_name("mcp_get");
@@ -599,7 +603,7 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
         json!({
             "name": MCP_GET,
             "title": "Get MCP tool details",
-            "description": "Get the current description, schemas, risk information, and des_id for a visible tool before calling it.",
+            "description": "Get the current description, schemas, risk information, and des_id for a visible tool before calling it. If description_tool_id is returned, get that tool and use its current des_id.",
             "inputSchema": {
                 "type": "object",
                 "properties": {"tool_id": {"type": "string"}},
@@ -628,7 +632,7 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
         json!({
             "name": MCP_CALL,
             "title": "Call MCP tool",
-            "description": "Call a visible tool after mcp_get. Supply the current des_id when the tool requires description validation.",
+            "description": "Call a visible tool after mcp_get. When des_id_required is true, explicitly supply the current des_id from description_tool_id when configured, or from this tool otherwise.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -918,7 +922,8 @@ fn get(
         "result_schema": tool.result_schema,
         "risk_level": tool.risk_level,
         "des_id": tool.des_id,
-        "des_id_required": false,
+        "des_id_required": domain::mcp_management::mcp_des_id_required(&tool.input_mapping),
+        "description_tool_id": domain::mcp_management::mcp_description_tool_id(&tool.input_mapping),
         "call_parameters": call_parameters,
         "max_inline_chars": tool.max_inline_chars.unwrap_or(result_delivery::DEFAULT_INLINE_CHARS as i64),
         "response_fields": tool.response_fields
@@ -983,7 +988,8 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
     else {
         return Ok(VirtualToolOutcome::invalid("Tool not visible"));
     };
-    if let Err(message) = validate_tool_call_controls(arguments, tool) {
+    let description = description_tool(catalog, scope, tool, allow_assistant_client);
+    if let Err(message) = validate_tool_call_controls(arguments, tool, description) {
         return Ok(VirtualToolOutcome::invalid(message));
     }
     let resolved_arguments = domain::mcp_management::input_defaults::resolve_call_defaults(
@@ -1196,44 +1202,6 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
     }
 }
 
-fn validate_tool_call_controls(
-    arguments: &Value,
-    tool: &domain::McpToolRecord,
-) -> Result<(), &'static str> {
-    for name in ["des_id", "max_inline_chars", "response_fields"] {
-        if arguments.get(name).is_some()
-            && !domain::mcp_management::mcp_call_parameter_is_open(&tool.input_mapping, name)
-        {
-            let hidden = tool
-                .input_mapping
-                .get("mappings")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .any(|entry| {
-                    entry.pointer("/source/kind").and_then(Value::as_str) == Some("mcp_call")
-                        && entry.get("interface_param").and_then(Value::as_str) == Some(name)
-                        && domain::mcp_management::input_defaults::mapping_is_hidden(entry)
-                });
-            if !hidden {
-                return Err("Call parameter not open for this tool");
-            }
-        }
-    }
-    let resolved_arguments = domain::mcp_management::input_defaults::resolve_call_defaults(
-        arguments,
-        &tool.input_mapping,
-    );
-    let des_id = match resolved_arguments.get("des_id") {
-        Some(value) => value.as_str().ok_or("Invalid des_id")?,
-        None => &tool.des_id,
-    };
-    if tool.des_id_required && des_id != tool.des_id.as_str() {
-        return Err("Invalid des_id");
-    }
-    Ok(())
-}
-
 async fn target_interface_failure(response: Response) -> VirtualToolOutcome {
     let status = response.status();
     let payload = if matches!(
@@ -1396,269 +1364,8 @@ pub(crate) fn interface_error(error: &anyhow::Error) -> VirtualToolOutcome {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tool_call_controls_use_defaults_and_reject_closed_overrides() {
-        let mut catalog = catalog_with_server_bound_workspace();
-        let tool = &mut catalog.tools[0];
-        tool.des_id_required = true;
-        tool.input_mapping["interface_parameters"] = json!([
-            {"name":"des_id","required":false,"source":{"kind":"mcp_call"}},
-            {"name":"max_inline_chars","required":false,"source":{"kind":"mcp_call"}},
-            {"name":"response_fields","required":false,"source":{"kind":"mcp_call"}}
-        ]);
-        tool.input_mapping["mappings"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({
-                "interface_param":"response_fields", "mcp_param":"response_fields",
-                "required":false,"source":{"kind":"mcp_call","path":"response_fields"}
-            }));
-
-        assert!(validate_tool_call_controls(&json!({}), tool).is_ok());
-        assert!(validate_tool_call_controls(&json!({"response_fields": []}), tool).is_ok());
-        assert_eq!(
-            validate_tool_call_controls(&json!({"max_inline_chars": 100}), tool),
-            Err("Call parameter not open for this tool")
-        );
-        assert_eq!(
-            validate_tool_call_controls(&json!({"des_id": "revision"}), tool),
-            Err("Call parameter not open for this tool")
-        );
-
-        tool.input_mapping["mappings"].as_array_mut().unwrap().pop();
-        tool.input_mapping["mappings"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({
-                "interface_param":"des_id", "mcp_param":"des_id",
-                "required":false,"source":{"kind":"mcp_call","path":"des_id"}
-            }));
-        assert_eq!(
-            validate_tool_call_controls(&json!({"des_id": "stale"}), tool),
-            Err("Invalid des_id")
-        );
-        assert!(validate_tool_call_controls(&json!({"des_id": "revision"}), tool).is_ok());
-    }
-
-    #[tokio::test]
-    async fn target_interface_unauthorized_exposes_stable_authentication_code() {
-        let response = Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(axum::body::Body::from(
-                json!({
-                    "status": 401,
-                    "code": "not_authenticated",
-                    "message": "sensitive detail"
-                })
-                .to_string(),
-            ))
-            .unwrap();
-
-        let VirtualToolOutcome::Error { data, .. } = target_interface_failure(response).await
-        else {
-            panic!("target failure should remain an MCP error");
-        };
-        assert_eq!(
-            data,
-            Some(json!({
-                "category": "target_authentication",
-                "http_status": 401,
-                "target_code": "not_authenticated",
-                "outcome": "failed",
-                "retry_original": false
-            }))
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "portable function-name characters")]
-    fn assistant_mcp_meta_tool_definition_rejects_non_portable_function_name() {
-        portable_meta_tool_name("mcp.list");
-    }
-
-    fn catalog_with_server_bound_workspace() -> domain::McpCatalogSnapshot {
-        let now = time::OffsetDateTime::UNIX_EPOCH;
-        let workspace_id = uuid::Uuid::from_u128(10);
-        let instance_id = uuid::Uuid::from_u128(11);
-        let tool_id = uuid::Uuid::from_u128(12);
-        domain::McpCatalogSnapshot {
-            instances: vec![domain::McpInstanceRecord {
-                id: instance_id,
-                workspace_id,
-                instance_id: "selected".to_string(),
-                name: "Selected".to_string(),
-                description_short: None,
-                status: McpInstanceStatus::Enabled,
-                default_entry_path: "/".to_string(),
-                webmcp_exposure: domain::WebMcpExposure::Disabled,
-                managed_by: None,
-                created_by: workspace_id,
-                updated_by: workspace_id,
-                created_at: now,
-                updated_at: now,
-            }],
-            groups: vec![domain::McpGroupRecord {
-                id: uuid::Uuid::from_u128(13),
-                instance_record_id: instance_id,
-                path: "/".to_string(),
-                display_name: "Root".to_string(),
-                description_short: None,
-                enabled: true,
-                sort_order: 0,
-                created_by: workspace_id,
-                updated_by: workspace_id,
-                created_at: now,
-                updated_at: now,
-            }],
-            tools: vec![domain::McpToolRecord {
-                max_inline_chars: None,
-                response_fields: None,
-                id: tool_id,
-                workspace_id,
-                tool_id: "lookup".to_string(),
-                name: "Lookup".to_string(),
-                short_description: "Lookup".to_string(),
-                full_description: "Lookup".to_string(),
-                execution_target: domain::McpToolExecutionTarget::InterfaceWrapper {
-                    interface_id: "lookup".to_string(),
-                },
-                parameter_schema: json!({
-                    "type": "object",
-                    "properties": {"workspace_id": {"type": "string"}, "query": {"type": "string"}},
-                    "required": ["workspace_id", "query"]
-                }),
-                result_schema: json!({}),
-                input_mapping: json!({"mappings": [
-                    {"interface_param":"workspace_id","source":{"kind":"server_binding","binding":"workspace_id"},"required":true},
-                    {"interface_param":"query","source":{"kind":"mcp_argument","path":"query"},"required":true}
-                ]}),
-                output_mapping: json!({"mappings": []}),
-                permission_code: None,
-                risk_level: domain::McpRiskLevel::Low,
-                des_id: "revision".to_string(),
-                des_id_required: false,
-                status: McpToolStatus::Enabled,
-                revision: 1,
-                managed_by: None,
-                created_by: workspace_id,
-                updated_by: workspace_id,
-                created_at: now,
-                updated_at: now,
-            }],
-            bindings: vec![domain::McpToolBindingRecord {
-                id: uuid::Uuid::from_u128(14),
-                instance_record_id: instance_id,
-                tool_record_id: tool_id,
-                group_path: "/".to_string(),
-                tool_id: "lookup".to_string(),
-                display_alias: None,
-                visible: true,
-                sort_order: 0,
-                created_by: workspace_id,
-                updated_by: workspace_id,
-                created_at: now,
-                updated_at: now,
-            }],
-            discovery_policies: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn assistant_mcp_get_uses_mapped_schema_without_server_bound_workspace() {
-        let catalog = catalog_with_server_bound_workspace();
-        let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
-        let VirtualToolOutcome::Success(result) =
-            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true)
-        else {
-            panic!("selected tool should be visible");
-        };
-        let schema = &result["structuredContent"]["input_schema"];
-        assert!(schema["properties"].get("workspace_id").is_none());
-        assert_eq!(schema["required"], json!(["query"]));
-    }
-
-    #[test]
-    fn assistant_mcp_scope_rejects_unselected_instance() {
-        let catalog = catalog_with_server_bound_workspace();
-        let scope = VirtualMcpScope::selected(&catalog, &[]);
-        assert!(matches!(
-            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true),
-            VirtualToolOutcome::Error { code: -32602, .. }
-        ));
-    }
-
-    #[test]
-    fn assistant_mcp_binding_visibility_does_not_require_group_record() {
-        let mut catalog = catalog_with_server_bound_workspace();
-        catalog.groups.clear();
-        let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
-
-        assert!(matches!(
-            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true),
-            VirtualToolOutcome::Success(_)
-        ));
-    }
-
-    #[test]
-    fn assistant_mcp_scope_rejects_disabled_and_ambiguous_selected_instances() {
-        let mut disabled = catalog_with_server_bound_workspace();
-        disabled.instances[0].status = McpInstanceStatus::Disabled;
-        let scope = VirtualMcpScope::selected(&disabled, &["selected".to_string()]);
-        assert!(matches!(
-            get(&disabled, &scope, &json!({"tool_id": "lookup"}), true),
-            VirtualToolOutcome::Error { code: -32602, .. }
-        ));
-
-        let mut ambiguous = catalog_with_server_bound_workspace();
-        let mut second_instance = ambiguous.instances[0].clone();
-        second_instance.id = uuid::Uuid::from_u128(21);
-        second_instance.instance_id = "second".to_string();
-        let mut second_group = ambiguous.groups[0].clone();
-        second_group.id = uuid::Uuid::from_u128(22);
-        second_group.instance_record_id = second_instance.id;
-        let mut second_binding = ambiguous.bindings[0].clone();
-        second_binding.id = uuid::Uuid::from_u128(23);
-        second_binding.instance_record_id = second_instance.id;
-        ambiguous.instances.push(second_instance);
-        ambiguous.groups.push(second_group);
-        ambiguous.bindings.push(second_binding);
-        let scope =
-            VirtualMcpScope::selected(&ambiguous, &["selected".to_string(), "second".to_string()]);
-        assert!(matches!(
-            get(&ambiguous, &scope, &json!({"tool_id": "lookup"}), true),
-            VirtualToolOutcome::Error { code: -32602, .. }
-        ));
-    }
-
-    #[test]
-    fn ac_008_assistant_client_target_is_hidden_without_a_browser_execution_port() {
-        let mut catalog = catalog_with_server_bound_workspace();
-        catalog.tools[0].execution_target = domain::McpToolExecutionTarget::AssistantClient {
-            capability_code: "inspect_block_render".to_string(),
-        };
-        let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
-
-        assert!(matches!(
-            get(&catalog, &scope, &json!({"tool_id": "lookup"}), false),
-            VirtualToolOutcome::Error { code: -32602, .. }
-        ));
-        assert!(matches!(
-            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true),
-            VirtualToolOutcome::Success(_)
-        ));
-
-        catalog.tools[0].execution_target = domain::McpToolExecutionTarget::AssistantClient {
-            capability_code: "run_javascript".to_string(),
-        };
-        assert!(matches!(
-            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true),
-            VirtualToolOutcome::Error { code: -32602, .. }
-        ));
-    }
-}
+#[path = "_tests/virtual_ui.rs"]
+mod tests;
 
 #[cfg(test)]
 #[path = "_tests/target_error_diagnostics.rs"]

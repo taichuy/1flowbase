@@ -245,7 +245,9 @@ where
                     permission_code: plan.permission_code,
                     risk_level: plan.risk_level,
                     des_id: normalize_des_id(None),
-                    des_id_required: false,
+                    des_id_required: domain::mcp_management::mcp_des_id_required(
+                        &tool.input_mapping,
+                    ),
                     status: plan.status,
                 }
             })
@@ -736,7 +738,9 @@ where
                     permission_code: plan.permission_code,
                     risk_level: plan.risk_level,
                     des_id: normalize_des_id(None),
-                    des_id_required: false,
+                    des_id_required: domain::mcp_management::mcp_des_id_required(
+                        &tool.input_mapping,
+                    ),
                     status: plan.status,
                 }
             })

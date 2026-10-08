@@ -183,6 +183,7 @@ pub(super) fn to_tool_response_with_operation(
     availability_status: domain::McpToolAvailabilityStatus,
 ) -> McpToolResponse {
     let managed_by = record.managed_by.clone();
+    let des_id_required = domain::mcp_management::mcp_des_id_required(&record.input_mapping);
     McpToolResponse {
         id: record.id.to_string(),
         workspace_id: record.workspace_id.to_string(),
@@ -219,7 +220,7 @@ pub(super) fn to_tool_response_with_operation(
         permission_code: record.permission_code,
         risk_level: record.risk_level.as_str().into(),
         des_id: record.des_id,
-        des_id_required: record.des_id_required,
+        des_id_required,
         status: record.status.as_str().into(),
         availability_status: availability_status.into(),
         availability_reason: (availability_status != domain::McpToolAvailabilityStatus::Available)

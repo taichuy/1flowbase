@@ -31,7 +31,7 @@ fn configured_call_parameters_are_an_explicit_allowlist() {
     assert!(validate_mcp_call_parameters(&selected).is_ok());
     for invalid in [
         json!({"interface_parameters":interface_parameters,"mappings":[{"interface_param":"max_inline_chars","mcp_param":"budget","required":false,"source":{"kind":"mcp_call","path":"max_inline_chars"}}]}),
-        json!({"interface_parameters":interface_parameters,"mappings":[{"interface_param":"des_id","mcp_param":"des_id","required":true,"source":{"kind":"mcp_call","path":"des_id"}}]}),
+        json!({"interface_parameters":interface_parameters,"mappings":[{"interface_param":"max_inline_chars","mcp_param":"max_inline_chars","required":true,"source":{"kind":"mcp_call","path":"max_inline_chars"}}]}),
         json!({"mappings":[{"interface_param":"unknown","mcp_param":"unknown","required":false,"source":{"kind":"mcp_call","path":"unknown"}}]}),
     ] {
         assert!(validate_mcp_call_parameters(&invalid).is_err());
@@ -69,4 +69,64 @@ fn discovery_controls_have_no_upper_budget_or_unlimited_mode() {
         "^(?:|/(?:[^~]|~[01])*)$"
     );
     assert!(properties.contains_key("string_ranges"));
+}
+
+fn description_mapping(tool_id: Option<&str>) -> serde_json::Value {
+    let mut mapping = json!({
+        "interface_parameters": [
+            {"name":"des_id","required":false,"source":{"kind":"mcp_call"}},
+            {"name":"max_inline_chars","required":false,"source":{"kind":"mcp_call"}},
+            {"name":"response_fields","required":false,"source":{"kind":"mcp_call"}}
+        ],
+        "mappings": [{"interface_param":"des_id","mcp_param":"des_id","required":true,"source":{"kind":"mcp_call","path":"des_id"}}]
+    });
+    if let Some(id) = tool_id {
+        mapping["mappings"][0]["source"]["tool_id"] = json!(id);
+    }
+    mapping
+}
+
+#[test]
+fn description_acknowledgement_is_derived_from_mapping() {
+    for target in [None, Some("prerequisite")] {
+        let mapping = description_mapping(target);
+        assert!(validate_mcp_call_parameters(&mapping).is_ok());
+        assert!(crate::mcp_management::mcp_des_id_required(&mapping));
+        assert_eq!(
+            crate::mcp_management::mcp_description_tool_id(&mapping),
+            target
+        );
+    }
+    assert!(!crate::mcp_management::mcp_des_id_required(&json!({})));
+}
+
+#[test]
+fn description_guard_rejects_bypass_and_invalid_reference_configuration() {
+    let valid = description_mapping(Some("prerequisite"));
+    for (pointer, value) in [
+        ("/mappings/0/source/tool_id", json!("")),
+        ("/mappings/0/source/tool_id", json!("   ")),
+        ("/mappings/0/source/tool_id", json!(null)),
+        ("/mappings/0/default_value", json!("token")),
+        ("/mappings/0/hidden", json!(true)),
+        ("/mappings/0/required", json!(false)),
+        ("/mappings/0/interface_param", json!("response_fields")),
+        ("/mappings/0/source/kind", json!("mcp_argument")),
+    ] {
+        let mut invalid = valid.clone();
+        let (parent, key) = pointer.rsplit_once('/').unwrap();
+        invalid.pointer_mut(parent).unwrap()[key] = value;
+        assert!(validate_mcp_call_parameters(&invalid).is_err(), "{pointer}");
+    }
+    let mut duplicate = valid.clone();
+    duplicate["mappings"]
+        .as_array_mut()
+        .unwrap()
+        .push(valid["mappings"][0].clone());
+    assert!(validate_mcp_call_parameters(&duplicate).is_err());
+    let mut other = description_mapping(None);
+    other["mappings"][0]["interface_param"] = json!("max_inline_chars");
+    other["mappings"][0]["mcp_param"] = json!("max_inline_chars");
+    other["mappings"][0]["source"]["path"] = json!("max_inline_chars");
+    assert!(validate_mcp_call_parameters(&other).is_err());
 }

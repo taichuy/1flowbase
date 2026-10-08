@@ -778,6 +778,9 @@ where
             + BillingRepository
             + crate::ports::FileManagementRepository,
     {
+        if !command.input_payload.is_object() {
+            return Err(anyhow!("input payload must be an object"));
+        }
         let context = self
             .load_application_run_context(command.actor_user_id, command.application_id)
             .await?;
@@ -799,12 +802,27 @@ where
             .as_ref()
             .unwrap_or(&editor_state.draft.document);
 
-        let mut compiled_plan = orchestration_runtime::compiler::FlowCompiler::compile(
-            editor_state.flow.id,
-            &editor_state.draft.id.to_string(),
-            preview_document,
-            &compile_context,
-        )?;
+        let mut compiled_plan = match application.application_type {
+            domain::ApplicationType::AgentLogs => {
+                return Err(ControlPlaneError::InvalidInput("application_type").into())
+            }
+            domain::ApplicationType::AgentFlow => {
+                orchestration_runtime::compiler::FlowCompiler::compile(
+                    editor_state.flow.id,
+                    &editor_state.draft.id.to_string(),
+                    preview_document,
+                    &compile_context,
+                )?
+            }
+            domain::ApplicationType::Workflow => {
+                orchestration_runtime::compiler::FlowCompiler::compile_workflow(
+                    editor_state.flow.id,
+                    &editor_state.draft.id.to_string(),
+                    preview_document,
+                    &compile_context,
+                )?
+            }
+        };
         freeze_failover_queue_routes(
             &self.repository,
             application.workspace_id,
@@ -850,40 +868,89 @@ where
             flow_run.id,
             None,
         );
+        let lifecycle = live_debug_run::PersistedNodeLifecycle::new(
+            self,
+            flow_run.id,
+            flow_execution_context.clone(),
+        );
+        let mut preview_input = command.input_payload.clone();
+        if application.application_type == domain::ApplicationType::Workflow {
+            let variables = self
+                .repository
+                .list_application_environment_variables(application.workspace_id, application.id)
+                .await?;
+            preview_input = live_debug_run::freeze_run_input_environment(
+                preview_input,
+                &variables,
+                &application,
+            );
+            let pool = preview_input
+                .as_object_mut()
+                .ok_or_else(|| anyhow!("input payload must be an object"))?;
+            live_debug_run::inject_system_variables(
+                pool,
+                &flow_run,
+                application.application_type,
+                live_debug_run::compiled_plan_start_node_id(&compiled_plan),
+            );
+        }
         let invoker = self
             .runtime_invoker(application.workspace_id)
             .for_flow_run(flow_run.id)
             .with_flow_execution_context(flow_execution_context);
         let http_file_persister = self.http_response_file_persister(actor);
-        let preview_result = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store(
+        let preview_result = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store_and_lifecycle(
             &compiled_plan,
             &command.node_id,
-            &command.input_payload,
+            &preview_input,
             &invoker,
             http_file_persister.as_ref().map(|persister| {
                 persister as &dyn orchestration_runtime::execution_engine::HttpResponseFilePersister
             }),
             self.llm_routing_counter_store.clone(),
+            &lifecycle,
         )
         .await;
         let preview = match preview_result {
             Ok(preview) => preview,
             Err(error) => {
+                for node_run in lifecycle.prepared_node_runs()?.values() {
+                    ensure_node_run_transition(
+                        node_run.status,
+                        domain::NodeRunStatus::Failed,
+                        "fail_node_debug_preview",
+                    )?;
+                    self.repository
+                        .complete_node_run(&crate::ports::CompleteNodeRunInput {
+                            node_run_id: node_run.id,
+                            status: domain::NodeRunStatus::Failed,
+                            output_payload: json!({}),
+                            error_payload: Some(json!({ "message": error.to_string() })),
+                            metrics_payload: json!({}),
+                            debug_payload: json!({}),
+                            finished_at: OffsetDateTime::now_utc(),
+                        })
+                        .await?;
+                }
                 live_debug_run::fail_flow_run(self, command.application_id, flow_run.id, &error)
                     .await?;
                 return Err(error);
             }
         };
-        let node_run = self
-            .repository
-            .create_node_run(&build_node_run_input(
-                flow_run.id,
-                &compiled_plan,
-                &command.node_id,
-                &preview,
-                started_at,
-            )?)
-            .await?;
+        let node_run = match lifecycle.prepared_node_runs()?.remove(&command.node_id) {
+            Some(node_run) => node_run,
+            None => {
+                self.repository
+                    .create_node_run(&build_node_run_input(
+                        flow_run.id,
+                        &compiled_plan,
+                        &command.node_id,
+                        &preview,
+                        started_at,
+                    )?)
+                    .await?
+            }
+        };
         let events =
             persist_preview_events(&self.repository, &flow_run, &node_run, &preview).await?;
         let finished_at = OffsetDateTime::now_utc();

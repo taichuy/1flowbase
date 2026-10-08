@@ -9,11 +9,12 @@ use crate::{
     execution_engine::{
         execute_code_node, execute_http_request_node, execute_llm_node,
         execute_variable_assignment_node, materialize_start_builtin_defaults, resolved_native_sql,
+        start_flow_debug_run_with_runtime_context_and_lifecycle,
         variable_aggregator::{
             execute_variable_aggregator_node, variable_aggregator_input_payload,
         },
-        CapabilityInvoker, CodeInvoker, ExecutionRuntimeContext, HttpResponseFilePersister,
-        LlmRoutingCounterStore, NoopExecutionLifecycle, ProviderInvoker,
+        CapabilityInvoker, CodeInvoker, ExecutionLifecycle, ExecutionRuntimeContext,
+        HttpResponseFilePersister, LlmRoutingCounterStore, NoopExecutionLifecycle, ProviderInvoker,
     },
     node_errors::build_node_type_not_implemented_error_payload,
 };
@@ -120,6 +121,7 @@ where
         runtime_context,
         invoker,
         http_file_persister,
+        &NoopExecutionLifecycle,
     )
     .await
 }
@@ -131,6 +133,31 @@ pub async fn run_node_preview_with_http_file_persister_and_counter_store<I>(
     invoker: &I,
     http_file_persister: Option<&dyn HttpResponseFilePersister>,
     llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
+) -> Result<NodePreviewOutcome>
+where
+    I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
+{
+    run_node_preview_with_http_file_persister_and_counter_store_and_lifecycle(
+        plan,
+        target_node_id,
+        input_payload,
+        invoker,
+        http_file_persister,
+        llm_routing_counter_store,
+        &NoopExecutionLifecycle,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_node_preview_with_http_file_persister_and_counter_store_and_lifecycle<I>(
+    plan: &CompiledPlan,
+    target_node_id: &str,
+    input_payload: &Value,
+    invoker: &I,
+    http_file_persister: Option<&dyn HttpResponseFilePersister>,
+    llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
+    lifecycle: &dyn ExecutionLifecycle,
 ) -> Result<NodePreviewOutcome>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
@@ -152,6 +179,7 @@ where
         runtime_context,
         invoker,
         http_file_persister,
+        lifecycle,
     )
     .await
 }
@@ -163,6 +191,7 @@ async fn run_node_preview_with_prepared_context<I>(
     runtime_context: ExecutionRuntimeContext,
     invoker: &I,
     http_file_persister: Option<&dyn HttpResponseFilePersister>,
+    lifecycle: &dyn ExecutionLifecycle,
 ) -> Result<NodePreviewOutcome>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
@@ -171,7 +200,7 @@ where
         .nodes
         .get(target_node_id)
         .ok_or_else(|| anyhow!("target node not found: {target_node_id}"))?;
-    let resolved_inputs = if node.node_type == "start" {
+    let mut resolved_inputs = if node.node_type == "start" {
         variable_pool
             .get(target_node_id)
             .and_then(|value| value.as_object())
@@ -182,6 +211,14 @@ where
     } else {
         resolve_node_inputs(node, &variable_pool)?
     };
+    if !matches!(
+        node.node_type.as_str(),
+        "template_transform" | "workflow_start" | "workflow_end"
+    ) {
+        lifecycle
+            .begin_node(node, &Value::Object(resolved_inputs.clone()))
+            .await?;
+    }
     let rendered_templates = render_templated_bindings(node, &resolved_inputs);
     let output_contract = node
         .outputs
@@ -263,6 +300,71 @@ where
             execution.metrics_payload,
             execution.debug_payload,
             Vec::new(),
+        )
+    } else if matches!(
+        node.node_type.as_str(),
+        "data_model_get"
+            | "data_model_list"
+            | "data_model_create"
+            | "data_model_update"
+            | "data_model_delete"
+    ) {
+        let execution = invoker
+            .invoke_data_model_node(node, &resolved_inputs)
+            .await?;
+        // Preview is a single invocation, so it cannot own a callback checkpoint.
+        // Preserve the invoker's policy decision; never turn a confirmation request into a write.
+        let error_payload = execution.error_payload.or_else(|| {
+            execution.pending_callback.as_ref().map(|callback| json!({
+                "error_code": "node_preview_callback_not_supported",
+                "message": "Single node preview cannot resume a pending callback; use a workflow debug run",
+                "callback_kind": callback.callback_kind,
+            }))
+        });
+        (
+            execution.output_payload,
+            error_payload,
+            execution.metrics_payload,
+            execution.debug_payload,
+            Vec::new(),
+        )
+    } else if matches!(
+        node.node_type.as_str(),
+        "template_transform" | "workflow_start" | "workflow_end"
+    ) {
+        // Use the graph executor's existing projection and boundary materialization,
+        // with exactly one active target and the caller's explicit variable pool.
+        let mut target_plan = plan.clone();
+        target_plan.topological_order = vec![node.node_id.clone()];
+        target_plan.edges.clear();
+        target_plan
+            .nodes
+            .retain(|node_id, _| node_id == target_node_id);
+        let execution = start_flow_debug_run_with_runtime_context_and_lifecycle(
+            &target_plan,
+            &Value::Object(variable_pool),
+            runtime_context,
+            invoker,
+            &NoopExecutionLifecycle,
+        )
+        .await?;
+        let trace = execution
+            .node_traces
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("preview target did not execute: {target_node_id}"))?;
+        lifecycle.begin_node(node, &trace.input_payload).await?;
+        resolved_inputs = trace
+            .input_payload
+            .as_object()
+            .cloned()
+            .ok_or_else(|| anyhow!("preview target input must be an object"))?;
+        (
+            trace.output_payload,
+            trace.error_payload,
+            trace.metrics_payload,
+            trace.debug_payload,
+            trace.provider_events,
         )
     } else if node.node_type == "sql" {
         let execution = invoker

@@ -905,6 +905,14 @@ async fn bundle_preview_and_import_preserve_shared_tool_impact_and_atomic_replac
     let mut package = managed_frontstage_package("1.0.2");
     package.instances[0].name = "New name".into();
     package.tools[0].name = "New tool".into();
+    package.tools[0].input_mapping = serde_json::json!({
+        "interface_parameters": [
+            {"name":"des_id","required":false,"source":{"kind":"mcp_call"}},
+            {"name":"max_inline_chars","required":false,"source":{"kind":"mcp_call"}},
+            {"name":"response_fields","required":false,"source":{"kind":"mcp_call"}}
+        ],
+        "mappings": [{"interface_param":"des_id","mcp_param":"des_id","required":true,"source":{"kind":"mcp_call","path":"des_id","tool_id":package.tools[1].tool_id}}]
+    });
 
     let instance = |id, instance_id: &str, name: &str| domain::McpInstanceRecord {
         id,
@@ -1053,6 +1061,36 @@ async fn bundle_preview_and_import_preserve_shared_tool_impact_and_atomic_replac
     assert_eq!(inputs[0].workspace_id, workspace_id);
     assert_eq!(inputs[0].instances[0].name, "New name");
     assert_eq!(inputs[0].tools[0].name, "New tool");
+    assert!(inputs[0].tools[0].des_id_required);
+    assert!(
+        !service
+            .description_check(actor_user_id, &package.tools[0].tool_id, None)
+            .await
+            .unwrap()
+            .accepted
+    );
+    assert!(
+        !service
+            .description_check(
+                actor_user_id,
+                &package.tools[0].tool_id,
+                Some(&package.tools[0].tool_id)
+            )
+            .await
+            .unwrap()
+            .accepted
+    );
+    assert!(
+        service
+            .description_check(
+                actor_user_id,
+                &package.tools[0].tool_id,
+                Some(&package.tools[1].tool_id)
+            )
+            .await
+            .unwrap()
+            .accepted
+    );
 
     let mut invalid_package = package;
     invalid_package.instances[0].bindings[0].tool_id = "missing_tool".into();

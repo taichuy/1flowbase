@@ -1,3 +1,8 @@
+mod call_controls;
+pub use call_controls::{
+    mcp_call_parameter_is_open, mcp_des_id_required, mcp_description_tool_id,
+    validate_mcp_call_parameters,
+};
 pub mod input_defaults;
 
 use serde::{Deserialize, Serialize};
@@ -559,118 +564,6 @@ pub fn validate_mcp_return_defaults(
         .is_some_and(|fields| fields.iter().any(|field| !is_mcp_result_pointer(field)))
     {
         return Err("response_fields");
-    }
-    Ok(())
-}
-
-pub fn mcp_call_parameter_is_open(input_mapping: &serde_json::Value, name: &str) -> bool {
-    let configured = input_mapping
-        .get("interface_parameters")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|parameters| {
-            parameters.iter().any(|parameter| {
-                parameter
-                    .pointer("/source/kind")
-                    .and_then(serde_json::Value::as_str)
-                    == Some("mcp_call")
-            })
-        });
-    if !configured {
-        return input_mapping
-            .get("call_parameters")
-            .and_then(serde_json::Value::as_array)
-            .is_none_or(|parameters| {
-                parameters
-                    .iter()
-                    .any(|parameter| parameter.as_str() == Some(name))
-            });
-    }
-    input_mapping
-        .get("mappings")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|mappings| {
-            mappings.iter().any(|mapping| {
-                mapping
-                    .get("interface_param")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(name)
-                    && !input_defaults::mapping_is_hidden(mapping)
-                    && mapping.get("mcp_param").and_then(serde_json::Value::as_str) == Some(name)
-                    && mapping
-                        .pointer("/source/kind")
-                        .and_then(serde_json::Value::as_str)
-                        == Some("mcp_call")
-                    && mapping
-                        .pointer("/source/path")
-                        .and_then(serde_json::Value::as_str)
-                        == Some(name)
-            })
-        })
-}
-
-pub fn validate_mcp_call_parameters(input_mapping: &serde_json::Value) -> Result<(), &'static str> {
-    input_defaults::validate_input_defaults(input_mapping, &[])?;
-    let parameters = input_mapping
-        .get("interface_parameters")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|parameter| {
-            parameter
-                .pointer("/source/kind")
-                .and_then(serde_json::Value::as_str)
-                == Some("mcp_call")
-        })
-        .collect::<Vec<_>>();
-    if !parameters.is_empty() && parameters.len() != 3 {
-        return Err("input_mapping");
-    }
-    let mut controls = std::collections::HashSet::new();
-    for parameter in parameters {
-        let name = parameter.get("name").and_then(serde_json::Value::as_str);
-        if !matches!(
-            name,
-            Some("des_id" | "max_inline_chars" | "response_fields")
-        ) || parameter
-            .get("required")
-            .and_then(serde_json::Value::as_bool)
-            != Some(false)
-            || !controls.insert(name.unwrap_or_default())
-        {
-            return Err("input_mapping");
-        }
-    }
-    let mut seen = std::collections::HashSet::new();
-    for mapping in input_mapping
-        .get("mappings")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        let Some(name) = mapping
-            .get("interface_param")
-            .and_then(serde_json::Value::as_str)
-        else {
-            continue;
-        };
-        let source_kind = mapping
-            .pointer("/source/kind")
-            .and_then(serde_json::Value::as_str);
-        if source_kind != Some("mcp_call") && !controls.contains(name) {
-            continue;
-        }
-        if source_kind != Some("mcp_call")
-            || !controls.contains(name)
-            || mapping.get("mcp_param").and_then(serde_json::Value::as_str) != Some(name)
-            || mapping
-                .pointer("/source/path")
-                .and_then(serde_json::Value::as_str)
-                != Some(name)
-            || mapping.get("required").and_then(serde_json::Value::as_bool) != Some(false)
-            || !seen.insert(name)
-        {
-            return Err("input_mapping");
-        }
     }
     Ok(())
 }

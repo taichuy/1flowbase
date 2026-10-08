@@ -182,7 +182,7 @@ where
         .await
 }
 
-fn freeze_run_input_environment(
+pub(in crate::orchestration_runtime) fn freeze_run_input_environment(
     input_payload: Value,
     variables: &[domain::ApplicationEnvironmentVariable],
     application: &domain::ApplicationRecord,
@@ -260,7 +260,11 @@ where
             .await?;
 
         let mut compiled_plan = match application.application_type {
-            domain::ApplicationType::AgentLogs => return Err(crate::errors::ControlPlaneError::InvalidInput("application_type").into()),
+            domain::ApplicationType::AgentLogs => {
+                return Err(
+                    crate::errors::ControlPlaneError::InvalidInput("application_type").into(),
+                )
+            }
             domain::ApplicationType::AgentFlow => {
                 orchestration_runtime::compiler::FlowCompiler::compile(
                     editor_state.flow.id,
