@@ -256,6 +256,47 @@ async fn classify_uploaded_extension(
         });
     }
 
+    if artifact_bytes.starts_with(&[0x1f, 0x8b]) {
+        if let Ok(manifest) =
+            control_plane::plugin_management::inspect_client_collector_archive(artifact_bytes)
+        {
+            let category = ExtensionCatalogCategory::RuntimeExtensions;
+            if explicit_category.is_some_and(|value| value != category) {
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "extension_catalog_category",
+                )
+                .into());
+            }
+            ensure_explicit_match(
+                fields.organization.as_ref(),
+                &manifest.organization,
+                "extension_organization",
+            )?;
+            ensure_explicit_match(
+                fields.artifact_id.as_ref(),
+                &manifest.artifact_id,
+                "extension_artifact_id",
+            )?;
+            ensure_explicit_match(
+                fields.version.as_ref(),
+                &manifest.version,
+                "extension_version",
+            )?;
+            return Ok(UploadedExtensionArtifact {
+                category,
+                organization: manifest.organization,
+                artifact_id: manifest.artifact_id,
+                version: manifest.version,
+                minimum_host_version: Some(manifest.minimum_host_version),
+                node_plugin: false,
+                signature_status: domain::ExtensionSignatureStatus::Missing,
+                signature_algorithm: None,
+                signing_key_id: None,
+                application_action: domain::ExtensionApplicationAction::None,
+                managed_schema: None,
+            });
+        }
+    }
     let inspection =
         inspect_node_plugin(dependencies, file_name, artifact_bytes, "uploaded").await?;
     if explicit_category.is_some_and(|value| value != inspection.category) {
@@ -353,6 +394,16 @@ pub(crate) async fn install_uploaded_artifact(
         .find_local_installation(&dependencies.api_node_id, &identity)
         .await?
     {
+        if domain::is_client_collector_receipt(&installation.receipt) {
+            install_service
+                .client_collector_manifest(&installation)
+                .await
+                .map_err(|_| {
+                    control_plane::errors::ControlPlaneError::Conflict(
+                        "client_collector_artifact_unavailable",
+                    )
+                })?;
+        }
         let node_plugin_installation_id = if artifact.node_plugin {
             Some(installation.id.to_string())
         } else {

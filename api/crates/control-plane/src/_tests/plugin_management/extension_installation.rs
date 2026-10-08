@@ -265,8 +265,13 @@ async fn root_1545_ac3_all_six_categories_install_into_canonical_local_truth() {
     .enumerate()
     {
         let artifact_id = format!("fixture-{index}");
+        let bytes = if category == ExtensionCatalogCategory::RuntimeExtensions {
+            crate::plugin_management::collector_fixture_archive(&artifact_id, "1.0.0")
+        } else {
+            artifact_id.as_bytes().to_vec()
+        };
         let outcome = service
-            .install_from_bytes(command(category, &artifact_id, artifact_id.as_bytes()))
+            .install_from_bytes(command(category, &artifact_id, &bytes))
             .await
             .unwrap();
         let ExtensionArtifactInstallOutcome::Installed { installation, .. } = outcome else {
@@ -502,4 +507,98 @@ fn installed_record(
         created_at: updated_at,
         updated_at,
     }
+}
+
+#[tokio::test]
+async fn collector_download_requires_registered_current_node_version_and_valid_retained_bytes() {
+    use tokio::io::AsyncReadExt;
+    let root = test_root("collector-download");
+    let repository = MemoryExtensionInstallationRepository::default();
+    let service = ExtensionInstallationService::new(repository.clone(), &root);
+    let bytes =
+        crate::plugin_management::collector_fixture_archive("codex-logs-collector", "1.0.0");
+    let outcome = service
+        .install_from_bytes(command(
+            ExtensionCatalogCategory::RuntimeExtensions,
+            "codex-logs-collector",
+            &bytes,
+        ))
+        .await
+        .unwrap();
+    let ExtensionArtifactInstallOutcome::Installed { installation, .. } = outcome else {
+        panic!("collector fixture must install");
+    };
+    assert_eq!(
+        installation.application_action,
+        domain::ExtensionApplicationAction::None
+    );
+    assert!(domain::is_client_collector_receipt(&installation.receipt));
+    let mut download = service
+        .download_client_collector("node-a", &installation.identity, "install.sh")
+        .await
+        .unwrap();
+    let mut downloaded = Vec::new();
+    download.reader.read_to_end(&mut downloaded).await.unwrap();
+    download.completion.await.unwrap().unwrap();
+    assert_eq!(downloaded, b"opaque");
+    assert_eq!(download.size, downloaded.len() as u64);
+    for asset in [
+        "../install.sh",
+        "collector-manifest.json",
+        "not-in-manifest",
+    ] {
+        assert!(service
+            .download_client_collector("node-a", &installation.identity, asset)
+            .await
+            .is_err());
+    }
+    assert!(service
+        .download_client_collector("node-b", &installation.identity, "install.sh")
+        .await
+        .is_err());
+    let mut other_version = installation.identity.clone();
+    other_version.version = "2.0.0".into();
+    assert!(service
+        .download_client_collector("node-a", &other_version, "install.sh")
+        .await
+        .is_err());
+    let path = installation.local_path.as_deref().unwrap();
+    #[cfg(unix)]
+    {
+        let version_dir = PathBuf::from(path).parent().unwrap().to_path_buf();
+        let escaped = test_root("collector-escaped-parent");
+        tokio::fs::rename(&version_dir, &escaped).await.unwrap();
+        std::os::unix::fs::symlink(&escaped, &version_dir).unwrap();
+        assert!(service
+            .download_client_collector("node-a", &installation.identity, "install.sh")
+            .await
+            .is_err());
+        tokio::fs::remove_file(&version_dir).await.unwrap();
+        tokio::fs::rename(&escaped, &version_dir).await.unwrap();
+    }
+    tokio::fs::write(path, b"corrupted").await.unwrap();
+    assert!(service
+        .download_client_collector("node-a", &installation.identity, "install.sh")
+        .await
+        .is_err());
+    tokio::fs::remove_file(path).await.unwrap();
+    assert!(service
+        .download_client_collector("node-a", &installation.identity, "install.sh")
+        .await
+        .is_err());
+    // Missing metadata must not trigger any remote repair and cannot grant public download.
+    repository
+        .set_extension_installation_status(
+            "node-a",
+            installation.id,
+            domain::ExtensionInstallationStatus::Missing,
+        )
+        .await
+        .unwrap();
+    tokio::fs::write(path, bytes).await.unwrap();
+    assert!(service
+        .download_client_collector("node-a", &installation.identity, "install.sh")
+        .await
+        .is_err());
+    let _ = tokio::fs::remove_dir_all(root).await;
 }

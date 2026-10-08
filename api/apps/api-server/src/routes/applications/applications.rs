@@ -220,9 +220,18 @@ pub struct ApplicationCollectorResponse {
     pub description: String,
     pub version: String,
     pub execution_target: String,
-    pub documentation_url: String,
-    pub shell_installer_url: String,
-    pub powershell_installer_url: String,
+    pub catalog_id: String,
+    pub category: String,
+    pub installation_status: String,
+    pub installed_version: Option<String>,
+    pub extension_installation_id: Option<String>,
+    pub installable: bool,
+    pub can_install: bool,
+    pub can_update: bool,
+    pub asset_base_url: Option<String>,
+    pub documentation_url: Option<String>,
+    pub shell_installer_url: Option<String>,
+    pub powershell_installer_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -965,3 +974,5 @@ pub async fn delete_application(
     .await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+pub(crate) mod collectors;

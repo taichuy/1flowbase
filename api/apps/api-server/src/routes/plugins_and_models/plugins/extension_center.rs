@@ -512,7 +512,24 @@ async fn installed_catalog_joins(
     let records = extension_installation_service(dependencies)
         .list_installed_for_node(&dependencies.api_node_id)
         .await?;
+    let install_service = extension_installation_service(dependencies);
+    let mut unavailable_collectors = std::collections::HashSet::new();
+    for record in &records {
+        if domain::is_client_collector_receipt(&record.receipt)
+            && install_service
+                .client_collector_manifest(record)
+                .await
+                .is_err()
+        {
+            unavailable_collectors.insert(record.id);
+        }
+    }
     let mut joins = project_installed_catalog_joins(records, category);
+    for join in joins.values_mut() {
+        if unavailable_collectors.contains(&join.installation_id) {
+            join.status = InstalledCatalogJoinStatus::Uninstalled;
+        }
+    }
     if matches!(
         category,
         ExtensionCatalogCategory::RuntimeExtensions | ExtensionCatalogCategory::CapabilityPlugins
@@ -1231,6 +1248,16 @@ async fn install_or_update_official_extension(
         .find_local_installation(&dependencies.api_node_id, &identity)
         .await?
     {
+        if domain::is_client_collector_receipt(&installation.receipt) {
+            install_service
+                .client_collector_manifest(&installation)
+                .await
+                .map_err(|_| {
+                    control_plane::errors::ControlPlaneError::Conflict(
+                        "client_collector_artifact_unavailable",
+                    )
+                })?;
+        }
         let artifact_missing = is_node_plugin_category(category)
             && control_plane::ports::PluginRepository::get_artifact_instance(
                 &dependencies.store,
@@ -1242,7 +1269,9 @@ async fn install_or_update_official_extension(
                 artifact.artifact_status == domain::PluginArtifactInstanceStatus::Missing
             });
         if !artifact_missing {
-            let node_plugin_installation_id = if is_node_plugin_category(category) {
+            let node_plugin_installation_id = if is_node_plugin_category(category)
+                && !domain::is_client_collector_receipt(&installation.receipt)
+            {
                 Some(installation.id.to_string())
             } else {
                 None
@@ -1281,6 +1310,13 @@ async fn install_or_update_official_extension(
     {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
             "extension_catalog_identity",
+        )
+        .into());
+    }
+    let collector_descriptor = located.entry.source.client_collector()?;
+    if collector_descriptor.is_some() && category != ExtensionCatalogCategory::RuntimeExtensions {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+            "client_collector_category",
         )
         .into());
     }
@@ -1349,7 +1385,19 @@ async fn install_or_update_official_extension(
         .map(str::to_string);
     let mut application_action = catalog_application_action(category);
     let mut managed_schema_declaration = None;
-    if is_node_plugin_category(category) {
+    if let Some(descriptor) = &collector_descriptor {
+        let manifest = control_plane::plugin_management::inspect_client_collector_archive(
+            downloaded.artifact_bytes.as_slice(),
+        )?;
+        control_plane::plugin_management::ensure_client_collector_identity(&manifest, &identity)?;
+        if &manifest.descriptor() != descriptor {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "client_collector_descriptor",
+            )
+            .into());
+        }
+    }
+    if is_node_plugin_category(category) && collector_descriptor.is_none() {
         let inspection = inspect_node_plugin(
             dependencies,
             &downloaded.file_name,
@@ -1409,7 +1457,7 @@ async fn install_or_update_official_extension(
         reason: value.reason,
         acknowledged_warnings: value.acknowledged_warnings,
     });
-    if is_node_plugin_category(category) {
+    if is_node_plugin_category(category) && collector_descriptor.is_none() {
         let installed = service(dependencies, actor, operation_id)
             .install_extension_node_plugin(InstallExtensionNodePluginCommand {
                 actor_user_id: actor.user_id,

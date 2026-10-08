@@ -517,3 +517,9 @@ fn plugin_install_audit_detail(
 
 mod contribution_authority;
 pub use contribution_authority::*;
+
+mod client_collector;
+pub use client_collector::*;
+
+#[cfg(test)]
+pub(crate) use client_collector::_tests::collector_fixture_archive;

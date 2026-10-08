@@ -571,6 +571,7 @@ impl InterfaceContract for ApplicationsOutput {
 }
 
 struct ApplicationsAdapter {
+    collector: super::collectors::CollectorCatalogDependencies,
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
 }
@@ -578,8 +579,10 @@ struct ApplicationsAdapter {
 pub(crate) fn applications_port(
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
+    collector: super::collectors::CollectorCatalogDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<ApplicationsInput, ApplicationsOutput>> {
     Arc::new(ApplicationsAdapter {
+        collector,
         store,
         bootstrap_workspace_id,
     })
@@ -602,7 +605,13 @@ impl ApplicationsAdapter {
             .list_application_tags(principal.actor().user_id)
             .await?;
         Ok(ApplicationCatalogResponse {
-            collectors: application_collector_catalog(&locale),
+            collectors: super::collectors::catalog(
+                &self.store,
+                &self.collector,
+                principal.actor(),
+                &locale,
+            )
+            .await?,
             types: application_type_catalog(&self.store, self.bootstrap_workspace_id, &locale)
                 .await?,
             workflow_triggers: workflow_trigger_type_catalog(
@@ -903,44 +912,25 @@ pub(crate) fn compile_registry(
     )
 }
 
-fn application_collector_catalog(
-    locale: &domain::CatalogLocale,
-) -> Vec<ApplicationCollectorResponse> {
-    let chinese = locale.as_str() == "zh_Hans";
-    let release = "https://github.com/taichuy/1flowbase-official-plugins/releases/download/codex-logs-collector-v0.1.0";
-    let readme = if chinese { "README.md" } else { "README.en.md" };
-    vec![ApplicationCollectorResponse {
-        collector_code: "codex-logs-collector".into(),
-        source_client: "codex".into(),
-        display_name: "Codex".into(),
-        description: if chinese {
-            "采集本机 Codex 会话日志，上传到当前应用。".into()
-        } else {
-            "Collect local Codex session logs and upload them to this application.".into()
-        },
-        version: "0.1.0".into(),
-        execution_target: "client".into(),
-        documentation_url: format!("https://github.com/taichuy/1flowbase-official-plugins/blob/main/runtime-extensions/@taichuy/codex-logs-collector/{readme}"),
-        shell_installer_url: format!("{release}/install.sh"),
-        powershell_installer_url: format!("{release}/install.ps1"),
-    }]
-}
-
 fn collector_projection_schema() -> serde_json::Value {
     use crate::extension_bus::managed_projection as mp;
-    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[
-        ("collector_code", mp::text_schema()), ("source_client", mp::text_schema()),
-        ("display_name", mp::text_schema()), ("description", mp::object_schema(&[("byte_count",mp::count_schema())])),
-        ("version", mp::text_schema()), ("execution_target", mp::text_schema()),
-        ("documentation_url", mp::text_schema()), ("shell_installer_url", mp::text_schema()),
-        ("powershell_installer_url", mp::text_schema()),
+    let nullable = || serde_json::json!({"anyOf":[mp::text_schema(), {"type":"null"}]});
+    serde_json::json!({"type":"array","items":mp::object_schema(&[
+        ("collector_code",mp::text_schema()), ("source_client",mp::text_schema()), ("display_name",mp::text_schema()),
+        ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("version",mp::text_schema()), ("execution_target",mp::text_schema()),
+        ("catalog_id",mp::text_schema()), ("category",mp::text_schema()), ("installation_status",mp::text_schema()),
+        ("installed_version",nullable()), ("extension_installation_id",nullable()),
+        ("installable",serde_json::json!({"type":"boolean"})), ("can_install",serde_json::json!({"type":"boolean"})), ("can_update",serde_json::json!({"type":"boolean"})),
+        ("asset_base_url",nullable()), ("documentation_url",nullable()), ("shell_installer_url",nullable()), ("powershell_installer_url",nullable()),
     ])})
 }
-
 fn collector_projection(collectors: &[ApplicationCollectorResponse]) -> Option<serde_json::Value> {
     use crate::extension_bus::managed_projection as mp;
-    if collectors.len() > 32 {
-        return None;
+    fn nullable(value: Option<&String>) -> Option<serde_json::Value> {
+        Some(match value {
+            Some(value) => crate::extension_bus::managed_projection::text(value)?,
+            None => serde_json::Value::Null,
+        })
     }
     Some(serde_json::Value::Array(
         collectors
@@ -959,11 +949,32 @@ fn collector_projection(collectors: &[ApplicationCollectorResponse]) -> Option<s
                     ),
                     ("version", mp::text(&item.version)?),
                     ("execution_target", mp::text(&item.execution_target)?),
-                    ("documentation_url", mp::text(&item.documentation_url)?),
-                    ("shell_installer_url", mp::text(&item.shell_installer_url)?),
+                    ("catalog_id", mp::text(&item.catalog_id)?),
+                    ("category", mp::text(&item.category)?),
+                    ("installation_status", mp::text(&item.installation_status)?),
+                    (
+                        "installed_version",
+                        nullable(item.installed_version.as_ref())?,
+                    ),
+                    (
+                        "extension_installation_id",
+                        nullable(item.extension_installation_id.as_ref())?,
+                    ),
+                    ("installable", serde_json::json!(item.installable)),
+                    ("can_install", serde_json::json!(item.can_install)),
+                    ("can_update", serde_json::json!(item.can_update)),
+                    ("asset_base_url", nullable(item.asset_base_url.as_ref())?),
+                    (
+                        "documentation_url",
+                        nullable(item.documentation_url.as_ref())?,
+                    ),
+                    (
+                        "shell_installer_url",
+                        nullable(item.shell_installer_url.as_ref())?,
+                    ),
                     (
                         "powershell_installer_url",
-                        mp::text(&item.powershell_installer_url)?,
+                        nullable(item.powershell_installer_url.as_ref())?,
                     ),
                 ]))
             })

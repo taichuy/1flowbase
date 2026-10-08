@@ -1590,3 +1590,6 @@ fn artifact_checksum(category: &str, artifact: &str) -> String {
 
 #[path = "official_extension_catalog_source/application_templates.rs"]
 mod application_templates;
+
+#[path = "official_extension_catalog_source/client_collectors.rs"]
+mod client_collectors;

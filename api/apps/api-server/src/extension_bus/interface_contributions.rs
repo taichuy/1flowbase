@@ -267,6 +267,11 @@ pub(crate) fn production_interface_contributions(
     let console_applications = crate::routes::applications::interface::applications_port(
         state.store.clone(),
         state.bootstrap_workspace_id,
+        crate::routes::applications::collectors::CollectorCatalogDependencies {
+            source: state.official_extension_catalog_source.clone(),
+            install_root: state.provider_install_root.clone(),
+            node_id: state.api_node_id.clone(),
+        },
     );
     let console_application_api_keys =
         crate::routes::application_api::interface_keys::port(state.store.clone());
@@ -381,6 +386,10 @@ pub(crate) fn production_interface_contributions(
     );
 
     Ok(vec![
+        InterfaceRegistryContribution::new(
+            "api-server.client-collectors", &["public.client-collectors.assets.read"], &["api-server.client-collectors"],
+            crate::routes::client_collectors::compile_registry(state)?,
+        ),
         InterfaceRegistryContribution::new(
             "api-server.webmcp",
             &["webmcp.registrations.list", "webmcp.tools.invoke"],

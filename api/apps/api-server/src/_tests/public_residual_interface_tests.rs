@@ -18,6 +18,10 @@ async fn eil_f04_all_four_public_auth_routes_have_compiled_bindings() {
     let registry = collector.compile().unwrap();
 
     for (method, path) in [
+        (
+            "GET",
+            "/api/public/client-collectors/:organization/:artifact_id/:version/assets/:asset",
+        ),
         ("GET", "/api/public/auth/providers"),
         ("GET", "/api/public/auth/login-entries"),
         ("POST", "/api/public/auth/sign-in"),

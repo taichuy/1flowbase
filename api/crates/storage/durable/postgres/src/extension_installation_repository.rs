@@ -46,7 +46,14 @@ const READY_STATUS_COLUMN: &str =
 const DELETION_DECISION_QUERY: &str = r#"
     select
         installation.is_system_reserved,
-        artifact.is_current,
+        (artifact.is_current and not coalesce(
+            installation.category = 'runtime-extensions'
+            and installation.plugin_id is null
+            and installation.application_action = 'none'
+            and installation.receipt->>'distribution_kind' = 'client_collector'
+            and installation.receipt->'client_collector'->>'schema_version' = '1flowbase.client-collector/v1'
+            and installation.receipt->'client_collector'->>'execution_target' = 'client'
+            and installation.receipt->'client_collector'->>'protocol_version' = '1flowbase.agent-logs/v1', false)) as is_current,
         exists(select 1 from plugin_assignments where installation_id = installation.id)
             as has_assignment,
         exists(
@@ -88,10 +95,23 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
             domain::ExtensionCategory::CapabilityPlugins
                 | domain::ExtensionCategory::HostExtensions
                 | domain::ExtensionCategory::RuntimeExtensions
-        ) {
+        ) && !(input.identity.category == domain::ExtensionCategory::RuntimeExtensions
+            && domain::is_client_collector_receipt(&input.receipt)
+            && input.application_action == domain::ExtensionApplicationAction::None)
+        {
             bail!("node plugin installation must use the unified runtime installation command");
         }
 
+        if domain::is_client_collector_receipt(&input.receipt) {
+            let manifest: domain::ClientCollectorManifest =
+                serde_json::from_value(input.receipt["client_collector"].clone())?;
+            if manifest.organization != input.identity.organization
+                || manifest.artifact_id != input.identity.artifact_id
+                || manifest.version != input.identity.version
+            {
+                bail!("client collector receipt identity must match installation");
+            }
+        }
         let mut transaction = self.pool().begin().await?;
         let verification_status = match input.signature_status {
             domain::ExtensionSignatureStatus::Verified => "valid",

@@ -1,48 +1,46 @@
 use super::*;
-
 #[test]
-fn curated_collectors_are_client_only_and_localized_without_device_status() {
-    for (locale, readme) in [("en_US", "README.en.md"), ("zh_Hans", "README.md")] {
-        let collectors =
-            application_collector_catalog(&domain::CatalogLocale::new(locale).unwrap());
-        assert_eq!(collectors.len(), 1);
-        let value = serde_json::to_value(&collectors[0]).unwrap();
-        assert_eq!(value["collector_code"], "codex-logs-collector");
-        assert_eq!(value["source_client"], "codex");
-        assert_eq!(value["execution_target"], "client");
-        assert_eq!(value["version"], "0.1.0");
-        assert!(value["documentation_url"]
-            .as_str()
-            .unwrap()
-            .ends_with(readme));
-        assert!(value["description"].as_str().unwrap().len() > 0);
-        assert!(value.get("installed").is_none());
-        assert!(value.get("last_seen_at").is_none());
-        let output = ApplicationsOutput::Catalog(ApplicationCatalogResponse {
-            collectors,
-            types: vec![],
-            workflow_triggers: vec![],
-            tags: vec![],
-        });
-        let projection = output.project_for_managed_hook().unwrap();
-        assert_eq!(
-            projection["0"]["collectors"][0]["collector_code"],
-            "codex-logs-collector"
-        );
-        assert!(
-            projection["0"]["collectors"][0]["description"]["byte_count"]
-                .as_u64()
-                .unwrap()
-                > 0
-        );
-        let schema = ApplicationsOutput::managed_projection_schema().unwrap();
-        let validator = jsonschema::validator_for(&schema).unwrap();
-        assert!(validator.is_valid(&projection));
-        let mut missing_collectors = projection.clone();
-        missing_collectors["0"]
-            .as_object_mut()
-            .unwrap()
-            .remove("collectors");
-        assert!(!validator.is_valid(&missing_collectors));
-    }
+fn collector_dto_projection_preserves_truthful_local_state_and_null_urls() {
+    let collectors = vec![ApplicationCollectorResponse {
+        collector_code: "codex-logs-collector".into(),
+        source_client: "codex".into(),
+        display_name: "Codex".into(),
+        description: "Local logs".into(),
+        version: "0.2.0".into(),
+        execution_target: "client".into(),
+        catalog_id: "runtime-extensions:taichuy/codex-logs-collector".into(),
+        category: "runtime-extensions".into(),
+        installation_status: "missing".into(),
+        installed_version: Some("0.1.0".into()),
+        extension_installation_id: Some("retained".into()),
+        installable: false,
+        can_install: false,
+        can_update: false,
+        asset_base_url: None,
+        documentation_url: None,
+        shell_installer_url: None,
+        powershell_installer_url: None,
+    }];
+    let value = serde_json::to_value(&collectors[0]).unwrap();
+    assert!(value["shell_installer_url"].is_null());
+    assert_eq!(value["installation_status"], "missing");
+    assert_eq!(value["version"], "0.2.0");
+    assert_eq!(value["installed_version"], "0.1.0");
+    let output = ApplicationsOutput::Catalog(ApplicationCatalogResponse {
+        collectors,
+        types: vec![],
+        workflow_triggers: vec![],
+        tags: vec![],
+    });
+    let projection = output.project_for_managed_hook().unwrap();
+    let validator =
+        jsonschema::validator_for(&ApplicationsOutput::managed_projection_schema().unwrap())
+            .unwrap();
+    assert!(validator.is_valid(&projection));
+    let mut missing = projection.clone();
+    missing["0"]["collectors"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("installed_version");
+    assert!(!validator.is_valid(&missing));
 }

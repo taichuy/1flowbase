@@ -230,4 +230,9 @@ pub mod plugin_contribution_authority;
 pub use plugin_contribution_authority::*;
 
 pub mod organization;
-pub use organization::{Department, DepartmentPage, DepartmentTreeItem, MemberDepartments, DEPARTMENT_MODEL_ID};
+pub use organization::{
+    Department, DepartmentPage, DepartmentTreeItem, MemberDepartments, DEPARTMENT_MODEL_ID,
+};
+
+pub mod client_collector;
+pub use client_collector::*;

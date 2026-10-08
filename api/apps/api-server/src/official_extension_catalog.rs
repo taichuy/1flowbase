@@ -134,6 +134,33 @@ pub struct OfficialExtensionCatalogEntrySource {
     pub metadata: BTreeMap<String, Value>,
 }
 
+impl OfficialExtensionCatalogEntrySource {
+    pub(crate) fn client_collector(&self) -> Result<Option<domain::ClientCollectorDescriptor>> {
+        let Some(value) = self.metadata.get("distribution_kind") else {
+            return Ok(None);
+        };
+        let _: domain::ClientCollectorDistributionKind = serde_json::from_value(value.clone())?;
+        let descriptor: domain::ClientCollectorDescriptor = serde_json::from_value(
+            self.metadata
+                .get("client_collector")
+                .context("client collector descriptor missing")?
+                .clone(),
+        )?;
+        if descriptor.execution_target != "client"
+            || descriptor.protocol_version != "1flowbase.agent-logs/v1"
+            || descriptor.collector_code.is_empty()
+            || descriptor.source_client.is_empty()
+            || descriptor.display_name.is_empty()
+        {
+            bail!("invalid client collector descriptor");
+        }
+        if self.metadata.contains_key("platform_release_assets") {
+            bail!("client collector distribution must be host independent");
+        }
+        Ok(Some(descriptor))
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct OfficialExtensionCatalogEntry {
     pub id: String,
@@ -389,6 +416,10 @@ impl ApiOfficialRuntimeExtensionSource {
                 freshness = OfficialPluginCatalogFreshness::Stale;
             }
             for catalog_entry in page.entries {
+                // Client distributions share catalog category, never the runtime plugin registry.
+                if catalog_entry.source.client_collector()?.is_some() {
+                    continue;
+                }
                 let plugin_entry = project_runtime_extension_entry(
                     &*self.catalog,
                     &catalog_entry,
@@ -1081,14 +1112,14 @@ impl ApiOfficialExtensionCatalogSource {
         .map_err(anyhow::Error::new)
     }
 
-    async fn download_artifact_bytes(&self, url: &str) -> Result<Vec<u8>> {
+    async fn download_artifact_bytes(&self, url: &str, maximum_bytes: usize) -> Result<Vec<u8>> {
         let mut last_error = None;
         for attempt in 0..2 {
             match self
                 .download_once_with_budget(
                     &self.artifact_client,
                     url,
-                    MAX_EXTENSION_ARTIFACT_BYTES,
+                    maximum_bytes,
                     "official extension artifact",
                 )
                 .await
@@ -1112,9 +1143,10 @@ impl ApiOfficialExtensionCatalogSource {
         &self,
         workspace_id: Uuid,
         url: &str,
+        maximum_bytes: usize,
     ) -> Result<Vec<u8>> {
         let Some(resolver) = self.network_egress.as_ref() else {
-            return self.download_artifact_bytes(url).await;
+            return self.download_artifact_bytes(url, maximum_bytes).await;
         };
         let lease = resolver
             .acquire(
@@ -1123,27 +1155,25 @@ impl ApiOfficialExtensionCatalogSource {
             )
             .await?;
         let Some(lease) = lease else {
-            return self.download_artifact_bytes(url).await;
+            return self.download_artifact_bytes(url, maximum_bytes).await;
         };
-        self.download_artifact_with_lease(url, lease).await
+        self.download_artifact_with_lease(url, lease, maximum_bytes)
+            .await
     }
 
     async fn download_artifact_with_lease(
         &self,
         url: &str,
         lease: NetworkEgressExecutionScope,
+        maximum_bytes: usize,
     ) -> Result<Vec<u8>> {
         let client = lease.http_client_with_timeouts(
             self.source_connect_timeout,
             self.artifact_download_timeout,
         )?;
-        let result = download_with_client_budget(
-            &client,
-            url,
-            MAX_EXTENSION_ARTIFACT_BYTES,
-            "official extension artifact",
-        )
-        .await;
+        let result =
+            download_with_client_budget(&client, url, maximum_bytes, "official extension artifact")
+                .await;
         let release = lease.release().await;
         match (result, release) {
             (Ok(bytes), Ok(())) => Ok(bytes),
@@ -1647,7 +1677,9 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
         entry: &OfficialExtensionCatalogEntry,
     ) -> Result<DownloadedOfficialExtensionArtifact> {
         let descriptor = self.resolve_artifact(entry)?;
-        let artifact_bytes = self.download_artifact_bytes(&descriptor.locator).await?;
+        let artifact_bytes = self
+            .download_artifact_bytes(&descriptor.locator, artifact_download_budget(entry)?)
+            .await?;
         if let Some(expected_checksum) = descriptor.expected_checksum.as_deref() {
             if ensure_sha256(&artifact_bytes, expected_checksum).is_err() {
                 return Err(anyhow::Error::new(
@@ -1677,7 +1709,11 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
     ) -> Result<DownloadedOfficialExtensionArtifact> {
         let descriptor = self.resolve_artifact(entry)?;
         let artifact_bytes = self
-            .download_artifact_bytes_for_workspace(workspace_id, &descriptor.locator)
+            .download_artifact_bytes_for_workspace(
+                workspace_id,
+                &descriptor.locator,
+                artifact_download_budget(entry)?,
+            )
             .await?;
         if let Some(expected_checksum) = descriptor.expected_checksum.as_deref() {
             if ensure_sha256(&artifact_bytes, expected_checksum).is_err() {
@@ -1728,6 +1764,9 @@ fn resolve_artifact_descriptor(
     let locator: DownloadLocatorDocument =
         serde_json::from_value(entry.download_locator.clone())
             .context("failed to decode official extension download locator")?;
+    if entry.source.client_collector()?.is_some() && locator.kind != "release_asset" {
+        bail!("client collector requires a host-independent release_asset");
+    }
     match locator.kind.as_str() {
         "repository_file" | "release_asset" | "https" => {
             let url = locator.locator.ok_or_else(|| {
@@ -2160,4 +2199,13 @@ fn ensure_sha256(bytes: &[u8], expected: &str) -> Result<()> {
         bail!("official extension catalog page checksum mismatch");
     }
     Ok(())
+}
+
+fn artifact_download_budget(entry: &OfficialExtensionCatalogEntry) -> Result<usize> {
+    // Collector releases include opaque native archives for every client platform.
+    Ok(if entry.source.client_collector()?.is_some() {
+        usize::MAX
+    } else {
+        MAX_EXTENSION_ARTIFACT_BYTES
+    })
 }

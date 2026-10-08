@@ -380,6 +380,7 @@ fn console_router_with_assembly(
             "/api/ex",
             routes::application_public_api::ex::route_assembly(),
         )
+        .merge(routes::client_collectors::route_assembly())
         .merge(routes::mcp_oauth::route_assembly())
         .nest("/api", routes::mcp_protocol::route_assembly())
         .nest("/api", routes::webmcp::route_assembly())

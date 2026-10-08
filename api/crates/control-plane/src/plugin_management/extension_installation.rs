@@ -152,6 +152,20 @@ where
         command: InstallExtensionArtifactCommand,
     ) -> Result<ExtensionArtifactInstallOutcome> {
         let identity = installation_identity(&command)?;
+        let collector_manifest = if command.category == ExtensionCatalogCategory::RuntimeExtensions
+        {
+            let manifest =
+                super::inspect_client_collector_archive(command.artifact_bytes.as_slice())?;
+            super::ensure_client_collector_identity(&manifest, &identity)?;
+            if command.application_action != domain::ExtensionApplicationAction::None {
+                return Err(
+                    ControlPlaneError::InvalidInput("client_collector_application_action").into(),
+                );
+            }
+            Some(manifest)
+        } else {
+            None
+        };
         let local_path = self
             .install_root
             .join("installed")
@@ -245,7 +259,7 @@ where
                     .as_ref()
                     .map(|record| record.id)
                     .unwrap_or_else(Uuid::now_v7),
-                identity,
+                identity: identity.clone(),
                 node_id: command.node_id,
                 source_kind: canonical_extension_source_kind(&command.source).to_string(),
                 trust_level: canonical_extension_trust_level(&command.trust).to_string(),
@@ -256,7 +270,24 @@ where
                 signature_algorithm: command.signature_algorithm,
                 signing_key_id: command.signing_key_id,
                 warnings,
-                receipt: serde_json::to_value(receipt)?,
+                receipt: {
+                    let mut value = serde_json::to_value(receipt)?;
+                    if let Some(manifest) = &collector_manifest {
+                        // Validate authoritative retained bytes as well as incoming bytes.
+                        let retained =
+                            super::inspect_client_collector_archive(installed_bytes.as_slice())?;
+                        super::ensure_client_collector_identity(&retained, &identity)?;
+                        if retained.descriptor() != manifest.descriptor() {
+                            return Err(ControlPlaneError::InvalidInput(
+                                "client_collector_descriptor",
+                            )
+                            .into());
+                        }
+                        value["distribution_kind"] = json!("client_collector");
+                        value["client_collector"] = serde_json::to_value(retained)?;
+                    }
+                    value
+                },
                 application_action: command.application_action,
                 status: domain::ExtensionInstallationStatus::Installed,
                 is_current: true,
@@ -319,6 +350,11 @@ where
         else {
             return Ok(None);
         };
+        if domain::is_client_collector_receipt(&record.receipt) {
+            self.client_collector_manifest(&record).await.map_err(|_| {
+                ControlPlaneError::Conflict("client_collector_artifact_unavailable")
+            })?;
+        }
         let Some(local_path) = record.local_path.as_deref() else {
             return Ok(None);
         };
@@ -350,6 +386,11 @@ where
         else {
             return Ok(None);
         };
+        if domain::is_client_collector_receipt(&record.receipt) {
+            self.client_collector_manifest(&record).await.map_err(|_| {
+                ControlPlaneError::Conflict("client_collector_artifact_unavailable")
+            })?;
+        }
         let Some(local_path) = record.local_path.as_deref() else {
             return Ok(None);
         };

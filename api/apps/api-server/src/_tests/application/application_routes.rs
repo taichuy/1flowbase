@@ -407,19 +407,11 @@ async fn application_routes_support_catalog_tags_and_patching_metadata() {
         .unwrap()
         .iter()
         .all(|entry| !entry["label"].as_str().unwrap().contains('工')));
-    let collectors = catalog_payload["data"]["collectors"].as_array().unwrap();
-    assert_eq!(collectors.len(), 1);
-    assert_eq!(
-        collectors[0],
-        json!({
-            "collector_code": "codex-logs-collector", "source_client": "codex", "display_name": "Codex",
-            "description": "Collect local Codex session logs and upload them to this application.",
-            "version": "0.1.0", "execution_target": "client",
-            "documentation_url": "https://github.com/taichuy/1flowbase-official-plugins/blob/main/runtime-extensions/@taichuy/codex-logs-collector/README.en.md",
-            "shell_installer_url": "https://github.com/taichuy/1flowbase-official-plugins/releases/download/codex-logs-collector-v0.1.0/install.sh",
-            "powershell_installer_url": "https://github.com/taichuy/1flowbase-official-plugins/releases/download/codex-logs-collector-v0.1.0/install.ps1"
-        })
-    );
+    // No catalog fixture or retained collector: this must not invent a GitHub collector.
+    assert!(catalog_payload["data"]["collectors"]
+        .as_array()
+        .unwrap()
+        .is_empty());
     let localized = app
         .clone()
         .oneshot(
@@ -434,9 +426,8 @@ async fn application_routes_support_catalog_tags_and_patching_metadata() {
         .unwrap();
     assert_eq!(localized.status(), StatusCode::OK);
     let localized_payload = response_json(localized).await;
-    assert_eq!(localized_payload["data"]["collectors"][0]["documentation_url"], "https://github.com/taichuy/1flowbase-official-plugins/blob/main/runtime-extensions/@taichuy/codex-logs-collector/README.md");
-    assert!(!localized_payload["data"]["collectors"][0]["description"]
-        .as_str()
+    assert!(localized_payload["data"]["collectors"]
+        .as_array()
         .unwrap()
         .is_empty());
     assert_eq!(catalog_payload["data"]["tags"].as_array().unwrap().len(), 0);

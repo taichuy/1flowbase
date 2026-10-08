@@ -199,7 +199,34 @@ impl ExtensionCenterAdapter {
                         &family.current,
                     )
                     .await?;
+                    let collector_states =
+                        if domain::is_client_collector_receipt(&family.current.receipt) {
+                            let install_service = extension_installation_service(&self.0);
+                            let mut states = std::collections::HashMap::new();
+                            for version in &family.installed_versions {
+                                states.insert(
+                                    version.id.to_string(),
+                                    install_service
+                                        .client_collector_manifest(version)
+                                        .await
+                                        .is_ok(),
+                                );
+                            }
+                            Some(states)
+                        } else {
+                            None
+                        };
                     let mut response = to_local_inventory_family_entry(family);
+                    if let Some(states) = collector_states {
+                        if !states.get(&response.id).copied().unwrap_or(false) {
+                            response.status = "missing".into();
+                        }
+                        for version in &mut response.installed_versions {
+                            if !states.get(&version.id).copied().unwrap_or(false) {
+                                version.status = "missing".into();
+                            }
+                        }
+                    }
                     if let Some(installation) =
                         control_plane::ports::PluginRepository::get_installation(
                             &self.0.store,
@@ -405,7 +432,9 @@ impl ExtensionCenterAdapter {
                 let existing = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
                     .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
                 let managed_schema_identity = existing.identity.clone();
-                let installation = if is_runtime_uninstall_category(existing.identity.category) {
+                let installation = if is_runtime_uninstall_category(existing.identity.category)
+                    && !domain::is_client_collector_receipt(&existing.receipt)
+                {
                     let plugin = control_plane::ports::PluginRepository::get_installation(
                         &self.0.store,
                         installation_id,

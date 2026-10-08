@@ -11,6 +11,7 @@ use utoipa::OpenApi;
         crate::routes::user_api_keys::revoke_user_api_key,
         crate::routes::auth::list_providers,
         crate::routes::auth::list_login_entries,
+        crate::routes::client_collectors::download,
         crate::routes::auth::sign_in,
         crate::routes::auth::sign_up,
         crate::routes::session::get_session,
