@@ -96,13 +96,17 @@ async function run(cmd,args,name,env) {
     {name:'symlink-member',args:['collector-manifest.json','linked']},
     {name:'traversal-member',args:['--transform=s#safe#../escape#','collector-manifest.json','safe']}
   ];
+  const installationCountBefore=dock(['exec',container,'psql','-U','postgres','-d','collector_proof','-Atc','SELECT COUNT(*) FROM extension_installations']);
   for(const fixture of negativeCases){
     const file=path.join(negativeStage,fixture.name+'.tar.gz');
     execFileSync('tar',['-czf',file,'-C',negativeStage,...fixture.args],{stdio:'ignore'});
     const form=new FormData();form.append('category','runtime-extensions');form.append('file',new Blob([fs.readFileSync(file)]),fixture.name+'.tar.gz');
-    const response=await fetch(base+'/api/console/settings/extension-center/upload',{method:'POST',headers:{cookie:owner.cookie,'x-csrf-token':owner.csrfToken},body:form});
-    assert.ok(response.status>=400&&response.status<500,fixture.name+' must reject as client error, got '+response.status);
-    receipt.checks.push({name:'malformed upload '+fixture.name,status:'pass',http_status:response.status});
+    const response=await fetch(base+'/api/console/settings/extension-center/install-upload',{method:'POST',headers:{cookie:owner.cookie,'x-csrf-token':owner.csrfToken},body:form});
+    const errorBody=await response.json();
+    assert.equal(response.status,400,fixture.name+' must reach package validation, got '+response.status);
+    assert.equal(errorBody.code,'provider_package',fixture.name+' must reject at package admission');
+    assert.equal(dock(['exec',container,'psql','-U','postgres','-d','collector_proof','-Atc','SELECT COUNT(*) FROM extension_installations']),installationCountBefore);
+    receipt.checks.push({name:'malformed upload '+fixture.name,status:'pass',http_status:response.status,error_code:errorBody.code,no_installation_side_effect:true});
   }
   const before=await request('GET','/api/console/applications/catalog');assert.equal(before.status,200);
   const pending=before.body.data.collectors.find(item=>item.collector_code==='codex-logs-collector');assert.ok(pending);

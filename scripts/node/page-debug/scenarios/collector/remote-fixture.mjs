@@ -38,7 +38,23 @@ export async function createRemoteFixture({ pluginsRoot, directory, nativeBinary
   fs.mkdirSync(source, { recursive: true });
   fs.copyFileSync(path.join(pluginsRoot, collector.plugin_dir, 'collector-manifest.json'), path.join(source, 'collector-manifest.json'));
   fs.writeFileSync(path.join(source, 'catalog-entry.json'), JSON.stringify(entry));
-  updateCategoryCatalog({ repoRoot: path.join(directory, 'catalog'), category: 'runtime-extensions' });
+  updateCategoryCatalog({ repoRoot: path.join(directory, 'catalog'), category: 'runtime-extensions', rawBaseUrl: baseUrl });
+  // A local source-integration fixture must not inherit production remote locators.
+  const catalogRoot = path.join(directory, 'catalog', 'runtime-extensions', 'catalog', 'v1');
+  function checkLocators(value, key = '') {
+    if (typeof value === 'string' && /^https?:/.test(value) && (key === 'locator' || key.endsWith('_locator')) && !value.startsWith(baseUrl + '/')) {
+      throw new Error(`Fixture locator escaped its local server: ${key}`);
+    }
+    if (value && typeof value === 'object') for (const [name, child] of Object.entries(value)) checkLocators(child, name);
+  }
+  try {
+    for (const file of fs.readdirSync(catalogRoot, { recursive: true })) {
+      if (file.endsWith('.json')) checkLocators(JSON.parse(fs.readFileSync(path.join(catalogRoot, file), 'utf8')));
+    }
+  } catch (error) {
+    await new Promise(resolve => server.close(resolve));
+    throw error;
+  }
   fs.writeFileSync(path.join(directory, 'catalog', 'official-registry.json'), JSON.stringify({ schema_version: '1flowbase.official-plugin-registry/v1', plugins: [] }));
   return { baseUrl, archive, manifest, collector, requests,
     trustedKeys: JSON.stringify([{ key_id: 'distribution-proof-key', algorithm: 'ed25519', public_key_pem: publicKey.export({ type: 'spki', format: 'pem' }) }]),
