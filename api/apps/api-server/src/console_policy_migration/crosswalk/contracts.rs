@@ -93,6 +93,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         &[
             "applications.api.set_enabled",
             "applications.create",
+            "applications.logs.delete",
             "applications.logs.export",
             "applications.logs.import",
             "applications.orchestration.template.export",
@@ -436,6 +437,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Log deletion is new destructive authority, never inferred from legacy application grants.
+    "applications.logs.delete",
     // Organization grants are new authority, never inferred from historical user-management grants.
     "departments.list",
     "departments.create",
