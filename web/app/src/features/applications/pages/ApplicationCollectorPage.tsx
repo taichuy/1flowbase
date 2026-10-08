@@ -44,7 +44,6 @@ export function ApplicationCollectorPage({
   const { modal } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
-  const [sourceClient, setSourceClient] = useState('all');
   const [catalogId, setCatalogId] = useState<string | null>(null);
   const [installError, setInstallError] = useState(false);
   const catalog = useQuery({
@@ -61,6 +60,16 @@ export function ApplicationCollectorPage({
   const selected = collectors?.find(
     (collector) => collector.catalog_id === catalogId
   );
+  const visibleCollectors = catalogId
+    ? collectors?.filter((collector) => collector.catalog_id === catalogId)
+    : collectors;
+  // Tabs also emits its keys as DOM IDs; catalog IDs contain ':' and '/'.
+  const tabs =
+    collectors?.map((collector, index) => ({
+      key: `collector-${index}`,
+      catalog_id: collector.catalog_id,
+      label: collector.display_name
+    })) ?? [];
   const install = useMutation({
     mutationFn: async (operation: InstallOperation) => {
       if (!csrfToken) throw new Error('authenticated session required');
@@ -157,14 +166,6 @@ export function ApplicationCollectorPage({
         return t('agent_logs.platform_not_installed');
     }
   };
-  const tabs = Array.from(
-    new Map(
-      collectors?.map((collector) => [
-        collector.source_client,
-        collector.display_name
-      ])
-    ).entries()
-  );
   return (
     <div className="application-collector">
       <Typography.Title level={4}>{t('agent_logs.collector')}</Typography.Title>
@@ -172,14 +173,15 @@ export function ApplicationCollectorPage({
         {t('agent_logs.collector_description')}
       </Typography.Paragraph>
       <Tabs
-        activeKey={sourceClient}
-        onChange={(key) => {
-          setSourceClient(key);
-          setCatalogId(null);
-        }}
+        activeKey={
+          tabs.find((tab) => tab.catalog_id === catalogId)?.key ?? 'all'
+        }
+        onChange={(key) =>
+          setCatalogId(tabs.find((tab) => tab.key === key)?.catalog_id ?? null)
+        }
         items={[
           { key: 'all', label: t('auto.all') },
-          ...tabs.map(([key, label]) => ({ key, label }))
+          ...tabs.map(({ key, label }) => ({ key, label }))
         ]}
       />
       {installError && (
@@ -213,122 +215,112 @@ export function ApplicationCollectorPage({
           onBack={() => setCatalogId(null)}
         />
       ) : (
-        collectors &&
-        (collectors.filter(
-          (collector) =>
-            sourceClient === 'all' || collector.source_client === sourceClient
-        ).length === 0 ? (
+        visibleCollectors &&
+        (visibleCollectors.length === 0 ? (
           <Empty description={t('agent_logs.no_collectors')} />
         ) : (
           <div className="application-collector__catalog">
-            {collectors
-              .filter(
-                (collector) =>
-                  sourceClient === 'all' ||
-                  collector.source_client === sourceClient
-              )
-              .map((collector) => {
-                const updating = !!collector.installed_version;
-                const busy =
-                  install.isPending &&
-                  install.variables.collector.catalog_id ===
-                    collector.catalog_id;
-                return (
-                  <article
-                    key={collector.catalog_id}
-                    className="application-collector__card"
-                  >
-                    <div className="application-collector__identity">
-                      <span
-                        className="application-collector__logo"
-                        aria-hidden="true"
-                      >
-                        {collector.display_name.slice(0, 1)}
-                      </span>
-                      <div>
-                        <Typography.Title level={5}>
-                          {collector.display_name}
-                        </Typography.Title>
-                        <Typography.Text type="secondary">
-                          {t('agent_logs.collector_version', {
-                            version: collector.version
-                          })}
-                        </Typography.Text>
-                      </div>
-                      <Tag>{statusLabel(collector)}</Tag>
+            {visibleCollectors.map((collector) => {
+              const updating = !!collector.installed_version;
+              const busy =
+                install.isPending &&
+                install.variables.collector.catalog_id === collector.catalog_id;
+              return (
+                <article
+                  key={collector.catalog_id}
+                  className="application-collector__card"
+                >
+                  <div className="application-collector__identity">
+                    <span
+                      className="application-collector__logo"
+                      aria-hidden="true"
+                    >
+                      {collector.display_name.slice(0, 1)}
+                    </span>
+                    <div>
+                      <Typography.Title level={5}>
+                        {collector.display_name}
+                      </Typography.Title>
+                      <Typography.Text type="secondary">
+                        {t('agent_logs.collector_version', {
+                          version: collector.version
+                        })}
+                      </Typography.Text>
                     </div>
-                    <Typography.Paragraph>
-                      {collector.description}
-                    </Typography.Paragraph>
-                    <Typography.Paragraph type="secondary">
-                      {t('agent_logs.platform_status_description')}
-                    </Typography.Paragraph>
-                    {collector.installation_status === 'missing' && (
-                      <Alert
-                        type="warning"
-                        showIcon
-                        title={t('agent_logs.package_unavailable')}
-                      />
-                    )}
-                    {collector.installation_status === 'installed' ? (
-                      <Space
-                        orientation="vertical"
-                        className="application-collector__actions"
+                    <Tag>{statusLabel(collector)}</Tag>
+                  </div>
+                  <Typography.Paragraph>
+                    {collector.description}
+                  </Typography.Paragraph>
+                  <Typography.Paragraph type="secondary">
+                    {t('agent_logs.platform_status_description')}
+                  </Typography.Paragraph>
+                  {collector.installation_status === 'missing' && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      title={t('agent_logs.package_unavailable')}
+                    />
+                  )}
+                  {collector.installation_status === 'installed' ? (
+                    <Space
+                      orientation="vertical"
+                      className="application-collector__actions"
+                    >
+                      <Button
+                        type="primary"
+                        block
+                        onClick={() => setCatalogId(collector.catalog_id)}
                       >
-                        <Button
-                          type="primary"
-                          block
-                          onClick={() => setCatalogId(collector.catalog_id)}
-                        >
-                          {t('agent_logs.download_cli')}
-                        </Button>
-                        {collector.installable &&
-                          collector.version !== collector.installed_version && (
-                            <Button
-                              block
-                              loading={busy}
-                              disabled={
-                                !collector.can_update ||
-                                !csrfToken ||
-                                install.isPending
-                              }
-                              onClick={() =>
-                                install.mutate({ collector, update: true })
-                              }
-                            >
-                              {t('agent_logs.update_platform_package')}
-                            </Button>
-                          )}
-                      </Space>
-                    ) : (
-                      collector.installation_status === 'not_installed' && (
-                        <Button
-                          type="primary"
-                          block
-                          loading={busy}
-                          disabled={
-                            !collector.installable ||
-                            !collector.can_install ||
-                            !csrfToken ||
-                            install.isPending
-                          }
-                          onClick={() =>
-                            install.mutate({ collector, update: updating })
-                          }
-                        >
-                          {t('agent_logs.install_collector')}
-                        </Button>
-                      )
+                        {t('agent_logs.download_cli')}
+                      </Button>
+                      {collector.installable &&
+                        collector.version !== collector.installed_version && (
+                          <Button
+                            block
+                            loading={busy}
+                            disabled={
+                              !collector.can_update ||
+                              !csrfToken ||
+                              install.isPending
+                            }
+                            onClick={() =>
+                              install.mutate({ collector, update: true })
+                            }
+                          >
+                            {t('agent_logs.update_platform_package')}
+                          </Button>
+                        )}
+                    </Space>
+                  ) : (
+                    collector.installation_status === 'not_installed' && (
+                      <Button
+                        type="primary"
+                        block
+                        loading={busy}
+                        disabled={
+                          !collector.installable ||
+                          !collector.can_install ||
+                          !csrfToken ||
+                          install.isPending
+                        }
+                        onClick={() =>
+                          install.mutate({ collector, update: updating })
+                        }
+                      >
+                        {t('agent_logs.install_collector')}
+                      </Button>
+                    )
+                  )}
+                  {collector.installation_status !== 'installed' &&
+                    !collector.can_install && (
+                      <Typography.Paragraph type="secondary">
+                        {t('agent_logs.install_permission_required')}
+                      </Typography.Paragraph>
                     )}
-                    {collector.installation_status !== 'installed' &&
-                      !collector.can_install && (
-                        <Typography.Paragraph type="secondary">
-                          {t('agent_logs.install_permission_required')}
-                        </Typography.Paragraph>
-                      )}
-                  </article>
-                );
-              })}
+                </article>
+              );
+            })}
           </div>
         ))
       )}

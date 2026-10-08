@@ -89,7 +89,7 @@ beforeEach(() => {
   clipboard.copyTextToClipboard.mockResolvedValue(undefined);
 });
 
-test('real platform installed state opens version-pinned local CLI detail and returns to current filter', async () => {
+test('collector tab directly opens version-pinned local CLI detail and returns to all collectors', async () => {
   renderPage();
   expect(await screen.findByText(collector.description)).toBeInTheDocument();
   expect(screen.getByText('平台已安装')).toBeInTheDocument();
@@ -97,7 +97,9 @@ test('real platform installed state opens version-pinned local CLI detail and re
     screen.queryByText(/Claude Code|OpenCode|OpenClaw|在线|最近采集/)
   ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab', { name: 'Codex' }));
-  fireEvent.click(screen.getByRole('button', { name: '下载采集 CLI' }));
+  expect(
+    screen.queryByRole('button', { name: '下载采集 CLI' })
+  ).not.toBeInTheDocument();
   expect(screen.getByRole('region', { name: '安装步骤' })).toBeInTheDocument();
   expect(
     screen.getByRole('link', { name: '管理当前应用的 API Key' })
@@ -118,10 +120,47 @@ test('real platform installed state opens version-pinned local CLI detail and re
   expect(
     screen.getByRole('button', { name: '下载采集 CLI' })
   ).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: '全部' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+});
+
+test('catalog download selects the same collector detail as its tab', async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: '下载采集 CLI' }));
   expect(screen.getByRole('tab', { name: 'Codex' })).toHaveAttribute(
     'aria-selected',
     'true'
   );
+  expect(screen.getByRole('region', { name: '安装步骤' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: '全部' }));
+  expect(
+    screen.getByRole('button', { name: '下载采集 CLI' })
+  ).toBeInTheDocument();
+  expect(document.querySelector('pre')).toBeNull();
+});
+
+test('collector tabs address separate packages even when they share a source client', async () => {
+  const other = {
+    ...collector,
+    collector_code: 'codex-alternate-collector',
+    catalog_id: 'runtime-extensions:taichuy/codex-alternate-collector',
+    display_name: 'Codex Alternate',
+    description: 'Alternate package description'
+  };
+  api.fetchApplicationCatalog.mockResolvedValue({
+    ...catalog,
+    collectors: [collector, other]
+  });
+  renderPage();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex Alternate' }));
+  expect(screen.getByRole('region', { name: '安装步骤' })).toBeInTheDocument();
+  expect(screen.getByText(other.description)).toBeInTheDocument();
+  expect(screen.queryByText(collector.description)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: 'Codex' }));
+  expect(screen.getByText(collector.description)).toBeInTheDocument();
+  expect(screen.queryByText(other.description)).not.toBeInTheDocument();
 });
 
 test('platform install uses existing extension mutation, waits for backend refresh, then enables local CLI', async () => {
@@ -135,9 +174,9 @@ test('platform install uses existing extension mutation, waits for backend refre
     })
   );
   renderPage();
-  fireEvent.click(
-    await screen.findByRole('button', { name: '安装到 1flowbase' })
-  );
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
+  expect(document.querySelector('pre')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '安装到 1flowbase' }));
   await waitFor(() =>
     expect(api.installApplicationCollector).toHaveBeenCalledWith(
       {
@@ -160,6 +199,10 @@ test('platform install uses existing extension mutation, waits for backend refre
     await screen.findByRole('button', { name: '复制命令' })
   ).toBeInTheDocument();
   expect(api.fetchApplicationCatalog).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('tab', { name: 'Codex' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
 });
 
 test('installation failure remains uninstalled and retryable without a local command', async () => {
@@ -250,6 +293,7 @@ test.each([
       collectors: [value]
     });
     renderPage();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '下载采集 CLI' })
@@ -267,7 +311,7 @@ test('installed package keeps local downloads when remote catalog no longer supp
   });
   renderPage();
   fireEvent.click(await screen.findByRole('button', { name: '下载采集 CLI' }));
-  expect(document.querySelector('pre')!.textContent).toContain(
+  expect(document.querySelector('pre')).toHaveTextContent(
     `--release-base 'https://console.example.com${assetBase}'`
   );
   expect(api.installApplicationCollector).not.toHaveBeenCalled();
@@ -280,9 +324,7 @@ test('update keeps current pinned download version until a genuine platform upda
   });
   renderPage();
   fireEvent.click(await screen.findByRole('button', { name: '下载采集 CLI' }));
-  expect(document.querySelector('pre')!.textContent).toContain(
-    "--version '0.1.0'"
-  );
+  expect(document.querySelector('pre')).toHaveTextContent("--version '0.1.0'");
   fireEvent.click(screen.getByRole('button', { name: '返回采集器目录' }));
   fireEvent.click(screen.getByRole('button', { name: '更新平台采集包' }));
   await waitFor(() =>
