@@ -561,6 +561,24 @@ fn ac_010_live_core_crosswalk_disposes_every_current_operation() {
 }
 
 #[test]
+fn agent_logs_delete_has_explicit_default_disabled_migration_disposition() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
+    let disposition = migration.disposition("applications.logs.delete").unwrap();
+    // Legacy view/edit grants must not silently acquire a new destructive action.
+    assert!(disposition.is_default_disabled_new_operation());
+    for legacy in [
+        "application.view.own",
+        "application.view.all",
+        "application.edit.own",
+        "application.edit.all",
+    ] {
+        assert!(!disposition.has_legacy_grant(legacy));
+    }
+}
+
+#[test]
 fn ac_010_compiled_catalog_generates_every_actor_operation_and_row_probe() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let registry = compile_core_console_operation_registry(&settings).unwrap();

@@ -3,6 +3,7 @@ use super::{legacy_mapping, LegacyGrantMappingSpec};
 pub(super) const APPLICATION_SIMPLE_OPERATIONS: &[&str] = &[
     "applications.api.set_enabled",
     "applications.create",
+    "applications.logs.delete",
     "applications.logs.export",
     "applications.logs.import",
     "applications.orchestration.template.export",
