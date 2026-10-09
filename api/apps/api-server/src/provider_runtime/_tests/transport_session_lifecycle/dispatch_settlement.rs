@@ -10,7 +10,8 @@ async fn reserved_generation_settles_without_fabricated_worker_evidence_and_fenc
         clock.clone(),
     )
     .unwrap();
-    let mut input = invocation_input("reserved-not-dispatched", ProviderWireOperation::Generate);
+    let scope = coordinator.open_connection_scope();
+    let mut input = scope_input(&scope, "reserved-not-dispatched");
     let prepared = coordinator
         .prepare("runtime-a", &mut input, &context(2_030_000))
         .await
@@ -28,6 +29,7 @@ async fn reserved_generation_settles_without_fabricated_worker_evidence_and_fenc
     assert!(runtime.commands().is_empty());
     assert!(coordinator.claim_dispatch(&prepared).await.is_err());
     assert!(runtime.bindings.lock().unwrap().is_empty());
+    let mut input = scope_input(&scope, "reserved-not-dispatched");
     let next = coordinator
         .prepare_dispatched("runtime-a", &mut input, &context(2_040_000))
         .await
@@ -35,6 +37,17 @@ async fn reserved_generation_settles_without_fabricated_worker_evidence_and_fenc
         .unwrap();
     assert!(next.lease.fence.generation > fence.generation);
     assert!(coordinator.claim_dispatch(&prepared).await.is_err());
+    drop(prepared);
+    assert_eq!(
+        scope
+            .state
+            .lock()
+            .unwrap()
+            .leases
+            .get(next.lease.fence.session_id.as_str()),
+        Some(&next.lease),
+        "late abandoned owner cannot detach its successor"
+    );
 }
 
 #[tokio::test]
@@ -46,17 +59,28 @@ async fn dropping_prepare_reservation_reclaims_lease_and_recovers_same_identity(
         FakeClock::new(2_000_000),
     )
     .unwrap();
-    let mut input = invocation_input(
-        "abandoned-before-execution",
-        ProviderWireOperation::Generate,
-    );
+    let scope = coordinator.open_connection_scope();
+    let mut input = scope_input(&scope, "abandoned-before-execution");
     let prepared = coordinator
         .prepare("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
     let old = prepared.lease.fence.clone();
+    assert_eq!(
+        scope
+            .state
+            .lock()
+            .unwrap()
+            .leases
+            .get(old.session_id.as_str()),
+        Some(&prepared.lease)
+    );
     drop(prepared);
+    assert!(
+        scope.state.lock().unwrap().leases.is_empty(),
+        "Drop detaches delivery before asynchronous registry cleanup"
+    );
     tokio::time::timeout(Duration::from_secs(1), async {
         while coordinator.safe_snapshot().await.sessions[0].inflight {
             tokio::task::yield_now().await;
@@ -69,6 +93,7 @@ async fn dropping_prepare_reservation_reclaims_lease_and_recovers_same_identity(
     assert!(snapshot.sessions[0].never_dispatched_settled);
     assert!(snapshot.sessions[0].closure_evidence.is_none());
     assert!(runtime.commands().is_empty());
+    let mut input = scope_input(&scope, "abandoned-before-execution");
     let next = coordinator
         .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
@@ -76,6 +101,15 @@ async fn dropping_prepare_reservation_reclaims_lease_and_recovers_same_identity(
         .unwrap();
     assert_eq!(next.lease.fence.session_id, old.session_id);
     assert!(next.lease.fence.generation > old.generation);
+    assert_eq!(
+        scope
+            .state
+            .lock()
+            .unwrap()
+            .leases
+            .get(old.session_id.as_str()),
+        Some(&next.lease)
+    );
 }
 
 #[tokio::test]
@@ -235,12 +269,22 @@ async fn aborted_execution_owner_returns_undispatched_reservation() {
         )
         .unwrap(),
     );
-    let mut input = invocation_input("aborted-owner", ProviderWireOperation::Generate);
+    let scope = coordinator.open_connection_scope();
+    let mut input = scope_input(&scope, "aborted-owner");
     let prepared = coordinator
         .prepare("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(
+        scope
+            .state
+            .lock()
+            .unwrap()
+            .leases
+            .get(prepared.lease.fence.session_id.as_str()),
+        Some(&prepared.lease)
+    );
     let entered = Arc::new(Notify::new());
     let observed = entered.notified();
     let task_entered = entered.clone();
@@ -252,6 +296,10 @@ async fn aborted_execution_owner_returns_undispatched_reservation() {
     observed.await;
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());
+    assert!(
+        scope.state.lock().unwrap().leases.is_empty(),
+        "aborting the owner detaches delivery"
+    );
     tokio::time::timeout(Duration::from_secs(1), async {
         while coordinator.safe_snapshot().await.sessions[0].inflight {
             tokio::task::yield_now().await;
@@ -262,9 +310,19 @@ async fn aborted_execution_owner_returns_undispatched_reservation() {
     coordinator.maintain_and_dispatch().await;
     assert!(coordinator.safe_snapshot().await.sessions[0].never_dispatched_settled);
     assert!(runtime.commands().is_empty());
-    coordinator
+    let mut input = scope_input(&scope, "aborted-owner");
+    let successor = coordinator
         .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(
+        scope
+            .state
+            .lock()
+            .unwrap()
+            .leases
+            .get(successor.lease.fence.session_id.as_str()),
+        Some(&successor.lease)
+    );
 }

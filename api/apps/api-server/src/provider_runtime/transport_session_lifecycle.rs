@@ -698,6 +698,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             let cleanup_registry = self.registry.clone();
             let cleanup_changed = self.invocation_changed.clone();
             let cleanup_lease = lease.clone();
+            let cleanup_scope = connection_scope.as_ref().map(Arc::downgrade);
             let prepared = PreparedTransportInvocation {
                 lease: lease.clone(),
                 transport,
@@ -705,6 +706,17 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 on_abandon: Some(Box::new(move || {
                     // Cancellation cannot lose the reservation owner. The runtime owns
                     // retirement once dispatched; never-dispatched settlement is separate.
+                    if let Some(scope) = cleanup_scope.and_then(|scope| scope.upgrade()) {
+                        let mut state = scope.state.lock().expect("transport connection bindings");
+                        let key = cleanup_lease.fence.session_id.as_str();
+                        if state
+                            .leases
+                            .get(key)
+                            .is_some_and(|bound| bound == &cleanup_lease)
+                        {
+                            state.leases.remove(key);
+                        }
+                    }
                     tokio::spawn(async move {
                         let mut registry = cleanup_registry.lock().await;
                         let _ = registry
