@@ -133,7 +133,7 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
     let pool = storage_durable_postgres::connect(&database_url)
         .await
         .unwrap();
-    let scope: Uuid = sqlx::query_scalar("select scope_id from applications where id=$1")
+    let scope: Uuid = sqlx::query_scalar("select workspace_id from applications where id=$1")
         .bind(application_id)
         .fetch_one(&pool)
         .await
@@ -248,5 +248,241 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
         .await
         .status(),
         StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
+async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_record_acl() {
+    use crate::_tests::support::{
+        create_member, create_role, replace_member_roles, replace_role_permissions, seed_workspace,
+    };
+    use control_plane_contracts::ports::CreateApplicationInput;
+    let (app, database_url) = test_app_with_database_url().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let member = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "log-query-viewer",
+        "temp-pass",
+    )
+    .await;
+    let member_id = Uuid::parse_str(&member).unwrap();
+    create_role(&app, &root_cookie, &root_csrf, "log_query_viewer").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "log_query_viewer",
+        &["application.view.own"],
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member,
+        &["log_query_viewer"],
+    )
+    .await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "log-query-viewer", "temp-pass").await;
+    let root_session = get_console_json(&app, &root_cookie, "/api/console/session".into()).await;
+    let root_id = Uuid::parse_str(root_session["data"]["actor"]["id"].as_str().unwrap()).unwrap();
+    let session = get_console_json(&app, &cookie, "/api/console/session".into()).await;
+    let workspace = Uuid::parse_str(
+        session["data"]["session"]["current_workspace_id"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let foreign_workspace = seed_workspace(&database_url, "Foreign log query workspace").await;
+    let store = MainDurableStore::new(
+        storage_durable_postgres::connect(&database_url)
+            .await
+            .unwrap(),
+    );
+    let mut fixtures = vec![];
+    for (owner, scope, name) in [
+        (member_id, workspace, "owned"),
+        (root_id, workspace, "other-owner"),
+        (member_id, foreign_workspace, "foreign-workspace"),
+    ] {
+        // Setup uses the real repository writer in this app's exclusive test DB.
+        // HTTP authorization is exercised by the member's official session below.
+        let application = store
+            .create_application(&CreateApplicationInput {
+                actor_user_id: owner,
+                workspace_id: scope,
+                application_type: domain::ApplicationType::AgentLogs,
+                workflow_trigger_type: None,
+                workflow_trigger_config: None,
+                name: name.into(),
+                description: "ACL fixture".into(),
+                icon: None,
+                icon_type: None,
+                icon_background: None,
+            })
+            .await
+            .unwrap();
+        let event=serde_json::from_value(json!({"event_id":name,"source_session_id":"acl-session","source_task_id":"acl-turn","sequence":1,"occurred_at":"2026-10-08T00:00:00Z","kind":"assistant","phase":"final_answer","content":format!("{name} secret"),"raw":{}})).unwrap();
+        let record = control_plane::agent_logs::AgentLogsService::new(store.clone())
+            .ingest(
+                application.id,
+                scope,
+                Uuid::now_v7(),
+                control_plane_contracts::ports::AgentLogsBatch {
+                    schema_version: control_plane_contracts::ports::AGENT_LOGS_SCHEMA_VERSION
+                        .into(),
+                    source_id: name.into(),
+                    source_client: "codex".into(),
+                    events: vec![event],
+                },
+            )
+            .await
+            .unwrap()
+            .record_ids[0];
+        fixtures.push((application.id, record));
+    }
+    let uri = "/api/console/applications/logs/records/query";
+    let implicit =
+        response_json(query_request(&app, uri, Some(&cookie), Some(&csrf), json!({})).await).await;
+    assert_eq!(implicit["data"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        implicit["data"]["items"][0]["record_id"],
+        fixtures[0].1.to_string()
+    );
+    let list = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        list.status(),
+        StatusCode::FORBIDDEN,
+        "VIEW must not silently grant the independent LIST operation"
+    );
+    for index in [1, 2] {
+        let explicit = query_request(
+            &app,
+            uri,
+            Some(&cookie),
+            Some(&csrf),
+            json!({"application_ids":[fixtures[index].0],"filter":{"id":{"$eq":fixtures[0].1}}}),
+        )
+        .await;
+        assert_eq!(
+            explicit.status(),
+            StatusCode::NOT_FOUND,
+            "every explicit application must be authorized even with an impossible filter"
+        );
+        let locator = format!(
+            "/api/console/applications/{}/logs/records/{}/client-trajectory/query",
+            fixtures[index].0, fixtures[index].1
+        );
+        assert_eq!(
+            query_request(
+                &app,
+                &locator,
+                Some(&cookie),
+                Some(&csrf),
+                json!({"keyword":"secret"})
+            )
+            .await
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    let or=response_json(query_request(&app,uri,Some(&cookie),Some(&csrf),json!({"filter":{"$or":[{"application_id":{"$eq":fixtures[1].0}},{"application_id":{"$eq":fixtures[2].0}},{"id":{"$eq":fixtures[0].1}}]}})).await).await;
+    assert_eq!(or["data"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        or["data"]["items"][0]["record_id"],
+        fixtures[0].1.to_string()
+    );
+    let owned_locator = format!(
+        "/api/console/applications/{}/logs/records/{}/client-trajectory/query",
+        fixtures[0].0, fixtures[0].1
+    );
+    let own_trajectory = response_json(
+        query_request(
+            &app,
+            &owned_locator,
+            Some(&cookie),
+            Some(&csrf),
+            json!({"keyword":"owned secret"}),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(own_trajectory["data"]["items"].as_array().unwrap().len(), 1);
+    let wrong_record = format!(
+        "/api/console/applications/{}/logs/records/{}/client-trajectory/query",
+        fixtures[0].0, fixtures[1].1
+    );
+    assert_eq!(
+        query_request(&app, &wrong_record, Some(&cookie), Some(&csrf), json!({}))
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "log_query_viewer",
+        &["application.view.all"],
+    )
+    .await;
+    let (all_cookie, all_csrf) =
+        login_and_capture_cookie(&app, "log-query-viewer", "temp-pass").await;
+    let all = response_json(
+        query_request(&app, uri, Some(&all_cookie), Some(&all_csrf), json!({})).await,
+    )
+    .await;
+    let mut actual = all["data"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["record_id"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    actual.sort();
+    let mut expected = vec![fixtures[0].1.to_string(), fixtures[1].1.to_string()];
+    expected.sort();
+    assert_eq!(
+        actual, expected,
+        "VIEW all still means current workspace only"
+    );
+    let other_locator = format!(
+        "/api/console/applications/{}/logs/records/{}/client-trajectory/query",
+        fixtures[1].0, fixtures[1].1
+    );
+    let other = response_json(
+        query_request(
+            &app,
+            &other_locator,
+            Some(&all_cookie),
+            Some(&all_csrf),
+            json!({"keyword":"other-owner secret"}),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(other["data"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        query_request(
+            &app,
+            uri,
+            Some(&all_cookie),
+            Some(&all_csrf),
+            json!({"application_ids":[fixtures[2].0]})
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
     );
 }
