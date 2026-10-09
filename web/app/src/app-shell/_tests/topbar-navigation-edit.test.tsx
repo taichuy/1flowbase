@@ -18,6 +18,34 @@ vi.mock(
   })
 );
 
+test('topbar groups expose a move action for the whole group', async () => {
+  const onOpenMoveNode = vi.fn();
+  const node = {
+    id: 'whole-group',
+    title: '整组',
+    kind: 'group' as const,
+    placement: 'topbar' as const,
+    content_presentation: 'single' as const,
+    slug: 'whole-group',
+    children: []
+  };
+  render(
+    <App>
+      <TopbarNavigationItemLabel
+        workspaceId="workspace-1"
+        node={node}
+        siblings={[node]}
+        onOpenMoveNode={onOpenMoveNode}
+      >
+        整组
+      </TopbarNavigationItemLabel>
+    </App>
+  );
+  fireEvent.click(screen.getByRole('button', { name: '配置整组' }));
+  fireEvent.click(await screen.findByText('移动到'));
+  expect(onOpenMoveNode).toHaveBeenCalledWith('whole-group');
+});
+
 test.each(['page', 'group'] as const)(
   'editing a topbar %s saves metadata without changing its route slug',
   async (kind) => {

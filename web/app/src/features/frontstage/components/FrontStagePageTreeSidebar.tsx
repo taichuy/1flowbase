@@ -277,7 +277,7 @@ function renderTreeNode({
       ),
       icon: isHidden ? <EyeOutlined /> : <EyeInvisibleOutlined />
     },
-    ...(isPageNode && onOpenMovePage
+    ...(onOpenMovePage
       ? [
           {
             key: 'move-to',

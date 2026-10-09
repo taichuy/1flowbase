@@ -53,6 +53,9 @@ pub struct MoveFrontstagePageInput {
     pub rank: String,
     pub before_id: Option<Uuid>,
     pub after_id: Option<Uuid>,
+    pub placement: domain::frontstage::FrontstageNavigationPlacement,
+    pub slug: Option<String>,
+    pub descendant_placement: Option<domain::frontstage::FrontstageNavigationPlacement>,
 }
 
 #[derive(Debug, Clone)]

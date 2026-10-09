@@ -55,21 +55,6 @@ export function resolveNavigationMove(
       !canProjectNavigationMove(nodes, sourceId, target.id, draft.position)
     )
       return null;
-    if (
-      source.placement &&
-      target.placement &&
-      source.placement !== target.placement
-    ) {
-      if (
-        !(
-          draft.position === 'inside' &&
-          source.placement === 'sidebar' &&
-          target.placement === 'topbar' &&
-          context.parentId === null
-        )
-      )
-        return null;
-    }
     if (draft.position !== 'inside') {
       return {
         parentId: context.parentId,
@@ -84,7 +69,8 @@ export function resolveNavigationMove(
   const destination = siblings.filter(
     (node) =>
       node.id !== sourceId &&
-      (!source.placement ||
+      (parentId !== null ||
+        !source.placement ||
         !node.placement ||
         node.placement === source.placement)
   );

@@ -778,6 +778,11 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             .bind(format!("frontstage-page-order:{}", input.workspace_id))
             .execute(&mut *tx)
             .await?;
+        // Validate the final subtree, so placement changes can be atomic even
+        // when intermediate rows still reference their old navigation layer.
+        sqlx::query("set constraints frontstage_pages_placement_integrity_trigger deferred")
+            .execute(&mut *tx)
+            .await?;
         let mut rank = input.rank.clone();
         if let Some(target_id) = input.before_id.or(input.after_id) {
             if input.before_id.is_some() && input.after_id.is_some() {
@@ -800,13 +805,12 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 r#"select id, rank from frontstage_pages
                    where workspace_id = $1
                      and parent_id is not distinct from $2
-                     and placement = (select placement from frontstage_pages
-                                      where workspace_id = $1 and id = $3)
+                     and placement = $3
                    order by id for update"#,
             )
             .bind(input.workspace_id)
             .bind(input.parent_id)
-            .bind(input.page_id)
+            .bind(input.placement.as_str())
             .fetch_all(&mut *tx)
             .await?;
             let mut siblings = rows
@@ -844,11 +848,32 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             .execute(&mut *tx)
             .await?;
         }
+        if let Some(descendant_placement) = input.descendant_placement {
+            sqlx::query(
+                r#"with recursive descendants as (
+                    select id from frontstage_pages where workspace_id = $1 and parent_id = $2
+                    union
+                    select child.id from frontstage_pages child
+                    join descendants parent on child.parent_id = parent.id
+                    where child.workspace_id = $1
+                )
+                update frontstage_pages set placement = $3, slug = null, updated_at = now()
+                where workspace_id = $1 and id in (select id from descendants)
+                  and (placement <> $3 or slug is not null)"#,
+            )
+            .bind(input.workspace_id)
+            .bind(input.page_id)
+            .bind(descendant_placement.as_str())
+            .execute(&mut *tx)
+            .await?;
+        }
         let row = sqlx::query(
             r#"
             update frontstage_pages
             set parent_id = $3,
                 rank = $4,
+                placement = $5,
+                slug = $6,
                 updated_at = now()
             where workspace_id = $1 and id = $2
             returning
@@ -872,6 +897,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(input.page_id)
         .bind(input.parent_id)
         .bind(&rank)
+        .bind(input.placement.as_str())
+        .bind(&input.slug)
         .fetch_optional(&mut *tx)
         .await
         .map_err(map_frontstage_placement_error)?;
@@ -879,7 +906,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             .map(|row| map_frontstage_page_row(&row))
             .transpose()?
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
-        tx.commit().await?;
+        tx.commit().await.map_err(map_frontstage_placement_error)?;
 
         Ok(page)
     }

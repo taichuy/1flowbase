@@ -538,38 +538,40 @@ where
         {
             return Err(ControlPlaneError::InvalidInput("move_position").into());
         }
+        // Nested nodes live in the sidebar. At the root, an explicit sibling
+        // anchor determines whether the node becomes a topbar route.
+        let mut placement = if command.parent_id.is_some() {
+            domain::frontstage::FrontstageNavigationPlacement::Sidebar
+        } else {
+            existing.placement
+        };
         if let Some(target_id) = command.before_id.or(command.after_id) {
             let target = self
                 .repository
                 .get_frontstage_page(command.workspace_id, target_id)
                 .await?
                 .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
-            if target_id == existing.id
-                || target.parent_id != command.parent_id
-                || target.placement != existing.placement
-            {
+            if target_id == existing.id || target.parent_id != command.parent_id {
                 return Err(ControlPlaneError::InvalidInput("move_position").into());
             }
-        }
-        match existing.kind {
-            domain::FrontstagePageKind::Group if command.parent_id.is_some() => {
-                self.ensure_page_parent_placement(
-                    command.workspace_id,
-                    command.parent_id,
-                    existing.placement,
-                )
-                .await?;
+            if command.parent_id.is_none() {
+                placement = target.placement;
             }
-            domain::FrontstagePageKind::Page => {
-                self.ensure_page_parent_placement(
-                    command.workspace_id,
-                    command.parent_id,
-                    existing.placement,
-                )
-                .await?;
-            }
-            domain::FrontstagePageKind::Group => {}
         }
+        self.ensure_page_parent_placement(command.workspace_id, command.parent_id, placement)
+            .await?;
+        let slug = if command.parent_id.is_none()
+            && placement == domain::frontstage::FrontstageNavigationPlacement::Topbar
+        {
+            Some(
+                existing
+                    .slug
+                    .clone()
+                    .unwrap_or_else(|| format!("p-{}", existing.id.simple())),
+            )
+        } else {
+            None
+        };
 
         let moved = self
             .repository
@@ -581,6 +583,11 @@ where
                 rank: normalize_rank(command.rank),
                 before_id: command.before_id,
                 after_id: command.after_id,
+                placement,
+                slug,
+                descendant_placement: (existing.kind == domain::FrontstagePageKind::Group
+                    && existing.placement != placement)
+                    .then_some(domain::frontstage::FrontstageNavigationPlacement::Sidebar),
             })
             .await?;
         self.invalidate_navigation(command.workspace_id).await;

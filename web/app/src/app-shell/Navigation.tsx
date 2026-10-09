@@ -36,6 +36,11 @@ const TopbarNavigationItemLabel = lazy(() =>
     default: module.TopbarNavigationItemLabel
   }))
 );
+const TopbarNavigationMoveDialog = lazy(() =>
+  loadTopbarNavigationDesigner().then((module) => ({
+    default: module.TopbarNavigationMoveDialog
+  }))
+);
 
 interface ConsolePrimaryNavigationRoute {
   id: string;
@@ -65,13 +70,15 @@ function topbarNavigationItems({
   pathname,
   useRouterLinks,
   workspaceId,
-  isDesignMode
+  isDesignMode,
+  onOpenMoveNode
 }: {
   nodes: FrontstagePageTreeNode[];
   pathname: string;
   useRouterLinks: boolean;
   workspaceId?: string;
   isDesignMode: boolean;
+  onOpenMoveNode: (nodeId: string) => void;
 }): ItemType[] {
   return nodes.reduce<ItemType[]>((items, node) => {
     if (node.placement !== 'topbar' || !node.slug) {
@@ -97,6 +104,7 @@ function topbarNavigationItems({
             <TopbarNavigationItemLabel
               workspaceId={workspaceId}
               node={node}
+              onOpenMoveNode={onOpenMoveNode}
               siblings={nodes.filter(
                 (candidate) => candidate.placement === 'topbar'
               )}
@@ -265,6 +273,7 @@ export function Navigation({
   const navigationScope = useAuthStore(selectNavigationQueryScope);
   const { t } = useTranslation('appShell');
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
+  const [moveNodeId, setMoveNodeId] = useState<string | null>(null);
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
@@ -334,7 +343,8 @@ export function Navigation({
             pathname,
             useRouterLinks,
             workspaceId,
-            isDesignMode
+            isDesignMode,
+            onOpenMoveNode: setMoveNodeId
           })
         ];
   const mobilePrimaryItems: MenuProps['items'] =
@@ -458,6 +468,17 @@ export function Navigation({
           <TopbarNavigationDesigner
             workspaceId={workspaceId}
             nodes={frontstageNavigationQuery.data ?? []}
+          />
+        </Suspense>
+      ) : null}
+      {isDesignMode && workspaceId && moveNodeId ? (
+        <Suspense fallback={null}>
+          <TopbarNavigationMoveDialog
+            key={moveNodeId}
+            workspaceId={workspaceId}
+            nodeId={moveNodeId}
+            nodes={frontstageNavigationQuery.data ?? []}
+            onCancel={() => setMoveNodeId(null)}
           />
         </Suspense>
       ) : null}

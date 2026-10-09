@@ -16,7 +16,6 @@ import { FRONTSTAGE_DESIGN_BLUE } from '../../lib/design-mode-theme';
 import { findNodeById, type FrontStageTreeNode } from '../../lib/page-tree';
 import { projectNavigationPosition } from '../../lib/navigation-drag/projection';
 import {
-  findSiblingContext,
   resolveNavigationMove,
   type NavigationMoveDraft
 } from '../../lib/navigation-drag/move-plan';
@@ -56,8 +55,6 @@ export function MovePageModal({
   const [isDragging, setIsDragging] = useState(false);
   const [moveError, setMoveError] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
-  const currentParentId =
-    findSiblingContext(pageTree, node.id)?.parentId ?? null;
   const projection = hoverDraft ?? draft;
   const pending = isMoving || isOperationPending;
   const moveInput = draft
@@ -221,15 +218,12 @@ export function MovePageModal({
             projection?.targetNodeId === item.id &&
             projection.position === 'inside'
           )),
-      selectable:
-        item.kind === 'group' &&
-        item.id !== currentParentId &&
-        Boolean(
-          resolveNavigationMove(pageTree, node.id, {
-            targetNodeId: item.id,
-            position: 'inside'
-          })
-        ),
+      selectable: Boolean(
+        resolveNavigationMove(pageTree, node.id, {
+          targetNodeId: item.id,
+          position: item.kind === 'group' ? 'inside' : 'after'
+        })
+      ),
       children: expandedKeys.includes(item.id)
         ? treeNodes(item.children ?? [], item.id)
         : undefined
@@ -331,17 +325,15 @@ export function MovePageModal({
             onSelect={(keys) => {
               if (!keys.length) return;
               const targetId = keys[0] === ROOT_KEY ? null : String(keys[0]);
+              const target = targetId ? findNodeById(pageTree, targetId) : null;
               const next: NavigationMoveDraft = {
                 targetNodeId: targetId,
-                position: 'inside'
+                position: target?.kind === 'page' ? 'after' : 'inside'
               };
-              if (
-                targetId !== currentParentId &&
-                resolveNavigationMove(pageTree, node.id, next)
-              ) {
+              if (resolveNavigationMove(pageTree, node.id, next)) {
                 setDraft(next);
                 setMoveError(false);
-                expandDestination(targetId);
+                if (next.position === 'inside') expandDestination(targetId);
               }
             }}
             treeData={[
@@ -353,7 +345,7 @@ export function MovePageModal({
                   true
                 ),
                 icon: <FolderOutlined />,
-                selectable: currentParentId !== null,
+                selectable: true,
                 isLeaf: false,
                 children: expandedKeys.includes(ROOT_KEY)
                   ? treeNodes(pageTree, null)

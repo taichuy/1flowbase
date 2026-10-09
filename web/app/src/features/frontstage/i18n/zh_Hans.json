@@ -129,7 +129,7 @@
     "more_block_operations": "更多区块操作",
     "move_or_sort_block": "移动或排序区块",
     "move_page_to": "移动“{{value1}}”到",
-    "select_destination_group": "选择分组或拖拽页面调整位置，确认后保存。",
+    "select_destination_group": "选择分组移入，或选择页面移到其后；也可拖拽调整位置。",
     "move_to": "移动到",
     "name": "名称",
     "name_required": "请输入名称",

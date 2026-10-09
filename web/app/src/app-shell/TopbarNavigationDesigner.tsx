@@ -5,13 +5,15 @@ import FileAddOutlined from '@ant-design/icons/es/icons/FileAddOutlined';
 import FolderAddOutlined from '@ant-design/icons/es/icons/FolderAddOutlined';
 import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
-import { App, Button, Dropdown, Form, Space } from 'antd';
+import { App, Button, Dropdown, Form, Space, theme } from 'antd';
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { i18nText } from '../shared/i18n/text';
 
 import type { FrontstagePageTreeNode } from '../features/frontstage/api/page-tree';
 import { FrontstageNodeActionButton } from '../features/frontstage/components/FrontstageNodeActionButton';
+import { MovePageModal } from '../features/frontstage/components/page-tree-actions/MovePageModal';
+import { findNodeById } from '../features/frontstage/lib/page-tree';
 import { useFrontstagePageTreeMutations } from '../features/frontstage/hooks/use-frontstage-page-tree-mutations';
 import {
   PageTreeFormModal,
@@ -34,18 +36,49 @@ function randomSlug(): string {
   return `p${Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('')}`;
 }
 
+export function TopbarNavigationMoveDialog({
+  workspaceId,
+  nodeId,
+  nodes,
+  onCancel
+}: {
+  workspaceId: string;
+  nodeId: string;
+  nodes: FrontstagePageTreeNode[];
+  onCancel: () => void;
+}) {
+  const mutations = useFrontstagePageTreeMutations(workspaceId);
+  const node = findNodeById(nodes, nodeId);
+  if (!node) return null;
+  return (
+    <MovePageModal
+      node={node}
+      pageTree={nodes}
+      isOperationPending={mutations.isPending}
+      onMove={async (id, input) => {
+        await mutations.moveNode(id, input);
+        return true;
+      }}
+      onCancel={onCancel}
+    />
+  );
+}
+
 export function TopbarNavigationItemLabel({
   workspaceId,
   node,
   siblings,
+  onOpenMoveNode,
   children
 }: {
   workspaceId: string;
   node: FrontstagePageTreeNode;
   siblings: FrontstagePageTreeNode[];
+  onOpenMoveNode?: (nodeId: string) => void;
   children: ReactNode;
 }) {
   const { modal, message } = App.useApp();
+  const { token } = theme.useToken();
   const [form] = Form.useForm<PageTreeFormValues>();
   const [dialog, setDialog] = useState<PageTreeFormDialog | null>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
@@ -228,6 +261,7 @@ export function TopbarNavigationItemLabel({
           }}
         />
         <Dropdown
+          styles={{ root: { zIndex: token.zIndexPopupBase + 60 } }}
           menu={{
             items: [
               {
@@ -236,6 +270,16 @@ export function TopbarNavigationItemLabel({
                 icon: <EditOutlined />,
                 onClick: openEdit
               },
+              ...(onOpenMoveNode
+                ? [
+                    {
+                      key: 'move-to',
+                      label: i18nText('frontstage', 'auto.move_to'),
+                      icon: <DragOutlined />,
+                      onClick: () => onOpenMoveNode(node.id)
+                    }
+                  ]
+                : []),
               { type: 'divider' },
               {
                 key: 'delete',

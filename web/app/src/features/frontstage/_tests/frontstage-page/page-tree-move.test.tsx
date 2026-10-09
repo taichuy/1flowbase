@@ -310,6 +310,24 @@ describe('FrontStagePage - page tree move', () => {
     return screen.findByRole('dialog');
   }
 
+  test('sidebar group operations move the whole group into another group', async () => {
+    const { onMovePageNode } = renderMovePage();
+    const group = screen.getByTestId('frontstage-tree-node-group-分组 1');
+    await openPageTreeOperationMenuAndFlush(group);
+    await clickAndFlush(await findLatestVisibleText('移动到'));
+    const dialog = await screen.findByRole('dialog');
+    await clickAndFlush(within(dialog).getByText('分组 2'));
+    await clickAndFlush(
+      within(dialog).getByRole('button', { name: /确\s*定/ })
+    );
+    await waitFor(() =>
+      expect(onMovePageNode).toHaveBeenCalledWith('group-1', {
+        parentId: 'group-2',
+        after_id: 'group-3'
+      })
+    );
+  });
+
   test('moves the operated unselected page to a nested group after confirmation', async () => {
     const { onMovePageNode } = renderMovePage();
     const dialog = await openMoveDialog();
@@ -317,7 +335,7 @@ describe('FrontStagePage - page tree move', () => {
     const confirm = within(dialog).getByRole('button', { name: /确\s*定/ });
     expect(confirm).toBeDisabled();
     await clickAndFlush(within(dialog).getByText('分组 1'));
-    expect(confirm).toBeDisabled();
+    expect(confirm).toBeEnabled();
     expect(within(dialog).queryByText('嵌套分组')).not.toBeInTheDocument();
     await clickAndFlush(within(dialog).getByText('分组 2'));
     expect(within(dialog).queryByText('页面 page-3')).not.toBeInTheDocument();
@@ -439,7 +457,7 @@ describe('FrontStagePage - page tree move', () => {
     let dialog = await openMoveDialog('页面 page-1');
     const confirm = within(dialog).getByRole('button', { name: /确\s*定/ });
     await clickAndFlush(within(dialog).getByText('当前路由分组'));
-    expect(confirm).toBeDisabled();
+    expect(confirm).toBeEnabled();
     await clickAndFlush(within(dialog).getByText('其他路由分组'));
     await clickAndFlush(confirm);
     expect(onMovePageNode).toHaveBeenLastCalledWith('page-1', {

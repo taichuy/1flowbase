@@ -38,13 +38,13 @@ const tree: FrontStageTreeNode[] = [
     ]
   }
 ];
-function setup() {
+function setup(node = source) {
   const onMove = vi.fn().mockResolvedValue(true);
   const onCancel = vi.fn();
   render(
     <AppProviders>
       <MovePageModal
-        node={source}
+        node={node}
         pageTree={tree}
         isOperationPending={false}
         onMove={onMove}
@@ -94,6 +94,50 @@ function hover(
   return row;
 }
 afterEach(() => vi.restoreAllMocks());
+
+test('selecting a page stages an after projection and saves its parent and anchor', async () => {
+  const { onMove, dialog } = setup();
+  fireEvent.click(
+    dialog.querySelector('.move-page-modal__row[data-node-id="destination"]')!
+  );
+  fireEvent.click(within(dialog).getByText('已有页面一'));
+  expect(screen.getByTestId('move-page-projection')).toHaveAttribute(
+    'data-position',
+    'after'
+  );
+  expect(screen.getByTestId('move-page-projection')).toHaveAttribute(
+    'data-target-id',
+    'first'
+  );
+  expect(onMove).not.toHaveBeenCalled();
+  await act(async () =>
+    within(dialog)
+      .getByRole('button', { name: /确\s*定/ })
+      .click()
+  );
+  expect(onMove).toHaveBeenCalledWith('source', {
+    parentId: 'destination',
+    after_id: 'first'
+  });
+});
+
+test('a group is moved as one node and cannot be placed inside its descendants', async () => {
+  const { onMove, dialog } = setup(tree[1]);
+  fireEvent.click(
+    dialog.querySelector('.move-page-modal__row[data-node-id="destination"]')!
+  );
+  expect(screen.queryByTestId('move-page-projection')).not.toBeInTheDocument();
+  fireEvent.click(within(dialog).getByText('来源分组'));
+  await act(async () =>
+    within(dialog)
+      .getByRole('button', { name: /确\s*定/ })
+      .click()
+  );
+  expect(onMove).toHaveBeenCalledWith('destination', {
+    parentId: 'origin',
+    after_id: 'source'
+  });
+});
 
 test('starts at root level and selecting a group shows its direct children and append projection', async () => {
   const { onMove, dialog } = setup();

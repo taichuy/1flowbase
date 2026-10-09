@@ -66,7 +66,7 @@ test('rejects self and page-as-parent drafts and filters root anchors by navigat
       targetNodeId: 'topbar',
       position: 'before'
     })
-  ).toBeNull();
+  ).toEqual({ parentId: null, before_id: 'topbar' });
   expect(
     resolveNavigationMove(tree, 'source', {
       targetNodeId: 'topbar',
@@ -79,4 +79,25 @@ test('rejects self and page-as-parent drafts and filters root anchors by navigat
       position: 'inside'
     })
   ).toEqual({ parentId: null, after_id: 'target' });
+});
+
+test('topbar groups append after sidebar children and group descendants remain invalid targets', () => {
+  expect(
+    resolveNavigationMove(tree, 'topbar', {
+      targetNodeId: 'target',
+      position: 'inside'
+    })
+  ).toEqual({ parentId: 'target', after_id: 'anchor' });
+  expect(
+    resolveNavigationMove(tree, 'target', {
+      targetNodeId: 'anchor',
+      position: 'after'
+    })
+  ).toBeNull();
+  expect(
+    resolveNavigationMove(tree, 'source', {
+      targetNodeId: 'origin',
+      position: 'inside'
+    })
+  ).toEqual({ parentId: 'origin', rank: '001000' });
 });
