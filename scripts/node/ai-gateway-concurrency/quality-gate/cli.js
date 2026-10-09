@@ -239,6 +239,7 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
     invocation("api-server-debug-cold-replay-tests", "api-server", "routes::applications_group::debug_run_stream::tests::"),
     invocation("api-server-compatible-forwarding-tests", "api-server", "routes::application_public_api::compat_sse::tests::forwarding::"),
     invocation("control-plane-runtime-event-persister-tests", "control-plane", "orchestration_runtime::runtime_event_persister::tests::"),
+    invocation("control-plane-provider-observation-order-tests", "control-plane", "orchestration_runtime::provider_invoker::runtime_events::tests::"),
     invocation("control-plane-frozen-plan-cache-tests", "control-plane", "orchestration_runtime::frozen_plan::_tests::"),
     invocation("storage-ephemeral-published-plan-cache-tests", "storage-ephemeral", "published_plan_cache_tests::"),
     invocation("control-plane-contract-authenticity-tests", "control-plane-contracts", ""),

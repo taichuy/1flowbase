@@ -39,12 +39,50 @@ async fn committed_generation_gc_keeps_cold_attach_opaque_order_and_acked_tool_s
             .await
             .unwrap();
     }
+    // This fixture intentionally exercises the async diagnostic owner. Wait
+    // for its actual commits while the run is open, before the independent
+    // terminal owner seals it. A timer delay alone cannot establish that order.
+    let generation_id = writer.generation_id().unwrap();
+    let persisted_count = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let count: i64 = sqlx::query_scalar(
+                "select count(*) from runtime_events where flow_run_id = $1 \
+                 and payload ->> 'stream_generation_id' = $2 \
+                 and event_type in ('flow_started', 'node_started')",
+            )
+            .bind(run.id)
+            .bind(generation_id.to_string())
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+            if count >= 66 {
+                break count;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("eligible generation events commit before status is sealed");
+    assert_eq!(
+        persisted_count, 66,
+        "each eligible event commits exactly once"
+    );
     let reasoning = json!({"type": "reasoning", "id": "rs_cold_original", "encrypted_content": "opaque-provider-bytes", "extension": {"numeric_lexeme": "00"}});
     let message = json!({"type": "message", "id": "msg_cold_original", "content": [{"type": "output_text", "text": "recovered"}]});
     let tool =
         seed_pending_committed_delivery(&state, &run, committed_delivery_payload("call-cold-once"))
             .await;
     complete_attached_callback_round(&state, run.id, &reasoning, &message).await;
+    assert!(state
+        .store
+        .has_runtime_event_terminal_after(
+            run.id,
+            writer.durable_replay_boundary().unwrap(),
+            "flow_finished",
+            generation_id,
+        )
+        .await
+        .unwrap());
     run.status = NativeRunStatus::Succeeded;
     let mut terminal = debug_stream_events::flow_finished(run.id, json!({}));
     terminal.persist_required = false;
@@ -374,7 +412,9 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity
     )
     .await;
     // These business-owner output and terminal rows are legitimately untagged.
-    complete_attached_callback_round(&state, run.id, &reasoning, &message).await;
+    // Seed subsequent rounds before sealing the run, as required by the real
+    // append owner. Status sealing is independent from the recorded round end.
+    append_attached_callback_round_events(&state, run.id, &reasoning, &message).await;
     for (event_type, payload) in [
         (
             "runtime_stream_opened",
@@ -395,6 +435,8 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity
     ] {
         append_compat_sse_runtime_event(&state, run.id, event_type, payload).await;
     }
+
+    seal_attached_callback_round(&state, run.id).await;
 
     for expected_tool_count in [1, 0] {
         let mut attached = if let Some(attached) = pending_attachment.take() {

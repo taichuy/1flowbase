@@ -73,7 +73,7 @@ impl PgControlPlaneStore {
                 checkpoints.reason,
                 runtime_original_json(checkpoints.locator_payload, checkpoints.raw_json_payloads, 'locator_payload') as locator_payload,
                 case when checkpoints.locator_payload ->> 'context_version_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
-                     then '{}'::jsonb
+                     then '{}'::json
                      else coalesce(runtime_original_json(contents.content, contents.raw_json_payloads, 'content'), runtime_original_json(checkpoints.variable_snapshot, checkpoints.raw_json_payloads, 'variable_snapshot'))
                 end as variable_snapshot,
                 null::jsonb as external_ref_payload,

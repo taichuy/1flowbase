@@ -147,6 +147,7 @@ test("quality gate uses the supplied fixture database authority and explicit tes
       ["api-server-debug-cold-replay-tests", "routes::applications_group::debug_run_stream::tests::"],
       ["api-server-compatible-forwarding-tests", "routes::application_public_api::compat_sse::tests::forwarding::"],
       ["control-plane-runtime-event-persister-tests", "orchestration_runtime::runtime_event_persister::tests::"],
+      ["control-plane-provider-observation-order-tests", "orchestration_runtime::provider_invoker::runtime_events::tests::"],
       ["control-plane-frozen-plan-cache-tests", "orchestration_runtime::frozen_plan::_tests::"],
       ["storage-ephemeral-published-plan-cache-tests", "published_plan_cache_tests::"],
       ["control-plane-contract-authenticity-tests", ""],

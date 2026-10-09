@@ -385,15 +385,19 @@ async fn continue_and_human_resume_propagate_plan_read_error() {
         .await
         .unwrap();
     let service = service.with_published_plan_cache(Arc::new(FailingCache));
-    let error = service
+    let failed = service
         .continue_flow_debug_run(ContinueFlowDebugRunCommand {
             application_id: seeded.application_id,
             flow_run_id: started.flow_run.id,
             workspace_id: Uuid::nil(),
         })
         .await
-        .expect_err("continue must propagate frozen plan error");
-    assert_eq!(error.to_string(), "frozen plan read failed");
+        .expect("continue settles its failure through the existing terminal owner");
+    assert_eq!(failed.flow_run.status, domain::FlowRunStatus::Failed);
+    assert_eq!(
+        failed.flow_run.error_payload.as_ref().unwrap()["message"],
+        "frozen plan read failed"
+    );
     assert_eq!(
         service
             .repository
@@ -402,7 +406,7 @@ async fn continue_and_human_resume_propagate_plan_read_error() {
             .unwrap()
             .unwrap()
             .status,
-        domain::FlowRunStatus::Running
+        domain::FlowRunStatus::Failed
     );
 
     let service = OrchestrationRuntimeService::for_tests();

@@ -19,6 +19,8 @@ A generation is one stream lifetime for a `run_id`. A callback may reopen the ru
 
 Required business facts remain synchronous under their existing transaction / commit owners. The diagnostic persister retains its 64 KiB / 20 ms microbatch. Ineligible events and token deltas are filtered before batching; terminal events still flush preceding eligible facts. Original trajectory archive queues, receipts and backpressure retain their existing ownership.
 
+The required provider forwarding owner awaits existing generation-aware writes for eligible small observations, such as usage snapshots, before forwarding completes. Their live copies do not enter the async batch again. This prevents a terminal transaction from sealing the run before its final observations commit. Callers using the async diagnostic lane must drain eligible batches before committing the business terminal; the 20 ms timer does not establish that ordering. A failed write preserves the original error and excludes that generation from early GC.
+
 ```mermaid
 flowchart LR
     A[Install persister and durable generation boundary] --> B[Produce and deliver events]
@@ -55,5 +57,7 @@ Invalid values warn and retain defaults. The budget excludes active and unconfir
 Steady-state confirmed closed replay is approximately `M_hot ≈ λ × E[B] × T_hot`, where λ is the generation closure rate, B is retained bytes per generation and T_hot is the hot lifetime. Total memory also includes active work, unconfirmed replay, subscriber backlog and allocator state. Use this model for matched-workload comparisons, not a fixed RSS promise.
 
 The costs are one small boundary row per generation, proof queries and paged I/O on cold misses. The change does not duplicate entire conversations or introduce a new body table. Cold misses may add tail latency; failed writes retain longer replay to protect recovery.
+
+Eligible provider observations add database wait time to their forwarding path; token deltas do not acquire synchronous writes. Existing fact rows are reused without duplicate async writes or early eviction of uncommitted facts.
 
 Hot GC neither deletes database history nor extends its existing retention policy. Durable deletion belongs to existing data-retention / user-deletion policies. Deleted facts cannot be recovered from an expired cache, and tools must not be rerun to fill that loss. Releasing Rust objects does not immediately reduce RSS: jemalloc slab slots can remain reusable, and metadata or partially occupied pages may remain resident. Acceptance reports ring bytes / capacity separately from actual RSS / PSS evidence.

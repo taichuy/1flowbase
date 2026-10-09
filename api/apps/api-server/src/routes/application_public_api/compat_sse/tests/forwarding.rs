@@ -348,6 +348,16 @@ async fn complete_attached_callback_round(
     first_item: &serde_json::Value,
     second_item: &serde_json::Value,
 ) {
+    append_attached_callback_round_events(state, run_id, first_item, second_item).await;
+    seal_attached_callback_round(state, run_id).await;
+}
+
+async fn append_attached_callback_round_events(
+    state: &ApiState,
+    run_id: Uuid,
+    first_item: &serde_json::Value,
+    second_item: &serde_json::Value,
+) {
     for (index, item) in [(1, second_item), (0, first_item)] {
         append_compat_sse_runtime_event(
             state,
@@ -364,6 +374,9 @@ async fn complete_attached_callback_round(
         json!({"type": "flow_finished", "run_id": run_id, "status": "succeeded"}),
     )
     .await;
+}
+
+async fn seal_attached_callback_round(state: &ApiState, run_id: Uuid) {
     state
         .store
         .update_flow_run(&UpdateFlowRunInput {
@@ -2256,7 +2269,6 @@ mod terminal_generation;
 
 #[path = "forwarding/_tests/snapshot_ownership.rs"]
 mod snapshot_ownership;
-
 
 #[path = "forwarding/_tests/cold_replay.rs"]
 mod cold_replay;

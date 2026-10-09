@@ -54,6 +54,9 @@ const PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS: &[&str] = &[
     include_str!("../../../migrations/20260714230000_create_role_console_policies.sql"),
     include_str!("../../../migrations/20260724090000_add_authenticator_public_ui_block.sql"),
     include_str!("../../../migrations/20260903010000_separate_login_entries_from_authentication_connections.sql"),
+    // Current permission seeding needs this independent catalog infrastructure;
+    // the provider aggregation migration under test must remain unapplied.
+    include_str!("../../../migrations/20260910190000_track_console_permission_catalog.sql"),
 ];
 
 const MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL: &str = include_str!(
