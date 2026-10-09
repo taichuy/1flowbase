@@ -14,6 +14,7 @@ import {
   fetchApplicationLogRecord,
   fetchRunPayload
 } from '../../../api/trajectory';
+import { AgentLogsDeleteButton } from './AgentLogsDeleteButton';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
@@ -1173,6 +1174,37 @@ export function ApplicationLogsWorkspace({
               </Tooltip>
             </>
           ) : null}
+          {applicationType === 'agent_logs' && applicationId && (
+            <AgentLogsDeleteButton
+              key={applicationId}
+              applicationId={applicationId}
+              onFinished={async () => {
+                setSelectedRunIds([]);
+                setSelectedRunId(null);
+                setRunDetailRect(null);
+                setConversationLogRect(null);
+                setResumeTimelineRect(null);
+                setOpenConversationLogMessage(null);
+                setOpenResumeTimelineRunId(null);
+                setTraceViewRequested(false);
+                writeApplicationLogsSearchState(
+                  { runId: null, view: null },
+                  'replace'
+                );
+                setPage(1);
+                await queryClient.invalidateQueries({
+                  predicate: ({ queryKey }) =>
+                    (queryKey[0] === 'applications' &&
+                      (queryKey[1] === applicationId ||
+                        (Array.isArray(queryKey[1]) &&
+                          queryKey[1].includes(applicationId)))) ||
+                    (queryKey[0] === 'application-log-record' &&
+                      queryKey[1] === applicationId)
+                });
+                await refreshRunsFromDurable();
+              }}
+            />
+          )}
           <Tooltip title={t('auto.refresh_logs')}>
             <Button
               aria-label={t('auto.refresh_logs')}

@@ -33,11 +33,29 @@ impl InterfaceContract for LogsDeleteInput {
             (
                 "scope",
                 mp::union_schema(vec![
-                    mp::object_schema(&[("mode", mp::tag_schema("all_time"))]),
+                    mp::object_schema(&[
+                        ("mode", mp::tag_schema("all_time")),
+                        (
+                            "batch_size",
+                            mp::union_schema(vec![mp::count_schema(), json!({"type":"null"})]),
+                        ),
+                        (
+                            "ingested_at_before",
+                            mp::union_schema(vec![mp::text_schema(), json!({"type":"null"})]),
+                        ),
+                    ]),
                     mp::object_schema(&[
                         ("mode", mp::tag_schema("time_range")),
                         ("started_at_from", mp::text_schema()),
                         ("started_at_to", mp::text_schema()),
+                        (
+                            "batch_size",
+                            mp::union_schema(vec![mp::count_schema(), json!({"type":"null"})]),
+                        ),
+                        (
+                            "ingested_at_before",
+                            mp::union_schema(vec![mp::text_schema(), json!({"type":"null"})]),
+                        ),
                     ]),
                 ]),
             ),
@@ -45,17 +63,38 @@ impl InterfaceContract for LogsDeleteInput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
+        let batch_size = self
+            .scope
+            .batch_size()
+            .map(|value| json!(value.get()))
+            .unwrap_or(serde_json::Value::Null);
+        let boundary = self
+            .scope
+            .ingested_at_before()
+            .ok()?
+            .map(|value| value.format(&time::format_description::well_known::Rfc3339))
+            .transpose()
+            .ok()?;
+        let ingested_at_before = match boundary {
+            Some(value) => mp::text(&value)?,
+            None => serde_json::Value::Null,
+        };
         let scope = match &self.scope {
-            AgentLogsDeleteScope::AllTime {} => {
-                mp::object_value(&[("mode", serde_json::json!("all_time"))])
-            }
+            AgentLogsDeleteScope::AllTime { .. } => mp::object_value(&[
+                ("mode", json!("all_time")),
+                ("batch_size", batch_size),
+                ("ingested_at_before", ingested_at_before),
+            ]),
             AgentLogsDeleteScope::TimeRange {
                 started_at_from,
                 started_at_to,
+                ..
             } => mp::object_value(&[
-                ("mode", serde_json::json!("time_range")),
+                ("mode", json!("time_range")),
                 ("started_at_from", mp::text(started_at_from)?),
                 ("started_at_to", mp::text(started_at_to)?),
+                ("batch_size", batch_size),
+                ("ingested_at_before", ingested_at_before),
             ]),
         };
         Some(mp::object_value(&[
@@ -67,11 +106,15 @@ impl InterfaceContract for LogsDeleteInput {
 #[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct LogsDeleteOutput {
     pub deleted_records: u64,
+    pub has_more: bool,
+    pub ingested_at_before: String,
 }
 impl From<AgentLogsDeleteReceipt> for LogsDeleteOutput {
     fn from(receipt: AgentLogsDeleteReceipt) -> Self {
         Self {
             deleted_records: receipt.deleted_records,
+            has_more: receipt.has_more,
+            ingested_at_before: receipt.ingested_at_before,
         }
     }
 }
@@ -80,13 +123,16 @@ impl InterfaceContract for LogsDeleteOutput {
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema(&[(
-            "deleted_records",
-            mp::count_schema(),
-        )]))
+        Some(mp::object_schema(&[
+            ("deleted_records", mp::count_schema()),
+            ("has_more", json!({"type":"boolean"})),
+            ("ingested_at_before", mp::text_schema()),
+        ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
-        Some(serde_json::json!({"deleted_records":self.deleted_records}))
+        Some(
+            serde_json::json!({"deleted_records":self.deleted_records,"has_more":self.has_more,"ingested_at_before":self.ingested_at_before}),
+        )
     }
 }
 struct LogsDeleteAdapter {
@@ -135,8 +181,8 @@ impl utoipa::ToSchema for LogsDeleteScopeSchema {}
 impl utoipa::PartialSchema for LogsDeleteScopeSchema {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
         serde_json::from_value(json!({"oneOf":[
-            {"type":"object","additionalProperties":false,"required":["mode"],"properties":{"mode":{"type":"string","enum":["all_time"]}}},
-            {"type":"object","additionalProperties":false,"required":["mode","started_at_from","started_at_to"],"properties":{"mode":{"type":"string","enum":["time_range"]},"started_at_from":{"type":"string","format":"date-time"},"started_at_to":{"type":"string","format":"date-time"}}}
+            {"type":"object","additionalProperties":false,"required":["mode"],"properties":{"batch_size":{"type":"integer","minimum":1,"maximum":4294967295},"ingested_at_before":{"type":"string","format":"date-time"},"mode":{"type":"string","enum":["all_time"]}}},
+            {"type":"object","additionalProperties":false,"required":["mode","started_at_from","started_at_to"],"properties":{"batch_size":{"type":"integer","minimum":1,"maximum":4294967295},"ingested_at_before":{"type":"string","format":"date-time"},"mode":{"type":"string","enum":["time_range"]},"started_at_from":{"type":"string","format":"date-time"},"started_at_to":{"type":"string","format":"date-time"}}}
         ]})).expect("static agent logs deletion schema")
     }
 }
@@ -145,8 +191,8 @@ impl utoipa::PartialSchema for LogsDeleteScopeSchema {
     delete,
     path = "/api/console/applications/{id}/logs",
     summary = "Delete imported agent log records",
-    description = "Delete complete imported turns from an agent_logs application only. Require explicit all_time mode or time_range with RFC3339 started_at_from and started_at_to, using [from,to). Preserve the application, keys and credits.",
-    request_body(content = inline(LogsDeleteScopeSchema), description = "Required typed scope: {mode: all_time} or {mode: time_range, started_at_from: RFC3339, started_at_to: RFC3339}; from must precede to.", example = json!({"mode":"time_range","started_at_from":"2026-10-07T00:00:00Z","started_at_to":"2026-10-08T00:00:00Z"})),
+    description = "Delete complete imported turns from an agent_logs application only. Require explicit all_time mode or time_range with RFC3339 started_at_from and started_at_to, using [from,to). Optional positive batch_size limits each transaction; omit it to delete the full scope atomically. Repeat while has_more with the first receipt ingested_at_before to exclude later imports. Preserve the application, keys and credits.",
+    request_body(content = inline(LogsDeleteScopeSchema), description = "Required typed scope: {mode: all_time} or {mode: time_range, started_at_from: RFC3339, started_at_to: RFC3339}; from must precede to. Optional batch_size and ingested_at_before support bounded transactions with a fixed creation boundary.", example = json!({"mode":"time_range","started_at_from":"2026-10-07T00:00:00Z","started_at_to":"2026-10-08T00:00:00Z"})),
     params(("id" = String, Path, description = "Agent logs application ID")),
     responses((status = 200, body = LogsDeleteOutput), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 415, description = "JSON body required"), (status = 422, description = "Invalid deletion scope shape"))
 )]

@@ -392,5 +392,32 @@
     "collector_key_name": "采集 CLI：{{client}}",
     "key_generation_failed": "无法生成 API Key，请重试或检查应用权限。",
     "enter_application_key": "输入当前应用的 API Key"
+  },
+  "log_deletion": {
+    "button": "删除日志",
+    "title": "删除日志",
+    "date": "选择日期",
+    "days_7": "过去 7 天",
+    "days_30": "过去 30 天",
+    "days_90": "过去 90 天",
+    "year": "过去一年",
+    "all": "全部",
+    "custom": "自定义日期",
+    "custom_range": "日期范围",
+    "range_required": "请选择开始和结束日期",
+    "batch_size": "删除批次",
+    "batch_invalid": "请输入有效的正整数（不超过 4294967295）",
+    "warning": "按日志开始时间删除所选范围内的完整对话及轨迹，删除后无法恢复。仅处理开始删除时已存在的记录。",
+    "confirm": "删除日志",
+    "cancel": "取消",
+    "close": "关闭",
+    "stop": "停止后续批次",
+    "stopping": "正在停止",
+    "progress": "已确认删除 {{count}} 条日志",
+    "running": "正在分批删除，请保持此页面打开。",
+    "stopping_detail": "等待当前批次提交后停止，已删除的日志不会恢复。",
+    "complete": "所选范围的日志已删除。",
+    "stopped": "已停止后续批次，已提交的删除保留。",
+    "failed": "删除中断。最后一批的结果可能尚未确认，请检查刷新后的日志。"
   }
 }

@@ -97,7 +97,9 @@ fn agent_logs_delete_requires_explicit_mode_and_strict_rfc3339_range() {
     ] {
         assert!(AgentLogsDeleteScope::TimeRange {
             started_at_from: from.into(),
-            started_at_to: to.into()
+            started_at_to: to.into(),
+            batch_size: None,
+            ingested_at_before: None,
         }
         .bounds()
         .is_err());
@@ -105,13 +107,43 @@ fn agent_logs_delete_requires_explicit_mode_and_strict_rfc3339_range() {
     let (from, to) = AgentLogsDeleteScope::TimeRange {
         started_at_from: "2026-10-07T08:00:00+08:00".into(),
         started_at_to: "2026-10-08T00:00:00Z".into(),
+        batch_size: None,
+        ingested_at_before: None,
     }
     .bounds()
     .unwrap()
     .unwrap();
     assert!(from < to);
     assert_eq!(
-        serde_json::to_value(AgentLogsDeleteReceipt { deleted_records: 3 }).unwrap(),
-        json!({"deleted_records":3})
+        serde_json::to_value(AgentLogsDeleteReceipt {
+            deleted_records: 3,
+            has_more: false,
+            ingested_at_before: "2026-10-09T00:00:00Z".into()
+        })
+        .unwrap(),
+        json!({"deleted_records":3,"has_more":false,"ingested_at_before":"2026-10-09T00:00:00Z"})
     );
+}
+
+#[test]
+fn agent_logs_delete_batch_size_and_ingestion_boundary_are_strict() {
+    for size in [
+        json!(0),
+        json!(-1),
+        json!(1.5),
+        json!("100"),
+        json!(4294967296u64),
+    ] {
+        assert!(serde_json::from_value::<AgentLogsDeleteScope>(
+            json!({"mode":"all_time","batch_size":size})
+        )
+        .is_err());
+    }
+    let scope: AgentLogsDeleteScope = serde_json::from_value(json!({"mode":"all_time","batch_size":100,"ingested_at_before":"2026-10-09T12:00:00+08:00"})).unwrap();
+    assert_eq!(scope.batch_size().unwrap().get(), 100);
+    assert!(scope.ingested_at_before().unwrap().is_some());
+    let bad: AgentLogsDeleteScope =
+        serde_json::from_value(json!({"mode":"all_time","ingested_at_before":"yesterday"}))
+            .unwrap();
+    assert!(bad.ingested_at_before().is_err());
 }

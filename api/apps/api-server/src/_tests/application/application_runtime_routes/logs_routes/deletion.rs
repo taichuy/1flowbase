@@ -94,6 +94,9 @@ async fn agent_logs_delete_console_route_requires_auth_csrf_scope_and_rejects_na
         json!({}),
         json!({"mode":"time_range"}),
         json!({"mode":"unknown"}),
+        json!({"mode":"all_time","batch_size":0}),
+        json!({"mode":"all_time","batch_size":-1}),
+        json!({"mode":"all_time","batch_size":1.5}),
     ] {
         assert_eq!(
             deletion_request(&app, id, Some(&cookie), Some(&csrf), Some(body))
@@ -109,6 +112,7 @@ async fn agent_logs_delete_console_route_requires_auth_csrf_scope_and_rejects_na
             .is_success()
     );
     for body in [
+        json!({"mode":"all_time","ingested_at_before":"invalid"}),
         json!({"mode":"time_range","started_at_from":"bad","started_at_to":"2026-10-08T00:00:00Z"}),
         json!({"mode":"time_range","started_at_from":"2026-10-08T00:00:00Z","started_at_to":"2026-10-08T00:00:00Z"}),
     ] {
@@ -168,6 +172,12 @@ async fn agent_logs_delete_console_route_requires_auth_csrf_scope_and_rejects_na
         serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
             .unwrap();
     assert_eq!(value["data"]["deleted_records"], 1);
+    assert_eq!(value["data"]["has_more"], false);
+    assert!(time::OffsetDateTime::parse(
+        value["data"]["ingested_at_before"].as_str().unwrap(),
+        &time::format_description::well_known::Rfc3339
+    )
+    .is_ok());
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
             "select count(*) from application_run_log_tasks where application_id=$1"

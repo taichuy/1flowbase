@@ -217,20 +217,59 @@ impl RecordClientTrajectoryCursor {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentLogsDeleteScope {
-    AllTime {},
+    AllTime {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        batch_size: Option<std::num::NonZeroU32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ingested_at_before: Option<String>,
+    },
     TimeRange {
         started_at_from: String,
         started_at_to: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        batch_size: Option<std::num::NonZeroU32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ingested_at_before: Option<String>,
     },
 }
 impl AgentLogsDeleteScope {
+    pub fn all_time() -> Self {
+        Self::AllTime {
+            batch_size: None,
+            ingested_at_before: None,
+        }
+    }
+    pub fn batch_size(&self) -> Option<std::num::NonZeroU32> {
+        match self {
+            Self::AllTime { batch_size, .. } | Self::TimeRange { batch_size, .. } => *batch_size,
+        }
+    }
+    /// Reuse the first receipt's boundary so later imports are outside this operation.
+    pub fn ingested_at_before(&self) -> anyhow::Result<Option<time::OffsetDateTime>> {
+        let value = match self {
+            Self::AllTime {
+                ingested_at_before, ..
+            }
+            | Self::TimeRange {
+                ingested_at_before, ..
+            } => ingested_at_before,
+        };
+        value
+            .as_deref()
+            .map(|value| {
+                time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+            })
+            .transpose()
+            .map_err(Into::into)
+    }
     /// Imported turns are selected by task start time, using [from, to).
     pub fn bounds(&self) -> anyhow::Result<Option<(time::OffsetDateTime, time::OffsetDateTime)>> {
         match self {
-            Self::AllTime {} => Ok(None),
+            Self::AllTime { .. } => Ok(None),
             Self::TimeRange {
                 started_at_from,
                 started_at_to,
+                ..
             } => {
                 let from = time::OffsetDateTime::parse(
                     started_at_from,
@@ -249,4 +288,6 @@ impl AgentLogsDeleteScope {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentLogsDeleteReceipt {
     pub deleted_records: u64,
+    pub has_more: bool,
+    pub ingested_at_before: String,
 }

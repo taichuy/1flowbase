@@ -18,6 +18,8 @@ fn range(from: &str, to: &str) -> AgentLogsDeleteScope {
     AgentLogsDeleteScope::TimeRange {
         started_at_from: from.into(),
         started_at_to: to.into(),
+        batch_size: None,
+        ingested_at_before: None,
     }
 }
 async fn ingest_turn(
@@ -101,7 +103,7 @@ async fn agent_logs_delete_half_open_complete_turn_and_all_time_preserve_applica
     }
     assert_eq!(
         service
-            .delete(&owner, app, AgentLogsDeleteScope::AllTime {})
+            .delete(&owner, app, AgentLogsDeleteScope::all_time())
             .await
             .unwrap()
             .deleted_records,
@@ -113,7 +115,7 @@ async fn agent_logs_delete_half_open_complete_turn_and_all_time_preserve_applica
     );
     assert_eq!(
         service
-            .delete(&owner, app, AgentLogsDeleteScope::AllTime {})
+            .delete(&owner, app, AgentLogsDeleteScope::all_time())
             .await
             .unwrap()
             .deleted_records,
@@ -174,12 +176,12 @@ async fn agent_logs_delete_rejects_other_workspace_native_and_ungranted_actor() 
         Vec::<String>::new(),
     );
     assert!(AgentLogsService::new(store.for_actor(ungranted.clone()))
-        .delete(&ungranted, app, AgentLogsDeleteScope::AllTime {})
+        .delete(&ungranted, app, AgentLogsDeleteScope::all_time())
         .await
         .is_err());
     let wrong = seed_workspace(&store, "delete-wrong").await;
     assert!(store
-        .delete_agent_logs(app, wrong, &AgentLogsDeleteScope::AllTime {})
+        .delete_agent_logs(app, wrong, &AgentLogsDeleteScope::all_time())
         .await
         .is_err());
     let foreign_owner = seed_user(&store, wrong, "delete-foreign").await;
@@ -209,7 +211,7 @@ async fn agent_logs_delete_rejects_other_workspace_native_and_ungranted_actor() 
     let foreign_counts = owned_log_counts(&store, foreign_app.id, &[foreign_id], &[]).await;
     let (service, owner) = delete_service(&store, scope, app).await;
     assert!(service
-        .delete(&owner, foreign_app.id, AgentLogsDeleteScope::AllTime {})
+        .delete(&owner, foreign_app.id, AgentLogsDeleteScope::all_time())
         .await
         .is_err());
     let seeded = seed_runtime_base(&store).await;
@@ -236,7 +238,7 @@ async fn agent_logs_delete_rejects_other_workspace_native_and_ungranted_actor() 
         .delete_agent_logs(
             seeded.application_id,
             seeded.workspace_id,
-            &AgentLogsDeleteScope::AllTime {}
+            &AgentLogsDeleteScope::all_time()
         )
         .await
         .is_err());
@@ -246,7 +248,7 @@ async fn agent_logs_delete_rejects_other_workspace_native_and_ungranted_actor() 
         .delete(
             &native_owner,
             seeded.application_id,
-            AgentLogsDeleteScope::AllTime {}
+            AgentLogsDeleteScope::all_time()
         )
         .await
         .is_err());
@@ -256,7 +258,7 @@ async fn agent_logs_delete_rejects_other_workspace_native_and_ungranted_actor() 
         foreign_counts
     );
     service
-        .delete(&owner, app, AgentLogsDeleteScope::AllTime {})
+        .delete(&owner, app, AgentLogsDeleteScope::all_time())
         .await
         .unwrap();
     assert_eq!(
@@ -283,7 +285,7 @@ async fn agent_logs_delete_rejects_other_workspace_native_and_ungranted_actor() 
             .delete(
                 &switched_actor,
                 foreign_app.id,
-                AgentLogsDeleteScope::AllTime {}
+                AgentLogsDeleteScope::all_time()
             )
             .await
             .unwrap()
@@ -340,7 +342,7 @@ async fn agent_logs_delete_keeps_legal_shared_body_until_last_record_reference()
         1
     );
     service
-        .delete(&owner, app, AgentLogsDeleteScope::AllTime {})
+        .delete(&owner, app, AgentLogsDeleteScope::all_time())
         .await
         .unwrap();
     assert_eq!(
@@ -365,7 +367,7 @@ async fn agent_logs_delete_deferred_failure_rolls_back_every_owned_directory() {
     sqlx::raw_sql("create function reject_log_section_delete() returns trigger language plpgsql as $$ begin raise exception 'fixture deferred delete rejection'; end $$; create constraint trigger fixture_reject_log_delete after delete on client_trajectory_sections deferrable initially deferred for each row execute function reject_log_section_delete();").execute(store.pool()).await.unwrap();
     let (service, owner) = delete_service(&store, scope, app).await;
     assert!(service
-        .delete(&owner, app, AgentLogsDeleteScope::AllTime {})
+        .delete(&owner, app, AgentLogsDeleteScope::all_time())
         .await
         .is_err());
     assert_eq!(owned_log_counts(&store, app, &[id], &[]).await, counts);
@@ -439,7 +441,7 @@ async fn agent_logs_application_shared_exclusive_lock_coordinates_delete_and_ing
     let (service, owner) = delete_service(&store, scope, app).await;
     let mut deletion = tokio::spawn(async move {
         service
-            .delete(&owner, app, AgentLogsDeleteScope::AllTime {})
+            .delete(&owner, app, AgentLogsDeleteScope::all_time())
             .await
     });
     assert!(
@@ -464,6 +466,60 @@ async fn agent_logs_application_shared_exclusive_lock_coordinates_delete_and_ing
     );
     assert_eq!(
         owned_log_counts(&store, app, &[id, another], &[]).await,
+        vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    );
+}
+
+#[tokio::test]
+async fn agent_logs_delete_batches_finish_100_100_5_and_preserve_later_backfill() {
+    let (store, scope, app) = setup().await;
+    let other = ingest_turn(&store, scope, app, "outside", "2026-10-08T00:00:00Z").await;
+    let mut events = vec![];
+    for n in 0..205 {
+        let name = format!("batch-{n}");
+        let mut item = event(&name, 0, AgentLogEventKind::User, Some("question"));
+        item.source_task_id = name;
+        item.occurred_at = "2026-10-07T00:00:00Z".into();
+        events.push(item);
+    }
+    let ids = AgentLogsService::new(store.clone())
+        .ingest(app, scope, Uuid::now_v7(), batch(events))
+        .await
+        .unwrap()
+        .record_ids;
+    let (service, owner) = delete_service(&store, scope, app).await;
+    let first_scope: AgentLogsDeleteScope = serde_json::from_value(json!({"mode":"time_range","started_at_from":"2026-10-07T00:00:00Z","started_at_to":"2026-10-08T00:00:00Z","batch_size":100})).unwrap();
+    let first = service.delete(&owner, app, first_scope).await.unwrap();
+    assert_eq!(first.deleted_records, 100);
+    assert!(first.has_more);
+    // A later import carries an old source timestamp; the creation boundary must protect it.
+    let later = ingest_turn(&store, scope, app, "later-backfill", "2026-10-07T00:00:00Z").await;
+    for (count, more) in [(100, true), (5, false), (0, false)] {
+        let next: AgentLogsDeleteScope = serde_json::from_value(json!({"mode":"time_range","started_at_from":"2026-10-07T00:00:00Z","started_at_to":"2026-10-08T00:00:00Z","batch_size":100,"ingested_at_before":first.ingested_at_before})).unwrap();
+        let receipt = service.delete(&owner, app, next).await.unwrap();
+        assert_eq!(receipt.deleted_records, count);
+        assert_eq!(receipt.has_more, more);
+        assert_eq!(receipt.ingested_at_before, first.ingested_at_before);
+    }
+    let counts = owned_log_counts(&store, app, &ids, &[]).await;
+    assert_eq!(counts[3], 2);
+    assert_eq!(&counts[5..8], &[0, 0, 0]);
+    for kept in [other, later] {
+        assert!(store
+            .application_log_record(app, kept)
+            .await
+            .unwrap()
+            .is_some());
+    }
+    // A fresh all_time call still removes the remaining records through the legacy API.
+    let done = service
+        .delete(&owner, app, AgentLogsDeleteScope::all_time())
+        .await
+        .unwrap();
+    assert_eq!(done.deleted_records, 2);
+    assert!(!done.has_more);
+    assert_eq!(
+        owned_log_counts(&store, app, &ids, &[]).await,
         vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     );
 }

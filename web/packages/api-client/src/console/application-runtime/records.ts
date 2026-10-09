@@ -74,3 +74,28 @@ export function getConsoleApplicationLogRecordClientTrajectorySection(
     baseUrl
   });
 }
+
+/** Imported turns are selected by started_at, using [from,to). */
+export type AgentLogsDeleteScope = (
+  | { mode: 'all_time' }
+  | { mode: 'time_range'; started_at_from: string; started_at_to: string }
+) & { batch_size?: number; ingested_at_before?: string };
+export interface AgentLogsDeleteReceipt {
+  deleted_records: number;
+  has_more: boolean;
+  ingested_at_before: string;
+}
+export function deleteConsoleApplicationLogs(
+  applicationId: string,
+  scope: AgentLogsDeleteScope,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<AgentLogsDeleteReceipt>({
+    path: `/api/console/applications/${applicationId}/logs`,
+    method: 'DELETE',
+    body: scope,
+    csrfToken,
+    baseUrl
+  });
+}

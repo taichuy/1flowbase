@@ -106,6 +106,9 @@ where
         scope.bounds().map_err(|_| {
             crate::errors::ControlPlaneError::InvalidInput("agent_logs_delete_time_range")
         })?;
+        scope.ingested_at_before().map_err(|_| {
+            crate::errors::ControlPlaneError::InvalidInput("agent_logs_delete_ingested_at_before")
+        })?;
         let application = crate::application::ApplicationService::new(self.repository.clone())
             .load_application_for_non_crud_console_operation_for_actor(
                 actor,

@@ -847,7 +847,7 @@ fn compile_console_interface_metadata(
         };
         let summary = static_english_interface_summary(&interface_id);
         let description = match interface_id.as_str() {
-            "applications.logs.delete" => "Delete complete imported turns from an agent_logs application only, using explicit all_time mode or a half-open [started_at_from,started_at_to) RFC3339 time_range. Preserve the application, keys, credits and other applications.".to_owned(),
+            "applications.logs.delete" => "Delete complete imported turns from an agent_logs application only, using explicit all_time mode or a half-open [started_at_from,started_at_to) RFC3339 time_range. Optional positive batch_size limits each transaction; omit it for full-scope atomic deletion. Repeat while has_more with the first receipt ingested_at_before to exclude later imports. Preserve the application, keys, credits and other applications.".to_owned(),
             "console.departments.access" => "Return current organization operation eligibility from effective workspace role policies.".to_owned(),
             "departments.list" => "List departments with parent IDs, assigned role codes and distinct subtree member counts in the current workspace.".to_owned(),
             "departments.create" => "Create a department using the ordered tree contract; assigning roles requires member role assignment eligibility.".to_owned(),
