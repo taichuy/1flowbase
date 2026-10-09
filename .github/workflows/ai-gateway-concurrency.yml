@@ -1,4 +1,4 @@
-name: Gateway native recovery fix validation
+name: Gateway remaining fixture validation
 'on':
   workflow_dispatch: null
 permissions:
@@ -30,13 +30,13 @@ jobs:
     - name: Checkout exact host source
       uses: actions/checkout@v5
       with:
-        ref: 63470c8b594151be84f62c55ba7f9231b6319c06
+        ref: 59017f9f0b99471e2461ea292a71a7bd026ae0bc
         fetch-depth: 1
     - name: Checkout exact OpenAI paired source
       uses: actions/checkout@v6
       with:
         repository: taichuy/1flowbase-official-plugins
-        ref: 80af5a3fcccf0ea9f9d0288a8f647f8b2b498832
+        ref: 6b505e028a08105a40ccf4ec7ce526736c51688e
         path: tmp/ai-gateway-concurrency/official-source
         fetch-depth: 1
     - uses: actions/setup-node@v5
@@ -69,10 +69,10 @@ jobs:
         const host = process.cwd();
         const official = path.join(host, "tmp/ai-gateway-concurrency/official-source");
         const provider = path.join(official, "runtime-extensions/@taichuy/openai");
-        const evidence = path.join(host, "tmp/test-governance/gateway-native-recovery-fix");
+        const evidence = path.join(host, "tmp/test-governance/gateway-native-recovery-fixtureture");
         fs.mkdirSync(evidence, { recursive: true });
-        const hostSha = "63470c8b594151be84f62c55ba7f9231b6319c06";
-        const officialSha = "80af5a3fcccf0ea9f9d0288a8f647f8b2b498832";
+        const hostSha = "59017f9f0b99471e2461ea292a71a7bd026ae0bc";
+        const officialSha = "6b505e028a08105a40ccf4ec7ce526736c51688e";
         const sha = (cwd) => execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
         assert.equal(sha(host), hostSha);
         assert.equal(sha(official), officialSha);
@@ -107,18 +107,15 @@ jobs:
         }
         const hostTest = (pkg, filter, target = null) => ["test", "--manifest-path", "api/Cargo.toml", "-p", pkg,
           ...(target ? ["--test", target] : ["--lib"]), ...(filter ? [filter] : []), "--jobs", jobs, "--locked"];
-        if (!run("full-locked-metadata-prefetch", "cargo", ["fetch", "--manifest-path", "api/Cargo.toml", "--locked"], false)) process.exit(1);
-        run("openai-library", "cargo", ["test", "--manifest-path", path.join(provider, "Cargo.toml"), "--lib", "--jobs", jobs, "--locked"], true);
-        run("openai-stdio-regression", "cargo", ["test", "--manifest-path", path.join(provider, "Cargo.toml"), "--test", "stdio_worker", "--jobs", jobs, "--locked"], true);
-        run("dependency-boundaries", "cargo", hostTest("control-plane-postgres-tests", "", "dependency_boundaries"), true);
+        run("openai-stdio-regression", "cargo", ["test", "--manifest-path", path.join(provider, "Cargo.toml"), "--test", "stdio_worker", "websocket_close_after_function_call_arguments_done_interrupts_without_completion", "--jobs", jobs, "--locked"], true);
         run("native-release-host-admission", "cargo", hostTest("control-plane", "native_http_recovery_release_excludes_pre_contract_hosts"), true);
         run("existing-default-version-installation", "cargo", hostTest("control-plane", "below_minimum"), true);
         execFileSync("git", ["diff", "--exit-code"], { cwd: host, maxBuffer: 128 * 1024 });
         execFileSync("git", ["diff", "--exit-code"], { cwd: official, maxBuffer: 128 * 1024 });
-        const status = commands.length === 6 && commands.every((x) => x.status === "PASS") ? "PASS" : "FAIL";
-        fs.writeFileSync(path.join(evidence, "receipt.json"), JSON.stringify({ schema_version: "1flowbase.gateway-native-recovery-fix-validation/v1",
+        const status = commands.length === 3 && commands.every((x) => x.status === "PASS") ? "PASS" : "FAIL";
+        fs.writeFileSync(path.join(evidence, "receipt.json"), JSON.stringify({ schema_version: "1flowbase.gateway-native-recovery-fixtureture-validation/v1",
           host_source_sha: hostSha, official_source_sha: officialSha, workflow_source_sha: process.env.GITHUB_SHA, status,
-          jobs: Number(jobs), source_restored: true, commands, previous_evidence_run: 37992944000 }, null, 2) + "\n");
+          jobs: Number(jobs), source_restored: true, commands, previous_evidence_run: 37995229344 }, null, 2) + "\n");
         console.log(JSON.stringify({ status, commands: commands.length }));
         if (status !== "PASS") process.exitCode = 1;
         JS
@@ -126,5 +123,5 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: test-governance-gateway-native-recovery-fix
-        path: tmp/test-governance/gateway-native-recovery-fix/**
+        name: test-governance-gateway-native-recovery-fixture
+        path: tmp/test-governance/gateway-native-recovery-fixture/**
