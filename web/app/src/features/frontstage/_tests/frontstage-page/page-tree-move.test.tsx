@@ -7,7 +7,6 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { useState } from 'react';
 import { expect, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
@@ -25,12 +24,6 @@ import {
   type FrontstagePageContentFixtureOverrides
 } from '../frontstage-page-content-fixtures';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import {
-  insertPageIntoGroup,
-  moveNodeInTree,
-  removeNodeFromTree,
-  renameNodeInTree
-} from '../../lib/page-tree';
 import { FrontStagePage } from '../../pages/FrontStagePage';
 
 const pageContentSaveHook = vi.hoisted(() => ({
@@ -134,37 +127,6 @@ function createBackendPage(pageId: string): TestFrontStageTreeNode {
   };
 }
 
-function updateNodeMetadataInTree(
-  nodes: TestFrontStageTreeNode[],
-  nodeId: string,
-  input: { icon?: string | null; tooltip?: string | null; isHidden?: boolean }
-): TestFrontStageTreeNode[] {
-  return nodes.map((node) => {
-    const nextNode =
-      node.id === nodeId
-        ? {
-            ...node,
-            icon: Object.prototype.hasOwnProperty.call(input, 'icon')
-              ? input.icon
-              : node.icon,
-            tooltip: Object.prototype.hasOwnProperty.call(input, 'tooltip')
-              ? input.tooltip
-              : node.tooltip,
-            is_hidden: Object.prototype.hasOwnProperty.call(input, 'isHidden')
-              ? input.isHidden
-              : node.is_hidden
-          }
-        : node;
-
-    return {
-      ...nextNode,
-      children: nextNode.children
-        ? updateNodeMetadataInTree(nextNode.children, nodeId, input)
-        : nextNode.children
-    };
-  });
-}
-
 function createPageContent(
   overrides: FrontstagePageContentFixtureOverrides = {}
 ): FrontstagePageContent {
@@ -186,109 +148,6 @@ function createSavedPageContentFromInput(
   });
 }
 
-function createTestNodeId() {
-  return crypto.randomUUID();
-}
-
-function FrontStagePageHarness({
-  workspaceId = 'workspace-1',
-  pageId,
-  onNavigatePage,
-  initialPageTree,
-  pageContent,
-  isPageContentLoading,
-  hasPageContentLoadError
-}: {
-  workspaceId?: string;
-  pageId?: string;
-  onNavigatePage?: (pageId?: string) => void;
-  initialPageTree?: TestFrontStageTreeNode[];
-  pageContent?: FrontstagePageContent;
-  isPageContentLoading?: boolean;
-  hasPageContentLoadError?: boolean;
-}) {
-  const [pageTree, setPageTree] = useState<TestFrontStageTreeNode[]>(
-    initialPageTree ?? []
-  );
-
-  return (
-    <FrontStagePage
-      workspaceId={workspaceId}
-      pageId={pageId}
-      onNavigatePage={onNavigatePage}
-      initialPageTree={pageTree}
-      pageContent={pageContent}
-      isPageContentLoading={isPageContentLoading}
-      hasPageContentLoadError={hasPageContentLoadError}
-      onCreateGroupNode={(input) => {
-        const groupNode = {
-          id: createTestNodeId(),
-          title: input.title,
-          icon: input.icon,
-          tooltip: input.tooltip,
-          kind: 'group' as const,
-          children: []
-        };
-        setPageTree((currentTree) => [...currentTree, groupNode]);
-        return Promise.resolve({ id: groupNode.id, kind: groupNode.kind });
-      }}
-      onCreatePageNode={(input) => {
-        const pageNode = {
-          id: createTestNodeId(),
-          title: input.title,
-          icon: input.icon,
-          tooltip: input.tooltip,
-          kind: 'page' as const
-        };
-        setPageTree((currentTree) =>
-          input.parentId
-            ? insertPageIntoGroup(currentTree, input.parentId, pageNode)
-            : [...currentTree, pageNode]
-        );
-        return Promise.resolve({ id: pageNode.id, kind: pageNode.kind });
-      }}
-      onRenamePageNode={(nodeId, input) => {
-        setPageTree((currentTree) =>
-          updateNodeMetadataInTree(
-            renameNodeInTree(currentTree, nodeId, input.title ?? ''),
-            nodeId,
-            {
-              icon: input.icon,
-              tooltip: input.tooltip
-            }
-          )
-        );
-        return Promise.resolve({ id: nodeId, kind: 'page' });
-      }}
-      onMovePageNode={(nodeId, input) => {
-        setPageTree((currentTree) =>
-          moveNodeInTree(currentTree, nodeId, input.rank === '000000' ? -1 : 1)
-        );
-        return Promise.resolve({ id: nodeId, kind: 'page' });
-      }}
-      onDeletePageNode={(nodeId) => {
-        setPageTree((currentTree) => removeNodeFromTree(currentTree, nodeId));
-        return Promise.resolve();
-      }}
-    />
-  );
-}
-
-function renderPage(
-  pageId?: string,
-  onNavigatePage?: (pageId?: string) => void
-) {
-  return render(
-    <AppProviders>
-      <FrontStagePageHarness
-        pageId={pageId}
-        onNavigatePage={onNavigatePage}
-        initialPageTree={pageId ? [createBackendPage(pageId)] : undefined}
-      />
-    </AppProviders>
-  );
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -305,45 +164,6 @@ async function clickAndFlush(element: HTMLElement) {
   });
 }
 
-async function clickLatestButtonAndFlush(label: string | RegExp) {
-  const buttonName =
-    typeof label === 'string'
-      ? new RegExp(label.split('').map(escapeRegExp).join('\\s*'))
-      : label;
-  const buttons = await screen.findAllByRole('button', {
-    name: buttonName
-  });
-  await clickAndFlush(buttons[buttons.length - 1]);
-}
-
-async function hoverAddMenuAndFlush() {
-  fireEvent.mouseEnter(screen.getByRole('button', { name: '添加菜单' }));
-}
-
-function getNextDefaultNodeTitle(label: '新增分组' | '新增页面') {
-  const titlePattern =
-    label === '新增分组' ? /^分组 (\d+)$/ : /^页面 新建 (\d+)$/;
-  const existingIndexes = screen
-    .queryAllByText(titlePattern)
-    .map((element) => element.textContent?.match(titlePattern)?.[1])
-    .filter((index): index is string => Boolean(index))
-    .map((index) => Number.parseInt(index, 10))
-    .filter(Number.isFinite);
-  const nextIndex =
-    existingIndexes.length > 0 ? Math.max(...existingIndexes) + 1 : 1;
-
-  return label === '新增分组' ? `分组 ${nextIndex}` : `页面 新建 ${nextIndex}`;
-}
-
-async function clickAddMenuItemAndFlush(label: '新增分组' | '新增页面') {
-  await hoverAddMenuAndFlush();
-  await clickAndFlush(await screen.findByRole('menuitem', { name: label }));
-  fireEvent.change(await screen.findByLabelText('名称'), {
-    target: { value: getNextDefaultNodeTitle(label) }
-  });
-  await clickLatestButtonAndFlush('确定');
-}
-
 async function openPageTreeOperationMenuAndFlush(nodeContainer: HTMLElement) {
   const menuButtons = within(nodeContainer).getAllByRole('button', {
     name: '页面操作菜单'
@@ -353,30 +173,6 @@ async function openPageTreeOperationMenuAndFlush(nodeContainer: HTMLElement) {
     throw new Error('expected page tree operation menu button');
   }
   await clickAndFlush(menuButton);
-}
-
-async function clickPageTreeOperationSubmenuItemAndFlush(
-  nodeContainer: HTMLElement,
-  submenuLabel: string | RegExp,
-  label: string | RegExp
-) {
-  await openPageTreeOperationMenuAndFlush(nodeContainer);
-  const submenu = await findLatestVisibleText(submenuLabel);
-  const submenuTarget = getPageTreeSubmenuTrigger(submenu);
-  fireEvent.pointerEnter(submenuTarget);
-  fireEvent.mouseEnter(submenuTarget);
-  fireEvent.mouseOver(submenuTarget);
-  fireEvent.mouseMove(submenuTarget);
-  fireEvent.click(submenuTarget);
-  await clickAndFlush(await findLatestVisibleText(label));
-}
-
-function getPageTreeSubmenuTrigger(submenu: HTMLElement) {
-  return (
-    submenu.closest('.ant-dropdown-menu-submenu-title') ??
-    submenu.closest('.ant-dropdown-menu-submenu') ??
-    submenu
-  );
 }
 
 async function findLatestVisibleText(label: string | RegExp) {
@@ -465,50 +261,10 @@ describe('FrontStagePage - page tree move', () => {
     });
   });
 
-  test('moves nodes through page tree mutation callback', async () => {
+  function renderMovePage(
+    onMovePageNode = vi.fn().mockResolvedValue(undefined)
+  ) {
     authenticate(['frontstage.page.design']);
-    const onMovePageNode = vi.fn().mockResolvedValue(undefined);
-
-    render(
-      <AppProviders>
-        <FrontStagePage
-          workspaceId="workspace-1"
-          initialPageTree={[
-            createBackendPage('page-1'),
-            createBackendPage('page-2')
-          ]}
-          onMovePageNode={onMovePageNode}
-        />
-      </AppProviders>
-    );
-
-    activateDesignMode();
-
-    const secondPageItem = getPageTreeItem('页面 page-2');
-    await clickPageTreeOperationSubmenuItemAndFlush(
-      secondPageItem,
-      '移动到',
-      '上移'
-    );
-
-    await waitFor(() => {
-      expect(onMovePageNode).toHaveBeenCalledWith('page-2', {
-        parentId: null,
-        rank: '000000'
-      });
-    });
-
-    const rows = screen.getAllByRole('button', {
-      name: /页面 page-\d+ 页面节点/
-    });
-    expect(rows[0]).toHaveTextContent('页面 page-2');
-    expect(rows[1]).toHaveTextContent('页面 page-1');
-  });
-
-  test('moves selected page to another group from the operation menu', async () => {
-    authenticate(['frontstage.page.design']);
-    const onMovePageNode = vi.fn().mockResolvedValue(undefined);
-
     render(
       <AppProviders>
         <FrontStagePage
@@ -519,34 +275,186 @@ describe('FrontStagePage - page tree move', () => {
               id: 'group-1',
               title: '分组 1',
               kind: 'group',
-              children: [createBackendPage('page-1')]
+              children: [
+                createBackendPage('page-1'),
+                createBackendPage('page-2')
+              ]
             },
             {
               id: 'group-2',
               title: '分组 2',
               kind: 'group',
-              children: []
+              children: [
+                {
+                  id: 'group-3',
+                  title: '嵌套分组',
+                  kind: 'group',
+                  children: [createBackendPage('page-3')]
+                }
+              ]
             }
           ]}
           onMovePageNode={onMovePageNode}
         />
       </AppProviders>
     );
-
     activateDesignMode();
+    return { onMovePageNode };
+  }
 
-    const selectedPageItem = getPageTreeItem('页面 page-1');
-    await clickPageTreeOperationSubmenuItemAndFlush(
-      selectedPageItem,
-      '移动到',
-      '分组 2'
+  async function openMoveDialog(pageTitle = '页面 page-2') {
+    await openPageTreeOperationMenuAndFlush(getPageTreeItem(pageTitle));
+    expect(screen.queryByText('上移')).not.toBeInTheDocument();
+    expect(screen.queryByText('下移')).not.toBeInTheDocument();
+    await clickAndFlush(await findLatestVisibleText('移动到'));
+    return screen.findByRole('dialog');
+  }
+
+  test('moves the operated unselected page to a nested group after confirmation', async () => {
+    const { onMovePageNode } = renderMovePage();
+    const dialog = await openMoveDialog();
+    expect(dialog).toHaveTextContent('移动“页面 page-2”到');
+    const confirm = within(dialog).getByRole('button', { name: /确\s*定/ });
+    expect(confirm).toBeDisabled();
+    await clickAndFlush(within(dialog).getByText('分组 1'));
+    expect(confirm).toBeDisabled();
+    await clickAndFlush(within(dialog).getByText('页面 page-3'));
+    expect(confirm).toBeDisabled();
+    await clickAndFlush(within(dialog).getByText('嵌套分组'));
+    expect(confirm).toBeEnabled();
+    expect(onMovePageNode).not.toHaveBeenCalled();
+    await clickAndFlush(confirm);
+    await waitFor(() =>
+      expect(onMovePageNode).toHaveBeenCalledWith('page-2', {
+        parentId: 'group-3',
+        rank: '002000'
+      })
     );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    expect(
+      getPageTreeItem('页面 page-1').querySelector(
+        '.frontstage-page-tree-sidebar__node-row'
+      )
+    ).toHaveClass('frontstage-page-tree-sidebar__node-row--selected');
+  });
 
-    await waitFor(() => {
-      expect(onMovePageNode).toHaveBeenCalledWith('page-1', {
-        parentId: 'group-2',
-        rank: '001000'
-      });
+  test('allows moving to the root and cancelling without saving', async () => {
+    const { onMovePageNode } = renderMovePage();
+    let dialog = await openMoveDialog();
+    await clickAndFlush(within(dialog).getByText('不分组'));
+    await clickAndFlush(
+      within(dialog).getByRole('button', { name: /取\s*消/ })
+    );
+    expect(onMovePageNode).not.toHaveBeenCalled();
+    dialog = await openMoveDialog();
+    expect(
+      within(dialog).getByRole('button', { name: /确\s*定/ })
+    ).toBeDisabled();
+    await clickAndFlush(within(dialog).getByText('不分组'));
+    await clickAndFlush(
+      within(dialog).getByRole('button', { name: /确\s*定/ })
+    );
+    await waitFor(() =>
+      expect(onMovePageNode).toHaveBeenCalledWith('page-2', {
+        parentId: null,
+        rank: '003000'
+      })
+    );
+  });
+
+  test('retains destination on failure and closes only after a successful retry', async () => {
+    let finishMove!: () => void;
+    const onMovePageNode = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('move failed'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishMove = resolve;
+          })
+      );
+    renderMovePage(onMovePageNode);
+    const dialog = await openMoveDialog('页面 page-1');
+    await clickAndFlush(within(dialog).getByText('分组 2'));
+    await clickAndFlush(
+      within(dialog).getByRole('button', { name: /确\s*定/ })
+    );
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      '操作失败'
+    );
+    expect(
+      within(dialog).getByRole('button', { name: /确\s*定/ })
+    ).toBeEnabled();
+    await clickAndFlush(
+      within(dialog).getByRole('button', { name: /确\s*定/ })
+    );
+    expect(
+      within(dialog).getByRole('button', { name: /取\s*消/ })
+    ).toBeDisabled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onMovePageNode).toHaveBeenNthCalledWith(2, 'page-1', {
+      parentId: 'group-2',
+      rank: '002000'
+    });
+    await act(async () => finishMove());
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+  });
+
+  test('shows the full route tree outside the sidebar and submits the actual root destination', async () => {
+    authenticate(['frontstage.page.design']);
+    const onMovePageNode = vi.fn().mockResolvedValue(undefined);
+    const page = createBackendPage('page-1');
+    render(
+      <AppProviders>
+        <FrontStagePage
+          workspaceId="workspace-1"
+          pageId="page-1"
+          initialPageTree={[page]}
+          pageTreeRootId="route-1"
+          navigationPageTree={[
+            {
+              id: 'route-1',
+              title: '当前路由分组',
+              kind: 'group',
+              children: [page]
+            },
+            {
+              id: 'route-2',
+              title: '其他路由分组',
+              kind: 'group',
+              children: [createBackendPage('page-2')]
+            }
+          ]}
+          onMovePageNode={onMovePageNode}
+        />
+      </AppProviders>
+    );
+    activateDesignMode();
+    let dialog = await openMoveDialog('页面 page-1');
+    const confirm = within(dialog).getByRole('button', { name: /确\s*定/ });
+    await clickAndFlush(within(dialog).getByText('当前路由分组'));
+    expect(confirm).toBeDisabled();
+    await clickAndFlush(within(dialog).getByText('其他路由分组'));
+    await clickAndFlush(confirm);
+    expect(onMovePageNode).toHaveBeenLastCalledWith('page-1', {
+      parentId: 'route-2',
+      rank: '002000'
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    dialog = await openMoveDialog('页面 page-1');
+    await clickAndFlush(within(dialog).getByText('不分组'));
+    await clickAndFlush(
+      within(dialog).getByRole('button', { name: /确\s*定/ })
+    );
+    expect(onMovePageNode).toHaveBeenLastCalledWith('page-1', {
+      parentId: null,
+      rank: '003000'
     });
   });
 
@@ -627,47 +535,4 @@ describe('FrontStagePage - page tree move', () => {
     });
     rectSpy.mockRestore();
   });
-
-  test(
-    'supports page order move controls in design mode',
-    async () => {
-      authenticate(['frontstage.page.design']);
-      renderPage();
-
-      activateDesignMode();
-      await clickAddMenuItemAndFlush('新增页面');
-      await clickAddMenuItemAndFlush('新增页面');
-
-      const initialTreeRows = screen.getAllByRole('button', {
-        name: /页面 新建 \d+ 页面节点/
-      });
-      expect(initialTreeRows[0]).toHaveTextContent('页面 新建 1');
-      expect(initialTreeRows[1]).toHaveTextContent('页面 新建 2');
-
-      await clickPageTreeOperationSubmenuItemAndFlush(
-        initialTreeRows[1],
-        '移动到',
-        '上移'
-      );
-
-      const movedUpRows = screen.getAllByRole('button', {
-        name: /页面 新建 \d+ 页面节点/
-      });
-      expect(movedUpRows[0]).toHaveTextContent('页面 新建 2');
-      expect(movedUpRows[1]).toHaveTextContent('页面 新建 1');
-
-      await clickPageTreeOperationSubmenuItemAndFlush(
-        movedUpRows[0],
-        '移动到',
-        '下移'
-      );
-
-      const movedDownRows = screen.getAllByRole('button', {
-        name: /页面 新建 \d+ 页面节点/
-      });
-      expect(movedDownRows[0]).toHaveTextContent('页面 新建 1');
-      expect(movedDownRows[1]).toHaveTextContent('页面 新建 2');
-    },
-    SLOW_FRONTSTAGE_TEST_TIMEOUT
-  );
 });

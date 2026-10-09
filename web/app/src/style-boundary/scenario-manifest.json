@@ -214,6 +214,7 @@
       "web/app/src/features/frontstage/pages/frontstage-page/PageWorkspaceActionMenu.tsx",
       "web/app/src/features/frontstage/pages/frontstage-page.css",
       "web/app/src/features/frontstage/components/FrontStagePageTreeSidebar.tsx",
+      "web/app/src/features/frontstage/components/page-tree-actions/MovePageModal.tsx",
       "web/app/src/features/frontstage/components/frontstage-add-action.css",
       "web/app/src/features/frontstage/components/frontstage-page-tree-sidebar.css",
       "web/app/src/features/frontstage/components/PageCanvas.tsx",

@@ -91,7 +91,6 @@ function Fixture() {
                   onRenameNode={noop}
                   onUpdateNodeMetadata={noop}
                   onEditNodeTooltip={noop}
-                  onMoveNode={noop}
                   onDeleteNode={noop}
                   onSelectPage={noop}
                   onMoveNodeToPosition={(source, target, position) => {

@@ -1,10 +1,11 @@
 import { Typography } from 'antd';
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 
 import { i18nText } from '../../../../../shared/i18n/text';
 import { SectionPageLayout } from '../../../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../../../state/frontstage-design-mode-store';
+import { MovePageModal } from '../../../components/page-tree-actions/MovePageModal';
 import { FrontStagePageTreeSidebar } from '../../../components/FrontStagePageTreeSidebar';
 import { findNodeById, resolveSelectedPageId } from '../../../lib/page-tree';
 import { DESIGN_MODE_PERMISSION } from '../page-constants';
@@ -57,6 +58,10 @@ export function FrontstageWorkspaceShell({
     isDesignMode &&
     (actor?.effective_display_role === 'root' ||
       Boolean(me?.permissions.includes(DESIGN_MODE_PERMISSION)));
+  const [movePageId, setMovePageId] = useState<string | null>(null);
+  const movePage = movePageId
+    ? findNodeById(workspace.pageTree, movePageId)
+    : null;
   const sidebar =
     props.initialPageTree === undefined &&
     (props.isPageTreeLoading || props.hasPageTreeLoadError) ? (
@@ -80,10 +85,9 @@ export function FrontstageWorkspaceShell({
         onRenameNode={workspace.handleRenameNode}
         onUpdateNodeMetadata={workspace.handleUpdateNodeMetadata}
         onEditNodeTooltip={workspace.handleEditNodeTooltip}
-        onMoveNode={workspace.handleMoveNode}
         onAddNodeAtPosition={workspace.handleAddNodeAtPosition}
         onMoveNodeToPosition={workspace.handleMoveNodeToPosition}
-        onMovePageToGroup={workspace.handleMovePageToGroup}
+        onOpenMovePage={setMovePageId}
         onDeleteNode={workspace.handleDeleteNode}
         onSelectPage={workspace.handleSelectPage}
       />
@@ -113,6 +117,16 @@ export function FrontstageWorkspaceShell({
           {children}
         </SectionPageLayout>
       </div>
+      {canEdit && movePage ? (
+        <MovePageModal
+          key={movePage.id}
+          node={movePage}
+          pageTree={props.navigationPageTree ?? workspace.pageTree}
+          isOperationPending={workspace.isOperationPending}
+          onMove={workspace.handleMovePageToGroup}
+          onCancel={() => setMovePageId(null)}
+        />
+      ) : null}
       <PageTreeFormModal
         dialog={workspace.pageTreeFormDialog}
         form={workspace.pageTreeForm}
