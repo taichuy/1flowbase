@@ -207,7 +207,7 @@ function testFiles(repoRoot) {
 
 function conversationTestInvocations(repoRoot, databaseUrl) {
   const manifestPath = path.join(repoRoot, "api/Cargo.toml");
-  const invocation = (name, packageName, filter) => ({
+  const invocation = (name, packageName, filter, target = null, extraEnv = {}) => ({
     name,
     options: {
       env: {
@@ -215,6 +215,7 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
         DATABASE_URL: databaseUrl,
         BOOTSTRAP_ROOT_ACCOUNT: "root",
         BOOTSTRAP_ROOT_PASSWORD: "change-me",
+        ...extraEnv,
       },
     },
     args: [
@@ -223,7 +224,7 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
       manifestPath,
       "-p",
       packageName,
-      "--lib",
+      ...(target ? ["--test", target] : ["--lib"]),
       filter,
     ],
   });
@@ -234,6 +235,16 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
     invocation("api-server-compact-compatibility", "api-server", "_tests::application_public_api::compat_routes::compact::"),
     invocation("api-server-official-seed-consumer-inventory", "api-server", "_tests::dynamic_backend_consumer_inventory::"),
     invocation("storage-postgres-legacy-provider-upgrades", "storage-durable-postgres", "model_provider_repository_backfills_"),
+    invocation("api-server-runtime-event-lifecycle-tests", "api-server", "_tests::runtime_event_stream::", null, { RUST_TEST_NOCAPTURE: "1" }),
+    invocation("api-server-debug-cold-replay-tests", "api-server", "routes::applications::debug_run_stream::tests::"),
+    invocation("api-server-compatible-forwarding-tests", "api-server", "routes::application_public_api::compat_sse::tests::forwarding::"),
+    invocation("control-plane-runtime-event-persister-tests", "control-plane", "orchestration_runtime::runtime_event_persister::tests::"),
+    invocation("control-plane-frozen-plan-cache-tests", "control-plane", "orchestration_runtime::frozen_plan::_tests::"),
+    invocation("storage-ephemeral-published-plan-cache-tests", "storage-ephemeral", "published_plan_cache_tests::"),
+    invocation("control-plane-contract-authenticity-tests", "control-plane-contracts", ""),
+    invocation("postgres-runtime-replay-gc-tests", "control-plane-postgres-tests", "replay_gc_", "orchestration_runtime_integration"),
+    invocation("postgres-callback-resume-tests", "control-plane-postgres-tests", "callback_resume::", "orchestration_runtime_integration"),
+    invocation("gateway-dependency-boundary-tests", "control-plane-postgres-tests", "", "dependency_boundaries"),
     invocation(
       "plugin-framework-count-tokens-estimator-total-corpus",
       "plugin-framework",

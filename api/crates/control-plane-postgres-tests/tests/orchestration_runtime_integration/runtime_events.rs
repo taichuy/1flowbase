@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn durable_event_pages_preserve_order_across_stream_cursor_resets() {
+async fn replay_gc_durable_event_pages_preserve_order_across_stream_cursor_resets() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -18,16 +18,25 @@ async fn durable_event_pages_preserve_order_across_stream_cursor_resets() {
     for local_sequence in [100_i64, 101, 1, 2, 3, 4] {
         let mut input = runtime_event_input(run.id, "node_checkpoint");
         input.payload = json!({"stream_sequence": local_sequence, "opaque": "00"});
-        committed.push(store.append_runtime_event(&input).await.unwrap());
+        committed.push(
+            OrchestrationRuntimeRepository::append_runtime_event(&store, &input)
+                .await
+                .unwrap(),
+        );
     }
     let through = committed[3].sequence;
     let mut after = 0;
     let mut observed = Vec::new();
     loop {
-        let page = store
-            .list_runtime_event_durable_page(run.id, after, Some(through), 2)
-            .await
-            .unwrap();
+        let page = OrchestrationRuntimeRepository::list_runtime_event_durable_page(
+            &store,
+            run.id,
+            after,
+            Some(through),
+            2,
+        )
+        .await
+        .unwrap();
         assert!(page.len() <= 2);
         if page.is_empty() {
             break;
@@ -46,13 +55,126 @@ async fn durable_event_pages_preserve_order_across_stream_cursor_resets() {
             .map(|event| event.id)
             .collect::<Vec<_>>()
     );
-    let empty = store
-        .list_runtime_event_durable_page(Uuid::now_v7(), 0, None, 2)
-        .await
-        .unwrap();
+    let empty = OrchestrationRuntimeRepository::list_runtime_event_durable_page(
+        &store,
+        Uuid::now_v7(),
+        0,
+        None,
+        2,
+    )
+    .await
+    .unwrap();
     assert!(empty.is_empty());
 }
 
+#[tokio::test]
+async fn replay_gc_window_separates_reopened_generation_and_freezes_durable_tail() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        datetime!(2026-04-17 09:00:00 UTC),
+    )
+    .await;
+    assert!(
+        OrchestrationRuntimeRepository::get_runtime_event_replay_window(&store, run.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let mut old = runtime_event_input(run.id, "flow_finished");
+    old.payload = json!({"stream_sequence": 100});
+    OrchestrationRuntimeRepository::append_runtime_event(&store, &old)
+        .await
+        .unwrap();
+    let generation = Uuid::now_v7();
+    let mut anchor = runtime_event_input(run.id, "runtime_stream_opened");
+    anchor.payload = json!({"stream_generation_id": generation});
+    let anchor = OrchestrationRuntimeRepository::append_runtime_event(&store, &anchor)
+        .await
+        .unwrap();
+    assert!(
+        !OrchestrationRuntimeRepository::has_runtime_event_terminal_after(
+            &store,
+            run.id,
+            anchor.sequence,
+            "flow_finished"
+        )
+        .await
+        .unwrap()
+    );
+    let mut item = runtime_event_input(run.id, "provider_output_item_done");
+    item.payload =
+        json!({"stream_sequence": 1, "stream_generation_id": generation, "opaque": "00"});
+    let first = OrchestrationRuntimeRepository::append_runtime_event(&store, &item)
+        .await
+        .unwrap();
+    let window = OrchestrationRuntimeRepository::get_runtime_event_replay_window(&store, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (
+            window.after_sequence,
+            window.through_sequence,
+            window.generation_id
+        ),
+        (anchor.sequence, first.sequence, Some(generation))
+    );
+    let terminal = runtime_event_input(run.id, "flow_finished");
+    OrchestrationRuntimeRepository::append_runtime_event(&store, &terminal)
+        .await
+        .unwrap();
+    let frozen = OrchestrationRuntimeRepository::list_runtime_event_durable_page(
+        &store,
+        run.id,
+        window.after_sequence,
+        Some(window.through_sequence),
+        1,
+    )
+    .await
+    .unwrap();
+    assert_eq!(frozen.len(), 1);
+    assert_eq!(frozen[0].id, first.id);
+    assert_eq!(frozen[0].payload["opaque"], "00");
+    assert!(
+        OrchestrationRuntimeRepository::has_runtime_event_terminal_after(
+            &store,
+            run.id,
+            anchor.sequence,
+            "flow_finished"
+        )
+        .await
+        .unwrap()
+    );
+    let generation2 = Uuid::now_v7();
+    let mut anchor2 = runtime_event_input(run.id, "runtime_stream_opened");
+    anchor2.payload = json!({"stream_generation_id": generation2});
+    let anchor2 = OrchestrationRuntimeRepository::append_runtime_event(&store, &anchor2)
+        .await
+        .unwrap();
+    let window2 = OrchestrationRuntimeRepository::get_runtime_event_replay_window(&store, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(window2.generation_id, Some(generation2));
+    assert_eq!(window2.after_sequence, anchor2.sequence);
+    assert!(
+        !OrchestrationRuntimeRepository::has_runtime_event_terminal_after(
+            &store,
+            run.id,
+            window2.after_sequence,
+            "flow_finished"
+        )
+        .await
+        .unwrap()
+    );
+}
 
 async fn append_event(
     store: &PgControlPlaneStore,

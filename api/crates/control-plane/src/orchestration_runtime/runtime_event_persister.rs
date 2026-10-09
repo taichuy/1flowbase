@@ -386,6 +386,9 @@ async fn confirm_closed_generation<R: OrchestrationRuntimeRepository>(
                 // Data after the alleged terminal or EOF without closure cannot
                 // prove this generation complete. Retain the legacy window.
                 if event.is_some() { writer.record_persistence_failure(); }
+                // The forwarding lane may observe closure before this select
+                // observes its watch update. Recheck the published closure on EOF.
+                else if subscription.closure.borrow().is_some() { continue; }
                 return;
             }
         }

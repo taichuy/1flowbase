@@ -2256,3 +2256,7 @@ mod terminal_generation;
 
 #[path = "forwarding/_tests/snapshot_ownership.rs"]
 mod snapshot_ownership;
+
+
+#[path = "forwarding/_tests/cold_replay.rs"]
+mod cold_replay;

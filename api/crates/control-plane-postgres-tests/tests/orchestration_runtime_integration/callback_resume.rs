@@ -1111,3 +1111,58 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
         attempt_id
     );
 }
+
+#[tokio::test]
+async fn replay_gc_callback_checkpoint_reads_version_locator_and_preserves_legacy_snapshot() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started = datetime!(2026-10-10 00:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started).await;
+    let node = seed_node_run_for(&store, &run, "node-llm", "llm", "LLM", json!({}), started).await;
+    let wait = persist_callback_wait(&store, &seeded, &run, &node, 1, None, None).await;
+    let task = wait.callback_task.unwrap();
+    let context = OrchestrationRuntimeRepository::get_callback_resume_context(
+        &store,
+        run.application_id,
+        task.id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        context.checkpoint.variable_snapshot,
+        json!({}),
+        "versioned recovery must not load the redundant legacy body"
+    );
+    let version_id = Uuid::parse_str(
+        context.checkpoint.locator_payload["context_version_id"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let lineage =
+        OrchestrationRuntimeRepository::load_runtime_context_content_lineage(&store, version_id)
+            .await
+            .unwrap();
+    assert!(lineage
+        .iter()
+        .any(|entry| entry.content["variable_pool"]["wait_index"] == 1));
+    let legacy = json!({"blob": "x".repeat(128 * 1024), "opaque": "00"});
+    sqlx::query("update flow_run_checkpoints set locator_payload = locator_payload - 'context_version_id', variable_snapshot = $2, raw_json_payloads = raw_json_payloads - 'locator_payload' - 'variable_snapshot' where id = $1")
+        .bind(wait.checkpoint.id).bind(&legacy).execute(store.pool()).await.unwrap();
+    let context = OrchestrationRuntimeRepository::get_callback_resume_context(
+        &store,
+        run.application_id,
+        task.id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        context.checkpoint.variable_snapshot, legacy,
+        "legacy recovery still receives its complete original snapshot"
+    );
+}

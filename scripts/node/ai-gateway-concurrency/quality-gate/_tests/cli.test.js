@@ -133,7 +133,7 @@ test("quality gate inventory contains protocol and local-client contract suites"
   );
 });
 
-test("quality gate limits conversation Cargo probes to one owned database and deterministic library suites", () => {
+test("quality gate limits conversation Cargo probes to one owned database and explicit test targets", () => {
   const databaseUrl = "postgres://gate@127.0.0.1:35432/owned";
   const invocations = conversationTestInvocations("/repo", databaseUrl);
   assert.deepEqual(
@@ -143,6 +143,16 @@ test("quality gate limits conversation Cargo probes to one owned database and de
       ["api-server-compact-compatibility", "_tests::application_public_api::compat_routes::compact::"],
       ["api-server-official-seed-consumer-inventory", "_tests::dynamic_backend_consumer_inventory::"],
       ["storage-postgres-legacy-provider-upgrades", "model_provider_repository_backfills_"],
+      ["api-server-runtime-event-lifecycle-tests", "_tests::runtime_event_stream::"],
+      ["api-server-debug-cold-replay-tests", "routes::applications::debug_run_stream::tests::"],
+      ["api-server-compatible-forwarding-tests", "routes::application_public_api::compat_sse::tests::forwarding::"],
+      ["control-plane-runtime-event-persister-tests", "orchestration_runtime::runtime_event_persister::tests::"],
+      ["control-plane-frozen-plan-cache-tests", "orchestration_runtime::frozen_plan::_tests::"],
+      ["storage-ephemeral-published-plan-cache-tests", "published_plan_cache_tests::"],
+      ["control-plane-contract-authenticity-tests", ""],
+      ["postgres-runtime-replay-gc-tests", "replay_gc_"],
+      ["postgres-callback-resume-tests", "callback_resume::"],
+      ["gateway-dependency-boundary-tests", ""],
       [
         "plugin-framework-count-tokens-estimator-total-corpus",
         "d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families",
@@ -216,11 +226,22 @@ test("quality gate limits conversation Cargo probes to one owned database and de
       ],
     ],
   );
-  for (const { args } of invocations) {
-    assert.equal(args.includes("--lib"), true);
+  const integrationTargets = new Map([
+    ["postgres-runtime-replay-gc-tests", "orchestration_runtime_integration"],
+    ["postgres-callback-resume-tests", "orchestration_runtime_integration"],
+    ["gateway-dependency-boundary-tests", "dependency_boundaries"],
+  ]);
+  for (const { name, args } of invocations) {
+    assert.equal(args.includes("--lib"), !integrationTargets.has(name));
+    assert.equal(args.includes("--test"), integrationTargets.has(name));
+    if (integrationTargets.has(name)) {
+      assert.equal(args[args.indexOf("--test") + 1], integrationTargets.get(name));
+      assert.equal(args[args.indexOf("-p") + 1], "control-plane-postgres-tests");
+    }
     assert.equal(args.includes("--tests"), false);
     assert.equal(args.includes("--all-targets"), false);
   }
+  assert.equal(invocations.find(({ name }) => name === "api-server-runtime-event-lifecycle-tests").options.env.RUST_TEST_NOCAPTURE, "1");
   for (const { options } of invocations) {
     assert.equal(options.env.API_DATABASE_URL, databaseUrl);
     assert.equal(options.env.DATABASE_URL, databaseUrl);

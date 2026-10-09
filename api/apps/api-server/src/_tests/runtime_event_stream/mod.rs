@@ -1,4 +1,5 @@
 mod lifecycle;
+mod memory_comparison;
 mod recoverable;
 
 use std::time::Duration;
