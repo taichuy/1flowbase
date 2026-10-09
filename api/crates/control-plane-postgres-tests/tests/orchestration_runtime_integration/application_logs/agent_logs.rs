@@ -1132,3 +1132,6 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
     .unwrap();
     assert!(!imported_fake_summary_exists);
 }
+
+#[path = "agent_logs/unified_queries.rs"]
+mod unified_queries;
