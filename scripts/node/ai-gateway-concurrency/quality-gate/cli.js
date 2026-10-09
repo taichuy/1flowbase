@@ -236,7 +236,7 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
     invocation("api-server-official-seed-consumer-inventory", "api-server", "_tests::dynamic_backend_consumer_inventory::"),
     invocation("storage-postgres-legacy-provider-upgrades", "storage-durable-postgres", "model_provider_repository_backfills_"),
     invocation("api-server-runtime-event-lifecycle-tests", "api-server", "_tests::runtime_event_stream::", null, { RUST_TEST_NOCAPTURE: "1" }),
-    invocation("api-server-debug-cold-replay-tests", "api-server", "routes::applications::debug_run_stream::tests::"),
+    invocation("api-server-debug-cold-replay-tests", "api-server", "routes::applications_group::debug_run_stream::tests::"),
     invocation("api-server-compatible-forwarding-tests", "api-server", "routes::application_public_api::compat_sse::tests::forwarding::"),
     invocation("control-plane-runtime-event-persister-tests", "control-plane", "orchestration_runtime::runtime_event_persister::tests::"),
     invocation("control-plane-frozen-plan-cache-tests", "control-plane", "orchestration_runtime::frozen_plan::_tests::"),
@@ -535,8 +535,19 @@ async function runQualityGate(rawOptions) {
       "--test",
       ...testFiles(repoRoot),
     ]);
+    // Boundary fixtures resolve the full locked workspace graph in offline
+    // mode, including dependencies outside the host's compiled test targets.
+    attempt("gateway-locked-dependencies", "cargo", [
+      "fetch",
+      "--locked",
+      "--manifest-path",
+      path.join(repoRoot, "api/Cargo.toml"),
+    ]);
+    // Rust fixtures create their own disposable databases. Keep that authority
+    // on the supplied test administrator; the online Gateway still uses the
+    // separate restricted role and database created above.
     for (const invocation of database
-      ? conversationTestInvocations(repoRoot, database.url)
+      ? conversationTestInvocations(repoRoot, rawOptions.databaseUrl)
       : []) {
       attempt(invocation.name, "cargo", invocation.args, invocation.options);
     }

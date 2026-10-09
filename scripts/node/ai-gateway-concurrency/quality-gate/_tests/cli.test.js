@@ -133,7 +133,7 @@ test("quality gate inventory contains protocol and local-client contract suites"
   );
 });
 
-test("quality gate limits conversation Cargo probes to one owned database and explicit test targets", () => {
+test("quality gate uses the supplied fixture database authority and explicit test targets", () => {
   const databaseUrl = "postgres://gate@127.0.0.1:35432/owned";
   const invocations = conversationTestInvocations("/repo", databaseUrl);
   assert.deepEqual(
@@ -144,7 +144,7 @@ test("quality gate limits conversation Cargo probes to one owned database and ex
       ["api-server-official-seed-consumer-inventory", "_tests::dynamic_backend_consumer_inventory::"],
       ["storage-postgres-legacy-provider-upgrades", "model_provider_repository_backfills_"],
       ["api-server-runtime-event-lifecycle-tests", "_tests::runtime_event_stream::"],
-      ["api-server-debug-cold-replay-tests", "routes::applications::debug_run_stream::tests::"],
+      ["api-server-debug-cold-replay-tests", "routes::applications_group::debug_run_stream::tests::"],
       ["api-server-compatible-forwarding-tests", "routes::application_public_api::compat_sse::tests::forwarding::"],
       ["control-plane-runtime-event-persister-tests", "orchestration_runtime::runtime_event_persister::tests::"],
       ["control-plane-frozen-plan-cache-tests", "orchestration_runtime::frozen_plan::_tests::"],
