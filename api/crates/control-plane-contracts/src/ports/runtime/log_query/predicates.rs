@@ -107,7 +107,7 @@ pub fn log_query_filter_matches(filter: &F, record: &Value, fields: &[LogQueryFi
             let compare = |right: &Value| {
                 use LogQueryValueType::*;
                 match kind {
-                    Number => actual.as_f64()?.partial_cmp(&right.as_f64()?),
+                    Number => compare_number(actual, right),
                     Datetime => {
                         let parse = |v: &Value| {
                             time::OffsetDateTime::parse(
@@ -286,4 +286,35 @@ pub fn log_query_text_pattern_matches(text: &str, pattern: &str) -> bool {
         std::mem::swap(&mut previous, &mut current);
     }
     previous[tokens.len()]
+}
+
+// JSON integers must retain their exact order, including values above 2^53.
+// Rust float-to-integer conversion saturates; when the truncated integer ties,
+// the fractional remainder determines the mathematical mixed-number order.
+fn compare_number(left: &Value, right: &Value) -> Option<std::cmp::Ordering> {
+    fn integer(value: &Value) -> Option<i128> {
+        value
+            .as_i64()
+            .map(i128::from)
+            .or_else(|| value.as_u64().map(i128::from))
+    }
+    fn integer_float(integer: i128, float: f64) -> Option<std::cmp::Ordering> {
+        if !float.is_finite() {
+            return None;
+        }
+        let order = integer.cmp(&(float as i128));
+        if order == std::cmp::Ordering::Equal {
+            0.0_f64.partial_cmp(&float.fract())
+        } else {
+            Some(order)
+        }
+    }
+    match (integer(left), integer(right)) {
+        (Some(left), Some(right)) => Some(left.cmp(&right)),
+        (Some(left), None) => integer_float(left, right.as_f64()?),
+        (None, Some(right)) => {
+            integer_float(right, left.as_f64()?).map(std::cmp::Ordering::reverse)
+        }
+        (None, None) => left.as_f64()?.partial_cmp(&right.as_f64()?),
+    }
 }

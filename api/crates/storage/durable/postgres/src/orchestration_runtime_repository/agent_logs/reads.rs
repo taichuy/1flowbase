@@ -41,7 +41,7 @@ pub(in crate::orchestration_runtime_repository) async fn overview(
                 });
             }
             if let Some(content) = item.answer {
-                if item.output_source == "persisted_answer" {
+                if item.output_source.as_deref() == Some("persisted_answer") {
                     messages.push(AgentLogMessage {
                         role: "assistant".into(),
                         content,
