@@ -114,7 +114,11 @@ function continuationRequest(initial, toolUse) {
 function assertRetryableError(events) {
   const errors = events.filter((event) => protocolEventType(event) === 'error');
   if (errors.length !== 1 || errors[0].data?.error?.type !== 'rate_limit_error') {
-    throw new Error('Anthropic callback retry did not project one rate_limit_error');
+    const observed = JSON.stringify({
+      event_types: events.map(protocolEventType),
+      errors: errors.map((event) => event.data?.error),
+    }).slice(0, 2000);
+    throw new Error(`Anthropic callback retry did not project one rate_limit_error: ${observed}`);
   }
 }
 

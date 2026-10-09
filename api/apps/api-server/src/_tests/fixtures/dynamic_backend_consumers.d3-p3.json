@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 384,
+  "projected_interface_count": 401,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -32,6 +32,12 @@
       "DELETE",
       "/api/console/applications/:application_id/api-publication",
       "Unpublish application API"
+    ],
+    [
+      "applications.logs.delete",
+      "DELETE",
+      "/api/console/applications/:id/logs",
+      "Delete imported agent log records"
     ],
     [
       "delete_debug_variable_cache_entries",
@@ -142,6 +148,12 @@
       "Delete model fields"
     ],
     [
+      "departments.delete",
+      "DELETE",
+      "/api/console/settings/departments/:id",
+      "Delete an empty workspace department"
+    ],
+    [
       "extension_center.installed.delete",
       "DELETE",
       "/api/console/settings/extension-center/installed/:installation_id",
@@ -250,6 +262,12 @@
       "Get application catalog"
     ],
     [
+      "get_query_fields",
+      "GET",
+      "/api/console/applications/logs/query-fields",
+      "Get query fields"
+    ],
+    [
       "get_application",
       "GET",
       "/api/console/applications/:id",
@@ -314,6 +332,36 @@
       "GET",
       "/api/console/applications/:id/logs/conversations/:conversation_id/messages",
       "List application conversation messages"
+    ],
+    [
+      "applications.logs.delete.jobs.latest",
+      "GET",
+      "/api/console/applications/:id/logs/deletion-jobs/latest",
+      "Find the latest log deletion"
+    ],
+    [
+      "applications.logs.delete.jobs.get",
+      "GET",
+      "/api/console/applications/:id/logs/deletion-jobs/:job_id",
+      "Read log deletion progress"
+    ],
+    [
+      "get_log_record",
+      "GET",
+      "/api/console/applications/:id/logs/records/:record_id",
+      "Get log record"
+    ],
+    [
+      "list_record_client_trajectory",
+      "GET",
+      "/api/console/applications/:id/logs/records/:record_id/client-trajectory",
+      "List record client trajectory"
+    ],
+    [
+      "get_record_client_trajectory_section",
+      "GET",
+      "/api/console/applications/:id/logs/records/:record_id/client-trajectory/:step_id",
+      "Get record client trajectory section"
     ],
     [
       "list_application_runs",
@@ -796,6 +844,12 @@
       "List model templates"
     ],
     [
+      "departments.list",
+      "GET",
+      "/api/console/settings/departments",
+      "List workspace departments"
+    ],
+    [
       "extension_center.catalog.view",
       "GET",
       "/api/console/settings/extension-center/catalog/:category",
@@ -1246,6 +1300,12 @@
       "Update model scope grants"
     ],
     [
+      "departments.update",
+      "PATCH",
+      "/api/console/settings/departments/:id",
+      "Update a workspace department"
+    ],
+    [
       "members.update",
       "PATCH",
       "/api/console/settings/members/:id",
@@ -1294,6 +1354,12 @@
       "Import applications orchestration template"
     ],
     [
+      "query_log_records",
+      "POST",
+      "/api/console/applications/logs/records/query",
+      "Query log records"
+    ],
+    [
       "create_application_tag",
       "POST",
       "/api/console/applications/tags",
@@ -1310,6 +1376,30 @@
       "POST",
       "/api/console/applications/:application_id/api-publications",
       "Publish application API"
+    ],
+    [
+      "applications.logs.delete.jobs.create",
+      "POST",
+      "/api/console/applications/:id/logs/deletion-jobs",
+      "Start a persistent log deletion"
+    ],
+    [
+      "applications.logs.delete.jobs.stop",
+      "POST",
+      "/api/console/applications/:id/logs/deletion-jobs/:job_id/stop",
+      "Stop a log deletion after its current batch"
+    ],
+    [
+      "applications.logs.delete.preview",
+      "POST",
+      "/api/console/applications/:id/logs/deletion-preview",
+      "Count imported logs in a deletion scope"
+    ],
+    [
+      "query_record_trajectory",
+      "POST",
+      "/api/console/applications/:id/logs/records/:record_id/client-trajectory/query",
+      "Query record trajectory"
     ],
     [
       "export_application_runs_archive",
@@ -1766,6 +1856,12 @@
       "POST",
       "/api/console/settings/data-models/model-definitions:batchDelete",
       "Batch delete models"
+    ],
+    [
+      "departments.create",
+      "POST",
+      "/api/console/settings/departments",
+      "Create a workspace department"
     ],
     [
       "extension_center.install",
@@ -2258,6 +2354,12 @@
       "PUT",
       "/api/console/settings/i18n/overrides",
       "Upsert i18n catalog overrides"
+    ],
+    [
+      "members.departments.replace",
+      "PUT",
+      "/api/console/settings/members/:id/departments",
+      "Replace member department assignments"
     ],
     [
       "members.roles.replace",
