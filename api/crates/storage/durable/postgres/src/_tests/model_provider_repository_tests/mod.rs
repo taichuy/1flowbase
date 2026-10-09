@@ -52,7 +52,10 @@ const PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS: &[&str] = &[
     // The current auth repository needs the real login-entry split, while the provider
     // tables must remain before MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL for these tests.
     include_str!("../../../migrations/20260714230000_create_role_console_policies.sql"),
+    // The activation migration also upgrades the official snapshot tables.
+    include_str!("../../../migrations/20260714234500_add_role_console_policy_migration_safety.sql"),
     include_str!("../../../migrations/20260724090000_add_authenticator_public_ui_block.sql"),
+    include_str!("../../../migrations/20260728100000_separate_console_policy_activation_and_strategy.sql"),
     include_str!("../../../migrations/20260903010000_separate_login_entries_from_authentication_connections.sql"),
     // Current permission seeding needs this independent catalog infrastructure;
     // the provider aggregation migration under test must remain unapplied.
