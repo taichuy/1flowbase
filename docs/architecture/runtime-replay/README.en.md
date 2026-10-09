@@ -51,6 +51,8 @@ Durable cold replay and provider connection recovery have distinct owners. AI Na
 
 OpenAI 0.2.72 can remove the old cursor and attempt one full-context WebSocket rebuild when the previous connection is unavailable. If the rebuilt request encounters a recoverable transport failure before semantic output, auto mode may send the actual rebuilt body over SSE within the original budget and deadline. The existing `OneFullContextRebuild + ProviderHttp` receipt attests that the provider sent complete scoped native context. The host validates attempts, epoch, commit state, cursor provenance and transport classification.
 
+This recovery contract is supported from host 0.5.4. OpenAI 0.2.72 declares `minimum_host_version: 0.5.4`, so official installation and updates reject older hosts through the existing semantic-version check. Deploy the validated host/provider pair. Compatibility overrides and direct loading bypass this default protection and are outside the supported deployment path.
+
 An old cursor with only new tool outputs, an absent cursor, or a prior rebuild decision does not establish body completeness. Explicit ConnectionBound provenance, missing or foreign history, protocol/authentication/policy failures, committed semantic output and force_websocket prohibit this switch. Completed tools are not executed again. The rebuilt body belongs only to the current invocation; no whole-history cache or body table is added.
 
 ## Configuration and tradeoffs
