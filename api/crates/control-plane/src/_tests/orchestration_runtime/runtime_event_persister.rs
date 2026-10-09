@@ -390,6 +390,93 @@ async fn earlier_generation_terminal_does_not_prove_current_generation_closed() 
     assert_eq!(writer.confirmation_attempts.load(Ordering::SeqCst), 0);
 }
 
+#[tokio::test]
+async fn late_foreign_generation_terminal_never_proves_current_closed_generation() {
+    let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let run_id = Uuid::now_v7();
+    let writer = ControlledGenerationWriter::new();
+    prepare_durable_generation(&repository, run_id, writer.as_ref()).await;
+    let mut late = build_runtime_event_input(
+        run_id,
+        None,
+        "flow_finished".into(),
+        RuntimeEventSource::Runtime,
+        json!({"type": "flow_finished", "stream_generation_id": Uuid::now_v7()}),
+    );
+    repository.append_runtime_event(&late).await.unwrap();
+    let mut subscription = closed_subscription(writer.clone(), Vec::new(), Some(7));
+    confirm_closed_generation(&repository, run_id, 7, "flow_finished", &mut subscription).await;
+    assert_eq!(writer.confirmation_attempts.load(Ordering::SeqCst), 0);
+    assert_eq!(writer.confirmed.load(Ordering::SeqCst), 0);
+
+    // An explicitly matching fact is accepted; unrelated late rows do not
+    // permanently prevent recovery of the correctly committed current round.
+    late.payload["stream_generation_id"] = json!(writer.generation_id);
+    repository.append_runtime_event(&late).await.unwrap();
+    confirm_closed_generation(&repository, run_id, 7, "flow_finished", &mut subscription).await;
+    assert_eq!(writer.confirmed.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn bound_inline_persistence_preserves_fact_and_marks_only_captured_generation_on_failure() {
+    let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let run_id = Uuid::now_v7();
+    let captured = ControlledGenerationWriter::new();
+    let replacement = ControlledGenerationWriter::new();
+    let item = json!({"type": "reasoning", "encrypted_content": "original-opaque", "extension": {"numeric_lexeme": "00"}});
+    let fact = RuntimeEventPayload {
+        event_type: "provider_output_item_done".into(),
+        source: RuntimeEventSource::Provider,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
+        trace_visible: true,
+        payload: json!({"type": "provider_output_item_done", "output_index": 0, "item": item}),
+    };
+    persist_runtime_event_payload_for_generation(
+        &repository,
+        run_id,
+        &fact,
+        Some(captured.as_ref()),
+    )
+    .await
+    .unwrap();
+    let records = repository.list_runtime_events(run_id, 0).await.unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].payload["item"], item);
+    assert_eq!(
+        records[0].payload["stream_generation_id"],
+        json!(captured.generation_id)
+    );
+
+    repository.fail_next_runtime_event_append();
+    let error = persist_runtime_event_payload_for_generation(
+        &repository,
+        run_id,
+        &fact,
+        Some(captured.as_ref()),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.to_string(), "simulated runtime event append failure");
+    assert!(captured.failed.load(Ordering::SeqCst));
+    assert!(!replacement.failed.load(Ordering::SeqCst));
+    persist_runtime_event_payload_for_generation(
+        &repository,
+        run_id,
+        &fact,
+        Some(replacement.as_ref()),
+    )
+    .await
+    .unwrap();
+    assert!(captured.failed.load(Ordering::SeqCst));
+    let records = repository.list_runtime_events(run_id, 0).await.unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(
+        records[1].payload["stream_generation_id"],
+        json!(replacement.generation_id)
+    );
+}
+
 struct PreparedGenerationStream {
     writer: Arc<ControlledGenerationWriter>,
 }

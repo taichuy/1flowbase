@@ -581,18 +581,26 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         }))
     }
     /// Commit evidence for a terminal projected by a separate business writer.
-    /// The anchor excludes terminals from earlier generations of the same run.
+    /// The anchor excludes preceding terminals; generation identity also excludes
+    /// delayed diagnostic terminals. Untagged synchronous business facts remain valid.
     async fn has_runtime_event_terminal_after(
         &self,
         flow_run_id: Uuid,
         after_sequence: i64,
         event_type: &str,
+        generation_id: Uuid,
     ) -> anyhow::Result<bool> {
+        let generation_id = generation_id.to_string();
         Ok(self
             .list_runtime_events(flow_run_id, after_sequence)
             .await?
             .iter()
-            .any(|event| event.event_type == event_type))
+            .any(|event| {
+                event.event_type == event_type
+                    && event.payload.get("stream_generation_id").is_none_or(|id| {
+                        id.as_str() == Some(generation_id.as_str())
+                    })
+            }))
     }
     /// Page durable facts in database sequence order. A local stream cursor is
     /// not a database cursor: resumed stream generations may restart at one.

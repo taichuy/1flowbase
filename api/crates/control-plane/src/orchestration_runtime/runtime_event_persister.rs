@@ -67,6 +67,41 @@ pub async fn persist_runtime_event_payload_with_after_commit<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
+    persist_runtime_event_payload_bound(repository, flow_run_id, event, after_commit, None).await
+}
+
+/// The caller captures this authority before awaiting a provider write. A
+/// reopened run cannot receive the old write's failure flag or generation tag.
+pub(super) async fn persist_runtime_event_payload_for_generation<R>(
+    repository: &R,
+    flow_run_id: Uuid,
+    event: &RuntimeEventPayload,
+    writer: Option<&dyn RuntimeEventTerminalWriter>,
+) -> Result<()>
+where
+    R: OrchestrationRuntimeRepository,
+{
+    persist_runtime_event_payload_bound(
+        repository,
+        flow_run_id,
+        event,
+        &RuntimeEventAfterCommitLane::empty(),
+        writer,
+    )
+    .await
+    .map(|_| ())
+}
+
+async fn persist_runtime_event_payload_bound<R>(
+    repository: &R,
+    flow_run_id: Uuid,
+    event: &RuntimeEventPayload,
+    after_commit: &RuntimeEventAfterCommitLane,
+    writer: Option<&dyn RuntimeEventTerminalWriter>,
+) -> Result<Vec<RuntimeEventAfterCommitReceipt>>
+where
+    R: OrchestrationRuntimeRepository,
+{
     if !event.persist_required || is_stream_delta_event(&event.event_type) {
         return Ok(Vec::new());
     }
@@ -75,14 +110,28 @@ where
         .get("node_run_id")
         .and_then(Value::as_str)
         .and_then(|value| Uuid::parse_str(value).ok());
-    let input = build_runtime_event_input(
+    let mut input = build_runtime_event_input(
         flow_run_id,
         node_run_id,
         event.event_type.clone(),
         event.source,
         event.payload.clone(),
     );
-    let record = repository.append_runtime_event(&input).await?;
+    if let (Some(generation), Some(payload)) = (
+        writer.and_then(|writer| writer.generation_id()),
+        input.payload.as_object_mut(),
+    ) {
+        payload.insert("stream_generation_id".into(), json!(generation));
+    }
+    let record = match repository.append_runtime_event(&input).await {
+        Ok(record) => record,
+        Err(error) => {
+            if let Some(writer) = writer {
+                writer.record_persistence_failure();
+            }
+            return Err(error);
+        }
+    };
     if event.durability == RuntimeEventDurability::Ephemeral {
         return Ok(Vec::new());
     }
@@ -399,7 +448,7 @@ async fn confirm_closed_generation<R: OrchestrationRuntimeRepository>(
             anyhow::bail!("runtime replay generation is no longer the durable window");
         }
         if !repository
-            .has_runtime_event_terminal_after(run_id, boundary, terminal_type)
+            .has_runtime_event_terminal_after(run_id, boundary, terminal_type, generation_id)
             .await?
         {
             anyhow::bail!("runtime stream terminal has no durable fact");
@@ -409,15 +458,6 @@ async fn confirm_closed_generation<R: OrchestrationRuntimeRepository>(
     .await;
     if let Err(error) = proof {
         warn!(flow_run_id = %run_id, %error, "runtime replay generation remains in its legacy retention window");
-    }
-}
-
-pub(super) async fn record_stream_persistence_failure(
-    stream: &Arc<dyn RuntimeEventStream>,
-    run_id: Uuid,
-) {
-    if let Ok(writer) = stream.terminal_writer(run_id).await {
-        writer.record_persistence_failure();
     }
 }
 

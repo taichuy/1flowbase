@@ -247,10 +247,11 @@ impl PgControlPlaneStore {
         flow_run_id: Uuid,
         after_sequence: i64,
         event_type: &str,
+        generation_id: Uuid,
     ) -> Result<bool> {
         sqlx::query_scalar(
-            "select exists(select 1 from runtime_events where flow_run_id = $1 and sequence > $2 and event_type = $3)",
-        ).bind(flow_run_id).bind(after_sequence).bind(event_type)
+            "select exists(select 1 from runtime_events where flow_run_id = $1 and sequence > $2 and event_type = $3 and (not (payload ? 'stream_generation_id') or payload ->> 'stream_generation_id' = $4))",
+        ).bind(flow_run_id).bind(after_sequence).bind(event_type).bind(generation_id.to_string())
             .fetch_one(self.pool()).await.map_err(Into::into)
     }
 

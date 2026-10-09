@@ -881,12 +881,14 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         flow_run_id: Uuid,
         after_sequence: i64,
         event_type: &str,
+        generation_id: Uuid,
     ) -> Result<bool> {
         PgControlPlaneStore::has_runtime_event_terminal_after(
             self,
             flow_run_id,
             after_sequence,
             event_type,
+            generation_id,
         )
         .await
     }

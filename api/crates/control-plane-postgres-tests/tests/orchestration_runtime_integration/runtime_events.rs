@@ -103,7 +103,8 @@ async fn replay_gc_window_separates_reopened_generation_and_freezes_durable_tail
             &store,
             run.id,
             anchor.sequence,
-            "flow_finished"
+            "flow_finished",
+            generation,
         )
         .await
         .unwrap()
@@ -147,7 +148,8 @@ async fn replay_gc_window_separates_reopened_generation_and_freezes_durable_tail
             &store,
             run.id,
             anchor.sequence,
-            "flow_finished"
+            "flow_finished",
+            generation,
         )
         .await
         .unwrap()
@@ -169,7 +171,61 @@ async fn replay_gc_window_separates_reopened_generation_and_freezes_durable_tail
             &store,
             run.id,
             window2.after_sequence,
-            "flow_finished"
+            "flow_finished",
+            generation2,
+        )
+        .await
+        .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn replay_gc_terminal_proof_rejects_foreign_generation_written_after_anchor() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        datetime!(2026-10-10 00:00:00 UTC),
+    )
+    .await;
+    let current = Uuid::now_v7();
+    let mut anchor = runtime_event_input(run.id, "runtime_stream_opened");
+    anchor.payload = json!({"stream_generation_id": current});
+    let anchor = OrchestrationRuntimeRepository::append_runtime_event(&store, &anchor)
+        .await
+        .unwrap();
+    let mut terminal = runtime_event_input(run.id, "flow_finished");
+    terminal.payload["stream_generation_id"] = json!(Uuid::now_v7());
+    OrchestrationRuntimeRepository::append_runtime_event(&store, &terminal)
+        .await
+        .unwrap();
+    assert!(
+        !OrchestrationRuntimeRepository::has_runtime_event_terminal_after(
+            &store,
+            run.id,
+            anchor.sequence,
+            "flow_finished",
+            current
+        )
+        .await
+        .unwrap()
+    );
+    terminal.payload["stream_generation_id"] = json!(current);
+    OrchestrationRuntimeRepository::append_runtime_event(&store, &terminal)
+        .await
+        .unwrap();
+    assert!(
+        OrchestrationRuntimeRepository::has_runtime_event_terminal_after(
+            &store,
+            run.id,
+            anchor.sequence,
+            "flow_finished",
+            current
         )
         .await
         .unwrap()

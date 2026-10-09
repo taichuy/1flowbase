@@ -623,6 +623,10 @@ where
             })
         });
         let billing_node_id = active_node.as_ref().map(|node| node.node_id.clone());
+        let provider_generation_writer = match (&self.runtime_event_stream, self.flow_run_id) {
+            (Some(stream), Some(run_id)) => stream.terminal_writer(run_id).await.ok(),
+            _ => None,
+        };
         if let (Some(active_node), Some(stream), Some(flow_run_id)) = (
             active_node.as_ref(),
             self.runtime_event_stream.as_ref(),
@@ -636,10 +640,11 @@ where
                         &estimate,
                         effective_context_window,
                     );
-                    match runtime_event_persister::persist_runtime_event_payload(
+                    match runtime_event_persister::persist_runtime_event_payload_for_generation(
                         &self.repository,
                         flow_run_id,
                         &context_snapshot,
+                        provider_generation_writer.as_deref(),
                     )
                     .await
                     {
@@ -648,11 +653,6 @@ where
                             context_snapshot.durability = RuntimeEventDurability::Ephemeral;
                         }
                         Err(error) => {
-                            runtime_event_persister::record_stream_persistence_failure(
-                                stream,
-                                flow_run_id,
-                            )
-                            .await;
                             tracing::warn!(
                                 flow_run_id = %flow_run_id,
                                 node_id = %active_node.node_id,
@@ -724,6 +724,7 @@ where
             let diagnostic_node_id = node_id.clone();
             let flow_execution_context_for_task = self.flow_execution_context.clone();
             let repository_for_events = self.repository.clone();
+            let generation_writer_for_task = provider_generation_writer.clone();
             let native_output_items_for_task = native_output_items.clone();
             let capture_native_history = self.provider_transport_payload.is_some();
             let response_round_id_for_task = self.response_round_id.or(self.flow_run_id);
@@ -803,20 +804,15 @@ where
                             item.clone(),
                         );
                         fact.payload["response_round_id"] = json!(response_round_id_for_task);
-                        if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
-                            &repository_for_events,
-                            flow_run_id,
-                            &fact,
-                        )
-                        .await
+                        if let Err(error) =
+                            runtime_event_persister::persist_runtime_event_payload_for_generation(
+                                &repository_for_events,
+                                flow_run_id,
+                                &fact,
+                                generation_writer_for_task.as_deref(),
+                            )
+                            .await
                         {
-                            if let Some(stream) = &runtime_event_stream {
-                                runtime_event_persister::record_stream_persistence_failure(
-                                    stream,
-                                    flow_run_id,
-                                )
-                                .await;
-                            }
                             return Err(error);
                         }
                     }
