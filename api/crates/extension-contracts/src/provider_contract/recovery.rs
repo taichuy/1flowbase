@@ -157,7 +157,9 @@ impl CursorProvenance {
                         .to_string(),
                 )
             }
-            RecoveryDisposition::PreCommitHttpFallback => {
+            _ if receipt.is_pre_commit_http_fallback()
+                || receipt.is_full_context_http_rebuild() =>
+            {
                 Err("connection-bound cursor cannot use provider HTTP fallback".to_string())
             }
             _ => Ok(()),
@@ -193,6 +195,11 @@ pub fn recovery_receipt_from_details(
 pub enum RecoveryDisposition {
     SameEpochReconnect,
     PreCommitHttpFallback,
+    /// The Provider has materialized the complete invocation-scoped request
+    /// context with any predecessor cursor removed. This transformation is
+    /// independent of final transport: ProviderHttp attests that this complete
+    /// rebuilt request, never a cursor continuation, was actually sent.
+    /// For NativeOpaque, the context preserves the complete native input.
     OneFullContextRebuild,
     LogicalInvocationRetry,
     TerminalInterruption,
@@ -346,8 +353,33 @@ impl ProviderRecoveryReceipt {
         )
     }
 
+    /// Identifies a transport switch backed by the Provider's full-context
+    /// assertion. Consumers must validate the receipt against its directive.
+    pub const fn is_full_context_http_rebuild(&self) -> bool {
+        matches!(
+            (self.transport, self.disposition),
+            (
+                RecoveryTransport::ProviderHttp,
+                RecoveryDisposition::OneFullContextRebuild
+            )
+        )
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         validate_commit_disposition(self.commit_level, self.disposition)?;
+        if self.is_full_context_http_rebuild() {
+            if self.attempt == 0 {
+                return Err("HTTP full-context rebuild requires a recovery attempt".to_string());
+            }
+            if !matches!(
+                self.reason,
+                RecoveryReason::TransportDisconnected | RecoveryReason::TransportRejected
+            ) {
+                return Err(
+                    "HTTP full-context rebuild requires a transport recovery reason".to_string(),
+                );
+            }
+        }
         if self.attempt >= MAX_RECOVERY_INNER_ATTEMPTS {
             return Err(format!(
                 "zero-based recovery receipt attempt must be below {MAX_RECOVERY_INNER_ATTEMPTS}"

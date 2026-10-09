@@ -64,6 +64,7 @@ impl ProviderInvocationResult {
             if recovery.as_ref().is_some_and(|recovery| {
                 recovery.transport != RecoveryTransport::ProviderHttp
                     || recovery.is_pre_commit_http_fallback()
+                    || recovery.is_full_context_http_rebuild()
             }) {
                 return Err(
                     "direct HTTP invocation cannot claim WebSocket recovery or fallback".into(),
@@ -85,7 +86,7 @@ impl ProviderInvocationResult {
             }
         }
         if let Some(recovery) = recovery {
-            if recovery.is_pre_commit_http_fallback() {
+            if recovery.is_pre_commit_http_fallback() || recovery.is_full_context_http_rebuild() {
                 return Ok(ProviderInvocationTransportClassification::Session(
                     ProviderInvocationTransportOutcome::HttpFallback { recovery },
                 ));

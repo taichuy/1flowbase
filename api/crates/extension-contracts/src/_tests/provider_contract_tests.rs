@@ -2369,6 +2369,180 @@ mod transport_outcome_mode_tests {
         ));
     }
 
+    fn native_directive() -> ProviderRecoveryDirective {
+        let mut directive = directive();
+        directive.policy = RecoveryPolicy::NativeOpaque {
+            budget: *directive.policy.budget(),
+        };
+        directive.cursor_provenance = None;
+        directive
+    }
+
+    fn full_context_http_rebuild() -> ProviderRecoveryReceipt {
+        ProviderRecoveryReceipt {
+            attempt: 2,
+            disposition: RecoveryDisposition::OneFullContextRebuild,
+            ..fallback()
+        }
+    }
+
+    #[test]
+    fn native_full_context_http_rebuild_is_authorized_websocket_recovery() {
+        let receipt = full_context_http_rebuild();
+        for reason in [
+            RecoveryReason::TransportDisconnected,
+            RecoveryReason::TransportRejected,
+        ] {
+            let receipt = ProviderRecoveryReceipt {
+                reason,
+                ..receipt.clone()
+            };
+            receipt.validate_against(&native_directive()).unwrap();
+            assert_eq!(receipt.consumed_attempts().unwrap(), 3);
+            let mut result = result();
+            result.set_recovery_receipt(receipt.clone()).unwrap();
+            assert_eq!(
+                result
+                    .transport_outcome(7, Some(&native_directive()))
+                    .unwrap(),
+                ProviderInvocationTransportOutcome::HttpFallback { recovery: receipt }
+            );
+            assert!(result.transport_outcome(7, None).is_err());
+            // A receipt describing a transport switch cannot authorize direct HTTP.
+            assert!(result
+                .transport_outcome_for_mode(
+                    RecoveryTransport::ProviderHttp,
+                    0,
+                    Some(&native_directive()),
+                )
+                .unwrap_err()
+                .contains("cannot claim WebSocket recovery or fallback"));
+        }
+        let mut durable = native_directive();
+        durable.cursor_provenance = Some(CursorProvenance::durable());
+        receipt.validate_against(&durable).unwrap();
+        let earliest = ProviderRecoveryReceipt {
+            attempt: 1,
+            ..receipt
+        };
+        earliest.validate_against(&native_directive()).unwrap();
+    }
+
+    #[test]
+    fn http_full_context_rebuild_rejects_invalid_transition_facts() {
+        let receipt = full_context_http_rebuild();
+        let mut invalid = receipt.clone();
+        invalid.attempt = 0;
+        assert!(invalid
+            .validate()
+            .unwrap_err()
+            .contains("requires a recovery attempt"));
+        for reason in [
+            RecoveryReason::ProtocolError,
+            RecoveryReason::DeadlineExceeded,
+            RecoveryReason::FencingRejected,
+            RecoveryReason::BudgetExhausted,
+            RecoveryReason::SemanticCompleted,
+            RecoveryReason::SemanticFailed,
+        ] {
+            invalid = receipt.clone();
+            invalid.reason = reason;
+            assert!(invalid
+                .validate()
+                .unwrap_err()
+                .contains("transport recovery reason"));
+        }
+        invalid = receipt.clone();
+        invalid.socket_incarnation = Some(SocketIncarnation::new(1).unwrap());
+        assert!(invalid
+            .validate()
+            .unwrap_err()
+            .contains("cannot claim a socket"));
+        for commit_level in [CommitLevel::SemanticCommitted, CommitLevel::Terminal] {
+            invalid = receipt.clone();
+            invalid.commit_level = commit_level;
+            assert!(invalid
+                .validate()
+                .unwrap_err()
+                .contains("cannot select a replay"));
+        }
+    }
+
+    #[test]
+    fn native_http_rebuild_preserves_host_cursor_epoch_budget_and_commit_fences() {
+        let receipt = full_context_http_rebuild();
+        let mut invalid = native_directive();
+        invalid.cursor_provenance = Some(CursorProvenance::connection_bound(
+            invalid.transport_epoch,
+            SocketIncarnation::new(1).unwrap(),
+        ));
+        assert!(receipt
+            .validate_against(&invalid)
+            .unwrap_err()
+            .contains("connection-bound cursor cannot use provider HTTP fallback"));
+        invalid = native_directive();
+        invalid.transport_epoch = TransportEpoch::new(18).unwrap();
+        assert!(receipt
+            .validate_against(&invalid)
+            .unwrap_err()
+            .contains("cannot cross"));
+        invalid = native_directive();
+        invalid.policy = RecoveryPolicy::NativeOpaque {
+            budget: RecoveryBudget {
+                max_inner_attempts: receipt.attempt,
+                ..*invalid.policy.budget()
+            },
+        };
+        assert!(receipt
+            .validate_against(&invalid)
+            .unwrap_err()
+            .contains("exceeds"));
+        invalid = native_directive();
+        invalid.initial_commit_level = CommitLevel::SemanticCommitted;
+        assert!(receipt
+            .validate_against(&invalid)
+            .unwrap_err()
+            .contains("cannot move backwards"));
+
+        let mut result = result();
+        result.set_recovery_receipt(receipt).unwrap();
+        let mut stale = ready();
+        stale.generation = 6;
+        result.set_transport_session_receipt(stale).unwrap();
+        assert!(matches!(
+            result
+                .transport_outcome(7, Some(&native_directive()))
+                .unwrap(),
+            ProviderInvocationTransportOutcome::StaleGeneration { .. }
+        ));
+    }
+
+    #[test]
+    fn native_direct_http_semantic_terminal_remains_legal() {
+        let receipt = ProviderRecoveryReceipt {
+            attempt: 0,
+            commit_level: CommitLevel::Terminal,
+            disposition: RecoveryDisposition::SemanticTerminal,
+            reason: RecoveryReason::SemanticCompleted,
+            ..fallback()
+        };
+        let mut result = result();
+        result.set_recovery_receipt(receipt).unwrap();
+        assert_eq!(
+            result
+                .transport_outcome_for_mode(
+                    RecoveryTransport::ProviderHttp,
+                    0,
+                    Some(&native_directive()),
+                )
+                .unwrap(),
+            Classification::Http
+        );
+        assert!(result
+            .transport_outcome(7, Some(&native_directive()))
+            .is_err());
+    }
+
     #[test]
     fn failed_results_and_timing_never_classify_as_success() {
         for transport in [
