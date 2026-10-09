@@ -1,5 +1,3 @@
-import ArrowDownOutlined from '@ant-design/icons/es/icons/ArrowDownOutlined';
-import ArrowUpOutlined from '@ant-design/icons/es/icons/ArrowUpOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
@@ -19,11 +17,7 @@ import { useState } from 'react';
 import type { DragEvent, FocusEvent } from 'react';
 import type { MenuProps } from 'antd';
 
-import {
-  canMoveNode,
-  findNodeById,
-  type FrontStageTreeNode
-} from '../lib/page-tree';
+import { findNodeById, type FrontStageTreeNode } from '../lib/page-tree';
 import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
 import './frontstage-page-tree-sidebar.css';
 import './frontstage-add-action.css';
@@ -53,23 +47,17 @@ type FrontStagePageTreeSidebarProps = {
     input: { tooltip?: string | null; isHidden?: boolean }
   ) => void;
   onEditNodeTooltip: (nodeId: string, currentTooltip: string | null) => void;
-  onMoveNode: (nodeId: string, direction: -1 | 1) => void;
   onMoveNodeToPosition: (
     nodeId: string,
     targetNodeId: string,
     position: 'before' | 'inside' | 'after'
   ) => void;
-  onMovePageToGroup?: (
-    nodeId: string,
-    currentParentId: string | null,
-    nextParentId: string | null
-  ) => void;
+  onOpenMovePage?: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onSelectPage: (nodeId: string) => void;
 };
 
 const PAGE_TREE_DRAG_DATA_TYPE = 'application/x-frontstage-page-tree-node';
-const ROOT_PAGE_GROUP_VALUE = '__frontstage_root__';
 
 type MenuClickInfo = Parameters<NonNullable<MenuProps['onClick']>>[0];
 
@@ -88,41 +76,6 @@ function getNodeTitle(node: FrontStageTreeNode) {
     : i18nText('frontstage', 'auto.unnamed_page');
 }
 
-function findParentId(
-  nodes: FrontStageTreeNode[],
-  targetNodeId: string,
-  parentId: string | null = null
-): string | null | undefined {
-  for (const node of nodes) {
-    if (node.id === targetNodeId) {
-      return parentId;
-    }
-
-    if (node.children && node.children.length > 0) {
-      const childParentId = findParentId(node.children, targetNodeId, node.id);
-      if (childParentId !== undefined) {
-        return childParentId;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function collectGroupOptions(
-  nodes: FrontStageTreeNode[],
-  ancestors: string[] = []
-): Array<{ label: string; value: string }> {
-  return nodes.flatMap((node) => {
-    if (node.kind !== 'group') return [];
-    const path = [...ancestors, getNodeTitle(node)];
-    return [
-      { label: path.join(' / '), value: node.id },
-      ...collectGroupOptions(node.children ?? [], path)
-    ];
-  });
-}
-
 function renderNodeIcon(node: FrontStageTreeNode) {
   return <PageTreeIcon name={node.icon} />;
 }
@@ -131,7 +84,6 @@ function renderTreeNode({
   node,
   pageTree,
   level,
-  siblings,
   selectedPageId,
   canEdit,
   isOperationPending,
@@ -142,9 +94,8 @@ function renderTreeNode({
   onAddPageInGroup,
   onAddNodeAtPosition,
   onRenameNode,
-  onMoveNode,
   onMoveNodeToPosition,
-  onMovePageToGroup,
+  onOpenMovePage,
   onDeleteNode,
   onSelectPage,
   draggedNodeId,
@@ -155,7 +106,6 @@ function renderTreeNode({
   node: FrontStageTreeNode;
   pageTree: FrontStageTreeNode[];
   level: number;
-  siblings: FrontStageTreeNode[];
   selectedPageId: string | null;
   canEdit: boolean;
   isOperationPending: boolean;
@@ -173,17 +123,12 @@ function renderTreeNode({
     position: 'before' | 'after'
   ) => void;
   onRenameNode: (node: FrontStageTreeNode) => void;
-  onMoveNode: (nodeId: string, direction: -1 | 1) => void;
   onMoveNodeToPosition: (
     nodeId: string,
     targetNodeId: string,
     position: 'before' | 'inside' | 'after'
   ) => void;
-  onMovePageToGroup?: (
-    nodeId: string,
-    currentParentId: string | null,
-    nextParentId: string | null
-  ) => void;
+  onOpenMovePage?: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onSelectPage: (nodeId: string) => void;
   draggedNodeId: string | null;
@@ -197,49 +142,12 @@ function renderTreeNode({
   const isCollapsed = collapsedGroupIds.has(node.id);
   const isHidden = Boolean(node.is_hidden);
   const tooltipText = node.tooltip ?? '';
-  const { canMoveUp, canMoveDown } = canMoveNode(siblings, node.id);
   const childNodes = node.children ?? [];
   const title = getNodeTitle(node);
   const isDragging = draggedNodeId === node.id;
   const isInsideDropTarget =
     dropIndicator?.targetNodeId === node.id &&
     dropIndicator.position === 'inside';
-  const groupOptions =
-    isPageNode && isSelected && onMovePageToGroup
-      ? collectGroupOptions(pageTree)
-      : [];
-  const currentParentId = findParentId(pageTree, node.id) ?? null;
-  const canShowPageGroupSelect = Boolean(
-    isPageNode && isSelected && onMovePageToGroup && groupOptions.length > 0
-  );
-  const pageGroupOptions = [
-    {
-      label: i18nText('frontstage', 'auto.not_grouped'),
-      value: ROOT_PAGE_GROUP_VALUE
-    },
-    ...groupOptions
-  ];
-  const pageGroupMenuItems: NonNullable<MenuProps['items']> =
-    canShowPageGroupSelect && onMovePageToGroup
-      ? [
-          { type: 'divider' as const },
-          ...pageGroupOptions.map((option) => {
-            const optionParentId =
-              option.value === ROOT_PAGE_GROUP_VALUE ? null : option.value;
-
-            return {
-              key: `move-group-${option.value}`,
-              label: option.label,
-              disabled:
-                optionParentId === currentParentId || isOperationPending,
-              onClick: ({ domEvent }: MenuClickInfo) => {
-                domEvent.stopPropagation();
-                onMovePageToGroup(node.id, currentParentId, optionParentId);
-              }
-            };
-          })
-        ]
-      : [];
   const getDraggedNodeIdFromEvent = (event: DragEvent<HTMLElement>) =>
     draggedNodeId || event.dataTransfer.getData(PAGE_TREE_DRAG_DATA_TYPE);
 
@@ -369,34 +277,19 @@ function renderTreeNode({
       ),
       icon: isHidden ? <EyeOutlined /> : <EyeInvisibleOutlined />
     },
-    {
-      key: 'move-to',
-      label: i18nText('frontstage', 'auto.move_to'),
-      icon: <DragOutlined />,
-      children: [
-        {
-          key: 'move-up',
-          label: i18nText('frontstage', 'auto.move_up'),
-          icon: <ArrowUpOutlined />,
-          disabled: !canMoveUp,
-          onClick: ({ domEvent }: MenuClickInfo) => {
-            domEvent.stopPropagation();
-            onMoveNode(node.id, -1);
+    ...(isPageNode && onOpenMovePage
+      ? [
+          {
+            key: 'move-to',
+            label: i18nText('frontstage', 'auto.move_to'),
+            icon: <DragOutlined />,
+            onClick: ({ domEvent }: MenuClickInfo) => {
+              domEvent.stopPropagation();
+              onOpenMovePage(node.id);
+            }
           }
-        },
-        {
-          key: 'move-down',
-          label: i18nText('frontstage', 'auto.move_down'),
-          icon: <ArrowDownOutlined />,
-          disabled: !canMoveDown,
-          onClick: ({ domEvent }: MenuClickInfo) => {
-            domEvent.stopPropagation();
-            onMoveNode(node.id, 1);
-          }
-        },
-        ...pageGroupMenuItems
-      ]
-    },
+        ]
+      : []),
     {
       key: 'insert-before',
       label: i18nText('frontstage', 'auto.insert_before'),
@@ -667,7 +560,6 @@ function renderTreeNode({
               node: childNode,
               pageTree,
               level: level + 1,
-              siblings: childNodes,
               selectedPageId,
               canEdit,
               isOperationPending,
@@ -678,9 +570,8 @@ function renderTreeNode({
               onAddPageInGroup,
               onAddNodeAtPosition,
               onRenameNode,
-              onMoveNode,
               onMoveNodeToPosition,
-              onMovePageToGroup,
+              onOpenMovePage,
               onDeleteNode,
               onSelectPage,
               draggedNodeId,
@@ -728,9 +619,8 @@ export function FrontStagePageTreeSidebar({
   onRenameNode,
   onUpdateNodeMetadata,
   onEditNodeTooltip,
-  onMoveNode,
   onMoveNodeToPosition,
-  onMovePageToGroup,
+  onOpenMovePage,
   onDeleteNode,
   onSelectPage
 }: FrontStagePageTreeSidebarProps) {
@@ -802,7 +692,6 @@ export function FrontStagePageTreeSidebar({
             node,
             pageTree,
             level: 0,
-            siblings: pageTree,
             selectedPageId,
             canEdit,
             isOperationPending,
@@ -813,9 +702,8 @@ export function FrontStagePageTreeSidebar({
             onAddPageInGroup,
             onAddNodeAtPosition,
             onRenameNode,
-            onMoveNode,
             onMoveNodeToPosition,
-            onMovePageToGroup,
+            onOpenMovePage,
             onDeleteNode,
             onSelectPage,
             draggedNodeId,

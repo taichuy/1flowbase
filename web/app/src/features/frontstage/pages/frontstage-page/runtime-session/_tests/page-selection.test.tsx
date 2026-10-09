@@ -33,3 +33,23 @@ test('standalone page selection without a route owner remains interactive', () =
   act(() => result.current.handleSelectPage('b'));
   expect(result.current.selectedPageId).toBe('b');
 });
+
+test('drag reordering retains the scoped route parent in the backend request', async () => {
+  const onMovePageNode = vi.fn().mockResolvedValue(undefined);
+  const { result } = renderHook(() =>
+    usePageTreeWorkspace({
+      initialPageTree,
+      autoSelectFirstPage: true,
+      pageTreeRootId: 'route-1',
+      onMovePageNode
+    })
+  );
+  await act(async () =>
+    result.current.handleMoveNodeToPosition('b', 'a', 'before')
+  );
+  expect(result.current.pageTree.map((node) => node.id)).toEqual(['b', 'a']);
+  expect(onMovePageNode).toHaveBeenCalledWith('b', {
+    parentId: 'route-1',
+    rank: '000000'
+  });
+});

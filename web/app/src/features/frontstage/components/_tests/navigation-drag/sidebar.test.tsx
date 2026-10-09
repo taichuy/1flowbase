@@ -33,7 +33,6 @@ function setup(pending = false) {
       onRenameNode={noop}
       onUpdateNodeMetadata={noop}
       onEditNodeTooltip={noop}
-      onMoveNode={noop}
       onMoveNodeToPosition={move}
       onDeleteNode={noop}
       onSelectPage={noop}

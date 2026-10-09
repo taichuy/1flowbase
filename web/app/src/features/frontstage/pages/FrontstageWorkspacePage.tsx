@@ -350,6 +350,8 @@ export function FrontstageWorkspacePage({
       showSidebar={rootNode?.kind !== 'page'}
       autoSelectFirstPage={rootNode?.kind !== 'group' || Boolean(pageId)}
       initialPageTree={pageTreeFromApi}
+      navigationPageTree={pageTreeQuery.data}
+      pageTreeRootId={scopedPageTreeRootId}
       isPageTreeLoading={pageTreeQuery.isLoading}
       hasPageTreeLoadError={pageTreeQuery.isError}
       pageContent={pageContentQuery.data}
@@ -377,12 +379,7 @@ export function FrontstageWorkspacePage({
       }
       onRenamePageNode={pageTreeMutations.renameNode}
       onUpdatePageNodeMetadata={pageTreeMutations.updateNodeMetadata}
-      onMovePageNode={(pageNodeId, input) =>
-        pageTreeMutations.moveNode(pageNodeId, {
-          ...input,
-          parentId: resolvePageTreeParentId(input.parentId)
-        })
-      }
+      onMovePageNode={pageTreeMutations.moveNode}
       onDeletePageNode={pageTreeMutations.deleteNode}
       onRetryLoadPageTree={() => {
         void pageTreeQuery.refetch();

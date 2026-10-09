@@ -41,6 +41,9 @@ export type FrontStagePageProps = {
   onNavigatePage?: (pageId?: string) => void;
   onNavigateTab?: (tab: FrontstagePageTab) => void;
   initialPageTree?: FrontStageTreeNode[];
+  /** Full backend navigation tree for choosing destinations outside the sidebar scope. */
+  navigationPageTree?: FrontStageTreeNode[];
+  pageTreeRootId?: string | null;
   isPageTreeLoading?: boolean;
   hasPageTreeLoadError?: boolean;
   onRetryLoadPageTree?: () => void;

@@ -5,7 +5,6 @@ import { i18nText } from '../../../../shared/i18n/text';
 import {
   findNodeById,
   getDeleteConfirmMessage,
-  moveNodeInTree,
   removeNodeFromTree,
   resolveSelectedPageId
 } from '../../lib/page-tree';
@@ -31,6 +30,8 @@ type PageTreeWorkspaceInput = Pick<
   | 'pageId'
   | 'onNavigatePage'
   | 'initialPageTree'
+  | 'navigationPageTree'
+  | 'pageTreeRootId'
   | 'isPageTreeMutating'
   | 'onCreateGroupNode'
   | 'onCreatePageNode'
@@ -47,6 +48,8 @@ export function usePageTreeWorkspace({
   autoSelectFirstPage,
   onNavigatePage,
   initialPageTree,
+  navigationPageTree,
+  pageTreeRootId,
   isPageTreeMutating,
   onCreateGroupNode,
   onCreatePageNode,
@@ -360,28 +363,6 @@ export function usePageTreeWorkspace({
     });
   };
 
-  const handleMoveNode = (nodeId: string, direction: -1 | 1) => {
-    const siblingContext = findSiblingContext(pageTree, nodeId);
-    if (!siblingContext) {
-      return;
-    }
-
-    const targetIndex = siblingContext.index + direction;
-    if (targetIndex < 0 || targetIndex >= siblingContext.siblings.length) {
-      return;
-    }
-
-    setPageTree((currentTree) =>
-      moveNodeInTree(currentTree, nodeId, direction)
-    );
-    void runPageTreeOperation(async () => {
-      await onMovePageNode?.(nodeId, {
-        parentId: siblingContext.parentId,
-        rank: rankForMoveTarget(targetIndex, direction)
-      });
-    });
-  };
-
   const handleMoveNodeToPosition = (
     nodeId: string,
     targetNodeId: string,
@@ -420,7 +401,10 @@ export function usePageTreeWorkspace({
       moveNodeToTreePosition(currentTree, nodeId, targetNodeId, position)
     );
     void runPageTreeOperation(async () => {
-      await onMovePageNode?.(nodeId, { parentId: nextParentId, rank });
+      await onMovePageNode?.(nodeId, {
+        parentId: nextParentId ?? pageTreeRootId ?? null,
+        rank
+      });
     });
   };
 
@@ -430,13 +414,13 @@ export function usePageTreeWorkspace({
     nextParentId: string | null
   ) => {
     if (currentParentId === nextParentId) {
-      return;
+      return Promise.resolve(false);
     }
 
-    void runPageTreeOperation(async () => {
+    return runPageTreeOperation(async () => {
       await onMovePageNode?.(nodeId, {
         parentId: nextParentId,
-        rank: getNodeAppendRank(pageTree, nextParentId)
+        rank: getNodeAppendRank(navigationPageTree ?? pageTree, nextParentId)
       });
     });
   };
@@ -474,7 +458,6 @@ export function usePageTreeWorkspace({
     handlePageTabsEnabledChange,
     handleEditNodeTooltip,
     handleUpdateNodeMetadata,
-    handleMoveNode,
     handleMoveNodeToPosition,
     handleMovePageToGroup,
     handleSelectPage
