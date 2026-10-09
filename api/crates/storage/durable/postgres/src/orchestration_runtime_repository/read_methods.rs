@@ -1208,12 +1208,8 @@ impl PgControlPlaneStore {
             stitched_trace: list_stitched_trace_for_flow_run(self, &flow_run).await?,
             subagent_traces: list_subagent_traces_for_flow_run(self, &flow_run, &callback_tasks)
                 .await?,
-            task_rounds: self
-                .list_task_round_projection_sources_for_flow_run(&flow_run)
-                .await?,
-            child_task_traces: self
-                .list_child_task_projection_sources_for_flow_run(&flow_run)
-                .await?,
+            task_rounds: self.list_task_round_projection_sources_for_flow_run(&flow_run).await?,
+            child_task_traces: self.list_child_task_projection_sources_for_flow_run(&flow_run).await?,
             flow_run,
             callback_tasks,
         }))
@@ -1320,8 +1316,8 @@ fn push_model_provider_request_log_filters<'a>(
     }
 }
 
-fn empty_application_conversation_runs_page()
--> control_plane_contracts::ports::ApplicationConversationRunsPage {
+fn empty_application_conversation_runs_page(
+) -> control_plane_contracts::ports::ApplicationConversationRunsPage {
     control_plane_contracts::ports::ApplicationConversationRunsPage {
         items: Vec::new(),
         has_before: false,

@@ -53,6 +53,7 @@ async fn durable_event_pages_preserve_order_across_stream_cursor_resets() {
     assert!(empty.is_empty());
 }
 
+
 async fn append_event(
     store: &PgControlPlaneStore,
     flow_run: &domain::FlowRunRecord,
@@ -462,24 +463,18 @@ async fn terminal_flow_run_fences_late_run_and_runtime_event_appends() {
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        detail
-            .events
-            .iter()
-            .any(|event| event.event_type == "tool_call_completed")
-    );
-    assert!(
-        detail
-            .events
-            .iter()
-            .any(|event| event.event_type == "flow_run_cancelled")
-    );
-    assert!(
-        !detail
-            .events
-            .iter()
-            .any(|event| event.event_type == "late_run_event")
-    );
+    assert!(detail
+        .events
+        .iter()
+        .any(|event| event.event_type == "tool_call_completed"));
+    assert!(detail
+        .events
+        .iter()
+        .any(|event| event.event_type == "flow_run_cancelled"));
+    assert!(!detail
+        .events
+        .iter()
+        .any(|event| event.event_type == "late_run_event"));
 
     let runtime_events =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_runtime_events(
@@ -487,21 +482,15 @@ async fn terminal_flow_run_fences_late_run_and_runtime_event_appends() {
         )
         .await
         .unwrap();
-    assert!(
-        runtime_events
-            .iter()
-            .any(|event| event.event_type == "tool_call_commit")
-    );
-    assert!(
-        runtime_events
-            .iter()
-            .any(|event| event.event_type == "flow_cancelled")
-    );
-    assert!(
-        !runtime_events
-            .iter()
-            .any(|event| event.event_type.starts_with("late_runtime"))
-    );
+    assert!(runtime_events
+        .iter()
+        .any(|event| event.event_type == "tool_call_commit"));
+    assert!(runtime_events
+        .iter()
+        .any(|event| event.event_type == "flow_cancelled"));
+    assert!(!runtime_events
+        .iter()
+        .any(|event| event.event_type.starts_with("late_runtime")));
 }
 
 #[tokio::test]
