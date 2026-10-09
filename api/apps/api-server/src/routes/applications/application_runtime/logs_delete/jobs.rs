@@ -2,7 +2,6 @@ use super::*;
 use control_plane_contracts::ports::{
     AgentLogsDeleteJob, AgentLogsDeleteJobCreate, AgentLogsDeletePreview,
 };
-use serde::Deserialize;
 
 pub(crate) const OPERATIONS: &[&str] = &[
     "applications.logs.delete.jobs.create",
@@ -297,7 +296,7 @@ pub(crate) fn compile_preview_registry(
     )
 }
 
-#[utoipa::path(post,path="/api/console/applications/{id}/logs/deletion-preview",summary="Count imported logs in a deletion scope",request_body(content=inline(super::LogsDeleteScopeSchema)),params(("id"=String,Path)),responses((status=200,body=PreviewOutput)))]
+#[utoipa::path(post,operation_id="applications.logs.delete.preview",path="/api/console/applications/{id}/logs/deletion-preview",summary="Count imported logs in a deletion scope",request_body(content=inline(super::LogsDeleteScopeSchema)),params(("id"=String,Path)),responses((status=200,body=PreviewOutput)))]
 pub(crate) async fn preview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -316,13 +315,15 @@ pub(crate) async fn preview(
     .await?;
     Ok(Json(ApiSuccess::new(output)))
 }
-#[derive(Deserialize, utoipa::ToSchema)]
-struct CreateJobSchema {
-    job_id: Uuid,
-    #[schema(value_type=super::LogsDeleteScopeSchema)]
-    scope: AgentLogsDeleteScope,
+struct CreateJobSchema;
+impl utoipa::ToSchema for CreateJobSchema {}
+impl utoipa::PartialSchema for CreateJobSchema {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        let scope = <super::LogsDeleteScopeSchema as utoipa::PartialSchema>::schema();
+        serde_json::from_value(json!({"type":"object","additionalProperties":false,"required":["job_id","scope"],"properties":{"job_id":{"type":"string","format":"uuid"},"scope":scope}})).expect("static deletion start schema")
+    }
 }
-#[utoipa::path(post,path="/api/console/applications/{id}/logs/deletion-jobs",summary="Start a persistent batched log deletion",request_body=CreateJobSchema,params(("id"=String,Path)),responses((status=200,body=JobOutput),(status=409,description="Another deletion is active or job identity conflicts")))]
+#[utoipa::path(post,operation_id="applications.logs.delete.jobs.create",path="/api/console/applications/{id}/logs/deletion-jobs",summary="Start a persistent batched log deletion",request_body=CreateJobSchema,params(("id"=String,Path)),responses((status=200,body=JobOutput),(status=409,description="Another deletion is active or job identity conflicts")))]
 pub(crate) async fn create(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -341,7 +342,7 @@ pub(crate) async fn create(
     )
     .await
 }
-#[utoipa::path(get,path="/api/console/applications/{id}/logs/deletion-jobs/latest",summary="Find the latest log deletion and committed progress",params(("id"=String,Path)),responses((status=200,body=JobOutput)))]
+#[utoipa::path(get,operation_id="applications.logs.delete.jobs.latest",path="/api/console/applications/{id}/logs/deletion-jobs/latest",summary="Find the latest log deletion and committed progress",params(("id"=String,Path)),responses((status=200,body=JobOutput)))]
 pub(crate) async fn latest(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -356,7 +357,7 @@ pub(crate) async fn latest(
     )
     .await
 }
-#[utoipa::path(get,path="/api/console/applications/{id}/logs/deletion-jobs/{job_id}",summary="Read committed log deletion progress",params(("id"=String,Path),("job_id"=String,Path)),responses((status=200,body=JobOutput),(status=404,description="Job not found in this application")))]
+#[utoipa::path(get,operation_id="applications.logs.delete.jobs.get",path="/api/console/applications/{id}/logs/deletion-jobs/{job_id}",summary="Read committed log deletion progress",params(("id"=String,Path),("job_id"=String,Path)),responses((status=200,body=JobOutput),(status=404,description="Job not found in this application")))]
 pub(crate) async fn get(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -374,7 +375,7 @@ pub(crate) async fn get(
     )
     .await
 }
-#[utoipa::path(post,path="/api/console/applications/{id}/logs/deletion-jobs/{job_id}/stop",summary="Stop a log deletion after its current committed batch",params(("id"=String,Path),("job_id"=String,Path)),responses((status=200,body=JobOutput),(status=404,description="Job not found in this application")))]
+#[utoipa::path(post,operation_id="applications.logs.delete.jobs.stop",path="/api/console/applications/{id}/logs/deletion-jobs/{job_id}/stop",summary="Stop a log deletion after its current committed batch",params(("id"=String,Path),("job_id"=String,Path)),responses((status=200,body=JobOutput),(status=404,description="Job not found in this application")))]
 pub(crate) async fn stop(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
