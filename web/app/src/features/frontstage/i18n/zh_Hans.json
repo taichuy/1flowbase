@@ -4,6 +4,7 @@
     "inside": "放入分组",
     "after": "之后"
   },
+  "move_topbar_root": "顶部导航栏",
   "move_projection": "{{page}} · {{position}}",
   "auto": {
     "save_as_page_template": "保存为页面模板",

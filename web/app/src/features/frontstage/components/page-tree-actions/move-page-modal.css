@@ -22,20 +22,3 @@
   border-radius: 4px;
   cursor: grab;
 }
-
-/* Stable target bounds keep the visible drop slot authoritative. */
-.move-page-modal__projection--before,
-.move-page-modal__projection--after {
-  position: absolute;
-  inset-inline: 0;
-  min-height: 14px;
-  height: 14px;
-  z-index: 2;
-}
-
-.move-page-modal__projection--before {
-  top: -7px;
-}
-.move-page-modal__projection--after {
-  bottom: -7px;
-}

@@ -141,6 +141,8 @@ test('a group is moved as one node and cannot be placed inside its descendants',
 
 test('starts at root level and selecting a group shows its direct children and append projection', async () => {
   const { onMove, dialog } = setup();
+  expect(within(dialog).getByText('顶部导航栏')).toBeInTheDocument();
+  expect(within(dialog).queryByText('不分组')).not.toBeInTheDocument();
   expect(within(dialog).getByText('目标分组')).toBeInTheDocument();
   expect(within(dialog).queryByText('已有页面一')).not.toBeInTheDocument();
   expect(screen.queryByTestId('move-page-projection')).not.toBeInTheDocument();
@@ -174,6 +176,16 @@ test.each(['before', 'after'] as const)(
     const projection = screen.getByTestId('move-page-projection');
     expect(projection).toHaveAttribute('data-position', position);
     expect(projection).toHaveAttribute('data-target-id', 'second');
+    expect(projection.closest('.move-page-modal__row')).toBeNull();
+    const secondRow = dialog.querySelector(
+      '.move-page-modal__row[data-node-id="second"]'
+    )!;
+    expect(
+      secondRow.compareDocumentPosition(projection) &
+        (position === 'before'
+          ? Node.DOCUMENT_POSITION_PRECEDING
+          : Node.DOCUMENT_POSITION_FOLLOWING)
+    ).toBeTruthy();
     expect(
       within(dialog).getByRole('button', { name: /确\s*定/ })
     ).toBeDisabled();
@@ -227,11 +239,25 @@ test('the after-group projection follows its visible subtree at the group indent
   const transfer = beginDrag();
   hover('destination', 190, transfer);
   const projection = screen.getByTestId('move-page-projection');
-  expect(projection.closest('.move-page-modal__row')).toHaveAttribute(
-    'data-node-id',
-    'nested'
+  expect(projection.closest('.move-page-modal__row')).toBeNull();
+  const destinationRow = dialog.querySelector(
+    '.move-page-modal__row[data-node-id="destination"]'
+  )!;
+  const nestedRow = dialog.querySelector(
+    '.move-page-modal__row[data-node-id="nested"]'
+  )!;
+  const projectionItem = projection.closest('[role="treeitem"]')!;
+  expect(
+    projectionItem.querySelector('.ant-tree-indent')?.childElementCount
+  ).toBe(
+    destinationRow
+      .closest('[role="treeitem"]')!
+      .querySelector('.ant-tree-indent')?.childElementCount
   );
-  expect(projection).toHaveStyle({ insetInlineStart: '-20px' });
+  expect(
+    nestedRow.compareDocumentPosition(projection) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
   fireEvent.drop(projection, { dataTransfer: transfer });
   await act(async () =>
     within(dialog)
@@ -242,4 +268,19 @@ test('the after-group projection follows its visible subtree at the group indent
     parentId: null,
     after_id: 'destination'
   });
+});
+
+test('clicking a group after staging a sibling move selects its inside destination', () => {
+  const { dialog } = setup();
+  fireEvent.click(within(dialog).getByText('目标分组'));
+  const transfer = beginDrag();
+  hover('destination', 190, transfer);
+  fireEvent.drop(screen.getByTestId('move-page-projection'), {
+    dataTransfer: transfer
+  });
+  fireEvent.click(within(dialog).getByText('目标分组'));
+  expect(screen.getByTestId('move-page-projection')).toHaveAttribute(
+    'data-position',
+    'inside'
+  );
 });

@@ -125,29 +125,15 @@ export function MovePageModal({
     }
     endDrag();
   };
-  let projectionRowId = projection?.targetNodeId;
-  let projectionIndent = 0;
-  if (projection?.position === 'after' && projection.targetNodeId) {
-    let tail = findNodeById(pageTree, projection.targetNodeId);
-    while (tail && expandedKeys.includes(tail.id) && tail.children?.length) {
-      tail = tail.children.at(-1) ?? null;
-      projectionIndent += 1;
-    }
-    projectionRowId = tail?.id;
-  }
-
   const projectionBlock = (
     position: 'before' | 'inside' | 'after',
-    targetId: string | null,
-    indent = 0
+    targetId: string | null
   ) => (
     <div
       className={`move-page-modal__projection move-page-modal__projection--${position}`}
       style={{
         borderColor: FRONTSTAGE_DESIGN_BLUE.primary,
-        background: FRONTSTAGE_DESIGN_BLUE.bgSelected,
-        insetInlineStart: indent ? -indent * 20 : undefined,
-        width: indent ? `calc(100% + ${indent * 20}px)` : undefined
+        background: FRONTSTAGE_DESIGN_BLUE.bgSelected
       }}
       data-testid="move-page-projection"
       data-target-id={targetId ?? ROOT_KEY}
@@ -189,15 +175,6 @@ export function MovePageModal({
       onDrop={(event) => drop(event, targetId)}
     >
       {title}
-      {projectionRowId === targetId &&
-      projection &&
-      projection.position !== 'inside'
-        ? projectionBlock(
-            projection.position,
-            projection.targetNodeId,
-            projection.position === 'after' ? projectionIndent : 0
-          )
-        : null}
     </div>
   );
 
@@ -207,40 +184,51 @@ export function MovePageModal({
     nodes: FrontStageTreeNode[],
     parentId: string | null
   ): NonNullable<TreeProps['treeData']> => {
-    const items = nodes.map((item) => ({
-      key: item.id,
-      title: rowTitle(item.id, getNodeTitle(item), item.kind === 'group'),
-      icon: item.kind === 'group' ? <FolderOutlined /> : <FileTextOutlined />,
-      isLeaf:
-        item.kind !== 'group' ||
-        (!item.children?.length &&
-          !(
-            projection?.targetNodeId === item.id &&
-            projection.position === 'inside'
-          )),
-      selectable: Boolean(
-        resolveNavigationMove(pageTree, node.id, {
-          targetNodeId: item.id,
-          position: item.kind === 'group' ? 'inside' : 'after'
-        })
-      ),
-      children: expandedKeys.includes(item.id)
-        ? treeNodes(item.children ?? [], item.id)
-        : undefined
-    }));
+    const items: NonNullable<TreeProps['treeData']> = [];
+    const placeholder = (
+      position: NavigationMoveDraft['position'],
+      targetId: string | null
+    ) => ({
+      key: PROJECTION_KEY,
+      title: projectionBlock(position, targetId),
+      selectable: false,
+      isLeaf: true
+    });
+    for (const item of nodes) {
+      const isTarget = projection?.targetNodeId === item.id;
+      if (isTarget && projection.position === 'before') {
+        items.push(placeholder('before', item.id));
+      }
+      items.push({
+        key: item.id,
+        title: rowTitle(item.id, getNodeTitle(item), item.kind === 'group'),
+        icon: item.kind === 'group' ? <FolderOutlined /> : <FileTextOutlined />,
+        isLeaf:
+          item.kind !== 'group' ||
+          (!item.children?.length &&
+            !(
+              projection?.targetNodeId === item.id &&
+              projection.position === 'inside'
+            )),
+        selectable: Boolean(
+          resolveNavigationMove(pageTree, node.id, {
+            targetNodeId: item.id,
+            position: item.kind === 'group' ? 'inside' : 'after'
+          })
+        ),
+        children: expandedKeys.includes(item.id)
+          ? treeNodes(item.children ?? [], item.id)
+          : undefined
+      });
+      if (isTarget && projection.position === 'after') {
+        items.push(placeholder('after', item.id));
+      }
+    }
     if (
       projection?.targetNodeId === parentId &&
       projection.position === 'inside'
     ) {
-      return [
-        ...items,
-        {
-          key: PROJECTION_KEY,
-          title: projectionBlock('inside', parentId),
-          selectable: false,
-          isLeaf: true
-        }
-      ];
+      items.push(placeholder('inside', parentId));
     }
     return items;
   };
@@ -322,9 +310,9 @@ export function MovePageModal({
             autoExpandParent={false}
             onExpand={(keys) => setExpandedKeys(keys.map(String))}
             selectedKeys={draft ? [draft.targetNodeId ?? ROOT_KEY] : []}
-            onSelect={(keys) => {
-              if (!keys.length) return;
-              const targetId = keys[0] === ROOT_KEY ? null : String(keys[0]);
+            onSelect={(_, info) => {
+              const targetId =
+                info.node.key === ROOT_KEY ? null : String(info.node.key);
               const target = targetId ? findNodeById(pageTree, targetId) : null;
               const next: NavigationMoveDraft = {
                 targetNodeId: targetId,
@@ -341,7 +329,7 @@ export function MovePageModal({
                 key: ROOT_KEY,
                 title: rowTitle(
                   null,
-                  i18nText('frontstage', 'auto.not_grouped'),
+                  i18nText('frontstage', 'move_topbar_root'),
                   true
                 ),
                 icon: <FolderOutlined />,

@@ -363,7 +363,7 @@ describe('FrontStagePage - page tree move', () => {
   test('allows moving to the root and cancelling without saving', async () => {
     const { onMovePageNode } = renderMovePage();
     let dialog = await openMoveDialog();
-    await clickAndFlush(within(dialog).getByText('不分组'));
+    await clickAndFlush(within(dialog).getByText('顶部导航栏'));
     await clickAndFlush(
       within(dialog).getByRole('button', { name: /取\s*消/ })
     );
@@ -372,7 +372,7 @@ describe('FrontStagePage - page tree move', () => {
     expect(
       within(dialog).getByRole('button', { name: /确\s*定/ })
     ).toBeDisabled();
-    await clickAndFlush(within(dialog).getByText('不分组'));
+    await clickAndFlush(within(dialog).getByText('顶部导航栏'));
     await clickAndFlush(
       within(dialog).getByRole('button', { name: /确\s*定/ })
     );
@@ -468,7 +468,7 @@ describe('FrontStagePage - page tree move', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     );
     dialog = await openMoveDialog('页面 page-1');
-    await clickAndFlush(within(dialog).getByText('不分组'));
+    await clickAndFlush(within(dialog).getByText('顶部导航栏'));
     await clickAndFlush(
       within(dialog).getByRole('button', { name: /确\s*定/ })
     );

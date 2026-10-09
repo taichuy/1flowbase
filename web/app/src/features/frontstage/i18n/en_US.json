@@ -4,6 +4,7 @@
     "inside": "Move into group",
     "after": "After"
   },
+  "move_topbar_root": "Top navigation bar",
   "move_projection": "{{page}} · {{position}}",
   "auto": {
     "save_as_page_template": "Save as page template",
