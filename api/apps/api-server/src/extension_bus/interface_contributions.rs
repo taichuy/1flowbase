@@ -1729,6 +1729,7 @@ pub(crate) fn production_interface_contributions(
                 ),
                 crate::routes::application_public_api::native_read_interface::native_resume_port(
                     state.store.clone(),
+                    state.infrastructure.published_plan_cache(),
                     crate::routes::application_public_api::native::api_provider_runtime(state),
                     Arc::clone(&state.runtime_engine),
                     state.provider_secret_master_key.clone(),

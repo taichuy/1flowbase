@@ -430,6 +430,7 @@ pub(crate) fn native_run_terminal_dependencies(
         dependencies.provider_transport_store.clone(),
         dependencies.runtime_event_stream.clone(),
     )
+    .with_published_plan_cache(dependencies.published_plan_cache.clone())
 }
 
 pub(crate) fn application_actor_from_principal(

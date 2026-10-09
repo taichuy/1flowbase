@@ -1,5 +1,14 @@
 use super::*;
 
+/// A frozen database interval for one hot stream generation. Its cursors are
+/// database sequences, independent of the generation-local client cursor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeEventReplayWindow {
+    pub after_sequence: i64,
+    pub through_sequence: i64,
+    pub generation_id: Option<Uuid>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListApplicationRunsPageInput {
     pub page: i64,

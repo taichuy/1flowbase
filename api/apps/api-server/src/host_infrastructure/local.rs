@@ -129,7 +129,23 @@ fn install_legacy_local_infrastructure_services(registry: &mut HostInfrastructur
         RATE_LIMIT_STORE_NAMESPACE,
         LOCAL_CACHE_MAX_CAPACITY,
     )) as Arc<dyn RateLimitStore>);
-    registry.set_runtime_event_stream(
-        Arc::new(LocalRuntimeEventStream::new()) as Arc<dyn RuntimeEventStream>
-    );
+    let mut event_stream = LocalRuntimeEventStream::new();
+    if let Ok(value) = std::env::var("API_RUNTIME_REPLAY_HOT_TTL_SECONDS") {
+        match value.parse::<u64>() {
+            Ok(seconds) => {
+                event_stream =
+                    event_stream.with_recoverable_retention(std::time::Duration::from_secs(seconds))
+            }
+            Err(_) => tracing::warn!(
+                "invalid API_RUNTIME_REPLAY_HOT_TTL_SECONDS; using default replay retention"
+            ),
+        }
+    }
+    if let Ok(value) = std::env::var("API_RUNTIME_REPLAY_RECOVERABLE_MAX_BYTES") {
+        match value.parse::<usize>() {
+            Ok(bytes) => event_stream = event_stream.with_recoverable_byte_budget(bytes),
+            Err(_) => tracing::warn!("invalid API_RUNTIME_REPLAY_RECOVERABLE_MAX_BYTES; leaving recoverable cache budget unset"),
+        }
+    }
+    registry.set_runtime_event_stream(Arc::new(event_stream) as Arc<dyn RuntimeEventStream>);
 }

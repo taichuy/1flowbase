@@ -27,7 +27,7 @@ use control_plane::{
     mcp_management::McpManagementService,
     orchestration_runtime::{
         debug_stream_events, project_runtime_event_stream_terminal,
-        spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
+        start_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
     ports::{
@@ -693,11 +693,12 @@ pub(super) async fn launch_assistant_execution(
         .runtime_event_stream
         .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
         .await?;
-    let persister_handle = spawn_runtime_debug_event_persister(
+    let persister_handle = start_runtime_debug_event_persister(
         dependencies.store.clone(),
         dependencies.runtime_event_stream.clone(),
         run_id,
-    );
+    )
+    .await;
     dependencies
         .runtime_event_stream
         .append(run_id, debug_stream_events::flow_accepted(run_id))

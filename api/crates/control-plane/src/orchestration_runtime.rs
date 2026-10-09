@@ -267,7 +267,8 @@ where
 
 pub use runtime_event_persister::{
     project_runtime_event_stream_terminal, spawn_runtime_debug_event_persister,
-    spawn_runtime_debug_event_persister_with_after_commit, wait_for_runtime_debug_event_persister,
+    spawn_runtime_debug_event_persister_with_after_commit, start_runtime_debug_event_persister,
+    wait_for_runtime_debug_event_persister,
 };
 
 #[derive(Clone)]

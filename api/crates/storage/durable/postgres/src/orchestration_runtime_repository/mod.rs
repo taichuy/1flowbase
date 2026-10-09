@@ -50,6 +50,7 @@ use control_plane_contracts::{
         ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput, ResumeClaimDisposition,
         ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
         RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, RuntimeEventDeliveryClaim,
+        RuntimeEventReplayWindow,
         SettleCreditInput, ToolCallbackRoundDisposition, UpdateCallbackTaskPayloadsInput,
         UpdateCheckpointPayloadsInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
         UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
@@ -864,6 +865,28 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
             after_sequence,
             through_sequence,
             limit,
+        )
+        .await
+    }
+
+    async fn get_runtime_event_replay_window(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Option<RuntimeEventReplayWindow>> {
+        PgControlPlaneStore::get_runtime_event_replay_window(self, flow_run_id).await
+    }
+
+    async fn has_runtime_event_terminal_after(
+        &self,
+        flow_run_id: Uuid,
+        after_sequence: i64,
+        event_type: &str,
+    ) -> Result<bool> {
+        PgControlPlaneStore::has_runtime_event_terminal_after(
+            self,
+            flow_run_id,
+            after_sequence,
+            event_type,
         )
         .await
     }

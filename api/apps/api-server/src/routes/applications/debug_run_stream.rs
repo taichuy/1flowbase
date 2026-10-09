@@ -3,7 +3,7 @@ use std::{convert::Infallible, sync::Arc};
 use axum::response::sse::Event;
 use control_plane::ports::{
     OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventEnvelope,
-    RuntimeEventStream,
+    RuntimeEventReplayWindow, RuntimeEventStream,
 };
 use serde::Serialize;
 use time::format_description::well_known::Rfc3339;
@@ -15,10 +15,16 @@ const DURABLE_BACKFILL_PAGE_SIZE: usize = 1_000;
 
 #[async_trait::async_trait]
 pub trait RuntimeEventBackfillSource: Send + Sync {
-    async fn list_runtime_event_backfill_page(
+    async fn get_runtime_event_replay_window(
         &self,
         run_id: Uuid,
-        after_stream_sequence: i64,
+    ) -> anyhow::Result<Option<RuntimeEventReplayWindow>>;
+
+    async fn list_runtime_event_durable_page(
+        &self,
+        run_id: Uuid,
+        after_sequence: i64,
+        through_sequence: Option<i64>,
         limit: usize,
     ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>>;
 }
@@ -28,16 +34,24 @@ impl<T> RuntimeEventBackfillSource for T
 where
     T: OrchestrationRuntimeRepository + Send + Sync,
 {
-    async fn list_runtime_event_backfill_page(
+    async fn get_runtime_event_replay_window(
         &self,
         run_id: Uuid,
-        after_stream_sequence: i64,
+    ) -> anyhow::Result<Option<RuntimeEventReplayWindow>> {
+        OrchestrationRuntimeRepository::get_runtime_event_replay_window(self, run_id).await
+    }
+    async fn list_runtime_event_durable_page(
+        &self,
+        run_id: Uuid,
+        after_sequence: i64,
+        through_sequence: Option<i64>,
         limit: usize,
     ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>> {
-        OrchestrationRuntimeRepository::list_runtime_event_backfill_page(
+        OrchestrationRuntimeRepository::list_runtime_event_durable_page(
             self,
             run_id,
-            after_stream_sequence,
+            after_sequence,
+            through_sequence,
             limit,
         )
         .await
@@ -132,55 +146,96 @@ pub(crate) fn runtime_event_to_websocket_value(
 
 pub(crate) async fn send_runtime_event_websocket_stream(
     stream: Arc<dyn RuntimeEventStream>,
+    backfill_source: Arc<dyn RuntimeEventBackfillSource>,
     run_id: Uuid,
     from_sequence: Option<i64>,
     sender: mpsc::Sender<serde_json::Value>,
 ) {
-    let Ok(mut subscription) = stream.subscribe(run_id, from_sequence).await else {
-        let _ = sender
-            .send(serde_json::json!({
-                "type": "replay_expired",
-                "run_id": run_id,
-                "from_sequence": from_sequence,
-                "reason": "cursor_expired"
-            }))
-            .await;
-        return;
-    };
-    for event in subscription.replay {
-        let terminal = is_terminal_runtime_event(&event.event_type);
-        if sender
-            .send(runtime_event_to_websocket_value(event))
-            .await
-            .is_err()
-        {
-            return;
-        }
-        if terminal {
-            return;
-        }
-    }
-    while let Some(event) = subscription.live_events.recv().await {
-        let terminal = is_terminal_runtime_event(&event.event_type);
-        if sender
-            .send(runtime_event_to_websocket_value(event))
-            .await
-            .is_err()
-        {
-            return;
-        }
-        if terminal {
-            return;
+    send_debug_stream(
+        stream,
+        backfill_source,
+        run_id,
+        from_sequence,
+        DebugSender::WebSocket(sender),
+    )
+    .await;
+}
+
+/// Both transports use the same finite-page replay and await downstream capacity.
+enum DebugSender {
+    Sse(mpsc::Sender<Result<Event, Infallible>>),
+    WebSocket(mpsc::Sender<serde_json::Value>),
+}
+
+impl DebugSender {
+    async fn closed(&self) {
+        match self {
+            Self::Sse(sender) => sender.closed().await,
+            Self::WebSocket(sender) => sender.closed().await,
         }
     }
-    let _ = sender
-        .send(serde_json::json!({
-            "type": "replay_gap",
-            "run_id": run_id,
-            "from_sequence": from_sequence,
-            "reason": "live_stream_closed_without_terminal"
-        }))
+    async fn envelope(&self, event: RuntimeEventEnvelope) -> bool {
+        match self {
+            Self::Sse(sender) => sender.send(runtime_event_to_sse(event)).await.is_ok(),
+            Self::WebSocket(sender) => sender
+                .send(runtime_event_to_websocket_value(event))
+                .await
+                .is_ok(),
+        }
+    }
+    async fn record(&self, event: domain::RuntimeEventRecord) -> bool {
+        match self {
+            Self::Sse(sender) => sender
+                .send(runtime_event_record_to_sse(event))
+                .await
+                .is_ok(),
+            Self::WebSocket(sender) => {
+                let response = to_runtime_event_record_response(event);
+                let mut value =
+                    serde_json::to_value(&response).expect("durable envelope should serialize");
+                value["type"] = serde_json::Value::String(response.event_type);
+                sender.send(value).await.is_ok()
+            }
+        }
+    }
+    async fn marker<T: Serialize>(&self, kind: &str, response: T) -> bool {
+        match self {
+            Self::Sse(sender) => sender
+                .send(Ok(Event::default()
+                    .event(kind)
+                    .json_data(response)
+                    .expect("debug marker should serialize")))
+                .await
+                .is_ok(),
+            Self::WebSocket(sender) => sender
+                .send(serde_json::to_value(response).expect("debug marker should serialize"))
+                .await
+                .is_ok(),
+        }
+    }
+    async fn gap(&self, run_id: Uuid, from_sequence: Option<i64>, reason: &'static str) {
+        self.marker(
+            "replay_gap",
+            RuntimeEventReplayGapResponse {
+                response_type: "replay_gap",
+                run_id: run_id.to_string(),
+                from_sequence,
+                reason,
+            },
+        )
         .await;
+    }
+    async fn unavailable(&self, run_id: Uuid, from_sequence: Option<i64>, reason: &'static str) {
+        if self
+            .marker(
+                "replay_expired",
+                to_replay_expired_response(run_id, from_sequence),
+            )
+            .await
+        {
+            self.gap(run_id, from_sequence, reason).await;
+        }
+    }
 }
 
 fn payload_i64(payload: &serde_json::Value, key: &str) -> Option<i64> {
@@ -279,53 +334,6 @@ pub fn replay_expired_to_sse(
         .expect("replay_expired payload should serialize"))
 }
 
-fn durable_backfill_to_sse(
-    run_id: Uuid,
-    from_sequence: Option<i64>,
-    events: &[domain::RuntimeEventRecord],
-    has_more: bool,
-) -> Result<Event, Infallible> {
-    let first_sequence = events
-        .first()
-        .map(durable_event_stream_sequence)
-        .unwrap_or_else(|| from_sequence.unwrap_or(0));
-    let last_sequence = events
-        .last()
-        .map(durable_event_stream_sequence)
-        .unwrap_or(first_sequence);
-    let payload = RuntimeEventDurableBackfillResponse {
-        response_type: "durable_backfill",
-        run_id: run_id.to_string(),
-        from_sequence,
-        first_sequence,
-        last_sequence,
-        event_count: events.len(),
-        has_more,
-        reason: "cursor_expired",
-    };
-    Ok(Event::default()
-        .event("durable_backfill")
-        .json_data(payload)
-        .expect("durable_backfill payload should serialize"))
-}
-
-fn replay_gap_to_sse(
-    run_id: Uuid,
-    from_sequence: Option<i64>,
-    reason: &'static str,
-) -> Result<Event, Infallible> {
-    let payload = RuntimeEventReplayGapResponse {
-        response_type: "replay_gap",
-        run_id: run_id.to_string(),
-        from_sequence,
-        reason,
-    };
-    Ok(Event::default()
-        .event("replay_gap")
-        .json_data(payload)
-        .expect("replay_gap payload should serialize"))
-}
-
 fn is_terminal_runtime_event(event_type: &str) -> bool {
     RuntimeEventCloseReason::from_terminal_event_type(event_type).is_some()
 }
@@ -337,27 +345,70 @@ pub async fn send_runtime_event_stream(
     from_sequence: Option<i64>,
     sender: mpsc::Sender<Result<Event, Infallible>>,
 ) {
-    let Ok(mut subscription) = stream.subscribe(run_id, from_sequence).await else {
-        send_durable_backfill(backfill_source, run_id, from_sequence, sender).await;
-        return;
-    };
+    send_debug_stream(
+        stream,
+        backfill_source,
+        run_id,
+        from_sequence,
+        DebugSender::Sse(sender),
+    )
+    .await;
+}
 
-    for event in subscription.replay {
-        let is_terminal = is_terminal_runtime_event(&event.event_type);
-        if sender.send(runtime_event_to_sse(event)).await.is_err() {
+async fn send_debug_stream(
+    stream: Arc<dyn RuntimeEventStream>,
+    backfill_source: Arc<dyn RuntimeEventBackfillSource>,
+    run_id: Uuid,
+    from_sequence: Option<i64>,
+    sender: DebugSender,
+) {
+    let subscription = tokio::select! {
+        _ = sender.closed() => return,
+        result = stream.subscribe(run_id, from_sequence) => result,
+    };
+    let mut subscription = match subscription {
+        Ok(subscription) => subscription,
+        Err(_) => {
+            // Read scalar generation authority without allocating a cursorless
+            // hot replay. An open generation cannot safely be joined from a
+            // semantic DB reconstruction alone.
+            let writer = tokio::select! {
+                _ = sender.closed() => return,
+                result = stream.terminal_writer(run_id) => result.ok(),
+            };
+            let completed =
+                send_durable_backfill(backfill_source, run_id, from_sequence, &sender).await;
+            if completed
+                && writer
+                    .as_ref()
+                    .is_some_and(|writer| writer.closure().is_none())
+            {
+                sender
+                    .gap(run_id, from_sequence, "unresolved_live_gap")
+                    .await;
+            }
             return;
         }
-        if is_terminal {
+    };
+    for event in subscription.replay {
+        let terminal = is_terminal_runtime_event(&event.event_type);
+        if !sender.envelope(event).await || terminal {
             return;
         }
     }
-
-    while let Some(event) = subscription.live_events.recv().await {
-        let is_terminal = is_terminal_runtime_event(&event.event_type);
-        if sender.send(runtime_event_to_sse(event)).await.is_err() {
+    loop {
+        let event = tokio::select! {
+            _ = sender.closed() => return,
+            event = subscription.live_events.recv() => event,
+        };
+        let Some(event) = event else {
+            sender
+                .gap(run_id, from_sequence, "live_stream_closed_without_terminal")
+                .await;
             return;
-        }
-        if is_terminal {
+        };
+        let terminal = is_terminal_runtime_event(&event.event_type);
+        if !sender.envelope(event).await || terminal {
             return;
         }
     }
@@ -367,67 +418,111 @@ async fn send_durable_backfill(
     backfill_source: Arc<dyn RuntimeEventBackfillSource>,
     run_id: Uuid,
     from_sequence: Option<i64>,
-    sender: mpsc::Sender<Result<Event, Infallible>>,
-) {
-    let after_sequence = from_sequence.unwrap_or(0);
-    let mut events = match backfill_source
-        .list_runtime_event_backfill_page(run_id, after_sequence, DURABLE_BACKFILL_PAGE_SIZE + 1)
-        .await
-    {
-        Ok(events) => events,
+    sender: &DebugSender,
+) -> bool {
+    let window = tokio::select! {
+        _ = sender.closed() => return false,
+        result = backfill_source.get_runtime_event_replay_window(run_id) => result,
+    };
+    let window = match window {
+        Ok(Some(window)) => window,
+        Ok(None) => {
+            sender
+                .unavailable(run_id, from_sequence, "durable_history_unavailable")
+                .await;
+            return false;
+        }
         Err(_) => {
-            let _ = sender
-                .send(replay_expired_to_sse(run_id, from_sequence))
+            sender
+                .unavailable(run_id, from_sequence, "durable_backfill_failed")
                 .await;
-            let _ = sender
-                .send(replay_gap_to_sse(
-                    run_id,
-                    from_sequence,
-                    "durable_backfill_failed",
-                ))
-                .await;
-            return;
+            return false;
         }
     };
-    let has_more = events.len() > DURABLE_BACKFILL_PAGE_SIZE;
-    if has_more {
-        events.truncate(DURABLE_BACKFILL_PAGE_SIZE);
-    }
-    if events.is_empty() {
-        let _ = sender
-            .send(replay_expired_to_sse(run_id, from_sequence))
-            .await;
-        let _ = sender
-            .send(replay_gap_to_sse(
-                run_id,
-                from_sequence,
-                "durable_history_unavailable",
-            ))
-            .await;
-        return;
-    }
-
-    if sender
-        .send(durable_backfill_to_sse(
-            run_id,
+    let mut durable_cursor = window.after_sequence;
+    let mut read_any = false;
+    while durable_cursor < window.through_sequence {
+        let page = tokio::select! {
+            _ = sender.closed() => return false,
+            result = backfill_source.list_runtime_event_durable_page(run_id, durable_cursor, Some(window.through_sequence), DURABLE_BACKFILL_PAGE_SIZE) => result,
+        };
+        let mut events = match page {
+            Ok(events) => events,
+            Err(_) => {
+                sender
+                    .unavailable(run_id, from_sequence, "durable_backfill_failed")
+                    .await;
+                return false;
+            }
+        };
+        if events.is_empty() {
+            break;
+        }
+        let next = events.last().expect("nonempty durable page").sequence;
+        if next <= durable_cursor {
+            sender
+                .unavailable(run_id, from_sequence, "durable_backfill_failed")
+                .await;
+            return false;
+        }
+        durable_cursor = next;
+        read_any = true;
+        // Local cursors only apply to explicit local sequence metadata. Durable
+        // facts without it remain necessary for semantic reconstruction.
+        events.retain(|event| {
+            if event.event_type == "runtime_stream_opened" {
+                return false;
+            }
+            if let (Some(generation), Some(tag)) = (
+                window.generation_id,
+                event
+                    .payload
+                    .get("stream_generation_id")
+                    .and_then(serde_json::Value::as_str),
+            ) {
+                if Uuid::parse_str(tag).ok() != Some(generation) {
+                    return false;
+                }
+            }
+            let local = payload_i64(&event.payload, "sequence_end")
+                .or_else(|| payload_i64(&event.payload, "stream_sequence"));
+            from_sequence.is_none_or(|cursor| local.is_none_or(|sequence| sequence > cursor))
+        });
+        let marker = RuntimeEventDurableBackfillResponse {
+            response_type: "durable_backfill",
+            run_id: run_id.to_string(),
             from_sequence,
-            &events,
-            has_more,
-        ))
-        .await
-        .is_err()
-    {
-        return;
-    }
-    for event in events {
-        if sender
-            .send(runtime_event_record_to_sse(event))
-            .await
-            .is_err()
-        {
-            return;
+            first_sequence: events
+                .first()
+                .map(durable_event_stream_sequence)
+                .unwrap_or(from_sequence.unwrap_or(0)),
+            last_sequence: events
+                .last()
+                .map(durable_event_stream_sequence)
+                .unwrap_or(from_sequence.unwrap_or(0)),
+            event_count: events.len(),
+            has_more: durable_cursor < window.through_sequence,
+            reason: if window.generation_id.is_some() {
+                "durable_semantic_reconstruction"
+            } else {
+                "legacy_durable_semantic_reconstruction"
+            },
+        };
+        if !sender.marker("durable_backfill", marker).await {
+            return false;
+        }
+        for event in events {
+            if !sender.record(event).await {
+                return false;
+            }
         }
     }
+    if !read_any {
+        sender
+            .unavailable(run_id, from_sequence, "durable_history_unavailable")
+            .await;
+    }
+    read_any
 }
 
 #[cfg(test)]
@@ -489,22 +584,54 @@ mod tests {
     struct RecordingBackfillSource {
         calls: AtomicUsize,
         events: std::sync::Mutex<Vec<domain::RuntimeEventRecord>>,
+        window: std::sync::Mutex<Option<RuntimeEventReplayWindow>>,
+        fail_page: std::sync::atomic::AtomicBool,
+        stall_page: std::sync::atomic::AtomicBool,
     }
 
     #[async_trait::async_trait]
     impl RuntimeEventBackfillSource for RecordingBackfillSource {
-        async fn list_runtime_event_backfill_page(
+        async fn get_runtime_event_replay_window(
             &self,
             _run_id: Uuid,
-            _after_stream_sequence: i64,
-            limit: usize,
-        ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
+        ) -> anyhow::Result<Option<RuntimeEventReplayWindow>> {
+            if let Some(window) = *self.window.lock().unwrap() {
+                return Ok(Some(window));
+            }
             Ok(self
                 .events
                 .lock()
-                .expect("backfill events lock should be available")
+                .unwrap()
+                .last()
+                .map(|event| RuntimeEventReplayWindow {
+                    after_sequence: 0,
+                    through_sequence: event.sequence,
+                    generation_id: None,
+                }))
+        }
+        async fn list_runtime_event_durable_page(
+            &self,
+            _run_id: Uuid,
+            after_sequence: i64,
+            through_sequence: Option<i64>,
+            limit: usize,
+        ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail_page.load(Ordering::SeqCst) {
+                anyhow::bail!("fixture DB failure");
+            }
+            if self.stall_page.load(Ordering::SeqCst) {
+                std::future::pending::<()>().await;
+            }
+            Ok(self
+                .events
+                .lock()
+                .unwrap()
                 .iter()
+                .filter(|event| {
+                    event.sequence > after_sequence
+                        && through_sequence.is_none_or(|end| event.sequence <= end)
+                })
                 .take(limit)
                 .cloned()
                 .collect())
@@ -574,6 +701,7 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(8);
         let handle = tokio::spawn(send_runtime_event_websocket_stream(
             stream.clone(),
+            Arc::new(RecordingBackfillSource::default()),
             run_id,
             None,
             sender,
@@ -711,7 +839,261 @@ mod tests {
         let second = receiver.recv().await.expect("durable event should be sent");
         assert!(first.is_ok());
         assert!(second.is_ok());
+        assert!(receiver
+            .recv()
+            .await
+            .expect("active cold gap should be explicit")
+            .is_ok());
         assert!(receiver.recv().await.is_none());
         assert_eq!(backfill.calls.load(Ordering::SeqCst), 1);
+    }
+    #[tokio::test]
+    async fn cold_websocket_replays_more_than_one_durable_page() {
+        let run_id = Uuid::now_v7();
+        let backfill = Arc::new(RecordingBackfillSource::default());
+        *backfill.events.lock().unwrap() = (1..=1005)
+            .map(|sequence| {
+                durable_runtime_event(
+                    run_id,
+                    if sequence == 1005 {
+                        "flow_finished"
+                    } else {
+                        "opaque_item"
+                    },
+                    sequence,
+                )
+            })
+            .collect();
+        let (sender, mut receiver) = mpsc::channel(2);
+        let handle = tokio::spawn(send_runtime_event_websocket_stream(
+            Arc::new(LocalRuntimeEventStream::new()),
+            backfill.clone(),
+            run_id,
+            None,
+            sender,
+        ));
+        let mut records = 0;
+        let mut markers = Vec::new();
+        while let Some(event) = receiver.recv().await {
+            match event["type"].as_str().unwrap() {
+                "durable_backfill" => markers.push(event),
+                "opaque_item" | "flow_finished" => records += 1,
+                other => panic!("successful cold read must not warn: {other}"),
+            }
+        }
+        handle.await.unwrap();
+        assert_eq!(records, 1005);
+        assert_eq!(markers.len(), 2);
+        assert_eq!(markers[0]["has_more"], true);
+        assert_eq!(markers[1]["has_more"], false);
+        assert_eq!(backfill.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn cold_generation_uses_db_anchor_independently_of_local_cursor() {
+        let run_id = Uuid::now_v7();
+        let backfill = Arc::new(RecordingBackfillSource::default());
+        *backfill.window.lock().unwrap() = Some(RuntimeEventReplayWindow {
+            after_sequence: 5000,
+            through_sequence: 5003,
+            generation_id: Some(Uuid::now_v7()),
+        });
+        let mut acknowledged = durable_runtime_event(run_id, "opaque_item", 5001);
+        acknowledged.payload = json!({"stream_sequence": 1});
+        let mut fact = durable_runtime_event(run_id, "opaque_item", 5002);
+        fact.payload = json!({"opaque": {"untouched": true}});
+        let mut terminal = durable_runtime_event(run_id, "flow_failed", 5003);
+        terminal.payload = json!({"stream_sequence": 3, "error": {"message": "upstream-original"}});
+        *backfill.events.lock().unwrap() = vec![acknowledged, fact.clone(), terminal.clone()];
+        let (sender, mut receiver) = mpsc::channel(8);
+        send_runtime_event_websocket_stream(
+            Arc::new(LocalRuntimeEventStream::new()),
+            backfill,
+            run_id,
+            Some(1),
+            sender,
+        )
+        .await;
+        let marker = receiver.recv().await.unwrap();
+        assert_eq!(marker["event_count"], 2);
+        assert_eq!(marker["reason"], "durable_semantic_reconstruction");
+        assert_eq!(receiver.recv().await.unwrap()["payload"], fact.payload);
+        let failure = receiver.recv().await.unwrap();
+        assert_eq!(failure["sequence"], 3);
+        assert_eq!(failure["payload"], terminal.payload);
+        assert!(receiver.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn cold_db_failure_keeps_existing_failure_messages() {
+        let run_id = Uuid::now_v7();
+        let backfill = Arc::new(RecordingBackfillSource::default());
+        backfill
+            .events
+            .lock()
+            .unwrap()
+            .push(durable_runtime_event(run_id, "flow_finished", 1));
+        backfill.fail_page.store(true, Ordering::SeqCst);
+        let (sender, mut receiver) = mpsc::channel(8);
+        send_runtime_event_websocket_stream(
+            Arc::new(LocalRuntimeEventStream::new()),
+            backfill,
+            run_id,
+            None,
+            sender,
+        )
+        .await;
+        assert_eq!(receiver.recv().await.unwrap()["type"], "replay_expired");
+        let gap = receiver.recv().await.unwrap();
+        assert_eq!(gap["type"], "replay_gap");
+        assert_eq!(gap["reason"], "durable_backfill_failed");
+        assert!(receiver.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn receiver_drop_cancels_inflight_cold_page_read() {
+        let run_id = Uuid::now_v7();
+        let backfill = Arc::new(RecordingBackfillSource::default());
+        backfill
+            .events
+            .lock()
+            .unwrap()
+            .push(durable_runtime_event(run_id, "flow_finished", 1));
+        backfill.stall_page.store(true, Ordering::SeqCst);
+        let (sender, receiver) = mpsc::channel(1);
+        let handle = tokio::spawn(send_runtime_event_websocket_stream(
+            Arc::new(LocalRuntimeEventStream::new()),
+            backfill.clone(),
+            run_id,
+            None,
+            sender,
+        ));
+        timeout(Duration::from_secs(1), async {
+            while backfill.calls.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        drop(receiver);
+        timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("dropped receiver must cancel DB wait")
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn receiver_drop_cancels_idle_hot_stream() {
+        let run_id = Uuid::now_v7();
+        let stream = Arc::new(LocalRuntimeEventStream::new());
+        stream
+            .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+            .await
+            .unwrap();
+        let (sender, receiver) = mpsc::channel(1);
+        let handle = tokio::spawn(send_runtime_event_websocket_stream(
+            stream,
+            Arc::new(RecordingBackfillSource::default()),
+            run_id,
+            None,
+            sender,
+        ));
+        drop(receiver);
+        timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("idle forwarder must observe receiver closure")
+            .unwrap();
+    }
+    #[tokio::test]
+    async fn closed_hot_cursor_miss_uses_full_cold_sse_without_failure_markers() {
+        let run_id = Uuid::now_v7();
+        let stream = Arc::new(LocalRuntimeEventStream::new());
+        stream
+            .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+            .await
+            .unwrap();
+        stream
+            .append(run_id, runtime_event("flow_finished"))
+            .await
+            .unwrap();
+        stream
+            .close_run(run_id, RuntimeEventCloseReason::Finished)
+            .await
+            .unwrap();
+        stream
+            .trim(
+                run_id,
+                RuntimeEventTrimPolicy {
+                    before_sequence: Some(2),
+                    keep_required: false,
+                },
+            )
+            .await
+            .unwrap();
+        let backfill = Arc::new(RecordingBackfillSource::default());
+        *backfill.events.lock().unwrap() = (1..=1005)
+            .map(|sequence| {
+                durable_runtime_event(
+                    run_id,
+                    if sequence == 1005 {
+                        "flow_finished"
+                    } else {
+                        "opaque_item"
+                    },
+                    sequence,
+                )
+            })
+            .collect();
+        let (sender, mut receiver) = mpsc::channel(2);
+        let handle = tokio::spawn(send_runtime_event_stream(
+            stream,
+            backfill.clone(),
+            run_id,
+            Some(0),
+            sender,
+        ));
+        let mut count = 0;
+        while let Some(event) = receiver.recv().await {
+            assert!(event.is_ok());
+            count += 1;
+        }
+        handle.await.unwrap();
+        // Exactly two page markers and every durable fact; replay_expired,
+        // replay_gap or a truncated first page would change this count.
+        assert_eq!(count, 1007);
+        assert_eq!(backfill.calls.load(Ordering::SeqCst), 2);
+    }
+    #[tokio::test]
+    async fn cold_generation_excludes_prior_generation_late_rows_and_anchors() {
+        let run_id = Uuid::now_v7();
+        let generation = Uuid::now_v7();
+        let backfill = Arc::new(RecordingBackfillSource::default());
+        *backfill.window.lock().unwrap() = Some(RuntimeEventReplayWindow {
+            after_sequence: 5000,
+            through_sequence: 5004,
+            generation_id: Some(generation),
+        });
+        let mut late = durable_runtime_event(run_id, "flow_failed", 5001);
+        late.payload = json!({"stream_generation_id": Uuid::now_v7(), "stream_sequence": 9, "error": "old-generation"});
+        let mut anchor = durable_runtime_event(run_id, "runtime_stream_opened", 5002);
+        anchor.payload = json!({"stream_generation_id": generation});
+        let mut fact = durable_runtime_event(run_id, "opaque_item", 5003);
+        fact.payload = json!({"business_fact": "untagged-must-survive"});
+        let mut terminal = durable_runtime_event(run_id, "flow_finished", 5004);
+        terminal.payload = json!({"stream_generation_id": generation, "stream_sequence": 2});
+        *backfill.events.lock().unwrap() = vec![late, anchor, fact.clone(), terminal.clone()];
+        let (sender, mut receiver) = mpsc::channel(8);
+        send_runtime_event_websocket_stream(
+            Arc::new(LocalRuntimeEventStream::new()),
+            backfill,
+            run_id,
+            None,
+            sender,
+        )
+        .await;
+        assert_eq!(receiver.recv().await.unwrap()["event_count"], 2);
+        assert_eq!(receiver.recv().await.unwrap()["payload"], fact.payload);
+        assert_eq!(receiver.recv().await.unwrap()["payload"], terminal.payload);
+        assert!(receiver.recv().await.is_none());
     }
 }

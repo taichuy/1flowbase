@@ -28,6 +28,7 @@ pub(super) async fn append_runtime_event<R, H>(
     R: OrchestrationRuntimeRepository,
 {
     if let Some(stream) = &service.runtime_event_stream {
+        let writer = stream.terminal_writer(flow_run_id).await.ok();
         let mut durable_event = event.clone();
         event.persist_required = false;
         event.durability = RuntimeEventDurability::Ephemeral;
@@ -40,6 +41,15 @@ pub(super) async fn append_runtime_event<R, H>(
                     envelope.sequence,
                     envelope.sequence,
                 );
+                if let (Some(generation_id), Some(payload)) = (
+                    writer.as_ref().and_then(|writer| writer.generation_id()),
+                    durable_event.payload.as_object_mut(),
+                ) {
+                    payload.insert(
+                        "stream_generation_id".into(),
+                        serde_json::json!(generation_id),
+                    );
+                }
                 if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
                     &service.repository,
                     flow_run_id,
@@ -47,6 +57,9 @@ pub(super) async fn append_runtime_event<R, H>(
                 )
                 .await
                 {
+                    if let Some(writer) = &writer {
+                        writer.record_persistence_failure();
+                    }
                     tracing::warn!(
                         flow_run_id = %flow_run_id,
                         event_type = %event_type,

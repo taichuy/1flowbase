@@ -20,7 +20,9 @@ use control_plane::application_public_api::{
 use control_plane::{
     application_public_api::native::{NativeRunResult, NativeUsage},
     orchestration_runtime::{
-        debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
+        debug_stream_events, start_runtime_debug_event_persister,
+        wait_for_runtime_debug_event_persister, OrchestrationRuntimeService,
+        StartPublishedFlowRunCommand,
     },
     ports::{RuntimeEventDeliveryClaim, RuntimeEventEnvelope, RuntimeEventPayload},
 };
@@ -41,6 +43,7 @@ use crate::{
         compatibility_interface::CompatibilityExecutionDependencies,
         native::{self, service_error, NativeApiError},
         stream_terminal_fallback::{
+            cold_runtime_event_subscription,
             durable_canonical_partial_runtime_events_from_native_run,
             durable_native_run_matches_terminal,
             load_durable_native_run_for_terminal_projection_with_dependencies,
@@ -327,6 +330,7 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
         state.infrastructure.provider_transport_store(),
         state.model_billing_require_provider_usage,
     )
+    .with_published_plan_cache(state.infrastructure.published_plan_cache())
     .with_node_artifact_context(
         state.api_node_id.clone(),
         state.provider_install_root.clone(),
@@ -953,7 +957,8 @@ pub(crate) async fn start_compatible_typed_attach_stream(
             state.model_billing_require_provider_usage,
             state.infrastructure.provider_transport_store(),
             state.runtime_event_stream.clone(),
-        ),
+        )
+        .with_published_plan_cache(state.infrastructure.published_plan_cache()),
         state.runtime_event_stream.clone(),
         initial_run,
         from_sequence,
@@ -984,10 +989,17 @@ async fn attach_compatible_typed_stream_with_replay(
     from_sequence: Option<i64>,
     durable_round_replay: Vec<RuntimeEventEnvelope>,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    let subscription = runtime_event_stream
+    let subscription = match runtime_event_stream
         .subscribe(initial_run.id, from_sequence)
         .await
-        .map_err(service_error)?;
+    {
+        Ok(subscription) => subscription,
+        Err(_) => {
+            cold_runtime_event_subscription(&terminal_dependencies, &initial_run, from_sequence)
+                .await
+                .map_err(service_error)?
+        }
+    };
     Ok(attach_compatible_typed_stream_from_subscription(
         terminal_dependencies,
         initial_run,
@@ -1049,12 +1061,50 @@ async fn durable_compatible_round_replay(
         .await
         .map_err(service_error)?
         .ok_or_else(|| service_error(anyhow::anyhow!("callback round boundary missing")))?;
-    let records = dependencies
+    let window = dependencies
         .native
         .store
-        .list_runtime_events(initial_run.id, boundary)
+        .get_runtime_event_replay_window(initial_run.id)
         .await
         .map_err(service_error)?;
+    let through = window.map(|window| window.through_sequence);
+    let mut cursor = boundary;
+    let mut records = Vec::new();
+    loop {
+        let page = dependencies
+            .native
+            .store
+            .list_runtime_event_durable_page(initial_run.id, cursor, through, 64)
+            .await
+            .map_err(service_error)?;
+        let Some(last) = page.last() else {
+            break;
+        };
+        if last.sequence <= cursor {
+            return Err(service_error(anyhow::anyhow!(
+                "durable round cursor did not advance"
+            )));
+        }
+        cursor = last.sequence;
+        for record in page {
+            if record.event_type == "runtime_stream_opened" {
+                continue;
+            }
+            let terminal = event_forwarding::is_public_terminal_runtime_event(&record.event_type);
+            records.push(record);
+            if terminal {
+                break;
+            }
+        }
+        if records.last().is_some_and(|record| {
+            event_forwarding::is_public_terminal_runtime_event(&record.event_type)
+        }) {
+            break;
+        }
+        if through.is_some_and(|through| cursor >= through) {
+            break;
+        }
+    }
     let mut replay = event_forwarding::durable_round_prefix(records);
     if !replay.is_empty() && replay[0].event_type != "flow_started" {
         replay.insert(
@@ -1074,26 +1124,32 @@ async fn live_compatible_round_start(
     initial_run: &NativeRunResult,
     round_id: uuid::Uuid,
 ) -> Option<i64> {
-    dependencies
-        .native
-        .runtime_event_stream
-        .replay(initial_run.id, None, usize::MAX)
-        .await
-        .ok()
-        .and_then(|events| {
-            events
-                .iter()
-                .rposition(|event| {
-                    event.event_type == "flow_started"
-                        && event.payload["response_round_id"] == json!(round_id)
-                })
-                .filter(|index| {
-                    !events[*index + 1..].iter().any(|event| {
-                        event_forwarding::is_public_terminal_runtime_event(&event.event_type)
-                    })
-                })
-                .map(|index| events[index].sequence.saturating_sub(1))
-        })
+    let mut cursor = None;
+    let mut round_start = None;
+    loop {
+        let events = dependencies
+            .native
+            .runtime_event_stream
+            .replay(initial_run.id, cursor, 64)
+            .await
+            .ok()?;
+        if events.is_empty() {
+            return round_start;
+        }
+        for event in &events {
+            if event.event_type == "flow_started"
+                && event.payload["response_round_id"] == json!(round_id)
+            {
+                round_start = Some(event.sequence.saturating_sub(1));
+            } else if event_forwarding::is_public_terminal_runtime_event(&event.event_type) {
+                round_start = None;
+            }
+        }
+        cursor = events.last().map(|event| event.sequence);
+        if events.len() < 64 {
+            return round_start;
+        }
+    }
 }
 
 async fn open_compatible_turn_with_invoker(
@@ -1166,6 +1222,12 @@ async fn open_compatible_turn_with_invoker(
             service_error(error)
         })?;
 
+    let persister = start_runtime_debug_event_persister(
+        dependencies.native.store.clone(),
+        dependencies.native.runtime_event_stream.clone(),
+        initial_run.id,
+    )
+    .await;
     let terminal_writer = subscription.terminal_writer.clone();
     let background_dependencies = dependencies.clone();
     let background_run = initial_run.clone();
@@ -1246,6 +1308,12 @@ async fn open_compatible_turn_with_invoker(
                 }
             }
         }
+        wait_for_runtime_debug_event_persister(
+            persister,
+            background_run.application_id,
+            background_run.id,
+        )
+        .await;
     });
 
     Ok(OpenedCompatibleTurn {

@@ -9,7 +9,7 @@ use control_plane::{
     errors::ControlPlaneError,
     orchestration_runtime::{
         debug_stream_events, project_runtime_event_stream_terminal,
-        spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
+        start_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         CancelFlowRunCommand, CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand,
         OrchestrationRuntimeService, PrepareFlowDebugRunCommand, ResumeFlowRunCommand,
         StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
@@ -739,11 +739,12 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .map_err(|error| {
                 interface_runtime::InterfaceTargetFailure::new("console_interface", error)
             })?;
-        let persister_handle = spawn_runtime_debug_event_persister(
+        let persister_handle = start_runtime_debug_event_persister(
             self.dependencies.store.clone(),
             self.dependencies.runtime_event_stream.clone(),
             run_id,
-        );
+        )
+        .await;
         self.dependencies
             .runtime_event_stream
             .append(run_id, debug_stream_events::flow_accepted(run_id))

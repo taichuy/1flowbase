@@ -24,10 +24,15 @@ use tracing::warn;
 
 use std::sync::Arc;
 
+mod cold_replay;
+pub(super) use cold_replay::durable_record_to_runtime_event_envelope;
+pub(crate) use cold_replay::{cold_runtime_event_subscription, durable_round_prefix};
+
 use crate::provider_runtime::{ApiProviderRuntime, ApiRuntimeServices};
 
 #[derive(Clone)]
 pub(crate) struct NativeRunTerminalDependencies {
+    published_plan_cache: Option<Arc<dyn control_plane::ports::PublishedPlanCache>>,
     store: storage_durable_postgres::MainDurableStore,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     provider_runtime: Arc<ApiRuntimeServices>,
@@ -48,6 +53,7 @@ impl NativeRunTerminalDependencies {
         runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
     ) -> Self {
         Self {
+            published_plan_cache: None,
             store,
             runtime_engine,
             provider_runtime,
@@ -56,6 +62,33 @@ impl NativeRunTerminalDependencies {
             provider_transport_store,
             runtime_event_stream,
         }
+    }
+
+    pub(crate) fn with_published_plan_cache(
+        mut self,
+        cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
+    ) -> Self {
+        self.published_plan_cache = Some(cache);
+        self
+    }
+
+    pub(crate) async fn replay_window(
+        &self,
+        run_id: uuid::Uuid,
+    ) -> anyhow::Result<Option<control_plane::ports::RuntimeEventReplayWindow>> {
+        self.store.get_runtime_event_replay_window(run_id).await
+    }
+
+    pub(crate) async fn durable_page(
+        &self,
+        run_id: uuid::Uuid,
+        after: i64,
+        through: i64,
+        limit: usize,
+    ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>> {
+        self.store
+            .list_runtime_event_durable_page(run_id, after, Some(through), limit)
+            .await
     }
 
     pub(crate) async fn claim_runtime_event_deliveries(
@@ -168,7 +201,7 @@ pub(crate) async fn recover_missing_stream_terminal_winner_with_dependencies(
         return Ok(current);
     }
 
-    let recovery_service = OrchestrationRuntimeService::new(
+    let mut recovery_service = OrchestrationRuntimeService::new(
         dependencies.store.clone(),
         ApiProviderRuntime::new(dependencies.provider_runtime.clone()),
         dependencies.runtime_engine.clone(),
@@ -177,6 +210,9 @@ pub(crate) async fn recover_missing_stream_terminal_winner_with_dependencies(
         dependencies.model_billing_require_provider_usage,
     )
     .with_runtime_event_stream(dependencies.runtime_event_stream.clone());
+    if let Some(cache) = &dependencies.published_plan_cache {
+        recovery_service = recovery_service.with_published_plan_cache(cache.clone());
+    }
     let recovery_result = recovery_service
         .finalize_published_run_missing_stream_terminal(
             FinalizePublishedRunMissingStreamTerminalCommand {

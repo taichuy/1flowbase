@@ -13,7 +13,8 @@ use tracing::{debug, warn};
 use uuid::Uuid;
 
 use crate::routes::application_public_api::stream_terminal_fallback::{
-    durable_canonical_partial_runtime_events_from_native_run, durable_native_run_matches_terminal,
+    cold_runtime_event_subscription, durable_canonical_partial_runtime_events_from_native_run,
+    durable_native_run_matches_terminal,
     load_durable_native_run_for_terminal_projection_with_dependencies,
     recover_missing_stream_terminal_winner_with_dependencies, terminal_answer_deltas_from_payload,
     terminal_answer_text_from_payload, terminal_runtime_event_from_native_run,
@@ -377,8 +378,21 @@ pub(crate) async fn send_native_runtime_event_stream_with_dependencies(
     sender: mpsc::Sender<Result<Event, Infallible>>,
 ) {
     let stream = dependencies.runtime_event_stream.clone();
-    let Ok(mut subscription) = stream.subscribe(initial_run.id, from_sequence).await else {
-        return;
+    let mut subscription = match stream.subscribe(initial_run.id, from_sequence).await {
+        Ok(subscription) => subscription,
+        Err(_) => match cold_runtime_event_subscription(
+            &dependencies.terminal,
+            &initial_run,
+            from_sequence,
+        )
+        .await
+        {
+            Ok(subscription) => subscription,
+            Err(error) => {
+                warn!(flow_run_id = %initial_run.id, %error, "native cold replay unavailable");
+                return;
+            }
+        },
     };
 
     let mut emitted_public_event = false;

@@ -678,82 +678,8 @@ fn log_compatible_sse_closed(
     );
 }
 
-pub(super) fn durable_round_prefix(
-    records: Vec<domain::RuntimeEventRecord>,
-) -> Vec<RuntimeEventEnvelope> {
-    let mut prefix = Vec::new();
-    for record in records {
-        let event = durable_record_to_runtime_event_envelope(record);
-        let terminal = is_public_terminal_runtime_event(&event.event_type);
-        prefix.push(event);
-        if terminal {
-            break;
-        }
-    }
-    let first_item = prefix
-        .iter()
-        .position(|event| event.event_type == "provider_output_item_done");
-    if let Some(first_item) = first_item {
-        let mut output_items = prefix
-            .iter()
-            .filter(|event| event.event_type == "provider_output_item_done")
-            .cloned()
-            .collect::<Vec<_>>();
-        output_items.sort_by_key(|event| {
-            (
-                event.payload["output_index"].as_u64().unwrap_or(u64::MAX),
-                event.sequence,
-            )
-        });
-        prefix.retain(|event| event.event_type != "provider_output_item_done");
-        prefix.splice(first_item..first_item, output_items);
-    }
-    // The projector cursor orders this one replay batch. Database sequence
-    // reflects separate provider and callback writers, while output_index is
-    // the provider's exact order for completed items.
-    for (index, event) in prefix.iter_mut().enumerate() {
-        event.sequence = index as i64 + 1;
-    }
-    prefix
-}
-
-fn durable_record_to_runtime_event_envelope(
-    record: domain::RuntimeEventRecord,
-) -> RuntimeEventEnvelope {
-    let text = compat_payload_string(&record.payload, "text")
-        .or_else(|| compat_payload_string(&record.payload, "delta"));
-    let delta_index = compat_payload_i64(&record.payload, "delta_index")
-        .or_else(|| compat_payload_i64(&record.payload, "sequence_start"));
-    let content_type = compat_payload_string(&record.payload, "content_type");
-    RuntimeEventEnvelope {
-        run_id: record.flow_run_id,
-        node_run_id: record.node_run_id,
-        sequence: record.sequence,
-        event_id: format!("{}:{}", record.flow_run_id, record.sequence),
-        event_type: record.event_type,
-        occurred_at: record.created_at,
-        delta_index,
-        content_type,
-        text,
-        source: match record.source {
-            domain::RuntimeEventSource::ProviderPlugin => {
-                control_plane::ports::RuntimeEventSource::Provider
-            }
-            _ => control_plane::ports::RuntimeEventSource::Runtime,
-        },
-        durability: match record.durability {
-            domain::RuntimeEventDurability::Durable => {
-                control_plane::ports::RuntimeEventDurability::DurableRequired
-            }
-            domain::RuntimeEventDurability::Ephemeral | domain::RuntimeEventDurability::Sampled => {
-                control_plane::ports::RuntimeEventDurability::Ephemeral
-            }
-        },
-        persist_required: true,
-        trace_visible: true,
-        payload: record.payload,
-    }
-}
+use super::super::stream_terminal_fallback::durable_record_to_runtime_event_envelope;
+pub(super) use super::super::stream_terminal_fallback::durable_round_prefix;
 
 fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {
     payload.get(key).and_then(|value| {

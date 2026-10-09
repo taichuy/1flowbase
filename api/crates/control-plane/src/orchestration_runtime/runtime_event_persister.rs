@@ -10,6 +10,7 @@ use crate::ports::{
     AppendRuntimeEventInput, OrchestrationRuntimeRepository, RuntimeEventAfterCommitDeliveryStatus,
     RuntimeEventAfterCommitLane, RuntimeEventAfterCommitReceipt, RuntimeEventCloseReason,
     RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventStream,
+    RuntimeEventSubscription, RuntimeEventTerminalWriter,
 };
 
 const RUNTIME_EVENT_BATCH_MAX_BYTES: usize = 64 * 1024;
@@ -35,12 +36,6 @@ impl RuntimeEventPersistenceBatch {
 
     fn reached_byte_limit(&self) -> bool {
         self.payload_bytes >= RUNTIME_EVENT_BATCH_MAX_BYTES
-    }
-
-    fn contains_terminal(&self) -> bool {
-        self.events
-            .iter()
-            .any(|event| is_terminal_runtime_event(&event.event_type))
     }
 
     fn take(&mut self) -> Vec<RuntimeEventEnvelope> {
@@ -217,69 +212,210 @@ pub fn spawn_runtime_debug_event_persister_with_after_commit<R>(
 where
     R: OrchestrationRuntimeRepository + Send + Sync + 'static,
 {
+    tokio::spawn(async move {
+        start_runtime_debug_event_persister_with_after_commit(
+            repository,
+            stream,
+            run_id,
+            after_commit,
+        )
+        .await
+        .await
+        .unwrap_or_else(
+            |error| warn!(flow_run_id = %run_id, %error, "runtime event persister task failed"),
+        );
+    })
+}
+
+/// Install the generation's persistence subscription and scalar durable anchor
+/// before starting its producer. No conversation body is copied to the anchor.
+pub async fn start_runtime_debug_event_persister<R>(
+    repository: R,
+    stream: Arc<dyn RuntimeEventStream>,
+    run_id: Uuid,
+) -> JoinHandle<()>
+where
+    R: OrchestrationRuntimeRepository + Send + Sync + 'static,
+{
+    start_runtime_debug_event_persister_with_after_commit(
+        repository,
+        stream,
+        run_id,
+        RuntimeEventAfterCommitLane::empty(),
+    )
+    .await
+}
+
+async fn start_runtime_debug_event_persister_with_after_commit<R>(
+    repository: R,
+    stream: Arc<dyn RuntimeEventStream>,
+    run_id: Uuid,
+    after_commit: RuntimeEventAfterCommitLane,
+) -> JoinHandle<()>
+where
+    R: OrchestrationRuntimeRepository + Send + Sync + 'static,
+{
+    let Ok(subscription) = stream.subscribe(run_id, Some(0)).await else {
+        warn!(flow_run_id = %run_id, "failed to subscribe runtime debug stream for durable event persistence");
+        return tokio::spawn(async {});
+    };
+    let writer = &subscription.terminal_writer;
+    if !writer.claim_persistence_owner() {
+        return tokio::spawn(async {});
+    }
+    if let Some(generation_id) = writer.generation_id() {
+        if writer.durable_replay_boundary().is_none() {
+            let anchor = build_runtime_event_input(
+                run_id,
+                None,
+                "runtime_stream_opened".to_owned(),
+                crate::ports::RuntimeEventSource::System,
+                json!({"type": "runtime_stream_opened", "stream_generation_id": generation_id}),
+            );
+            match repository.append_runtime_event(&anchor).await {
+                Ok(record) => {
+                    if let Err(error) = writer.set_durable_replay_boundary(record.sequence) {
+                        writer.record_persistence_failure();
+                        warn!(flow_run_id = %run_id, %error, "failed to bind runtime replay generation anchor");
+                    }
+                }
+                Err(error) => {
+                    writer.record_persistence_failure();
+                    warn!(flow_run_id = %run_id, %error, "failed to persist runtime replay generation anchor");
+                }
+            }
+        }
+    }
     let scope_owner = after_commit.scope_owner();
     tokio::spawn(async move {
         let _scope_owner = scope_owner;
-        let Ok(mut subscription) = stream.subscribe(run_id, Some(0)).await else {
-            warn!(
-                flow_run_id = %run_id,
-                "failed to subscribe runtime debug stream for durable event persistence"
-            );
-            return;
-        };
+        persist_subscribed_debug_events(repository, run_id, after_commit, subscription).await;
+    })
+}
 
-        let mut batch = RuntimeEventPersistenceBatch::default();
-        for event in subscription.replay {
-            if push_debug_event_for_persistence(
+async fn persist_subscribed_debug_events<R>(
+    repository: R,
+    run_id: Uuid,
+    after_commit: RuntimeEventAfterCommitLane,
+    mut subscription: RuntimeEventSubscription,
+) where
+    R: OrchestrationRuntimeRepository,
+{
+    let writer = subscription.terminal_writer.clone();
+    let mut batch = RuntimeEventPersistenceBatch::default();
+    for event in std::mem::take(&mut subscription.replay) {
+        let terminal = is_terminal_runtime_event(&event.event_type);
+        let terminal_sequence = event.sequence;
+        let terminal_type = event.event_type.clone();
+        push_debug_event_for_persistence(
+            &repository,
+            &after_commit,
+            &mut batch,
+            run_id,
+            event,
+            writer.as_ref(),
+        )
+        .await;
+        if terminal {
+            confirm_closed_generation(
                 &repository,
-                &after_commit,
-                &mut batch,
                 run_id,
-                event,
+                terminal_sequence,
+                &terminal_type,
+                &mut subscription,
             )
-            .await
-            {
+            .await;
+            return;
+        }
+    }
+    let start = tokio::time::Instant::now() + RUNTIME_EVENT_BATCH_MAX_DELAY;
+    let mut flush_interval = tokio::time::interval_at(start, RUNTIME_EVENT_BATCH_MAX_DELAY);
+    loop {
+        tokio::select! {
+            maybe_event = subscription.live_events.recv() => {
+                let Some(event) = maybe_event else {
+                    flush_or_mark_failure(&repository, &after_commit, &mut batch, run_id, writer.as_ref()).await;
+                    // A bare EOF is not evidence of a durable terminal.
+                    return;
+                };
+                let terminal = is_terminal_runtime_event(&event.event_type);
+                let terminal_sequence = event.sequence;
+                let terminal_type = event.event_type.clone();
+                push_debug_event_for_persistence(&repository, &after_commit, &mut batch, run_id, event, writer.as_ref()).await;
+                if terminal {
+                    confirm_closed_generation(&repository, run_id, terminal_sequence, &terminal_type, &mut subscription).await;
+                    return;
+                }
+            }
+            _ = flush_interval.tick(), if !batch.is_empty() => {
+                flush_or_mark_failure(&repository, &after_commit, &mut batch, run_id, writer.as_ref()).await;
+            }
+        }
+    }
+}
+
+async fn confirm_closed_generation<R: OrchestrationRuntimeRepository>(
+    repository: &R,
+    run_id: Uuid,
+    terminal_sequence: i64,
+    terminal_type: &str,
+    subscription: &mut RuntimeEventSubscription,
+) {
+    let writer = subscription.terminal_writer.clone();
+    let Some(generation_id) = writer.generation_id() else {
+        return;
+    };
+    let Some(boundary) = writer.durable_replay_boundary() else {
+        return;
+    };
+    // Terminal publication and producer closure are separate facts. Wait for
+    // the existing owner to close; this subscriber must never close it itself.
+    loop {
+        let closure = *subscription.closure.borrow_and_update();
+        if let Some(closure) = closure {
+            if closure.final_sequence != terminal_sequence {
+                return;
+            }
+            break;
+        }
+        tokio::select! {
+            changed = subscription.closure.changed() => {
+                if changed.is_err() { return; }
+            }
+            event = subscription.live_events.recv() => {
+                // Data after the alleged terminal or EOF without closure cannot
+                // prove this generation complete. Retain the legacy window.
+                if event.is_some() { writer.record_persistence_failure(); }
                 return;
             }
         }
-
-        let start = tokio::time::Instant::now() + RUNTIME_EVENT_BATCH_MAX_DELAY;
-        let mut flush_interval = tokio::time::interval_at(start, RUNTIME_EVENT_BATCH_MAX_DELAY);
-        loop {
-            tokio::select! {
-                maybe_event = subscription.live_events.recv() => {
-                    let Some(event) = maybe_event else {
-                        let _ = flush_debug_event_batch(
-                            &repository,
-                            &after_commit,
-                            &mut batch,
-                            run_id,
-                        ).await;
-                        return;
-                    };
-                    if push_debug_event_for_persistence(
-                        &repository,
-                        &after_commit,
-                        &mut batch,
-                        run_id,
-                        event,
-                    ).await {
-                        return;
-                    }
-                }
-                _ = flush_interval.tick(), if !batch.is_empty() => {
-                    if flush_debug_event_batch(
-                        &repository,
-                        &after_commit,
-                        &mut batch,
-                        run_id,
-                    ).await {
-                        return;
-                    }
-                }
-            }
+    }
+    let proof = async {
+        let window = repository.get_runtime_event_replay_window(run_id).await?;
+        if !window.is_some_and(|window| window.generation_id == Some(generation_id)) {
+            anyhow::bail!("runtime replay generation is no longer the durable window");
         }
-    })
+        if !repository
+            .has_runtime_event_terminal_after(run_id, boundary, terminal_type)
+            .await?
+        {
+            anyhow::bail!("runtime stream terminal has no durable fact");
+        }
+        writer.confirm_terminal_persisted(terminal_sequence).await
+    }
+    .await;
+    if let Err(error) = proof {
+        warn!(flow_run_id = %run_id, %error, "runtime replay generation remains in its legacy retention window");
+    }
+}
+
+pub(super) async fn record_stream_persistence_failure(
+    stream: &Arc<dyn RuntimeEventStream>,
+    run_id: Uuid,
+) {
+    if let Ok(writer) = stream.terminal_writer(run_id).await {
+        writer.record_persistence_failure();
+    }
 }
 
 pub async fn wait_for_runtime_debug_event_persister(
@@ -312,66 +448,69 @@ async fn push_debug_event_for_persistence<R>(
     after_commit: &RuntimeEventAfterCommitLane,
     batch: &mut RuntimeEventPersistenceBatch,
     run_id: Uuid,
-    event: RuntimeEventEnvelope,
-) -> bool
-where
+    mut event: RuntimeEventEnvelope,
+    writer: &dyn RuntimeEventTerminalWriter,
+) where
     R: OrchestrationRuntimeRepository,
 {
     let is_terminal = is_terminal_runtime_event(&event.event_type);
-    batch.push(event);
-    if is_terminal || batch.reached_byte_limit() {
-        return flush_debug_event_batch(repository, after_commit, batch, run_id).await
-            || is_terminal;
+    // Discard nonpersistent fragments before they acquire batch capacity or
+    // trigger an otherwise unnecessary SQL flush. Required lanes retain await
+    // backpressure while eligible writes are in progress.
+    if event.persist_required && !is_stream_delta_event(&event.event_type) {
+        if let (Some(generation_id), Some(object)) =
+            (writer.generation_id(), event.payload.as_object_mut())
+        {
+            object.insert("stream_generation_id".into(), json!(generation_id));
+        }
+        batch.push(event);
     }
-    false
+    if is_terminal || batch.reached_byte_limit() {
+        flush_or_mark_failure(repository, after_commit, batch, run_id, writer).await;
+    }
 }
 
-async fn flush_debug_event_batch<R>(
+async fn flush_or_mark_failure<R: OrchestrationRuntimeRepository>(
     repository: &R,
     after_commit: &RuntimeEventAfterCommitLane,
     batch: &mut RuntimeEventPersistenceBatch,
     run_id: Uuid,
-) -> bool
-where
-    R: OrchestrationRuntimeRepository,
-{
+    writer: &dyn RuntimeEventTerminalWriter,
+) {
+    if let Err(error) = flush_debug_event_batch(repository, after_commit, batch, run_id).await {
+        writer.record_persistence_failure();
+        warn!(flow_run_id = %run_id, %error, "failed to persist runtime debug stream events");
+    }
+}
+
+async fn flush_debug_event_batch<R: OrchestrationRuntimeRepository>(
+    repository: &R,
+    after_commit: &RuntimeEventAfterCommitLane,
+    batch: &mut RuntimeEventPersistenceBatch,
+    run_id: Uuid,
+) -> Result<()> {
     if batch.is_empty() {
-        return false;
+        return Ok(());
     }
-
-    let has_terminal = batch.contains_terminal();
     let events = batch.take();
-    match persist_runtime_debug_stream_events_with_after_commit(repository, events, after_commit)
-        .await
+    let receipts =
+        persist_runtime_debug_stream_events_with_after_commit(repository, events, after_commit)
+            .await?;
+    for subscriber in receipts
+        .iter()
+        .flat_map(|receipt| &receipt.subscribers)
+        .filter(|subscriber| subscriber.status == RuntimeEventAfterCommitDeliveryStatus::Failed)
     {
-        Ok(receipts) => {
-            for subscriber in receipts
-                .iter()
-                .flat_map(|receipt| &receipt.subscribers)
-                .filter(|subscriber| {
-                    subscriber.status == RuntimeEventAfterCommitDeliveryStatus::Failed
-                })
-            {
-                warn!(
-                    flow_run_id = %run_id,
-                    subscriber_id = %subscriber.subscriber_id.as_str(),
-                    contribution_id = %subscriber.contribution_id,
-                    attempts = subscriber.attempts,
-                    failure_reason = ?subscriber.failure_reason,
-                    "runtime event after-commit subscriber exhausted its delivery policy"
-                );
-            }
-        }
-        Err(error) => {
-            warn!(
-                flow_run_id = %run_id,
-                error = %error,
-                "failed to persist runtime debug stream events"
-            );
-        }
+        warn!(
+            flow_run_id = %run_id,
+            subscriber_id = %subscriber.subscriber_id.as_str(),
+            contribution_id = %subscriber.contribution_id,
+            attempts = subscriber.attempts,
+            failure_reason = ?subscriber.failure_reason,
+            "runtime event after-commit subscriber exhausted its delivery policy"
+        );
     }
-
-    has_terminal
+    Ok(())
 }
 
 fn is_stream_delta_event(event_type: &str) -> bool {

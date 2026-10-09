@@ -72,7 +72,10 @@ impl PgControlPlaneStore {
                 checkpoints.status,
                 checkpoints.reason,
                 runtime_original_json(checkpoints.locator_payload, checkpoints.raw_json_payloads, 'locator_payload') as locator_payload,
-                coalesce(runtime_original_json(contents.content, contents.raw_json_payloads, 'content'), runtime_original_json(checkpoints.variable_snapshot, checkpoints.raw_json_payloads, 'variable_snapshot')) as variable_snapshot,
+                case when checkpoints.locator_payload ->> 'context_version_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                     then '{}'::jsonb
+                     else coalesce(runtime_original_json(contents.content, contents.raw_json_payloads, 'content'), runtime_original_json(checkpoints.variable_snapshot, checkpoints.raw_json_payloads, 'variable_snapshot'))
+                end as variable_snapshot,
                 null::jsonb as external_ref_payload,
                 checkpoints.created_at
             from flow_run_checkpoints checkpoints
@@ -80,6 +83,7 @@ impl PgControlPlaneStore {
               on shadow_rows.source_table = 'flow_run_checkpoints'
              and shadow_rows.source_column = 'variable_snapshot'
              and shadow_rows.source_row_id = checkpoints.id
+             and not coalesce(checkpoints.locator_payload ->> 'context_version_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', false)
             left join runtime_canonical_contents contents
               on contents.id = shadow_rows.canonical_content_id
              and contents.content = checkpoints.variable_snapshot
@@ -204,6 +208,50 @@ impl PgControlPlaneStore {
         .await?;
 
         rows.into_iter().map(map_runtime_event_record).collect()
+    }
+
+    async fn get_runtime_event_replay_window(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Option<RuntimeEventReplayWindow>> {
+        let row = sqlx::query(
+            r#"
+            select max(events.sequence) as through_sequence,
+                   coalesce((select sequence from runtime_events
+                              where flow_run_id = $1 and event_type = 'runtime_stream_opened'
+                              order by sequence desc limit 1), 0) as after_sequence,
+                   (select payload ->> 'stream_generation_id' from runtime_events
+                     where flow_run_id = $1 and event_type = 'runtime_stream_opened'
+                     order by sequence desc limit 1) as generation_id
+              from runtime_events events where events.flow_run_id = $1
+            "#,
+        )
+        .bind(flow_run_id)
+        .fetch_one(self.pool())
+        .await?;
+        let Some(through_sequence) = row.get::<Option<i64>, _>("through_sequence") else {
+            return Ok(None);
+        };
+        Ok(Some(RuntimeEventReplayWindow {
+            after_sequence: row.get("after_sequence"),
+            through_sequence,
+            generation_id: row
+                .get::<Option<String>, _>("generation_id")
+                .map(|value| Uuid::parse_str(&value))
+                .transpose()?,
+        }))
+    }
+
+    async fn has_runtime_event_terminal_after(
+        &self,
+        flow_run_id: Uuid,
+        after_sequence: i64,
+        event_type: &str,
+    ) -> Result<bool> {
+        sqlx::query_scalar(
+            "select exists(select 1 from runtime_events where flow_run_id = $1 and sequence > $2 and event_type = $3)",
+        ).bind(flow_run_id).bind(after_sequence).bind(event_type)
+            .fetch_one(self.pool()).await.map_err(Into::into)
     }
 
     async fn list_runtime_event_durable_page(
@@ -1208,8 +1256,12 @@ impl PgControlPlaneStore {
             stitched_trace: list_stitched_trace_for_flow_run(self, &flow_run).await?,
             subagent_traces: list_subagent_traces_for_flow_run(self, &flow_run, &callback_tasks)
                 .await?,
-            task_rounds: self.list_task_round_projection_sources_for_flow_run(&flow_run).await?,
-            child_task_traces: self.list_child_task_projection_sources_for_flow_run(&flow_run).await?,
+            task_rounds: self
+                .list_task_round_projection_sources_for_flow_run(&flow_run)
+                .await?,
+            child_task_traces: self
+                .list_child_task_projection_sources_for_flow_run(&flow_run)
+                .await?,
             flow_run,
             callback_tasks,
         }))

@@ -558,6 +558,42 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         flow_run_id: Uuid,
         after_sequence: i64,
     ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>>;
+    /// Reads only the replay anchor and a durable high watermark in production.
+    /// Older runs without an anchor retain their legacy durable history.
+    async fn get_runtime_event_replay_window(
+        &self,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<RuntimeEventReplayWindow>> {
+        let records = self.list_runtime_events(flow_run_id, 0).await?;
+        let Some(through_sequence) = records.iter().map(|event| event.sequence).max() else {
+            return Ok(None);
+        };
+        let anchor = records
+            .iter()
+            .filter(|event| event.event_type == "runtime_stream_opened")
+            .max_by_key(|event| event.sequence);
+        Ok(Some(RuntimeEventReplayWindow {
+            after_sequence: anchor.map_or(0, |event| event.sequence),
+            through_sequence,
+            generation_id: anchor
+                .and_then(|event| event.payload["stream_generation_id"].as_str())
+                .and_then(|value| Uuid::parse_str(value).ok()),
+        }))
+    }
+    /// Commit evidence for a terminal projected by a separate business writer.
+    /// The anchor excludes terminals from earlier generations of the same run.
+    async fn has_runtime_event_terminal_after(
+        &self,
+        flow_run_id: Uuid,
+        after_sequence: i64,
+        event_type: &str,
+    ) -> anyhow::Result<bool> {
+        Ok(self
+            .list_runtime_events(flow_run_id, after_sequence)
+            .await?
+            .iter()
+            .any(|event| event.event_type == event_type))
+    }
     /// Page durable facts in database sequence order. A local stream cursor is
     /// not a database cursor: resumed stream generations may restart at one.
     /// `through_sequence` freezes a known round boundary when supplied.

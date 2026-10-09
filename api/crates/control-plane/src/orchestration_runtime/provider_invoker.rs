@@ -648,6 +648,11 @@ where
                             context_snapshot.durability = RuntimeEventDurability::Ephemeral;
                         }
                         Err(error) => {
+                            runtime_event_persister::record_stream_persistence_failure(
+                                stream,
+                                flow_run_id,
+                            )
+                            .await;
                             tracing::warn!(
                                 flow_run_id = %flow_run_id,
                                 node_id = %active_node.node_id,
@@ -798,12 +803,22 @@ where
                             item.clone(),
                         );
                         fact.payload["response_round_id"] = json!(response_round_id_for_task);
-                        runtime_event_persister::persist_runtime_event_payload(
+                        if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
                             &repository_for_events,
                             flow_run_id,
                             &fact,
                         )
-                        .await?;
+                        .await
+                        {
+                            if let Some(stream) = &runtime_event_stream {
+                                runtime_event_persister::record_stream_persistence_failure(
+                                    stream,
+                                    flow_run_id,
+                                )
+                                .await;
+                            }
+                            return Err(error);
+                        }
                     }
                     project_canonical_provider_deltas(
                         runtime_event_stream.as_ref(),

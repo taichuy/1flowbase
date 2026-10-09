@@ -665,6 +665,7 @@ async fn project_run_stream(
     let (event_sender, mut events) = mpsc::channel::<Value>(32);
     tokio::spawn(debug_run_stream::send_runtime_event_websocket_stream(
         state.runtime_event_stream.clone(),
+        Arc::new(state.store.clone()),
         run.run_id,
         run.from_sequence,
         event_sender,
