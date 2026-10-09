@@ -68,6 +68,7 @@ use crate::repositories::PgControlPlaneStore;
 
 mod client_trajectory;
 mod agent_logs;
+mod log_query;
 mod agent_logs_delete;
 mod detail_queries;
 mod json_storage;
@@ -133,6 +134,22 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         agent_logs_delete::delete(self, application_id, scope_id, scope).await
     }
     async fn ingest_agent_logs(&self, application_id:Uuid,scope_id:Uuid,api_key_id:Uuid,batch:&control_plane_contracts::ports::AgentLogsBatch,costs:&[Option<String>])->Result<control_plane_contracts::ports::AgentLogsReceipt> { agent_logs::ingest(self,application_id,scope_id,api_key_id,batch,costs).await }
+    async fn query_application_log_records(
+        &self,
+        scope_id: Uuid,
+        application_ids: &[Uuid],
+        query: &control_plane_contracts::ports::ApplicationLogRecordsQuery,
+    ) -> Result<control_plane_contracts::ports::ApplicationLogRecordsPage> {
+        log_query::records(self, scope_id, application_ids, query).await
+    }
+    async fn query_record_client_trajectory(
+        &self,
+        application_id: Uuid,
+        record_id: Uuid,
+        query: &control_plane_contracts::ports::RecordClientTrajectoryQuery,
+    ) -> Result<control_plane_contracts::ports::RecordClientTrajectoryQueryPage> {
+        log_query::trajectory(self, application_id, record_id, query).await
+    }
     async fn application_log_record(&self, application_id:Uuid,record_id:Uuid)->Result<Option<control_plane_contracts::ports::ApplicationLogRecordOverview>> {agent_logs::overview(self,application_id,record_id).await}
     async fn record_client_trajectory_page(&self,application_id:Uuid,record_id:Uuid,cursor:Option<String>,limit:i64)->Result<control_plane_contracts::ports::RecordClientTrajectoryPage> {agent_logs::page(self,application_id,record_id,cursor,limit).await}
     async fn record_client_trajectory_section(&self,application_id:Uuid,record_id:Uuid,step_id:Uuid,section:&str,cursor:Option<i64>,limit:i64)->Result<Option<control_plane_contracts::ports::ClientTrajectorySection>> {agent_logs::section(self,application_id,record_id,step_id,section,cursor,limit).await}

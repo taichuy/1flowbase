@@ -116,7 +116,11 @@ pub enum ApplicationLogView {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplicationLogRecordOverview {
+    pub status: String,
+    pub projection_output: Option<String>,
+    pub output_state: Option<domain::ApplicationRunConversationOutputState>,
     pub record_id: Uuid,
+    pub source_id: Option<String>,
     pub source_kind: String,
     pub source_client: Option<String>,
     pub source_session_id: Option<String>,
