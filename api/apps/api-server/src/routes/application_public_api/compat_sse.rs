@@ -784,10 +784,15 @@ async fn follow_missing_compatible_round_events(
         let records = dependencies
             .native
             .store
-            .list_runtime_events(initial_run.id, cursor)
+            .list_runtime_event_durable_page(initial_run.id, cursor, None, 64)
             .await
             .map_err(service_error)?;
         if let Some(last) = records.last() {
+            if last.sequence <= cursor {
+                return Err(service_error(anyhow::anyhow!(
+                    "durable callback follower cursor did not advance"
+                )));
+            }
             cursor = last.sequence;
         }
         if records
@@ -796,22 +801,30 @@ async fn follow_missing_compatible_round_events(
         {
             let durable_round_replay =
                 durable_compatible_round_replay(&dependencies, &initial_run, round_id).await?;
-            if durable_round_replay.last().is_some_and(|event| {
-                event_forwarding::is_public_terminal_runtime_event(&event.event_type)
-            }) {
-                let mut attached = attach_terminal_compatible_round(
-                    &dependencies,
-                    initial_run.clone(),
-                    durable_round_replay,
-                )
-                .await?;
-                while let Some(event) = attached.events.recv().await {
-                    if sender.send(event).await.is_err() {
-                        return Ok(());
+            if let DurableCompatibleRoundReplay::Ready(durable_round_replay) = durable_round_replay
+            {
+                if durable_round_replay.last().is_some_and(|event| {
+                    event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+                }) {
+                    let mut attached = attach_terminal_compatible_round(
+                        &dependencies,
+                        initial_run.clone(),
+                        durable_round_replay,
+                    )
+                    .await?;
+                    while let Some(event) = attached.events.recv().await {
+                        if sender.send(event).await.is_err() {
+                            return Ok(());
+                        }
                     }
+                    return Ok(());
                 }
-                return Ok(());
             }
+        }
+        // A full page may precede the requested terminal. Drain it without
+        // retaining previous pages or delaying once per page.
+        if records.len() == 64 {
+            continue;
         }
         let attempt = dependencies
             .native
@@ -1047,17 +1060,32 @@ async fn compatible_round_replay(
     if live_round_start.is_some() {
         return Ok((live_round_start, Vec::new()));
     }
-    Ok((
-        None,
-        durable_compatible_round_replay(dependencies, initial_run, round_id).await?,
-    ))
+    match durable_compatible_round_replay(dependencies, initial_run, round_id).await? {
+        DurableCompatibleRoundReplay::Ready(replay) => Ok((None, replay)),
+        DurableCompatibleRoundReplay::PendingIdentity => Err(service_error(anyhow::anyhow!(
+            "anchored callback round identity marker pending"
+        ))),
+    }
+}
+
+// A newly committed anchor can precede the persister's flow_started batch.
+// Followers wait for that identity; cold recovery cannot treat it as replayable.
+enum DurableCompatibleRoundReplay {
+    Ready(Vec<RuntimeEventEnvelope>),
+    PendingIdentity,
+}
+
+enum DurableCompatibleRoundIdentity {
+    Legacy,
+    Generation(String),
+    Pending,
 }
 
 async fn durable_compatible_round_replay(
     dependencies: &CompatibilityExecutionDependencies,
     initial_run: &NativeRunResult,
     round_id: uuid::Uuid,
-) -> Result<Vec<RuntimeEventEnvelope>, NativeApiError> {
+) -> Result<DurableCompatibleRoundReplay, NativeApiError> {
     let boundary = dependencies
         .native
         .store
@@ -1074,14 +1102,21 @@ async fn durable_compatible_round_replay(
     let through = window.map(|window| window.through_sequence);
     // The latest window may belong to a later callback. Resolve this round's
     // anchor with bounded pages, retaining only its scalar generation identity.
-    let generation = durable_compatible_round_generation(
+    let generation = match durable_compatible_round_generation(
         dependencies,
         initial_run.id,
         round_id,
         boundary,
         through,
     )
-    .await?;
+    .await?
+    {
+        DurableCompatibleRoundIdentity::Legacy => None,
+        DurableCompatibleRoundIdentity::Generation(generation) => Some(generation),
+        DurableCompatibleRoundIdentity::Pending => {
+            return Ok(DurableCompatibleRoundReplay::PendingIdentity);
+        }
+    };
     let mut cursor = boundary;
     let mut records = Vec::new();
     loop {
@@ -1141,7 +1176,7 @@ async fn durable_compatible_round_replay(
             ),
         );
     }
-    Ok(replay)
+    Ok(DurableCompatibleRoundReplay::Ready(replay))
 }
 
 async fn durable_compatible_round_generation(
@@ -1150,7 +1185,7 @@ async fn durable_compatible_round_generation(
     round_id: uuid::Uuid,
     boundary: i64,
     through: Option<i64>,
-) -> Result<Option<String>, NativeApiError> {
+) -> Result<DurableCompatibleRoundIdentity, NativeApiError> {
     let mut cursor = boundary;
     let mut anchor_generation = None;
     let mut saw_anchor = false;
@@ -1190,7 +1225,10 @@ async fn durable_compatible_round_generation(
                         "anchored callback round generation missing"
                     )));
                 }
-                return Ok(generation);
+                return Ok(match generation {
+                    Some(generation) => DurableCompatibleRoundIdentity::Generation(generation),
+                    None => DurableCompatibleRoundIdentity::Legacy,
+                });
             }
             // Historical unanchored rounds have no identity marker. Keep their
             // existing recovery path, without assigning a later round's anchor.
@@ -1199,7 +1237,7 @@ async fn durable_compatible_round_generation(
                 && record.payload["response_round_id"].is_null()
                 && event_forwarding::is_public_terminal_runtime_event(&record.event_type)
             {
-                return Ok(None);
+                return Ok(DurableCompatibleRoundIdentity::Legacy);
             }
             // An untagged marker can borrow only an adjacent anchor, never an
             // unrelated earlier generation encountered during the scan.
@@ -1209,12 +1247,11 @@ async fn durable_compatible_round_generation(
             break;
         }
     }
-    if saw_anchor {
-        return Err(service_error(anyhow::anyhow!(
-            "anchored callback round identity marker missing"
-        )));
-    }
-    Ok(None)
+    Ok(if saw_anchor {
+        DurableCompatibleRoundIdentity::Pending
+    } else {
+        DurableCompatibleRoundIdentity::Legacy
+    })
 }
 
 async fn live_compatible_round_start(

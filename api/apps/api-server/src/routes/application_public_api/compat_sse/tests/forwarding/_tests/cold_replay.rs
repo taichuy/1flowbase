@@ -189,6 +189,15 @@ async fn cold_native_sse_recovers_completed_answer_without_opening_a_producer() 
 
 #[tokio::test]
 async fn cold_callback_replay_ignores_late_foreign_terminal_and_latest_round_anchor() {
+    assert_cold_callback_replay_with_late_foreign_terminal(false).await;
+}
+
+#[tokio::test]
+async fn cold_callback_follower_waits_for_identity_after_anchor_and_foreign_terminal() {
+    assert_cold_callback_replay_with_late_foreign_terminal(true).await;
+}
+
+async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity: bool) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
         callback_resume::{
@@ -218,17 +227,28 @@ async fn cold_callback_replay_ignores_late_foreign_terminal_and_latest_round_anc
             "runtime_stream_opened",
             json!({"stream_generation_id": requested_generation}),
         ),
-        (
-            "flow_started",
-            json!({"type": "flow_started", "response_round_id": callback_task_id, "stream_generation_id": requested_generation}),
-        ),
     ] {
         append_compat_sse_runtime_event(&state, run.id, event_type, payload).await;
     }
+    if !delayed_identity {
+        append_compat_sse_runtime_event(
+            &state,
+            run.id,
+            "flow_started",
+            json!({"type": "flow_started", "response_round_id": callback_task_id, "stream_generation_id": requested_generation}),
+        ).await;
+    }
     // Cross a real durable page boundary before the late previous producer.
-    for index in 0..65 {
-        append_compat_sse_runtime_event(&state, run.id, "node_started", json!({"index": index}))
+    if !delayed_identity {
+        for index in 0..65 {
+            append_compat_sse_runtime_event(
+                &state,
+                run.id,
+                "node_started",
+                json!({"index": index}),
+            )
             .await;
+        }
     }
     for (event_type, payload) in [
         (
@@ -254,34 +274,6 @@ async fn cold_callback_replay_ignores_late_foreign_terminal_and_latest_round_anc
     }
     let reasoning = json!({"type": "reasoning", "id": "rs_callback_original", "encrypted_content": "opaque-callback-bytes", "extension": {"numeric_lexeme": "00"}});
     let message = json!({"type": "message", "id": "msg_callback_original", "content": [{"type": "output_text", "text": "requested callback"}]});
-    let tool = seed_pending_committed_delivery(
-        &state,
-        &run,
-        committed_delivery_payload("call-callback-once"),
-    )
-    .await;
-    // These business-owner output and terminal rows are legitimately untagged.
-    complete_attached_callback_round(&state, run.id, &reasoning, &message).await;
-    for (event_type, payload) in [
-        (
-            "runtime_stream_opened",
-            json!({"stream_generation_id": Uuid::now_v7()}),
-        ),
-        (
-            "flow_started",
-            json!({"type": "flow_started", "response_round_id": later_round}),
-        ),
-        (
-            "provider_output_item_done",
-            json!({"output_index": 0, "item": {"type": "message", "id": "later-output"}}),
-        ),
-        (
-            "flow_finished",
-            json!({"type": "flow_finished", "status": "succeeded", "marker": "later-terminal"}),
-        ),
-    ] {
-        append_compat_sse_runtime_event(&state, run.id, event_type, payload).await;
-    }
     let stream = Arc::new(LocalRuntimeEventStream::new());
     let native = crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
         store: state.store.clone(),
@@ -327,7 +319,19 @@ async fn cold_callback_replay_ignores_late_foreign_terminal_and_latest_round_anc
         reserved_attempt_id: None,
     };
 
-    for expected_tool_count in [1, 0] {
+    let mut pending_attachment = if delayed_identity {
+        assert!(matches!(
+            durable_compatible_round_replay(&dependencies, &run, callback_task_id)
+                .await
+                .unwrap(),
+            DurableCompatibleRoundReplay::PendingIdentity,
+        ));
+        assert!(
+            compatible_round_replay(&dependencies, &run, callback_task_id)
+                .await
+                .is_err(),
+            "cold recovery must not accept an anchored round without identity",
+        );
         let mut attached = start_compatible_typed_resume_stream_for_actor(
             dependencies.clone(),
             run.clone(),
@@ -336,6 +340,75 @@ async fn cold_callback_replay_ignores_late_foreign_terminal_and_latest_round_anc
         )
         .await
         .unwrap();
+        // Keep writes frozen across a complete follower poll: the old terminal
+        // must neither end this subscription nor cause an executor to be built.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(1100), attached.events.recv())
+                .await
+                .is_err(),
+            "an anchor awaiting its marker must keep the subscriber alive",
+        );
+        append_compat_sse_runtime_event(
+            &state,
+            run.id,
+            "flow_started",
+            json!({"type": "flow_started", "response_round_id": callback_task_id, "stream_generation_id": requested_generation}),
+        ).await;
+        for index in 0..65 {
+            append_compat_sse_runtime_event(
+                &state,
+                run.id,
+                "node_started",
+                json!({"index": index}),
+            )
+            .await;
+        }
+        Some(attached)
+    } else {
+        None
+    };
+    let tool = seed_pending_committed_delivery(
+        &state,
+        &run,
+        committed_delivery_payload("call-callback-once"),
+    )
+    .await;
+    // These business-owner output and terminal rows are legitimately untagged.
+    complete_attached_callback_round(&state, run.id, &reasoning, &message).await;
+    for (event_type, payload) in [
+        (
+            "runtime_stream_opened",
+            json!({"stream_generation_id": Uuid::now_v7()}),
+        ),
+        (
+            "flow_started",
+            json!({"type": "flow_started", "response_round_id": later_round}),
+        ),
+        (
+            "provider_output_item_done",
+            json!({"output_index": 0, "item": {"type": "message", "id": "later-output"}}),
+        ),
+        (
+            "flow_finished",
+            json!({"type": "flow_finished", "status": "succeeded", "marker": "later-terminal"}),
+        ),
+    ] {
+        append_compat_sse_runtime_event(&state, run.id, event_type, payload).await;
+    }
+
+    for expected_tool_count in [1, 0] {
+        let mut attached = if let Some(attached) = pending_attachment.take() {
+            attached
+        } else {
+            start_compatible_typed_resume_stream_for_actor(
+                dependencies.clone(),
+                run.clone(),
+                command.clone(),
+                actor.clone(),
+            )
+            .await
+            .unwrap()
+        };
         let mut items = Vec::new();
         let mut terminal_count = 0;
         let mut tool_count = 0;
