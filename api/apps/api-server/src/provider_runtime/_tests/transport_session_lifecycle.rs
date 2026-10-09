@@ -102,15 +102,19 @@ impl TransportLifecycleRuntime for FakeTransportRuntime {
             .get(&(command.logical_session_id.clone(), command.generation))
             .cloned();
         let Some((bound_target, incarnation)) = binding else {
-            return Err(RuntimeBackendError::Unavailable(
-                "provider_transport_unavailable: missing binding".into(),
-            ));
+            return Err(PluginFrameworkError::runtime(ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+                "transport worker binding evidence is unavailable",
+            ))
+            .into());
         };
         if bound_target != target_id || command.worker_incarnation.is_some_and(|i| i != incarnation)
         {
-            return Err(RuntimeBackendError::Unavailable(
-                "provider_transport_unavailable: binding mismatch".into(),
-            ));
+            return Err(PluginFrameworkError::runtime(ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+                "transport control binding target or worker incarnation mismatch",
+            ))
+            .into());
         }
         let behavior = self
             .responses
@@ -1742,4 +1746,5 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
     }
 }
 
+#[path = "transport_session_lifecycle/dispatch_settlement.rs"]
 mod dispatch_settlement;
