@@ -34,8 +34,26 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
+async fn replace_log_read_policy(app: &axum::Router, cookie: &str, csrf: &str, scope: &str) {
+    let operations = [
+        "get_query_fields",
+        "query_log_records",
+        "get_log_record",
+        "query_record_trajectory",
+        "list_record_client_trajectory",
+        "get_record_client_trajectory_section",
+    ]
+    .map(|operation_id| json!({"kind":"row", "operation_id":operation_id, "scope":scope}));
+    let response = app.clone().oneshot(Request::builder().method("PUT")
+        .uri("/api/console/settings/roles/log_query_viewer/console-policy")
+        .header("cookie", cookie).header("x-csrf-token", csrf)
+        .header("content-type", "application/json")
+        .body(Body::from(json!({"groups":[{"kind":"settings_feature", "group_id":"system.applications", "enabled":true, "strategy":"custom", "operations":operations}]}).to_string())).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
 #[tokio::test]
-async fn agent_logs_unified_query_console_auth_csrf_discovery_and_validation() {
+async fn agent_logs_unified_query_console_auth_readonly_discovery_and_validation() {
     let (app, _) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let uri = "/api/console/applications/logs/records/query";
@@ -46,16 +64,30 @@ async fn agent_logs_unified_query_console_auth_csrf_discovery_and_validation() {
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
-        query_request(&app, uri, Some(&cookie), None, json!({}))
-            .await
-            .status(),
-        StatusCode::UNAUTHORIZED
+        query_request(
+            &app,
+            uri,
+            Some(&cookie),
+            None,
+            json!({"application_ids":[]})
+        )
+        .await
+        .status(),
+        StatusCode::OK,
+        "read-only POST follows the existing query/preview credential contract"
     );
     assert_eq!(
-        query_request(&app, uri, Some(&cookie), Some("wrong"), json!({}))
-            .await
-            .status(),
-        StatusCode::FORBIDDEN
+        query_request(
+            &app,
+            uri,
+            Some(&cookie),
+            Some("wrong"),
+            json!({"application_ids":[]})
+        )
+        .await
+        .status(),
+        StatusCode::OK,
+        "CSRF protects mutation; an unused header cannot turn a read into a mutation"
     );
     let fields = get_console_json(
         &app,
@@ -269,14 +301,7 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
     .await;
     let member_id = Uuid::parse_str(&member).unwrap();
     create_role(&app, &root_cookie, &root_csrf, "log_query_viewer").await;
-    replace_role_permissions(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        "log_query_viewer",
-        &["application.view.own"],
-    )
-    .await;
+    replace_log_read_policy(&app, &root_cookie, &root_csrf, "own").await;
     replace_member_roles(
         &app,
         &root_cookie,
@@ -420,6 +445,35 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
     )
     .await;
     assert_eq!(own_trajectory["data"]["items"].as_array().unwrap().len(), 1);
+    let own_overview = get_console_json(
+        &app,
+        &cookie,
+        format!(
+            "/api/console/applications/{}/logs/records/{}",
+            fixtures[0].0, fixtures[0].1
+        ),
+    )
+    .await;
+    assert_eq!(
+        own_overview["data"]["messages"][0]["content"],
+        "owned secret"
+    );
+    let own_steps = get_console_json(
+        &app,
+        &cookie,
+        format!(
+            "/api/console/applications/{}/logs/records/{}/client-trajectory",
+            fixtures[0].0, fixtures[0].1
+        ),
+    )
+    .await;
+    let own_step = own_steps["data"]["items"][0]["id"].as_str().unwrap();
+    let own_section = get_console_json(
+        &app,
+        &cookie,
+        format!("/api/console/applications/{}/logs/records/{}/client-trajectory/{own_step}?section=result", fixtures[0].0, fixtures[0].1),
+    ).await;
+    assert_eq!(own_section["data"]["items"][0]["value"], "owned secret");
     let wrong_record = format!(
         "/api/console/applications/{}/logs/records/{}/client-trajectory/query",
         fixtures[0].0, fixtures[1].1
@@ -430,14 +484,7 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
             .status(),
         StatusCode::NOT_FOUND
     );
-    replace_role_permissions(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        "log_query_viewer",
-        &["application.view.all"],
-    )
-    .await;
+    replace_log_read_policy(&app, &root_cookie, &root_csrf, "scope_all").await;
     let (all_cookie, all_csrf) =
         login_and_capture_cookie(&app, "log-query-viewer", "temp-pass").await;
     let all = response_json(
@@ -484,5 +531,20 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
         .await
         .status(),
         StatusCode::NOT_FOUND
+    );
+    replace_role_permissions(&app, &root_cookie, &root_csrf, "log_query_viewer", &[]).await;
+    let (denied_cookie, denied_csrf) =
+        login_and_capture_cookie(&app, "log-query-viewer", "temp-pass").await;
+    assert_eq!(
+        query_request(
+            &app,
+            uri,
+            Some(&denied_cookie),
+            Some(&denied_csrf),
+            json!({})
+        )
+        .await
+        .status(),
+        StatusCode::FORBIDDEN
     );
 }

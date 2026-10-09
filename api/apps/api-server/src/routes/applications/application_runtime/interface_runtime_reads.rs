@@ -1,6 +1,6 @@
+mod log_queries;
 mod managed_projection;
 mod trajectory;
-mod log_queries;
 
 use std::sync::Arc;
 
@@ -32,11 +32,29 @@ use crate::{
 
 pub(crate) enum ApplicationRuntimeReadsInput {
     QueryFields,
-    QueryRecords { query: log_query::LogRecordsQuery },
-    QueryRecordTrajectory { application_id: Uuid, record_id: Uuid, query: log_query::TrajectoryQuery },
-    GetRecord { application_id:Uuid, record_id:Uuid },
-    RecordClientTrajectoryPage { application_id:Uuid, record_id:Uuid, query:provider_trajectory::RecordClientTrajectoryQuery },
-    RecordClientTrajectorySection { application_id:Uuid, record_id:Uuid,step_id:Uuid,query:provider_trajectory::ClientTrajectoryQuery },
+    QueryRecords {
+        query: log_query::LogRecordsQuery,
+    },
+    QueryRecordTrajectory {
+        application_id: Uuid,
+        record_id: Uuid,
+        query: log_query::TrajectoryQuery,
+    },
+    GetRecord {
+        application_id: Uuid,
+        record_id: Uuid,
+    },
+    RecordClientTrajectoryPage {
+        application_id: Uuid,
+        record_id: Uuid,
+        query: provider_trajectory::RecordClientTrajectoryQuery,
+    },
+    RecordClientTrajectorySection {
+        application_id: Uuid,
+        record_id: Uuid,
+        step_id: Uuid,
+        query: provider_trajectory::ClientTrajectoryQuery,
+    },
     WorkflowTrajectoryPage {
         application_id: Uuid,
         run_id: Uuid,
@@ -191,6 +209,17 @@ pub(crate) fn runtime_reads_port(
 }
 
 impl ApplicationRuntimeReadsAdapter {
+    async fn visible_log_application(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        operation_id: &str,
+    ) -> Result<domain::ApplicationRecord, ApiError> {
+        Ok(ApplicationService::new(self.store.for_actor(actor.clone()))
+            .get_application_for_read_operation(actor.user_id, application_id, operation_id)
+            .await?)
+    }
+
     async fn visible_application(
         &self,
         actor: &domain::ActorContext,
@@ -818,21 +847,81 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
-            ApplicationRuntimeReadsInput::QueryFields => Ok(ApplicationRuntimeReadsOutput::QueryFields(log_query::QueryFields::default())),
-            ApplicationRuntimeReadsInput::QueryRecords { query } => Ok(ApplicationRuntimeReadsOutput::Records(self.query_log_records(actor, query).await?)),
-            ApplicationRuntimeReadsInput::QueryRecordTrajectory { application_id, record_id, query } => Ok(ApplicationRuntimeReadsOutput::RecordTrajectoryQuery(self.query_record_trajectory(actor, application_id, record_id, query).await?)),
-            ApplicationRuntimeReadsInput::GetRecord{application_id,record_id} => {
-                self.visible_application(actor,application_id).await?;
-                Ok(ApplicationRuntimeReadsOutput::Record(self.store.application_log_record(application_id,record_id).await?.ok_or(ControlPlaneError::NotFound("log_record"))?))
-            },
-            ApplicationRuntimeReadsInput::RecordClientTrajectoryPage{application_id,record_id,query} => {
-                self.visible_application(actor,application_id).await?;
-                Ok(ApplicationRuntimeReadsOutput::RecordClientTrajectoryPage(self.store.record_client_trajectory_page(application_id,record_id,query.cursor,query.limit.unwrap_or(50)).await?))
-            },
-            ApplicationRuntimeReadsInput::RecordClientTrajectorySection{application_id,record_id,step_id,query} => {
-                self.visible_application(actor,application_id).await?;
-                Ok(ApplicationRuntimeReadsOutput::ClientTrajectorySection(self.store.record_client_trajectory_section(application_id,record_id,step_id,query.section.as_deref().unwrap_or("overview"),query.cursor,query.limit.unwrap_or(8)).await?.ok_or(ControlPlaneError::NotFound("client_trajectory_section"))?))
-            },
+            ApplicationRuntimeReadsInput::QueryFields => Ok(
+                ApplicationRuntimeReadsOutput::QueryFields(log_query::QueryFields::default()),
+            ),
+            ApplicationRuntimeReadsInput::QueryRecords { query } => Ok(
+                ApplicationRuntimeReadsOutput::Records(self.query_log_records(actor, query).await?),
+            ),
+            ApplicationRuntimeReadsInput::QueryRecordTrajectory {
+                application_id,
+                record_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::RecordTrajectoryQuery(
+                self.query_record_trajectory(actor, application_id, record_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::GetRecord {
+                application_id,
+                record_id,
+            } => {
+                self.visible_log_application(actor, application_id, "get_log_record")
+                    .await?;
+                Ok(ApplicationRuntimeReadsOutput::Record(
+                    self.store
+                        .application_log_record(application_id, record_id)
+                        .await?
+                        .ok_or(ControlPlaneError::NotFound("log_record"))?,
+                ))
+            }
+            ApplicationRuntimeReadsInput::RecordClientTrajectoryPage {
+                application_id,
+                record_id,
+                query,
+            } => {
+                self.visible_log_application(
+                    actor,
+                    application_id,
+                    "list_record_client_trajectory",
+                )
+                .await?;
+                Ok(ApplicationRuntimeReadsOutput::RecordClientTrajectoryPage(
+                    self.store
+                        .record_client_trajectory_page(
+                            application_id,
+                            record_id,
+                            query.cursor,
+                            query.limit.unwrap_or(50),
+                        )
+                        .await?,
+                ))
+            }
+            ApplicationRuntimeReadsInput::RecordClientTrajectorySection {
+                application_id,
+                record_id,
+                step_id,
+                query,
+            } => {
+                self.visible_log_application(
+                    actor,
+                    application_id,
+                    "get_record_client_trajectory_section",
+                )
+                .await?;
+                Ok(ApplicationRuntimeReadsOutput::ClientTrajectorySection(
+                    self.store
+                        .record_client_trajectory_section(
+                            application_id,
+                            record_id,
+                            step_id,
+                            query.section.as_deref().unwrap_or("overview"),
+                            query.cursor,
+                            query.limit.unwrap_or(8),
+                        )
+                        .await?
+                        .ok_or(ControlPlaneError::NotFound("client_trajectory_section"))?,
+                ))
+            }
             ApplicationRuntimeReadsInput::WorkflowTrajectoryPage {
                 application_id,
                 run_id,

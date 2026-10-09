@@ -12,12 +12,14 @@ impl ApplicationRuntimeReadsAdapter {
             Some(ids) => {
                 // Validate every explicit identity, even if the filter could never match it.
                 for id in ids {
-                    service.get_application(actor.user_id, *id).await?;
+                    service
+                        .get_application_for_read_operation(actor.user_id, *id, "query_log_records")
+                        .await?;
                 }
                 ids.clone()
             }
             None => service
-                .list_readable_applications(actor.user_id)
+                .list_readable_applications(actor.user_id, "query_log_records")
                 .await?
                 .into_iter()
                 .map(|application| application.id)
@@ -43,7 +45,8 @@ impl ApplicationRuntimeReadsAdapter {
         record_id: Uuid,
         query: log_query::TrajectoryQuery,
     ) -> Result<control_plane::ports::RecordClientTrajectoryQueryPage, ApiError> {
-        self.visible_application(actor, application_id).await?;
+        self.visible_log_application(actor, application_id, "query_record_trajectory")
+            .await?;
         let query = control_plane::ports::RecordClientTrajectoryQuery {
             filter: control_plane::resource_crud::parse_resource_filter_expr(
                 query.filter.as_ref().unwrap_or(&serde_json::json!({})),

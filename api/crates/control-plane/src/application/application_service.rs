@@ -41,21 +41,33 @@ where
             .collect())
     }
 
-    /// Enumerates the same current-workspace visibility used by get_application.
-    /// Log querying must not require the independent application-list operation.
+    /// Enumerates applications under the caller's concrete read operation.
+    /// A read operation must not require the independent application-list grant.
     pub async fn list_readable_applications(
         &self,
         actor_user_id: Uuid,
+        operation_id: &str,
     ) -> Result<Vec<domain::ApplicationRecord>> {
-        let actor = self.repository.load_actor_context_for_user(actor_user_id).await?;
+        let actor = self
+            .repository
+            .load_actor_context_for_user(actor_user_id)
+            .await?;
         let visibility = if actor.is_root {
             ApplicationVisibility::All
         } else {
-            let policies = self.repository.load_role_console_policies_for_user(&actor).await?;
-            resolve_application_console_visibility(&policies, access_control::APPLICATIONS_VIEW_OPERATION_ID)?
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(&actor)
+                .await?;
+            resolve_application_console_visibility(&policies, operation_id)?
         };
-        Ok(self.repository.list_applications(actor.current_workspace_id, actor_user_id, visibility).await?
-            .into_iter().map(with_product_capability_sections).collect())
+        Ok(self
+            .repository
+            .list_applications(actor.current_workspace_id, actor_user_id, visibility)
+            .await?
+            .into_iter()
+            .map(with_product_capability_sections)
+            .collect())
     }
 
     pub async fn list_application_management(
@@ -360,6 +372,22 @@ where
         actor_user_id: Uuid,
         application_id: Uuid,
     ) -> Result<domain::ApplicationRecord> {
+        self.get_application_for_read_operation(
+            actor_user_id,
+            application_id,
+            access_control::APPLICATIONS_VIEW_OPERATION_ID,
+        )
+        .await
+    }
+
+    /// Applies a concrete interface's row grant and current-workspace visibility.
+    /// Modern custom policies store operation IDs, not their legacy profile name.
+    pub async fn get_application_for_read_operation(
+        &self,
+        actor_user_id: Uuid,
+        application_id: Uuid,
+        operation_id: &str,
+    ) -> Result<domain::ApplicationRecord> {
         let actor = self
             .repository
             .load_actor_context_for_user(actor_user_id)
@@ -371,10 +399,7 @@ where
                 .repository
                 .load_role_console_policies_for_user(&actor)
                 .await?;
-            resolve_application_console_visibility(
-                &policies,
-                access_control::APPLICATIONS_VIEW_OPERATION_ID,
-            )?
+            resolve_application_console_visibility(&policies, operation_id)?
         };
         let application = self
             .repository
