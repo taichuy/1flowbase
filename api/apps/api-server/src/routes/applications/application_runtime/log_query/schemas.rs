@@ -27,9 +27,6 @@ fn integer() -> Value {
 fn timestamp() -> Value {
     json!({"type":"string","format":"date-time"})
 }
-fn envelope(data: Value) -> Value {
-    object(json!({"data":data,"meta":nullable(json!({}))}))
-}
 
 pub(super) fn step_schema() -> Value {
     object(json!({
@@ -58,27 +55,27 @@ fn summary_schema() -> Value {
     }))
 }
 fn log_records_page_schema() -> Value {
-    envelope(object(
+    object(
         json!({"items":{"type":"array","items":summary_schema()},"next_cursor":nullable(text())}),
-    ))
+    )
 }
 fn trajectory_query_page_schema() -> Value {
-    envelope(object(json!({
+    object(json!({
         "items":{"type":"array","items":step_schema()},
         "matches":{"type":"array","items":object(json!({"step_id":uuid(),"section":text(),"sequence":integer(),"snippet":text()}))},
         "next_cursor":nullable(text()),"search_sections":strings(),"integrity":text()
-    })))
+    }))
 }
 fn query_fields_schema() -> Value {
     let fields = json!({"type":"array","items":object(json!({"field":text(),"value_type":{"type":"string","enum":["string","uuid","number","boolean","datetime"]},"operators":strings(),"sortable":{"type":"boolean"}}))});
-    envelope(object(json!({
+    object(json!({
         "record_fields":fields,"trajectory_fields":fields,"logical_operators":strings(),
         "record_keyword_fields":strings(),"trajectory_search_sections":strings(),
         "record_contains_semantics":text(),"trajectory_keyword_semantics":text(),"pagination":text()
-    })))
+    }))
 }
 fn record_overview_schema() -> Value {
-    envelope(object(json!({
+    object(json!({
         "record_id":uuid(),"source_kind":text(),"source_id":nullable(text()),"source_client":nullable(text()),
         "source_session_id":nullable(text()),"source_task_id":nullable(text()),"native_run_id":nullable(uuid()),
         "status":text(),"title":text(),"outcome":text(),"projection_output":nullable(text()),
@@ -86,17 +83,17 @@ fn record_overview_schema() -> Value {
         "messages":{"type":"array","items":object(json!({"role":text(),"content":text(),"sequence":integer()}))},
         "total_tokens":nullable(integer()),"input_tokens":nullable(integer()),"output_tokens":nullable(integer()),
         "input_cache_hit_tokens":nullable(integer()),"cost_breakdown":cost_schema(),"available_views":strings()
-    })))
+    }))
 }
 fn record_trajectory_page_schema() -> Value {
-    envelope(object(
+    object(
         json!({"items":{"type":"array","items":step_schema()},"next_cursor":{"anyOf":[text(),integer(),{"type":"null"}]},"integrity":text()}),
-    ))
+    )
 }
 fn trajectory_section_schema() -> Value {
-    envelope(object(
+    object(
         json!({"step_id":uuid(),"request_id":uuid(),"evidence_scope":text(),"section":text(),"items":{"type":"array","items":object(json!({"sequence":integer(),"value":{}}))},"next_cursor":nullable(integer())}),
-    ))
+    )
 }
 macro_rules! projection {
     ($name:ident, $schema:ident) => {

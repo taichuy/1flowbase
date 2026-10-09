@@ -115,9 +115,9 @@ fn snippets_restore_nul_and_multibyte_offsets_without_global_lowercase_offsets()
 }
 #[test]
 fn cursors_bind_scope_visibility_filter_sort_and_search_but_not_page_size() {
-    let scope = Uuid::new_v4();
-    let app = Uuid::new_v4();
-    let other = Uuid::new_v4();
+    let scope = Uuid::from_u128(101);
+    let app = Uuid::from_u128(102);
+    let other = Uuid::from_u128(103);
     let mut query = ApplicationLogRecordsQuery {
         filter: F::All(vec![]),
         sort_field: "started_at".into(),
@@ -132,7 +132,7 @@ fn cursors_bind_scope_visibility_filter_sort_and_search_but_not_page_size() {
         application_log_query_fingerprint(scope, &[other, app, app], &query)
     );
     for changed in [
-        application_log_query_fingerprint(Uuid::new_v4(), &[app, other], &query),
+        application_log_query_fingerprint(Uuid::from_u128(104), &[app, other], &query),
         application_log_query_fingerprint(scope, &[app], &query),
     ] {
         assert!(validate_log_query_cursor_binding(1, &binding, &changed).is_err());
@@ -150,7 +150,7 @@ fn cursors_bind_scope_visibility_filter_sort_and_search_but_not_page_size() {
     );
     assert!(validate_log_query_cursor_binding(2, &binding, &binding).is_err());
     let mut query = trajectory_query();
-    let record = Uuid::new_v4();
+    let record = Uuid::from_u128(105);
     let sections = log_query_search_sections(&query).unwrap();
     let binding = record_trajectory_query_fingerprint(app, record, &query, &sections);
     query.keyword = Some("different".into());
@@ -164,7 +164,12 @@ fn cursors_bind_scope_visibility_filter_sort_and_search_but_not_page_size() {
     );
     assert_ne!(
         binding,
-        record_trajectory_query_fingerprint(app, Uuid::new_v4(), &trajectory_query(), &sections)
+        record_trajectory_query_fingerprint(
+            app,
+            Uuid::from_u128(106),
+            &trajectory_query(),
+            &sections
+        )
     );
 }
 
@@ -177,14 +182,12 @@ fn nul_predicate_is_supported_by_restored_trajectory_and_rejected_for_task_text(
         &json!({"preview":"source\u{0}identity"}),
         &record_trajectory_query_fields()
     ));
-    assert!(
-        validate_application_log_query_filter(&predicate(
-            "user_input",
-            O::Includes,
-            json!("\u{0}")
-        ))
-        .is_err()
-    );
+    assert!(validate_application_log_query_filter(&predicate(
+        "user_input",
+        O::Includes,
+        json!("\u{0}")
+    ))
+    .is_err());
 }
 
 #[test]
