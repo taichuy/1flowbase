@@ -446,16 +446,22 @@ impl PgControlPlaneStore {
     }
 }
 
-/// A formal provider output item answers the call when it carries a message
-/// payload; tool calls and tool results do not.
+/// Only a declared final assistant message can replace the persisted answer.
+/// Unphased provider messages, commentary and tools remain real trajectory facts,
+/// but cannot suppress the terminal answer stored by the run owner.
 fn native_output_item_is_answer(item: &Value) -> bool {
-    if item.get("type").and_then(Value::as_str) == Some("message") {
-        return true;
+    if item.get("phase").and_then(Value::as_str) != Some("final_answer") {
+        return false;
     }
-    if item.get("phase").and_then(Value::as_str) == Some("final_answer") {
-        return true;
+    let role = item.get("role").and_then(Value::as_str);
+    if role.is_some_and(|role| role != "assistant") {
+        return false;
     }
-    item.get("content").is_some() && item.get("role").and_then(Value::as_str) == Some("assistant")
+    match item.get("type").and_then(Value::as_str) {
+        Some("message") => true,
+        None => role == Some("assistant") && item.get("content").is_some(),
+        _ => false,
+    }
 }
 
 fn native_log_item_text(item: &Value) -> String {
