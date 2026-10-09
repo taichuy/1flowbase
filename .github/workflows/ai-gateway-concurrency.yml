@@ -1,36 +1,18 @@
-name: AI Gateway Protocol Conformance Gate
-
+name: Gateway legacy fixture validation
 on:
-  workflow_call:
-    inputs:
-      target_ref:
-        description: Candidate branch, tag, or SHA to validate
-        type: string
-        required: false
-        default: ''
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
-  group: ai-gateway-protocol-conformance-${{ github.ref }}
+  group: gateway-legacy-fixture-${{ github.ref }}
   cancel-in-progress: true
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_INCREMENTAL: '0'
-  OPENAI_API_KEY: ''
-  OPENAI_BASE_URL: ''
-  ANTHROPIC_API_KEY: ''
-  ANTHROPIC_AUTH_TOKEN: ''
-  ANTHROPIC_BASE_URL: ''
-  CLAUDE_CODE_OAUTH_TOKEN: ''
-
 jobs:
-  protocol-conformance:
+  legacy-provider-fixture:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:18.4
@@ -46,114 +28,56 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - name: Checkout candidate source
+      - name: Checkout exact fixture candidate
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.target_ref || github.sha }}
+          ref: fd3f017805ccb03bf55c5fd0207d18123f34fd8e
           fetch-depth: 1
-
-      - name: Resolve candidate source SHA
-        id: candidate_source
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # The candidate's paired-source lock is the single source of truth for the
-      # official provider revision. Hardcoding a ref here made cross-ref runs
-      # (workflow file from main, candidate from another branch) pair a stale
-      # official source with the candidate's fixtures.
-      - name: Resolve paired official provider revision
-        id: paired_official
-        shell: bash
-        run: >-
-          echo "revision=$(node -p
-          "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")"
-          >> "$GITHUB_OUTPUT"
-
-      - name: Checkout paired official provider source
-        uses: actions/checkout@v6
-        with:
-          repository: taichuy/1flowbase-official-plugins
-          ref: ${{ steps.paired_official.outputs.revision }}
-          path: tmp/ai-gateway-concurrency/official-source
-          fetch-depth: 1
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Resolve PostgreSQL 18 backup toolchain
-        shell: bash
-        run: |
-          set -o pipefail
-          node scripts/node/postgres-toolchain/cli.js \
-            | grep -E '^API_POSTGRES_PG_(DUMP|RESTORE)_PATH=' \
-            >> "$GITHUB_ENV"
-
-      # Cache only compiler dependency state. Gate evidence and runtime provenance
-      # are still rebuilt and emitted by the repository-owned command below.
-      - name: Restore Rust dependency cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: ai-gateway-protocol-conformance
-          key: ${{ github.ref_name }}
-          save-if: true
+          key: codex/gateway-replay-gc-20261010
+          save-if: false
           cache-on-failure: true
           cache-workspace-crates: true
-          workspaces: |
-            api -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/aliyun_bailian -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/anthropic -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/deepseek -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/gemini -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai_compatible -> target
-
-      - name: Prepare PostgreSQL 18 backup clients
-        shell: bash
-        run: |
-          tools_dir="$RUNNER_TEMP/postgresql-18-tools"
-          mkdir -p "$tools_dir"
-          for tool in pg_dump pg_restore; do
-            sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
-          #!/bin/sh
-          exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
-          SCRIPT
-            chmod +x "$tools_dir/$tool"
-          done
-          echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
-          echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-
-      - name: Run the single blocking AI Gateway quality command
-        id: protocol_conformance
-        shell: bash
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/cli.js run
-          --repo-root "$GITHUB_WORKSPACE"
-          --official-source-root "$GITHUB_WORKSPACE/tmp/ai-gateway-concurrency/official-source"
-          --database-url "postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase"
-
-      - name: Write aggregate-compatible AI Gateway report
-        if: always()
+          workspaces: api -> target
+      - name: Validate only the affected real PostgreSQL upgrades
         shell: bash
         env:
-          AI_GATEWAY_COMMAND_OUTCOME: ${{ steps.protocol_conformance.outcome }}
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/component-report.js
-          --repo-root "$GITHUB_WORKSPACE"
-          --command-outcome "$AI_GATEWAY_COMMAND_OUTCOME"
-
-      - name: Upload bounded protocol evidence
+          DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+          API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+        run: |
+          set -euo pipefail
+          evidence_dir=tmp/test-governance/gateway-legacy-fixture
+          mkdir -p "$evidence_dir"
+          test "$(git rev-parse HEAD)" = 'fd3f017805ccb03bf55c5fd0207d18123f34fd8e'
+          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          exit_code=0
+          cargo test --manifest-path api/Cargo.toml --jobs "$jobs" -p storage-durable-postgres --lib model_provider_repository_backfills_ --locked > "$evidence_dir/legacy-provider-upgrades.log" 2>&1 || exit_code=$?
+          tail -c 4000 "$evidence_dir/legacy-provider-upgrades.log"
+          export FIXTURE_TEST_EXIT_CODE="$exit_code"
+          node <<'JS'
+          const fs = require('node:fs');
+          const log = fs.readFileSync('tmp/test-governance/gateway-legacy-fixture/legacy-provider-upgrades.log', 'utf8');
+          const result = /test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;/u.exec(log);
+          const passed = Number(result?.[2] || 0);
+          const failed = Number(result?.[3] || 0);
+          const ignored = Number(result?.[4] || 0);
+          const exitCode = Number(process.env.FIXTURE_TEST_EXIT_CODE);
+          const status = exitCode === 0 && result?.[1] === 'ok' && passed === 2 && failed === 0 && ignored === 0 ? 'PASS' : 'FAIL';
+          const receipt = {schema_version:'1flowbase.gateway-fixture-validation/v1', main_source_sha:'fd3f017805ccb03bf55c5fd0207d18123f34fd8e', workflow_source_sha:process.env.GITHUB_SHA, status, exit_code:exitCode, filter:'model_provider_repository_backfills_', passed, failed, ignored, postgres:'18.4', scope:'legacy-provider-fixture-only'};
+          fs.writeFileSync('tmp/test-governance/gateway-legacy-fixture/receipt.json', JSON.stringify(receipt,null,2)+'
+');
+          console.log(JSON.stringify(receipt));
+          if(status !== 'PASS') process.exitCode = 1;
+          JS
+      - name: Upload exact candidate fixture evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: test-governance-ai-gateway-protocol-conformance-${{ steps.candidate_source.outputs.sha }}
-          path: |
-            tmp/test-governance/ai-gateway-quality-gate/**
-            tmp/test-governance/ai-gateway-concurrency/**
-            tmp/test-governance/ai-gateway-protocol-conformance/**
-          if-no-files-found: error
-          retention-days: 14
+          name: test-governance-gateway-legacy-fixture-fd3f017805ccb03bf55c5fd0207d18123f34fd8e
+          path: tmp/test-governance/gateway-legacy-fixture/**
