@@ -4,6 +4,7 @@ import {
   act,
   fireEvent,
   render,
+  screen,
   waitFor,
   within
 } from '@testing-library/react';
@@ -74,6 +75,39 @@ describe('PageCanvas Native Signal context', () => {
     );
     await waitFor(() => expect(button).toHaveTextContent('1:Account:en_US'));
     expect(root.host.shadowRoot).not.toBeNull();
+  });
+
+  test('translates the design descriptor label using its runtime catalog', async () => {
+    const blocks = [{ ...runtimeBlocks()[0], title: 'Account' }];
+    const preparations = createNativePreparationSource([
+      preparation('producer', 0, () => <span>Content</span>)
+    ]);
+    const view = (locale: string) => (
+      <PageCanvas
+        content={pageContent()}
+        runtimeBlocks={blocks}
+        runtimePreparations={preparations}
+        isDesignMode
+        runtimeContext={{
+          currentUser: null,
+          workspace: { id: 'workspace-1' },
+          application: null,
+          theme: { mode: 'light', tokens: {} },
+          ui: { locale },
+          i18n: createBlockI18n({
+            locale,
+            status: 'ready',
+            messages: locale === 'zh_Hans' ? { Account: '账号' } : {}
+          })
+        }}
+      />
+    );
+    const utils = render(view('zh_Hans'));
+    const slot = screen.getByTestId('block-slot-producer');
+    expect(within(slot).getByText('账号')).toBeInTheDocument();
+    utils.rerender(view('en_US'));
+    expect(within(slot).getByText('Account')).toBeInTheDocument();
+    expect(blocks[0].title).toBe('Account');
   });
 
   test('D3R-AC-002/004 publishes synchronously, updates only the DAG downstream, preserves Hooks, and rejects the old epoch', async () => {

@@ -21,6 +21,7 @@ import { useMemo, useState } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
 import { i18nText } from '../../../shared/i18n/text';
+import { useBlockI18n } from '../hooks/runtime-i18n/use-block-i18n';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import {
   createFrontstagePageTab,
@@ -61,8 +62,13 @@ function nextRank(tabs: FrontstagePageTab[]): string {
   return String((tabs.length + 1) * 1000).padStart(6, '0');
 }
 
-function tabLabelText(tab: FrontstagePageTab): string {
-  return tab.title?.trim() || i18nText('frontstage', 'auto.unnamed_page_tab');
+function tabLabelText(
+  tab: FrontstagePageTab,
+  translateText: (text: string) => string
+): string {
+  return tab.title?.trim()
+    ? translateText(tab.title.trim())
+    : i18nText('frontstage', 'auto.unnamed_page_tab');
 }
 
 function createTabRankUpdates(
@@ -98,6 +104,7 @@ export function FrontstagePageTabs({
   onNavigateTab,
   children
 }: FrontstagePageTabsProps) {
+  const runtimeI18n = useBlockI18n(workspaceId, presentation === 'tabs');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -379,7 +386,7 @@ export function FrontstagePageTabs({
                 }}
                 onDrop={(event) => handleTabDrop(event, tab.id)}
               >
-                <span>{tabLabelText(tab)}</span>
+                <span>{tabLabelText(tab, runtimeI18n.t)}</span>
                 <span
                   className="frontstage-page-tabs__label-actions"
                   onClick={(event) => event.stopPropagation()}
@@ -441,7 +448,7 @@ export function FrontstagePageTabs({
                 </span>
               </span>
             ) : (
-              tabLabelText(tab)
+              tabLabelText(tab, runtimeI18n.t)
             )
           }))}
           tabBarExtraContent={

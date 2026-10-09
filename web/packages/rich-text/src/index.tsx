@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react';
 
 import Vditor from 'vditor';
 
-import { acquireBundledVditorRuntime } from './runtime-assets';
+import {
+  acquireBundledVditorRuntime,
+  getBundledEditorMessages
+} from './runtime-assets';
 
 const NO_REMOTE_ASSET_BASE = '/__1flowbase_bundled_vditor__';
 
@@ -35,6 +38,7 @@ export interface VditorEditorProps {
   readonly ariaLabel?: string;
   readonly className?: string;
   readonly height?: number | string;
+  readonly locale?: 'zh_Hans' | 'en_US';
   readonly mode?: VditorEditorMode;
   readonly onChange: (value: string) => void;
   readonly onReady?: (editor: VditorEditorHandle | null) => void;
@@ -50,6 +54,7 @@ export function VditorEditor({
   ariaLabel = 'vditor_editor',
   className,
   height = 360,
+  locale = 'zh_Hans',
   mode = 'ir',
   onChange,
   onReady,
@@ -145,7 +150,8 @@ export function VditorEditor({
         cdn: NO_REMOTE_ASSET_BASE,
         height,
         hint: { emoji: {}, emojiPath: NO_REMOTE_ASSET_BASE },
-        i18n: window.VditorI18n,
+        i18n: getBundledEditorMessages(locale),
+        lang: locale === 'en_US' ? 'en_US' : 'zh_CN',
         image: { isPreview: true },
         mode,
         outline: { enable: outline, position: 'left' },
@@ -183,6 +189,7 @@ export function VditorEditor({
           onReadyRef.current?.(createEditorHandle(editor));
         },
         input: (nextValue) => {
+          if (disposed) return;
           valueRef.current = nextValue;
           onChangeRef.current(nextValue);
         }
@@ -201,15 +208,24 @@ export function VditorEditor({
     });
 
     return () => {
+      const editor = editorRef.current;
+      // Vditor debounces input. Capture the visible draft before rebuilding
+      // so a locale change retains even input not yet sent to the consumer.
+      if (editor && readyRef.current) {
+        const draft = editor.getValue();
+        if (draft !== valueRef.current) {
+          valueRef.current = draft;
+          onChangeRef.current(draft);
+        }
+      }
       disposed = true;
       releaseRuntime();
       readyRef.current = false;
       onReadyRef.current?.(null);
-      const editor = editorRef.current;
       editorRef.current = null;
       if (editor) disposeEditor(editor);
     };
-  }, [height, mode, outline, placeholder, previewMode, theme, uploadEnabled]);
+  }, [height, locale, mode, outline, placeholder, previewMode, theme, uploadEnabled]);
 
   return (
     <div

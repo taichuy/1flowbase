@@ -16,6 +16,8 @@ import {
   fetchSettingsConsoleNavigation,
   settingsConsoleNavigationQueryKey
 } from '../features/settings/api/console-navigation';
+import { useBlockI18n } from '../features/frontstage/hooks/runtime-i18n/use-block-i18n';
+import { i18nText } from '../shared/i18n/text';
 import { getSelectedRouteId } from '../routes/route-config';
 import {
   fetchFrontstagePageTree,
@@ -59,7 +61,7 @@ function topbarPageRoutes(
       {
         id: node.id,
         path: `/${node.slug}`,
-        label_key: node.title?.trim() || '未命名页面'
+        label_key: node.title?.trim() || i18nText('frontstage', 'auto.unnamed_page')
       }
     ];
   });
@@ -71,7 +73,8 @@ function topbarNavigationItems({
   useRouterLinks,
   workspaceId,
   isDesignMode,
-  onOpenMoveNode
+  onOpenMoveNode,
+  translateText
 }: {
   nodes: FrontstagePageTreeNode[];
   pathname: string;
@@ -79,6 +82,7 @@ function topbarNavigationItems({
   workspaceId?: string;
   isDesignMode: boolean;
   onOpenMoveNode: (nodeId: string) => void;
+  translateText: (text: string) => string;
 }): ItemType[] {
   return nodes.reduce<ItemType[]>((items, node) => {
     if (node.placement !== 'topbar' || !node.slug) {
@@ -95,7 +99,8 @@ function topbarNavigationItems({
               nodes: node.children,
               slug: node.slug,
               pathname,
-              useRouterLinks
+              useRouterLinks,
+              translateText
             })
           : undefined,
       label:
@@ -111,7 +116,9 @@ function topbarNavigationItems({
             >
               {renderNavigationLink(
                 path,
-                node.title?.trim() || '未命名页面',
+                node.title?.trim()
+                  ? translateText(node.title.trim())
+                  : i18nText('frontstage', 'auto.unnamed_page'),
                 useRouterLinks,
                 pathname === path || pathname.startsWith(`${path}/`)
               )}
@@ -120,7 +127,9 @@ function topbarNavigationItems({
         ) : (
           renderNavigationLink(
             path,
-            node.title?.trim() || '未命名页面',
+            node.title?.trim()
+              ? translateText(node.title.trim())
+              : i18nText('frontstage', 'auto.unnamed_page'),
             useRouterLinks,
             pathname === path || pathname.startsWith(`${path}/`)
           )
@@ -193,16 +202,20 @@ function frontstagePageItems({
   slug,
   pathname,
   useRouterLinks,
-  onNavigate
+  onNavigate,
+  translateText
 }: {
   nodes: FrontstagePageTreeNode[];
   slug: string;
   pathname: string;
   useRouterLinks: boolean;
   onNavigate?: () => void;
+  translateText: (text: string) => string;
 }): ItemType[] {
   return nodes.map((node) => {
-    const title = node.title?.trim() || '未命名页面';
+    const title = node.title?.trim()
+      ? translateText(node.title.trim())
+      : i18nText('frontstage', 'auto.unnamed_page');
     if (node.kind === 'group') {
       return {
         key: node.id,
@@ -213,7 +226,8 @@ function frontstagePageItems({
           slug,
           pathname,
           useRouterLinks,
-          onNavigate
+          onNavigate,
+          translateText
         })
       };
     }
@@ -277,6 +291,7 @@ export function Navigation({
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
+  const runtimeI18n = useBlockI18n(workspaceId ?? '', Boolean(workspaceId));
   const isDesignMode = useFrontstageDesignModeStore(
     (state) => state.isDesignMode
   );
@@ -344,7 +359,8 @@ export function Navigation({
             useRouterLinks,
             workspaceId,
             isDesignMode,
-            onOpenMoveNode: setMoveNodeId
+            onOpenMoveNode: setMoveNodeId,
+            translateText: runtimeI18n.t
           })
         ];
   const mobilePrimaryItems: MenuProps['items'] =
@@ -371,14 +387,17 @@ export function Navigation({
               slug: node.slug,
               pathname,
               useRouterLinks,
-              onNavigate: closeMobileNavigation
+              onNavigate: closeMobileNavigation,
+              translateText: runtimeI18n.t
             });
             return [
               {
                 key: node.id,
                 label: renderNavigationLink(
                   path,
-                  node.title?.trim() || '未命名页面',
+                  node.title?.trim()
+                    ? runtimeI18n.t(node.title.trim())
+                    : i18nText('frontstage', 'auto.unnamed_page'),
                   useRouterLinks,
                   pathname === path || pathname.startsWith(`${path}/`),
                   closeMobileNavigation

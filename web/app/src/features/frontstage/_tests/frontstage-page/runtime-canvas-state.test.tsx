@@ -2,10 +2,11 @@ import { i18nText } from '../../../../shared/i18n/text';
 import type { FrontstageNativePreparedRuntime } from '../../lib/page-canvas/native-runtime-preparation';
 import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, vi } from 'vitest';
 
+import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import {
@@ -28,6 +29,11 @@ import {
   renameNodeInTree
 } from '../../lib/page-tree';
 import { FrontStagePage } from '../../pages/FrontStagePage';
+
+const runtimeI18nApi = vi.hoisted(() => ({
+  fetchFrontstageRuntimeI18nCatalog: vi.fn()
+}));
+vi.mock('../../api/runtime-i18n', () => runtimeI18nApi);
 
 const pageContentSaveHook = vi.hoisted(() => ({
   useFrontstagePageContentSave: vi.fn()
@@ -462,10 +468,14 @@ function mockFrontstageBlockCatalog(
 }
 
 describe('FrontStagePage - runtime canvas state', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await appI18n.changeLanguage('zh_Hans');
     resetAuthStore();
     resetFrontstageDesignModeStore();
     vi.clearAllMocks();
+    runtimeI18nApi.fetchFrontstageRuntimeI18nCatalog.mockImplementation(
+      async (locale: string) => ({ locale, messages: {}, catalog_revision: 1, digest: locale })
+    );
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mockImplementation(
@@ -511,6 +521,75 @@ describe('FrontStagePage - runtime canvas state', () => {
       })
     );
   });
+
+  test.each(['drawer', 'modal', 'inline'] as const)(
+    'translates the page and %s descriptor titles on locale changes',
+    async (presentation) => {
+      authenticate([]);
+      runtimeI18nApi.fetchFrontstageRuntimeI18nCatalog.mockImplementation(
+        async (locale: string) => ({
+          locale,
+          messages:
+            locale === 'zh_Hans'
+              ? { Reports: '报表', 'Account details': '账号详情' }
+              : {},
+          catalog_revision: 1,
+          digest: locale
+        })
+      );
+      const layer = (
+        blockId: string,
+        kind: 'page' | typeof presentation,
+        parent: string | null
+      ) => ({
+        block_id: blockId,
+        tab_id: 'tab-1',
+        parent_block_id: parent,
+        title: 'Account details',
+        presentation: kind,
+        schema_version: 1,
+        input_mapping: {},
+        output_mapping: {},
+        runtime_descriptor: {
+          renderer_version: 'v1',
+          runtime: { kind: 'native_react', entry: 'index.js' }
+        },
+        code_ref: `frontstage.block.${blockId}`,
+        source_revision: 'a'.repeat(64)
+      });
+      const assembly = {
+        layers: [
+          layer('base', 'page', null),
+          layer('account', presentation, 'base')
+        ]
+      };
+      render(
+        <AppProviders>
+          <FrontStagePageHarness
+            pageId="page-1"
+            initialPageTree={[{ id: 'page-1', title: 'Reports', kind: 'page' }]}
+            pageContent={createPageContent()}
+            blockRuntimeAssembly={assembly}
+          />
+        </AppProviders>
+      );
+      expect(
+        await screen.findByRole('heading', { name: '报表' })
+      ).toBeInTheDocument();
+      const role = presentation === 'inline' ? 'region' : 'dialog';
+      expect(
+        await screen.findByRole(role, { name: '账号详情' })
+      ).toBeInTheDocument();
+      await act(() => appI18n.changeLanguage('en_US'));
+      expect(
+        await screen.findByRole('heading', { name: 'Reports' })
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByRole(role, { name: 'Account details' })
+      ).toBeInTheDocument();
+      expect(assembly.layers[1].title).toBe('Account details');
+    }
+  );
 
   test('AC-003 keeps the base PageCanvas mounted while assembly layers render only as overlays', async () => {
     authenticate(['frontstage.page.design']);
