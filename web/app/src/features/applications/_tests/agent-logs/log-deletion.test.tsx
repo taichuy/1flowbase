@@ -414,3 +414,26 @@ test('a failed server task retains its partial count without guessing completion
   );
   expect(onFinished).toHaveBeenCalledOnce();
 });
+
+test('a restored task can finish and start a new deletion without reviving its stale latest snapshot', async () => {
+  currentJob = job();
+  const { client } = renderButton();
+  expect(
+    await screen.findByText('已删除 100 / 205 条日志')
+  ).toBeInTheDocument();
+  currentJob = job({ status: 'succeeded', deleted_records: 205 });
+  await act(async () =>
+    client.setQueryData(logDeletionJobKey('app-1', 'fixture-job'), currentJob)
+  );
+  fireEvent.click(await screen.findByRole('button', { name: '新建删除' }));
+  expect(
+    await screen.findByRole('spinbutton', { name: '删除批次' })
+  ).toHaveValue('100');
+  await start();
+  await waitFor(() =>
+    expect(api.createConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce()
+  );
+  expect(
+    api.createConsoleApplicationLogDeletionJob.mock.calls[0][1].job_id
+  ).not.toBe('fixture-job');
+});
