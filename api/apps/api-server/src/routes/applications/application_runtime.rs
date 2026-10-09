@@ -93,6 +93,11 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .route("/applications/:id/logs/deletion-preview", console_post(logs_delete::jobs::preview, ConsoleOperation("applications.logs.delete.preview".to_string())))
+        .route("/applications/:id/logs/deletion-jobs", console_post(logs_delete::jobs::create, ConsoleOperation("applications.logs.delete.jobs.create".to_string())))
+        .route("/applications/:id/logs/deletion-jobs/:job_id", console_get(logs_delete::jobs::get, ConsoleOperation("applications.logs.delete.jobs.get".to_string())))
+        .route("/applications/:id/logs/deletion-jobs/latest", console_get(logs_delete::jobs::latest, ConsoleOperation("applications.logs.delete.jobs.latest".to_string())))
+        .route("/applications/:id/logs/deletion-jobs/:job_id/stop", console_post(logs_delete::jobs::stop, ConsoleOperation("applications.logs.delete.jobs.stop".to_string())))
         .route("/applications/:id/logs", console_delete(logs_delete::delete_logs, ConsoleOperation(APPLICATIONS_LOGS_DELETE_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id", console_get(get_log_record, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/client-trajectory", console_get(list_record_client_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))

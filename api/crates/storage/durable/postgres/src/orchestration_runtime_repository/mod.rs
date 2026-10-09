@@ -121,6 +121,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     async fn reprice_agent_log_record(&self, application_id: Uuid, scope_id: Uuid, record_id: Uuid, costs: &[(String, Option<String>)]) -> Result<u64> {
         agent_logs::reprice::apply(self, application_id, scope_id, record_id, costs).await
     }
+    async fn preview_agent_logs_delete(&self, application_id: Uuid, scope_id: Uuid, scope: &control_plane_contracts::ports::AgentLogsDeleteScope) -> Result<control_plane_contracts::ports::AgentLogsDeletePreview> { agent_logs::deletion_jobs::preview(self,application_id,scope_id,scope).await }
+    async fn create_agent_logs_delete_job(&self, application_id: Uuid, scope_id: Uuid, input: &control_plane_contracts::ports::AgentLogsDeleteJobCreate) -> Result<control_plane_contracts::ports::AgentLogsDeleteJob> { agent_logs::deletion_jobs::create(self,application_id,scope_id,input).await }
+    async fn get_agent_logs_delete_job(&self, application_id: Uuid, scope_id: Uuid, job_id: Option<Uuid>) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> { agent_logs::deletion_jobs::get(self,application_id,scope_id,job_id).await }
+    async fn stop_agent_logs_delete_job(&self, application_id: Uuid, scope_id: Uuid, job_id: Uuid) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> { agent_logs::deletion_jobs::stop(self,application_id,scope_id,job_id).await }
+    async fn next_agent_logs_delete_job(&self) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> { agent_logs::deletion_jobs::next(self).await }
+    async fn advance_agent_logs_delete_job(&self, job_id: Uuid) -> Result<()> { agent_logs::deletion_jobs::advance(self,job_id).await }
+    async fn fail_agent_logs_delete_job(&self, job_id: Uuid, expected_deleted_records: u64) -> Result<()> { agent_logs::deletion_jobs::fail(self,job_id,expected_deleted_records).await }
     async fn delete_agent_logs(&self, application_id: Uuid, scope_id: Uuid, scope: &control_plane_contracts::ports::AgentLogsDeleteScope) -> Result<control_plane_contracts::ports::AgentLogsDeleteReceipt> {
         agent_logs_delete::delete(self, application_id, scope_id, scope).await
     }

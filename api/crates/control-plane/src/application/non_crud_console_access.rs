@@ -11,6 +11,11 @@ pub enum ApplicationNonCrudConsoleOperation {
     LogsExport,
     LogsImport,
     LogsDelete,
+    LogsDeletePreview,
+    LogsDeleteJobCreate,
+    LogsDeleteJobGet,
+    LogsDeleteJobLatest,
+    LogsDeleteJobStop,
     OrchestrationTemplateExport,
     OrchestrationTemplateImport,
     OrchestrationVersionRestore,
@@ -25,6 +30,12 @@ impl ApplicationNonCrudConsoleOperation {
             Self::LogsExport => access_control::APPLICATIONS_LOGS_EXPORT_OPERATION_ID,
             Self::LogsImport => access_control::APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
             Self::LogsDelete => access_control::APPLICATIONS_LOGS_DELETE_OPERATION_ID,
+            Self::LogsDeletePreview => "applications.logs.delete.preview",
+            Self::LogsDeleteJobCreate => "applications.logs.delete.jobs.create",
+            Self::LogsDeleteJobGet => "applications.logs.delete.jobs.get",
+            Self::LogsDeleteJobLatest => "applications.logs.delete.jobs.latest",
+            Self::LogsDeleteJobStop => "applications.logs.delete.jobs.stop",
+
             Self::OrchestrationTemplateExport => {
                 access_control::APPLICATIONS_ORCHESTRATION_TEMPLATE_EXPORT_OPERATION_ID
             }

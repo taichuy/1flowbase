@@ -6,6 +6,14 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     async fn next_agent_log_pricing_record(&self, _application_id: Uuid, _scope_id: Uuid, _after: Option<Uuid>) -> anyhow::Result<Option<AgentLogPricingRecord>> { anyhow::bail!("next_agent_log_pricing_record not implemented") }
     /// Update rated receipts and only their cost projection under ingest/delete locks.
     async fn reprice_agent_log_record(&self, _application_id: Uuid, _scope_id: Uuid, _record_id: Uuid, _costs: &[(String, Option<String>)]) -> anyhow::Result<u64> { anyhow::bail!("reprice_agent_log_record not implemented") }
+    async fn preview_agent_logs_delete(&self, _application_id: Uuid, _scope_id: Uuid, _scope: &AgentLogsDeleteScope) -> anyhow::Result<AgentLogsDeletePreview> { anyhow::bail!("preview_agent_logs_delete not implemented") }
+    async fn create_agent_logs_delete_job(&self, _application_id: Uuid, _scope_id: Uuid, _input: &AgentLogsDeleteJobCreate) -> anyhow::Result<AgentLogsDeleteJob> { anyhow::bail!("create_agent_logs_delete_job not implemented") }
+    async fn get_agent_logs_delete_job(&self, _application_id: Uuid, _scope_id: Uuid, _job_id: Option<Uuid>) -> anyhow::Result<Option<AgentLogsDeleteJob>> { anyhow::bail!("get_agent_logs_delete_job not implemented") }
+    async fn stop_agent_logs_delete_job(&self, _application_id: Uuid, _scope_id: Uuid, _job_id: Uuid) -> anyhow::Result<Option<AgentLogsDeleteJob>> { anyhow::bail!("stop_agent_logs_delete_job not implemented") }
+    async fn next_agent_logs_delete_job(&self) -> anyhow::Result<Option<AgentLogsDeleteJob>> { anyhow::bail!("next_agent_logs_delete_job not implemented") }
+    /// Atomic fixed-workset batch and state-machine transition, locked against other workers.
+    async fn advance_agent_logs_delete_job(&self, _job_id: Uuid) -> anyhow::Result<()> { anyhow::bail!("advance_agent_logs_delete_job not implemented") }
+    async fn fail_agent_logs_delete_job(&self, _job_id: Uuid, _expected_deleted_records: u64) -> anyhow::Result<()> { anyhow::bail!("fail_agent_logs_delete_job not implemented") }
     async fn delete_agent_logs(&self, _application_id: Uuid, _scope_id: Uuid, _scope: &AgentLogsDeleteScope) -> anyhow::Result<AgentLogsDeleteReceipt> { anyhow::bail!("delete_agent_logs not implemented") }
     async fn ingest_agent_logs(&self, _application_id: Uuid, _scope_id: Uuid, _api_key_id: Uuid, _batch: &AgentLogsBatch, _costs: &[Option<String>]) -> anyhow::Result<AgentLogsReceipt> { anyhow::bail!("ingest_agent_logs not implemented") }
     async fn application_log_record(&self, _application_id: Uuid, _record_id: Uuid) -> anyhow::Result<Option<ApplicationLogRecordOverview>> { anyhow::bail!("application_log_record not implemented") }

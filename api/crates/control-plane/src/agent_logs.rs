@@ -6,6 +6,7 @@ use anyhow::Result;
 use uuid::Uuid;
 
 mod pricing;
+mod deletion;
 
 pub struct AgentLogsService<R> {
     repository: R,
@@ -126,6 +127,7 @@ where
             .delete_agent_logs(application_id, application.workspace_id, &scope)
             .await
             .map_err(|error| match error.to_string().as_str() {
+                "agent_logs.delete_job_active" => crate::errors::ControlPlaneError::Conflict("agent_logs_delete_job_active").into(),
                 "agent_logs.application_type" => {
                     crate::errors::ControlPlaneError::InvalidInput("agent_logs_application_type")
                         .into()

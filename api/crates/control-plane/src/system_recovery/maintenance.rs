@@ -15,6 +15,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SystemWriteOwner {
     ApiMutation,
+    ApplicationLogDeletion,
     ProviderRequestLogPersistence,
     TraceProjectionPersistence,
     WorkflowScheduleDispatch,
@@ -22,8 +23,9 @@ pub enum SystemWriteOwner {
 }
 
 impl SystemWriteOwner {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::ApiMutation,
+        Self::ApplicationLogDeletion,
         Self::ProviderRequestLogPersistence,
         Self::TraceProjectionPersistence,
         Self::WorkflowScheduleDispatch,
@@ -33,6 +35,7 @@ impl SystemWriteOwner {
     const fn index(self) -> usize {
         match self {
             Self::ApiMutation => 0,
+            Self::ApplicationLogDeletion => 5,
             Self::ProviderRequestLogPersistence => 1,
             Self::WorkflowScheduleDispatch => 2,
             Self::WorkflowScheduleExecution => 3,

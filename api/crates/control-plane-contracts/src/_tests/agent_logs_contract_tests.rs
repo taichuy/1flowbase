@@ -147,3 +147,14 @@ fn agent_logs_delete_batch_size_and_ingestion_boundary_are_strict() {
             .unwrap();
     assert!(bad.ingested_at_before().is_err());
 }
+
+#[test]
+fn agent_logs_delete_job_state_machine_never_claims_uncommitted_or_stopped_completion() {
+    assert_eq!(AgentLogsDeleteJobStatus::after_batch(0, 0, false), AgentLogsDeleteJobStatus::Succeeded);
+    assert_eq!(AgentLogsDeleteJobStatus::after_batch(100, 205, false), AgentLogsDeleteJobStatus::Running);
+    assert_eq!(AgentLogsDeleteJobStatus::after_batch(100, 205, true), AgentLogsDeleteJobStatus::Stopped);
+    assert_eq!(AgentLogsDeleteJobStatus::after_batch(205, 205, true), AgentLogsDeleteJobStatus::Succeeded);
+    for value in [json!({"scope":{"mode":"all_time"}}), json!({"job_id":"bad", "scope":{"mode":"all_time"}}), json!({"job_id":"00000000-0000-0000-0000-000000000001", "scope":{"mode":"all_time"}, "unexpected":true})] {
+        assert!(serde_json::from_value::<AgentLogsDeleteJobCreate>(value).is_err());
+    }
+}

@@ -36,6 +36,8 @@ fn batch(events: Vec<AgentLogEvent>) -> AgentLogsBatch {
 mod bulk_lifecycle;
 #[path = "agent_logs/deletion.rs"]
 mod deletion;
+#[path = "agent_logs/deletion_jobs.rs"]
+mod deletion_jobs;
 #[path = "agent_logs/field_projection.rs"]
 mod field_projection;
 #[path = "agent_logs/pricing.rs"]

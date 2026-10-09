@@ -1,6 +1,6 @@
 use super::*;
 
-async fn delete_service(
+pub(super) async fn delete_service(
     store: &PgControlPlaneStore,
     scope: Uuid,
     app: Uuid,
@@ -14,7 +14,7 @@ async fn delete_service(
         domain::ActorContext::root_in_scope(owner, root_tenant_id(store).await, scope, "root");
     (AgentLogsService::new(store.for_actor(actor.clone())), actor)
 }
-fn range(from: &str, to: &str) -> AgentLogsDeleteScope {
+pub(super) fn range(from: &str, to: &str) -> AgentLogsDeleteScope {
     AgentLogsDeleteScope::TimeRange {
         started_at_from: from.into(),
         started_at_to: to.into(),
@@ -22,7 +22,7 @@ fn range(from: &str, to: &str) -> AgentLogsDeleteScope {
         ingested_at_before: None,
     }
 }
-async fn ingest_turn(
+pub(super) async fn ingest_turn(
     store: &PgControlPlaneStore,
     scope: Uuid,
     app: Uuid,

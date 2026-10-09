@@ -214,7 +214,7 @@ impl RecordClientTrajectoryCursor {
 }
 
 /// Explicit deletion scope; an omitted mode can never mean all retained history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentLogsDeleteScope {
     AllTime {
@@ -290,4 +290,57 @@ pub struct AgentLogsDeleteReceipt {
     pub deleted_records: u64,
     pub has_more: bool,
     pub ingested_at_before: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentLogsDeletePreview {
+    pub total_records: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentLogsDeleteJobCreate {
+    /// Client-generated identity makes an acknowledged or lost start safely discoverable.
+    pub job_id: Uuid,
+    pub scope: AgentLogsDeleteScope,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentLogsDeleteJobStatus {
+    Queued,
+    Running,
+    Succeeded,
+    Stopped,
+    Failed,
+}
+impl AgentLogsDeleteJobStatus {
+    pub fn is_active(self) -> bool {
+        matches!(self, Self::Queued | Self::Running)
+    }
+    /// Fixed-workset state machine; stopped batches never claim full completion.
+    pub fn after_batch(deleted: u64, total: u64, stop_requested: bool) -> Self {
+        if deleted == total {
+            Self::Succeeded
+        } else if stop_requested {
+            Self::Stopped
+        } else {
+            Self::Running
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentLogsDeleteJob {
+    pub job_id: Uuid,
+    pub application_id: Uuid,
+    pub scope: AgentLogsDeleteScope,
+    pub ingested_at_before: String,
+    pub status: AgentLogsDeleteJobStatus,
+    pub total_records: u64,
+    pub deleted_records: u64,
+    pub stop_requested: bool,
+    pub error_code: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }

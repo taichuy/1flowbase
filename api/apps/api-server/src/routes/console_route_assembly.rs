@@ -695,6 +695,12 @@ fn expand_core_interface_registrations(
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
         "applications.logs.delete" => Some("Delete imported agent log records"),
+        "applications.logs.delete.preview" => Some("Count imported logs in a deletion scope"),
+        "applications.logs.delete.jobs.create" => Some("Start a persistent log deletion"),
+        "applications.logs.delete.jobs.get" => Some("Read log deletion progress"),
+        "applications.logs.delete.jobs.latest" => Some("Find the latest log deletion"),
+        "applications.logs.delete.jobs.stop" => Some("Stop a log deletion after its current batch"),
+
         "applications.runtime.record.get" => Some("Get source-neutral log record"),
         "applications.runtime.record.client-trajectory.list" => Some("List recorded client trajectory"),
         "applications.runtime.record.client-trajectory.section.get" => Some("Get recorded client trajectory section"),

@@ -15,6 +15,9 @@ pub(super) async fn delete(
         .bind(format!("agent-logs-application:{application_id}"))
         .execute(&mut *tx)
         .await?;
+    let active: bool = sqlx::query_scalar("select exists(select 1 from application_log_deletion_jobs where application_id=$1 and status in ('queued','running'))")
+        .bind(application_id).fetch_one(&mut *tx).await?;
+    anyhow::ensure!(!active, "agent_logs.delete_job_active");
     let supported: bool = sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type='agent_logs')")
         .bind(application_id).bind(scope_id).fetch_one(&mut *tx).await?;
     anyhow::ensure!(supported, "agent_logs.application_type");

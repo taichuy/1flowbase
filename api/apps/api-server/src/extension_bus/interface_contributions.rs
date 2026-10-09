@@ -802,6 +802,18 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-log-deletion-jobs",
+            crate::routes::application_runtime::logs_delete::jobs::OPERATIONS,
+            &["api-server.console-application-log-deletion-jobs"],
+            crate::routes::application_runtime::logs_delete::jobs::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-log-deletion-preview",
+            &["applications.logs.delete.preview"],
+            &["api-server.console-application-log-deletion-preview"],
+            crate::routes::application_runtime::logs_delete::jobs::compile_preview_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-logs-delete",
             &["applications.logs.delete"],
             &["api-server.console-application-logs-delete"],
