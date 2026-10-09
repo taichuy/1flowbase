@@ -9,7 +9,11 @@ fn scope_valid(scope: &AgentLogsDeleteScope) -> Result<()> {
         .bounds()
         .map_err(|_| ControlPlaneError::InvalidInput("agent_logs_delete_time_range"))?;
     // Jobs establish their own boundary; preview cannot masquerade as a historical receipt.
-    if scope.ingested_at_before()?.is_some() {
+    if scope
+        .ingested_at_before()
+        .map_err(|_| ControlPlaneError::InvalidInput("agent_logs_delete_job_boundary"))?
+        .is_some()
+    {
         return Err(ControlPlaneError::InvalidInput("agent_logs_delete_job_boundary").into());
     }
     Ok(())

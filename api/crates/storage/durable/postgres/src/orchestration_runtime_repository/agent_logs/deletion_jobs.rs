@@ -26,7 +26,7 @@ fn map_job(row: sqlx::postgres::PgRow) -> Result<AgentLogsDeleteJob> {
 }
 const JOB_COLUMNS: &str = "j.*, exists(select 1 from application_log_deletion_stop_requests s where s.job_id=j.id) as stop_requested";
 
-pub(super) async fn preview(
+pub(in crate::orchestration_runtime_repository) async fn preview(
     store: &PgControlPlaneStore,
     app: Uuid,
     scope_id: Uuid,
@@ -42,7 +42,7 @@ pub(super) async fn preview(
     })
 }
 
-pub(super) async fn create(
+pub(in crate::orchestration_runtime_repository) async fn create(
     store: &PgControlPlaneStore,
     app: Uuid,
     scope_id: Uuid,
@@ -95,7 +95,7 @@ pub(super) async fn create(
     Ok(job)
 }
 
-pub(super) async fn get(
+pub(in crate::orchestration_runtime_repository) async fn get(
     store: &PgControlPlaneStore,
     app: Uuid,
     scope: Uuid,
@@ -104,7 +104,7 @@ pub(super) async fn get(
     sqlx::query(&format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where application_id=$1 and scope_id=$2 and ($3::uuid is null or id=$3) order by created_at desc,id desc limit 1"))
         .bind(app).bind(scope).bind(id).fetch_optional(store.pool()).await?.map(map_job).transpose()
 }
-pub(super) async fn stop(
+pub(in crate::orchestration_runtime_repository) async fn stop(
     store: &PgControlPlaneStore,
     app: Uuid,
     scope: Uuid,
@@ -114,11 +114,16 @@ pub(super) async fn stop(
     sqlx::query("insert into application_log_deletion_stop_requests(job_id) select id from application_log_deletion_jobs where id=$1 and application_id=$2 and scope_id=$3 and status in ('queued','running') on conflict do nothing").bind(id).bind(app).bind(scope).execute(store.pool()).await?;
     get(store, app, scope, Some(id)).await
 }
-pub(super) async fn next(store: &PgControlPlaneStore) -> Result<Option<AgentLogsDeleteJob>> {
+pub(in crate::orchestration_runtime_repository) async fn next(
+    store: &PgControlPlaneStore,
+) -> Result<Option<AgentLogsDeleteJob>> {
     sqlx::query(&format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where status in ('queued','running') order by updated_at,id limit 1"))
         .fetch_optional(store.pool()).await?.map(map_job).transpose()
 }
-pub(super) async fn advance(store: &PgControlPlaneStore, id: Uuid) -> Result<()> {
+pub(in crate::orchestration_runtime_repository) async fn advance(
+    store: &PgControlPlaneStore,
+    id: Uuid,
+) -> Result<()> {
     let mut tx = store.pool().begin().await?;
     let row=sqlx::query(&format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where id=$1 and status in ('queued','running') for no key update of j skip locked")).bind(id).fetch_optional(&mut *tx).await?;
     let Some(row) = row else {
@@ -164,7 +169,7 @@ pub(super) async fn advance(store: &PgControlPlaneStore, id: Uuid) -> Result<()>
     tx.commit().await?;
     Ok(())
 }
-pub(super) async fn fail(
+pub(in crate::orchestration_runtime_repository) async fn fail(
     store: &PgControlPlaneStore,
     id: Uuid,
     expected_deleted_records: u64,
