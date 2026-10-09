@@ -505,7 +505,7 @@ async fn lock_open_flow_run_for_event_append(
     flow_run_id: Uuid,
 ) -> Result<()> {
     let status =
-        sqlx::query_scalar::<_, String>("select status from flow_runs where id = $1 for update")
+        sqlx::query_scalar::<_, String>("select status from flow_runs where id = $1 for no key update")
             .bind(flow_run_id)
             .fetch_optional(&mut **tx)
             .await?

@@ -453,7 +453,7 @@ async fn request_history_migration_preserves_legacy_turns_without_injecting_syst
     let original_ids = sqlx::query_scalar::<_, Uuid>(
         "select id from application_run_conversation_message_items where flow_run_id=$1 order by display_sequence"
     ).bind(run.id).fetch_all(store.pool()).await.unwrap();
-    sqlx::query("update application_run_conversation_message_items set projection_version=5,source_revision=regexp_replace(source_revision,'^v6:','v5:') where flow_run_id=$1")
+    sqlx::query("update application_run_conversation_message_items set projection_version=5,source_revision=regexp_replace(source_revision,'^v7:','v5:') where flow_run_id=$1")
         .bind(run.id).execute(store.pool()).await.unwrap();
     sqlx::query("insert into application_run_conversation_message_items(id,scope_id,application_id,flow_run_id,display_sequence,source_kind,role,content,can_open_detail,is_current,status,started_at,projection_version,context_source) select $2,scope_id,application_id,flow_run_id,1000000,'imported_context','system','Use the repaired system prompt.',false,false,status,started_at,5,'application_config' from application_run_conversation_message_items where flow_run_id=$1 and is_current")
         .bind(run.id).bind(Uuid::now_v7()).execute(store.pool()).await.unwrap();
@@ -467,6 +467,25 @@ async fn request_history_migration_preserves_legacy_turns_without_injecting_syst
         original_ids, repaired_ids,
         "actual turns and cursor identities remain unchanged"
     );
+    let historical_versions: Vec<i32> = sqlx::query_scalar(
+        "select projection_version from application_run_conversation_message_items where flow_run_id=$1"
+    ).bind(run.id).fetch_all(store.pool()).await.unwrap();
+    assert!(historical_versions.iter().all(|version| *version == 6));
+    // The historical migration has its own v5 -> v6 contract; the current
+    // writer then advances the same stable identities to its serving version.
+    store
+        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
+            flow_run_id: run.id,
+            input_payload: run.input_payload.clone(),
+            output_payload: json!({"answer":"current answer"}),
+            error_payload: None,
+        })
+        .await
+        .unwrap();
+    let current_ids = sqlx::query_scalar::<_,Uuid>(
+        "select id from application_run_conversation_message_items where flow_run_id=$1 and projection_version=7 order by display_sequence"
+    ).bind(run.id).fetch_all(store.pool()).await.unwrap();
+    assert_eq!(original_ids, current_ids);
 
     let rows = sqlx::query_as::<_, (i64, Option<String>, Option<String>, bool)>(
         r#"

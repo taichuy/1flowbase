@@ -659,7 +659,7 @@ impl PgControlPlaneStore {
                 join applications on applications.id = flow_runs.application_id
                 where flow_runs.id = $2
                   and flow_runs.status not in ('succeeded', 'incomplete', 'failed', 'cancelled')
-                for update of flow_runs
+                for no key update of flow_runs
             )
             insert into node_run_records (
                 id,
@@ -717,7 +717,7 @@ impl PgControlPlaneStore {
             join node_runs candidate on candidate.flow_run_id=flow_runs.id
             where candidate.id=$1
                 and flow_runs.status not in ('succeeded','incomplete','failed','cancelled')
-            for update of flow_runs
+            for no key update of flow_runs
             "#,
         )
         .bind(input.node_run_id)
@@ -735,7 +735,7 @@ impl PgControlPlaneStore {
                 join node_runs candidate on candidate.flow_run_id = flow_runs.id
                 where candidate.id = $1
                   and flow_runs.status not in ('succeeded', 'incomplete', 'failed', 'cancelled')
-                for update of flow_runs
+                for no key update of flow_runs
             )
             update node_run_records
             set status = $2,

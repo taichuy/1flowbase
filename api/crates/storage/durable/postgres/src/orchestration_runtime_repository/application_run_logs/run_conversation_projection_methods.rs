@@ -332,146 +332,13 @@ fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
 impl PgControlPlaneStore {
     // Called by the existing message projection owner. Runtime events and
     // retained request facts remain the rebuild sources, never diagnostics.
-    async fn application_run_native_message_items(
-        tx: &mut sqlx::Transaction<'_, Postgres>,
+    fn application_run_native_message_items(
         run: &domain::FlowRunRecord,
         revision: Option<String>,
-    ) -> Result<Option<Vec<(i64, String, Value)>>> {
-        let context: Option<Value> =
-            sqlx::query_scalar("select runtime_original_json(log_context, raw_json_payloads, 'log_context') from flow_runs where id=$1")
-                .bind(run.id)
-                .fetch_one(&mut **tx)
-                .await?;
-        let Some(context) = context else {
-            return Ok(None);
-        };
-        let rows = sqlx::query(
-            r#"with scope_ids as materialized (
-                select id from flow_runs where id=$1
-                union
-                select run_id as id from application_run_log_conversation_runs($2,$3::uuid)
-            ), scope_runs as materialized (
-                select f.id,f.log_context
-                from scope_ids member join flow_runs f on f.id=member.id
-            ), facts as (
-                select f.id as run_id,e.sequence,
-                    'output:'||case when e.payload->'item'->>'call_id' is not null then 'tool'
-                        else coalesce(e.payload->'item'->>'type','unknown') end||':'||
-                        coalesce(e.payload->'item'->>'call_id',e.payload->'item'->>'id',e.id::text) as source_key,
-                    runtime_event_original_payload(e.payload, e.raw_json_payloads, e.flow_run_id) as original,
-                    null::bigint as result_ordinal
-                from scope_runs f join runtime_events e on e.flow_run_id=f.id
-                where e.event_type='provider_output_item_done' and e.payload->'item' is not null
-                union all
-                select f.id,-1000000+r.ordinality,
-                    'result:'||coalesce(r.item->>'call_id',f.id::text||':'||r.ordinality),
-                    null::json as original, r.ordinality as result_ordinal
-                from scope_runs f cross join lateral jsonb_array_elements(
-                    coalesce(f.log_context->'tool_results','[]'::jsonb)) with ordinality r(item,ordinality)
-            )
-            select run_id, sequence, source_key, original, result_ordinal from facts order by source_key, run_id, sequence"#,
-        ).bind(run.id).bind(run.application_id)
-            .bind(context.get("log_conversation_id").and_then(Value::as_str).and_then(|v| Uuid::parse_str(v).ok()))
-            .fetch_all(&mut **tx).await?;
-
-        // JSONB is a searchable projection. Compare restored values here so a
-        // real NUL and a literal escape remain different facts.
-        let mut groups = std::collections::BTreeMap::<String, Vec<(Uuid, i64, Value)>>::new();
-        let mut result_rows = Vec::new();
-        for row in rows {
-            let run_id = row.try_get("run_id")?;
-            let sequence = row.try_get("sequence")?;
-            let source_key: String = row.try_get("source_key")?;
-            let ordinal: Option<i64> = row.try_get("result_ordinal")?;
-            if let Some(ordinal) = ordinal {
-                result_rows.push((run_id, sequence, source_key, ordinal));
-            } else {
-                let original: Value = row.try_get("original")?;
-                let item = original.get("item").cloned().ok_or_else(|| {
-                    anyhow!("native log fact projection does not match its original")
-                })?;
-                groups
-                    .entry(source_key)
-                    .or_default()
-                    .push((run_id, sequence, item));
-            }
-        }
-        if !result_rows.is_empty() {
-            let run_ids = result_rows
-                .iter()
-                .map(|(run_id, _, _, _)| *run_id)
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-            // PostgreSQL JSON cannot extract a member containing U+0000. Transfer
-            // each original context once, then select its results in serde_json.
-            let contexts = sqlx::query(
-                "select id,runtime_original_json(log_context,raw_json_payloads,'log_context') as original from flow_runs where id=any($1)",
-            )
-            .bind(&run_ids)
-            .fetch_all(&mut **tx)
-            .await?
-            .into_iter()
-            .map(|row| Ok((row.try_get("id")?, row.try_get("original")?)))
-            .collect::<Result<std::collections::BTreeMap<Uuid, Value>>>()?;
-            for (run_id, sequence, source_key, ordinal) in result_rows {
-                let item = ordinal
-                    .checked_sub(1)
-                    .and_then(|index| usize::try_from(index).ok())
-                    .and_then(|index| {
-                        contexts
-                            .get(&run_id)?
-                            .get("tool_results")?
-                            .as_array()?
-                            .get(index)
-                    })
-                    .cloned()
-                    .ok_or_else(|| {
-                        anyhow!("native log fact projection does not match its original")
-                    })?;
-                groups
-                    .entry(source_key)
-                    .or_default()
-                    .push((run_id, sequence, item));
-            }
-        }
-        let mut facts = Vec::new();
-        for (key, candidates) in groups {
-            let (owner, sequence, item) = &candidates[0];
-            let conflicting = candidates.iter().any(|(_, _, other)| other != item);
-            if *owner == run.id {
-                facts.push((*sequence, key, item.clone(), conflicting));
-            } else if conflicting {
-                // This derivation is called only by the projection writer. A later
-                // member can contradict a fact owned by an earlier run; update that
-                // derived marker in the same transaction without changing its evidence.
-                let original: Option<Value> = sqlx::query_scalar(
-                    r#"
-                    select runtime_original_json(native_message,raw_json_payloads,'native_message')
-                    from application_run_conversation_message_items
-                    where flow_run_id=$1 and source_item_key=$2
-                      and native_message->>'_log_conflicting' is distinct from 'true'
-                    for update
-                "#,
-                )
-                .bind(owner)
-                .bind(&key)
-                .fetch_optional(&mut **tx)
-                .await?;
-                if let Some(mut original) = original {
-                    original["_log_conflicting"] = Value::Bool(true);
-                    sqlx::query(r#"
-                        update application_run_conversation_message_items
-                        set native_message=($3::jsonb -> 0),
-                            raw_json_payloads=(raw_json_payloads - 'native_message') ||
-                                jsonb_strip_nulls(jsonb_build_object('native_message', $3::jsonb -> 1))
-                        where flow_run_id=$1 and source_item_key=$2
-                    "#).bind(owner).bind(&key).bind(lossless_json_parameter(&original))
-                        .execute(&mut **tx).await?;
-                }
-            }
-        }
-        facts.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
+        context: Value,
+        mut facts: Vec<NativeCanonicalFact>,
+    ) -> Vec<(i64, String, Value)> {
+        facts.sort_by(|left, right| (left.sequence, &left.key).cmp(&(right.sequence, &right.key)));
         let mut items: Vec<(i64, String, Value)> = Vec::new();
         // Context is not a conversation turn: it is projected in its own
         // sequence range and served beside the page so it stays discoverable
@@ -510,15 +377,24 @@ impl PgControlPlaneStore {
                 conversation_sequence += 1;
             }
         }
-        for (_, key, item, observed_conflict) in &facts {
-            let key = key.clone();
-            let item = item.clone();
+        // Tool calls are output items but they are not the answer. A call whose
+        // only formal items are tool calls still shows the answer it stored,
+        // marked as persisted evidence rather than as a provider message. A
+        // formal answer item arriving later replaces it on the next
+        // reprojection, so the answer is never counted twice.
+        let has_formal_answer = facts.iter().any(|fact| {
+            fact.key.starts_with("output:") && native_output_item_is_answer(&fact.item)
+        });
+        for fact in facts {
+            let observed_conflict = fact.conflicting;
+            let key = fact.key;
+            let item = fact.item;
             let role = if key.starts_with("result:") {
                 "tool"
             } else {
                 "assistant"
             };
-            let mut conflicting = *observed_conflict;
+            let mut conflicting = observed_conflict;
             // Historical conflict observations survive projection rebuilds.
             let retained = if key.starts_with("result:") {
                 "conflicting_result_call_ids"
@@ -532,17 +408,9 @@ impl PgControlPlaneStore {
                     keys.iter()
                         .any(|v| v.as_str() == key.split_once(':').map(|(_, id)| id))
                 });
-            items.push((conversation_sequence,key,json!({"role":role,"content":native_log_item_text(&item),"_source_item":item,"_log_conflicting":conflicting,"_log_output_source":APPLICATION_RUN_OUTPUT_SOURCE_PROVIDER_ITEM})));
+            items.push((conversation_sequence,key,json!({"role":role,"content":native_log_item_text(&item),"_source_item":item,"_log_conflicting":conflicting,"_log_output_source":APPLICATION_RUN_OUTPUT_SOURCE_PROVIDER_ITEM,"_log_source_sequence":fact.sequence})));
             conversation_sequence += 1;
         }
-        // Tool calls are output items but they are not the answer. A call whose
-        // only formal items are tool calls still shows the answer it stored,
-        // marked as persisted evidence rather than as a provider message. A
-        // formal answer item arriving later replaces it on the next
-        // reprojection, so the answer is never counted twice.
-        let has_formal_answer = facts.iter().any(|(_, key, item, _)| {
-            key.starts_with("output:") && native_output_item_is_answer(item)
-        });
         if !has_formal_answer {
             if let Some(answer) = application_conversation_answer_text(&run.output_payload) {
                 items.push((
@@ -574,7 +442,7 @@ impl PgControlPlaneStore {
         for (_, _, message) in &mut items {
             message["_log_source_revision"] = json!(revision);
         }
-        Ok(Some(items))
+        items
     }
 }
 

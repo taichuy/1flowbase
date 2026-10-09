@@ -25,7 +25,7 @@ pub(super) async fn flow_run_scope_id_for_update(
         from flow_runs
         join applications on applications.id = flow_runs.application_id
         where flow_runs.id = $1
-        for update of flow_runs
+        for no key update of flow_runs
         "#,
     )
     .bind(flow_run_id)

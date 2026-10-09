@@ -91,6 +91,7 @@ include!("application_run_log_methods.rs");
 include!("application_run_logs/client_log_associations.rs");
 include!("application_run_logs/assistant_conversation_methods.rs");
 include!("application_run_logs/run_conversation_projection_methods.rs");
+include!("application_run_logs/projection/native_canonical_projection.rs");
 include!("application_run_logs/run_conversation_message_item_methods.rs");
 #[cfg(test)]
 #[path = "../_tests/application/request_history_context_tests.rs"]

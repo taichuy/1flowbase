@@ -784,7 +784,7 @@ async fn request_history_migration_removes_derived_context_and_preserves_facts_a
         run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
     // Recreate v5 with both fabricated layers. Only the version changes for
     // real facts; opaque source items and raw NUL-bearing content must survive.
-    sqlx::query("update application_run_conversation_message_items set projection_version=5, source_revision=regexp_replace(source_revision,'^v6:','v5:'), native_message=jsonb_set(native_message,'{_log_source_revision}',to_jsonb(regexp_replace(native_message->>'_log_source_revision','^v6:','v5:'))), raw_json_payloads=replace(raw_json_payloads::text,'v6:','v5:')::jsonb where flow_run_id=$1")
+    sqlx::query("update application_run_conversation_message_items set projection_version=5, source_revision=regexp_replace(source_revision,'^v7:','v5:'), native_message=jsonb_set(native_message,'{_log_source_revision}',to_jsonb(regexp_replace(native_message->>'_log_source_revision','^v7:','v5:'))), raw_json_payloads=replace(raw_json_payloads::text,'v7:','v5:')::jsonb where flow_run_id=$1")
         .bind(run.id).execute(store.pool()).await.unwrap();
     let before = sqlx::query_as::<_, (Uuid, i64, Value)>(
         "select id,display_sequence,runtime_original_json(native_message,raw_json_payloads,'native_message') from application_run_conversation_message_items where flow_run_id=$1 order by display_sequence"
@@ -817,6 +817,17 @@ async fn request_history_migration_removes_derived_context_and_preserves_facts_a
         original["_log_source_revision"] = json!(revision);
         assert_eq!(original, restored, "only the derived revision may change");
     }
+    // The historical migration upgrades to v6. The current writer owns the
+    // subsequent v7 rebuild; GET intentionally never repairs stored facts.
+    store
+        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
+            flow_run_id: run.id,
+            input_payload: run.input_payload.clone(),
+            output_payload: json!({}),
+            error_payload: None,
+        })
+        .await
+        .unwrap();
     let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
     assert_eq!(page.contexts.len(), 1);
     assert_eq!(page.contexts[0].content, "client system");
@@ -826,7 +837,7 @@ async fn request_history_migration_removes_derived_context_and_preserves_facts_a
     );
     // A real compaction output remains formal output evidence, unlike an
     // internally restored summary inserted into a model prompt.
-    let outputs: i64 = sqlx::query_scalar("select count(*) from application_run_conversation_message_items where flow_run_id=$1 and native_message->'_source_item'->>'type'='compaction' and source_revision like 'v6:%'")
+    let outputs: i64 = sqlx::query_scalar("select count(*) from application_run_conversation_message_items where flow_run_id=$1 and native_message->'_source_item'->>'type'='compaction' and source_revision like 'v7:%'")
         .bind(run.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(outputs, 1);
     sqlx::raw_sql(migration)
@@ -940,3 +951,6 @@ async fn run_conversation_page(
     .await
     .unwrap()
 }
+
+#[path = "run_conversation_native_projection/incremental.rs"]
+mod incremental;
