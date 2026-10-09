@@ -169,6 +169,27 @@ pub struct RuntimeEventClosure {
 /// Clones must retain that generation even after the same run ID is reopened.
 #[async_trait]
 pub trait RuntimeEventTerminalWriter: Send + Sync {
+    fn generation_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    /// Durable scalar anchor separating this generation from previous run events.
+    fn durable_replay_boundary(&self) -> Option<i64> {
+        None
+    }
+
+    /// A boundary is immutable once set; repeating the same value is idempotent.
+    fn set_durable_replay_boundary(&self, _sequence: i64) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Any persistence failure permanently excludes this generation from early hot GC.
+    fn record_persistence_failure(&self) {}
+
+    fn closure(&self) -> Option<RuntimeEventClosure> {
+        None
+    }
+
     /// Confirms durable terminal persistence for this exact subscription generation.
     /// Implementations without a hot-retention optimization may leave this a no-op.
     async fn confirm_terminal_persisted(&self, _final_sequence: i64) -> anyhow::Result<()> {
@@ -295,6 +316,15 @@ pub struct RuntimeEventTrimPolicy {
 
 #[async_trait]
 pub trait RuntimeEventStream: Send + Sync {
+    /// Obtains generation authority without requiring callers to consume replay.
+    async fn terminal_writer(
+        &self,
+        run_id: Uuid,
+    ) -> anyhow::Result<Arc<dyn RuntimeEventTerminalWriter>> {
+        let subscription = self.subscribe(run_id, None).await?;
+        Ok(subscription.terminal_writer)
+    }
+
     async fn open_run(&self, run_id: Uuid, policy: RuntimeEventStreamPolicy) -> anyhow::Result<()>;
 
     async fn append(

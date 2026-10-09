@@ -1,4 +1,5 @@
 mod lifecycle;
+mod recoverable;
 
 use std::time::Duration;
 
