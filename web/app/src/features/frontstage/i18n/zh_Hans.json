@@ -4,6 +4,7 @@
     "inside": "放入分组",
     "after": "之后"
   },
+  "move_projection": "{{page}} · {{position}}",
   "auto": {
     "save_as_page_template": "保存为页面模板",
     "save_template_draft": "保存模板草稿",
@@ -128,7 +129,7 @@
     "more_block_operations": "更多区块操作",
     "move_or_sort_block": "移动或排序区块",
     "move_page_to": "移动“{{value1}}”到",
-    "select_destination_group": "选择目标分组，页面将移动到该分组末尾。",
+    "select_destination_group": "选择分组或拖拽页面调整位置，确认后保存。",
     "move_to": "移动到",
     "name": "名称",
     "name_required": "请输入名称",

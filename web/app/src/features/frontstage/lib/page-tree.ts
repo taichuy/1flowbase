@@ -1,3 +1,4 @@
+import type { ConsoleFrontstageNavigationPlacement } from '@1flowbase/api-client';
 import { i18nText } from '../../../shared/i18n/text';
 
 export type FrontStageTreeNode = {
@@ -8,6 +9,7 @@ export type FrontStageTreeNode = {
   is_hidden?: boolean;
   content_presentation?: 'single' | 'tabs';
   kind: 'group' | 'page';
+  placement?: ConsoleFrontstageNavigationPlacement;
   children?: FrontStageTreeNode[];
 };
 

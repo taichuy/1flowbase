@@ -783,6 +783,18 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             if input.before_id.is_some() && input.after_id.is_some() {
                 return Err(ControlPlaneError::InvalidInput("move_position").into());
             }
+            if target_id == input.page_id {
+                return Err(ControlPlaneError::InvalidInput("move_position").into());
+            }
+            let source_row = sqlx::query(
+                "select id, rank from frontstage_pages where workspace_id = $1 and id = $2 for update",
+            )
+            .bind(input.workspace_id)
+            .bind(input.page_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+            // Destination siblings and the source are changed in one transaction.
             // Lock before sorting so repeated moves do not depend on stale client indexes.
             let rows = sqlx::query(
                 r#"select id, rank from frontstage_pages
@@ -802,11 +814,8 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 .map(|row| (row.get::<Uuid, _>("id"), row.get::<String, _>("rank")))
                 .collect::<Vec<_>>();
             siblings.sort_by(|left, right| left.1.cmp(&right.1).then(left.0.cmp(&right.0)));
-            let source_index = siblings
-                .iter()
-                .position(|(id, _)| *id == input.page_id)
-                .ok_or(ControlPlaneError::InvalidInput("move_position"))?;
-            let source = siblings.remove(source_index);
+            siblings.retain(|(id, _)| *id != input.page_id);
+            let source = (input.page_id, source_row.get::<String, _>("rank"));
             let target_index = siblings
                 .iter()
                 .position(|(id, _)| *id == target_id)

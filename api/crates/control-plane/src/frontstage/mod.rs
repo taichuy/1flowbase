@@ -545,8 +545,7 @@ where
                 .await?
                 .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
             if target_id == existing.id
-                || target.parent_id != existing.parent_id
-                || command.parent_id != existing.parent_id
+                || target.parent_id != command.parent_id
                 || target.placement != existing.placement
             {
                 return Err(ControlPlaneError::InvalidInput("move_position").into());
