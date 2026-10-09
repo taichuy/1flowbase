@@ -1,3 +1,5 @@
+mod lifecycle;
+
 use std::time::Duration;
 
 use control_plane::ports::{

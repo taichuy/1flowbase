@@ -67,6 +67,11 @@ impl RuntimeEventRequiredLane {
         Self { sender }
     }
 
+    /// Resolves when the consumer drops its receiver, including while idle.
+    pub async fn closed(&self) {
+        self.sender.closed().await;
+    }
+
     pub async fn send(
         &self,
         event: RuntimeEventEnvelope,

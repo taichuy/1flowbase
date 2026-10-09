@@ -169,6 +169,12 @@ pub struct RuntimeEventClosure {
 /// Clones must retain that generation even after the same run ID is reopened.
 #[async_trait]
 pub trait RuntimeEventTerminalWriter: Send + Sync {
+    /// Confirms durable terminal persistence for this exact subscription generation.
+    /// Implementations without a hot-retention optimization may leave this a no-op.
+    async fn confirm_terminal_persisted(&self, _final_sequence: i64) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     async fn append_terminal_if_missing_and_close(
         &self,
         event: RuntimeEventPayload,
