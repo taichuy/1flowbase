@@ -156,7 +156,7 @@ async fn ordinary_handoff_scope_close_wakes_without_releasing_predecessor() {
 
 #[tokio::test]
 async fn ordinary_handoff_shutdown_wakes_without_admitting_successor() {
-    let (coordinator, runtime, _, _) = orphaned_execution([AckBehavior::Matching(true)]).await;
+    let (coordinator, runtime, _, first) = orphaned_execution([AckBehavior::Matching(true)]).await;
     let scope = coordinator.open_connection_scope();
     let waiting = parked_waiter(&coordinator, &scope, 2_025_000).await;
     coordinator.shutdown(Duration::from_secs(1)).await;
@@ -164,6 +164,7 @@ async fn ordinary_handoff_shutdown_wakes_without_admitting_successor() {
         reason(waiter_result(waiting).await.err().unwrap()).contains("transport_session_shutdown")
     );
     assert_eq!(runtime.commands().len(), 1);
+    drop(first);
 }
 
 #[tokio::test]
@@ -357,7 +358,7 @@ async fn handoff_deadline_expires_while_notified_waiter_contends_for_registry() 
 
 #[tokio::test]
 async fn shutdown_wakes_handoff_before_blocked_control_owner_can_finish() {
-    let (coordinator, runtime, _, _) = orphaned_execution([AckBehavior::Matching(true)]).await;
+    let (coordinator, runtime, _, first) = orphaned_execution([AckBehavior::Matching(true)]).await;
     let scope = coordinator.open_connection_scope();
     let waiting = parked_waiter(&coordinator, &scope, 2_025_000).await;
     let dispatcher = coordinator.dispatcher.lock().await;
@@ -375,6 +376,7 @@ async fn shutdown_wakes_handoff_before_blocked_control_owner_can_finish() {
         .unwrap()
         .unwrap();
     assert_eq!(runtime.commands().len(), 1);
+    drop(first);
 }
 
 #[tokio::test]
