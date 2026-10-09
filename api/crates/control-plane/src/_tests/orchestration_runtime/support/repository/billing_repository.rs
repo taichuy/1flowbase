@@ -25,6 +25,14 @@ impl crate::ports::BillingRepository for InMemoryOrchestrationRuntimeRepository 
         Ok(Vec::new())
     }
 
+    async fn match_agent_log_pricing_rules(
+        &self,
+        _upstream_model_id: &str,
+        _at: OffsetDateTime,
+    ) -> Result<Vec<crate::billing::PricingRule>> {
+        anyhow::bail!("orchestration fixture does not estimate imported agent logs")
+    }
+
     async fn upsert_pricing_rule(
         &self,
         _input: &crate::ports::UpsertPricingRuleInput,
