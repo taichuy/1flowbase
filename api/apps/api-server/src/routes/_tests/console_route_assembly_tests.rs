@@ -440,6 +440,21 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "applications.update",
             ),
             (
+                "GET",
+                "/api/console/applications/logs/query-fields",
+                "applications.view",
+            ),
+            (
+                "POST",
+                "/api/console/applications/logs/records/query",
+                "applications.view",
+            ),
+            (
+                "POST",
+                "/api/console/applications/:id/logs/records/:record_id/client-trajectory/query",
+                "applications.view",
+            ),
+            (
                 "POST",
                 "/api/console/applications/:id/logs/deletion-preview",
                 "applications.logs.delete.preview",
