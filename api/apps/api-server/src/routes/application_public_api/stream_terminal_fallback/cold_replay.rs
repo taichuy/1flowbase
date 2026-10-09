@@ -23,27 +23,18 @@ pub(crate) async fn cold_runtime_event_subscription(
     initial_run: &NativeRunResult,
     from_sequence: Option<i64>,
 ) -> anyhow::Result<RuntimeEventSubscription> {
-    let run = load_durable_native_run_for_terminal_projection_with_dependencies(
-        dependencies,
-        initial_run,
-    )
-    .await?;
-    let terminal = terminal_runtime_event_from_native_run(&run).ok_or_else(|| {
-        anyhow::anyhow!("active runtime stream has no recoverable durable terminal")
-    })?;
-    let reason = RuntimeEventCloseReason::from_terminal_event_type(&terminal.event_type)
-        .ok_or_else(|| anyhow::anyhow!("durable runtime terminal has no close reason"))?;
-    let mut records = Vec::new();
-    if let Some(window) = dependencies
-        .replay_window(run.id)
+    let window = dependencies
+        .replay_window(initial_run.id)
         .await?
-        .filter(|window| window.generation_id.is_some())
-    {
+        .filter(|window| window.generation_id.is_some());
+    let (mut replay, reason) = if let Some(window) = window {
+        let mut records = Vec::new();
+        let mut terminal_reason = None;
         let mut cursor = window.after_sequence;
         while cursor < window.through_sequence {
             let page = dependencies
                 .durable_page(
-                    run.id,
+                    initial_run.id,
                     cursor,
                     window.through_sequence,
                     DURABLE_REPLAY_PAGE_SIZE,
@@ -67,49 +58,69 @@ pub(crate) async fn cold_runtime_event_subscription(
                     {
                         continue;
                     }
-                    // The public cursor is local to this generation. Unmarked
-                    // committed provider facts cannot be compared to that cursor.
-                    let local = compat_payload_i64(&record.payload, "sequence_end")
-                        .or_else(|| compat_payload_i64(&record.payload, "stream_sequence"));
-                    if local.is_some_and(|sequence| sequence <= from_sequence.unwrap_or(0)) {
-                        continue;
-                    }
                 }
-                let terminal =
-                    RuntimeEventCloseReason::from_terminal_event_type(&record.event_type).is_some();
-                // Anchored generations have an unambiguous interval. Legacy
-                // rows are retained, but are not assumed to be the latest round.
-                if window.generation_id.is_some() {
-                    records.push(record);
+                // Generation membership is checked before terminal evidence.
+                // The client cursor controls payload replay, not admission or
+                // the terminal meaning of this generation's closed subscription.
+                terminal_reason =
+                    RuntimeEventCloseReason::from_terminal_event_type(&record.event_type);
+                let local = compat_payload_i64(&record.payload, "sequence_end")
+                    .or_else(|| compat_payload_i64(&record.payload, "stream_sequence"));
+                if terminal_reason.is_none()
+                    && local.is_some_and(|sequence| sequence <= from_sequence.unwrap_or(0))
+                {
+                    continue;
                 }
-                if terminal && window.generation_id.is_some() {
+                records.push(record);
+                if terminal_reason.is_some() {
                     break;
                 }
             }
-            if records.last().is_some_and(|event| {
-                RuntimeEventCloseReason::from_terminal_event_type(&event.event_type).is_some()
-            }) {
+            if terminal_reason.is_some() {
                 break;
             }
         }
-    }
-    let mut replay = durable_round_prefix(records);
-    if replay.is_empty()
-        || !replay
-            .last()
-            .is_some_and(|event| event.event_type == terminal.event_type)
-    {
-        let sequence = replay.last().map_or(1, |event| event.sequence + 1);
-        let mut terminal = terminal;
-        terminal.sequence = sequence;
-        terminal.event_id = format!("{}:{sequence}", run.id);
-        replay.push(terminal);
-    }
+        let reason = match terminal_reason {
+            Some(reason) => reason,
+            None => {
+                // Admission may have reopened the same run between the failed
+                // original subscribe and this read. Attach only to the selected
+                // existing generation; this read never opens a producer.
+                if let Ok(subscription) = dependencies
+                    .runtime_event_stream
+                    .subscribe(initial_run.id, from_sequence)
+                    .await
+                {
+                    if subscription.terminal_writer.generation_id() == window.generation_id {
+                        return Ok(subscription);
+                    }
+                }
+                anyhow::bail!("anchored runtime stream has no recoverable durable terminal");
+            }
+        };
+        // Only the evidenced terminal closes an anchored generation. A mutable
+        // run snapshot may still describe the preceding waiting callback round.
+        (durable_round_prefix(records), reason)
+    } else {
+        // Explicit legacy policy: unanchored runs recover their terminal from
+        // durable business state, without assigning it to a stream generation.
+        let run = load_durable_native_run_for_terminal_projection_with_dependencies(
+            dependencies,
+            initial_run,
+        )
+        .await?;
+        let terminal = terminal_runtime_event_from_native_run(&run).ok_or_else(|| {
+            anyhow::anyhow!("active runtime stream has no recoverable durable terminal")
+        })?;
+        let reason = RuntimeEventCloseReason::from_terminal_event_type(&terminal.event_type)
+            .ok_or_else(|| anyhow::anyhow!("durable runtime terminal has no close reason"))?;
+        (vec![terminal], reason)
+    };
     // This is one semantic cold projection. Its ordering cursor starts after
     // the client's cursor; durable and generation-local sequences stay separate.
     for (index, event) in replay.iter_mut().enumerate() {
         event.sequence = from_sequence.unwrap_or(0).saturating_add(index as i64 + 1);
-        event.event_id = format!("{}:{}", run.id, event.sequence);
+        event.event_id = format!("{}:{}", initial_run.id, event.sequence);
     }
     let final_sequence = replay.last().map_or(0, |event| event.sequence);
     let (required, diagnostic, live_events) = RuntimeEventReceiver::bounded_lanes(1);
