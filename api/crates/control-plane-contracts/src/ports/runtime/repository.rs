@@ -3,19 +3,88 @@ use super::*;
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
     /// Internal application-scoped maintenance, with an immutable record-ID cursor.
-    async fn next_agent_log_pricing_record(&self, _application_id: Uuid, _scope_id: Uuid, _after: Option<Uuid>) -> anyhow::Result<Option<AgentLogPricingRecord>> { anyhow::bail!("next_agent_log_pricing_record not implemented") }
+    async fn next_agent_log_pricing_record(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _after: Option<Uuid>,
+    ) -> anyhow::Result<Option<AgentLogPricingRecord>> {
+        anyhow::bail!("next_agent_log_pricing_record not implemented")
+    }
     /// Update rated receipts and only their cost projection under ingest/delete locks.
-    async fn reprice_agent_log_record(&self, _application_id: Uuid, _scope_id: Uuid, _record_id: Uuid, _costs: &[(String, Option<String>)]) -> anyhow::Result<u64> { anyhow::bail!("reprice_agent_log_record not implemented") }
-    async fn preview_agent_logs_delete(&self, _application_id: Uuid, _scope_id: Uuid, _scope: &AgentLogsDeleteScope) -> anyhow::Result<AgentLogsDeletePreview> { anyhow::bail!("preview_agent_logs_delete not implemented") }
-    async fn create_agent_logs_delete_job(&self, _application_id: Uuid, _scope_id: Uuid, _input: &AgentLogsDeleteJobCreate) -> anyhow::Result<AgentLogsDeleteJob> { anyhow::bail!("create_agent_logs_delete_job not implemented") }
-    async fn get_agent_logs_delete_job(&self, _application_id: Uuid, _scope_id: Uuid, _job_id: Option<Uuid>) -> anyhow::Result<Option<AgentLogsDeleteJob>> { anyhow::bail!("get_agent_logs_delete_job not implemented") }
-    async fn stop_agent_logs_delete_job(&self, _application_id: Uuid, _scope_id: Uuid, _job_id: Uuid) -> anyhow::Result<Option<AgentLogsDeleteJob>> { anyhow::bail!("stop_agent_logs_delete_job not implemented") }
-    async fn next_agent_logs_delete_job(&self) -> anyhow::Result<Option<AgentLogsDeleteJob>> { anyhow::bail!("next_agent_logs_delete_job not implemented") }
+    async fn reprice_agent_log_record(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _record_id: Uuid,
+        _costs: &[(String, Option<String>)],
+    ) -> anyhow::Result<u64> {
+        anyhow::bail!("reprice_agent_log_record not implemented")
+    }
+    async fn preview_agent_logs_delete(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _scope: &AgentLogsDeleteScope,
+    ) -> anyhow::Result<AgentLogsDeletePreview> {
+        anyhow::bail!("preview_agent_logs_delete not implemented")
+    }
+    async fn create_agent_logs_delete_job(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _input: &AgentLogsDeleteJobCreate,
+    ) -> anyhow::Result<AgentLogsDeleteJob> {
+        anyhow::bail!("create_agent_logs_delete_job not implemented")
+    }
+    async fn get_agent_logs_delete_job(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _job_id: Option<Uuid>,
+    ) -> anyhow::Result<Option<AgentLogsDeleteJob>> {
+        anyhow::bail!("get_agent_logs_delete_job not implemented")
+    }
+    async fn stop_agent_logs_delete_job(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _job_id: Uuid,
+    ) -> anyhow::Result<Option<AgentLogsDeleteJob>> {
+        anyhow::bail!("stop_agent_logs_delete_job not implemented")
+    }
+    async fn next_agent_logs_delete_job(&self) -> anyhow::Result<Option<AgentLogsDeleteJob>> {
+        anyhow::bail!("next_agent_logs_delete_job not implemented")
+    }
     /// Atomic fixed-workset batch and state-machine transition, locked against other workers.
-    async fn advance_agent_logs_delete_job(&self, _job_id: Uuid) -> anyhow::Result<()> { anyhow::bail!("advance_agent_logs_delete_job not implemented") }
-    async fn fail_agent_logs_delete_job(&self, _job_id: Uuid, _expected_deleted_records: u64) -> anyhow::Result<()> { anyhow::bail!("fail_agent_logs_delete_job not implemented") }
-    async fn delete_agent_logs(&self, _application_id: Uuid, _scope_id: Uuid, _scope: &AgentLogsDeleteScope) -> anyhow::Result<AgentLogsDeleteReceipt> { anyhow::bail!("delete_agent_logs not implemented") }
-    async fn ingest_agent_logs(&self, _application_id: Uuid, _scope_id: Uuid, _api_key_id: Uuid, _batch: &AgentLogsBatch, _costs: &[Option<String>]) -> anyhow::Result<AgentLogsReceipt> { anyhow::bail!("ingest_agent_logs not implemented") }
+    async fn advance_agent_logs_delete_job(&self, _job_id: Uuid) -> anyhow::Result<()> {
+        anyhow::bail!("advance_agent_logs_delete_job not implemented")
+    }
+    async fn fail_agent_logs_delete_job(
+        &self,
+        _job_id: Uuid,
+        _expected_deleted_records: u64,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("fail_agent_logs_delete_job not implemented")
+    }
+    async fn delete_agent_logs(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _scope: &AgentLogsDeleteScope,
+    ) -> anyhow::Result<AgentLogsDeleteReceipt> {
+        anyhow::bail!("delete_agent_logs not implemented")
+    }
+    async fn ingest_agent_logs(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _api_key_id: Uuid,
+        _batch: &AgentLogsBatch,
+        _costs: &[Option<String>],
+    ) -> anyhow::Result<AgentLogsReceipt> {
+        anyhow::bail!("ingest_agent_logs not implemented")
+    }
     async fn query_application_log_records(
         &self,
         _scope_id: Uuid,
@@ -32,9 +101,33 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<RecordClientTrajectoryQueryPage> {
         anyhow::bail!("query_record_client_trajectory not implemented")
     }
-    async fn application_log_record(&self, _application_id: Uuid, _record_id: Uuid) -> anyhow::Result<Option<ApplicationLogRecordOverview>> { anyhow::bail!("application_log_record not implemented") }
-    async fn record_client_trajectory_page(&self, _application_id: Uuid, _record_id: Uuid, _cursor: Option<String>, _limit:i64) -> anyhow::Result<RecordClientTrajectoryPage> { anyhow::bail!("record_client_trajectory_page not implemented") }
-    async fn record_client_trajectory_section(&self, _application_id: Uuid, _record_id: Uuid, _step_id:Uuid, _section:&str, _cursor:Option<i64>, _limit:i64) -> anyhow::Result<Option<ClientTrajectorySection>> { anyhow::bail!("record_client_trajectory_section not implemented") }
+    async fn application_log_record(
+        &self,
+        _application_id: Uuid,
+        _record_id: Uuid,
+    ) -> anyhow::Result<Option<ApplicationLogRecordOverview>> {
+        anyhow::bail!("application_log_record not implemented")
+    }
+    async fn record_client_trajectory_page(
+        &self,
+        _application_id: Uuid,
+        _record_id: Uuid,
+        _cursor: Option<String>,
+        _limit: i64,
+    ) -> anyhow::Result<RecordClientTrajectoryPage> {
+        anyhow::bail!("record_client_trajectory_page not implemented")
+    }
+    async fn record_client_trajectory_section(
+        &self,
+        _application_id: Uuid,
+        _record_id: Uuid,
+        _step_id: Uuid,
+        _section: &str,
+        _cursor: Option<i64>,
+        _limit: i64,
+    ) -> anyhow::Result<Option<ClientTrajectorySection>> {
+        anyhow::bail!("record_client_trajectory_section not implemented")
+    }
 
     /// Narrow current-node usage read; no context bodies or published-mode restriction.
     async fn get_flow_run_node_usages(
@@ -558,6 +651,24 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         flow_run_id: Uuid,
         after_sequence: i64,
     ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>>;
+    /// Page durable facts in database sequence order. A local stream cursor is
+    /// not a database cursor: resumed stream generations may restart at one.
+    /// `through_sequence` freezes a known round boundary when supplied.
+    async fn list_runtime_event_durable_page(
+        &self,
+        flow_run_id: Uuid,
+        after_sequence: i64,
+        through_sequence: Option<i64>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>> {
+        let mut records = self
+            .list_runtime_events(flow_run_id, after_sequence)
+            .await?;
+        records.retain(|event| through_sequence.is_none_or(|end| event.sequence <= end));
+        records.sort_by_key(|event| event.sequence);
+        records.truncate(limit.max(1));
+        Ok(records)
+    }
     async fn get_runtime_event_sequence_for_callback_task(
         &self,
         flow_run_id: Uuid,

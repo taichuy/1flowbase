@@ -206,6 +206,36 @@ impl PgControlPlaneStore {
         rows.into_iter().map(map_runtime_event_record).collect()
     }
 
+    async fn list_runtime_event_durable_page(
+        &self,
+        flow_run_id: Uuid,
+        after_sequence: i64,
+        through_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<domain::RuntimeEventRecord>> {
+        let limit = i64::try_from(limit.max(1)).unwrap_or(i64::MAX);
+        let rows = sqlx::query(
+            r#"
+            select id, flow_run_id, node_run_id, span_id, parent_span_id,
+                   sequence, event_type, layer, source, trust_level, item_id, ledger_ref,
+                   runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
+                   visibility, durability, created_at
+              from runtime_events
+             where flow_run_id = $1 and sequence > $2
+               and ($3::bigint is null or sequence <= $3)
+             order by sequence asc, id asc
+             limit $4
+            "#,
+        )
+        .bind(flow_run_id)
+        .bind(after_sequence)
+        .bind(through_sequence)
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(map_runtime_event_record).collect()
+    }
+
     async fn get_runtime_event_sequence_for_callback_task(
         &self,
         flow_run_id: Uuid,
@@ -1178,8 +1208,12 @@ impl PgControlPlaneStore {
             stitched_trace: list_stitched_trace_for_flow_run(self, &flow_run).await?,
             subagent_traces: list_subagent_traces_for_flow_run(self, &flow_run, &callback_tasks)
                 .await?,
-            task_rounds: self.list_task_round_projection_sources_for_flow_run(&flow_run).await?,
-            child_task_traces: self.list_child_task_projection_sources_for_flow_run(&flow_run).await?,
+            task_rounds: self
+                .list_task_round_projection_sources_for_flow_run(&flow_run)
+                .await?,
+            child_task_traces: self
+                .list_child_task_projection_sources_for_flow_run(&flow_run)
+                .await?,
             flow_run,
             callback_tasks,
         }))
@@ -1286,8 +1320,8 @@ fn push_model_provider_request_log_filters<'a>(
     }
 }
 
-fn empty_application_conversation_runs_page(
-) -> control_plane_contracts::ports::ApplicationConversationRunsPage {
+fn empty_application_conversation_runs_page()
+-> control_plane_contracts::ports::ApplicationConversationRunsPage {
     control_plane_contracts::ports::ApplicationConversationRunsPage {
         items: Vec::new(),
         has_before: false,

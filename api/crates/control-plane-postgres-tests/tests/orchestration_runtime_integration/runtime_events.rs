@@ -1,5 +1,58 @@
 use super::*;
 
+#[tokio::test]
+async fn durable_event_pages_preserve_order_across_stream_cursor_resets() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        datetime!(2026-04-17 09:00:00 UTC),
+    )
+    .await;
+    let mut committed = Vec::new();
+    for local_sequence in [100_i64, 101, 1, 2, 3, 4] {
+        let mut input = runtime_event_input(run.id, "node_checkpoint");
+        input.payload = json!({"stream_sequence": local_sequence, "opaque": "00"});
+        committed.push(store.append_runtime_event(&input).await.unwrap());
+    }
+    let through = committed[3].sequence;
+    let mut after = 0;
+    let mut observed = Vec::new();
+    loop {
+        let page = store
+            .list_runtime_event_durable_page(run.id, after, Some(through), 2)
+            .await
+            .unwrap();
+        assert!(page.len() <= 2);
+        if page.is_empty() {
+            break;
+        }
+        for event in &page {
+            assert!(event.sequence > after && event.sequence <= through);
+            assert_eq!(event.payload["opaque"], "00");
+        }
+        after = page.last().unwrap().sequence;
+        observed.extend(page.into_iter().map(|event| event.id));
+    }
+    assert_eq!(
+        observed,
+        committed[..4]
+            .iter()
+            .map(|event| event.id)
+            .collect::<Vec<_>>()
+    );
+    let empty = store
+        .list_runtime_event_durable_page(Uuid::now_v7(), 0, None, 2)
+        .await
+        .unwrap();
+    assert!(empty.is_empty());
+}
+
 async fn append_event(
     store: &PgControlPlaneStore,
     flow_run: &domain::FlowRunRecord,
@@ -409,18 +462,24 @@ async fn terminal_flow_run_fences_late_run_and_runtime_event_appends() {
         .await
         .unwrap()
         .unwrap();
-    assert!(detail
-        .events
-        .iter()
-        .any(|event| event.event_type == "tool_call_completed"));
-    assert!(detail
-        .events
-        .iter()
-        .any(|event| event.event_type == "flow_run_cancelled"));
-    assert!(!detail
-        .events
-        .iter()
-        .any(|event| event.event_type == "late_run_event"));
+    assert!(
+        detail
+            .events
+            .iter()
+            .any(|event| event.event_type == "tool_call_completed")
+    );
+    assert!(
+        detail
+            .events
+            .iter()
+            .any(|event| event.event_type == "flow_run_cancelled")
+    );
+    assert!(
+        !detail
+            .events
+            .iter()
+            .any(|event| event.event_type == "late_run_event")
+    );
 
     let runtime_events =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_runtime_events(
@@ -428,15 +487,21 @@ async fn terminal_flow_run_fences_late_run_and_runtime_event_appends() {
         )
         .await
         .unwrap();
-    assert!(runtime_events
-        .iter()
-        .any(|event| event.event_type == "tool_call_commit"));
-    assert!(runtime_events
-        .iter()
-        .any(|event| event.event_type == "flow_cancelled"));
-    assert!(!runtime_events
-        .iter()
-        .any(|event| event.event_type.starts_with("late_runtime")));
+    assert!(
+        runtime_events
+            .iter()
+            .any(|event| event.event_type == "tool_call_commit")
+    );
+    assert!(
+        runtime_events
+            .iter()
+            .any(|event| event.event_type == "flow_cancelled")
+    );
+    assert!(
+        !runtime_events
+            .iter()
+            .any(|event| event.event_type.starts_with("late_runtime"))
+    );
 }
 
 #[tokio::test]

@@ -1,7 +1,8 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 mod storage_maintenance;
 use async_trait::async_trait;
 use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     application_public_runtime::{
         ApplicationPublicConversationMessageRecord, ApplicationPublicConversationRecord,
         ApplicationPublicConversationRepository, ApplicationPublishedCallbackAttemptRepository,
@@ -56,9 +57,8 @@ use control_plane_contracts::{
         UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
         UpsertDataModelSideEffectReceiptInput, UpsertDebugVariableCacheEntryInput,
     },
-    ControlPlaneContractError as ControlPlaneError,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::{Postgres, QueryBuilder, Row};
 pub use storage_maintenance::RuntimeStorageCompactionReceipt;
 use time::{Duration, OffsetDateTime};
@@ -66,12 +66,12 @@ use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
 
-mod client_trajectory;
 mod agent_logs;
-mod log_query;
 mod agent_logs_delete;
+mod client_trajectory;
 mod detail_queries;
 mod json_storage;
+mod log_query;
 mod task_trace_sources;
 mod trajectory;
 use json_storage::{
@@ -117,23 +117,88 @@ include!("side_effect_receipt_methods.rs");
 
 #[async_trait]
 impl OrchestrationRuntimeRepository for PgControlPlaneStore {
-    async fn next_agent_log_pricing_record(&self, application_id: Uuid, scope_id: Uuid, after: Option<Uuid>) -> Result<Option<control_plane_contracts::ports::AgentLogPricingRecord>> {
+    async fn next_agent_log_pricing_record(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        after: Option<Uuid>,
+    ) -> Result<Option<control_plane_contracts::ports::AgentLogPricingRecord>> {
         agent_logs::reprice::next_record(self, application_id, scope_id, after).await
     }
-    async fn reprice_agent_log_record(&self, application_id: Uuid, scope_id: Uuid, record_id: Uuid, costs: &[(String, Option<String>)]) -> Result<u64> {
+    async fn reprice_agent_log_record(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        record_id: Uuid,
+        costs: &[(String, Option<String>)],
+    ) -> Result<u64> {
         agent_logs::reprice::apply(self, application_id, scope_id, record_id, costs).await
     }
-    async fn preview_agent_logs_delete(&self, application_id: Uuid, scope_id: Uuid, scope: &control_plane_contracts::ports::AgentLogsDeleteScope) -> Result<control_plane_contracts::ports::AgentLogsDeletePreview> { agent_logs::deletion_jobs::preview(self,application_id,scope_id,scope).await }
-    async fn create_agent_logs_delete_job(&self, application_id: Uuid, scope_id: Uuid, input: &control_plane_contracts::ports::AgentLogsDeleteJobCreate) -> Result<control_plane_contracts::ports::AgentLogsDeleteJob> { agent_logs::deletion_jobs::create(self,application_id,scope_id,input).await }
-    async fn get_agent_logs_delete_job(&self, application_id: Uuid, scope_id: Uuid, job_id: Option<Uuid>) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> { agent_logs::deletion_jobs::get(self,application_id,scope_id,job_id).await }
-    async fn stop_agent_logs_delete_job(&self, application_id: Uuid, scope_id: Uuid, job_id: Uuid) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> { agent_logs::deletion_jobs::stop(self,application_id,scope_id,job_id).await }
-    async fn next_agent_logs_delete_job(&self) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> { agent_logs::deletion_jobs::next(self).await }
-    async fn advance_agent_logs_delete_job(&self, job_id: Uuid) -> Result<()> { agent_logs::deletion_jobs::advance(self,job_id).await }
-    async fn fail_agent_logs_delete_job(&self, job_id: Uuid, expected_deleted_records: u64) -> Result<()> { agent_logs::deletion_jobs::fail(self,job_id,expected_deleted_records).await }
-    async fn delete_agent_logs(&self, application_id: Uuid, scope_id: Uuid, scope: &control_plane_contracts::ports::AgentLogsDeleteScope) -> Result<control_plane_contracts::ports::AgentLogsDeleteReceipt> {
+    async fn preview_agent_logs_delete(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        scope: &control_plane_contracts::ports::AgentLogsDeleteScope,
+    ) -> Result<control_plane_contracts::ports::AgentLogsDeletePreview> {
+        agent_logs::deletion_jobs::preview(self, application_id, scope_id, scope).await
+    }
+    async fn create_agent_logs_delete_job(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        input: &control_plane_contracts::ports::AgentLogsDeleteJobCreate,
+    ) -> Result<control_plane_contracts::ports::AgentLogsDeleteJob> {
+        agent_logs::deletion_jobs::create(self, application_id, scope_id, input).await
+    }
+    async fn get_agent_logs_delete_job(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        job_id: Option<Uuid>,
+    ) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> {
+        agent_logs::deletion_jobs::get(self, application_id, scope_id, job_id).await
+    }
+    async fn stop_agent_logs_delete_job(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        job_id: Uuid,
+    ) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> {
+        agent_logs::deletion_jobs::stop(self, application_id, scope_id, job_id).await
+    }
+    async fn next_agent_logs_delete_job(
+        &self,
+    ) -> Result<Option<control_plane_contracts::ports::AgentLogsDeleteJob>> {
+        agent_logs::deletion_jobs::next(self).await
+    }
+    async fn advance_agent_logs_delete_job(&self, job_id: Uuid) -> Result<()> {
+        agent_logs::deletion_jobs::advance(self, job_id).await
+    }
+    async fn fail_agent_logs_delete_job(
+        &self,
+        job_id: Uuid,
+        expected_deleted_records: u64,
+    ) -> Result<()> {
+        agent_logs::deletion_jobs::fail(self, job_id, expected_deleted_records).await
+    }
+    async fn delete_agent_logs(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        scope: &control_plane_contracts::ports::AgentLogsDeleteScope,
+    ) -> Result<control_plane_contracts::ports::AgentLogsDeleteReceipt> {
         agent_logs_delete::delete(self, application_id, scope_id, scope).await
     }
-    async fn ingest_agent_logs(&self, application_id:Uuid,scope_id:Uuid,api_key_id:Uuid,batch:&control_plane_contracts::ports::AgentLogsBatch,costs:&[Option<String>])->Result<control_plane_contracts::ports::AgentLogsReceipt> { agent_logs::ingest(self,application_id,scope_id,api_key_id,batch,costs).await }
+    async fn ingest_agent_logs(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        api_key_id: Uuid,
+        batch: &control_plane_contracts::ports::AgentLogsBatch,
+        costs: &[Option<String>],
+    ) -> Result<control_plane_contracts::ports::AgentLogsReceipt> {
+        agent_logs::ingest(self, application_id, scope_id, api_key_id, batch, costs).await
+    }
     async fn query_application_log_records(
         &self,
         scope_id: Uuid,
@@ -150,9 +215,42 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     ) -> Result<control_plane_contracts::ports::RecordClientTrajectoryQueryPage> {
         log_query::trajectory(self, application_id, record_id, query).await
     }
-    async fn application_log_record(&self, application_id:Uuid,record_id:Uuid)->Result<Option<control_plane_contracts::ports::ApplicationLogRecordOverview>> {agent_logs::overview(self,application_id,record_id).await}
-    async fn record_client_trajectory_page(&self,application_id:Uuid,record_id:Uuid,cursor:Option<String>,limit:i64)->Result<control_plane_contracts::ports::RecordClientTrajectoryPage> {agent_logs::page(self,application_id,record_id,cursor,limit).await}
-    async fn record_client_trajectory_section(&self,application_id:Uuid,record_id:Uuid,step_id:Uuid,section:&str,cursor:Option<i64>,limit:i64)->Result<Option<control_plane_contracts::ports::ClientTrajectorySection>> {agent_logs::section(self,application_id,record_id,step_id,section,cursor,limit).await}
+    async fn application_log_record(
+        &self,
+        application_id: Uuid,
+        record_id: Uuid,
+    ) -> Result<Option<control_plane_contracts::ports::ApplicationLogRecordOverview>> {
+        agent_logs::overview(self, application_id, record_id).await
+    }
+    async fn record_client_trajectory_page(
+        &self,
+        application_id: Uuid,
+        record_id: Uuid,
+        cursor: Option<String>,
+        limit: i64,
+    ) -> Result<control_plane_contracts::ports::RecordClientTrajectoryPage> {
+        agent_logs::page(self, application_id, record_id, cursor, limit).await
+    }
+    async fn record_client_trajectory_section(
+        &self,
+        application_id: Uuid,
+        record_id: Uuid,
+        step_id: Uuid,
+        section: &str,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<Option<control_plane_contracts::ports::ClientTrajectorySection>> {
+        agent_logs::section(
+            self,
+            application_id,
+            record_id,
+            step_id,
+            section,
+            cursor,
+            limit,
+        )
+        .await
+    }
 
     async fn get_flow_run_node_usages(
         &self,
@@ -847,6 +945,23 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
             self,
             flow_run_id,
             callback_task_id,
+        )
+        .await
+    }
+
+    async fn list_runtime_event_durable_page(
+        &self,
+        flow_run_id: Uuid,
+        after_sequence: i64,
+        through_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<domain::RuntimeEventRecord>> {
+        PgControlPlaneStore::list_runtime_event_durable_page(
+            self,
+            flow_run_id,
+            after_sequence,
+            through_sequence,
+            limit,
         )
         .await
     }
