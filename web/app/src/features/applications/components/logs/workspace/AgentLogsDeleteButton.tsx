@@ -113,7 +113,7 @@ export function AgentLogsDeleteButton({
         {t('log_deletion.button')}
       </Button>
       <Modal
-        title={t('log_deletion.title')}
+        title={t('log_deletion.button')}
         open={open}
         closable={!processing}
         mask={{ closable: !processing }}
@@ -137,8 +137,8 @@ export function AgentLogsDeleteButton({
               <Button onClick={() => setOpen(false)}>
                 {t(
                   status === 'ready'
-                    ? 'log_deletion.cancel'
-                    : 'log_deletion.close'
+                    ? 'auto.cancel'
+                    : 'auto.close'
                 )}
               </Button>
             )}
@@ -149,7 +149,7 @@ export function AgentLogsDeleteButton({
                 disabled={!csrfToken}
                 onClick={() => form.submit()}
               >
-                {t('log_deletion.confirm')}
+                {t('log_deletion.button')}
               </Button>
             )}
           </Space>
@@ -171,11 +171,11 @@ export function AgentLogsDeleteButton({
           >
             <Select
               options={[
-                { value: '7', label: t('log_deletion.days_7') },
-                { value: '30', label: t('log_deletion.days_30') },
-                { value: '90', label: t('log_deletion.days_90') },
+                { value: '7', label: t('auto.past_seven_days') },
+                { value: '30', label: t('log_deletion.past_thirty_days') },
+                { value: '90', label: t('log_deletion.past_ninety_days') },
                 { value: '365', label: t('log_deletion.year') },
-                { value: 'all', label: t('log_deletion.all') },
+                { value: 'all', label: t('auto.all') },
                 { value: 'custom', label: t('log_deletion.custom') }
               ]}
             />

@@ -395,22 +395,14 @@
   },
   "log_deletion": {
     "button": "Delete logs",
-    "title": "Delete logs",
     "date": "Select dates",
-    "days_7": "Past 7 days",
-    "days_30": "Past 30 days",
-    "days_90": "Past 90 days",
     "year": "Past year",
-    "all": "All time",
     "custom": "Custom dates",
     "custom_range": "Date range",
     "range_required": "Select a start and end date",
     "batch_size": "Records per batch",
     "batch_invalid": "Enter a positive integer up to 4294967295",
     "warning": "Delete complete conversations and trajectories by log start time. This cannot be undone. Only records that exist when deletion starts are included.",
-    "confirm": "Delete logs",
-    "cancel": "Cancel",
-    "close": "Close",
     "stop": "Stop further batches",
     "stopping": "Stopping",
     "progress": "Confirmed deletion of {{count}} logs",
@@ -418,6 +410,8 @@
     "stopping_detail": "Waiting for the current batch to commit. Deleted logs will remain deleted.",
     "complete": "Logs in the selected range have been deleted.",
     "stopped": "Further batches stopped. Committed deletions are retained.",
-    "failed": "Deletion interrupted. The last batch may be unconfirmed; check the refreshed logs."
+    "failed": "Deletion interrupted. The last batch may be unconfirmed; check the refreshed logs.",
+    "past_thirty_days": "Past 30 days",
+    "past_ninety_days": "Past 90 days"
   }
 }
