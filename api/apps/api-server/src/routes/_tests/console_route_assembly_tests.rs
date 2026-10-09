@@ -440,6 +440,51 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "applications.update",
             ),
             (
+                "POST",
+                "/api/console/applications/:id/logs/deletion-preview",
+                "applications.logs.delete.preview",
+            ),
+            (
+                "POST",
+                "/api/console/applications/:id/logs/deletion-jobs",
+                "applications.logs.delete.jobs.create",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/deletion-jobs/:job_id",
+                "applications.logs.delete.jobs.get",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/deletion-jobs/latest",
+                "applications.logs.delete.jobs.latest",
+            ),
+            (
+                "POST",
+                "/api/console/applications/:id/logs/deletion-jobs/:job_id/stop",
+                "applications.logs.delete.jobs.stop",
+            ),
+            (
+                "DELETE",
+                "/api/console/applications/:id/logs",
+                "applications.logs.delete",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/records/:record_id",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/records/:record_id/client-trajectory",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/records/:record_id/client-trajectory/:step_id",
+                "applications.view",
+            ),
+            (
                 "GET",
                 "/api/console/applications/:id/logs/runs/:run_id/client-trajectory",
                 "applications.view",
