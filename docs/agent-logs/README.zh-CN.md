@@ -44,3 +44,23 @@ Codex `response_item` user/assistant 提供对话事实；明确标记 `phase: "
 采集费用只按 `model_id` 精确匹配已有价格规则，`provider_code` 保留来源信息，不参与定价筛选。启用、事件时间和本地时窗均需有效；多个命中沿用价格列表的稳定顺序：供应商代码升序、优先级降序、生效时间降序、规则 ID 升序，取第一条。缺价格复用 `zero/any`，真实用量缺失时不补造费用。采集只记录估算，不扣余额；实际模型调用的供应商计费规则保持独立。
 
 历史费用不会因价格配置变化自动重写。数据库维护者可显式运行 `agent_logs_reprice --application-id UUID --scope-id UUID`（通过私有环境变量 `API_DATABASE_URL` 提供数据库连接）。该命令按记录 ID 顺序从已保存的最小用量事实重算，仅更新费用；不重建消息或轨迹、不改事件身份/正文/Token，不重置断点或重复上传。每条记录原子提交，失败后可安全重跑。
+
+## 删除日志与进度
+
+日志页“删除日志”支持过去 7/30/90 天、一年、全部或自定义日期；选择后先统计日志记录数，批次默认 100。一条记录包含一轮对话及其完整轨迹，统计不按原始事件数计算。自定义结束日期包含当天，后端按 `started_at` 的 `[started_at_from, started_at_to)` 选择记录。
+
+启动时后端重新确认总数，固定待删除记录 ID 和实际入库边界；预览与启动之间新增的数据可能使最终总数变化，启动后新采集的记录不加入任务。后端独立分批执行，删除与进度在同一事务提交。关闭弹窗或页面不停止删除；重新打开会查询已提交进度。服务重启后从未完成的批次恢复；停止在当前批次提交后生效，已删除数据无法恢复。网络断开只影响查询，不意味着任务失败。失败或停止保留真实已完成数量，不显示 100% 完成。
+
+Console API 使用已登录 workspace session。每个接口独立授权；启动和停止要求 `x-csrf-token`。应用采集 Key 不能调用删除接口。
+
+| 方法与应用内路径 | 用途 |
+| --- | --- |
+| `POST /api/console/applications/{id}/logs/deletion-preview` | body 为删除 scope，返回 `data.total_records` |
+| `POST /api/console/applications/{id}/logs/deletion-jobs` | body 为 `{job_id, scope}`；scope 必须有正整数 `batch_size` |
+| `GET /api/console/applications/{id}/logs/deletion-jobs/latest` | 返回 `data.job`，没有任务时为 `null` |
+| `GET /api/console/applications/{id}/logs/deletion-jobs/{job_id}` | 查询指定任务；不属于当前应用/workspace 时返回 404 |
+| `POST /api/console/applications/{id}/logs/deletion-jobs/{job_id}/stop` | 幂等请求停止，返回最新任务 |
+
+启动的 `job_id` 由调用方生成 UUID。同一 ID 与相同 scope 重发只返回原任务，包括已结束的任务；不同 scope 返回 409。同一应用只能有一个活动删除任务；旧 `DELETE /logs` 保持可用，在活动任务期间返回 409。任务 scope 不接受调用方的 `ingested_at_before`，边界由服务端确定。
+
+任务包含 `job_id/application_id/scope/ingested_at_before/status/total_records/deleted_records/stop_requested/error_code/created_at/updated_at`。状态为 `queued/running/succeeded/stopped/failed`；进度只来自 `deleted_records/total_records`，不要在客户端累计响应。启动响应丢失时查询原 `job_id`；必要时使用同一 ID 和原 scope 确认启动，不创建另一个任务。

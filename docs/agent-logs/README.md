@@ -72,3 +72,23 @@ The old repository Node collector remains a development fixture oracle and is no
 Imported costs match existing pricing rules by the exact `model_id` only. `provider_code` remains source metadata and does not filter prices. Rules must be enabled and valid at the event time, including their local time windows. If several rules match, the first eligible rule in the pricing list's stable order wins: provider code ascending, priority descending, effective start descending, then rule ID ascending. Missing prices use `zero/any`; missing usage is not fabricated. Estimates never debit balances. Native model invocations retain their separate provider-based billing behavior.
 
 Price configuration changes do not automatically rewrite historical estimates. A database maintainer can explicitly run `agent_logs_reprice --application-id UUID --scope-id UUID`, supplying `API_DATABASE_URL` through a private environment variable. The command reads minimal persisted usage facts in record-ID order and updates costs only. It preserves messages, trajectories, event identities, bodies, tokens, and collector checkpoints, without re-uploading logs. Each record commits atomically; failed runs can be safely repeated.
+
+## Deleting logs and tracking progress
+
+The logs page supports the past 7, 30 or 90 days, a year, all history, or custom dates. Selecting a range fetches the matching record count; the default batch size is 100. Each record is a complete conversation turn and its trajectory, rather than an individual source event. Custom end dates include the whole day. The server selects by `started_at` using `[started_at_from, started_at_to)`.
+
+Starting a task confirms the final count and freezes the record IDs and ingestion boundary. Records arriving between preview and start may change the final count; later records are excluded. The server deletes batches independently and commits deletion and progress together. Closing the dialog or leaving the page does not stop the task. Reopening retrieves committed progress, and a server restart resumes pending work. Stop takes effect after the current batch commits; committed deletion is irreversible. A network interruption affects queries and does not imply task failure. Stopped or failed tasks retain their actual partial count and never claim 100% completion.
+
+Console APIs require a signed-in workspace session. Each endpoint has its own operation permission. Starting and stopping also require `x-csrf-token`. Collector application keys cannot delete logs.
+
+| Method and application path | Purpose |
+| --- | --- |
+| `POST /api/console/applications/{id}/logs/deletion-preview` | Accept a deletion scope and return `data.total_records` |
+| `POST /api/console/applications/{id}/logs/deletion-jobs` | Accept `{job_id, scope}`; scope must include a positive integer `batch_size` |
+| `GET /api/console/applications/{id}/logs/deletion-jobs/latest` | Return `data.job`, or `null` when no task exists |
+| `GET /api/console/applications/{id}/logs/deletion-jobs/{job_id}` | Retrieve one task; return 404 outside its application/workspace |
+| `POST /api/console/applications/{id}/logs/deletion-jobs/{job_id}/stop` | Idempotently request a stop and return the latest task |
+
+Generate a UUID `job_id` before starting. Repeating the same ID with the same scope returns the original task, including completed tasks; a different scope returns 409. An application can have one active deletion task. The existing `DELETE /logs` remains available and returns 409 while a task is active. Job scopes reject caller-provided `ingested_at_before`; the server establishes that boundary.
+
+A task contains `job_id`, `application_id`, `scope`, `ingested_at_before`, `status`, `total_records`, `deleted_records`, `stop_requested`, `error_code`, `created_at` and `updated_at`. Status is `queued`, `running`, `succeeded`, `stopped` or `failed`. Display the server's absolute `deleted_records/total_records` instead of adding response counts locally. If a start response is lost, query the original ID. If needed, confirm start with that same ID and scope; do not generate another task identity.

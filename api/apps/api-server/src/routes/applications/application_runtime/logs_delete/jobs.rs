@@ -79,8 +79,32 @@ impl InterfaceContract for JobInput {
 }
 #[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct JobOutput {
-    #[schema(value_type=Option<Object>)]
+    #[schema(value_type=Option<LogsDeletionJobSchema>)]
     pub job: Option<AgentLogsDeleteJob>,
+}
+struct LogsDeletionJobSchema;
+impl utoipa::ToSchema for LogsDeletionJobSchema {}
+impl utoipa::PartialSchema for LogsDeletionJobSchema {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        let scope = <super::LogsDeleteScopeSchema as utoipa::PartialSchema>::schema();
+        serde_json::from_value(json!({
+            "type":"object", "additionalProperties":false,
+            "required":["job_id","application_id","scope","ingested_at_before","status","total_records","deleted_records","stop_requested","error_code","created_at","updated_at"],
+            "properties":{
+                "job_id":{"type":"string","format":"uuid"},
+                "application_id":{"type":"string","format":"uuid"},
+                "scope":scope,
+                "ingested_at_before":{"type":"string","format":"date-time"},
+                "status":{"type":"string","enum":["queued","running","succeeded","stopped","failed"]},
+                "total_records":{"type":"integer","minimum":0},
+                "deleted_records":{"type":"integer","minimum":0},
+                "stop_requested":{"type":"boolean"},
+                "error_code":{"type":["string","null"]},
+                "created_at":{"type":"string","format":"date-time"},
+                "updated_at":{"type":"string","format":"date-time"}
+            }
+        })).expect("static deletion job schema")
+    }
 }
 impl InterfaceContract for JobOutput {
     const CONTRACT_ID: &'static str = "console-application-log-deletion-job-output";

@@ -22,7 +22,10 @@ pub fn spawn(state: Arc<ApiState>) {
                 .advance_next_deletion()
                 .await
             {
-                tracing::warn!(%error,"application log deletion batch failed; durable status retained");
+                tracing::warn!(
+                    ?error,
+                    "application log deletion batch failed; durable status retained"
+                );
             }
         }
     });

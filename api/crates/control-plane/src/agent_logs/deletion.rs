@@ -133,7 +133,7 @@ impl<R: OrchestrationRuntimeRepository> AgentLogsService<R> {
             self.repository
                 .fail_agent_logs_delete_job(job.job_id, job.deleted_records)
                 .await?;
-            return Err(error);
+            return Err(error.context(format!("agent logs deletion job {}", job.job_id)));
         }
         Ok(true)
     }

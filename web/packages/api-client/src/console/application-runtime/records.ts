@@ -99,3 +99,79 @@ export function deleteConsoleApplicationLogs(
     baseUrl
   });
 }
+
+export interface AgentLogsDeletePreview {
+  total_records: number;
+}
+export interface AgentLogsDeleteJob {
+  job_id: string;
+  application_id: string;
+  scope: AgentLogsDeleteScope;
+  ingested_at_before: string;
+  status: 'queued' | 'running' | 'succeeded' | 'stopped' | 'failed';
+  total_records: number;
+  deleted_records: number;
+  stop_requested: boolean;
+  error_code: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface AgentLogsDeleteJobCreate {
+  job_id: string;
+  scope: AgentLogsDeleteScope;
+}
+const deletionPath = (applicationId: string) =>
+  `/api/console/applications/${applicationId}/logs`;
+export function previewConsoleApplicationLogDeletion(
+  applicationId: string,
+  scope: AgentLogsDeleteScope,
+  baseUrl?: string,
+  signal?: AbortSignal
+) {
+  return apiFetch<AgentLogsDeletePreview>({
+    path: `${deletionPath(applicationId)}/deletion-preview`,
+    method: 'POST',
+    body: scope,
+    baseUrl,
+    signal
+  });
+}
+export function createConsoleApplicationLogDeletionJob(
+  applicationId: string,
+  input: AgentLogsDeleteJobCreate,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<{ job: AgentLogsDeleteJob }>({
+    path: `${deletionPath(applicationId)}/deletion-jobs`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+export function getConsoleApplicationLogDeletionJob(
+  applicationId: string,
+  jobId?: string,
+  baseUrl?: string,
+  signal?: AbortSignal
+) {
+  return apiFetch<{ job: AgentLogsDeleteJob | null }>({
+    path: `${deletionPath(applicationId)}/deletion-jobs/${jobId ?? 'latest'}`,
+    baseUrl,
+    signal
+  });
+}
+export function stopConsoleApplicationLogDeletionJob(
+  applicationId: string,
+  jobId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<{ job: AgentLogsDeleteJob }>({
+    path: `${deletionPath(applicationId)}/deletion-jobs/${jobId}/stop`,
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}

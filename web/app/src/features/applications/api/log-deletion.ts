@@ -1,29 +1,75 @@
 import {
-  deleteConsoleApplicationLogs,
+  createConsoleApplicationLogDeletionJob,
+  getConsoleApplicationLogDeletionJob,
+  previewConsoleApplicationLogDeletion,
+  stopConsoleApplicationLogDeletionJob,
   type AgentLogsDeleteScope,
-  type AgentLogsDeleteReceipt
+  type AgentLogsDeleteJobCreate
 } from '@1flowbase/api-client';
 import { getApplicationsApiBaseUrl } from './applications';
 
-// Sequential committed batches; stopping never aborts or rolls back the active batch.
-export async function deleteApplicationLogsInBatches(
+export const logDeletionJobKey = (applicationId: string, jobId?: string) =>
+  [
+    'applications',
+    applicationId,
+    'log-deletion-job',
+    jobId ?? 'latest'
+  ] as const;
+export const logDeletionPreviewKey = (
+  applicationId: string,
+  scope: AgentLogsDeleteScope | null
+) => ['applications', applicationId, 'log-deletion-preview', scope] as const;
+export function previewApplicationLogDeletion(
   applicationId: string,
   scope: AgentLogsDeleteScope,
-  csrfToken: string,
-  onReceipt: (receipt: AgentLogsDeleteReceipt) => void,
-  shouldStop: () => boolean
-): Promise<'complete' | 'stopped'> {
-  let ingested_at_before = scope.ingested_at_before;
-  while (!shouldStop()) {
-    const receipt = await deleteConsoleApplicationLogs(
+  signal?: AbortSignal
+) {
+  return previewConsoleApplicationLogDeletion(
+    applicationId,
+    scope,
+    getApplicationsApiBaseUrl(),
+    signal
+  );
+}
+export async function fetchApplicationLogDeletionJob(
+  applicationId: string,
+  jobId?: string,
+  signal?: AbortSignal
+) {
+  return (
+    await getConsoleApplicationLogDeletionJob(
       applicationId,
-      { ...scope, ingested_at_before },
+      jobId,
+      getApplicationsApiBaseUrl(),
+      signal
+    )
+  ).job;
+}
+export async function startApplicationLogDeletion(
+  applicationId: string,
+  input: AgentLogsDeleteJobCreate,
+  csrfToken: string
+) {
+  return (
+    await createConsoleApplicationLogDeletionJob(
+      applicationId,
+      input,
       csrfToken,
       getApplicationsApiBaseUrl()
-    );
-    onReceipt(receipt);
-    ingested_at_before = receipt.ingested_at_before;
-    if (!receipt.has_more) return 'complete';
-  }
-  return 'stopped';
+    )
+  ).job;
+}
+export async function stopApplicationLogDeletion(
+  applicationId: string,
+  jobId: string,
+  csrfToken: string
+) {
+  return (
+    await stopConsoleApplicationLogDeletionJob(
+      applicationId,
+      jobId,
+      csrfToken,
+      getApplicationsApiBaseUrl()
+    )
+  ).job;
 }

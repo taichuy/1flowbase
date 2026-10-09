@@ -117,6 +117,7 @@ fn owner_id(owner: SystemWriteOwner) -> &'static str {
     match owner {
         SystemWriteOwner::TraceProjectionPersistence => "trace_projection_persistence",
         SystemWriteOwner::ApiMutation => "api_mutation",
+        SystemWriteOwner::ApplicationLogDeletion => "application_log_deletion",
         SystemWriteOwner::ProviderRequestLogPersistence => "provider_request_log_persistence",
         SystemWriteOwner::WorkflowScheduleDispatch => "workflow_schedule_dispatch",
         SystemWriteOwner::WorkflowScheduleExecution => "workflow_schedule_execution",
