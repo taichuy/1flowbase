@@ -31,3 +31,5 @@ pub use control_plane_contracts::ports::runtime::client_trajectory::*;
 pub use control_plane_contracts::ports::runtime::workflow_trajectory::*;
 
 pub use control_plane_contracts::ports::agent_logs::*;
+
+pub use control_plane_contracts::ports::runtime::log_query::*;
