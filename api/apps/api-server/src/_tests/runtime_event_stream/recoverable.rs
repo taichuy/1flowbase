@@ -277,3 +277,22 @@ async fn failure_after_confirmation_restores_original_unproven_retention() {
     );
     assert!(writer.confirm_terminal_persisted(1).await.is_err());
 }
+
+#[tokio::test]
+async fn persistence_owner_claim_is_once_per_generation_and_independent_after_reopen() {
+    let stream = LocalRuntimeEventStream::new();
+    let (run_id, old) = closed_generation(&stream, "flow_finished").await;
+    let another_old = stream.terminal_writer(run_id).await.unwrap();
+    assert!(old.claim_persistence_owner());
+    assert!(!old.claim_persistence_owner());
+    assert!(!another_old.claim_persistence_owner());
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let current = stream.terminal_writer(run_id).await.unwrap();
+    assert_ne!(old.generation_id(), current.generation_id());
+    assert!(current.claim_persistence_owner());
+    assert!(!current.claim_persistence_owner());
+    assert!(!old.claim_persistence_owner());
+}

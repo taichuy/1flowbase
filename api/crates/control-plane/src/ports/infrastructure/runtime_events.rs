@@ -169,6 +169,11 @@ pub struct RuntimeEventClosure {
 /// Clones must retain that generation even after the same run ID is reopened.
 #[async_trait]
 pub trait RuntimeEventTerminalWriter: Send + Sync {
+    /// Claims the sole persistence owner for this subscription generation.
+    fn claim_persistence_owner(&self) -> bool {
+        true
+    }
+
     fn generation_id(&self) -> Option<Uuid> {
         None
     }

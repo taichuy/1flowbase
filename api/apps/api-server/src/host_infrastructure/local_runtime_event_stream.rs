@@ -45,6 +45,19 @@ struct LocalRuntimeEventTerminalWriter {
 
 #[async_trait::async_trait]
 impl RuntimeEventTerminalWriter for LocalRuntimeEventTerminalWriter {
+    fn claim_persistence_owner(&self) -> bool {
+        let mut ring = self
+            .run
+            .ring
+            .lock()
+            .expect("runtime event ring lock poisoned");
+        if ring.persistence_owner_claimed {
+            return false;
+        }
+        ring.persistence_owner_claimed = true;
+        true
+    }
+
     fn generation_id(&self) -> Option<Uuid> {
         Some(self.run.generation_id)
     }
@@ -160,6 +173,7 @@ struct RetainedRuntimeEvents {
     terminal_sequence: Option<i64>,
     durable_replay_boundary: Option<i64>,
     persistence_failed: bool,
+    persistence_owner_claimed: bool,
     confirmed_at: Option<OffsetDateTime>,
     retired: bool,
 }
