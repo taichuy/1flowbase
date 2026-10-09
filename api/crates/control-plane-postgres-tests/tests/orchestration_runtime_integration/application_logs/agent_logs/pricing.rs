@@ -145,7 +145,7 @@ async fn agent_logs_model_id_only_uses_stable_first_match_without_changing_nativ
     .unwrap()
     .unwrap();
     assert_eq!(native.provider_code, "z-client-provider");
-    assert_eq!(native.input_token_unit_price.to_string(), "99");
+    assert_eq!(native.input_token_unit_price.normalize().to_string(), "99");
     let e = usage_event("priced", "priced-model");
     let service = AgentLogsService::new(store.clone());
     let id = service
