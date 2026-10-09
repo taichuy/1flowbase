@@ -44,6 +44,11 @@ export const FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS: readonly BlockSourceExtr
   };
   theme: { mode: 'light' | 'dark'; tokens: Record<string, unknown> };
   ui: { locale?: string };
+  i18n: {
+    readonly locale: string;
+    readonly status: 'loading' | 'ready' | 'error';
+    t(key: string, options?: { defaultValue?: string; values?: Readonly<Record<string, string | number>> }): string;
+  };
 }
 
 interface NativeReactApiRequest {

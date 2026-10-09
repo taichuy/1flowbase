@@ -15,7 +15,8 @@ export const BLOCK_CONTEXT_KEYS = [
   'events',
   'navigation',
   'theme',
-  'ui'
+  'ui',
+  'i18n'
 ] as const;
 
 export type BlockContextKey = (typeof BLOCK_CONTEXT_KEYS)[number];
@@ -159,6 +160,17 @@ export interface BlockContextUi {
   surface?: BlockContextSurface;
 }
 
+export interface BlockTranslationOptions {
+  defaultValue?: string;
+  values?: Readonly<Record<string, string | number>>;
+}
+
+export interface BlockContextI18n {
+  readonly locale: string;
+  readonly status: 'loading' | 'ready' | 'error';
+  t(key: string, options?: BlockTranslationOptions): string;
+}
+
 export interface BlockExternalAssetHandle {
   dispose(): void;
 }
@@ -193,9 +205,12 @@ export interface BlockContext<
   navigation: BlockContextNavigation;
   theme: BlockContextTheme;
   ui: BlockContextUi;
+  i18n: BlockContextI18n;
 }
 
 export type BlockContextSeed<
   TInputs extends BlockContextRecord = BlockContextRecord,
   TOutputs extends BlockContextRecord = BlockContextRecord
-> = Omit<BlockContext<TInputs, TOutputs>, 'root' | 'assets'>;
+> = Omit<BlockContext<TInputs, TOutputs>, 'root' | 'assets' | 'i18n'> & {
+  i18n?: BlockContextI18n;
+};

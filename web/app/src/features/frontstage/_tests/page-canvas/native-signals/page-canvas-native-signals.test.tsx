@@ -1,3 +1,4 @@
+import { createBlockI18n } from '../../../lib/runtime-i18n/translator';
 import { createNativePreparationSource } from '../fixtures/native-preparation-source';
 import {
   act,
@@ -28,6 +29,53 @@ import type { FrontstageNativeBlockContextHost } from '../../../lib/page-canvas/
 import { createFrontstagePageContentFixture } from '../../frontstage-page-content-fixtures';
 
 describe('PageCanvas Native Signal context', () => {
+  test('propagates a new translation snapshot without resetting block Hook state', async () => {
+    const Block = ({ ctx }: { ctx: BlockContext }) => {
+      const [count, setCount] = useState(0);
+      return (
+        <button data-testid="translated" onClick={() => setCount(count + 1)}>
+          {count}:{ctx.i18n.t('Account')}:{ctx.ui.locale}
+        </button>
+      );
+    };
+    const preparations = createNativePreparationSource([
+      preparation('producer', 0, Block)
+    ]);
+    const runtime = (
+      locale: string,
+      Account: string
+    ): FrontstagePageCanvasRuntimeContext => ({
+      currentUser: null,
+      workspace: { id: 'workspace-1' },
+      application: null,
+      theme: { mode: 'light', tokens: {} },
+      ui: { locale },
+      i18n: createBlockI18n({ locale, status: 'ready', messages: { Account } })
+    });
+    const view = render(
+      <PageCanvas
+        content={pageContent()}
+        runtimeBlocks={runtimeBlocks().slice(0, 1)}
+        runtimePreparations={preparations}
+        runtimeContext={runtime('zh_Hans', '账号')}
+      />
+    );
+    const root = await nativeRoot('producer');
+    const button = await within(root.shadow).findByTestId('translated');
+    expect(button).toHaveTextContent('0:账号:zh_Hans');
+    fireEvent.click(button);
+    view.rerender(
+      <PageCanvas
+        content={pageContent()}
+        runtimeBlocks={runtimeBlocks().slice(0, 1)}
+        runtimePreparations={preparations}
+        runtimeContext={runtime('en_US', 'Account')}
+      />
+    );
+    await waitFor(() => expect(button).toHaveTextContent('1:Account:en_US'));
+    expect(root.host.shadowRoot).not.toBeNull();
+  });
+
   test('D3R-AC-002/004 publishes synchronously, updates only the DAG downstream, preserves Hooks, and rejects the old epoch', async () => {
     const producerContexts: BlockContext[] = [];
     let consumerRenders = 0;

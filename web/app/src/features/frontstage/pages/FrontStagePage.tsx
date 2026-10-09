@@ -18,6 +18,7 @@ import {
   type FrontstagePageCanvasRuntimeContext
 } from '../components/PageCanvas';
 import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
+import { useBlockI18n } from '../hooks/runtime-i18n/use-block-i18n';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
 import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
 import { useFrontstagePageCanvasIsolatedPreparations } from '../hooks/use-frontstage-page-canvas-isolated-preparations';
@@ -402,6 +403,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     pageId: selectedPageId,
     assembly: blockRuntimeAssembly
   });
+  const blockI18n = useBlockI18n(workspaceId, runtimeActive);
   const nativeBlockRuntimeContext = useMemo<FrontstagePageCanvasRuntimeContext>(
     () => ({
       currentUser: actor
@@ -414,9 +416,10 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       workspace: { id: workspaceId },
       application: null,
       theme: { mode: 'light', tokens: {} },
-      ui: { locale: me?.preferred_locale ?? undefined }
+      ui: { locale: blockI18n.locale },
+      i18n: blockI18n
     }),
-    [actor, me?.name, me?.nickname, me?.preferred_locale, workspaceId]
+    [actor, me?.name, me?.nickname, blockI18n, workspaceId]
   );
   const createTrialBlockContext = useMemo(() => {
     if (!jsBlockCapabilityHandlers || !selectedPageId || !tabId) {

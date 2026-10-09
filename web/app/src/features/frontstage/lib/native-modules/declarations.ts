@@ -49,7 +49,17 @@ const BLOCK_SDK_DECLARATIONS = `declare module '@1flowbase/block-sdk' {
     loadScript(url: string): Promise<BlockExternalAssetHandle>;
     loadSvgSprite(url: string): Promise<BlockExternalAssetHandle>;
   }
+  export interface BlockTranslationOptions {
+    defaultValue?: string;
+    values?: Readonly<Record<string, string | number>>;
+  }
+  export interface BlockContextI18n {
+    readonly locale: string;
+    readonly status: 'loading' | 'ready' | 'error';
+    t(key: string, options?: BlockTranslationOptions): string;
+  }
   export interface BlockContext {
+    readonly i18n: BlockContextI18n;
     readonly root: ShadowRoot;
     readonly assets: BlockContextAssets;
     readonly currentUser: BlockContextIdentity | null;

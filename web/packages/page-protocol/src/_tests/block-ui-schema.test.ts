@@ -104,7 +104,8 @@ describe('block UI schema protocol', () => {
       'events',
       'navigation',
       'theme',
-      'ui'
+      'ui',
+      'i18n'
     ]);
     expect(BLOCK_CONTEXT_KEYS).not.toContain('React');
     expect(BLOCK_CONTEXT_KEYS).not.toContain('antd');

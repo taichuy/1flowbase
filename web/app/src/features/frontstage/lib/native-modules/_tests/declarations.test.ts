@@ -5,17 +5,35 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('type-checks the block translation facade and rejects invalid parameters', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import type { BlockContext } from '@1flowbase/block-sdk';
+declare const ctx: BlockContext;
+const text: string = ctx.i18n.t('Account');
+ctx.i18n.t('Hello {{name}}', { values: { name: 'Ada' }, defaultValue: 'Hello' });
+// @ts-expect-error translation keys are strings.
+ctx.i18n.t(123);
+// @ts-expect-error interpolation values must be strings or numbers.
+ctx.i18n.t('Account', { values: { nested: {} } });
+void text;`
+      })
+    ).toEqual([]);
+  });
   test('countup exposes numeric props and its hook types', () => {
-    expect(typeCheckSource({
-      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
-      source: `import React from 'react';
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import React from 'react';
 import CountUp, { useCountUp, type CountUpProps } from 'react-countup';
 const props: CountUpProps = { end: 112893, decimals: 2, separator: ',' };
 // @ts-expect-error end must be a number.
 props.end = 'invalid';
 const counter = <CountUp {...props} />;
 void counter; void useCountUp;`
-    })).toEqual([]);
+      })
+    ).toEqual([]);
   });
   test('difference and draggable expose their installed public types', () => {
     expect(

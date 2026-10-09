@@ -40,6 +40,7 @@ import {
 } from '@1flowbase/page-runtime/browser';
 
 import { i18nText } from '../../../shared/i18n/text';
+import { createBlockI18n } from './runtime-i18n/translator';
 import { FrontstageRuntimeActivityContext } from './page-canvas/runtime-activity';
 
 import type {
@@ -242,6 +243,10 @@ export function FrontstageNativeTrustedBlockPortalHost({
       surface && externalAssetScope && surfaceRuntimeState?.surface === surface
         ? {
             ...ctx,
+            i18n: ctx.i18n ?? createBlockI18n({
+              locale: ctx.ui.locale ?? 'en_US',
+              status: 'error'
+            }),
             root: surface.shadowRoot,
             assets: externalAssetScope.assets,
             ui: {

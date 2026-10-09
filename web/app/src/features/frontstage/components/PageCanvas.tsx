@@ -104,7 +104,7 @@ import { registerFrontstageAssistantRuntime } from '../lib/assistant-frontstage-
 
 export type FrontstagePageCanvasRuntimeContext = Pick<
   BlockContextSeed,
-  'currentUser' | 'workspace' | 'application' | 'theme' | 'ui'
+  'currentUser' | 'workspace' | 'application' | 'theme' | 'ui' | 'i18n'
 >;
 
 type DesignBlockActions = {

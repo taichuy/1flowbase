@@ -11,7 +11,9 @@ export type {
   BlockContextRecord,
   BlockExternalAssetHandle,
   BlockContextOutputPublishResult,
-  BlockContextOutputs
+  BlockContextOutputs,
+  BlockContextI18n,
+  BlockTranslationOptions
 } from '@1flowbase/page-protocol';
 
 export interface BlockComponentProps<
