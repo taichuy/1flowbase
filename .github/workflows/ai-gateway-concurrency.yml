@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 55
     services:
       postgres:
-        image: postgres:18.4
+        image: public.ecr.aws/docker/library/postgres:18.4
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: 1flowbase
