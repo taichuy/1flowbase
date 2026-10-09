@@ -32,12 +32,12 @@ fn batch(events: Vec<AgentLogEvent>) -> AgentLogsBatch {
     }
 }
 
-#[path = "agent_logs/field_projection.rs"]
-mod field_projection;
-#[path = "agent_logs/deletion.rs"]
-mod deletion;
 #[path = "agent_logs/bulk_lifecycle.rs"]
 mod bulk_lifecycle;
+#[path = "agent_logs/deletion.rs"]
+mod deletion;
+#[path = "agent_logs/field_projection.rs"]
+mod field_projection;
 #[path = "agent_logs/pricing.rs"]
 mod pricing;
 async fn setup() -> (PgControlPlaneStore, Uuid, Uuid) {
@@ -978,8 +978,23 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
             .fetch_one(store.pool())
             .await
             .unwrap();
+    let migration_start: OffsetDateTime = sqlx::query_scalar("select clock_timestamp()")
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
     run_migrations(store.pool()).await.unwrap();
-    let preserved:Value=sqlx::query_scalar("select to_jsonb(t)-array['source_kind','source_id','source_client','source_session_id','source_task_id','parent_source_task_id','native_run_id','cost_breakdown'] from application_run_log_tasks t where id=$1").bind(run.id).fetch_one(store.pool()).await.unwrap();
+    let migration_end: OffsetDateTime = sqlx::query_scalar("select clock_timestamp()")
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    let ingested_at: OffsetDateTime =
+        sqlx::query_scalar("select ingested_at from application_run_log_tasks where id=$1")
+            .bind(run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert!(ingested_at >= migration_start && ingested_at <= migration_end);
+    let preserved:Value=sqlx::query_scalar("select to_jsonb(t)-array['source_kind','source_id','source_client','source_session_id','source_task_id','parent_source_task_id','native_run_id','cost_breakdown','ingested_at'] from application_run_log_tasks t where id=$1").bind(run.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(preserved, old);
     let record = store
         .application_log_record(seeded.application_id, run.id)
