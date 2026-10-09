@@ -796,18 +796,22 @@ async fn follow_missing_compatible_round_events(
         {
             let durable_round_replay =
                 durable_compatible_round_replay(&dependencies, &initial_run, round_id).await?;
-            let mut attached = attach_terminal_compatible_round(
-                &dependencies,
-                initial_run.clone(),
-                durable_round_replay,
-            )
-            .await?;
-            while let Some(event) = attached.events.recv().await {
-                if sender.send(event).await.is_err() {
-                    return Ok(());
+            if durable_round_replay.last().is_some_and(|event| {
+                event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+            }) {
+                let mut attached = attach_terminal_compatible_round(
+                    &dependencies,
+                    initial_run.clone(),
+                    durable_round_replay,
+                )
+                .await?;
+                while let Some(event) = attached.events.recv().await {
+                    if sender.send(event).await.is_err() {
+                        return Ok(());
+                    }
                 }
+                return Ok(());
             }
-            return Ok(());
         }
         let attempt = dependencies
             .native
@@ -1068,6 +1072,16 @@ async fn durable_compatible_round_replay(
         .await
         .map_err(service_error)?;
     let through = window.map(|window| window.through_sequence);
+    // The latest window may belong to a later callback. Resolve this round's
+    // anchor with bounded pages, retaining only its scalar generation identity.
+    let generation = durable_compatible_round_generation(
+        dependencies,
+        initial_run.id,
+        round_id,
+        boundary,
+        through,
+    )
+    .await?;
     let mut cursor = boundary;
     let mut records = Vec::new();
     loop {
@@ -1088,6 +1102,17 @@ async fn durable_compatible_round_replay(
         cursor = last.sequence;
         for record in page {
             if record.event_type == "runtime_stream_opened" {
+                continue;
+            }
+            if record.payload["response_round_id"]
+                .as_str()
+                .is_some_and(|value| value != round_id.to_string())
+                || generation.as_ref().is_some_and(|generation| {
+                    record.payload["stream_generation_id"]
+                        .as_str()
+                        .is_some_and(|value| value != generation)
+                })
+            {
                 continue;
             }
             let terminal = event_forwarding::is_public_terminal_runtime_event(&record.event_type);
@@ -1117,6 +1142,79 @@ async fn durable_compatible_round_replay(
         );
     }
     Ok(replay)
+}
+
+async fn durable_compatible_round_generation(
+    dependencies: &CompatibilityExecutionDependencies,
+    run_id: uuid::Uuid,
+    round_id: uuid::Uuid,
+    boundary: i64,
+    through: Option<i64>,
+) -> Result<Option<String>, NativeApiError> {
+    let mut cursor = boundary;
+    let mut anchor_generation = None;
+    let mut saw_anchor = false;
+    loop {
+        let page = dependencies
+            .native
+            .store
+            .list_runtime_event_durable_page(run_id, cursor, through, 64)
+            .await
+            .map_err(service_error)?;
+        let Some(last) = page.last() else {
+            break;
+        };
+        if last.sequence <= cursor {
+            return Err(service_error(anyhow::anyhow!(
+                "durable round anchor cursor did not advance"
+            )));
+        }
+        cursor = last.sequence;
+        for record in page {
+            if record.event_type == "runtime_stream_opened" {
+                saw_anchor = true;
+                anchor_generation = record.payload["stream_generation_id"]
+                    .as_str()
+                    .map(str::to_owned);
+                continue;
+            }
+            if record.event_type == "flow_started"
+                && record.payload["response_round_id"] == json!(round_id)
+            {
+                let generation = record.payload["stream_generation_id"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .or(anchor_generation);
+                if generation.is_none() && saw_anchor {
+                    return Err(service_error(anyhow::anyhow!(
+                        "anchored callback round generation missing"
+                    )));
+                }
+                return Ok(generation);
+            }
+            // Historical unanchored rounds have no identity marker. Keep their
+            // existing recovery path, without assigning a later round's anchor.
+            if !saw_anchor
+                && record.payload["stream_generation_id"].is_null()
+                && record.payload["response_round_id"].is_null()
+                && event_forwarding::is_public_terminal_runtime_event(&record.event_type)
+            {
+                return Ok(None);
+            }
+            // An untagged marker can borrow only an adjacent anchor, never an
+            // unrelated earlier generation encountered during the scan.
+            anchor_generation = None;
+        }
+        if through.is_some_and(|through| cursor >= through) {
+            break;
+        }
+    }
+    if saw_anchor {
+        return Err(service_error(anyhow::anyhow!(
+            "anchored callback round identity marker missing"
+        )));
+    }
+    Ok(None)
 }
 
 async fn live_compatible_round_start(
