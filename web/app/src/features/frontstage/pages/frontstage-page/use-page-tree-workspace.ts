@@ -22,6 +22,7 @@ import {
   rankForMoveTarget,
   updatePageTreeNode,
   type CreatePageTreeNodeInput,
+  type MovePageTreeNodeInput,
   type PageTreeOperationStatus
 } from './page-tree-operations';
 
@@ -48,7 +49,6 @@ export function usePageTreeWorkspace({
   autoSelectFirstPage,
   onNavigatePage,
   initialPageTree,
-  navigationPageTree,
   pageTreeRootId,
   isPageTreeMutating,
   onCreateGroupNode,
@@ -408,22 +408,10 @@ export function usePageTreeWorkspace({
     });
   };
 
-  const handleMovePageToGroup = (
-    nodeId: string,
-    currentParentId: string | null,
-    nextParentId: string | null
-  ) => {
-    if (currentParentId === nextParentId) {
-      return Promise.resolve(false);
-    }
-
-    return runPageTreeOperation(async () => {
-      await onMovePageNode?.(nodeId, {
-        parentId: nextParentId,
-        rank: getNodeAppendRank(navigationPageTree ?? pageTree, nextParentId)
-      });
+  const handleMovePageDraft = (nodeId: string, input: MovePageTreeNodeInput) =>
+    runPageTreeOperation(async () => {
+      await onMovePageNode?.(nodeId, input);
     });
-  };
 
   const handleSelectPage = (nodeId: string) => {
     if (selectedPageId === nodeId) {
@@ -459,7 +447,7 @@ export function usePageTreeWorkspace({
     handleEditNodeTooltip,
     handleUpdateNodeMetadata,
     handleMoveNodeToPosition,
-    handleMovePageToGroup,
+    handleMovePageDraft,
     handleSelectPage
   };
 }

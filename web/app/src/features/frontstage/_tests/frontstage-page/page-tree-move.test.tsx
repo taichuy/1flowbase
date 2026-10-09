@@ -318,16 +318,18 @@ describe('FrontStagePage - page tree move', () => {
     expect(confirm).toBeDisabled();
     await clickAndFlush(within(dialog).getByText('分组 1'));
     expect(confirm).toBeDisabled();
-    await clickAndFlush(within(dialog).getByText('页面 page-3'));
-    expect(confirm).toBeDisabled();
+    expect(within(dialog).queryByText('嵌套分组')).not.toBeInTheDocument();
+    await clickAndFlush(within(dialog).getByText('分组 2'));
+    expect(within(dialog).queryByText('页面 page-3')).not.toBeInTheDocument();
     await clickAndFlush(within(dialog).getByText('嵌套分组'));
+    await clickAndFlush(within(dialog).getByText('页面 page-3'));
     expect(confirm).toBeEnabled();
     expect(onMovePageNode).not.toHaveBeenCalled();
     await clickAndFlush(confirm);
     await waitFor(() =>
       expect(onMovePageNode).toHaveBeenCalledWith('page-2', {
         parentId: 'group-3',
-        rank: '002000'
+        after_id: 'page-3'
       })
     );
     await waitFor(() =>
@@ -359,7 +361,7 @@ describe('FrontStagePage - page tree move', () => {
     await waitFor(() =>
       expect(onMovePageNode).toHaveBeenCalledWith('page-2', {
         parentId: null,
-        rank: '003000'
+        after_id: 'group-2'
       })
     );
   });
@@ -396,7 +398,7 @@ describe('FrontStagePage - page tree move', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(onMovePageNode).toHaveBeenNthCalledWith(2, 'page-1', {
       parentId: 'group-2',
-      rank: '002000'
+      after_id: 'group-3'
     });
     await act(async () => finishMove());
     await waitFor(() =>
@@ -442,7 +444,7 @@ describe('FrontStagePage - page tree move', () => {
     await clickAndFlush(confirm);
     expect(onMovePageNode).toHaveBeenLastCalledWith('page-1', {
       parentId: 'route-2',
-      rank: '002000'
+      after_id: 'page-2'
     });
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -454,7 +456,7 @@ describe('FrontStagePage - page tree move', () => {
     );
     expect(onMovePageNode).toHaveBeenLastCalledWith('page-1', {
       parentId: null,
-      rank: '003000'
+      after_id: 'route-2'
     });
   });
 

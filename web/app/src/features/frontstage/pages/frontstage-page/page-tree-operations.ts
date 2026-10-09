@@ -1,3 +1,4 @@
+import { findSiblingContext } from '../../lib/navigation-drag/move-plan';
 import { findNodeById } from '../../lib/page-tree';
 import type { FrontStageTreeNode } from '../../lib/page-tree';
 
@@ -24,7 +25,9 @@ type UpdatePageTreeNodeMetadataInput = {
 
 type MovePageTreeNodeInput = {
   parentId: string | null;
-  rank: string;
+  rank?: string;
+  before_id?: string;
+  after_id?: string;
 };
 
 type PageTreeMutationResult = {
@@ -44,42 +47,6 @@ function rankForMoveTarget(index: number, direction: -1 | 1): string {
   }
 
   return String((index + 1) * 1000 + 500).padStart(6, '0');
-}
-
-function findSiblingContext(
-  nodes: FrontStageTreeNode[],
-  targetNodeId: string,
-  parentId: string | null = null
-): {
-  parentId: string | null;
-  siblings: FrontStageTreeNode[];
-  index: number;
-} | null {
-  const index = nodes.findIndex((node) => node.id === targetNodeId);
-  if (index >= 0) {
-    return {
-      parentId,
-      siblings: nodes,
-      index
-    };
-  }
-
-  for (const node of nodes) {
-    if (!node.children) {
-      continue;
-    }
-
-    const childContext = findSiblingContext(
-      node.children,
-      targetNodeId,
-      node.id
-    );
-    if (childContext) {
-      return childContext;
-    }
-  }
-
-  return null;
 }
 
 function extractNodeFromTree(

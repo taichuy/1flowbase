@@ -123,7 +123,7 @@ export function FrontstageWorkspaceShell({
           node={movePage}
           pageTree={props.navigationPageTree ?? workspace.pageTree}
           isOperationPending={workspace.isOperationPending}
-          onMove={workspace.handleMovePageToGroup}
+          onMove={workspace.handleMovePageDraft}
           onCancel={() => setMovePageId(null)}
         />
       ) : null}
