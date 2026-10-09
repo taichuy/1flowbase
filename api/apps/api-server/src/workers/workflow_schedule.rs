@@ -121,6 +121,7 @@ pub async fn consume_one_workflow_schedule_run(
         state.infrastructure.provider_transport_store(),
         state.model_billing_require_provider_usage,
     )
+    .with_published_plan_cache(state.infrastructure.published_plan_cache())
     .with_node_artifact_context(
         state.api_node_id.clone(),
         state.provider_install_root.clone(),

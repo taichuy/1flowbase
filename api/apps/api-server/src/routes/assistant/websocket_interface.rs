@@ -607,6 +607,7 @@ impl AssistantWebSocketCommandAdapter {
             self.dependencies.provider_transport_store.clone(),
             self.dependencies.model_billing_require_provider_usage,
         )
+        .with_published_plan_cache(self.dependencies.published_plan_cache.clone())
         .with_node_artifact_context(
             self.dependencies.api_node_id.clone(),
             self.dependencies.provider_install_root.clone(),

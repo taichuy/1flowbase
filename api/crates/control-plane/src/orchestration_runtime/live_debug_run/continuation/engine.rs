@@ -60,12 +60,11 @@ where
         .compiled_plan_id
         .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
     let compiled_record = service
-        .repository
-        .get_compiled_plan(compiled_plan_id)
+        .load_frozen_compiled_plan(compiled_plan_id)
         .await?
         .ok_or_else(|| anyhow!("compiled plan not found"))?;
     let mut compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
-        serde_json::from_value(compiled_record.plan)?;
+        serde_json::from_value(compiled_record.plan.clone())?;
     crate::orchestration_runtime::compile_context::ensure_compiled_plan_runnable(&compiled_plan)?;
 
     let recovery_snapshot =

@@ -833,6 +833,7 @@ struct NativeReadAdapter {
 
 struct NativeResumeAdapter {
     store: MainDurableStore,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     provider_runtime: ApiProviderRuntime,
     runtime_engine: Arc<RuntimeEngine>,
     provider_secret_master_key: String,
@@ -922,6 +923,7 @@ impl NativeResumePort for NativeResumeAdapter {
                 self.provider_transport_store.clone(),
                 self.model_billing_require_provider_usage,
             )
+            .with_published_plan_cache(Arc::clone(&self.published_plan_cache))
             .with_node_artifact_context(
                 self.api_node_id.clone(),
                 self.provider_install_root.clone(),
@@ -968,6 +970,7 @@ impl NativeResumePort for NativeResumeAdapter {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn native_resume_port(
     store: MainDurableStore,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     provider_runtime: ApiProviderRuntime,
     runtime_engine: Arc<RuntimeEngine>,
     provider_secret_master_key: String,
@@ -984,6 +987,7 @@ pub(crate) fn native_resume_port(
 ) -> Arc<dyn NativeResumePort> {
     Arc::new(NativeResumeAdapter {
         store,
+        published_plan_cache,
         provider_runtime,
         runtime_engine,
         provider_secret_master_key,

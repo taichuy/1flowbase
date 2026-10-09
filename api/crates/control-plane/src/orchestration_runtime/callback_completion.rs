@@ -193,8 +193,7 @@ where
             .compiled_plan_id
             .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
         let compiled_record = self
-            .repository
-            .get_compiled_plan(compiled_plan_id)
+            .load_frozen_compiled_plan(compiled_plan_id)
             .await?
             .ok_or_else(|| anyhow!("compiled plan not found"))?;
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =

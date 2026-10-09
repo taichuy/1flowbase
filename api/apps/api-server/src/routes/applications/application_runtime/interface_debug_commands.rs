@@ -150,6 +150,7 @@ pub(crate) struct RuntimeDebugCommandDependencies {
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     task_queue: Arc<dyn crate::host_infrastructure::TaskQueue>,
     runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
     assistant_executions:
@@ -170,6 +171,7 @@ pub(crate) fn dependencies(state: Arc<ApiState>) -> RuntimeDebugCommandDependenc
         provider_install_root: state.provider_install_root.clone(),
         file_storage_registry: state.file_storage_registry.clone(),
         cache_store: state.infrastructure.cache_store(),
+        published_plan_cache: state.infrastructure.published_plan_cache(),
         task_queue: state.infrastructure.task_queue(),
         runtime_event_stream: state.runtime_event_stream.clone(),
         assistant_executions: state.assistant_executions.clone(),
@@ -220,6 +222,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             self.dependencies.provider_transport_store.clone(),
             self.dependencies.model_billing_require_provider_usage,
         )
+        .with_published_plan_cache(self.dependencies.published_plan_cache.clone())
         .with_node_artifact_context(
             self.dependencies.api_node_id.clone(),
             self.dependencies.provider_install_root.clone(),
@@ -345,6 +348,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 dependencies.provider_transport_store.clone(),
                 dependencies.model_billing_require_provider_usage,
             )
+            .with_published_plan_cache(dependencies.published_plan_cache.clone())
             .with_node_artifact_context(
                 dependencies.api_node_id.clone(),
                 dependencies.provider_install_root.clone(),
@@ -776,6 +780,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 dependencies.provider_transport_store.clone(),
                 dependencies.model_billing_require_provider_usage,
             )
+            .with_published_plan_cache(dependencies.published_plan_cache.clone())
             .with_node_artifact_context(
                 dependencies.api_node_id.clone(),
                 dependencies.provider_install_root.clone(),

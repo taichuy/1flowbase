@@ -51,6 +51,7 @@ mod data_model_runtime;
 pub mod debug_artifacts;
 pub mod debug_stream_events;
 mod debug_variable_cache;
+mod frozen_plan;
 mod http_response_files;
 pub(crate) mod inputs;
 mod live_debug_run;
@@ -362,6 +363,7 @@ pub struct OrchestrationRuntimeService<R, H> {
     llm_routing_counter_store:
         Option<Arc<dyn orchestration_runtime::execution_engine::LlmRoutingCounterStore>>,
     model_routing_cache_store: Option<Arc<dyn CacheStore>>,
+    published_plan_cache: Option<Arc<dyn crate::ports::PublishedPlanCache>>,
     provider_secret_master_key: String,
     require_provider_usage_for_billing: bool,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
@@ -408,6 +410,7 @@ where
             file_storage_registry: None,
             llm_routing_counter_store: None,
             model_routing_cache_store: None,
+            published_plan_cache: None,
             provider_secret_master_key: provider_secret_master_key.into(),
             require_provider_usage_for_billing,
             runtime_event_stream: None,
@@ -1323,8 +1326,7 @@ where
             .compiled_plan_id
             .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
         let compiled_record = self
-            .repository
-            .get_compiled_plan(compiled_plan_id)
+            .load_frozen_compiled_plan(compiled_plan_id)
             .await?
             .ok_or_else(|| anyhow!("compiled plan not found"))?;
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =

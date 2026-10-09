@@ -398,6 +398,7 @@ pub(crate) fn native_runtime_service(
         dependencies.provider_transport_store.clone(),
         dependencies.model_billing_require_provider_usage,
     )
+    .with_published_plan_cache(dependencies.published_plan_cache.clone())
     .with_node_artifact_context(
         dependencies.api_node_id.clone(),
         dependencies.provider_install_root.clone(),
