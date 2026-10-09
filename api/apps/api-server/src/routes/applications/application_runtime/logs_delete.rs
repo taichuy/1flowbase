@@ -68,15 +68,16 @@ impl InterfaceContract for LogsDeleteInput {
             .batch_size()
             .map(|value| json!(value.get()))
             .unwrap_or(serde_json::Value::Null);
-        let boundary = self
-            .scope
-            .ingested_at_before()
-            .ok()?
-            .map(|value| value.format(&time::format_description::well_known::Rfc3339))
-            .transpose()
-            .ok()?;
+        let boundary = match &self.scope {
+            AgentLogsDeleteScope::AllTime {
+                ingested_at_before, ..
+            }
+            | AgentLogsDeleteScope::TimeRange {
+                ingested_at_before, ..
+            } => ingested_at_before,
+        };
         let ingested_at_before = match boundary {
-            Some(value) => mp::text(&value)?,
+            Some(value) => mp::text(value)?,
             None => serde_json::Value::Null,
         };
         let scope = match &self.scope {
@@ -181,8 +182,8 @@ impl utoipa::ToSchema for LogsDeleteScopeSchema {}
 impl utoipa::PartialSchema for LogsDeleteScopeSchema {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
         serde_json::from_value(json!({"oneOf":[
-            {"type":"object","additionalProperties":false,"required":["mode"],"properties":{"batch_size":{"type":"integer","minimum":1,"maximum":4294967295},"ingested_at_before":{"type":"string","format":"date-time"},"mode":{"type":"string","enum":["all_time"]}}},
-            {"type":"object","additionalProperties":false,"required":["mode","started_at_from","started_at_to"],"properties":{"batch_size":{"type":"integer","minimum":1,"maximum":4294967295},"ingested_at_before":{"type":"string","format":"date-time"},"mode":{"type":"string","enum":["time_range"]},"started_at_from":{"type":"string","format":"date-time"},"started_at_to":{"type":"string","format":"date-time"}}}
+            {"type":"object","additionalProperties":false,"required":["mode"],"properties":{"batch_size":{"type":"integer","minimum":1,"maximum":u32::MAX},"ingested_at_before":{"type":"string","format":"date-time"},"mode":{"type":"string","enum":["all_time"]}}},
+            {"type":"object","additionalProperties":false,"required":["mode","started_at_from","started_at_to"],"properties":{"batch_size":{"type":"integer","minimum":1,"maximum":u32::MAX},"ingested_at_before":{"type":"string","format":"date-time"},"mode":{"type":"string","enum":["time_range"]},"started_at_from":{"type":"string","format":"date-time"},"started_at_to":{"type":"string","format":"date-time"}}}
         ]})).expect("static agent logs deletion schema")
     }
 }
