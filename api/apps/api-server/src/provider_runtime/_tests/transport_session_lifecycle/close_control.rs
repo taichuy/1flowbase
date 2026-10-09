@@ -9,7 +9,7 @@ async fn local_release_without_peer_ack_allows_only_safe_successor() {
             .unwrap();
     let mut input = invocation_input("release-without-ack", ProviderWireOperation::Generate);
     let failed = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -37,7 +37,7 @@ async fn local_release_without_peer_ack_allows_only_safe_successor() {
     input.set_recovery_directive(directive.clone()).unwrap();
     assert!(reason(
         coordinator
-            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
             .await
             .err()
             .unwrap()
@@ -46,7 +46,7 @@ async fn local_release_without_peer_ack_allows_only_safe_successor() {
     directive.cursor_provenance = None;
     input.set_recovery_directive(directive).unwrap();
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -65,7 +65,7 @@ async fn close_budget_and_deadline_survive_maintenance_and_terminal_upgrade() {
             .unwrap();
     let mut input = invocation_input("bounded-close", ProviderWireOperation::Generate);
     let failed = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -127,7 +127,7 @@ async fn close_overall_deadline_expires_without_restarting_budget() {
             .unwrap();
     let mut input = invocation_input("close-expiry", ProviderWireOperation::Generate);
     let failed = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -144,7 +144,7 @@ async fn close_overall_deadline_expires_without_restarting_budget() {
     );
     assert!(reason(
         coordinator
-            .prepare("runtime-a", &mut input, &context(2_040_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_040_000))
             .await
             .err()
             .unwrap()
@@ -160,7 +160,7 @@ async fn primary_failure_and_control_blocker_are_retained_without_provider_body(
         TransportSessionCoordinator::new_with_clock(runtime, transport_config(), clock).unwrap();
     let mut input = invocation_input("dual-diagnostics", ProviderWireOperation::Generate);
     let failed = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -176,7 +176,7 @@ async fn primary_failure_and_control_blocker_are_retained_without_provider_body(
         "original caller error must remain intact"
     );
     let blocked = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .err()
         .unwrap();
@@ -218,7 +218,7 @@ async fn inflight_drain_starts_close_budget_after_invocation_finishes() {
             .unwrap();
     let mut input = invocation_input("long-inflight", ProviderWireOperation::Generate);
     let active = coordinator
-        .prepare("runtime-a", &mut input, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_100_000))
         .await
         .unwrap()
         .unwrap();
@@ -243,7 +243,7 @@ async fn inflight_drain_starts_close_budget_after_invocation_finishes() {
         .await
         .unwrap();
     let successor = coordinator
-        .prepare("runtime-a", &mut input, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_100_000))
         .await
         .unwrap()
         .unwrap();
@@ -263,7 +263,7 @@ async fn inflight_drain_upgrade_starts_close_budget_after_failed_invocation() {
             .unwrap();
     let mut input = invocation_input("long-failed-inflight", ProviderWireOperation::Generate);
     let active = coordinator
-        .prepare("runtime-a", &mut input, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_100_000))
         .await
         .unwrap()
         .unwrap();

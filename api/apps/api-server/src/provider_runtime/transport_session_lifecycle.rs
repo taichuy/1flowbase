@@ -149,10 +149,22 @@ pub(crate) struct PreparedTransportInvocation {
     lease: InvocationLease,
     transport: RecoveryTransport,
     recovery_directive: Option<ProviderRecoveryDirective>,
+    on_abandon: Option<Box<dyn FnOnce() + Send + Sync>>,
+}
+
+impl Drop for PreparedTransportInvocation {
+    fn drop(&mut self) {
+        if let Some(abandon) = self.on_abandon.take() {
+            abandon();
+        }
+    }
 }
 
 #[async_trait::async_trait]
 trait TransportLifecycleRuntime: Send + Sync {
+    #[cfg(test)]
+    fn observe_dispatch(&self, _target_id: &str, _lease: &InvocationLease) {}
+
     async fn transport_worker_exit_evidence(
         &self,
         target_id: &str,
@@ -192,12 +204,12 @@ impl TransportLifecycleRuntime for RuntimeBackendTransportLifecycle {
 }
 
 pub(crate) struct TransportSessionCoordinator<C = SystemTransportClock> {
-    registry: Mutex<TransportSessionRegistry<C>>,
+    registry: Arc<Mutex<TransportSessionRegistry<C>>>,
     runtime: Arc<dyn TransportLifecycleRuntime>,
     notices: broadcast::Sender<TransportTerminationNotice>,
     shutdown: AtomicBool,
     shutdown_notify: Notify,
-    invocation_changed: Notify,
+    invocation_changed: Arc<Notify>,
     scheduler: StdMutex<Option<tokio::task::JoinHandle<()>>>,
     dispatcher: Mutex<()>,
     pending_commands: StdMutex<VecDeque<LifecycleCommand>>,
@@ -226,12 +238,12 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         let registry = TransportSessionRegistry::new(clock, config)?;
         let (notices, _) = broadcast::channel(256);
         Ok(Self {
-            registry: Mutex::new(registry),
+            registry: Arc::new(Mutex::new(registry)),
             runtime,
             notices,
             shutdown: AtomicBool::new(false),
             shutdown_notify: Notify::new(),
-            invocation_changed: Notify::new(),
+            invocation_changed: Arc::new(Notify::new()),
             scheduler: StdMutex::new(None),
             dispatcher: Mutex::new(()),
             pending_commands: StdMutex::new(VecDeque::new()),
@@ -561,7 +573,9 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 if matches!(
                     state,
                     TransportSessionState::Faulted | TransportSessionState::IdleReleased
-                ) {
+                ) || (state == TransportSessionState::Draining
+                    && registry.physical_generation_settled(&fence)?)
+                {
                     validate_fault_successor(recovery_directive.as_ref(), now)?;
                     if self.close_task_exhausted(&fence) {
                         return Err(self.recovery_admission_error(
@@ -646,10 +660,11 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                             "provider_physical_connection_close_exhausted",
                         ));
                     }
-                    if !receipt
-                        .closure_evidence
-                        .as_ref()
-                        .is_some_and(|evidence| evidence.local_released)
+                    if !(receipt.never_dispatched_settled
+                        || receipt
+                            .closure_evidence
+                            .as_ref()
+                            .is_some_and(|evidence| evidence.local_released))
                     {
                         return Err(self.recovery_admission_error(
                             &receipt.fence,
@@ -680,6 +695,27 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     },
                 )
                 .map_err(map_registry_use_error)?;
+            let cleanup_registry = self.registry.clone();
+            let cleanup_changed = self.invocation_changed.clone();
+            let cleanup_lease = lease.clone();
+            let prepared = PreparedTransportInvocation {
+                lease: lease.clone(),
+                transport,
+                recovery_directive: recovery_directive.clone(),
+                on_abandon: Some(Box::new(move || {
+                    // Cancellation cannot lose the reservation owner. The runtime owns
+                    // retirement once dispatched; never-dispatched settlement is separate.
+                    tokio::spawn(async move {
+                        let mut registry = cleanup_registry.lock().await;
+                        let _ = registry
+                            .finish_invocation(&cleanup_lease, InvocationCompletion::Faulted);
+                        let _ = registry.settle_never_dispatched(&cleanup_lease.fence);
+                        registry.maintain();
+                        drop(registry);
+                        cleanup_changed.notify_waiters();
+                    });
+                })),
+            };
             let physical_deadline_unix_ms =
                 i64::try_from(registry.physical_hard_deadline(&fence)?.as_millis())
                     .unwrap_or(i64::MAX);
@@ -731,17 +767,39 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     "provider transport handoff completed"
                 );
             }
-            return Ok(Some(PreparedTransportInvocation {
-                lease,
-                transport,
-                recovery_directive: recovery_directive.clone(),
-            }));
+            return Ok(Some(prepared));
         }
+    }
+
+    pub(crate) async fn claim_dispatch(
+        &self,
+        prepared: &PreparedTransportInvocation,
+    ) -> anyhow::Result<()> {
+        let mut registry = self.registry.lock().await;
+        registry
+            .claim_invocation_dispatch(&prepared.lease)
+            .map_err(map_registry_use_error)?;
+        #[cfg(test)]
+        self.runtime.observe_dispatch(
+            registry.runtime_target_id(&prepared.lease.fence)?.as_str(),
+            &prepared.lease,
+        );
+        Ok(())
     }
 
     pub(crate) async fn finish(
         &self,
-        prepared: PreparedTransportInvocation,
+        mut prepared: PreparedTransportInvocation,
+        result: &anyhow::Result<super::ProviderRuntimeInvocationOutput>,
+    ) -> anyhow::Result<()> {
+        let completion = self.finish_prepared(&prepared, result).await;
+        prepared.on_abandon = None;
+        completion
+    }
+
+    async fn finish_prepared(
+        &self,
+        prepared: &PreparedTransportInvocation,
         result: &anyhow::Result<super::ProviderRuntimeInvocationOutput>,
     ) -> anyhow::Result<()> {
         self.detach_lease(&prepared.lease);
@@ -955,6 +1013,17 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             if let Some(notice) = task.termination.take() {
                 self.publish_termination(notice);
             }
+            let never_dispatched = self
+                .registry
+                .lock()
+                .await
+                .settle_never_dispatched(&task.fence)
+                .unwrap_or(false);
+            if never_dispatched {
+                task.state = CloseTaskState::Released;
+                task.last_blocker = None;
+                self.invocation_changed.notify_waiters();
+            }
             let snapshot = self.registry.lock().await.safe_snapshot();
             if task.command.action == ProviderTransportSessionAction::Close {
                 // A queued Close may outlive confirmation that its exact physical
@@ -1112,22 +1181,6 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             };
             if released {
                 task.state = CloseTaskState::Released;
-                if task.command.action == ProviderTransportSessionAction::Drain {
-                    let mut registry = self.registry.lock().await;
-                    if drain_disposition(&registry.safe_snapshot(), &task.fence)
-                        == DrainDisposition::Ready
-                    {
-                        match registry.rotate_generation(&task.fence) {
-                            Ok(next) => {
-                                let _ = registry.activate(&next);
-                            }
-                            Err(_) => {
-                                task.last_blocker =
-                                    Some("provider_transport_close_rotation_blocked");
-                            }
-                        }
-                    }
-                }
             } else {
                 let completed_at = self.registry.lock().await.safe_snapshot().observed_at;
                 if task.attempts >= CONTROL_MAX_ATTEMPTS || completed_at >= task.overall_deadline {

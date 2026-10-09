@@ -57,11 +57,14 @@ struct LogicalSessionRecord {
 }
 
 struct InvocationRecord {
+    dispatch_claimed: bool,
     sequence: u64,
     deadline: TransportDeadline,
 }
 
 struct PhysicalGenerationRecord {
+    dispatch_claimed: bool,
+    never_dispatched_settled: bool,
     runtime_target_id: TransportRuntimeTargetId,
     generation: TransportGeneration,
     created_at: TransportInstant,
@@ -156,6 +159,8 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     next_invocation: 1,
                 },
                 physical: PhysicalGenerationRecord {
+                    dispatch_claimed: false,
+                    never_dispatched_settled: false,
                     runtime_target_id: request.runtime_target_id,
                     generation,
                     created_at: now,
@@ -210,6 +215,12 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         if deadline <= now {
             return Err(RegistryError::DeadlineInPast);
         }
+        if physical_settled(record) {
+            return Err(RegistryError::InvalidTransition {
+                from: record.logical.state,
+                to: TransportSessionState::Active,
+            });
+        }
         if record.logical.invocation.is_some() {
             return Err(RegistryError::InflightExists);
         }
@@ -232,7 +243,11 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .next_invocation
             .checked_add(1)
             .ok_or(RegistryError::InvocationSequenceExhausted)?;
-        record.logical.invocation = Some(InvocationRecord { sequence, deadline });
+        record.logical.invocation = Some(InvocationRecord {
+            sequence,
+            deadline,
+            dispatch_claimed: false,
+        });
         record.logical.state = TransportSessionState::Active;
         record.logical.state_since = now;
         record.logical.state_deadline = record.logical.absolute_deadline;
@@ -245,6 +260,62 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             });
         }
         Ok(InvocationLease::new(fence.clone(), sequence, deadline))
+    }
+
+    /// Claims exactly one runtime handoff under the same lock as settlement.
+    /// Call immediately before polling the execution future, without another await.
+    pub fn claim_invocation_dispatch(
+        &mut self,
+        lease: &InvocationLease,
+    ) -> Result<(), RegistryError> {
+        self.maintain();
+        let record = self.record_mut(&lease.fence)?;
+        if record.physical.never_dispatched_settled || physical_settled(record) {
+            return Err(RegistryError::StaleInvocation);
+        }
+        let invocation = record
+            .logical
+            .invocation
+            .as_mut()
+            .ok_or(RegistryError::NoInflight)?;
+        if invocation.sequence != lease.sequence()
+            || invocation.deadline != lease.deadline()
+            || invocation.dispatch_claimed
+        {
+            return Err(RegistryError::StaleInvocation);
+        }
+        invocation.dispatch_claimed = true;
+        record.physical.dispatch_claimed = true;
+        Ok(())
+    }
+
+    /// Positive proof from the sole dispatch owner, never inferred from a missing Host binding.
+    /// Removing a reserved lease fences a later handoff atomically with this fact.
+    pub fn settle_never_dispatched(
+        &mut self,
+        fence: &TransportFence,
+    ) -> Result<bool, RegistryError> {
+        if let Some(record) = self.sessions.get_mut(&fence.session_id) {
+            ensure_generation(record, fence)?;
+            if record.physical.dispatch_claimed {
+                return Ok(false);
+            }
+            record.logical.invocation = None;
+            record.physical.never_dispatched_settled = true;
+            return Ok(true);
+        }
+        let receipt = self
+            .tombstones
+            .iter_mut()
+            .rev()
+            .find(|r| r.fence == *fence)
+            .ok_or(RegistryError::NotFound)?;
+        if receipt.dispatch_claimed {
+            return Ok(false);
+        }
+        receipt.unsettled_invocation = None;
+        receipt.never_dispatched_settled = true;
+        Ok(true)
     }
 
     pub fn finish_invocation(
@@ -356,11 +427,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             TransportSessionState::Faulted
                 | TransportSessionState::IdleReleased
                 | TransportSessionState::Draining
-        ) || !record
-            .physical
-            .closure_evidence
-            .as_ref()
-            .is_some_and(|evidence| evidence.local_released)
+        ) || !physical_settled(record)
         {
             return Err(RegistryError::InvalidTransition {
                 from: record.logical.state,
@@ -375,6 +442,8 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         record.physical.created_at = now;
         record.physical.close_acknowledged = None;
         record.physical.closure_evidence = None;
+        record.physical.dispatch_claimed = false;
+        record.physical.never_dispatched_settled = false;
         record.logical.state = TransportSessionState::Opening;
         record.logical.state_since = now;
         record.logical.state_deadline = record.logical.absolute_deadline;
@@ -581,6 +650,13 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         Ok(self.record(fence)?.logical.state)
     }
 
+    pub fn physical_generation_settled(
+        &self,
+        fence: &TransportFence,
+    ) -> Result<bool, RegistryError> {
+        Ok(physical_settled(self.record(fence)?))
+    }
+
     pub fn runtime_target_id(
         &self,
         fence: &TransportFence,
@@ -667,6 +743,8 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .sessions
             .iter()
             .map(|(session_id, record)| SafeSessionSnapshot {
+                dispatch_claimed: record.physical.dispatch_claimed,
+                never_dispatched_settled: record.physical.never_dispatched_settled,
                 closure_evidence: record.physical.closure_evidence.clone(),
                 fence: TransportFence {
                     session_id: session_id.clone(),
@@ -729,10 +807,10 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     receipt.kind,
                     TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
                         | TerminationKind::OwnerOrphaned
-                ) && !receipt
+                ) && !(receipt.never_dispatched_settled || receipt
                     .closure_evidence
                     .as_ref()
-                    .is_some_and(|evidence| evidence.local_released))
+                    .is_some_and(|evidence| evidence.local_released)))
         });
         let expired: Vec<_> = self
             .sessions
@@ -853,6 +931,8 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             generation: record.physical.generation,
         };
         let receipt = TerminationReceipt {
+            dispatch_claimed: record.physical.dispatch_claimed,
+            never_dispatched_settled: record.physical.never_dispatched_settled,
             unsettled_invocation: record.logical.invocation.map(|invocation| {
                 InvocationLease::new(fence.clone(), invocation.sequence, invocation.deadline)
             }),
@@ -983,15 +1063,23 @@ fn capped_state_deadline_for(
 // A released physical generation no longer bounds an idle logical identity.
 // Closure evidence is validated against its fence on insertion and cleared on
 // rotation. A Faulted invocation must still settle or expire under its old leases.
+fn physical_settled(record: &SessionRecord) -> bool {
+    record.physical.never_dispatched_settled
+        || record
+            .physical
+            .closure_evidence
+            .as_ref()
+            .is_some_and(|e| e.local_released)
+}
+
 fn retains_only_logical_deadline(record: &SessionRecord) -> bool {
     record.logical.state == TransportSessionState::IdleReleased
+        || (record.logical.state == TransportSessionState::Draining
+            && record.logical.invocation.is_none()
+            && physical_settled(record))
         || (record.logical.state == TransportSessionState::Faulted
             && record.logical.invocation.is_none()
-            && record
-                .physical
-                .closure_evidence
-                .as_ref()
-                .is_some_and(|evidence| evidence.local_released))
+            && physical_settled(record))
 }
 
 fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKind) {

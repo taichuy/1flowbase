@@ -1,6 +1,6 @@
 use super::*;
 
-fn two_hour_config() -> TransportRegistryConfig {
+pub(super) fn two_hour_config() -> TransportRegistryConfig {
     TransportRegistryConfig {
         logical_max_age: Duration::from_secs(2 * 60 * 60),
         idle_affinity_lease: Duration::from_secs(3 * 60 * 60),
@@ -22,7 +22,7 @@ async fn two_hour_rollover_does_not_close_an_active_provider_call() {
     .unwrap();
     let mut input = invocation_input("long-active-call", ProviderWireOperation::Generate);
     let running = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .unwrap()
         .unwrap();
@@ -42,7 +42,7 @@ async fn two_hour_rollover_does_not_close_an_active_provider_call() {
         .unwrap();
     assert_eq!(runtime.commands().len(), 1);
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .unwrap()
         .unwrap();
@@ -64,7 +64,7 @@ async fn completed_session_gets_a_new_bounded_generation_after_two_hours() {
             .unwrap();
     let mut input = invocation_input("long-lived-codex-thread", ProviderWireOperation::Generate);
     let first = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -74,16 +74,21 @@ async fn completed_session_gets_a_new_bounded_generation_after_two_hours() {
         .await
         .unwrap();
 
-    // The physical transport rotates during the long conversation, while the
-    // logical deadline remains anchored to the first admission.
+    // Drain releases the existing generation; an idle identity creates no successor.
     clock.advance(Duration::from_secs(50 * 60));
     coordinator.maintain_and_dispatch().await;
     let physical_fence = coordinator.safe_snapshot().await.sessions[0].fence.clone();
-    assert!(physical_fence.generation > old.fence.generation);
+    assert_eq!(physical_fence, old.fence);
+    assert!(runtime.bindings.lock().unwrap().is_empty());
+    assert_eq!(runtime.commands().len(), 1);
+    assert_eq!(
+        coordinator.safe_snapshot().await.sessions[0].logical_ttl,
+        Duration::from_secs(70 * 60)
+    );
     clock.advance(Duration::from_secs(70 * 60));
     input.previous_response_id = Some("provider-owned-cursor".into());
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .unwrap()
         .unwrap();
@@ -98,13 +103,18 @@ async fn completed_session_gets_a_new_bounded_generation_after_two_hours() {
         input.previous_response_id.as_deref(),
         Some("provider-owned-cursor")
     );
-    assert_eq!(runtime.commands().len(), 2, "old sockets must be released");
+    assert_eq!(
+        runtime.commands().len(),
+        1,
+        "expiry consumes existing release proof"
+    );
     assert!(snapshot
         .tombstones
         .iter()
         .any(|receipt| receipt.fence == physical_fence));
 
     let stale = PreparedTransportInvocation {
+        on_abandon: None,
         lease: old,
         transport: RecoveryTransport::AiNativeWebSocket,
         recovery_directive: None,
@@ -127,13 +137,13 @@ async fn expired_inflight_session_cannot_admit_a_parallel_successor() {
             .unwrap();
     let mut input = invocation_input("inflight-at-limit", ProviderWireOperation::Generate);
     let first = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .unwrap()
         .unwrap();
     clock.advance(Duration::from_secs(2 * 60 * 60));
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .err()
         .unwrap();
@@ -148,7 +158,7 @@ async fn expired_inflight_session_cannot_admit_a_parallel_successor() {
     clock.advance(Duration::from_secs(6 * 60));
     coordinator.maintain_and_dispatch().await;
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .err()
         .unwrap();
@@ -159,7 +169,7 @@ async fn expired_inflight_session_cannot_admit_a_parallel_successor() {
         .await
         .unwrap();
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .unwrap()
         .unwrap();
@@ -175,14 +185,14 @@ async fn expired_inflight_session_can_roll_over_at_its_task_deadline() {
             .unwrap();
     let mut input = invocation_input("inflight-task-deadline", ProviderWireOperation::Generate);
     let first = coordinator
-        .prepare("runtime-a", &mut input, &context(9_300_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(9_300_000))
         .await
         .unwrap()
         .unwrap();
     clock.advance(Duration::from_secs(2 * 60 * 60));
     assert!(reason(
         coordinator
-            .prepare("runtime-a", &mut input, &context(10_000_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
             .await
             .err()
             .unwrap()
@@ -192,7 +202,7 @@ async fn expired_inflight_session_can_roll_over_at_its_task_deadline() {
     // The old invocation's own deadline arrives before the tombstone TTL.
     clock.advance(Duration::from_secs(100));
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .unwrap()
         .unwrap();
@@ -214,7 +224,7 @@ async fn expired_session_waits_for_physical_release_and_preserves_cursor_guards(
     .unwrap();
     let mut input = invocation_input("release-before-renewal", ProviderWireOperation::Generate);
     let first = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -233,7 +243,7 @@ async fn expired_session_waits_for_physical_release_and_preserves_cursor_guards(
         .unwrap();
     clock.advance(Duration::from_secs(2 * 60 * 60));
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .err()
         .unwrap();
@@ -244,7 +254,7 @@ async fn expired_session_waits_for_physical_release_and_preserves_cursor_guards(
     coordinator.maintain_and_dispatch().await;
     assert_eq!(runtime.commands().len(), 2);
     let error = coordinator
-        .prepare("runtime-b", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-b", &mut input, &context(10_000_000))
         .await
         .err()
         .unwrap();
@@ -265,7 +275,7 @@ async fn expired_session_waits_for_physical_release_and_preserves_cursor_guards(
     ));
     input.set_recovery_directive(directive).unwrap();
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .err()
         .unwrap();
@@ -282,7 +292,7 @@ async fn expired_session_waits_for_physical_release_and_preserves_cursor_guards(
     };
     input.set_recovery_directive(directive).unwrap();
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(10_000_000))
         .await
         .unwrap()
         .unwrap();

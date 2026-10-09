@@ -129,6 +129,9 @@ pub enum TerminationKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerminationReceipt {
+    /// Registry dispatch owner fenced this generation before any runtime handoff.
+    pub never_dispatched_settled: bool,
+    pub dispatch_claimed: bool,
     pub fence: TransportFence,
     pub owner_id: TransportOwnerId,
     pub provider_id: TransportProviderId,
@@ -228,6 +231,8 @@ impl InvocationCompletion {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SafeSessionSnapshot {
+    pub never_dispatched_settled: bool,
+    pub dispatch_claimed: bool,
     pub closure_evidence: Option<ProviderTransportClosureEvidence>,
     pub fence: TransportFence,
     pub owner_id: TransportOwnerId,

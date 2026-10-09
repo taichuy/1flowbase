@@ -17,7 +17,7 @@ async fn orphaned_tombstone_requires_release_then_admits_same_owner_on_new_socke
             .unwrap();
     let old_scope = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&old_scope, "model-a"),
             &context(2_100_000),
@@ -47,7 +47,7 @@ async fn orphaned_tombstone_requires_release_then_admits_same_owner_on_new_socke
     let new_scope = coordinator.open_connection_scope();
     let mut successor_input = scope_input(&new_scope, "model-a");
     let error = coordinator
-        .prepare("runtime-a", &mut successor_input, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut successor_input, &context(2_100_000))
         .await
         .err()
         .unwrap();
@@ -56,7 +56,7 @@ async fn orphaned_tombstone_requires_release_then_admits_same_owner_on_new_socke
     clock.advance(Duration::from_secs(1));
     coordinator.maintain_and_dispatch().await;
     let successor = coordinator
-        .prepare("runtime-a", &mut successor_input, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut successor_input, &context(2_100_000))
         .await
         .unwrap()
         .unwrap();

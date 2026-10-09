@@ -42,6 +42,7 @@ enum AckBehavior {
 }
 
 struct FakeTransportRuntime {
+    bindings: StdMutex<BTreeMap<(String, u64), (String, u64)>>,
     responses: StdMutex<VecDeque<AckBehavior>>,
     commands: StdMutex<Vec<ProviderTransportSessionCommand>>,
     worker_exit_evidence: StdMutex<Option<ProviderTransportClosureEvidence>>,
@@ -52,6 +53,7 @@ impl FakeTransportRuntime {
     fn new(responses: impl IntoIterator<Item = AckBehavior>) -> Self {
         Self {
             responses: StdMutex::new(responses.into_iter().collect()),
+            bindings: StdMutex::new(BTreeMap::new()),
             commands: StdMutex::new(Vec::new()),
             worker_exit_evidence: StdMutex::new(None),
             probes: StdMutex::new(Vec::new()),
@@ -65,6 +67,15 @@ impl FakeTransportRuntime {
 
 #[async_trait::async_trait]
 impl TransportLifecycleRuntime for FakeTransportRuntime {
+    fn observe_dispatch(&self, target_id: &str, lease: &InvocationLease) {
+        self.bindings.lock().unwrap().insert(
+            (
+                lease.fence.session_id.as_str().into(),
+                lease.fence.generation.get(),
+            ),
+            (target_id.into(), 1),
+        );
+    }
     async fn transport_worker_exit_evidence(
         &self,
         target_id: &str,
@@ -80,10 +91,27 @@ impl TransportLifecycleRuntime for FakeTransportRuntime {
 
     async fn transport_session(
         &self,
-        _target_id: &str,
+        target_id: &str,
         command: ProviderTransportSessionCommand,
     ) -> Result<ProviderTransportSessionReceipt, RuntimeBackendError> {
         self.commands.lock().unwrap().push(command.clone());
+        let binding = self
+            .bindings
+            .lock()
+            .unwrap()
+            .get(&(command.logical_session_id.clone(), command.generation))
+            .cloned();
+        let Some((bound_target, incarnation)) = binding else {
+            return Err(RuntimeBackendError::Unavailable(
+                "provider_transport_unavailable: missing binding".into(),
+            ));
+        };
+        if bound_target != target_id || command.worker_incarnation.is_some_and(|i| i != incarnation)
+        {
+            return Err(RuntimeBackendError::Unavailable(
+                "provider_transport_unavailable: binding mismatch".into(),
+            ));
+        }
         let behavior = self
             .responses
             .lock()
@@ -101,13 +129,22 @@ impl TransportLifecycleRuntime for FakeTransportRuntime {
                 })
             }
         };
+        if matches!(
+            behavior,
+            AckBehavior::Matching(true) | AckBehavior::ReleasedWithoutAck
+        ) {
+            self.bindings
+                .lock()
+                .unwrap()
+                .remove(&(command.logical_session_id.clone(), command.generation));
+        }
         Ok(ProviderTransportSessionReceipt {
             closure_evidence: Some(ProviderTransportClosureEvidence {
                 source: plugin_framework::provider_contract::ProviderTransportClosureSource::ProviderLocalRelease,
                 no_ack_reason: if close_acknowledged == Some(false) { Some(plugin_framework::provider_contract::ProviderTransportNoAckReason::Timeout) } else { None },
                 identity: ProviderTransportSessionIdentity {
                     logical_session_id: command.logical_session_id.clone(), generation,
-                    worker_incarnation: command.worker_incarnation.unwrap_or(1),
+                    worker_incarnation: incarnation,
                 },
                 local_released: !matches!(behavior, AckBehavior::Matching(false)),
                 peer_close_acknowledged: close_acknowledged,
@@ -283,7 +320,7 @@ async fn compaction_successor_reuses_logical_session_without_inheriting_deadline
     let mut compact = invocation_input("stable-session", ProviderWireOperation::Compact);
     compact.profile = Some(ProviderCompactProfile::ResponsesCompactionV2);
     let first = coordinator
-        .prepare("runtime-a", &mut compact, &context(1_000_010))
+        .prepare_dispatched("runtime-a", &mut compact, &context(1_000_010))
         .await
         .unwrap()
         .unwrap();
@@ -299,7 +336,7 @@ async fn compaction_successor_reuses_logical_session_without_inheriting_deadline
     clock.advance(Duration::from_millis(11));
     let mut successor = invocation_input("stable-session", ProviderWireOperation::Generate);
     let second = coordinator
-        .prepare("runtime-a", &mut successor, &context(1_000_100))
+        .prepare_dispatched("runtime-a", &mut successor, &context(1_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -336,7 +373,7 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
     .unwrap();
     let mut missing_input = invocation_input("missing-receipt", ProviderWireOperation::Generate);
     let missing = missing_coordinator
-        .prepare("runtime-a", &mut missing_input, &context(2_000_100))
+        .prepare_dispatched("runtime-a", &mut missing_input, &context(2_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -361,7 +398,7 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
     .unwrap();
     let mut stale_input = invocation_input("stale-receipt", ProviderWireOperation::Generate);
     let stale = stale_coordinator
-        .prepare("runtime-a", &mut stale_input, &context(2_000_100))
+        .prepare_dispatched("runtime-a", &mut stale_input, &context(2_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -383,7 +420,7 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
     let mut old_generation_input =
         invocation_input("old-generation", ProviderWireOperation::Generate);
     let old_generation = old_generation_coordinator
-        .prepare("runtime-a", &mut old_generation_input, &context(2_000_100))
+        .prepare_dispatched("runtime-a", &mut old_generation_input, &context(2_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -428,7 +465,7 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
     .unwrap();
     let mut fault_input = invocation_input("physical-fault", ProviderWireOperation::Generate);
     let fault = fault_coordinator
-        .prepare("runtime-a", &mut fault_input, &context(2_000_100))
+        .prepare_dispatched("runtime-a", &mut fault_input, &context(2_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -471,7 +508,7 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
         .set_recovery_directive(directive.clone())
         .unwrap();
     let fallback = fallback_coordinator
-        .prepare("runtime-a", &mut fallback_input, &context(2_000_100))
+        .prepare_dispatched("runtime-a", &mut fallback_input, &context(2_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -522,7 +559,7 @@ async fn coordinator_at_inflight_soft_drain(
     .unwrap();
     let mut input = invocation_input("drain-session", ProviderWireOperation::Generate);
     let prepared = coordinator
-        .prepare("runtime-a", &mut input, &context(2_030_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_030_000))
         .await
         .unwrap()
         .unwrap();
@@ -542,7 +579,7 @@ async fn coordinator_at_inflight_soft_drain(
 }
 
 #[tokio::test]
-async fn inflight_drain_defers_then_matching_ack_rotates_and_fences_old_generation() {
+async fn inflight_drain_defers_then_matching_ack_rotates_only_on_next_invocation() {
     let (coordinator, runtime, clock, prepared, generation) =
         coordinator_at_inflight_soft_drain(AckBehavior::Matching(true)).await;
     let old_fence = prepared.lease.fence.clone();
@@ -557,8 +594,23 @@ async fn inflight_drain_defers_then_matching_ack_rotates_and_fences_old_generati
     assert_eq!(commands[0].generation, generation);
     let snapshot = coordinator.safe_snapshot().await;
     assert_eq!(snapshot.sessions[0].fence.session_id, old_fence.session_id);
-    assert!(snapshot.sessions[0].fence.generation.get() > generation);
-    assert_eq!(snapshot.sessions[0].state, TransportSessionState::Active);
+    assert_eq!(snapshot.sessions[0].fence, old_fence);
+    assert_eq!(snapshot.sessions[0].state, TransportSessionState::Draining);
+    assert!(
+        snapshot.sessions[0]
+            .closure_evidence
+            .as_ref()
+            .unwrap()
+            .local_released
+    );
+    let mut input = invocation_input("drain-session", ProviderWireOperation::Generate);
+    let next = coordinator
+        .prepare_dispatched("runtime-a", &mut input, &context(2_040_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(next.lease.fence.generation.get() > generation);
+    assert_eq!(runtime.commands().len(), 1);
 
     let mut registry = coordinator.registry.lock().await;
     assert!(matches!(
@@ -608,7 +660,7 @@ async fn physical_fault_successor_keeps_logical_deadline_and_fences_failed_invoc
     let mut notices = coordinator.subscribe();
     let mut input = invocation_input("fault-successor", ProviderWireOperation::Generate);
     let failed = coordinator
-        .prepare("runtime-a", &mut input, &context(2_000_100))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -633,7 +685,7 @@ async fn physical_fault_successor_keeps_logical_deadline_and_fences_failed_invoc
     // The old invocation deadline has passed; this is a distinct authorized call.
     clock.advance(Duration::from_secs(1));
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -643,6 +695,7 @@ async fn physical_fault_successor_keeps_logical_deadline_and_fences_failed_invoc
     assert_eq!(current.sessions[0].logical_ttl, Duration::from_secs(59));
     assert_eq!(next.lease.deadline().as_millis(), 2_010_000);
     let old = PreparedTransportInvocation {
+        on_abandon: None,
         lease: failed_lease,
         transport: RecoveryTransport::AiNativeWebSocket,
         recovery_directive: None,
@@ -673,7 +726,7 @@ async fn physical_fault_successor_rejects_bound_cursor_and_committed_replay_with
     .unwrap();
     let mut input = invocation_input("cursor-fault", ProviderWireOperation::Generate);
     let failed = coordinator
-        .prepare("runtime-a", &mut input, &context(2_000_100))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -691,7 +744,7 @@ async fn physical_fault_successor_rejects_bound_cursor_and_committed_replay_with
     ));
     input.set_recovery_directive(directive.clone()).unwrap();
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .err()
         .unwrap();
@@ -703,7 +756,7 @@ async fn physical_fault_successor_rejects_bound_cursor_and_committed_replay_with
         directive.initial_commit_level = commit;
         input.set_recovery_directive(directive.clone()).unwrap();
         let error = coordinator
-            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
             .await
             .err()
             .unwrap();
@@ -713,7 +766,7 @@ async fn physical_fault_successor_rejects_bound_cursor_and_committed_replay_with
     directive.initial_commit_level = CommitLevel::LifecycleOnly;
     input.set_recovery_directive(directive).unwrap();
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -740,7 +793,7 @@ async fn physical_fault_successor_requires_matching_close_ack_and_unexpired_dead
     .unwrap();
     let mut input = invocation_input("pending-close-fault", ProviderWireOperation::Generate);
     let failed = coordinator
-        .prepare("runtime-a", &mut input, &context(2_000_100))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_000_100))
         .await
         .unwrap()
         .unwrap();
@@ -750,7 +803,7 @@ async fn physical_fault_successor_requires_matching_close_ack_and_unexpired_dead
         .unwrap();
     let before = coordinator.safe_snapshot().await;
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_020_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_020_000))
         .await
         .err()
         .unwrap();
@@ -761,7 +814,7 @@ async fn physical_fault_successor_requires_matching_close_ack_and_unexpired_dead
     clock.advance(Duration::from_secs(1));
     // A valid ACK still cannot admit an already-expired invocation or rotate its fence.
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_000_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_000_000))
         .await
         .err()
         .unwrap();
@@ -772,7 +825,7 @@ async fn physical_fault_successor_requires_matching_close_ack_and_unexpired_dead
     );
     assert_eq!(runtime.commands().len(), 3);
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_020_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_020_000))
         .await
         .unwrap()
         .unwrap();
@@ -920,7 +973,7 @@ async fn selected_http_success_without_websocket_receipt_is_accepted() {
         },
     );
     let prepared = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -961,7 +1014,7 @@ async fn http_responses_native_continuation_keeps_provider_websocket_choice() {
         },
     );
     let prepared = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -989,7 +1042,7 @@ async fn draining_and_closing_are_not_reported_as_hard_max_age() {
         .unwrap();
         let mut input = invocation_input("closing-reason", ProviderWireOperation::Generate);
         let prepared = coordinator
-            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
             .await
             .unwrap()
             .unwrap();
@@ -1000,7 +1053,7 @@ async fn draining_and_closing_are_not_reported_as_hard_max_age() {
             .transition(&prepared.lease.fence, state)
             .unwrap();
         let error = coordinator
-            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
             .await
             .err()
             .unwrap();
@@ -1023,7 +1076,7 @@ async fn idle_release_admits_new_call_after_90_seconds_without_replaying_expired
         let mut notices = coordinator.subscribe();
         let mut input = invocation_input("idle-successor", ProviderWireOperation::Generate);
         let first = coordinator
-            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
             .await
             .unwrap()
             .unwrap();
@@ -1034,7 +1087,7 @@ async fn idle_release_admits_new_call_after_90_seconds_without_replaying_expired
             .unwrap();
         clock.advance(Duration::from_secs(elapsed));
         let error = coordinator
-            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
             .await
             .err()
             .unwrap();
@@ -1043,7 +1096,7 @@ async fn idle_release_admits_new_call_after_90_seconds_without_replaying_expired
         // idle rotation instead of guessing that missing provenance is invalid.
         input.previous_response_id = Some("provider-owned-cursor".into());
         let second = coordinator
-            .prepare("runtime-a", &mut input, &context(2_150_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_150_000))
             .await
             .unwrap()
             .unwrap();
@@ -1067,6 +1120,7 @@ async fn idle_release_admits_new_call_after_90_seconds_without_replaying_expired
         assert_eq!(runtime.commands().len(), usize::from(elapsed >= 90));
         if elapsed >= 90 {
             let late = PreparedTransportInvocation {
+                on_abandon: None,
                 lease: old,
                 transport: RecoveryTransport::AiNativeWebSocket,
                 recovery_directive: None,
@@ -1098,7 +1152,7 @@ async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
     .unwrap();
     let mut input = invocation_input("idle-guards", ProviderWireOperation::Generate);
     let first = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -1110,7 +1164,7 @@ async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
     clock.advance(Duration::from_secs(90));
     for _ in 0..2 {
         let error = coordinator
-            .prepare("runtime-a", &mut input, &context(2_150_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_150_000))
             .await
             .err()
             .unwrap();
@@ -1132,7 +1186,7 @@ async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
     directive.initial_commit_level = CommitLevel::Terminal;
     input.set_recovery_directive(directive.clone()).unwrap();
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_150_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_150_000))
         .await
         .err()
         .unwrap();
@@ -1145,7 +1199,7 @@ async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
     input.previous_response_id = Some("cursor".into());
     input.set_recovery_directive(directive.clone()).unwrap();
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_150_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_150_000))
         .await
         .err()
         .unwrap();
@@ -1153,7 +1207,7 @@ async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
     directive.cursor_provenance = Some(CursorProvenance::durable());
     input.set_recovery_directive(directive.clone()).unwrap();
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_150_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_150_000))
         .await
         .unwrap()
         .unwrap();
@@ -1198,7 +1252,7 @@ async fn scoped_termination_matches_actual_model_fence_and_invocation_only() {
         },
     );
     let first = coordinator
-        .prepare("runtime-a", &mut input_a, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut input_a, &context(2_100_000))
         .await
         .unwrap()
         .unwrap();
@@ -1216,7 +1270,7 @@ async fn scoped_termination_matches_actual_model_fence_and_invocation_only() {
         ));
     let mut input_b = scope_input(&b, "model-b");
     let second = coordinator
-        .prepare("runtime-a", &mut input_b, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut input_b, &context(2_100_000))
         .await
         .unwrap()
         .unwrap();
@@ -1259,7 +1313,7 @@ async fn completed_connection_close_and_old_notices_do_not_orphan_successor() {
     .unwrap();
     let old = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&old, "model-a"),
             &context(2_100_000),
@@ -1275,7 +1329,7 @@ async fn completed_connection_close_and_old_notices_do_not_orphan_successor() {
     assert!(old.state.lock().unwrap().leases.is_empty());
     let current = coordinator.open_connection_scope();
     let second = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&current, "model-a"),
             &context(2_100_000),
@@ -1339,7 +1393,7 @@ async fn active_scope_disconnect_orphans_only_its_current_lease_and_rejects_forg
             vec!["client-forged".into()],
         );
     assert!(coordinator
-        .prepare("runtime-a", &mut forged, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut forged, &context(2_100_000))
         .await
         .is_err());
     assert!(!forged
@@ -1352,7 +1406,7 @@ async fn active_scope_disconnect_orphans_only_its_current_lease_and_rejects_forg
         ));
     assert!(coordinator.safe_snapshot().await.sessions.is_empty());
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&scope, "model-a"),
             &context(2_100_000),
@@ -1386,7 +1440,7 @@ async fn completed_waiting_tool_retains_business_state_after_socket_close() {
     .unwrap();
     let scope = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&scope, "model-a"),
             &context(2_100_000),
@@ -1425,7 +1479,7 @@ async fn unbound_delivery_admits_the_successor_round_after_the_original_complete
     .unwrap();
     let scope = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&scope, "model-a"),
             &context(2_100_000),
@@ -1467,7 +1521,7 @@ async fn unbound_delivery_admits_the_successor_round_after_the_original_complete
     // logical session, same physical generation, and no second model call.
     let next_scope = coordinator.open_connection_scope();
     let successor = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&next_scope, "model-a"),
             &context(2_100_000),
@@ -1492,7 +1546,7 @@ async fn a_late_close_of_the_old_delivery_cannot_orphan_the_admitted_successor()
     .unwrap();
     let old_scope = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&old_scope, "model-a"),
             &context(2_100_000),
@@ -1509,7 +1563,7 @@ async fn a_late_close_of_the_old_delivery_cannot_orphan_the_admitted_successor()
 
     let new_scope = coordinator.open_connection_scope();
     let successor = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&new_scope, "model-a"),
             &context(2_100_000),
@@ -1551,7 +1605,7 @@ async fn unbound_inflight_execution_without_replacement_scope_is_refused() {
     .unwrap();
     let scope = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&scope, "model-a"),
             &context(2_100_000),
@@ -1567,7 +1621,7 @@ async fn unbound_inflight_execution_without_replacement_scope_is_refused() {
     let mut unscoped = scope_input(&next_scope, "model-a");
     take_transport_connection_scope(&mut unscoped);
     let error = coordinator
-        .prepare("runtime-a", &mut unscoped, &context(2_100_000))
+        .prepare_dispatched("runtime-a", &mut unscoped, &context(2_100_000))
         .await
         .err()
         .expect("an unbound in-flight execution must not start a second call");
@@ -1586,7 +1640,7 @@ async fn unbound_inflight_execution_without_replacement_scope_is_refused() {
         .await
         .unwrap();
     let successor = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&next_scope, "model-a"),
             &context(2_100_000),
@@ -1611,7 +1665,7 @@ async fn admission_rejections_are_locatable_by_their_exact_branch() {
     let stale_scope = coordinator.open_connection_scope();
     coordinator.close_connection_scope(&stale_scope).await;
     let error = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&stale_scope, "model-a"),
             &context(2_100_000),
@@ -1627,7 +1681,7 @@ async fn admission_rejections_are_locatable_by_their_exact_branch() {
     // Host shutdown is its own branch as well.
     coordinator.shutdown.store(true, Ordering::Release);
     let error = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&coordinator.open_connection_scope(), "model-a"),
             &context(2_100_000),
@@ -1672,3 +1726,20 @@ mod orphan_rollover;
 
 #[path = "transport_session_lifecycle/worker_exit_recovery.rs"]
 mod worker_exit_recovery;
+
+impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
+    async fn prepare_dispatched(
+        &self,
+        target_id: &str,
+        input: &mut ProviderInvocationInput,
+        context: &ProviderRuntimeExecutionContext,
+    ) -> anyhow::Result<Option<PreparedTransportInvocation>> {
+        let prepared = self.prepare(target_id, input, context).await?;
+        if let Some(prepared) = prepared.as_ref() {
+            self.claim_dispatch(prepared).await?;
+        }
+        Ok(prepared)
+    }
+}
+
+mod dispatch_settlement;

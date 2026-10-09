@@ -31,7 +31,7 @@ async fn orphaned_execution(
     );
     let old_scope = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&old_scope, "model-a"),
             &context(2_100_000),
@@ -54,7 +54,7 @@ async fn parked_waiter(
     let task = tokio::spawn(async move {
         let mut input = scope_input(&scope, "model-a");
         let ctx = context(deadline_ms);
-        let mut waiting = Box::pin(coordinator.prepare("runtime-a", &mut input, &ctx));
+        let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
         assert_pending(waiting.as_mut()).await;
         parked.send(()).unwrap();
         // Polling and parking happen in this task before it yields. The parent
@@ -172,7 +172,7 @@ async fn ordinary_handoff_deadline_does_not_reset_after_notifications() {
     let scope = coordinator.open_connection_scope();
     let mut input = scope_input(&scope, "model-a");
     let ctx = context(2_000_020);
-    let mut waiting = Box::pin(coordinator.prepare("runtime-a", &mut input, &ctx));
+    let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
     assert_pending(waiting.as_mut()).await;
     // The fake registry clock does not move: only the retained monotonic total
     // deadline can stop this wait when unrelated changes keep notifying it.
@@ -235,7 +235,7 @@ async fn grace_expiry_does_not_close_active_orphan_before_successful_handoff() {
         Arc::new(Coordinator::new_with_clock(runtime.clone(), config, clock.clone()).unwrap());
     let old_scope = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&old_scope, "model-a"),
             &context(2_100_000),
@@ -308,7 +308,7 @@ async fn different_target_cannot_wait_for_or_take_over_orphaned_execution() {
     let (coordinator, _, _, first) = orphaned_execution([]).await;
     let scope = coordinator.open_connection_scope();
     let error = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-b",
             &mut scope_input(&scope, "model-a"),
             &context(2_025_000),
@@ -443,6 +443,9 @@ impl GatedCloseRuntime {
 
 #[async_trait::async_trait]
 impl TransportLifecycleRuntime for GatedCloseRuntime {
+    fn observe_dispatch(&self, target_id: &str, lease: &InvocationLease) {
+        self.runtime.observe_dispatch(target_id, lease);
+    }
     async fn transport_worker_exit_evidence(
         &self,
         target_id: &str,
@@ -483,7 +486,7 @@ async fn unrelated_close_fixture() -> (
     );
     let old_scope = coordinator.open_connection_scope();
     let first = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&old_scope, "model-a"),
             &context(2_100_000),
@@ -492,7 +495,7 @@ async fn unrelated_close_fixture() -> (
         .unwrap()
         .unwrap();
     let unrelated = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut invocation_input("unrelated-thread", ProviderWireOperation::Generate),
             &context(2_100_000),

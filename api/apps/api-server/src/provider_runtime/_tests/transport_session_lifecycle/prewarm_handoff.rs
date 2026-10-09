@@ -23,7 +23,7 @@ async fn orphaned_prewarm(
         },
     );
     let first = coordinator
-        .prepare("runtime-a", &mut input, &context(2_030_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_030_000))
         .await
         .unwrap()
         .unwrap();
@@ -44,7 +44,7 @@ async fn orphaned_prewarm_handoff_waits_without_consuming_lease_and_ignores_late
     let next_scope = coordinator.open_connection_scope();
     let mut input = scope_input(&next_scope, "model-a");
     let ctx = context(2_025_000);
-    let mut waiting = Box::pin(coordinator.prepare("runtime-a", &mut input, &ctx));
+    let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
     assert_pending(waiting.as_mut()).await;
     let before = coordinator.safe_snapshot().await;
     assert!(before.sessions[0].inflight);
@@ -99,7 +99,7 @@ async fn orphaned_prewarm_handoff_rechecks_failed_predecessor_and_rotates_only_a
     let next_scope = coordinator.open_connection_scope();
     let mut input = scope_input(&next_scope, "model-a");
     let ctx = context(2_025_000);
-    let mut waiting = Box::pin(coordinator.prepare("runtime-a", &mut input, &ctx));
+    let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
     assert_pending(waiting.as_mut()).await;
     coordinator
         .finish(first, &Err(transport_error("prewarm-provider-failure")))
@@ -132,7 +132,7 @@ async fn orphaned_prewarm_handoff_stops_when_new_scope_closes() {
     let scope = coordinator.open_connection_scope();
     let mut input = scope_input(&scope, "model-a");
     let ctx = context(2_025_000);
-    let mut waiting = Box::pin(coordinator.prepare("runtime-a", &mut input, &ctx));
+    let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
     assert_pending(waiting.as_mut()).await;
     coordinator.close_connection_scope(&scope).await;
     let error = tokio::time::timeout(Duration::from_secs(1), waiting)
@@ -163,7 +163,7 @@ async fn orphaned_prewarm_handoff_stops_at_successor_deadline_without_new_lease(
     let ctx = context(2_000_020);
     let error = tokio::time::timeout(
         Duration::from_secs(1),
-        coordinator.prepare("runtime-a", &mut input, &ctx),
+        coordinator.prepare_dispatched("runtime-a", &mut input, &ctx),
     )
     .await
     .unwrap()
@@ -190,7 +190,7 @@ async fn orphaned_prewarm_handoff_wakes_on_shutdown() {
     let scope = coordinator.open_connection_scope();
     let mut input = scope_input(&scope, "model-a");
     let ctx = context(2_025_000);
-    let mut waiting = Box::pin(coordinator.prepare("runtime-a", &mut input, &ctx));
+    let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
     assert_pending(waiting.as_mut()).await;
     coordinator.shutdown(Duration::from_secs(1)).await;
     let error = tokio::time::timeout(Duration::from_secs(1), waiting)
@@ -217,7 +217,7 @@ async fn completed_prewarm_is_followed_by_an_independent_normal_handoff() {
         .unwrap();
     let scope = coordinator.open_connection_scope();
     let normal = coordinator
-        .prepare(
+        .prepare_dispatched(
             "runtime-a",
             &mut scope_input(&scope, "model-a"),
             &context(2_025_000),
@@ -229,7 +229,7 @@ async fn completed_prewarm_is_followed_by_an_independent_normal_handoff() {
     let new_scope = coordinator.open_connection_scope();
     let mut input = scope_input(&new_scope, "model-a");
     let ctx = context(2_025_000);
-    let mut waiting = Box::pin(coordinator.prepare("runtime-a", &mut input, &ctx));
+    let mut waiting = Box::pin(coordinator.prepare_dispatched("runtime-a", &mut input, &ctx));
     assert_pending(waiting.as_mut()).await;
     let lease = normal.lease.clone();
     coordinator

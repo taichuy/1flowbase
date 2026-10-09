@@ -40,7 +40,7 @@ async fn idle_fixture() -> (
         .set_recovery_directive(recovery_directive(TransportEpoch::new(91).unwrap()))
         .unwrap();
     let prepared = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -66,7 +66,7 @@ async fn confirmed_exit_satisfies_exhausted_close_without_another_control_call()
         .set_recovery_directive(recovery_directive(TransportEpoch::new(91).unwrap()))
         .unwrap();
     let failed = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -101,7 +101,7 @@ async fn confirmed_exit_satisfies_exhausted_close_without_another_control_call()
         assert!(tasks[0].first_control_failure.is_some());
     }
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_055_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_055_000))
         .await
         .unwrap()
         .unwrap();
@@ -146,7 +146,7 @@ async fn confirmed_exit_terminal_notice_survives_close_elision_once() {
 async fn live_worker_next_turn_retains_transport_generation_without_control() {
     let (coordinator, runtime, _, mut input, old) = idle_fixture().await;
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -179,7 +179,7 @@ async fn worker_exit_between_turns_rotates_once_preserving_logical_deadline_and_
     *runtime.worker_exit_evidence.lock().unwrap() = Some(worker_exit(&old.fence));
     clock.advance(Duration::from_secs(1));
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
@@ -236,7 +236,7 @@ async fn worker_exit_rejects_connection_bound_cursor_before_next_dispatch() {
     input.set_recovery_directive(directive).unwrap();
     let original = input.clone();
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .err()
         .unwrap();
@@ -275,7 +275,7 @@ async fn worker_exit_rejects_connection_bound_cursor_before_next_dispatch() {
     let history = input.messages.clone();
     let recovery = input.recovery_directive().unwrap();
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_055_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_055_000))
         .await
         .unwrap()
         .unwrap();
@@ -320,7 +320,7 @@ async fn released_fault_delayed_successor_preserves_expired_call_budget_guard() 
     ));
     input.set_recovery_directive(directive).unwrap();
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .err()
         .unwrap();
@@ -335,7 +335,7 @@ async fn released_fault_delayed_successor_preserves_expired_call_budget_guard() 
     };
     input.set_recovery_directive(directive).unwrap();
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_055_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_055_000))
         .await
         .err()
         .unwrap();
@@ -361,7 +361,7 @@ async fn wrong_stale_or_unconfirmed_exit_proof_cannot_fault_or_rotate_current_tr
         }
         *runtime.worker_exit_evidence.lock().unwrap() = Some(evidence);
         let error = coordinator
-            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
             .await
             .err()
             .unwrap();
@@ -382,14 +382,14 @@ async fn worker_exit_probe_never_marks_an_active_invocation_dead() {
     .unwrap();
     let mut input = invocation_input("active-worker-exit", ProviderWireOperation::Generate);
     let first = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
     *runtime.worker_exit_evidence.lock().unwrap() = Some(worker_exit(&first.lease.fence));
     let before = coordinator.safe_snapshot().await;
     assert!(coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare_dispatched("runtime-a", &mut input, &context(2_010_000))
         .await
         .is_err());
     assert!(runtime.probes.lock().unwrap().is_empty());

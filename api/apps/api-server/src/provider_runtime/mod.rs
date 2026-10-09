@@ -1113,20 +1113,29 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             .transport_sessions
             .prepare(&binding.plugin_id, &mut input, &context)
             .await?;
-        let mut invocation = self
-            .services
-            .orchestration_backend
-            .execute_stream(
-                runtime_execution_request(&binding, input, Some(principal))?,
-                sinks,
-            )
-            .await
-            .map(|output| ProviderRuntimeInvocationOutput {
-                events: output.events,
-                result: output.result,
-            })
-            .map_err(map_runtime_backend_error)
-            .and_then(validate_provider_invocation_output);
+        let mut invocation = async {
+            // Construct before the handoff. Every error still reaches lease finish;
+            // dropping this future also retains the prepared reservation's owner.
+            let request = runtime_execution_request(&binding, input, Some(principal))?;
+            if let Some(prepared) = transport_invocation.as_ref() {
+                self.services
+                    .transport_sessions
+                    .claim_dispatch(prepared)
+                    .await?;
+            }
+            // No await between claiming dispatch and polling the runtime future.
+            self.services
+                .orchestration_backend
+                .execute_stream(request, sinks)
+                .await
+                .map(|output| ProviderRuntimeInvocationOutput {
+                    events: output.events,
+                    result: output.result,
+                })
+                .map_err(map_runtime_backend_error)
+                .and_then(validate_provider_invocation_output)
+        }
+        .await;
         if let Some(prepared) = transport_invocation {
             let completion = self
                 .services

@@ -14,6 +14,7 @@ use super::{
 };
 
 mod active_orphan;
+mod dispatch_settlement;
 
 #[derive(Clone, Default)]
 struct FakeClock(Arc<AtomicU64>);
