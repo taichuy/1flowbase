@@ -1,5 +1,6 @@
 import 'vditor/dist/js/lute/lute.min.js';
-import 'vditor/dist/js/i18n/zh_CN.js';
+import { englishEditorMessages } from './locales/en_US';
+import { chineseEditorMessages } from './locales/zh_Hans';
 import vditorAntIconsSource from 'vditor/dist/js/icons/ant.js?raw';
 
 const VDITOR_RUNTIME_MARKERS = [
@@ -16,6 +17,10 @@ const iconSpriteConsumers = new WeakMap<
 const ICON_SOURCE_PREFIX = "document.body.insertAdjacentHTML('afterbegin', `";
 const ICON_SOURCE_SUFFIX = '`)';
 const VDITOR_ICON_SPRITE = extractVditorIconSprite(vditorAntIconsSource);
+
+export function getBundledEditorMessages(locale: 'zh_Hans' | 'en_US') {
+  return locale === 'en_US' ? englishEditorMessages : chineseEditorMessages;
+}
 
 export function acquireBundledVditorRuntime(
   root: Document | ShadowRoot

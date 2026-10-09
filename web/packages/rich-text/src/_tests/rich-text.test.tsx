@@ -12,7 +12,14 @@ const setPreviewMode = vi.fn();
 const options: Array<Record<string, unknown>> = [];
 
 vi.mock('vditor/dist/js/lute/lute.min.js', () => ({}));
-vi.mock('vditor/dist/js/i18n/zh_CN.js', () => ({}));
+vi.mock('vditor/dist/js/i18n/zh_CN.js', () => {
+  window.VditorI18n = { bold: '粗体' } as typeof window.VditorI18n;
+  return {};
+});
+vi.mock('vditor/dist/js/i18n/en_US.js', () => {
+  window.VditorI18n = { bold: 'Bold' } as typeof window.VditorI18n;
+  return {};
+});
 vi.mock('vditor/dist/js/icons/ant.js?raw', () => ({
   default:
     "document.body.insertAdjacentHTML('afterbegin', `<svg xmlns=\"http://www.w3.org/2000/svg\"><defs><symbol id=\"vditor-icon-headings\" viewBox=\"0 0 32 32\"><path d=\"M0 0h1v1H0z\"></path></symbol></defs></svg>`)"
@@ -43,6 +50,29 @@ describe('@1flowbase/rich-text unified Vditor contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     options.length = 0;
+  });
+
+  it('uses independent bundled locales for simultaneous editors', async () => {
+    const zh = render(<VditorEditor value="中文草稿" onChange={vi.fn()} locale="zh_Hans" />);
+    const en = render(<VditorEditor value="English draft" onChange={vi.fn()} locale="en_US" />);
+    await act(async () => undefined);
+    expect(options[0]).toMatchObject({ lang: 'zh_CN', i18n: { bold: '粗体' } });
+    expect(options[1]).toMatchObject({ lang: 'en_US', i18n: { bold: 'Bold' } });
+    zh.unmount();
+    en.unmount();
+  });
+
+  it('retains unsaved input when the toolbar language changes', async () => {
+    const onChange = vi.fn();
+    const view = render(<VditorEditor value="initial" onChange={onChange} locale="zh_Hans" />);
+    await act(async () => undefined);
+    act(() => (options[0].input as (value: string) => void)('unsaved draft'));
+    view.rerender(<VditorEditor value="initial" onChange={onChange} locale="en_US" />);
+    await act(async () => undefined);
+    expect(options[1]).toMatchObject({ value: 'unsaved draft', lang: 'en_US', i18n: { bold: 'Bold' } });
+    expect(onChange).toHaveBeenCalledWith('unsaved draft');
+    expect(destroy).toHaveBeenCalledTimes(1);
+    view.unmount();
   });
 
   it('AC-002 owns one full editor with local assets and the native preview experience', async () => {
