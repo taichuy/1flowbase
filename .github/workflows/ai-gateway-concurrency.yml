@@ -1,4 +1,4 @@
-name: Gateway native recovery validation
+name: Gateway native recovery fix validation
 'on':
   workflow_dispatch: null
 permissions:
@@ -30,13 +30,13 @@ jobs:
     - name: Checkout exact host source
       uses: actions/checkout@v5
       with:
-        ref: de0a082db90a0a976b23471adc1504f491be5bb5
+        ref: 63470c8b594151be84f62c55ba7f9231b6319c06
         fetch-depth: 1
     - name: Checkout exact OpenAI paired source
       uses: actions/checkout@v6
       with:
         repository: taichuy/1flowbase-official-plugins
-        ref: c85a2a77d7b62584a4b927805c41332e586d419b
+        ref: 80af5a3fcccf0ea9f9d0288a8f647f8b2b498832
         path: tmp/ai-gateway-concurrency/official-source
         fetch-depth: 1
     - uses: actions/setup-node@v5
@@ -53,7 +53,7 @@ jobs:
         workspaces: |-
           api -> target
           tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
-    - name: Validate native recovery and controlled counterexamples
+    - name: Validate fixed fixtures and host admission
       env:
         DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
         API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
@@ -69,80 +69,56 @@ jobs:
         const host = process.cwd();
         const official = path.join(host, "tmp/ai-gateway-concurrency/official-source");
         const provider = path.join(official, "runtime-extensions/@taichuy/openai");
-        const evidence = path.join(host, "tmp/test-governance/gateway-native-recovery");
+        const evidence = path.join(host, "tmp/test-governance/gateway-native-recovery-fix");
         fs.mkdirSync(evidence, { recursive: true });
+        const hostSha = "63470c8b594151be84f62c55ba7f9231b6319c06";
+        const officialSha = "80af5a3fcccf0ea9f9d0288a8f647f8b2b498832";
         const sha = (cwd) => execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
-        const hostSha = "de0a082db90a0a976b23471adc1504f491be5bb5";
-        const officialSha = "c85a2a77d7b62584a4b927805c41332e586d419b";
         assert.equal(sha(host), hostSha);
         assert.equal(sha(official), officialSha);
+        assert.equal(fs.readFileSync("VERSION", "utf8").trim(), "0.5.4");
+        assert.match(fs.readFileSync(path.join(provider, "manifest.yaml"), "utf8"), /^minimum_host_version: 0\.5\.4$/mu);
+        assert.match(fs.readFileSync(path.join(provider, "manifest.yaml"), "utf8"), /^version: 0\.2\.72$/mu);
         assert.equal(JSON.parse(fs.readFileSync("scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json")).official_plugins.revision, officialSha);
         const jobs = execFileSync("node", ["scripts/node/testing/verify-runtime.js", "cargo-jobs"], { encoding: "utf8" }).trim();
         assert(/^[1-9][0-9]*$/u.test(jobs));
         const commands = [];
-        function run(name, args, expectedFailure = false) {
+        function run(name, executable, args, requireTests) {
           const logFile = path.join(evidence, `${name}.log`);
           const fd = fs.openSync(logFile, "w");
           const started = Date.now();
           let result;
-          try { result = spawnSync("cargo", [...args, "--jobs", jobs, "--locked"], { cwd: host, stdio: ["ignore", fd, fd], timeout: 20 * 60 * 1000 }); }
+          try { result = spawnSync(executable, args, { cwd: host, stdio: ["ignore", fd, fd], timeout: 20 * 60 * 1000 }); }
           finally { fs.closeSync(fd); }
           const log = fs.readFileSync(logFile, "utf8");
           const summaries = [...log.matchAll(/test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;/gu)]
             .map((match) => ({ result: match[1], passed: Number(match[2]), failed: Number(match[3]), ignored: Number(match[4]) }));
           const count = summaries.reduce((sum, x) => sum + x.passed + x.failed, 0);
-          const passed = expectedFailure
-            ? result.status === 101 && summaries.length === 1 && summaries[0].passed === 0 && summaries[0].failed === 1 && /panicked at/u.test(log)
-            : result.status === 0 && count > 0 && summaries.every((x) => x.failed === 0);
-          const record = { name, args, expected_failure: expectedFailure, exit_code: result.status, elapsed_ms: Date.now() - started,
-            status: passed ? "PASS" : "FAIL", summaries, signal: result.signal, log_sha256: crypto.createHash("sha256").update(log).digest("hex") };
+          const passed = result.status === 0 && (!requireTests || (count > 0 && summaries.every((x) => x.failed === 0)));
+          const record = { name, executable, args, exit_code: result.status, elapsed_ms: Date.now() - started,
+            status: passed ? "PASS" : "FAIL", summaries, signal: result.signal,
+            log_sha256: crypto.createHash("sha256").update(log).digest("hex") };
           commands.push(record);
           fs.writeFileSync(path.join(evidence, "receipt.json"), JSON.stringify({ host_source_sha: hostSha, official_source_sha: officialSha,
             workflow_source_sha: process.env.GITHUB_SHA, status: "RUNNING", commands }, null, 2) + "\n");
           console.log(JSON.stringify(record));
           if (!passed) console.log(log.slice(-4000));
+          return passed;
         }
         const hostTest = (pkg, filter, target = null) => ["test", "--manifest-path", "api/Cargo.toml", "-p", pkg,
-          ...(target ? ["--test", target] : ["--lib"]), ...(filter ? [filter] : [])];
-        const pluginTest = (filter, targets = []) => ["test", "--manifest-path", path.join(provider, "Cargo.toml"),
-          ...(targets.length ? targets.flatMap((target) => ["--test", target]) : ["--lib"]), ...(filter ? [filter] : [])];
-        run("host-provider-contract", hostTest("extension-contracts", ""));
-        run("openai-library", pluginTest(""));
-        run("openai-native-stdio-regression", pluginTest("", ["stdio_worker", "native_contract", "recovery_protected_baseline", "multiplex_sessions"]));
-        run("native-recovery-ledger", hostTest("orchestration-runtime", "ai_native_recovery"));
-        run("native-inference-recovery", hostTest("orchestration-runtime", "native_inference_recovery"));
-        run("dependency-boundaries", hostTest("control-plane-postgres-tests", "", "dependency_boundaries"));
-        run("callback-adapter", hostTest("api-server", "routes::application_public_api::callback_adapter::tests"));
-        run("native-sse", hostTest("api-server", "routes::application_public_api::sse::tests"));
-        run("compatible-cold-forwarding", hostTest("api-server", "routes::application_public_api::compat_sse::tests::forwarding::"));
-        function mutation(file, mutate, name, args) {
-          const original = fs.readFileSync(file, "utf8");
-          try {
-            const changed = mutate(original);
-            assert.notEqual(changed, original);
-            fs.writeFileSync(file, changed);
-            run(name, args, true);
-          } finally { fs.writeFileSync(file, original); }
-        }
-        mutation(path.join(provider, "src/lib.rs"), (source) => {
-          const recorder = source.indexOf("fn record_native_websocket_response_chain");
-          assert(recorder > 0);
-          const start = source.indexOf("            Some(Value::String(text)) => vec![json!({", recorder);
-          const end = source.indexOf("            _ => return,", start);
-          assert(start > recorder && end > start);
-          return source.slice(0, start) + source.slice(end);
-        }, "negative-string-history", pluginTest("native_string_completed_history_rebuilds_exact_tool_continuation"));
-        mutation(path.join(host, "api/crates/extension-contracts/src/provider_contract/recovery.rs"), (source) => {
-          const guard = "\n                || receipt.is_full_context_http_rebuild()";
-          assert.equal(source.split(guard).length, 2);
-          return source.replace(guard, "");
-        }, "negative-native-http-cursor-fence", hostTest("extension-contracts", "native_http_rebuild_preserves_host_cursor_epoch_budget_and_commit_fences"));
+          ...(target ? ["--test", target] : ["--lib"]), ...(filter ? [filter] : []), "--jobs", jobs, "--locked"];
+        if (!run("full-locked-metadata-prefetch", "cargo", ["fetch", "--manifest-path", "api/Cargo.toml", "--locked"], false)) process.exit(1);
+        run("openai-library", "cargo", ["test", "--manifest-path", path.join(provider, "Cargo.toml"), "--lib", "--jobs", jobs, "--locked"], true);
+        run("openai-stdio-regression", "cargo", ["test", "--manifest-path", path.join(provider, "Cargo.toml"), "--test", "stdio_worker", "--jobs", jobs, "--locked"], true);
+        run("dependency-boundaries", "cargo", hostTest("control-plane-postgres-tests", "", "dependency_boundaries"), true);
+        run("native-release-host-admission", "cargo", hostTest("control-plane", "native_http_recovery_release_excludes_pre_contract_hosts"), true);
+        run("existing-default-version-installation", "cargo", hostTest("control-plane", "below_minimum"), true);
         execFileSync("git", ["diff", "--exit-code"], { cwd: host, maxBuffer: 128 * 1024 });
         execFileSync("git", ["diff", "--exit-code"], { cwd: official, maxBuffer: 128 * 1024 });
-        const status = commands.length === 11 && commands.every((x) => x.status === "PASS") ? "PASS" : "FAIL";
-        fs.writeFileSync(path.join(evidence, "receipt.json"), JSON.stringify({ schema_version: "1flowbase.gateway-native-recovery-validation/v1",
-          host_source_sha: hostSha, official_source_sha: officialSha, workflow_source_sha: process.env.GITHUB_SHA, status, jobs: Number(jobs),
-          source_restored: true, commands }, null, 2) + "\n");
+        const status = commands.length === 6 && commands.every((x) => x.status === "PASS") ? "PASS" : "FAIL";
+        fs.writeFileSync(path.join(evidence, "receipt.json"), JSON.stringify({ schema_version: "1flowbase.gateway-native-recovery-fix-validation/v1",
+          host_source_sha: hostSha, official_source_sha: officialSha, workflow_source_sha: process.env.GITHUB_SHA, status,
+          jobs: Number(jobs), source_restored: true, commands, previous_evidence_run: 37992944000 }, null, 2) + "\n");
         console.log(JSON.stringify({ status, commands: commands.length }));
         if (status !== "PASS") process.exitCode = 1;
         JS
@@ -150,5 +126,5 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v6
       with:
-        name: test-governance-gateway-native-recovery
-        path: tmp/test-governance/gateway-native-recovery/**
+        name: test-governance-gateway-native-recovery-fix
+        path: tmp/test-governance/gateway-native-recovery-fix/**
