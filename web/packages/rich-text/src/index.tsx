@@ -189,6 +189,7 @@ export function VditorEditor({
           onReadyRef.current?.(createEditorHandle(editor));
         },
         input: (nextValue) => {
+          if (disposed) return;
           valueRef.current = nextValue;
           onChangeRef.current(nextValue);
         }
@@ -207,11 +208,20 @@ export function VditorEditor({
     });
 
     return () => {
+      const editor = editorRef.current;
+      // Vditor debounces input. Capture the visible draft before rebuilding
+      // so a locale change retains even input not yet sent to the consumer.
+      if (editor && readyRef.current) {
+        const draft = editor.getValue();
+        if (draft !== valueRef.current) {
+          valueRef.current = draft;
+          onChangeRef.current(draft);
+        }
+      }
       disposed = true;
       releaseRuntime();
       readyRef.current = false;
       onReadyRef.current?.(null);
-      const editor = editorRef.current;
       editorRef.current = null;
       if (editor) disposeEditor(editor);
     };

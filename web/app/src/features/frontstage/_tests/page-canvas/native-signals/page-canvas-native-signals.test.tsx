@@ -4,6 +4,7 @@ import {
   act,
   fireEvent,
   render,
+  screen,
   waitFor,
   within
 } from '@testing-library/react';
@@ -102,7 +103,7 @@ describe('PageCanvas Native Signal context', () => {
       />
     );
     const utils = render(view('zh_Hans'));
-    const slot = utils.getByTestId('block-slot-producer');
+    const slot = screen.getByTestId('block-slot-producer');
     expect(within(slot).getByText('账号')).toBeInTheDocument();
     utils.rerender(view('en_US'));
     expect(within(slot).getByText('Account')).toBeInTheDocument();

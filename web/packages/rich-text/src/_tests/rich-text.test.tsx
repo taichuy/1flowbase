@@ -49,17 +49,18 @@ import { VditorEditor } from '../index';
 describe('@1flowbase/rich-text unified Vditor contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getValue.mockReturnValue('initial');
     options.length = 0;
   });
 
   it('uses independent bundled locales for simultaneous editors', async () => {
-    const zh = render(<VditorEditor value="中文草稿" onChange={vi.fn()} locale="zh_Hans" />);
-    const en = render(<VditorEditor value="English draft" onChange={vi.fn()} locale="en_US" />);
+    const { unmount: unmountChinese } = render(<VditorEditor value="中文草稿" onChange={vi.fn()} locale="zh_Hans" />);
+    const { unmount: unmountEnglish } = render(<VditorEditor value="English draft" onChange={vi.fn()} locale="en_US" />);
     await act(async () => undefined);
     expect(options[0]).toMatchObject({ lang: 'zh_CN', i18n: { bold: '粗体' } });
     expect(options[1]).toMatchObject({ lang: 'en_US', i18n: { bold: 'Bold' } });
-    zh.unmount();
-    en.unmount();
+    unmountChinese();
+    unmountEnglish();
   });
 
   it('retains unsaved input when the toolbar language changes', async () => {
@@ -72,6 +73,22 @@ describe('@1flowbase/rich-text unified Vditor contract', () => {
     expect(options[1]).toMatchObject({ value: 'unsaved draft', lang: 'en_US', i18n: { bold: 'Bold' } });
     expect(onChange).toHaveBeenCalledWith('unsaved draft');
     expect(destroy).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  it('captures a pending input callback before changing the toolbar language', async () => {
+    const onChange = vi.fn();
+    const view = render(<VditorEditor value="initial" onChange={onChange} locale="zh_Hans" />);
+    await act(async () => undefined);
+    act(() => (options[0].after as () => void)());
+    getValue.mockReturnValue('latest visible draft');
+    view.rerender(<VditorEditor value="initial" onChange={onChange} locale="en_US" />);
+    await act(async () => undefined);
+    expect(options[1]).toMatchObject({ value: 'latest visible draft', lang: 'en_US' });
+    expect(onChange).toHaveBeenLastCalledWith('latest visible draft');
+    // A disposed editor must not overwrite the retained draft afterwards.
+    act(() => (options[0].input as (value: string) => void)('stale input'));
+    expect(onChange).toHaveBeenCalledTimes(1);
     view.unmount();
   });
 
