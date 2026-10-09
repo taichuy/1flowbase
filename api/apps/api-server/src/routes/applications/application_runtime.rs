@@ -46,6 +46,7 @@ use provider_trajectory::{
 mod application_log_cache;
 mod application_logs;
 pub(crate) mod logs_delete;
+pub(crate) mod log_query;
 pub(crate) mod application_monitoring;
 pub(crate) mod archive;
 pub(crate) mod debug_variable_cache;
@@ -93,6 +94,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .route("/applications/logs/query-fields", console_get(log_query::get_query_fields, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/logs/records/query", console_post(log_query::query_log_records, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/records/:record_id/client-trajectory/query", console_post(log_query::query_record_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/deletion-preview", console_post(logs_delete::jobs::preview, ConsoleOperation("applications.logs.delete.preview".to_string())))
         .route("/applications/:id/logs/deletion-jobs", console_post(logs_delete::jobs::create, ConsoleOperation("applications.logs.delete.jobs.create".to_string())))
         .route("/applications/:id/logs/deletion-jobs/:job_id", console_get(logs_delete::jobs::get, ConsoleOperation("applications.logs.delete.jobs.get".to_string())))

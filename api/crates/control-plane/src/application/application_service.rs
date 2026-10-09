@@ -41,6 +41,23 @@ where
             .collect())
     }
 
+    /// Enumerates the same current-workspace visibility used by get_application.
+    /// Log querying must not require the independent application-list operation.
+    pub async fn list_readable_applications(
+        &self,
+        actor_user_id: Uuid,
+    ) -> Result<Vec<domain::ApplicationRecord>> {
+        let actor = self.repository.load_actor_context_for_user(actor_user_id).await?;
+        let visibility = if actor.is_root {
+            ApplicationVisibility::All
+        } else {
+            let policies = self.repository.load_role_console_policies_for_user(&actor).await?;
+            resolve_application_console_visibility(&policies, access_control::APPLICATIONS_VIEW_OPERATION_ID)?
+        };
+        Ok(self.repository.list_applications(actor.current_workspace_id, actor_user_id, visibility).await?
+            .into_iter().map(with_product_capability_sections).collect())
+    }
+
     pub async fn list_application_management(
         &self,
         actor_user_id: Uuid,

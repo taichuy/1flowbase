@@ -4,6 +4,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("LogQuery"))]),
             mp::object_schema(&[("variant",mp::tag_schema("RecordRead"))]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("WorkflowTrajectoryPage")),
@@ -236,6 +237,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::QueryFields | Self::QueryRecords { .. } | Self::QueryRecordTrajectory { .. } => mp::object_value(&[("variant", serde_json::json!("LogQuery"))]),
             Self::GetRecord{..}|Self::RecordClientTrajectoryPage{..}|Self::RecordClientTrajectorySection{..} => mp::object_value(&[("variant",serde_json::json!("RecordRead"))]),
             Self::WorkflowTrajectoryPage {
                 application_id,

@@ -1,5 +1,6 @@
 mod managed_projection;
 mod trajectory;
+mod log_queries;
 
 use std::sync::Arc;
 
@@ -30,6 +31,9 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
+    QueryFields,
+    QueryRecords { query: log_query::LogRecordsQuery },
+    QueryRecordTrajectory { application_id: Uuid, record_id: Uuid, query: log_query::TrajectoryQuery },
     GetRecord { application_id:Uuid, record_id:Uuid },
     RecordClientTrajectoryPage { application_id:Uuid, record_id:Uuid, query:provider_trajectory::RecordClientTrajectoryQuery },
     RecordClientTrajectorySection { application_id:Uuid, record_id:Uuid,step_id:Uuid,query:provider_trajectory::ClientTrajectoryQuery },
@@ -136,6 +140,9 @@ pub(crate) enum ApplicationRuntimeReadsInput {
 }
 
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    QueryFields(log_query::QueryFields),
+    Records(control_plane::ports::ApplicationLogRecordsPage),
+    RecordTrajectoryQuery(control_plane::ports::RecordClientTrajectoryQueryPage),
     RecordClientTrajectoryPage(control_plane::ports::RecordClientTrajectoryPage),
     Record(control_plane::ports::ApplicationLogRecordOverview),
     WorkflowTrajectoryPage(control_plane::ports::WorkflowTrajectoryPage),
@@ -811,6 +818,9 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ApplicationRuntimeReadsInput::QueryFields => Ok(ApplicationRuntimeReadsOutput::QueryFields(log_query::QueryFields::default())),
+            ApplicationRuntimeReadsInput::QueryRecords { query } => Ok(ApplicationRuntimeReadsOutput::Records(self.query_log_records(actor, query).await?)),
+            ApplicationRuntimeReadsInput::QueryRecordTrajectory { application_id, record_id, query } => Ok(ApplicationRuntimeReadsOutput::RecordTrajectoryQuery(self.query_record_trajectory(actor, application_id, record_id, query).await?)),
             ApplicationRuntimeReadsInput::GetRecord{application_id,record_id} => {
                 self.visible_application(actor,application_id).await?;
                 Ok(ApplicationRuntimeReadsOutput::Record(self.store.application_log_record(application_id,record_id).await?.ok_or(ControlPlaneError::NotFound("log_record"))?))
@@ -1002,6 +1012,9 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.records.query-fields", binding_id:"http.console.applications.runtime.records.query-fields.v1", method:"GET", path:"/api/console/applications/logs/query-fields", mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.records.query", binding_id:"http.console.applications.runtime.records.query.v1", method:"POST", path:"/api/console/applications/logs/records/query", mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.client-trajectory.query", binding_id:"http.console.applications.runtime.record.client-trajectory.query.v1", method:"POST", path:"/api/console/applications/:id/logs/records/:record_id/client-trajectory/query", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.get",binding_id:"http.console.applications.runtime.record.get.v1",method:"GET",path:"/api/console/applications/:id/logs/records/:record_id",mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.client-trajectory.list",binding_id:"http.console.applications.runtime.record.client-trajectory.list.v1",method:"GET",path:"/api/console/applications/:id/logs/records/:record_id/client-trajectory",mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.client-trajectory.section.get",binding_id:"http.console.applications.runtime.record.client-trajectory.section.get.v1",method:"GET",path:"/api/console/applications/:id/logs/records/:record_id/client-trajectory/:step_id",mutating:false },

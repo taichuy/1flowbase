@@ -701,6 +701,9 @@ fn static_english_interface_summary(interface_id: &str) -> String {
         "applications.logs.delete.jobs.latest" => Some("Find the latest log deletion"),
         "applications.logs.delete.jobs.stop" => Some("Stop a log deletion after its current batch"),
 
+        "applications.runtime.records.query-fields" => Some("Discover source-neutral log query fields"),
+        "applications.runtime.records.query" => Some("Query source-neutral log records"),
+        "applications.runtime.record.client-trajectory.query" => Some("Filter recorded client trajectory and locate semantic keyword hits"),
         "applications.runtime.record.get" => Some("Get source-neutral log record"),
         "applications.runtime.record.client-trajectory.list" => Some("List recorded client trajectory"),
         "applications.runtime.record.client-trajectory.section.get" => Some("Get recorded client trajectory section"),
@@ -853,6 +856,9 @@ fn compile_console_interface_metadata(
         };
         let summary = static_english_interface_summary(&interface_id);
         let description = match interface_id.as_str() {
+            "applications.runtime.records.query-fields" => "Return typed record and trajectory filter fields, operators, sort fields, keyword scopes and cursor semantics.".to_owned(),
+            "applications.runtime.records.query" => "Query Native and imported task snapshots in the current workspace using authorized application selection, AND/OR field predicates, optional title/input/final-output SQL contains and stable keyset paging. No exact count or raw archive search.".to_owned(),
+            "applications.runtime.record.client-trajectory.query" => "Filter steps of an authorized log record, restore explicitly selected semantic section bodies for substring search, and return real step/section/sequence hit locators. Raw protocol sections remain available through the section reader.".to_owned(),
             "applications.logs.delete" => "Delete complete imported turns from an agent_logs application only, using explicit all_time mode or a half-open [started_at_from,started_at_to) RFC3339 time_range. Optional positive batch_size limits each transaction; omit it for full-scope atomic deletion. Repeat while has_more with the first receipt ingested_at_before to exclude later imports. Preserve the application, keys, credits and other applications.".to_owned(),
             "console.departments.access" => "Return current organization operation eligibility from effective workspace role policies.".to_owned(),
             "departments.list" => "List departments with parent IDs, assigned role codes and distinct subtree member counts in the current workspace.".to_owned(),
