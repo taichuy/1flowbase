@@ -1016,7 +1016,11 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
       }}
     >
       {isDesignMode ? (
-        <span style={blockLabelStyle}>{item.title ?? item.blockId}</span>
+        <span style={blockLabelStyle}>
+          {item.title != null
+            ? (runtimeContext?.i18n?.t(item.title) ?? item.title)
+            : item.blockId}
+        </span>
       ) : null}
       {isFixedHeight ? (
         renderBlockContent()

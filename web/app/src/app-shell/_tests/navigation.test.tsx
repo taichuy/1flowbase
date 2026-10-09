@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -6,6 +7,11 @@ import {
   within
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const runtimeI18nApi = vi.hoisted(() => ({
+  fetchFrontstageRuntimeI18nCatalog: vi.fn()
+}));
+vi.mock('../../features/frontstage/api/runtime-i18n', () => runtimeI18nApi);
 
 const consoleNavigationApi = vi.hoisted(() => ({
   settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
@@ -78,12 +84,93 @@ function renderNavigation(pathname: string) {
 describe('Navigation', () => {
   beforeEach(async () => {
     await appI18n.changeLanguage('zh_Hans');
+    runtimeI18nApi.fetchFrontstageRuntimeI18nCatalog.mockImplementation(
+      async (locale: string) => ({ locale, messages: {}, catalog_revision: 1, digest: locale })
+    );
     resetFrontstageDesignModeStore();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReset();
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       consoleNavigationForPrimaryRoutes(['embedded-apps'])
     );
     frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([]);
+  });
+
+  test('translates dynamic desktop and nested mobile labels on language changes', async () => {
+    resetAuthStore();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'actor-1',
+        account: 'developer',
+        effective_display_role: 'developer',
+        current_workspace_id: 'workspace-123'
+      },
+      me: null
+    });
+    runtimeI18nApi.fetchFrontstageRuntimeI18nCatalog.mockImplementation(
+      async (locale: string) => ({
+        locale,
+        messages:
+          locale === 'zh_Hans'
+            ? { Account: '账号', Reports: '报表', Overview: '概览' }
+            : { Account: 'Account', Reports: 'Reports', Overview: 'Overview' },
+        catalog_revision: 1,
+        digest: locale
+      })
+    );
+    frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([
+      {
+        id: 'account',
+        title: 'Account',
+        kind: 'group',
+        placement: 'topbar',
+        slug: 'route',
+        children: [
+          {
+            id: 'reports',
+            title: 'Reports',
+            kind: 'group',
+            placement: 'sidebar',
+            children: [
+              {
+                id: 'overview',
+                title: 'Overview',
+                kind: 'page',
+                placement: 'sidebar'
+              },
+              {
+                id: 'custom',
+                title: 'Custom page',
+                kind: 'page',
+                placement: 'sidebar'
+              }
+            ]
+          }
+        ]
+      }
+    ]);
+    renderNavigation('/route/pages/overview');
+    const navigation = await screen.findByRole('navigation', { name: 'Primary' });
+    expect(
+      await within(navigation).findByRole('link', { name: '账号' })
+    ).toHaveAttribute('href', '/route');
+    fireEvent.click(screen.getByRole('button', { name: '打开导航' }));
+    const drawer = await screen.findByRole('dialog', { name: '1flowbase' });
+    expect(await within(drawer).findByText('报表')).toBeInTheDocument();
+    expect(
+      await within(drawer).findByRole('link', { name: '概览' })
+    ).toHaveAttribute('href', '/route/pages/overview');
+    expect(
+      within(drawer).getByRole('link', { name: 'Custom page' })
+    ).toBeInTheDocument();
+    await act(() => appI18n.changeLanguage('en_US'));
+    expect(
+      await within(navigation).findByRole('link', { name: 'Account' })
+    ).toBeInTheDocument();
+    expect(await within(drawer).findByText('Reports')).toBeInTheDocument();
+    expect(
+      await within(drawer).findByRole('link', { name: 'Overview' })
+    ).toHaveAttribute('aria-current', 'page');
   });
 
   test('AC-001 renders topbar pages from the same accessible frontstage navigation tree', async () => {

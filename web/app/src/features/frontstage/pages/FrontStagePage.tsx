@@ -644,7 +644,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     selectedPageId
   );
   const selectedPageLabel = selectedPageDisplayTitle
-    ? selectedPageDisplayTitle
+    ? blockI18n.t(selectedPageDisplayTitle)
     : selectedPageId
       ? i18nText('frontstage', 'auto.page_with_id', { value1: selectedPageId })
       : null;
@@ -1059,6 +1059,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
   const renderAssemblyOverlays = (index = 0): ReactNode => {
     const layer = assemblyOverlays[index];
     if (!layer) return null;
+    const title = layer.title ? blockI18n.t(layer.title) : layer.title;
     const parentLayer = assemblyLayers.find(
       (candidate) => candidate.block_id === layer.parent_block_id
     );
@@ -1080,7 +1081,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
         <Drawer
           open={runtimeVisible}
           forceRender
-          title={layer.title}
+          title={title}
           size="min(720px, 92vw)"
           onClose={closeBlock}
         >
@@ -1094,7 +1095,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
           open={runtimeVisible}
           forceRender
           footer={null}
-          title={layer.title}
+          title={title}
           width={720}
           onCancel={closeBlock}
         >
@@ -1104,7 +1105,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     }
     return (
       <section
-        aria-label={layer.title ?? layer.block_id}
+        aria-label={title ?? layer.block_id}
         style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}
       >
         <div
@@ -1116,7 +1117,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
             marginBottom: 8
           }}
         >
-          <Typography.Text strong>{layer.title}</Typography.Text>
+          <Typography.Text strong>{title}</Typography.Text>
           <Button size="small" onClick={closeBlock}>
             {i18nText('frontstage', 'auto.close')}
           </Button>

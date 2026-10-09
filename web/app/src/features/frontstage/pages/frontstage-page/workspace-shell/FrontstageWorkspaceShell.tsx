@@ -7,6 +7,7 @@ import { useAuthStore } from '../../../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../../../state/frontstage-design-mode-store';
 import { MovePageModal } from '../../../components/page-tree-actions/MovePageModal';
 import { FrontStagePageTreeSidebar } from '../../../components/FrontStagePageTreeSidebar';
+import { useBlockI18n } from '../../../hooks/runtime-i18n/use-block-i18n';
 import { findNodeById, resolveSelectedPageId } from '../../../lib/page-tree';
 import { DESIGN_MODE_PERMISSION } from '../page-constants';
 import type { FrontStagePageProps } from '../page-props';
@@ -49,6 +50,7 @@ export function FrontstageWorkspaceShell({
   ...props
 }: FrontStagePageProps & { children: ReactNode }) {
   const workspace = usePageTreeWorkspace({ ...props, autoSelectFirstPage });
+  const runtimeI18n = useBlockI18n(props.workspaceId, showSidebar);
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const isDesignMode = useFrontstageDesignModeStore(
@@ -76,6 +78,7 @@ export function FrontstageWorkspaceShell({
     ) : (
       <FrontStagePageTreeSidebar
         pageTree={workspace.pageTree}
+        translateText={runtimeI18n.t}
         selectedPageId={workspace.selectedPageId}
         canEdit={canEdit}
         isOperationPending={workspace.isOperationPending}

@@ -30,6 +30,7 @@ import { PageTreeIcon } from '../lib/page-tree-icons/registry';
 
 type FrontStagePageTreeSidebarProps = {
   pageTree: FrontStageTreeNode[];
+  translateText?: (text: string) => string;
   selectedPageId: string | null;
   canEdit: boolean;
   isOperationPending: boolean;
@@ -66,9 +67,12 @@ type PageTreeDropIndicator = {
   position: 'before' | 'inside' | 'after';
 };
 
-function getNodeTitle(node: FrontStageTreeNode) {
+function getNodeTitle(
+  node: FrontStageTreeNode,
+  translateText: (text: string) => string
+) {
   if (node.title) {
-    return node.title;
+    return translateText(node.title);
   }
 
   return node.kind === 'group'
@@ -101,9 +105,11 @@ function renderTreeNode({
   draggedNodeId,
   setDraggedNodeId,
   dropIndicator,
-  setDropIndicator
+  setDropIndicator,
+  translateText
 }: {
   node: FrontStageTreeNode;
+  translateText: (text: string) => string;
   pageTree: FrontStageTreeNode[];
   level: number;
   selectedPageId: string | null;
@@ -141,9 +147,9 @@ function renderTreeNode({
   const canAddPageToGroup = node.kind === 'group';
   const isCollapsed = collapsedGroupIds.has(node.id);
   const isHidden = Boolean(node.is_hidden);
-  const tooltipText = node.tooltip ?? '';
+  const tooltipText = node.tooltip ? translateText(node.tooltip) : '';
   const childNodes = node.children ?? [];
-  const title = getNodeTitle(node);
+  const title = getNodeTitle(node, translateText);
   const isDragging = draggedNodeId === node.id;
   const isInsideDropTarget =
     dropIndicator?.targetNodeId === node.id &&
@@ -224,7 +230,7 @@ function renderTreeNode({
     : null;
   const projectionContent = (position: 'before' | 'inside' | 'after') => (
     <span role="status">
-      {draggedNode ? getNodeTitle(draggedNode) : ''} → {title} ·{' '}
+      {draggedNode ? getNodeTitle(draggedNode, translateText) : ''} → {title} ·{' '}
       {position === 'inside'
         ? i18nText('frontstage', 'drag_projection.inside')
         : position === 'before'
@@ -577,7 +583,8 @@ function renderTreeNode({
               draggedNodeId,
               setDraggedNodeId,
               dropIndicator,
-              setDropIndicator
+              setDropIndicator,
+              translateText
             })
           )}
           {isInsideDropTarget ? (
@@ -609,6 +616,7 @@ function renderTreeNode({
 
 export function FrontStagePageTreeSidebar({
   pageTree,
+  translateText = (text) => text,
   selectedPageId,
   canEdit,
   isOperationPending,
@@ -710,7 +718,8 @@ export function FrontStagePageTreeSidebar({
             setDraggedNodeId,
             dropIndicator:
               canEdit && !isOperationPending ? dropIndicator : null,
-            setDropIndicator
+            setDropIndicator,
+            translateText
           })
         )}
       </ul>

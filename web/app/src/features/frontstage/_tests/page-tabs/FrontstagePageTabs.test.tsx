@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -7,9 +8,15 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { FrontstagePageTabs } from '../../components/FrontstagePageTabs';
+
+const runtimeI18nApi = vi.hoisted(() => ({
+  fetchFrontstageRuntimeI18nCatalog: vi.fn()
+}));
+vi.mock('../../api/runtime-i18n', () => runtimeI18nApi);
 
 const pageTabsApi = vi.hoisted(() => ({
   createFrontstagePageTab: vi.fn(),
@@ -73,9 +80,13 @@ function mountTabs(tabId = 'tab-1') {
 }
 
 describe('FrontstagePageTabs', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await appI18n.changeLanguage('zh_Hans');
     authenticate();
     vi.clearAllMocks();
+    runtimeI18nApi.fetchFrontstageRuntimeI18nCatalog.mockImplementation(
+      async (locale: string) => ({ locale, messages: {}, catalog_revision: 1, digest: locale })
+    );
     pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
       {
         id: 'tab-1',
@@ -124,6 +135,56 @@ describe('FrontstagePageTabs', () => {
       document_root_uid: 'frontstage.tab.2.root'
     });
     pageTabsApi.deleteFrontstagePageTab.mockResolvedValue(undefined);
+  });
+
+  test('translates tab labels while configuring and saving the original literal title', async () => {
+    runtimeI18nApi.fetchFrontstageRuntimeI18nCatalog.mockImplementation(
+      async (locale: string) => ({
+        locale,
+        messages:
+          locale === 'zh_Hans' ? { Overview: '概览' } : { Overview: 'Overview' },
+        catalog_revision: 1,
+        digest: locale
+      })
+    );
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
+      {
+        id: 'tab-1',
+        page_id: 'page-1',
+        title: 'Overview',
+        rank: '001000',
+        is_default: true,
+        route_segment: null
+      },
+      {
+        id: 'tab-2',
+        page_id: 'page-1',
+        title: 'Custom tab',
+        rank: '002000',
+        is_default: false,
+        route_segment: 'custom'
+      }
+    ]);
+    mountTabs();
+    const overview = await screen.findByRole('tab', { name: /概览/ });
+    expect(screen.getByRole('tab', { name: /Custom tab/ })).toBeInTheDocument();
+    fireEvent.click(within(overview).getByRole('button', { name: '配置标签页' }));
+    const titleInput = await screen.findByRole('textbox', { name: '标签页名称' });
+    expect(titleInput).toHaveValue('Overview');
+    fireEvent.click(screen.getByRole('button', { name: '重命名当前标签页' }));
+    await waitFor(() =>
+      expect(pageTabsApi.renameFrontstagePageTab).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        { title: 'Overview' },
+        'csrf-123'
+      )
+    );
+    await act(() => appI18n.changeLanguage('en_US'));
+    expect(
+      await screen.findByRole('tab', { name: /Overview/ })
+    ).toBeInTheDocument();
   });
 
   test('AC-005 restores the selected tab from the URL and navigates on tab change', async () => {

@@ -7,6 +7,10 @@ import {
   useFrontstageWorkspace
 } from '../FrontstageWorkspaceShell';
 
+vi.mock('../../../../hooks/runtime-i18n/use-block-i18n', () => ({
+  useBlockI18n: () => ({ t: (key: string) => key })
+}));
+
 vi.mock('../../../../components/FrontStagePageTreeSidebar', () => ({
   FrontStagePageTreeSidebar: ({
     selectedPageId
