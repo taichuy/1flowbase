@@ -132,11 +132,7 @@ pub async fn execute_with_console_router(
         path: interface_arguments.path.clone(),
         query: interface_arguments.query.clone(),
         headers: Map::new(),
-        body: if interface_arguments.body.is_empty() {
-            Value::Null
-        } else {
-            Value::Object(interface_arguments.body.clone())
-        },
+        body: interface_arguments.body_value(&interface_entry.parameter_schema),
     };
     let interface_response = match crate::openapi_interface::dispatch_with_console_router(
         console_router,
@@ -167,7 +163,7 @@ pub async fn execute_with_console_router(
     }
     serde_json::to_value(McpDebugExecuteDetailsResponse {
         mcp_arguments: body.mcp_arguments,
-        interface_arguments: interface_arguments.to_value(),
+        interface_arguments: interface_arguments.to_value(&interface_entry.parameter_schema),
         interface_response,
         tool_result,
     })
@@ -205,11 +201,7 @@ pub async fn execute_with_dispatch_port(
         path: interface_arguments.path.clone(),
         query: interface_arguments.query.clone(),
         headers: Map::new(),
-        body: if interface_arguments.body.is_empty() {
-            Value::Null
-        } else {
-            Value::Object(interface_arguments.body.clone())
-        },
+        body: interface_arguments.body_value(&interface_entry.parameter_schema),
     };
     let interface_response = if let Some(value) = activated_interface_response {
         value
@@ -244,7 +236,7 @@ pub async fn execute_with_dispatch_port(
     }
     serde_json::to_value(McpDebugExecuteDetailsResponse {
         mcp_arguments: body.mcp_arguments,
-        interface_arguments: interface_arguments.to_value(),
+        interface_arguments: interface_arguments.to_value(&interface_entry.parameter_schema),
         interface_response,
         tool_result,
     })
@@ -575,7 +567,22 @@ fn filter_schema_value(schema: &Value, source: &Value) -> Value {
 }
 
 impl TargetArguments {
-    fn to_value(&self) -> Value {
+    fn body_value(&self, parameter_schema: &Value) -> Value {
+        let required_object = parameter_schema
+            .get("required")
+            .and_then(Value::as_array)
+            .is_some_and(|fields| fields.iter().any(|field| field.as_str() == Some("body")))
+            && parameter_schema
+                .pointer("/properties/body")
+                .is_some_and(schema_describes_object);
+        if !self.body.is_empty() || required_object {
+            Value::Object(self.body.clone())
+        } else {
+            Value::Null
+        }
+    }
+
+    fn to_value(&self, parameter_schema: &Value) -> Value {
         let mut value = Map::new();
         if !self.path.is_empty() {
             value.insert("path".into(), Value::Object(self.path.clone()));
@@ -583,12 +590,17 @@ impl TargetArguments {
         if !self.query.is_empty() {
             value.insert("query".into(), Value::Object(self.query.clone()));
         }
-        if !self.body.is_empty() {
-            value.insert("body".into(), Value::Object(self.body.clone()));
+        let body = self.body_value(parameter_schema);
+        if !body.is_null() {
+            value.insert("body".into(), body);
         }
         Value::Object(value)
     }
 }
+
+#[cfg(test)]
+#[path = "debug_execute/_tests/empty_body.rs"]
+mod empty_body_tests;
 
 fn get_path_value<'a>(source: &'a Value, path: &str) -> Option<&'a Value> {
     let mut cursor = source;

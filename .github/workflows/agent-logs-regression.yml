@@ -83,6 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p api-server agent_logs_unified_query > tmp/test-governance/agent-logs-regression/query-console.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/query-console.log; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server routes::settings_group::mcp_management::debug_execute > tmp/test-governance/agent-logs-regression/query-wrapper.log 2>&1 || { tail -c 4000 tmp/test-governance/agent-logs-regression/query-wrapper.log; exit 1; }
       - name: Compiled Console operation registration and migration boundary
         shell: bash
         run: |
