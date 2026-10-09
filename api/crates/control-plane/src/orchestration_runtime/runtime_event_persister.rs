@@ -605,3 +605,7 @@ fn classify_event(
         domain::RuntimeEventDurability::Durable,
     )
 }
+
+#[cfg(test)]
+#[path = "../_tests/orchestration_runtime/runtime_event_persister.rs"]
+mod tests;
