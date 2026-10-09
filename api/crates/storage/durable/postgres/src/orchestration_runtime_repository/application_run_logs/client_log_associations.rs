@@ -5,6 +5,7 @@ impl PgControlPlaneStore {
         context: &control_plane_contracts::ports::ApplicationRunLogContext,
         completed_at: OffsetDateTime,
     ) -> Result<Vec<Uuid>> {
+        lock_application_run_native_projection(tx, successor.id).await?;
         if context.identity_status != "identified" {
             return Ok(Vec::new());
         }

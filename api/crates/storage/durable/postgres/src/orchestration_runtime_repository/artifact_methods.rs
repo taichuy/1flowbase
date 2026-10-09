@@ -98,6 +98,8 @@ impl PgControlPlaneStore {
         &self,
         input: &UpdateFlowRunPayloadsInput,
     ) -> Result<domain::FlowRunRecord> {
+        let mut tx = self.pool().begin().await?;
+        lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         let row = sqlx::query(
             r#"
             update flow_runs
@@ -142,9 +144,10 @@ impl PgControlPlaneStore {
         .bind(lossless_json_parameter(&(&input.input_payload)))
         .bind(lossless_json_parameter(&(&input.output_payload)))
         .bind(lossless_json_parameter(&(&input.error_payload)))
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         map_flow_run_record(row)
     }
 
@@ -152,6 +155,15 @@ impl PgControlPlaneStore {
         &self,
         input: &UpdateNodeRunPayloadsInput,
     ) -> Result<domain::NodeRunRecord> {
+        let mut tx = self.pool().begin().await?;
+        let source_run: Option<Uuid> =
+            sqlx::query_scalar("select flow_run_id from node_runs where id=$1")
+                .bind(input.node_run_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if let Some(source_run) = source_run {
+            lock_application_run_native_projection(&mut tx, source_run).await?;
+        }
         let row = sqlx::query(
             r#"
             update node_run_records
@@ -194,9 +206,10 @@ impl PgControlPlaneStore {
         .bind(lossless_json_parameter(&(&input.error_payload)))
         .bind(lossless_json_parameter(&(&input.metrics_payload)))
         .bind(lossless_json_parameter(&(&input.debug_payload)))
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         map_node_run_record(row)
     }
 

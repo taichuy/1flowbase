@@ -6,6 +6,7 @@ impl PgControlPlaneStore {
         input: &AppendRunEventInput,
     ) -> Result<domain::RunEventRecord> {
         let mut tx = self.pool().begin().await?;
+
         lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
         let scope_id = flow_run_scope_id_for_update(&mut tx, input.flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
@@ -68,6 +69,7 @@ impl PgControlPlaneStore {
         }
 
         let mut tx = self.pool().begin().await?;
+
         lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
@@ -188,6 +190,9 @@ impl PgControlPlaneStore {
         input: &AppendRuntimeEventInput,
     ) -> Result<domain::RuntimeEventRecord> {
         let mut tx = self.pool().begin().await?;
+        if native_projection_queue_event(&input.event_type) {
+            lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
+        }
         lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let next_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
@@ -278,6 +283,12 @@ impl PgControlPlaneStore {
         }
 
         let mut tx = self.pool().begin().await?;
+        if inputs
+            .iter()
+            .any(|input| native_projection_queue_event(&input.event_type))
+        {
+            lock_application_run_native_projection(&mut tx, inputs[0].flow_run_id).await?;
+        }
         lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_runtime_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
@@ -500,16 +511,29 @@ impl PgControlPlaneStore {
     }
 }
 
+// Mirrors enqueue_application_run_trace_refresh's structural event boundary.
+// Token deltas have no shared queue/projection writes and avoid log-context reads.
+fn native_projection_queue_event(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "provider_output_item_done"
+            | "provider_protocol_integrity"
+            | "visible_internal_llm_tool_completed"
+            | "visible_internal_llm_tool_failed"
+    )
+}
+
 async fn lock_open_flow_run_for_event_append(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow_run_id: Uuid,
 ) -> Result<()> {
-    let status =
-        sqlx::query_scalar::<_, String>("select status from flow_runs where id = $1 for no key update")
-            .bind(flow_run_id)
-            .fetch_optional(&mut **tx)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+    let status = sqlx::query_scalar::<_, String>(
+        "select status from flow_runs where id = $1 for no key update",
+    )
+    .bind(flow_run_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
     if matches!(
         status.as_str(),
         "succeeded" | "incomplete" | "failed" | "cancelled"

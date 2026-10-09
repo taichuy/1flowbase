@@ -50,6 +50,71 @@ async fn native_member(
     .flow_run
 }
 
+// Drive the real status/summary/message/task writer. Payload-artifact updates
+// deliberately do not own projection refresh, and GET never repairs it.
+async fn refresh_retained_projection(store: &PgControlPlaneStore, run: &domain::FlowRunRecord) {
+    let retained = store
+        .get_flow_run(run.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: retained.id,
+            status: retained.status,
+            output_payload: retained.output_payload,
+            error_payload: retained.error_payload,
+            finished_at: retained.finished_at,
+        })
+        .await
+        .unwrap();
+}
+
+// Explicit guarded correction boundary, not a claim that arbitrary DBA SQL
+// participates in repository transaction ordering. These fixtures change only
+// searchable-safe fields and keep an existing authoritative original in sync.
+async fn correct_context_field(store: &PgControlPlaneStore, run: Uuid, field: &str, value: Value) {
+    let mut tx = store.pool().begin().await.unwrap();
+    sqlx::query("select application_run_lock_native_projection($1)")
+        .bind(run)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let (mut searchable, raw): (Value, Option<String>) = sqlx::query_as(
+        "select log_context,raw_json_payloads->>'log_context' from flow_runs where id=$1",
+    )
+    .bind(run)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    let mut original = raw
+        .as_ref()
+        .map(|raw| serde_json::from_str::<Value>(raw).unwrap())
+        .unwrap_or_else(|| searchable.clone());
+    searchable[field] = value.clone();
+    original[field] = value;
+    let original = raw.map(|_| serde_json::to_string(&original).unwrap());
+    sqlx::query("update flow_runs set log_context=$2,raw_json_payloads=(raw_json_payloads-'log_context')||jsonb_strip_nulls(jsonb_build_object('log_context',$3::text)) where id=$1")
+        .bind(run).bind(searchable).bind(original).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+}
+
+async fn delete_guarded_source(store: &PgControlPlaneStore, run: Uuid, entire_run: bool) {
+    let mut tx = store.pool().begin().await.unwrap();
+    sqlx::query("select application_run_lock_native_projection($1)")
+        .bind(run)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let sql = if entire_run {
+        "delete from flow_runs where id=$1"
+    } else {
+        "delete from runtime_events where flow_run_id=$1 and event_type='provider_output_item_done'"
+    };
+    sqlx::query(sql).bind(run).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+}
+
 async fn canonical(store: &PgControlPlaneStore, owner: Uuid, key: &str) -> Option<Value> {
     sqlx::query_scalar("select runtime_original_json(native_message,raw_json_payloads,'native_message') from application_run_conversation_message_items where flow_run_id=$1 and source_item_key=$2")
         .bind(owner).bind(key).fetch_optional(store.pool()).await.unwrap()
@@ -66,6 +131,9 @@ async fn incremental_duplicate_history_reads_only_current_context_and_new_events
     let original = json!({"type":"function_call_output","call_id":"same-result","output":"real\u{0}NUL and literal \\u0000"});
     let mut first = None;
     let mut first_revision = None;
+    let started = std::time::Instant::now();
+    let mut returned_contexts = 0_i64;
+    let mut returned_events = 0_i64;
     for index in 0..12 {
         let run = native_member(
             &store,
@@ -85,6 +153,8 @@ async fn incremental_duplicate_history_reads_only_current_context_and_new_events
         );
         let (contexts,events):(i64,i64)=sqlx::query_as("select last_read_context_count,last_read_event_count from application_run_native_projection_progress where flow_run_id=$1")
             .bind(run.id).fetch_one(store.pool()).await.unwrap();
+        returned_contexts += contexts;
+        returned_events += events;
         assert_eq!(
             (contexts, events),
             (1, 0),
@@ -103,7 +173,6 @@ async fn incremental_duplicate_history_reads_only_current_context_and_new_events
                 .is_none());
         } else {
             first = Some(run.id);
-            first_revision=Some(sqlx::query_scalar("select source_revision from application_run_native_projection_progress where flow_run_id=$1").bind(run.id).fetch_one(store.pool()).await.unwrap());
         }
         append_provider_output_item(
             &store,
@@ -113,13 +182,19 @@ async fn incremental_duplicate_history_reads_only_current_context_and_new_events
         .await;
         let counts:(i64,i64)=sqlx::query_as("select last_read_context_count,last_read_event_count from application_run_native_projection_progress where flow_run_id=$1")
             .bind(run.id).fetch_one(store.pool()).await.unwrap();
+        returned_contexts += counts.0;
+        returned_events += counts.1;
         assert_eq!(counts, (1, 1), "only the new completed event is returned");
+        if index == 0 {
+            first_revision=Some(sqlx::query_scalar("select source_revision from application_run_native_projection_progress where flow_run_id=$1").bind(run.id).fetch_one(store.pool()).await.unwrap());
+        }
     }
     let kept = canonical(&store, first.unwrap(), "result:same-result")
         .await
         .unwrap();
     assert_eq!(kept["_source_item"], original);
     assert_eq!(kept["_log_conflicting"], false);
+    eprintln!("candidate native projection: runs=12 repeated_result_occurrences=12 unique_result_keys=1 returned_source_context_rows={returned_contexts} returned_source_event_rows={returned_events} elapsed_ms={}",started.elapsed().as_millis());
 }
 
 #[tokio::test]
@@ -158,17 +233,8 @@ async fn incremental_late_earlier_owner_moves_exact_nul_fact_and_refreshes_both_
     }
     // Deleting the earliest occurrence invalidates the complete authorized
     // group. Rebuild moves ownership back but retains the observed conflict.
-    sqlx::query("delete from runtime_events where flow_run_id=$1 and event_type='provider_output_item_done'")
-        .bind(early.id).execute(store.pool()).await.unwrap();
-    store
-        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
-            flow_run_id: early.id,
-            input_payload: early.input_payload.clone(),
-            output_payload: json!({}),
-            error_payload: None,
-        })
-        .await
-        .unwrap();
+    delete_guarded_source(&store, early.id, false).await;
+    refresh_retained_projection(&store, &early).await;
     let kept = canonical(&store, late.id, "output:message:same")
         .await
         .unwrap();
@@ -227,15 +293,7 @@ async fn incremental_legacy_rebuild_and_authorization_domains_keep_exact_origina
         .await
         .unwrap();
     sqlx::query("update application_run_conversation_message_items set projection_version=6,source_occurrence_sequence=null where flow_run_id=$1").bind(first.id).execute(store.pool()).await.unwrap();
-    store
-        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
-            flow_run_id: first.id,
-            input_payload: first.input_payload.clone(),
-            output_payload: json!({}),
-            error_payload: None,
-        })
-        .await
-        .unwrap();
+    refresh_retained_projection(&store, &first).await;
     assert_eq!(
         canonical(&store, first.id, "result:isolated")
             .await
@@ -248,21 +306,40 @@ async fn incremental_legacy_rebuild_and_authorization_domains_keep_exact_origina
             .unwrap()["_log_conflicting"],
         false
     );
+    // Preserve an ordinary/public conversation in the same exact authorization
+    // domain: only client-thread conversations contribute shared membership.
+    sqlx::query("update application_conversations set client_thread_id=null where id=(select (log_context->>'log_conversation_id')::uuid from flow_runs where id=$1)")
+        .bind(first.id).execute(store.pool()).await.unwrap();
+    refresh_retained_projection(&store, &first).await;
+    assert_eq!(
+        canonical(&store, first.id, "result:isolated")
+            .await
+            .unwrap()["_source_item"],
+        result
+    );
+    sqlx::query("update application_conversations set client_thread_id='same-thread' where id=(select (log_context->>'log_conversation_id')::uuid from flow_runs where id=$1)")
+        .bind(first.id).execute(store.pool()).await.unwrap();
     let foreign_conversation: String =
         sqlx::query_scalar("select log_context->>'log_conversation_id' from flow_runs where id=$1")
             .bind(other.id)
             .fetch_one(store.pool())
             .await
             .unwrap();
-    sqlx::query("update flow_runs set log_context=jsonb_set(log_context,'{log_conversation_id}',to_jsonb($2::text)) where id=$1")
-        .bind(first.id).bind(foreign_conversation).execute(store.pool()).await.unwrap();
+    correct_context_field(
+        &store,
+        first.id,
+        "log_conversation_id",
+        json!(foreign_conversation),
+    )
+    .await;
     assert!(
         store
-            .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
+            .update_flow_run(&UpdateFlowRunInput {
                 flow_run_id: first.id,
-                input_payload: first.input_payload.clone(),
-                output_payload: json!({}),
-                error_payload: None,
+                status: first.status,
+                output_payload: first.output_payload.clone(),
+                error_payload: first.error_payload.clone(),
+                finished_at: first.finished_at,
             })
             .await
             .is_err(),
@@ -352,17 +429,14 @@ async fn incremental_nonappend_result_correction_and_owner_deletion_rebuild_surv
     )
     .await;
     let appended = json!({"type":"function_call_output","call_id":"appended","output":"next"});
-    sqlx::query("update flow_runs set log_context=jsonb_set(log_context,'{tool_results}',$2::jsonb) where id=$1")
-        .bind(second.id).bind(json!([result.clone(),appended.clone()])).execute(store.pool()).await.unwrap();
-    store
-        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
-            flow_run_id: second.id,
-            input_payload: second.input_payload.clone(),
-            output_payload: json!({}),
-            error_payload: None,
-        })
-        .await
-        .unwrap();
+    correct_context_field(
+        &store,
+        second.id,
+        "tool_results",
+        json!([result.clone(), appended.clone()]),
+    )
+    .await;
+    refresh_retained_projection(&store, &second).await;
     let counts:(i64,i64,i64)=sqlx::query_as("select result_count,last_read_context_count,last_read_event_count from application_run_native_projection_progress where flow_run_id=$1")
         .bind(second.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(
@@ -381,8 +455,13 @@ async fn incremental_nonappend_result_correction_and_owner_deletion_rebuild_surv
         .is_none());
     let correction =
         json!({"type":"function_call_output","call_id":"corrected","output":"changed"});
-    sqlx::query("update flow_runs set log_context=jsonb_set(log_context,'{tool_results}',$2::jsonb),raw_json_payloads=raw_json_payloads-'log_context' where id=$1")
-        .bind(first.id).bind(json!([correction.clone()])).execute(store.pool()).await.unwrap();
+    correct_context_field(
+        &store,
+        first.id,
+        "tool_results",
+        json!([correction.clone()]),
+    )
+    .await;
     let invalidated: bool = sqlx::query_scalar(
         "select invalidated from application_run_native_projection_progress where flow_run_id=$1",
     )
@@ -391,15 +470,7 @@ async fn incremental_nonappend_result_correction_and_owner_deletion_rebuild_surv
     .await
     .unwrap();
     assert!(invalidated, "a correction invalidates surviving members");
-    store
-        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
-            flow_run_id: first.id,
-            input_payload: first.input_payload.clone(),
-            output_payload: json!({}),
-            error_payload: None,
-        })
-        .await
-        .unwrap();
+    refresh_retained_projection(&store, &first).await;
     let kept = canonical(&store, first.id, "result:corrected")
         .await
         .unwrap();
@@ -407,20 +478,8 @@ async fn incremental_nonappend_result_correction_and_owner_deletion_rebuild_surv
     assert_eq!(kept["_log_conflicting"], true);
     // Removing the body-owning run must not lose the historical conflict
     // observation when its projection and progress cascade away.
-    sqlx::query("delete from flow_runs where id=$1")
-        .bind(first.id)
-        .execute(store.pool())
-        .await
-        .unwrap();
-    store
-        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
-            flow_run_id: second.id,
-            input_payload: second.input_payload.clone(),
-            output_payload: json!({}),
-            error_payload: None,
-        })
-        .await
-        .unwrap();
+    delete_guarded_source(&store, first.id, true).await;
+    refresh_retained_projection(&store, &second).await;
     let kept = canonical(&store, second.id, "result:corrected")
         .await
         .unwrap();
@@ -579,4 +638,171 @@ async fn incremental_allocator_and_internal_revision_updates_never_enter_body_tr
         json!({}),
         "the controlled failure rolls the source update back"
     );
+}
+
+async fn wait_for_projection_guard_waiter(store: &PgControlPlaneStore) {
+    tokio::time::timeout(std::time::Duration::from_secs(10),async {
+        loop {
+            let waiting:bool=sqlx::query_scalar("select exists(select 1 from pg_stat_activity where datname=current_database() and state='active' and wait_event_type='Lock' and query like '%select application_run_lock_native_projection(%')")
+                .fetch_one(store.pool()).await.unwrap();
+            if waiting { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }).await.expect("the opposing real writer must reach the early conversation guard");
+}
+
+#[tokio::test]
+async fn incremental_guarded_correction_and_deletion_serialize_before_progress_and_queue() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let key = seed_application_api_key(&store, &seeded).await;
+    let result = json!({"type":"function_call_output","call_id":"ordered","output":"first"});
+    let first = native_member(
+        &store,
+        &seeded,
+        &compiled,
+        key,
+        0,
+        "correction-order",
+        vec![result.clone()],
+    )
+    .await;
+    let second = native_member(
+        &store,
+        &seeded,
+        &compiled,
+        key,
+        1,
+        "correction-order",
+        vec![result.clone()],
+    )
+    .await;
+    for delete in [false, true] {
+        // Supported guarded repair boundary: take the same authorization lock
+        // before a correction/delete trigger can mutate progress or queue rows.
+        let mut correction = store.pool().begin().await.unwrap();
+        sqlx::query("select application_run_lock_native_projection($1)")
+            .bind(first.id)
+            .execute(&mut *correction)
+            .await
+            .unwrap();
+        let worker_store = PgControlPlaneStore::new(store.pool().clone());
+        let target = second.id;
+        let worker = tokio::spawn(async move {
+            append_provider_output_item(&worker_store,target,json!({"type":"message","id":if delete {"after-delete"} else {"after-correction"},"content":"released after source commit"})).await;
+        });
+        wait_for_projection_guard_waiter(&store).await;
+        let count:i64=sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1 and event_type='provider_output_item_done'")
+            .bind(second.id).fetch_one(store.pool()).await.unwrap();
+        assert_eq!(
+            count,
+            if delete { 1 } else { 0 },
+            "blocked writer must not enqueue a new completed fact before obtaining the guard"
+        );
+        if delete {
+            sqlx::query("delete from flow_runs where id=$1")
+                .bind(first.id)
+                .execute(&mut *correction)
+                .await
+                .unwrap();
+        } else {
+            let sidecar: bool = sqlx::query_scalar(
+                "select raw_json_payloads ? 'log_context' from flow_runs where id=$1",
+            )
+            .bind(first.id)
+            .fetch_one(&mut *correction)
+            .await
+            .unwrap();
+            assert!(
+                !sidecar,
+                "fixture correction has no hidden authoritative original to override"
+            );
+            sqlx::query("update flow_runs set log_context=jsonb_set(log_context,'{tool_results}',$2::jsonb) where id=$1")
+                .bind(first.id).bind(json!([{"type":"function_call_output","call_id":"ordered","output":"corrected"}])).execute(&mut *correction).await.unwrap();
+        }
+        correction.commit().await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(15), worker)
+            .await
+            .expect("source repair and opposing writer must settle")
+            .unwrap();
+        let owner = if delete { second.id } else { first.id };
+        let kept = canonical(&store, owner, "result:ordered").await.unwrap();
+        assert_eq!(kept["_log_conflicting"], true);
+        assert_eq!(
+            kept["_source_item"]["output"],
+            if delete { "first" } else { "corrected" }
+        );
+    }
+}
+
+#[tokio::test]
+async fn incremental_moved_node_detail_revises_both_original_owners_and_preserves_raw_body() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let key = seed_application_api_key(&store, &seeded).await;
+    let first = native_member(&store, &seeded, &compiled, key, 0, "detail-owner", vec![]).await;
+    let second = native_member(&store, &seeded, &compiled, key, 1, "detail-owner", vec![]).await;
+    let original = json!({"assistant_message":{"role":"assistant","content":"original\u{0} and literal \\u0000"}});
+    let mut nodes = Vec::new();
+    for (run, debug) in [(&first, original.clone()), (&second, json!({}))] {
+        nodes.push(
+            store
+                .create_node_run(&CreateNodeRunInput {
+                    flow_run_id: run.id,
+                    node_id: "node-llm".into(),
+                    node_type: "llm".into(),
+                    node_alias: "LLM".into(),
+                    status: NodeRunStatus::Running,
+                    input_payload: json!({}),
+                    debug_payload: debug,
+                    started_at: run.started_at,
+                })
+                .await
+                .unwrap(),
+        );
+    }
+    let mut tx = store.pool().begin().await.unwrap();
+    sqlx::query("select application_run_lock_native_projection($1)")
+        .bind(first.id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("delete from node_run_details where node_run_id=$1 and section='debug_payload'")
+        .bind(nodes[1].id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let before: Vec<(Uuid, i64)> = sqlx::query_as(
+        "select id,message_projection_revision from flow_runs where id=any($1) order by id",
+    )
+    .bind(vec![first.id, second.id])
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query("update node_run_details set node_run_id=$2 where node_run_id=$1 and section='debug_payload'")
+        .bind(nodes[0].id).bind(nodes[1].id).execute(&mut *tx).await.unwrap();
+    let after: Vec<(Uuid, i64)> = sqlx::query_as(
+        "select id,message_projection_revision from flow_runs where id=any($1) order by id",
+    )
+    .bind(vec![first.id, second.id])
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap();
+    for ((old_owner, old_revision), (owner, revision)) in before.into_iter().zip(after) {
+        assert_eq!(owner, old_owner);
+        assert!(
+            revision > old_revision,
+            "moving retained detail changes both owners' freshness"
+        );
+    }
+    let restored:Value=sqlx::query_scalar("select runtime_original_json(payload,raw_json_payloads,'debug_payload') from node_run_details where node_run_id=$1 and section='debug_payload'")
+        .bind(nodes[1].id).fetch_one(&mut *tx).await.unwrap();
+    assert_eq!(restored, original);
+    tx.commit().await.unwrap();
 }

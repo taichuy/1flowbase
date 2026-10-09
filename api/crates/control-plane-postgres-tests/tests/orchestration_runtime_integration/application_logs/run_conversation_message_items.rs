@@ -473,12 +473,18 @@ async fn request_history_migration_preserves_legacy_turns_without_injecting_syst
     assert!(historical_versions.iter().all(|version| *version == 6));
     // The historical migration has its own v5 -> v6 contract; the current
     // writer then advances the same stable identities to its serving version.
+    let retained = store
+        .get_flow_run(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
     store
-        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
-            flow_run_id: run.id,
-            input_payload: run.input_payload.clone(),
-            output_payload: json!({"answer":"current answer"}),
-            error_payload: None,
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: retained.id,
+            status: retained.status,
+            output_payload: retained.output_payload,
+            error_payload: retained.error_payload,
+            finished_at: retained.finished_at,
         })
         .await
         .unwrap();

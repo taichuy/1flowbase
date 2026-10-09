@@ -27,6 +27,8 @@ impl PgControlPlaneStore {
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run_id: Uuid,
     ) -> Result<()> {
+        // Callers establish this order at entry before source-trigger queue writes.
+        lock_application_run_native_projection(tx, flow_run_id).await?;
         let row = sqlx::query("select f.*, runtime_original_json(f.input_payload,f.raw_json_payloads,'input_payload') as input_payload, runtime_original_json(f.output_payload,f.raw_json_payloads,'output_payload') as output_payload, runtime_original_json(f.error_payload,f.raw_json_payloads,'error_payload') as error_payload, (select account from users where id=f.created_by) as authorized_account from flow_runs f where f.id=$1")
             .bind(flow_run_id).fetch_one(&mut **tx).await?;
         let run = map_flow_run_record(row)?;

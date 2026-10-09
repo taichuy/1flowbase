@@ -32,6 +32,19 @@ fn merge_native_canonical_fact(
     }
 }
 
+// Called at the transaction entrance, before any source/queue/projection row.
+async fn lock_application_run_native_projection(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    flow_run_id: Uuid,
+) -> Result<Option<Uuid>> {
+    Ok(
+        sqlx::query_scalar("select application_run_lock_native_projection($1)")
+            .bind(flow_run_id)
+            .fetch_one(&mut **tx)
+            .await?,
+    )
+}
+
 impl PgControlPlaneStore {
     async fn refresh_native_canonical_projection(
         tx: &mut sqlx::Transaction<'_, Postgres>,
@@ -43,21 +56,7 @@ impl PgControlPlaneStore {
         if !identity.try_get::<bool, _>("native")? {
             return Ok(false);
         }
-        let conversation: Option<Uuid> = identity.try_get("conversation")?;
-        if let Some(conversation) = conversation {
-            // The same authorization domain used by conversation_runs, locked
-            // before any canonical read, move, deletion or progress publication.
-            let locked: Option<Uuid> = sqlx::query_scalar("select c.id from application_conversations c join flow_runs f on f.id=$1 and f.application_id=c.application_id and f.api_key_id is not distinct from c.api_key_id and coalesce(f.external_user,'')=coalesce(c.external_user,'') where c.id=$2 and c.client_thread_id is not null for update of c")
-                .bind(run.id).bind(conversation).fetch_optional(&mut **tx).await?;
-            if locked.is_none() {
-                return Err(anyhow!("native log conversation authorization mismatch"));
-            }
-        } else {
-            sqlx::query("select id from flow_runs where id=$1 for update")
-                .bind(run.id)
-                .execute(&mut **tx)
-                .await?;
-        }
+        let conversation = lock_application_run_native_projection(tx, run.id).await?;
         let members: Vec<Uuid> = sqlx::query_scalar("select id from flow_runs where id=$1 union select run_id from application_run_log_conversation_runs($2,$3)")
             .bind(run.id).bind(run.application_id).bind(conversation).fetch_all(&mut **tx).await?;
         let rebuild: bool = sqlx::query_scalar("select exists(select 1 from unnest($1::uuid[]) m(id) left join application_run_native_projection_progress p on p.flow_run_id=m.id where p.invalidated or p.projection_version is distinct from $2 and m.id<>$3) or exists(select 1 from application_run_conversation_message_items where flow_run_id=$3 and projection_version<>$2)")

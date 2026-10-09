@@ -41,6 +41,7 @@ impl PgControlPlaneStore {
     ) -> Result<()> {
         let is_terminal = is_terminal_application_run_log_status(flow_run.status);
         let mut tx = self.pool().begin().await?;
+        lock_application_run_native_projection(&mut tx, flow_run.id).await?;
 
         Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, flow_run).await?;
         Self::ensure_application_run_conversation_message_items_projection(&mut tx, flow_run)
@@ -473,6 +474,16 @@ impl PgControlPlaneStore {
             .map(|message| message.sequence)
             .collect::<Vec<_>>();
         let mut tx = self.pool().begin().await?;
+        sqlx::query("select id from applications where id=$1 for key share")
+            .bind(flow_run.application_id)
+            .execute(&mut *tx)
+            .await?;
+        // Application deletion takes authorized conversations before cascades;
+        // public history writes must likewise lock before touching messages.
+        sqlx::query("select id from application_conversations where id=$1 for no key update")
+            .bind(conversation_id)
+            .execute(&mut *tx)
+            .await?;
 
         sqlx::query(
             r#"

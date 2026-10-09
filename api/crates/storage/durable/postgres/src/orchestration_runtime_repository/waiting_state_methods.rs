@@ -44,6 +44,7 @@ impl PgControlPlaneStore {
             PersistWaitingKind::Callback(_) => domain::FlowRunStatus::WaitingCallback,
         };
         let mut tx = self.pool().begin().await?;
+        lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         let updated = sqlx::query_scalar::<_, Uuid>(
             r#"
             update flow_runs

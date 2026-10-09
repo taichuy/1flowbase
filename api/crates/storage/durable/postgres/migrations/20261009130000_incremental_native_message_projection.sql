@@ -15,6 +15,34 @@ create table application_run_native_projection_progress (
     last_read_event_count bigint not null default 0
 );
 
+-- Repository transaction entrances take this lock BEFORE source rows,
+-- trace queue, summaries, tasks or progress, after application KEY SHARE.
+-- A late projection-only lock cannot
+-- establish ordering after a source trigger has already acquired a queue row.
+create function application_run_lock_native_projection(source_run uuid) returns uuid
+language plpgsql as $$
+declare authorized_application uuid; conversation_uuid uuid; locked_uuid uuid;
+begin
+    -- Application deletion owns FOR UPDATE before conversations. New run
+    -- insertion already takes this application FK KEY SHARE before binding.
+    select a.id into authorized_application from applications a
+        join flow_runs f on f.application_id=a.id where f.id=source_run
+        for key share of a;
+    if authorized_application is null then return null; end if;
+    select (f.log_context->>'log_conversation_id')::uuid into conversation_uuid
+        from flow_runs f where f.id=source_run;
+    if conversation_uuid is null then return null; end if;
+    select c.id into locked_uuid from application_conversations c
+        join flow_runs f on f.id=source_run and f.application_id=c.application_id
+            and f.api_key_id is not distinct from c.api_key_id
+            and coalesce(f.external_user,'')=coalesce(c.external_user,'')
+        where c.id=conversation_uuid
+        for no key update of c;
+    if locked_uuid is null then raise exception 'native log conversation authorization mismatch'; end if;
+    return locked_uuid;
+end;
+$$;
+
 create function invalidate_native_message_projection(source_run uuid, application uuid, conversation uuid)
 returns void language sql as $$
     update application_run_native_projection_progress set invalidated=true
@@ -130,12 +158,18 @@ $$;
 create trigger node_message_projection_revision after insert or update or delete on node_runs
 for each row execute function revise_node_message_projection();
 create function revise_node_detail_message_projection() returns trigger language plpgsql as $$
-declare node_id uuid;
 begin
-    if tg_op='DELETE' then node_id=old.node_run_id; else node_id=new.node_run_id; end if;
-    update flow_runs set message_projection_revision=message_projection_revision+1
-        where id=(select flow_run_id from node_runs where id=node_id);
-    if tg_op='DELETE' then return old; else return new; end if;
+    if tg_op<>'INSERT' then
+        update flow_runs f set message_projection_revision=f.message_projection_revision+1
+            where f.id=(select n.flow_run_id from node_runs n where n.id=old.node_run_id);
+    end if;
+    if tg_op<>'DELETE' then
+        -- A moved detail changes both retained owners, even if its body is equal.
+        update flow_runs f set message_projection_revision=f.message_projection_revision+1
+            where f.id=(select n.flow_run_id from node_runs n where n.id=new.node_run_id);
+        return new;
+    end if;
+    return old;
 end;
 $$;
 create trigger node_detail_message_projection_revision after insert or update or delete on node_run_details

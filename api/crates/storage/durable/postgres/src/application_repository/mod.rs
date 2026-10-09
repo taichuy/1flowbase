@@ -655,6 +655,18 @@ impl ApplicationRepository for PgControlPlaneStore {
 
     async fn delete_application(&self, input: &DeleteApplicationInput) -> Result<()> {
         let mut tx = self.pool().begin().await?;
+        // Application identity precedes conversations, matching the FK key
+        // share acquired by creation and every projection-owning entrance.
+        sqlx::query("select id from applications where id=$1 and workspace_id=$2 for update")
+            .bind(input.application_id)
+            .bind(input.workspace_id)
+            .execute(&mut *tx)
+            .await?;
+        // Same order as native projection writers: conversations, then
+        // source rows/cascades/queue/progress. Workspace authorization is kept
+        // on both this lock selection and the subsequent delete predicate.
+        sqlx::query("select c.id from application_conversations c join applications a on a.id=c.application_id where a.id=$1 and a.workspace_id=$2 order by c.id for no key update of c")
+            .bind(input.application_id).bind(input.workspace_id).fetch_all(&mut *tx).await?;
 
         sqlx::query(
             r#"

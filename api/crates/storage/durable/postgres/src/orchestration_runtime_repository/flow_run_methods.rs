@@ -651,6 +651,8 @@ impl PgControlPlaneStore {
     }
 
     async fn create_node_run(&self, input: &CreateNodeRunInput) -> Result<domain::NodeRunRecord> {
+        let mut tx = self.pool().begin().await?;
+        lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         let row = sqlx::query(
             r#"
             with locked_flow as (
@@ -699,8 +701,9 @@ impl PgControlPlaneStore {
         .bind(lossless_json_parameter(&(&input.input_payload)))
         .bind(lossless_json_parameter(&(&input.debug_payload)))
         .bind(input.started_at)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?;
+        tx.commit().await?;
         row.map(map_node_run_record)
             .transpose()?
             .ok_or_else(|| ControlPlaneError::Conflict("flow_run_terminal").into())
@@ -708,6 +711,14 @@ impl PgControlPlaneStore {
 
     async fn update_node_run(&self, input: &UpdateNodeRunInput) -> Result<domain::NodeRunRecord> {
         let mut tx = self.pool().begin().await?;
+        let source_run: Option<Uuid> =
+            sqlx::query_scalar("select flow_run_id from node_runs where id=$1")
+                .bind(input.node_run_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if let Some(source_run) = source_run {
+            lock_application_run_native_projection(&mut tx, source_run).await?;
+        }
         // Lock in a separate statement: a view UPDATE cannot re-evaluate its
         // metadata WHERE clause through the base table's EvalPlanQual after a
         // concurrent terminal transition releases the flow lock.
@@ -830,6 +841,7 @@ impl PgControlPlaneStore {
 
     async fn update_flow_run(&self, input: &UpdateFlowRunInput) -> Result<domain::FlowRunRecord> {
         let mut tx = self.pool().begin().await?;
+        lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         let row = sqlx::query(
             r#"
             update flow_runs
@@ -902,6 +914,7 @@ impl PgControlPlaneStore {
         expected_status: domain::FlowRunStatus,
     ) -> Result<Option<domain::FlowRunRecord>> {
         let mut tx = self.pool().begin().await?;
+        lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         let row = sqlx::query(
             r#"
             update flow_runs
@@ -990,6 +1003,7 @@ impl PgControlPlaneStore {
         input: &CommitFlowRunTerminalInput,
     ) -> Result<CommitFlowRunTerminalReceipt> {
         let mut tx = self.pool().begin().await?;
+        lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         let error_payload = input.result.error_payload().cloned();
         let row = sqlx::query(
             r#"

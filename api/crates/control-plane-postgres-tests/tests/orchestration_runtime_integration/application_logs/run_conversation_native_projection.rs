@@ -819,12 +819,18 @@ async fn request_history_migration_removes_derived_context_and_preserves_facts_a
     }
     // The historical migration upgrades to v6. The current writer owns the
     // subsequent v7 rebuild; GET intentionally never repairs stored facts.
+    let retained = store
+        .get_flow_run(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
     store
-        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
-            flow_run_id: run.id,
-            input_payload: run.input_payload.clone(),
-            output_payload: json!({}),
-            error_payload: None,
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: retained.id,
+            status: retained.status,
+            output_payload: retained.output_payload,
+            error_payload: retained.error_payload,
+            finished_at: retained.finished_at,
         })
         .await
         .unwrap();
