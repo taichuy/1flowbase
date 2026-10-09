@@ -64,7 +64,38 @@ async fn agent_logs_unified_query_mixed_sources_typed_filters_and_null_last_curs
         None,
     )
     .await;
+    store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: native.id,
+            status: FlowRunStatus::Succeeded,
+            output_payload: json!({"answer":"native query final"}),
+            error_payload: None,
+            finished_at: Some(native.started_at + Duration::seconds(1)),
+        })
+        .await
+        .unwrap();
     sqlx::query("update application_run_log_summaries set requested_model_id='native-query-model',reasoning_effort='medium',total_cost=0.5 where flow_run_id=$1").bind(native.id).execute(store.pool()).await.unwrap();
+    // Summary facts own Native snapshots. Refresh through the installed task
+    // projector so its request-snapshot trigger and terminal-cost aggregation run.
+    sqlx::query("select application_run_log_task_refresh($1)")
+        .bind(native.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let native_snapshots:(Option<String>,Option<String>,Option<String>)=sqlx::query_as(
+        "select requested_model_id,reasoning_effort,total_cost::text from application_run_log_tasks where id=$1")
+        .bind(native.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(native_snapshots.0.as_deref(), Some("native-query-model"));
+    assert_eq!(native_snapshots.1.as_deref(), Some("medium"));
+    assert_eq!(
+        native_snapshots
+            .2
+            .as_deref()
+            .unwrap()
+            .parse::<f64>()
+            .unwrap(),
+        0.5
+    );
     let all = store
         .query_application_log_records(
             scope,
@@ -540,6 +571,7 @@ async fn agent_logs_unified_native_overview_keeps_persisted_final_without_phase_
     let run=seed_native_run_conversation_flow_run(&store,&seeded,&compiled,"unified-final",started,json!({"__native_model_prompt_context":{"system":[{"text":"client system"}],"messages":[{"role":"developer","content":"client developer"}]},"node-start":{"query":"old question","system":"execution system"}}),Some(json!({"role":"user","content":"current question"}))).await;
     for item in [
         json!({"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"progress only"}]}),
+        json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"unphased assistant fragment"}]}),
         json!({"type":"custom_tool_call","name":"exec","input":"tool only"}),
         json!({"type":"error","message":"error only"}),
     ] {
@@ -609,4 +641,81 @@ async fn agent_logs_unified_native_overview_keeps_persisted_final_without_phase_
     );
     assert_eq!(overview.native_run_id, Some(run.id));
     assert_eq!(overview.source_kind, "native");
+}
+
+#[tokio::test]
+async fn agent_logs_unified_native_explicit_final_phase_keeps_formal_answer_without_fallback_duplicate(
+) {
+    let store = PgControlPlaneStore::new(isolated_database().await.connect().await.unwrap());
+    run_migrations(store.pool()).await.unwrap();
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started = OffsetDateTime::now_utc();
+    let run=seed_native_run_conversation_flow_run(&store,&seeded,&compiled,"unified-explicit-final",started,json!({"__native_model_prompt_context":{"system":[{"text":"formal client system"}],"messages":[]},"node-start":{"query":"old question","system":"execution system"}}),Some(json!({"role":"user","content":"formal current question"}))).await;
+    append_provider_output_item(&store,run.id,json!({"type":"message","id":"explicit-final","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"formal provider final"}]})).await;
+    store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::Succeeded,
+            output_payload: json!({"answer":"persisted fallback must not duplicate formal final"}),
+            error_payload: None,
+            finished_at: Some(started + Duration::seconds(1)),
+        })
+        .await
+        .unwrap();
+    let overview = store
+        .application_log_record(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        overview
+            .messages
+            .iter()
+            .map(|m| (m.role.as_str(), m.content.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("system", "formal client system"),
+            ("user", "formal current question"),
+            ("assistant", "formal provider final")
+        ]
+    );
+    assert!(overview.projection_output.is_none());
+    let formal = store
+        .list_application_run_conversation_message_items_page(
+            seeded.application_id,
+            run.id,
+            ListApplicationRunConversationMessageItemsPageInput {
+                before_sequence: None,
+                after_sequence: None,
+                limit: 5,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(formal.items.len(), 1);
+    assert_eq!(
+        formal.items[0].query.as_deref(),
+        Some("formal current question")
+    );
+    assert_eq!(
+        formal.items[0].answer.as_deref(),
+        Some("formal provider final")
+    );
+    let (formal_facts,fallbacks):(i64,i64)=sqlx::query_as(r#"
+        select count(*) filter (where role='assistant' and native_message#>>'{_source_item,phase}'='final_answer'),
+            count(*) filter (where output_source='persisted_answer')
+        from application_run_conversation_message_items where flow_run_id=$1
+    "#).bind(run.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(formal_facts, 1);
+    assert_eq!(fallbacks,0,"explicit final phase owns the formal projection, so no persisted fallback row is synthesized");
+    let retained: Value = sqlx::query_scalar("select output_payload from flow_runs where id=$1")
+        .bind(run.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        retained["answer"], "persisted fallback must not duplicate formal final",
+        "querying never rewrites retained execution history"
+    );
 }

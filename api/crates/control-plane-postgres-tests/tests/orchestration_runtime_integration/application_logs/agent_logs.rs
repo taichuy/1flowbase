@@ -957,26 +957,65 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
     .unwrap();
     let seeded = seed_runtime_base(&store).await;
     let compiled = seed_compiled_plan(&store, &seeded).await;
-    let run = seed_flow_run_with_mode(
-        &store,
-        &seeded,
-        &compiled,
-        OffsetDateTime::now_utc(),
-        FlowRunMode::PublishedApiRun,
-        None,
+    // This database intentionally stops before Agent Logs migrations. Seed the
+    // retained flow and its summary through the SQL contract available then;
+    // current Rust writers require later native projection locking functions.
+    let run_id = Uuid::now_v7();
+    let started_at = OffsetDateTime::now_utc();
+    sqlx::query(
+        r#"
+        insert into flow_runs (
+            id,application_id,flow_id,flow_draft_id,compiled_plan_id,
+            debug_session_id,flow_schema_version,document_hash,run_mode,title,
+            status,input_payload,created_by,started_at,updated_at
+        ) values ($1,$2,$3,$4,$5,'historical-native',$6,'test-document-hash',
+            'published_api_run','historical native task','running',
+            '{"node-start":{"query":"historical question"}}'::jsonb,$7,$8,$8)
+    "#,
     )
-    .await;
+    .bind(run_id)
+    .bind(seeded.application_id)
+    .bind(seeded.flow_id)
+    .bind(seeded.draft_id)
+    .bind(compiled.id)
+    .bind(&compiled.schema_version)
+    .bind(seeded.actor_user_id)
+    .bind(started_at)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into application_run_log_summaries (
+            flow_run_id,scope_id,application_id,run_mode,status,title,input_payload,
+            created_by,started_at,created_at,updated_at
+        ) select f.id,a.workspace_id,f.application_id,f.run_mode,f.status,
+            f.title,f.input_payload,f.created_by,f.started_at,f.created_at,f.updated_at
+        from flow_runs f join applications a on a.id=f.application_id where f.id=$1
+    "#,
+    )
+    .bind(run_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    // Exercise the installed historical projection function; do not fabricate
+    // a task row, a future lock function, or a schema-only migration fixture.
+    sqlx::query("select application_run_log_task_refresh($1)")
+        .bind(run_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
     let old_summary_exists: bool = sqlx::query_scalar(
         "select exists(select 1 from application_run_log_summaries where flow_run_id=$1)",
     )
-    .bind(run.id)
+    .bind(run_id)
     .fetch_one(store.pool())
     .await
     .unwrap();
     assert!(old_summary_exists, "Native summary must precede migration");
     let old: Value =
         sqlx::query_scalar("select to_jsonb(t) from application_run_log_tasks t where id=$1")
-            .bind(run.id)
+            .bind(run_id)
             .fetch_one(store.pool())
             .await
             .unwrap();
@@ -991,22 +1030,22 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
         .unwrap();
     let ingested_at: OffsetDateTime =
         sqlx::query_scalar("select ingested_at from application_run_log_tasks where id=$1")
-            .bind(run.id)
+            .bind(run_id)
             .fetch_one(store.pool())
             .await
             .unwrap();
     assert!(ingested_at >= migration_start && ingested_at <= migration_end);
-    let preserved:Value=sqlx::query_scalar("select to_jsonb(t)-array['source_kind','source_id','source_client','source_session_id','source_task_id','parent_source_task_id','native_run_id','cost_breakdown','ingested_at'] from application_run_log_tasks t where id=$1").bind(run.id).fetch_one(store.pool()).await.unwrap();
+    let preserved:Value=sqlx::query_scalar("select to_jsonb(t)-array['source_kind','source_id','source_client','source_session_id','source_task_id','parent_source_task_id','native_run_id','cost_breakdown','ingested_at'] from application_run_log_tasks t where id=$1").bind(run_id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(preserved, old);
     let record = store
-        .application_log_record(seeded.application_id, run.id)
+        .application_log_record(seeded.application_id, run_id)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(record.native_run_id, Some(run.id));
+    assert_eq!(record.native_run_id, Some(run_id));
     assert_eq!(record.source_kind, "native");
     let native_page = store
-        .record_client_trajectory_page(seeded.application_id, run.id, None, 1)
+        .record_client_trajectory_page(seeded.application_id, run_id, None, 1)
         .await
         .unwrap();
     assert!(native_page.next_cursor.is_none());
@@ -1042,12 +1081,12 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
         .unwrap();
     let imported_id = receipt.record_ids[0];
     sqlx::query("delete from flow_runs where id=$1")
-        .bind(run.id)
+        .bind(run_id)
         .execute(store.pool())
         .await
         .unwrap();
     assert!(store
-        .application_log_record(seeded.application_id, run.id)
+        .application_log_record(seeded.application_id, run_id)
         .await
         .unwrap()
         .is_none());
