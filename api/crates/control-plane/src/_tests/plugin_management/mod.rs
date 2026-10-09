@@ -9,7 +9,7 @@ pub(super) mod support;
 fn native_http_recovery_release_excludes_pre_contract_hosts() {
     use crate::plugin_management::{
         official_plugin_host_compatibility, validate_plugin_compatibility_requirement,
-        PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM, PLUGIN_HOST_COMPATIBILITY_COMPATIBLE,
+        PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM,
     };
 
     let minimum = "0.5.4";
@@ -24,7 +24,7 @@ fn native_http_recovery_release_excludes_pre_contract_hosts() {
         .contains("plugin_host_version_below_minimum"));
     assert_eq!(
         official_plugin_host_compatibility(minimum, "0.5.4").status,
-        PLUGIN_HOST_COMPATIBILITY_COMPATIBLE
+        "compatible"
     );
     assert!(
         validate_plugin_compatibility_requirement(minimum, "0.5.4", None)
