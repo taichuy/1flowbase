@@ -70,8 +70,7 @@ jobs:
           const exitCode = Number(process.env.FIXTURE_TEST_EXIT_CODE);
           const status = exitCode === 0 && result?.[1] === 'ok' && passed === 2 && failed === 0 && ignored === 0 ? 'PASS' : 'FAIL';
           const receipt = {schema_version:'1flowbase.gateway-fixture-validation/v1', main_source_sha:'fd3f017805ccb03bf55c5fd0207d18123f34fd8e', workflow_source_sha:process.env.GITHUB_SHA, status, exit_code:exitCode, filter:'model_provider_repository_backfills_', passed, failed, ignored, postgres:'18.4', scope:'legacy-provider-fixture-only'};
-          fs.writeFileSync('tmp/test-governance/gateway-legacy-fixture/receipt.json', JSON.stringify(receipt,null,2)+'
-');
+          fs.writeFileSync('tmp/test-governance/gateway-legacy-fixture/receipt.json', JSON.stringify(receipt,null,2)+'\n');
           console.log(JSON.stringify(receipt));
           if(status !== 'PASS') process.exitCode = 1;
           JS
