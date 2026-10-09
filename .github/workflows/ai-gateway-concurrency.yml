@@ -1,34 +1,18 @@
-name: AI Gateway Protocol Conformance Gate
-
-on:
-  workflow_call:
-    inputs:
-      target_ref:
-        description: Candidate branch, tag, or SHA to validate
-        type: string
-        required: false
-        default: ''
-  workflow_dispatch:
-
+name: Gateway native recovery validation
+'on':
+  workflow_dispatch: null
 permissions:
   contents: read
-
 concurrency:
-  group: ai-gateway-protocol-conformance-${{ github.ref }}
+  group: gateway-native-recovery-${{ github.ref }}
   cancel-in-progress: true
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_INCREMENTAL: '0'
   OPENAI_API_KEY: ''
   OPENAI_BASE_URL: ''
-  ANTHROPIC_API_KEY: ''
-  ANTHROPIC_AUTH_TOKEN: ''
-  ANTHROPIC_BASE_URL: ''
-  CLAUDE_CODE_OAUTH_TOKEN: ''
-
 jobs:
-  protocol-conformance:
+  native-recovery:
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     services:
@@ -39,121 +23,132 @@ jobs:
           POSTGRES_PASSWORD: 1flowbase
           POSTGRES_DB: 1flowbase
         ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d 1flowbase"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+        - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d 1flowbase" --health-interval
+          5s --health-timeout 5s --health-retries 12
     steps:
-      - name: Checkout candidate source
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.target_ref || github.sha }}
-          fetch-depth: 1
-
-      - name: Resolve candidate source SHA
-        id: candidate_source
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # The candidate's paired-source lock is the single source of truth for the
-      # official provider revision. Hardcoding a ref here made cross-ref runs
-      # (workflow file from main, candidate from another branch) pair a stale
-      # official source with the candidate's fixtures.
-      - name: Resolve paired official provider revision
-        id: paired_official
-        shell: bash
-        run: >-
-          echo "revision=$(node -p
-          "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")"
-          >> "$GITHUB_OUTPUT"
-
-      - name: Checkout paired official provider source
-        uses: actions/checkout@v6
-        with:
-          repository: taichuy/1flowbase-official-plugins
-          ref: ${{ steps.paired_official.outputs.revision }}
-          path: tmp/ai-gateway-concurrency/official-source
-          fetch-depth: 1
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Resolve PostgreSQL 18 backup toolchain
-        shell: bash
-        run: |
-          set -o pipefail
-          node scripts/node/postgres-toolchain/cli.js \
-            | grep -E '^API_POSTGRES_PG_(DUMP|RESTORE)_PATH=' \
-            >> "$GITHUB_ENV"
-
-      # Cache only compiler dependency state. Gate evidence and runtime provenance
-      # are still rebuilt and emitted by the repository-owned command below.
-      - name: Restore Rust dependency cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
-        with:
-          shared-key: ai-gateway-protocol-conformance
-          key: ${{ github.ref_name }}
-          save-if: true
-          cache-on-failure: true
-          cache-workspace-crates: true
-          workspaces: |
-            api -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/aliyun_bailian -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/anthropic -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/deepseek -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/gemini -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
-            tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai_compatible -> target
-
-      - name: Prepare PostgreSQL 18 backup clients
-        shell: bash
-        run: |
-          tools_dir="$RUNNER_TEMP/postgresql-18-tools"
-          mkdir -p "$tools_dir"
-          for tool in pg_dump pg_restore; do
-            sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
-          #!/bin/sh
-          exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
-          SCRIPT
-            chmod +x "$tools_dir/$tool"
-          done
-          echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
-          echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
-
-      - name: Run the single blocking AI Gateway quality command
-        id: protocol_conformance
-        shell: bash
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/cli.js run
-          --repo-root "$GITHUB_WORKSPACE"
-          --official-source-root "$GITHUB_WORKSPACE/tmp/ai-gateway-concurrency/official-source"
-          --database-url "postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase"
-
-      - name: Write aggregate-compatible AI Gateway report
-        if: always()
-        shell: bash
-        env:
-          AI_GATEWAY_COMMAND_OUTCOME: ${{ steps.protocol_conformance.outcome }}
-        run: >-
-          node scripts/node/ai-gateway-concurrency/quality-gate/component-report.js
-          --repo-root "$GITHUB_WORKSPACE"
-          --command-outcome "$AI_GATEWAY_COMMAND_OUTCOME"
-
-      - name: Upload bounded protocol evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-governance-ai-gateway-protocol-conformance-${{ steps.candidate_source.outputs.sha }}
-          path: |
-            tmp/test-governance/ai-gateway-quality-gate/**
-            tmp/test-governance/ai-gateway-concurrency/**
-            tmp/test-governance/ai-gateway-protocol-conformance/**
-          if-no-files-found: error
-          retention-days: 14
+    - name: Checkout exact host source
+      uses: actions/checkout@v5
+      with:
+        ref: de0a082db90a0a976b23471adc1504f491be5bb5
+        fetch-depth: 1
+    - name: Checkout exact OpenAI paired source
+      uses: actions/checkout@v6
+      with:
+        repository: taichuy/1flowbase-official-plugins
+        ref: c85a2a77d7b62584a4b927805c41332e586d419b
+        path: tmp/ai-gateway-concurrency/official-source
+        fetch-depth: 1
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 24
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      with:
+        shared-key: ai-gateway-protocol-conformance
+        key: codex/gateway-replay-gc-20261010
+        save-if: false
+        cache-on-failure: true
+        cache-workspace-crates: true
+        workspaces: |-
+          api -> target
+          tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
+    - name: Validate native recovery and controlled counterexamples
+      env:
+        DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+        API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      shell: bash
+      run: |
+        node <<'JS'
+        "use strict";
+        const fs = require("node:fs");
+        const path = require("node:path");
+        const crypto = require("node:crypto");
+        const { spawnSync, execFileSync } = require("node:child_process");
+        const assert = require("node:assert/strict");
+        const host = process.cwd();
+        const official = path.join(host, "tmp/ai-gateway-concurrency/official-source");
+        const provider = path.join(official, "runtime-extensions/@taichuy/openai");
+        const evidence = path.join(host, "tmp/test-governance/gateway-native-recovery");
+        fs.mkdirSync(evidence, { recursive: true });
+        const sha = (cwd) => execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
+        const hostSha = "de0a082db90a0a976b23471adc1504f491be5bb5";
+        const officialSha = "c85a2a77d7b62584a4b927805c41332e586d419b";
+        assert.equal(sha(host), hostSha);
+        assert.equal(sha(official), officialSha);
+        assert.equal(JSON.parse(fs.readFileSync("scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json")).official_plugins.revision, officialSha);
+        const jobs = execFileSync("node", ["scripts/node/testing/verify-runtime.js", "cargo-jobs"], { encoding: "utf8" }).trim();
+        assert(/^[1-9][0-9]*$/u.test(jobs));
+        const commands = [];
+        function run(name, args, expectedFailure = false) {
+          const logFile = path.join(evidence, `${name}.log`);
+          const fd = fs.openSync(logFile, "w");
+          const started = Date.now();
+          let result;
+          try { result = spawnSync("cargo", [...args, "--jobs", jobs, "--locked"], { cwd: host, stdio: ["ignore", fd, fd], timeout: 20 * 60 * 1000 }); }
+          finally { fs.closeSync(fd); }
+          const log = fs.readFileSync(logFile, "utf8");
+          const summaries = [...log.matchAll(/test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;/gu)]
+            .map((match) => ({ result: match[1], passed: Number(match[2]), failed: Number(match[3]), ignored: Number(match[4]) }));
+          const count = summaries.reduce((sum, x) => sum + x.passed + x.failed, 0);
+          const passed = expectedFailure
+            ? result.status === 101 && summaries.length === 1 && summaries[0].passed === 0 && summaries[0].failed === 1 && /panicked at/u.test(log)
+            : result.status === 0 && count > 0 && summaries.every((x) => x.failed === 0);
+          const record = { name, args, expected_failure: expectedFailure, exit_code: result.status, elapsed_ms: Date.now() - started,
+            status: passed ? "PASS" : "FAIL", summaries, signal: result.signal, log_sha256: crypto.createHash("sha256").update(log).digest("hex") };
+          commands.push(record);
+          fs.writeFileSync(path.join(evidence, "receipt.json"), JSON.stringify({ host_source_sha: hostSha, official_source_sha: officialSha,
+            workflow_source_sha: process.env.GITHUB_SHA, status: "RUNNING", commands }, null, 2) + "\n");
+          console.log(JSON.stringify(record));
+          if (!passed) console.log(log.slice(-4000));
+        }
+        const hostTest = (pkg, filter, target = null) => ["test", "--manifest-path", "api/Cargo.toml", "-p", pkg,
+          ...(target ? ["--test", target] : ["--lib"]), ...(filter ? [filter] : [])];
+        const pluginTest = (filter, targets = []) => ["test", "--manifest-path", path.join(provider, "Cargo.toml"),
+          ...(targets.length ? targets.flatMap((target) => ["--test", target]) : ["--lib"]), ...(filter ? [filter] : [])];
+        run("host-provider-contract", hostTest("extension-contracts", ""));
+        run("openai-library", pluginTest(""));
+        run("openai-native-stdio-regression", pluginTest("", ["stdio_worker", "native_contract", "recovery_protected_baseline", "multiplex_sessions"]));
+        run("native-recovery-ledger", hostTest("orchestration-runtime", "ai_native_recovery"));
+        run("native-inference-recovery", hostTest("orchestration-runtime", "native_inference_recovery"));
+        run("dependency-boundaries", hostTest("control-plane-postgres-tests", "", "dependency_boundaries"));
+        run("callback-adapter", hostTest("api-server", "routes::application_public_api::callback_adapter::tests"));
+        run("native-sse", hostTest("api-server", "routes::application_public_api::sse::tests"));
+        run("compatible-cold-forwarding", hostTest("api-server", "routes::application_public_api::compat_sse::tests::forwarding::"));
+        function mutation(file, mutate, name, args) {
+          const original = fs.readFileSync(file, "utf8");
+          try {
+            const changed = mutate(original);
+            assert.notEqual(changed, original);
+            fs.writeFileSync(file, changed);
+            run(name, args, true);
+          } finally { fs.writeFileSync(file, original); }
+        }
+        mutation(path.join(provider, "src/lib.rs"), (source) => {
+          const recorder = source.indexOf("fn record_native_websocket_response_chain");
+          assert(recorder > 0);
+          const start = source.indexOf("            Some(Value::String(text)) => vec![json!({", recorder);
+          const end = source.indexOf("            _ => return,", start);
+          assert(start > recorder && end > start);
+          return source.slice(0, start) + source.slice(end);
+        }, "negative-string-history", pluginTest("native_string_completed_history_rebuilds_exact_tool_continuation"));
+        mutation(path.join(host, "api/crates/extension-contracts/src/provider_contract/recovery.rs"), (source) => {
+          const guard = "\n                || receipt.is_full_context_http_rebuild()";
+          assert.equal(source.split(guard).length, 2);
+          return source.replace(guard, "");
+        }, "negative-native-http-cursor-fence", hostTest("extension-contracts", "native_http_rebuild_preserves_host_cursor_epoch_budget_and_commit_fences"));
+        execFileSync("git", ["diff", "--exit-code"], { cwd: host, maxBuffer: 128 * 1024 });
+        execFileSync("git", ["diff", "--exit-code"], { cwd: official, maxBuffer: 128 * 1024 });
+        const status = commands.length === 11 && commands.every((x) => x.status === "PASS") ? "PASS" : "FAIL";
+        fs.writeFileSync(path.join(evidence, "receipt.json"), JSON.stringify({ schema_version: "1flowbase.gateway-native-recovery-validation/v1",
+          host_source_sha: hostSha, official_source_sha: officialSha, workflow_source_sha: process.env.GITHUB_SHA, status, jobs: Number(jobs),
+          source_restored: true, commands }, null, 2) + "\n");
+        console.log(JSON.stringify({ status, commands: commands.length }));
+        if (status !== "PASS") process.exitCode = 1;
+        JS
+    - name: Upload actual paired source evidence
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: test-governance-gateway-native-recovery
+        path: tmp/test-governance/gateway-native-recovery/**
