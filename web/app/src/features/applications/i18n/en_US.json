@@ -412,6 +412,8 @@
     "stopped": "Further batches stopped. Committed deletions are retained.",
     "failed": "Deletion interrupted. The last batch may be unconfirmed; check the refreshed logs.",
     "past_thirty_days": "Past 30 days",
-    "past_ninety_days": "Past 90 days"
+    "past_ninety_days": "Past 90 days",
+    "start_date": "Start date",
+    "end_date": "End date"
   }
 }

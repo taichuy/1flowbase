@@ -4,6 +4,7 @@ import {
   Button,
   DatePicker,
   Form,
+  Grid,
   InputNumber,
   Modal,
   Select,
@@ -23,6 +24,47 @@ type Values = {
   batch_size: number;
 };
 type Status = 'ready' | 'running' | 'complete' | 'stopped' | 'failed';
+
+type DateRangeDraft = [Dayjs | null, Dayjs | null];
+function LogDeleteDateRangeInput({
+  value,
+  onChange
+}: {
+  value?: DateRangeDraft;
+  onChange?: (value: DateRangeDraft | null) => void;
+}) {
+  const { sm } = Grid.useBreakpoint();
+  const { t } = useTranslation('applications');
+  if (sm) {
+    return (
+      <DatePicker.RangePicker
+        value={value}
+        onChange={onChange}
+        style={{ width: '100%' }}
+        allowClear
+      />
+    );
+  }
+  // A single native calendar fits narrow screens without hiding either month.
+  return (
+    <Space orientation="vertical" style={{ width: '100%' }}>
+      <DatePicker
+        placeholder={t('log_deletion.start_date')}
+        aria-label={t('log_deletion.start_date')}
+        value={value?.[0]}
+        style={{ width: '100%' }}
+        onChange={(date) => onChange?.([date, value?.[1] ?? null])}
+      />
+      <DatePicker
+        placeholder={t('log_deletion.end_date')}
+        aria-label={t('log_deletion.end_date')}
+        value={value?.[1]}
+        style={{ width: '100%' }}
+        onChange={(date) => onChange?.([value?.[0] ?? null, date])}
+      />
+    </Space>
+  );
+}
 
 export function AgentLogsDeleteButton({
   applicationId,
@@ -135,11 +177,7 @@ export function AgentLogsDeleteButton({
               </Button>
             ) : (
               <Button onClick={() => setOpen(false)}>
-                {t(
-                  status === 'ready'
-                    ? 'auto.cancel'
-                    : 'auto.close'
-                )}
+                {t(status === 'ready' ? 'auto.cancel' : 'auto.close')}
               </Button>
             )}
             {status === 'ready' && (
@@ -186,10 +224,12 @@ export function AgentLogsDeleteButton({
             name="dates"
             rules={[
               {
-                validator: (_, value: [Dayjs, Dayjs] | undefined) =>
+                validator: (_, value: DateRangeDraft | undefined) =>
                   form.getFieldValue('date') !== 'custom' ||
                   (value?.length === 2 &&
                     value.every((item) => item?.isValid()) &&
+                    value[0] !== null &&
+                    value[1] !== null &&
                     !value[0].isAfter(value[1], 'day'))
                     ? Promise.resolve()
                     : Promise.reject(
@@ -198,7 +238,7 @@ export function AgentLogsDeleteButton({
               }
             ]}
           >
-            <DatePicker.RangePicker style={{ width: '100%' }} allowClear />
+            <LogDeleteDateRangeInput />
           </Form.Item>
           <Form.Item
             label={t('log_deletion.batch_size')}

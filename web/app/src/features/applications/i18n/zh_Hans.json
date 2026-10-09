@@ -412,6 +412,8 @@
     "stopped": "已停止后续批次，已提交的删除保留。",
     "failed": "删除中断。最后一批的结果可能尚未确认，请检查刷新后的日志。",
     "past_thirty_days": "过去 30 天",
-    "past_ninety_days": "过去 90 天"
+    "past_ninety_days": "过去 90 天",
+    "start_date": "开始日期",
+    "end_date": "结束日期"
   }
 }
