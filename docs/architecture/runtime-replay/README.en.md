@@ -45,6 +45,14 @@ Compatible recovery assembles the necessary output prefix for one response round
 
 Cold recovery preserves the semantics of recorded complete content. Original token boundaries and timing cannot be reconstructed when never stored. Legacy runs without generation anchors use the existing terminal snapshot. Active cursor gaps are not projected as completed history: Debug reports `unresolved_live_gap`. Upstream error objects and extension fields retain their original protocol projection.
 
+## Provider connection recovery
+
+Durable cold replay and provider connection recovery have distinct owners. AI Native restores runs and callbacks from existing facts. The OpenAI plugin uses complete raw completed history scoped to the same owner and configuration to restore a provider request. Valid string input is included in that history; existing native wire conversion is unchanged.
+
+OpenAI 0.2.72 can remove the old cursor and attempt one full-context WebSocket rebuild when the previous connection is unavailable. If the rebuilt request encounters a recoverable transport failure before semantic output, auto mode may send the actual rebuilt body over SSE within the original budget and deadline. The existing `OneFullContextRebuild + ProviderHttp` receipt attests that the provider sent complete scoped native context. The host validates attempts, epoch, commit state, cursor provenance and transport classification.
+
+An old cursor with only new tool outputs, an absent cursor, or a prior rebuild decision does not establish body completeness. Explicit ConnectionBound provenance, missing or foreign history, protocol/authentication/policy failures, committed semantic output and force_websocket prohibit this switch. Completed tools are not executed again. The rebuilt body belongs only to the current invocation; no whole-history cache or body table is added.
+
 ## Configuration and tradeoffs
 
 | Environment variable | Default | Meaning |
