@@ -20,6 +20,7 @@ mod main_instance_routing;
 mod native_trajectory;
 mod protocol_context;
 mod protocol_observation;
+mod runtime_events;
 mod stream_timing;
 pub(super) use failover_queue::freeze_failover_queue_routes;
 use stream_timing::{serialized_frame_size, ProviderStreamTiming};
@@ -900,7 +901,15 @@ where
                                 // items are committed with the callback waiting state.
                                 stream_event.persist_required = false;
                             }
-                            match stream.append(flow_run_id, stream_event).await {
+                            match runtime_events::forward_required_runtime_event(
+                                &repository_for_events,
+                                stream.as_ref(),
+                                flow_run_id,
+                                stream_event,
+                                generation_writer_for_task.as_deref(),
+                            )
+                            .await
+                            {
                                 Ok(_) => {}
                                 Err(error) => {
                                     if durable_log_fact {

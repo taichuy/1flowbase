@@ -556,7 +556,7 @@ async fn flush_debug_event_batch<R: OrchestrationRuntimeRepository>(
     Ok(())
 }
 
-fn is_stream_delta_event(event_type: &str) -> bool {
+pub(super) fn is_stream_delta_event(event_type: &str) -> bool {
     matches!(
         event_type,
         "text_delta" | "reasoning_delta" | "tool_call_delta" | "mcp_call_delta"

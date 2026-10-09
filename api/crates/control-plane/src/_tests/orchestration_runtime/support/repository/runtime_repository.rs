@@ -758,6 +758,16 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         &self,
         input: &AppendRuntimeEventInput,
     ) -> Result<domain::RuntimeEventRecord> {
+        let gate = self
+            .inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .next_runtime_event_append_gate
+            .take();
+        if let Some((entered, release)) = gate {
+            entered.notify_one();
+            release.notified().await;
+        }
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         if std::mem::take(&mut inner.fail_next_runtime_event_append) {
             return Err(anyhow::anyhow!("simulated runtime event append failure"));

@@ -61,6 +61,7 @@ struct InMemoryOrchestrationRuntimeState {
     status_before_next_flow_update: Option<(Uuid, domain::FlowRunStatus)>,
     stream_terminal_failure_before_next_flow_update: Option<Uuid>,
     fail_next_runtime_event_append: bool,
+    next_runtime_event_append_gate: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
     fail_next_terminal_runtime_event_append: bool,
     fail_next_published_stream_terminal_projection: bool,
     application_run_detail_read_count: usize,
@@ -1215,6 +1216,22 @@ impl InMemoryOrchestrationRuntimeRepository {
             .get_mut(&flow_run_id)
             .expect("flow run should exist for test");
         flow_run.run_mode = run_mode;
+    }
+
+    /// Stall one actual repository append before its commit, without holding
+    /// the repository mutex or substituting the durable write.
+    pub(crate) fn gate_next_runtime_event_append(
+        &self,
+    ) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+        let gate = (
+            Arc::new(tokio::sync::Notify::new()),
+            Arc::new(tokio::sync::Notify::new()),
+        );
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .next_runtime_event_append_gate = Some(gate.clone());
+        gate
     }
 
     pub(crate) fn fail_next_runtime_event_append(&self) {
