@@ -2223,5 +2223,41 @@
         "containerSelector": ".application-collector"
       }
     ]
+  },
+  {
+    "id": "page.application-logs-mobile",
+    "kind": "page",
+    "title": "Application Logs Mobile List",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/shared/ui/data-table/DataTableMobileList.tsx",
+      "web/app/src/shared/ui/data-table/data-table-mobile-list.css",
+      "web/app/src/shared/ui/data-table/DataTable.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "mobile-record",
+        "selector": ".data-table-mobile__record",
+        "propertyAssertions": [
+          {
+            "property": "overflow-wrap",
+            "expected": "anywhere"
+          }
+        ]
+      },
+      {
+        "id": "mobile-fields",
+        "selector": ".data-table-mobile__field",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ]
   }
 ]

@@ -1,3 +1,4 @@
+import { useApplicationRunsQuery } from './use-application-runs-query';
 import {
   getViewportSize,
   getRunDetailInitialRect,
@@ -15,18 +16,20 @@ import {
   fetchRunPayload
 } from '../../../api/trajectory';
 import { AgentLogsDeleteButton } from './AgentLogsDeleteButton';
+import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import SortAscendingOutlined from '@ant-design/icons/es/icons/SortAscendingOutlined';
 import SortDescendingOutlined from '@ant-design/icons/es/icons/SortDescendingOutlined';
 import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   App,
   Button,
   Empty,
+  Grid,
   Input,
   Progress,
   Modal,
@@ -55,7 +58,6 @@ import {
   completeApplicationRunArchiveUploadSession,
   createApplicationRunArchiveUploadSession,
   fetchApplicationRunArchiveImportJob,
-  fetchApplicationRuns,
   fetchApplicationRunOverview,
   exportApplicationRunTraceDump,
   exportSelectedApplicationRunsTraceDumpZip,
@@ -386,6 +388,7 @@ export function ApplicationLogsWorkspace({
     setPage(1);
   };
   const [keywordSearch, setKeywordSearch] = useState('');
+  const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] =
     useState<ApplicationRunSortField>(DEFAULT_SORT_BY);
@@ -502,10 +505,9 @@ export function ApplicationLogsWorkspace({
     }),
     [page, sortBy, sortOrder, timeRange, titleIncludes, statisticsFilters]
   );
-  const runsQuery = useQuery({
-    queryKey: applicationRunsQueryKey(runsScope, runsInput),
-    queryFn: () => fetchApplicationRuns(runsScope, runsInput)
-  });
+  const screens = Grid.useBreakpoint();
+  const mobileListEnabled = screens.md === undefined ? undefined : !screens.md;
+  const runsQuery = useApplicationRunsQuery(runsScope, runsInput, mobileListEnabled);
   const runsPage = runsQuery.data;
   const runs = useMemo(() => runsPage?.items ?? [], [runsPage?.items]);
   const total = runsPage?.total ?? 0;
@@ -635,14 +637,7 @@ export function ApplicationLogsWorkspace({
     setSelectedRunIds([]);
     setRefreshingRuns(true);
     try {
-      const refreshedRuns = await fetchApplicationRuns(runsScope, {
-        ...runsInput,
-        cacheMode: 'refresh'
-      });
-      queryClient.setQueryData(
-        applicationRunsQueryKey(runsScope, runsInput),
-        refreshedRuns
-      );
+      await runsQuery.refresh();
     } catch {
       message.error(t('auto.refresh_failed'));
     } finally {
@@ -1084,7 +1079,10 @@ export function ApplicationLogsWorkspace({
           }
         />
       )}
-      <div className="application-logs-page__filters" role="search">
+      <div
+        className={`application-logs-page__filters${mobileFiltersExpanded ? ' application-logs-page__filters--expanded' : ''}`}
+        role="search"
+      >
         <AutosizeSelect<ApplicationLogTimeRange>
           aria-label={t('auto.time_range')}
           options={timeRangeOptions}
@@ -1098,19 +1096,20 @@ export function ApplicationLogsWorkspace({
           className="application-logs-page__sort-control"
           data-testid="application-logs-sort-control"
         >
-          <AutosizeSelect<ApplicationRunSortField>
-            aria-label={t('auto.sort_field')}
-            autosizeLabels={runSortFieldMeasureLabels}
-            className="application-logs-page__sort-select"
-            options={runSortFieldOptions}
-            prefix={
-              <span className="application-logs-page__sort-select-prefix">
-                {t('auto.sort_by_prefix')}
-              </span>
-            }
-            value={sortBy}
-            onChange={changeSortBy}
-          />
+          <span className="application-logs-page__sort-select">
+            <AutosizeSelect<ApplicationRunSortField>
+              aria-label={t('auto.sort_field')}
+              autosizeLabels={runSortFieldMeasureLabels}
+              options={runSortFieldOptions}
+              prefix={
+                <span className="application-logs-page__sort-select-prefix">
+                  {t('auto.sort_by_prefix')}
+                </span>
+              }
+              value={sortBy}
+              onChange={changeSortBy}
+            />
+          </span>
           <Button
             aria-label={getSortOrderToggleLabel(sortOrder, t)}
             className="application-logs-page__sort-direction-button"
@@ -1132,6 +1131,13 @@ export function ApplicationLogsWorkspace({
           prefix={<SearchOutlined />}
           value={keywordSearch}
           onChange={changeKeywordSearch}
+        />
+        <Button
+          className="application-logs-page__more-filters"
+          aria-label={t('auto.more_log_controls')}
+          aria-expanded={mobileFiltersExpanded}
+          icon={<MoreOutlined />}
+          onClick={() => setMobileFiltersExpanded(value => !value)}
         />
         <div className="application-logs-page__filter-actions">
           {applicationType !== 'agent_logs' ? (
@@ -1255,6 +1261,10 @@ export function ApplicationLogsWorkspace({
       ) : (
         <ApplicationRunsTable
           loading={runsQuery.isFetching}
+          mobileList={runsQuery.mobileList ? {
+            ...runsQuery.mobileList,
+            showSelectAll: mobileFiltersExpanded
+          } : undefined}
           page={page}
           pageSize={PAGE_SIZE}
           total={total}
@@ -1464,10 +1474,6 @@ export function ApplicationLogsWorkspace({
                   reasoning_effort={
                     runs.find((run) => run.id === selectedRunId)
                       ?.reasoning_effort
-                  }
-                  logConversationId={
-                    runs.find((run) => run.id === selectedRunId)
-                      ?.log_conversation_id
                   }
                   onClose={() => selectRun(null)}
                   onOpenMessageLog={openConversationLog}

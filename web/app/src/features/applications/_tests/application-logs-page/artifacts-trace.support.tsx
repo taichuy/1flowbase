@@ -221,6 +221,7 @@ export function sampleRunDetail(): ApplicationRunDetail {
 
 export function runOverviewFromDetail(detail: ApplicationRunDetail) {
   return {
+    log_conversation_id: null,
     run: detail.run,
     statistics: detail.statistics ?? {
       invocation_count: 1,

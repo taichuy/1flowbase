@@ -55,7 +55,6 @@ export type ApplicationRunLogViewerProps = {
   applicationId: string;
   runId: string;
   view: 'detail' | 'trace';
-  log_conversation_id?: string | null;
   requested_model_id?: string | null;
   reasoning_effort?: string | null;
   onClose: () => void;
@@ -76,7 +75,6 @@ export function ApplicationRunLogViewer({
   applicationId,
   runId,
   view,
-  log_conversation_id,
   requested_model_id,
   reasoning_effort,
   onClose
@@ -115,7 +113,6 @@ export function ApplicationRunLogViewer({
             <ApplicationRunDetailPanel
               applicationId={applicationId}
               runId={runId}
-              logConversationId={log_conversation_id}
               requested_model_id={requested_model_id}
               reasoning_effort={reasoning_effort}
               traceLoader={traceLoader}

@@ -811,6 +811,7 @@ impl PgControlPlaneStore {
                     application_id,
                     &input.external_conversation_id,
                     Some(anchor_run_id),
+                    input.around_run_id,
                 )
                 .await?
             else {
@@ -823,6 +824,7 @@ impl PgControlPlaneStore {
                     application_id,
                     &input.external_conversation_id,
                     Some(anchor_run_id),
+                    input.around_run_id,
                 )
                 .await?
             else {
@@ -830,13 +832,14 @@ impl PgControlPlaneStore {
             };
             (anchor_rn + 1, (anchor_rn + limit).min(total), total)
         } else {
-            // Opening a series always starts at its newest business turns;
-            // the selected run is detail context, not a paging anchor.
+            // The selected task bounds the entire paging set, including subsequent
+            // before/after reads. Without an anchor, open the latest turns.
             let Some((_, total)) = self
                 .application_conversation_run_position(
                     application_id,
                     &input.external_conversation_id,
                     None,
+                    input.around_run_id,
                 )
                 .await?
             else {
@@ -867,7 +870,8 @@ impl PgControlPlaneStore {
                     )[1] as answer,
                     runs.started_at,
                     runs.finished_at,
-                    min(messages.sequence) as order_sequence
+                    min(messages.sequence) as order_sequence,
+                    coalesce(runs.log_context->>'request_kind','') <> 'prewarm' as is_business_turn
                 from application_conversation_messages messages
                 join application_conversations conversations
                   on conversations.id = messages.conversation_id
@@ -892,8 +896,10 @@ impl PgControlPlaneStore {
                         order by m.is_current desc,m.display_sequence desc limit 1),t.requested_model_id) as model,
                     case when t.outcome='final_answer_observed' then t.final_output end as answer,
                     t.started_at,t.finished_at,
-                    (extract(epoch from t.started_at)*1000000)::bigint as order_sequence
+                    (extract(epoch from t.started_at)*1000000)::bigint as order_sequence,
+                    coalesce(r.log_context->>'request_kind','') <> 'prewarm' as is_business_turn
                 from application_run_log_tasks t
+                join flow_runs r on r.id=t.id
                 where t.application_id=$1 and t.is_root
                   and t.log_conversation_id=case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end
             ),
@@ -908,6 +914,13 @@ impl PgControlPlaneStore {
                     finished_at,
                     row_number() over (order by order_sequence asc, id asc) as rn
                 from grouped
+                where is_business_turn
+                  and ($5::uuid is null or (order_sequence, id) <= (
+                      select anchor.order_sequence, anchor.id from grouped anchor
+                      where anchor.id = coalesce(
+                          (select s.log_task_run_id from application_run_log_summaries s
+                           where s.application_id=$1 and s.flow_run_id=$5), $5)
+                  ))
             )
             select
                 id,
@@ -926,6 +939,7 @@ impl PgControlPlaneStore {
         .bind(&input.external_conversation_id)
         .bind(start_rn)
         .bind(end_rn)
+        .bind(input.around_run_id)
         .fetch_all(self.pool())
         .await?;
 
@@ -952,13 +966,15 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         external_conversation_id: &str,
         flow_run_id: Option<Uuid>,
+        around_run_id: Option<Uuid>,
     ) -> Result<Option<(i64, i64)>> {
         let row = sqlx::query(
             r#"
             with grouped as (
                 select
                     runs.id,
-                    min(messages.sequence) as order_sequence
+                    min(messages.sequence) as order_sequence,
+                    coalesce(runs.log_context->>'request_kind','') <> 'prewarm' as is_business_turn
                 from application_conversation_messages messages
                 join application_conversations conversations
                   on conversations.id = messages.conversation_id
@@ -977,8 +993,10 @@ impl PgControlPlaneStore {
                   )
                 group by runs.id
                 union all
-                select t.id,(extract(epoch from t.started_at)*1000000)::bigint as order_sequence
+                select t.id,(extract(epoch from t.started_at)*1000000)::bigint as order_sequence,
+                    coalesce(r.log_context->>'request_kind','') <> 'prewarm' as is_business_turn
                 from application_run_log_tasks t
+                join flow_runs r on r.id=t.id
                 where t.application_id=$1 and t.is_root
                   and t.log_conversation_id=case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end
             ),
@@ -988,6 +1006,13 @@ impl PgControlPlaneStore {
                     row_number() over (order by order_sequence asc, id asc) as rn,
                     count(*) over () as total
                 from grouped
+                where is_business_turn
+                  and ($4::uuid is null or (order_sequence, id) <= (
+                      select anchor.order_sequence, anchor.id from grouped anchor
+                      where anchor.id = coalesce(
+                          (select s.log_task_run_id from application_run_log_summaries s
+                           where s.application_id=$1 and s.flow_run_id=$4), $4)
+                  ))
             )
             select rn, total
             from ordered
@@ -999,6 +1024,7 @@ impl PgControlPlaneStore {
         .bind(application_id)
         .bind(external_conversation_id)
         .bind(flow_run_id)
+        .bind(around_run_id)
         .fetch_optional(self.pool())
         .await?;
 
@@ -1139,6 +1165,14 @@ impl PgControlPlaneStore {
             latest_overview_waiting_node(self, flow_run.id).await?;
 
         Ok(Some(ApplicationRunOverviewReadModel {
+            log_conversation_id: sqlx::query_scalar::<_, Option<Uuid>>(
+                "select log_conversation_id from application_run_log_summaries where application_id=$1 and flow_run_id=$2",
+            )
+            .bind(application_id)
+            .bind(flow_run_id)
+            .fetch_optional(self.pool())
+            .await?
+            .flatten(),
             tool_callback_count: overview_tool_callback_count(self, flow_run.id).await?,
             waiting_node_id,
             waiting_node_run_id,

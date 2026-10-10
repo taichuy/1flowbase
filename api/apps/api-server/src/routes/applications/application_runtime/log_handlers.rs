@@ -227,6 +227,7 @@ fn to_application_run_overview_response(
     statistics: application_logs::ApplicationRunStatisticsResponse,
 ) -> ApplicationRunOverviewResponse {
     ApplicationRunOverviewResponse {
+        log_conversation_id: overview.log_conversation_id.map(|id| id.to_string()),
         run: application_run_log_response_for_metadata(application, &overview.flow_run),
         statistics,
         flow_run: to_flow_run_metadata_response(overview.flow_run),

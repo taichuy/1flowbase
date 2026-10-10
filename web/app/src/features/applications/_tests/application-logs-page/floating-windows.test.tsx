@@ -1,4 +1,4 @@
-import { App as AntdApp } from 'antd';
+import { App as AntdApp, Grid } from 'antd';
 import {
   act,
   fireEvent,
@@ -223,8 +223,18 @@ describe('ApplicationLogsPage - floating windows shell', () => {
   let innerHeightSpy: { mockRestore: () => void } | undefined;
   let innerWidthSpy: { mockRestore: () => void } | undefined;
   let dateNowSpy: { mockRestore: () => void } | undefined;
+  let useBreakpointSpy: { mockRestore: () => void } | undefined;
 
   beforeEach(async () => {
+    // These scenarios assert desktop table rows and columns.
+    useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint').mockReturnValue({
+      xs: false,
+      sm: true,
+      md: true,
+      lg: true,
+      xl: false,
+      xxl: false
+    });
     window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.clear();
     window.history.replaceState({}, '', '/applications/app-1/logs');
@@ -339,6 +349,8 @@ describe('ApplicationLogsPage - floating windows shell', () => {
   });
 
   afterEach(() => {
+    useBreakpointSpy?.mockRestore();
+    useBreakpointSpy = undefined;
     resetAuthStore();
     getBoundingClientRectSpy?.mockRestore();
     getBoundingClientRectSpy = undefined;
@@ -702,9 +714,11 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     expect(await screen.findByText('公开 API 工具调用')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '查看运行详情' }));
 
-    expect(
-      runtimeApi.fetchApplicationRunConversationMessages.mock.calls.length
-    ).toBe(1);
+    await waitFor(() => {
+      expect(
+        runtimeApi.fetchApplicationRunConversationMessages.mock.calls.length
+      ).toBe(1);
+    });
     expect(await screen.findByText('等待工具结果')).toBeInTheDocument();
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 1200));
@@ -916,6 +930,10 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     expect(window.location.search).toBe('');
   });
   test('collects four backend-associated calls in the original detail and opens each original trace', async () => {
+    runtimeApi.fetchApplicationRunOverview.mockResolvedValue({
+      ...sampleRunOverview(),
+      log_conversation_id: 'conversation-1'
+    });
     runtimeApi.fetchApplicationRuns.mockResolvedValue(
       applicationRunsPage([
         {
@@ -1004,10 +1022,10 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     runtimeApi.fetchApplicationLogConversationMessages.mockResolvedValue(
       conversationMessagesPage([
         {
-          id: 'session-task-2',
-          flow_run_id: 'run-5',
+          id: 'session-task-1',
+          flow_run_id: 'run-1',
           role: 'assistant',
-          content: '会话中的第二任务',
+          content: '所选任务的会话截止回复',
           sequence: 5
         }
       ])
@@ -1015,10 +1033,13 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));
     expect(await screen.findByText('调用 4')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '查看此会话' }));
-    expect(await screen.findByText('会话中的第二任务')).toBeInTheDocument();
+    expect(
+      await screen.findByText('所选任务的会话截止回复')
+    ).toBeInTheDocument();
     expect(
       runtimeApi.fetchApplicationLogConversationMessages
     ).toHaveBeenCalledWith('app-1', 'conversation-1', {
+      aroundRunId: 'run-1',
       limit: 5
     });
     fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));

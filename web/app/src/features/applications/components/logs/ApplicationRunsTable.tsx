@@ -1,3 +1,4 @@
+import type { DataTableMobilePagination } from '../../../../shared/ui/data-table/DataTableMobileList';
 import { Button } from 'antd';
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
@@ -30,6 +31,7 @@ export function ApplicationRunsTableColumnSettings({
 
 export function ApplicationRunsTable({
   loading = false,
+  mobileList,
   page,
   pageSize,
   total,
@@ -42,6 +44,7 @@ export function ApplicationRunsTable({
   onSelectRun
 }: {
   loading?: boolean;
+  mobileList?: DataTableMobilePagination;
   page: number;
   pageSize: number;
   total: number;
@@ -80,6 +83,7 @@ export function ApplicationRunsTable({
       configuration={configuration}
       dataSource={runs}
       loading={loading}
+      mobileList={mobileList}
       page={page}
       pageSize={pageSize}
       rowClassName={(record) =>

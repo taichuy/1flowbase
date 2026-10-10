@@ -17,9 +17,11 @@ import type { AgentFlowDebugSessionStatus } from '../../../agent-flow/hooks/runt
 import { useClipboardCopy } from '../../../../shared/ui/clipboard/use-clipboard-copy';
 import {
   applicationRunConversationMessagesQueryKey,
+  applicationRunOverviewQueryKey,
   applicationLogConversationMessagesQueryKey,
   fetchApplicationLogConversationMessages,
   fetchApplicationRunConversationMessages,
+  fetchApplicationRunOverview,
   type ApplicationRunConversationMessage,
   type ApplicationRunConversationMessagesPage,
   type ApplicationRunConversationOutputState
@@ -382,7 +384,6 @@ function RunConversation({
   applicationId,
   requested_model_id,
   reasoning_effort,
-  logConversationId,
   recordId,
   onClose,
   onOpenMessageLog,
@@ -395,7 +396,6 @@ function RunConversation({
   traceLoader?: ConversationLogTraceLoader;
   requested_model_id?: string | null;
   reasoning_effort?: string | null;
-  logConversationId?: string | null;
   recordId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
@@ -404,9 +404,7 @@ function RunConversation({
   runId: string;
 }) {
   const { token } = theme.useToken();
-  const [conversationScope, setConversationScope] = useState(
-    Boolean(logConversationId)
-  );
+  const [conversationScope, setConversationScope] = useState(true);
   const [previousConversationPages, setPreviousConversationPages] = useState<
     ApplicationRunConversationMessagesPage[]
   >([]);
@@ -422,14 +420,22 @@ function RunConversation({
     queryFn: () => fetchApplicationLogRecord(applicationId, recordId!),
     refetchOnWindowFocus: false
   });
-  const initialConversationQuery = useQuery({
+  const overviewQuery = useQuery({
+    queryKey: applicationRunOverviewQueryKey(applicationId, runId),
     enabled: !recordId,
+    queryFn: () => fetchApplicationRunOverview(applicationId, runId),
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false
+  });
+  const logConversationId = overviewQuery.data?.log_conversation_id;
+  const initialConversationQuery = useQuery({
+    enabled: !recordId && overviewQuery.isSuccess,
     queryKey:
       conversationScope && logConversationId
         ? applicationLogConversationMessagesQueryKey(
             applicationId,
             logConversationId,
-            { limit: RUN_CONVERSATION_PAGE_LIMIT }
+            { aroundRunId: runId, limit: RUN_CONVERSATION_PAGE_LIMIT }
           )
         : applicationRunConversationMessagesQueryKey(applicationId, runId, {
             limit: RUN_CONVERSATION_PAGE_LIMIT
@@ -439,7 +445,7 @@ function RunConversation({
         ? fetchApplicationLogConversationMessages(
             applicationId,
             logConversationId,
-            { limit: RUN_CONVERSATION_PAGE_LIMIT }
+            { aroundRunId: runId, limit: RUN_CONVERSATION_PAGE_LIMIT }
           )
         : fetchApplicationRunConversationMessages(applicationId, runId, {
             limit: RUN_CONVERSATION_PAGE_LIMIT
@@ -533,6 +539,7 @@ function RunConversation({
                 applicationId,
                 logConversationId,
                 {
+                  aroundRunId: runId,
                   after,
                   limit: RUN_CONVERSATION_PAGE_LIMIT
                 }
@@ -617,7 +624,7 @@ function RunConversation({
           ? await fetchApplicationLogConversationMessages(
               applicationId,
               logConversationId,
-              { before, limit: RUN_CONVERSATION_PAGE_LIMIT }
+              { aroundRunId: runId, before, limit: RUN_CONVERSATION_PAGE_LIMIT }
             )
           : await fetchApplicationRunConversationMessages(
               applicationId,
@@ -634,8 +641,14 @@ function RunConversation({
 
   return (
     <div className="application-run-detail__conversation-pane">
-      {recordId && recordQuery.isLoading ? <Spin /> : null}
-      {(recordId ? recordQuery.isError : initialConversationQuery.isError) ? (
+      {(recordId ? recordQuery.isLoading : overviewQuery.isLoading) ? (
+        <Spin />
+      ) : null}
+      {(
+        recordId
+          ? recordQuery.isError
+          : overviewQuery.isError || initialConversationQuery.isError
+      ) ? (
         <Alert
           type="error"
           title={i18nText('agentFlow', 'auto.loading_failed')}
@@ -749,7 +762,6 @@ export function ApplicationRunDetailPanel({
   applicationId,
   requested_model_id,
   reasoning_effort,
-  logConversationId,
   recordId,
   onClose,
   onOpenMessageLog,
@@ -762,7 +774,6 @@ export function ApplicationRunDetailPanel({
   traceLoader?: ConversationLogTraceLoader;
   requested_model_id?: string | null;
   reasoning_effort?: string | null;
-  logConversationId?: string | null;
   recordId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
@@ -782,11 +793,10 @@ export function ApplicationRunDetailPanel({
       <div className="application-run-detail__body">
         <div className="application-run-detail__content">
           <RunConversation
-            key={`${runId}:${logConversationId ?? ''}`}
+            key={`${applicationId}:${recordId ?? runId}`}
             applicationId={applicationId}
             requested_model_id={requested_model_id}
             reasoning_effort={reasoning_effort}
-            logConversationId={logConversationId}
             recordId={recordId}
             onClose={onClose}
             onOpenMessageLog={onOpenMessageLog}

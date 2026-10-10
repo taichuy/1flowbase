@@ -292,7 +292,8 @@
     "show_current_task": "Show current task",
     "show_log_conversation": "Show conversation",
     "parent_task": "Parent task",
-    "node_execution": "Node execution"
+    "node_execution": "Node execution",
+    "more_log_controls": "More filters and actions"
   },
   "archive_import": {
     "path_conflict": "The application path is already in use. Import failed.",

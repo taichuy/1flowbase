@@ -1,3 +1,4 @@
+import { DataTableMobileList, type DataTableMobilePagination } from './DataTableMobileList';
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import { Button, Pagination, Select, Table } from 'antd';
 import { useCallback, useMemo } from 'react';
@@ -41,6 +42,7 @@ type DataTableBaseProps<T extends object> = {
   rowClassName?: (record: T, index: number) => string;
   rowKey: keyof T | ((record: T) => Key);
   toolbar?: ReactNode;
+  mobileList?: DataTableMobilePagination;
   onRow?: TableProps<T>['onRow'];
   rowSelection?: DataTableRowSelection<T>;
 };
@@ -293,6 +295,24 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
         return sum + fixedWidth;
       }, 0);
   }, [appliedVisibleColumnKeys, columnWidths, columns]);
+
+  if (props.mobileList) {
+    return (
+      <section className={['data-table', className].filter(Boolean).join(' ')}>
+        {toolbar ? <div className="data-table__toolbar">{toolbar}</div> : null}
+        <DataTableMobileList
+          key={props.mobileList.resetKey}
+          columns={columns.filter((column) => appliedVisibleColumnKeys.includes(column.key))}
+          items={dataSource}
+          rowKey={rowKey}
+          rowSelection={rowSelection}
+          rowClassName={rowClassName}
+          emptyText={emptyText}
+          pagination={props.mobileList}
+        />
+      </section>
+    );
+  }
 
   return (
     <section className={['data-table', className].filter(Boolean).join(' ')}>

@@ -1,0 +1,80 @@
+.data-table-mobile {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.data-table-mobile__viewport {
+  flex: 1 1 auto;
+  min-height: 240px;
+  min-width: 0;
+}
+
+.data-table-mobile__record {
+  margin-bottom: 12px;
+  padding: 16px;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius-lg);
+  background: var(--ant-color-bg-container);
+  overflow-wrap: anywhere;
+}
+
+.data-table-mobile__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.data-table-mobile__title {
+  min-width: 0;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.data-table-mobile__fields {
+  margin: 0;
+}
+
+.data-table-mobile__field {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  align-items: start;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.data-table-mobile__field dt {
+  color: var(--ant-color-text-secondary);
+}
+
+.data-table-mobile__field dd {
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table-mobile__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  border-top: 1px solid var(--ant-color-border-secondary);
+  padding-top: 8px;
+}
+
+.data-table-mobile__pagination {
+  flex: 0 0 auto;
+  text-align: center;
+  padding: 8px;
+  color: var(--ant-color-text-secondary);
+}
+
+.data-table-mobile__selection {
+  padding: 0 16px 8px;
+}

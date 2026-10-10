@@ -523,6 +523,7 @@ export interface ConsoleApplicationRunDetail {
 }
 
 export interface ConsoleApplicationRunOverview {
+  log_conversation_id: string | null;
   run: ConsoleApplicationRunLog;
   statistics: ConsoleApplicationRunStatistics;
   flow_run: ConsoleFlowRunMetadata;

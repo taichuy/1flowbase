@@ -47,6 +47,10 @@
     "total": "共",
     "total_items": "共 {{value1}} 条",
     "view_details_after_selecting_interface": "选择接口后查看详情",
-    "zoom_view_named_json": "放大查看{{value1}} JSON"
+    "zoom_view_named_json": "放大查看{{value1}} JSON",
+    "list_load_more": "加载更多",
+    "list_retry": "加载失败，点击重试",
+    "list_end": "已加载全部记录",
+    "list_select_loaded": "选择已加载记录"
   }
 }
