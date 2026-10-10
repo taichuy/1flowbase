@@ -3,6 +3,7 @@ use crate::stdio_runtime::{call_executable_streaming, ProviderWorker};
 use extension_package_runtime::provider_contract::{
     ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest,
 };
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 
 const PRIMARY: &str = r#"{"type":"error","error":{"kind":"rate_limited","message":"primary-provider-error","provider_summary":"fixture-upstream-429","provider_details":{"status":429,"code":"fixture-quota"}}}"#;
@@ -11,9 +12,21 @@ const SECONDARY: &str =
 const FAILED_RESULT: &str = r#"printf '%s\n' '{"type":"finish","reason":"error"}' '{"type":"result","result":{"final_content":"stale-first-result","finish_reason":"error"}}'"#;
 
 fn write_script(package: &TempProviderPackage, script: &str) -> PathBuf {
-    package.write("bin/fixture_provider", script);
     let path = package.path().join("bin/fixture_provider");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut writer = fs::File::create(&path).unwrap();
+    writer.write_all(script.as_bytes()).unwrap();
+    writer
+        .set_permissions(fs::Permissions::from_mode(0o755))
+        .unwrap();
+    // Concurrent fork can inherit the writable descriptor until exec, even
+    // after this thread closes it. The shared lock waits for those copies too.
+    // See rust-lang/rust#114554; keep this fixture barrier outside runtime code.
+    writer.lock().unwrap();
+    drop(writer);
+    let reader = fs::File::open(&path).unwrap();
+    reader.lock_shared().unwrap();
+    drop(reader);
     path
 }
 
