@@ -12,6 +12,8 @@ mod visibility;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PortableTemplateInstallResult {
+    #[serde(default)]
+    pub skipped: Vec<PortableTemplateSkippedResource>,
     pub complete: bool,
     pub created: Vec<PortableTemplateCreatedResource>,
     pub updated: Vec<PortableTemplateCreatedResource>,

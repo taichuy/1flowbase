@@ -16,3 +16,6 @@ mod _tests;
 
 mod releases;
 pub use releases::*;
+
+mod merge;
+pub use merge::*;

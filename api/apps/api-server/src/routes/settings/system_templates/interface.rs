@@ -144,6 +144,7 @@ impl TemplateAdapter {
                         .effects
                         .extend(mcp_preview.instances.iter().map(|item| {
                             PortableTemplateEffect {
+                                reason: None,
                                 kind: "mcp_instance".into(),
                                 source_id: item.id.clone(),
                                 target_id: matches!(
@@ -166,6 +167,7 @@ impl TemplateAdapter {
                     ] {
                         preview.effects.extend(items.iter().map(|item| {
                             PortableTemplateEffect {
+                                reason: None,
                                 kind: kind.into(),
                                 source_id: item.id.clone(),
                                 target_id: (item.effect != domain::McpBundleItemEffect::Create)

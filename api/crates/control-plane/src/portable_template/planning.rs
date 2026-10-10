@@ -6,16 +6,36 @@ use uuid::Uuid;
 
 pub fn validate_portable_template(package: &PortableTemplatePackage) -> Vec<String> {
     let mut failures = super::identity::validate_identity_namespace(package);
-    if package.schema_version != PORTABLE_TEMPLATE_SCHEMA_VERSION {
+    if package.schema_version != PORTABLE_TEMPLATE_SCHEMA_VERSION
+        && package.schema_version != PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION
+    {
         failures.push("portable_template_schema_version".into());
     }
-    if package.pages.len() + package.applications.len() + package.data_models.len() == 0
+    if package.pages.len()
+        + package.applications.len()
+        + package.data_models.len()
+        + package.i18n_entries.len()
+        == 0
         && package
             .mcp_bundle
             .as_ref()
             .is_none_or(|bundle| bundle.instances.is_empty())
     {
         failures.push("portable_template_empty".into());
+    }
+    if !package.i18n_entries.is_empty()
+        && package.schema_version != PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION
+    {
+        failures.push("portable_template_i18n_requires_v2".into());
+    }
+    let mut translation_ids = BTreeSet::new();
+    for entry in &package.i18n_entries {
+        if entry.key.trim().is_empty()
+            || entry.locale.trim().is_empty()
+            || !translation_ids.insert((&entry.key, &entry.locale))
+        {
+            failures.push("portable_template_invalid_i18n_identity".into());
+        }
     }
     let mut ids = BTreeSet::new();
     for id in package
@@ -379,6 +399,7 @@ pub fn preview_portable_template_with_map(
         let matched = target.data_models.iter().find(|item| item.id == target_id);
         if !m.builtin {
             effects.push(PortableTemplateEffect {
+                reason: None,
                 kind: "data_model".into(),
                 source_id: m.id.to_string(),
                 target_id: matched.map(|item| item.id.to_string()),
@@ -465,6 +486,7 @@ pub fn preview_portable_template_with_map(
         let target_id = mapped(page.id);
         let matched = target.pages.iter().find(|item| item.id == target_id);
         effects.push(PortableTemplateEffect {
+            reason: None,
             kind: "page".into(),
             source_id: page.id.to_string(),
             target_id: matched.map(|item| item.id.to_string()),
@@ -536,6 +558,7 @@ pub fn preview_portable_template_with_map(
         let target_id = mapped(app.id);
         let matched = target.applications.iter().find(|item| item.id == target_id);
         effects.push(PortableTemplateEffect {
+            reason: None,
             kind: "application".into(),
             source_id: app.id.to_string(),
             target_id: matched.map(|item| item.id.to_string()),
@@ -640,6 +663,7 @@ pub fn preview_portable_template_with_map(
     PortableTemplatePreview {
         valid: failures.is_empty(),
         counts: PortableTemplateCounts {
+            i18n_entries: package.i18n_entries.len(),
             pages: package.pages.len(),
             applications: package.applications.len(),
             data_models: package.data_models.len(),

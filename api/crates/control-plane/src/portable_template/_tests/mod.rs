@@ -37,6 +37,7 @@ fn group(id: u128, parent: Option<u128>) -> PortablePage {
 }
 fn snapshot() -> PortableTemplatePackage {
     PortableTemplatePackage {
+        i18n_entries: Vec::new(),
         release: None,
         schema_version: PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),
         pages: vec![],

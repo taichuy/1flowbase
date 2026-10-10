@@ -55,6 +55,7 @@ impl<
             Err(error) => return Err(error),
         };
         Ok(PortableTemplateCatalog {
+            i18n_entries: Vec::new(),
             mcp_instances: mcp_instances
                 .into_iter()
                 .map(|instance| PortableMcpCatalogItem {

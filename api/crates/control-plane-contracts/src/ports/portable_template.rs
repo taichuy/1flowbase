@@ -57,3 +57,40 @@ pub struct ApplicationTemplateReleaseRecord {
 
 /// Held until the complete cross-owner installation finishes (including failure).
 pub trait ApplicationTemplateInstallGuard: Send {}
+
+/// Journal CAS is independent from editor CAS. Owners must guard the mutation against
+/// intent.expected_fingerprint and record its receipt in their own write transaction.
+/// Holding the template install lock alone does NOT exclude ordinary editor writes.
+#[async_trait::async_trait]
+pub trait PortableTemplateBaselineRepository: Send + Sync {
+    async fn load_template_baselines(
+        &self,
+        scope: &crate::portable_template::TemplateBaselineScope,
+    ) -> anyhow::Result<Vec<crate::portable_template::TemplateResourceBaseline>>;
+
+    /// expected_generation=None inserts a previously unseen key; Some requires exact CAS.
+    /// Existing pending intent is never overwritten (including when its content matches).
+    async fn prepare_template_write(
+        &self,
+        scope: &crate::portable_template::TemplateBaselineScope,
+        key: &crate::portable_template::TemplateResourceKey,
+        expected_generation: Option<i64>,
+        intent: &crate::portable_template::TemplateWriteIntent,
+    ) -> anyhow::Result<bool>;
+
+    /// Advances only a write with an atomic owner receipt. Never reads/adopts live content.
+    async fn finalize_template_write(
+        &self,
+        scope: &crate::portable_template::TemplateBaselineScope,
+        key: &crate::portable_template::TemplateResourceKey,
+        operation_id: Uuid,
+    ) -> anyhow::Result<bool>;
+
+    /// Owner proved that its transaction did not commit; do not use after an unknown outcome.
+    async fn abandon_template_write(
+        &self,
+        scope: &crate::portable_template::TemplateBaselineScope,
+        key: &crate::portable_template::TemplateResourceKey,
+        operation_id: Uuid,
+    ) -> anyhow::Result<bool>;
+}
