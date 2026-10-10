@@ -1,5 +1,5 @@
 {
-  "structure_notice": "Import selected page trees, applications, data models, and MCP instances. Matching IDs are updated, missing objects are created, and other target objects remain. Source business data is excluded.",
+  "structure_notice": "Import selected page trees, applications, data models, MCP instances, and translations. Other target objects remain. Source business data is excluded.",
   "plugin_notice": "External data sources, MCP upstream credentials, and plugin packages are excluded. Add upstream credentials after import. Required plugins are verified and downloaded by the target system during installation.",
   "export": "Export template",
   "import": "Import template",
@@ -33,8 +33,7 @@
   "export_failed": "Template export failed.",
   "reference_map": "Reference ID mapping",
   "close": "Close",
-  "overwrite_notice": "Installing or updating replaces matching definitions, including local edits.",
-  "confirm_install": "Confirm install and overwrite",
+  "confirm_install": "Confirm installation",
   "template_name": "Template name",
   "installed_version": "Installed version",
   "not_installed": "Not installed",
@@ -50,5 +49,17 @@
   "source": "Source",
   "source_builtin": "Built-in",
   "source_official": "Official catalog",
-  "catalog_search": "Search application templates"
+  "catalog_search": "Search application templates",
+  "merge_notice": "Missing objects are created. Existing objects are updated only when unchanged since their last template baseline. Local changes and objects without a baseline are preserved and skipped; installation continues.",
+  "i18n_entries": "Translations",
+  "i18n_selection_notice": "Select translation keys independently. All available locales for each selected key are included; keys are not inferred from page or application source code.",
+  "effect_skip": "Skip and preserve",
+  "effect_unknown": "Unknown action",
+  "reason": "Reason",
+  "skip_local_modified": "Local changes are preserved.",
+  "skip_missing_baseline": "No template baseline is available; existing content is preserved.",
+  "skip_preserved": "Existing content is preserved because it cannot be safely updated.",
+  "skipped_notice": "Resources preserved and skipped: {{count}}. Other eligible resources were processed.",
+  "skip_user_deleted": "This resource was deleted locally and will not be recreated.",
+  "skip_pending_write": "A previous write has an unconfirmed outcome. This resource was skipped; check its state before retrying."
 }

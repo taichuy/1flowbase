@@ -1,5 +1,5 @@
 {
-  "structure_notice": "导入选定页面树、应用、数据模型和 MCP 实例定义。同 ID 的对象更新，缺失对象新增，目标端其他对象保留；不复制来源业务数据。",
+  "structure_notice": "导入选定页面树、应用、数据模型、MCP 实例及多语言翻译。目标端其他对象保留，不复制来源业务数据。",
   "plugin_notice": "不包含外部数据源、MCP 上游连接凭证和插件包。MCP 上游连接导入后需补齐凭证；安装时由目标系统校验并下载所需插件。",
   "export": "导出模板",
   "import": "导入模板",
@@ -33,8 +33,7 @@
   "export_failed": "模板导出失败。",
   "reference_map": "引用 ID 映射",
   "close": "关闭",
-  "overwrite_notice": "安装或更新会覆盖同标识定义，包括本地修改。",
-  "confirm_install": "确认安装并覆盖",
+  "confirm_install": "确认安装",
   "template_name": "模板名称",
   "installed_version": "已安装版本",
   "not_installed": "未安装",
@@ -50,5 +49,17 @@
   "source": "来源",
   "source_builtin": "内置",
   "source_official": "官方目录",
-  "catalog_search": "搜索应用模板"
+  "catalog_search": "搜索应用模板",
+  "merge_notice": "缺失对象新增；已有对象仅在与上次模板基线一致时更新。本地已修改或缺少基线的对象会保留并跳过，继续安装其他资源。",
+  "i18n_entries": "多语言翻译",
+  "i18n_selection_notice": "独立选择多语言键，包含所选键的所有可用语言翻译；不会从页面或应用源码自动推断。",
+  "effect_skip": "跳过并保留",
+  "effect_unknown": "未知操作",
+  "reason": "原因",
+  "skip_local_modified": "保留本地修改。",
+  "skip_missing_baseline": "缺少模板基线，保留已有内容。",
+  "skip_preserved": "无法安全更新，保留已有内容。",
+  "skipped_notice": "已保留并跳过 {{count}} 项资源，其他可处理资源已继续执行。",
+  "skip_user_deleted": "该资源已在本地删除，不会重新创建。",
+  "skip_pending_write": "上次写入的结果尚未确认，已跳过此资源；请先检查资源状态，再重试。"
 }

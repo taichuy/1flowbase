@@ -18,14 +18,18 @@ describe('portable template transport', () => {
       page_ids: ['page'],
       application_ids: [],
       data_model_ids: [],
-      mcp_instance_ids: []
+      mcp_instance_ids: [],
+      i18n_keys: ['gateway.title']
     };
     const body = {
-      schema_version: '1flowbase.portable-template/v1',
+      schema_version: '1flowbase.portable-template/v2',
       pages: [{ id: 'page', tabs: [{ source_code: 'full source' }] }],
       applications: [],
       data_models: [],
-      plugins: []
+      plugins: [],
+      i18n_entries: [
+        { key: 'gateway.title', locale: 'en_US', translation: 'Gateway' }
+      ]
     };
     await getSystemTemplateCatalog();
     expect(fetch).toHaveBeenLastCalledWith({
@@ -94,7 +98,8 @@ describe('portable template transport', () => {
       page_ids: ['page'],
       application_ids: [],
       data_model_ids: [],
-      mcp_instance_ids: []
+      mcp_instance_ids: [],
+      i18n_keys: ['gateway.title']
     };
     await exportSystemTemplateArchive(selection, 'csrf');
     expect(fetch).toHaveBeenLastCalledWith({

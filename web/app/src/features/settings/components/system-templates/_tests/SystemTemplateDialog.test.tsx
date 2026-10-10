@@ -95,11 +95,18 @@ describe('portable template flow', () => {
       pages: [],
       applications: [],
       data_models: [],
+      i18n_entries: [],
       mcp_instances: []
     });
     api.previewSystemTemplate.mockResolvedValue({
       valid: true,
-      counts: { pages: 1, applications: 1, data_models: 2, mcp_instances: 0 },
+      counts: {
+        pages: 1,
+        applications: 1,
+        data_models: 2,
+        mcp_instances: 0,
+        i18n_entries: 0
+      },
       failures: [],
       warnings: [],
       dependencies: [],
@@ -120,6 +127,7 @@ describe('portable template flow', () => {
       pages: [],
       applications: [],
       data_models: [],
+      i18n_entries: [],
       mcp_instances: [{ id: 'agent-tools', name: 'Agent tools' }]
     });
     setup();
@@ -131,10 +139,177 @@ describe('portable template flow', () => {
     fireEvent.click(await screen.findByText('Agent tools'));
     expect(screen.getByRole('button', { name: 'Download ZIP' })).toBeEnabled();
   });
+  test('exports explicitly selected translation keys without selecting other objects', async () => {
+    api.getSystemTemplateCatalog.mockResolvedValue({
+      pages: [],
+      applications: [],
+      data_models: [],
+      mcp_instances: [],
+      i18n_entries: [{ key: 'gateway.title' }, { key: 'gateway.description' }]
+    });
+    // A rejected download keeps this test focused on the outgoing selection.
+    api.exportSystemTemplateArchive.mockRejectedValue(new Error('offline'));
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Export template' }));
+    fireEvent.mouseDown(
+      await screen.findByRole('combobox', { name: 'Translations' })
+    );
+    fireEvent.click(await screen.findByText('gateway.title'));
+    fireEvent.click(screen.getByRole('button', { name: 'Download ZIP' }));
+    await waitFor(() =>
+      expect(api.exportSystemTemplateArchive).toHaveBeenCalledWith(
+        {
+          page_ids: [],
+          application_ids: [],
+          data_model_ids: [],
+          mcp_instance_ids: [],
+          i18n_keys: ['gateway.title']
+        },
+        'csrf-token'
+      )
+    );
+  });
+  test('preview explains preserved resources and install reports skipped resources without blocking eligible changes', async () => {
+    const skipped = [
+      {
+        kind: 'page',
+        source_id: 'customized-page',
+        target_id: 'customized-page',
+        reason: 'user_modified'
+      },
+      {
+        kind: 'application',
+        source_id: 'legacy-app',
+        target_id: 'legacy-app',
+        reason: 'unknown_baseline'
+      },
+      {
+        kind: 'data_model',
+        source_id: 'deleted-model',
+        target_id: null,
+        reason: 'user_deleted'
+      },
+      {
+        kind: 'page',
+        source_id: 'pending-page',
+        target_id: 'pending-page',
+        reason: 'pending_write'
+      }
+    ];
+    api.previewSystemTemplate.mockResolvedValue({
+      valid: true,
+      counts: {
+        pages: 2,
+        applications: 1,
+        data_models: 1,
+        mcp_instances: 0,
+        i18n_entries: 2
+      },
+      failures: [],
+      warnings: [],
+      dependencies: [],
+      mcp_shared_tool_impacts: [],
+      effects: [
+        ...skipped.map((item) => ({ ...item, action: 'skip' })),
+        {
+          kind: 'page',
+          source_id: 'new-page',
+          target_id: null,
+          action: 'create'
+        }
+      ]
+    });
+    api.installSystemTemplate.mockResolvedValue({
+      complete: true,
+      created: [{ kind: 'page', source_id: 'new-page', target_id: 'new-page' }],
+      updated: [],
+      skipped,
+      id_map: {},
+      failures: []
+    });
+    const { container } = setup();
+    upload(container);
+    expect(
+      await screen.findByText('Local changes are preserved.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'No template baseline is available; existing content is preserved.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This resource was deleted locally and will not be recreated.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'A previous write has an unconfirmed outcome. This resource was skipped; check its state before retrying.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText('pending_write')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Skip and preserve')).toHaveLength(4);
+    expect(screen.queryByText('user_modified')).not.toBeInTheDocument();
+    const install = screen.getByRole('button', { name: 'Install template' });
+    expect(install).toBeEnabled();
+    fireEvent.click(install);
+    expect(await screen.findByText('Template installed')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Resources preserved and skipped: 4. Other eligible resources were processed.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Local changes are preserved.')).toHaveLength(2);
+    expect(screen.getAllByText('new-page').length).toBeGreaterThan(1);
+    expect(api.installSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token');
+  });
+  test('imports a v2 JSON package without dropping translations or changing the version', async () => {
+    const translatedBody = {
+      ...body,
+      schema_version: '1flowbase.portable-template/v2',
+      i18n_entries: [
+        { key: 'gateway.title', locale: 'en_US', translation: 'Gateway' },
+        { key: 'gateway.title', locale: 'zh_Hans', translation: '网关' }
+      ]
+    };
+    api.installSystemTemplate.mockResolvedValue({
+      complete: true,
+      created: [],
+      updated: [],
+      skipped: [],
+      id_map: {},
+      failures: []
+    });
+    const { container } = setup();
+    upload(container, JSON.stringify(translatedBody));
+    await waitFor(() =>
+      expect(api.previewSystemTemplate).toHaveBeenCalledWith(
+        translatedBody,
+        'csrf-token'
+      )
+    );
+    const install = await screen.findByRole('button', {
+      name: 'Install template'
+    });
+    await waitFor(() => expect(install).toBeEnabled());
+    fireEvent.click(install);
+    await waitFor(() =>
+      expect(api.installSystemTemplate).toHaveBeenCalledWith(
+        translatedBody,
+        'csrf-token'
+      )
+    );
+  });
   test('server rejection prevents installation and replacing the file clears stale preview', async () => {
     api.previewSystemTemplate.mockResolvedValue({
       valid: false,
-      counts: { pages: 0, applications: 0, data_models: 0, mcp_instances: 0 },
+      counts: {
+        pages: 0,
+        applications: 0,
+        data_models: 0,
+        mcp_instances: 0,
+        i18n_entries: 0
+      },
       failures: ['Route already exists'],
       warnings: [],
       dependencies: [],
@@ -167,6 +342,7 @@ describe('portable template flow', () => {
           target_id: 'target-model'
         }
       ],
+      skipped: [],
       id_map: { 'source-model': 'target-model' },
       failures: ['Application publish failed']
     });
@@ -196,6 +372,7 @@ describe('portable template flow', () => {
       pages: [],
       applications: [],
       data_models: [],
+      i18n_entries: [],
       mcp_instances: [{ id: 'agent-tools', name: 'Agent tools' }]
     });
     api.exportSystemTemplateArchive.mockResolvedValue({
@@ -231,7 +408,8 @@ describe('portable template flow', () => {
         page_ids: [],
         application_ids: [],
         data_model_ids: [],
-        mcp_instance_ids: ['agent-tools']
+        mcp_instance_ids: ['agent-tools'],
+        i18n_keys: []
       },
       'csrf-token'
     );
@@ -252,6 +430,7 @@ describe('portable template flow', () => {
       complete: true,
       created: [],
       updated: [],
+      skipped: [],
       id_map: {},
       failures: []
     });

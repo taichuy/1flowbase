@@ -25,7 +25,13 @@ import { SettingsExtensionCenterSection } from '../../../pages/settings-page/Set
 const body = { catalog_id: 'official/gateway-demo', release_version: 2 };
 const preview = {
   valid: true,
-  counts: { pages: 1, applications: 1, data_models: 2, mcp_instances: 0 },
+  counts: {
+    pages: 1,
+    applications: 1,
+    data_models: 2,
+    mcp_instances: 0,
+    i18n_entries: 0
+  },
   failures: [],
   warnings: [],
   dependencies: [],
@@ -95,6 +101,7 @@ describe('application templates extension tab', () => {
       complete: true,
       created: [],
       updated: [],
+      skipped: [],
       id_map: {},
       failures: []
     });
@@ -117,18 +124,56 @@ describe('application templates extension tab', () => {
     });
     await openPreview();
     const install = await screen.findByRole('button', {
-      name: 'Confirm install and overwrite'
+      name: 'Confirm installation'
     });
     await waitFor(() => expect(install).toBeEnabled());
     fireEvent.click(install);
     expect(await screen.findByText('Template installed')).toBeInTheDocument();
     expect(api.installSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token');
     const completedInstall = screen.getByRole('button', {
-      name: 'Confirm install and overwrite'
+      name: 'Confirm installation'
     });
     expect(completedInstall).toBeDisabled();
     fireEvent.click(completedInstall);
     expect(api.installSystemTemplate).toHaveBeenCalledTimes(1);
+  });
+  test('catalog updates preserve local changes through the shared preview and installation contract', async () => {
+    const skipped = [
+      {
+        kind: 'page',
+        source_id: 'customized-page',
+        target_id: 'customized-page',
+        reason: 'user_modified'
+      }
+    ];
+    api.previewSystemTemplate.mockResolvedValue({
+      ...preview,
+      effects: skipped.map((item) => ({ ...item, action: 'skip' }))
+    });
+    api.installSystemTemplate.mockResolvedValue({
+      complete: true,
+      created: [],
+      updated: [],
+      skipped,
+      id_map: {},
+      failures: []
+    });
+    setup();
+    await openPreview();
+    expect(
+      await screen.findByText('Local changes are preserved.')
+    ).toBeInTheDocument();
+    const install = screen.getByRole('button', {
+      name: 'Confirm installation'
+    });
+    await waitFor(() => expect(install).toBeEnabled());
+    fireEvent.click(install);
+    expect(
+      await screen.findByText(
+        'Resources preserved and skipped: 1. Other eligible resources were processed.'
+      )
+    ).toBeInTheDocument();
+    expect(api.installSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token');
   });
   test('invalid preview surfaces failures and blocks installation', async () => {
     api.previewSystemTemplate.mockResolvedValue({
@@ -140,7 +185,7 @@ describe('application templates extension tab', () => {
     await openPreview();
     expect(await screen.findByText('Missing dependency')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Confirm install and overwrite' })
+      screen.getByRole('button', { name: 'Confirm installation' })
     ).toBeDisabled();
     expect(api.installSystemTemplate).not.toHaveBeenCalled();
   });
@@ -149,13 +194,14 @@ describe('application templates extension tab', () => {
       complete: false,
       created: [],
       updated: [],
+      skipped: [],
       id_map: {},
       failures: ['Plugin download failed']
     });
     setup();
     await openPreview();
     const install = screen.getByRole('button', {
-      name: 'Confirm install and overwrite'
+      name: 'Confirm installation'
     });
     await waitFor(() => expect(install).toBeEnabled());
     fireEvent.click(install);
@@ -164,7 +210,7 @@ describe('application templates extension tab', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Plugin download failed')).toBeInTheDocument();
     const completedInstall = screen.getByRole('button', {
-      name: 'Confirm install and overwrite'
+      name: 'Confirm installation'
     });
     expect(completedInstall).toBeDisabled();
     fireEvent.click(completedInstall);
@@ -180,7 +226,7 @@ describe('application templates extension tab', () => {
       )
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Confirm install and overwrite' })
+      screen.getByRole('button', { name: 'Confirm installation' })
     ).toBeDisabled();
   });
   test('missing permission prevents catalog and installation requests', async () => {

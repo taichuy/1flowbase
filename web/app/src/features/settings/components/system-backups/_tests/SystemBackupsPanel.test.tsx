@@ -152,6 +152,7 @@ describe('SystemBackupsPanel', () => {
       pages: [],
       applications: [],
       data_models: [],
+      i18n_entries: [],
       mcp_instances: []
     });
     renderPanel();
@@ -173,7 +174,13 @@ describe('SystemBackupsPanel', () => {
   test('routes template JSON from Import backup to server preview without uploading a backup archive', async () => {
     api.previewSystemTemplate.mockResolvedValue({
       valid: true,
-      counts: { pages: 1, applications: 0, data_models: 0, mcp_instances: 0 },
+      counts: {
+        pages: 1,
+        applications: 0,
+        data_models: 0,
+        mcp_instances: 0,
+        i18n_entries: 0
+      },
       failures: [],
       warnings: [],
       dependencies: [],
@@ -209,7 +216,13 @@ describe('SystemBackupsPanel', () => {
   test('routes template ZIP from the backup import entry to archive preview', async () => {
     api.previewSystemTemplate.mockResolvedValue({
       valid: true,
-      counts: { pages: 1, applications: 0, data_models: 0, mcp_instances: 0 },
+      counts: {
+        pages: 1,
+        applications: 0,
+        data_models: 0,
+        mcp_instances: 0,
+        i18n_entries: 0
+      },
       failures: [],
       warnings: [],
       dependencies: [],
