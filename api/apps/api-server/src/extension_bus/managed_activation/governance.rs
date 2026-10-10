@@ -167,8 +167,6 @@ impl ManagedExtensionComposition {
         }
         let assembly = self.assembly.lock().await;
         let visible = self.snapshots.lock().await;
-        let retirement_key = serde_json::to_string(&expected)?;
-        visible.ensure_retirement_capacity(&retirement_key)?;
         let matches = |snapshot: &ManagedWorkspaceSnapshot| {
             snapshot.bindings.values().any(|binding| {
                 binding.installation.id == installation_id
@@ -203,15 +201,6 @@ impl ManagedExtensionComposition {
                     snapshot.lifetime.clone(),
                 );
             }
-        }
-        if visible.retired_targets.len()
-            + retirement_markers
-                .keys()
-                .filter(|key| !visible.retired_targets.contains_key(*key))
-                .count()
-            > MAX_RETIRED_TARGETS
-        {
-            bail!("managed retired target capacity exhausted");
         }
         let shared_handles = visible
             .current

@@ -38,7 +38,7 @@ pub(crate) struct ManagedWorkspaceSnapshot {
 #[derive(Clone, Default)]
 struct ManagedSnapshots {
     // Identity-only gates outlive retired snapshots, so shared handles cannot resurrect an exact
-    // retired graph on a later rebuild. Saturation refuses new work without live eviction.
+    // retired graph on a later rebuild. Markers remain until orderly host shutdown.
     retired_targets: BTreeMap<String, Arc<SnapshotLifetime>>,
     current: BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>,
     // Publication and retention share one lock: no delivery can see a new graph before its
@@ -195,10 +195,6 @@ impl ManagedExtensionComposition {
             Self::validate_candidate(&expected, lease.as_ref())?;
             // The authority batch remains locked until the complete candidate set is visible.
             // Readers continue using the prior immutable snapshot during preparation.
-            self.snapshots
-                .lock()
-                .await
-                .ensure_publication_capacity(&candidates)?;
             let previous = candidates
                 .keys()
                 .filter_map(|workspace| {
@@ -367,7 +363,6 @@ impl ManagedExtensionComposition {
         }
         let lifecycle_plan = self.compile_event_plan(&graph, &bindings)?;
         let visible = self.snapshots.lock().await;
-        visible.ensure_candidate_capacity(workspace_id)?;
         let lifetime = visible
             .current
             .values()

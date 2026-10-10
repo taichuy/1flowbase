@@ -49,10 +49,10 @@ impl SnapshotLifetime {
         if state.closed || state.retired {
             bail!("managed snapshot is closed for retirement");
         }
-        if state.references >= 256 {
-            bail!("managed snapshot reference capacity exhausted");
-        }
-        state.references += 1;
+        state.references = state
+            .references
+            .checked_add(1)
+            .context("managed snapshot reference count is not representable")?;
         Ok(SnapshotReference(self.clone()))
     }
     pub(super) fn close(self: &Arc<Self>) -> Result<SnapshotRetirement> {
@@ -123,62 +123,6 @@ impl ManagedWorkspaceSnapshot {
     }
 }
 
-// Fixed per-host budgets. Refusal never evicts a live exact-target retirement gate.
-pub(super) const MAX_CURRENT_WORKSPACES: usize = 256;
-pub(super) const MAX_RETAINED_SNAPSHOTS: usize = 256;
-pub(super) const MAX_RETIRED_TARGETS: usize = 4096;
-impl ManagedSnapshots {
-    pub(super) fn ensure_candidate_capacity(&self, workspace: Uuid) -> Result<()> {
-        if self.retired_targets.len() >= MAX_RETIRED_TARGETS {
-            bail!("managed retired target capacity exhausted");
-        }
-        if !self.current.contains_key(&workspace) && self.current.len() >= MAX_CURRENT_WORKSPACES {
-            bail!("managed current workspace capacity exhausted");
-        }
-        Ok(())
-    }
-    pub(super) fn ensure_retirement_capacity(&self, target: &str) -> Result<()> {
-        if !self.retired_targets.contains_key(target)
-            && self.retired_targets.len() >= MAX_RETIRED_TARGETS
-        {
-            bail!("managed retired target capacity exhausted");
-        }
-        Ok(())
-    }
-    pub(super) fn ensure_publication_capacity(
-        &self,
-        candidates: &BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>,
-    ) -> Result<()> {
-        let added_workspaces = candidates
-            .keys()
-            .filter(|w| !self.current.contains_key(w))
-            .count();
-        if self.current.len() + added_workspaces > MAX_CURRENT_WORKSPACES {
-            bail!("managed current workspace capacity exhausted");
-        }
-        let mut added = Vec::<Arc<ManagedWorkspaceSnapshot>>::new();
-        for (workspace, candidate) in candidates {
-            if let Some(old) = self.current.get(workspace) {
-                if !candidate.same_execution_snapshot(old)
-                    && !self
-                        .retained
-                        .values()
-                        .flatten()
-                        .chain(added.iter())
-                        .any(|s| s.same_execution_snapshot(old))
-                {
-                    added.push(old.clone());
-                }
-            }
-        }
-        if self.retained.values().map(Vec::len).sum::<usize>() + added.len()
-            > MAX_RETAINED_SNAPSHOTS
-        {
-            bail!("managed retained snapshot capacity exhausted");
-        }
-        Ok(())
-    }
-}
 impl ManagedExtensionComposition {
     pub(crate) fn close_owned_admission(&self) {
         self.operations.close();

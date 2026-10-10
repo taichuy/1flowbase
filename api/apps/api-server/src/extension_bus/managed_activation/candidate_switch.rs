@@ -140,9 +140,6 @@ impl ManagedExtensionComposition {
             let lease = self.store.lock_managed_installation_switch(&input).await?;
             Self::validate_candidate(&expected, lease.authority())?;
             let mut visible = self.snapshots.lock().await;
-            visible.ensure_publication_capacity(
-                &[(workspace_id, candidate.clone())].into_iter().collect(),
-            )?;
             // All fallible compilation/activation/drain work precedes this short durable commit.
             // The owned task cannot be cancelled by a dropped request while committing.
             lease.commit(audit).await?;

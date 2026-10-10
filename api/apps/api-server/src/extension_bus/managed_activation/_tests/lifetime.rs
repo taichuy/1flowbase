@@ -6,42 +6,44 @@ async fn root_2007_ac_010_lane_budgets_retirement_saturation() {
     retirement.retire();
     drop(retirement);
     let mut visible = ManagedSnapshots::default();
-    for index in 0..MAX_RETIRED_TARGETS {
+    for index in 0..5000 {
         visible
             .retired_targets
             .insert(format!("retired-{index}"), lifetime.clone());
     }
-    assert!(visible
-        .ensure_retirement_capacity("another-target")
-        .is_err());
-    assert!(visible.ensure_candidate_capacity(Uuid::now_v7()).is_err());
-    assert_eq!(visible.retired_targets.len(), MAX_RETIRED_TARGETS);
+    assert_eq!(visible.retired_targets.len(), 5000);
     assert!(visible.retired_targets["retired-0"].ensure_open().is_err());
     assert!(visible.retired_targets["retired-0"].acquire().is_err());
     let active = Arc::new(SnapshotLifetime::default());
-    let references = (0..256)
+    let references = (0..600)
         .map(|_| active.acquire().unwrap())
         .collect::<Vec<_>>();
-    assert!(active.acquire().is_err());
-    active.close_for_shutdown();
+    let retirement = active.close().unwrap();
+    assert!(retirement.ensure_unreferenced().is_err());
+    assert!(active.ensure_open().is_err());
     assert!(active.acquire().is_err());
     assert!(
         tokio::time::timeout(std::time::Duration::ZERO, active.wait_references())
             .await
             .is_err()
     );
-    assert_eq!(active.reference_count(), 256);
+    assert_eq!(active.reference_count(), 600);
     drop(references);
     active.wait_references().await;
+    retirement.ensure_unreferenced().unwrap();
+    retirement.retire();
+    drop(retirement);
+    assert!(active.ensure_open().is_err());
+    assert!(active.acquire().is_err());
     assert_eq!(
         visible.retired_targets.len(),
-        MAX_RETIRED_TARGETS,
+        5000,
         "draining other resources never evicts retirement markers"
     );
 }
 
-#[test]
-fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
+#[tokio::test]
+async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
     fn snapshot(id: usize) -> Arc<ManagedWorkspaceSnapshot> {
         Arc::new(ManagedWorkspaceSnapshot {
             lifetime: Default::default(),
@@ -59,35 +61,122 @@ fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
             lifecycle_plan: None,
         })
     }
-    let workspace = Uuid::now_v7();
-    let mut visible = ManagedSnapshots::default();
-    let current = snapshot(9999);
-    visible.current.insert(workspace, current.clone());
-    for i in 0..MAX_RETAINED_SNAPSHOTS {
-        visible
-            .retained
-            .insert(format!("graph-{i}"), vec![snapshot(i)]);
-    }
-    assert!(visible
-        .ensure_publication_capacity(&[(workspace, snapshot(10000))].into_iter().collect())
-        .is_err());
-    assert!(Arc::ptr_eq(&visible.current[&workspace], &current));
-    assert_eq!(
-        visible.retained.values().map(Vec::len).sum::<usize>(),
-        MAX_RETAINED_SNAPSHOTS
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let composition = ManagedExtensionComposition::new(
+        state.store.clone(),
+        state.api_node_id.clone(),
+        state.provider_runtime.runtime_backend().clone(),
+        vec![],
     );
+    let workspace: Uuid = sqlx::query_scalar("select id from workspaces limit 1")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let user: Uuid = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let installation = Uuid::now_v7();
+    sqlx::query("insert into extension_installations(id,category,organization,artifact_id,artifact_version,plugin_id,contract_version,protocol,display_name,source_kind,trust_level,verification_status,desired_state,signature_status,metadata_json,created_by) values($1,'runtime-extensions','acme','unbounded','1.0.0','acme.unbounded','1flowbase.extension-bus/v1','stdio_json','Unbounded','uploaded','unverified','valid','disabled','missing','{}',$2)").bind(installation).bind(user).execute(state.store.pool()).await.unwrap();
+    sqlx::query("insert into plugin_assignments(id,installation_id,workspace_id,provider_code,assigned_by) values($1,$2,$3,'acme.unbounded',$4)").bind(Uuid::now_v7()).bind(installation).bind(workspace).bind(user).execute(state.store.pool()).await.unwrap();
+    {
+        let mut visible = composition.snapshots.lock().await;
+        for i in 0..600 {
+            visible.current.insert(Uuid::now_v7(), snapshot(i));
+            visible
+                .retained
+                .insert(format!("retained-{i}"), vec![snapshot(1000 + i)]);
+        }
+        for i in 0..5000 {
+            let lifetime = Arc::new(SnapshotLifetime::default());
+            let retirement = lifetime.close().unwrap();
+            retirement.retire();
+            visible
+                .retired_targets
+                .insert(format!("retired-{i}"), lifetime);
+        }
+    }
+    // Exercise actual candidate preparation beyond all previous host cardinality ceilings.
+    composition
+        .prepare_snapshot(workspace, &[], &[], &mut BTreeMap::new(), &mut Vec::new())
+        .await
+        .unwrap();
+    composition
+        .snapshots
+        .lock()
+        .await
+        .current
+        .insert(workspace, snapshot(9999));
+    // Actual authority-locked publication retains its predecessor beyond the old ceiling.
+    composition
+        .rebuild_installation(installation)
+        .await
+        .unwrap();
+    let candidate = composition.snapshot(workspace).await.unwrap();
+    let references = (0..600)
+        .map(|_| candidate.freeze_reference().unwrap())
+        .collect::<Vec<_>>();
+    let retirement = candidate.lifetime.close().unwrap();
+    assert!(retirement.ensure_unreferenced().is_err());
     assert!(
-        visible
-            .ensure_publication_capacity(&[(workspace, current.clone())].into_iter().collect())
-            .is_ok(),
-        "unchanged snapshot does not spend retention capacity"
+        composition
+            .prepare_snapshot(workspace, &[], &[], &mut BTreeMap::new(), &mut Vec::new())
+            .await
+            .is_err(),
+        "a closing exact snapshot cannot be rebuilt"
     );
-    for _ in 1..MAX_CURRENT_WORKSPACES {
-        visible.current.insert(Uuid::now_v7(), current.clone());
-    }
-    assert!(visible.ensure_candidate_capacity(Uuid::now_v7()).is_err());
-    assert!(visible
-        .ensure_publication_capacity(&[(Uuid::now_v7(), current)].into_iter().collect())
-        .is_err());
-    assert_eq!(visible.current.len(), MAX_CURRENT_WORKSPACES);
+    drop(references);
+    retirement.ensure_unreferenced().unwrap();
+    retirement.retire();
+    drop(retirement);
+    assert!(
+        composition
+            .prepare_snapshot(workspace, &[], &[], &mut BTreeMap::new(), &mut Vec::new())
+            .await
+            .is_err(),
+        "a retired exact snapshot cannot be rebuilt"
+    );
+    let visible = composition.snapshots.lock().await;
+    assert_eq!(visible.current.len(), 601);
+    assert_eq!(visible.retained.values().map(Vec::len).sum::<usize>(), 601);
+    assert_eq!(visible.retired_targets.len(), 5000);
+    assert!(visible.retired_targets["retired-0"].acquire().is_err());
+    drop(visible);
+    composition.close_owned_admission();
+    composition
+        .wait_for_shutdown(std::time::Duration::from_secs(5))
+        .await
+        .unwrap();
+    composition.cleanup_after_shutdown().await;
+    let visible = composition.snapshots.lock().await;
+    assert!(
+        visible.current.is_empty()
+            && visible.retained.is_empty()
+            && visible.retired_targets.is_empty()
+    );
+}
+
+#[test]
+fn root_2325_reference_overflow_preserves_count_and_recoverable_close() {
+    let lifetime = Arc::new(SnapshotLifetime::default());
+    lifetime.0.lock().unwrap().references = usize::MAX;
+    assert!(lifetime.acquire().is_err());
+    assert_eq!(lifetime.reference_count(), usize::MAX);
+    lifetime.0.lock().unwrap().references = 0;
+    let references = (0..600)
+        .map(|_| lifetime.acquire().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(lifetime.reference_count(), 600);
+    let closing = lifetime.close().unwrap();
+    assert!(closing.ensure_unreferenced().is_err());
+    assert!(lifetime.acquire().is_err());
+    drop(closing);
+    lifetime.ensure_open().unwrap();
+    drop(references);
+    assert_eq!(lifetime.reference_count(), 0);
+    let closing = lifetime.close().unwrap();
+    closing.ensure_unreferenced().unwrap();
+    closing.retire();
+    drop(closing);
+    assert!(lifetime.acquire().is_err());
 }
