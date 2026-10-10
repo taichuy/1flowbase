@@ -14,4 +14,5 @@ tags: [mcp, workflow, node-catalog]
 - 优先 HTTP、SQL、Get/List/Add；具体节点工具可复用现有调试接口，但 Workflow 单点调试支持和参数映射须按当前源码及运行态核实。
 - 动机：让已有工作流节点能力对纯 MCP AI 可发现、可理解、可使用。
 - des_id 用于检查客户端持有前置说明的当前版本；不证明完成创建工作流。应用 ID、节点、权限和输入由执行接口独立校验。
-- 截止日期：未指定。任务跟踪 Root issue #2307；运行态只接本地 dev 7800，不改网关 7600。现有发布流程已发布 gateway-demo v4，公开归档digest与验收候选一致。单点已验证，MCP未发现Workflow整链debug入口，因此不宣称整链验收通过；错误定位仍粗。
+- 截止日期：未指定。任务跟踪 Root issue #2307；运行态只接本地 dev 7800，不改网关 7600。现有发布流程已发布 gateway-demo v4，公开归档digest与验收候选一致。单点已验证，MCP未发现Workflow整链debug入口，因此不宣称整链验收通过。
+- 用户批准内置节点诊断贯通方案（#2310）：编译器统一生成类型化诊断，服务保留，公开 API 400 details 与 MCP target_details 复用同一真值；运行后异常仍留 node_run.error_payload，不要求各插件维护校验/异常协议。验收以 tmp/test-governance/node-diagnostics/qa.md 和当前源码为准，用户验收尚待完成。

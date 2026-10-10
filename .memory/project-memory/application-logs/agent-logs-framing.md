@@ -2,9 +2,9 @@
 title: "Issue 2282 Agent Logs 应用需求对齐"
 memory_type: project
 created_at: "2026-10-07 16"
-updated_at: "2026-10-08 20"
+updated_at: "2026-10-09 09"
 decision_policy: verify_before_decision
-status: verified_platform_distribution_and_stateful_collection
+status: reimport_runtime_verified
 tags: [issue-2282, agent-logs, client-trajectory, ingestion, collector-cli]
 ---
 
@@ -19,6 +19,32 @@ tags: [issue-2282, agent-logs, client-trajectory, ingestion, collector-cli]
 第二层对话详情按 agent-flow 的轮次阅读方式：系统提示词 + 该轮用户输入 + 该轮最终 AI 回复；多轮会话每轮只投影一组问答。中间 AI 回复、工具过程、子代理等完整事实留第三层客户端轨迹。这里的“压缩”是展示投影，不新增 AI 总结请求，不删除底层事实；缺最终回复不拿中间回复冒充。两项修正是已确认硬边界，不再处于待确认状态。
 
 用户暂停后连续提供现有Agent Flow列表/对话详情和总轨迹截图，明确三层均已有、应直接复用UI交互与存储。Root收敛复用边界：同一ApplicationLogsWorkspace/Table/DetailPanel/FloatingWindow与ClientTrajectoryWorkspace/Detail，同一application_run_log_tasks、conversation_message_items、client_trajectory目录/正文结构；仅演进采集事实接入、记录归属与run专属读取依赖，禁止采集专属三级UI或复制投影表族。纯采集没有工作流内部事件，展示能力依据真实事实；本地源记录不能补造为HTTP/WS原始帧。用户随后明确“更新issue开工”，已恢复按此边界实现。
+
+## 采集费用仅按模型 ID：用户已确认（2026-10-09）
+
+用户明确纠正：采集费用与供应商无关，仅匹配模型ID，有多个命中取第一个。这取代前轮建议的供应商价格身份绑定；不得在采集入口要求来源供应商映射。底座实施精确ID匹配、沿用价格列表稳定顺序取首个有效规则，缺价zero/any，插件保留来源provider原始事实；native调用计费保持其既有策略。历史目标app仅费用受控重算，不删除/重导日志，不改原始身份、正文、消息、轨迹、Token或断点，不猜不存在的gpt-6.1-sol价格。Root#2300 / Delivery#2313，已集中QA通过并合dev/push d1fd57d76，开发后端官方重启及实际费用重算/API/Playwright验收完成；7380records保留，1816非零估算/798有用量记录仍0、missing0，既有身份/消息/内容引用/Token及其他应用快照一致。gpt-6.1-sol真实缺价仍0，不补价格。候选worktree已收回，Root待用户验收；私有runtime/QA-report.md在tmp/test-governance/agent-logs-model-pricing，截止未设。
+
+## 费用匹配初诊（2026-10-09，供应商绑定建议已被后续确认取代）
+
+用户在重导验收后指出截图Token有值而费用全0。Root只读核对当前dev：截图事件provider_code来自Codex的model_provider，值为sub2api；现有价格表无sub2api规则，gpt-6-sol等价格在openai下；截图gpt-6.1-sol在全表无价格。Agent Logs用source provider/model精确匹配，因此命中zero/any；最新样例1847721tokens的数据库total_cost确为0，另一个已有openai价格的gpt-6-sol样例也因sub2api错位而为0。此前QA仅证明费用投影/zero回退存在，未证明真实来源命中非零定价，不能据其PASS认定定价接入完整。
+
+当前用户仅问原因，未批准新增价格身份映射或历史重算策略；不清理日志、不重置断点、不重新导入、不猜gpt-6.1-sol价格。底座已有configured_models的pricing_provider_code/pricing_model_id可作明确身份分离参考；采集插件保留原始source provider事实。建议明确价格映射和真实价格后仅受控重算费用，保留事件身份和对话轨迹。尚待用户确认方向，截止日期未设。只读证据在tmp/test-governance/agent-logs-reimport-20261009/runtime/pricing-{diagnostic,event-diagnostic,mismatch-diagnostic}.json。
+
+## 最新结算（2026-10-09 05）
+
+用户已明确授权新增批量删除接口、清理目标应用并修复后全量重导，后续指令已取代此前暂停。Root 完成 #2311：只针对 agent_logs 的正式 Console 删除按 started_at [from,to) / all_time 删除完整轮次，保留应用、Key、账务和其他应用；复用 FK / 最后引用回收。Agent Logs 正文生命周期使用应用锁，native 保留原 application/hash 锁；只新增向前迁移，不修改已发布迁移。
+
+模型/effort 从真实来源经正式协议写到 imported 投影，native-summary 触发器不再覆盖 imported 字段；Responses passthrough turn_id 不再拆真实 Codex turn。正式 API 清理后保留 source identity、备份旧断点并重导，完整事件 ID 集合、实际 API 与 Playwright 三层验证已通过。平台和本地 CLI 均已升级0.2.1，客户端资产只从当前1flowbase下载；配置和最终断点保留，后台服务保持未启动。
+
+全部启动快照已扫描；继承历史与无轮次的配置/尾段仍保留 pending，不猜归属。尾段另有10条无明确turn_id的用户消息，不能称已入库；已授权两段损坏JSON隔离、未换行尾行待提交，原文件未改。活跃来源在末次scan之后的新数据留待后续增量。后续禁止重新清空断点或重复清理来“继续采集”；复用现有0.2.1配置/断点。验收和具体范围入口：#2300 / #2311、`tmp/test-governance/agent-logs-reimport-20261009/runtime/QA-report.md`。截止日期未设；动机是保证既定字段与轮次语义正确、历史可审计且后续升级不重复导入。
+
+## 历史暂停与真实投影缺陷（2026-10-09 00，已被后续授权取代）
+
+用户在全量导入实验中明确要求暂停，检查日志列表缺少模型、推理强度与费用的原因；当时导入保持暂停、仅诊断而未改产品代码；后续用户已授权正式清理与修复后重导，当前以“最新结算”为准。既有“缺价格走 zero / any”及“一轮提问 + 最终回答”仍为已确认边界。
+
+只读证据证明：源 `turn_context` 有 model / effort，已保存 canonical event 有 model_id；导入投影却未写 requested_model_id，协议也未规范化 reasoning_effort。采集器把 assistant Responses 透传 metadata.turn_id 覆盖真实 Codex task_started / turn_context 的 turn_id，截图里同轮问答被拆成两条，新增回复记录没有 usage。当前有 usage 的费用为零，缺 usage 的投影为空；不能把所有空费用都误判为价格缺失。
+
+后续需保持原始事实与去重身份，修正字段映射和轮次归属，并评估已入库数据的受控重投影；仅升级采集器继续上传不会自动修复旧投影。证据入口：tmp/test-governance/agent-logs-local-import-20261008/diagnostics/log-field-{source,db,turn,pricing}-evidence.json；暂停状态保存在 recovery-job.json。主仓 dev787305748，产品代码未改；不能据此前发布与三级基础验收推断这些字段已经完整。截止日期未设定，动机是先修复事实归属和既定展示语义，再继续全量实验。
 
 ## 最新平台分发纠正
 
@@ -57,3 +83,21 @@ Root已完成用户批准的平台分发修正。主仓仍是dev、官方仓仍�
 用户确认采用 Vector / Fluent Bit 式的有状态文件追踪平衡方案，由共享 Rust SDK 管理来源索引、ACK 游标与最小 adapter context 原子断点、pending 来源区间重放、实际 envelope 字节组批和跨文件按批轮询；Codex 插件只持久化最小格式上下文与转换事实。保持串行持久 ACK、稳定事件身份、原始事实、完整历史前缀检查、已有协议与平台分发路径；不引入 SQLite、并行上传、永久全文缓存或任意总记录上限。
 
 动机是减少重复历史 JSON 解析和上下文重建，同时把功能完整性与恢复可靠性放在性能前面。严格前缀校验仍读 O(H)，不能宣称总 I/O 已变为 O(Δ)；组批是可配置的传输目标，超目标单事件完整发送。断点升级须保留身份。无截止日期，最新验收与发行状态以官方插件仓库 Single Issue #8 为准；已装旧 CLI 需要先升级 1flowbase 中的包，再用同一 installation ID 重执行客户端安装命令。该优化已完成源码验收和正式签名发行，不代表替用户安装或启动客户端。
+
+## 日志页日期与分批删除：用户已确认（2026-10-09）
+
+用户要求在刷新按钮左侧提供删除表单：7天、30天、90天、一年、全部、自定义日期，每批默认100条。底座保持按应用、日志开始时间选择完整记录，每批事务删除并级联回收所属事实/正文，采集插件不承担清理编排。以独立入库时间固定操作边界，不能把源事件 created_at 当成到达时间，避免后来补录的旧时间历史被本次删除卷入。停止只阻止后续批次，当前提交保留；响应失败不自动重试或冒称回滚。此阶段验证只操作隔离fixture，真实导入历史保留；范围确定后直接实现，未设截止日期。
+
+## 持久化删除任务与真实进度：已交付（2026-10-09）
+
+用户确认把浏览器串行删除升级为持久化任务，动机是长批次COMMIT或页面/网络中断时仍能查询真实已提交进度。底座独占固定记录工作集、总数、分批事务、任务恢复和停止；前端只显示后端绝对计数，插件不参与删除。关闭继续，停止保留已提交批次；正式追加迁移，保留旧DELETE协调和独立operation权限。无新容量上限、通用任务中心或依赖，截止日期未设定。
+
+Root已按Single Issue #2315完成候选CI、主dev集成/push和官方dev-up重启；临时fixture真实1205/1205完成，重启同job继续、停止17/105；历史目标记录/receipt/key/app计数未变。临时应用和session已回收。具体refs、源码owner、QA边界与本机其他任务dirty的运行态区别以Issue最新验收评论及主仓tmp/test-governance/agent-logs-delete-progress/QA-report.md为准。Issue保持open进入user-acceptance，未生产部署；全仓既有TypeScript错误未纳入本次范围。
+
+## 统一聊天检索与 MCP：已确认并交付（2026-10-09）
+
+用户已确认通过共享存储上的正式接口与同一1flowbase MCP统一查询Agent Flow/Imported聊天，要求干净worktree实现后合回当前dev。完整轨迹是组合业务读取，不作为普通数据源表注册；底座拥有workspace/application ACL、字段AND/OR筛选、稳定keyset分页、系统上下文/用户输入/最终回复与语义正文恢复，插件仅转换来源事实。轨迹关键词定位已恢复的overview/parameters/result并返回step/section，raw按需分页读取，不全历史解压检索。保留any/zero计费；不安装扩展、不新增正文索引、不重导或改写历史。动机是AI按内容查两类聊天时不必猜来源、表或应用类型，并保留可靠追溯；截止日期未设定。
+
+Root按Single Issue #2320完成隔离assembly、集中QA、主dev集成/push与官方后端开发重启。MCP目录 /business-systems/applications/logs 已配置5个工具并完成list/get/call，运行态空query对象被wrapper转null的缺口已修复和实际验证。正式Native问答/费用/轨迹/正文关键词及raw分页可读；当前Imported应用无历史，正向来自隔离数据库fixtures，未为验证重导。旧GUI保持可用，权限/错误边界已取证。无正文索引时广范围关键词仍有扫描成本，不把分页误称扫描上限。
+
+Issue保持open进入user-acceptance，未生产部署；仅任务worktree回收，其他任务和私有memory dirty保留。精确refs、QA统计、源码owner、证据与限制以Issue最新Control Ledger和主目录tmp/test-governance/unified-logs-query/QA-report.md为准；旧诊断中的“待确认/待注册普通表”不再作为当前决策。
