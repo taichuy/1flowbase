@@ -29,6 +29,7 @@ async fn store() -> (PgControlPlaneStore, PgPool) {
 
 fn binding(workspace_id: Uuid) -> PluginDataBinding {
     PluginDataBinding {
+        managed_subject: None,
         publisher_namespace: "acme".to_string(),
         plugin_code: "session".to_string(),
         plugin_version: "1.0.0".to_string(),

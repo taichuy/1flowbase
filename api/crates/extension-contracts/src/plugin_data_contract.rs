@@ -25,6 +25,8 @@ pub enum PluginDataPermission {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginDataBinding {
+    /// Host-only exact subject; never accepted from a worker request.
+    pub managed_subject: Option<crate::extension_bus::ManagedContributionSubject>,
     pub publisher_namespace: String,
     pub plugin_code: String,
     pub plugin_version: String,

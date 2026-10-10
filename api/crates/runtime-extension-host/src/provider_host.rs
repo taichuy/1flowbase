@@ -1515,6 +1515,7 @@ fn build_host_call_context(
     }
     Ok(Some(ProviderHostCallContext {
         binding: PluginDataBinding {
+            managed_subject: None,
             publisher_namespace: manifest.publisher_namespace.clone(),
             plugin_code: manifest.plugin_code()?.to_string(),
             plugin_version: manifest.version.clone(),

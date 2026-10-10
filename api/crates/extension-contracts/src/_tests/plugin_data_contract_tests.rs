@@ -56,3 +56,12 @@ fn pdp_009_runtime_host_call_v1_golden_is_additive_and_correlated() {
     let frame: RuntimeHostWorkerFrame = serde_json::from_str(raw).unwrap();
     assert_eq!(serde_json::to_string(&frame).unwrap(), raw);
 }
+
+#[test]
+fn managed_subject_is_not_a_worker_supplied_plugin_data_field() {
+    let mut request = json!({"operations":[{"operation":"count","target":{"kind":"owned_collection","collection_code":"connections"}}]});
+    assert!(serde_json::from_value::<PluginDataRequest>(request.clone()).is_ok());
+    request["managed_subject"] =
+        json!({"installation_id":"forged","workspace_id":"forged","contribution_id":"forged"});
+    assert!(serde_json::from_value::<PluginDataRequest>(request).is_err());
+}
