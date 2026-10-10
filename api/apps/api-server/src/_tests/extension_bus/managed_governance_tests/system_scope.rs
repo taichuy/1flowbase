@@ -85,6 +85,28 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
         body["data"]["workspace_id"],
         domain::SYSTEM_SCOPE_ID.to_string()
     );
+    for (scope, expected) in [
+        (domain::SYSTEM_SCOPE_ID, StatusCode::OK),
+        (actor.current_workspace_id, StatusCode::BAD_REQUEST),
+    ] {
+        let cursor = ManagedDeliveryCursor {
+            installation_id: id,
+            workspace_id: scope,
+            event_id: Uuid::now_v7(),
+            subscriber_id: "cursor-probe".into(),
+        }
+        .encode();
+        let (status, result) = request(
+            &app,
+            &cookie,
+            &csrf,
+            "GET",
+            &format!("{view}?cursor={cursor}"),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, expected, "{result}");
+    }
     let target = body["data"]["executions"][0]["target"].clone();
     assert!(target.is_object(), "system execution must be visible");
     let role = "system_governance_role";
