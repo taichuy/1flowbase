@@ -1137,7 +1137,16 @@ describe('SettingsPage', () => {
       currentPasswordInput.closest<HTMLElement>('[role="dialog"]');
     if (!passwordDialog)
       throw new Error('Password field is not inside a dialog');
-    expect(within(passwordDialog).getByText('重置密码')).toBeVisible();
+    // Form fields mount before the modal's asynchronous opening is visible.
+    await waitFor(() => {
+      expect(passwordDialog).toBeVisible();
+      expect(within(passwordDialog).getByText('重置密码')).toBeVisible();
+      for (const label of ['当前密码', '新密码', '确认新密码']) {
+        const input = within(passwordDialog).getByLabelText(label);
+        expect(input).toBeVisible();
+        expect(input).toBeEnabled();
+      }
+    });
     expect(passwordDialog).toHaveAttribute('aria-modal', 'true');
     fireEvent.change(within(passwordDialog).getByLabelText('当前密码'), {
       target: { value: 'change-me' }

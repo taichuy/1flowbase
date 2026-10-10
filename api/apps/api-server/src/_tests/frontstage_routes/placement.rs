@@ -79,6 +79,7 @@ async fn create_and_group_metadata_reject_mismatch_while_move_inherits_sidebar_p
     .await;
     assert_eq!(detail_status, StatusCode::OK);
     assert_eq!(detail_payload["data"]["page"]["id"], json!(page_id));
+    assert_eq!(detail_payload["data"]["page"]["parent_id"], json!(group_id));
     assert_eq!(
         detail_payload["data"]["document"]["root_uid"],
         json!(document_root_uid)
@@ -99,6 +100,10 @@ async fn create_and_group_metadata_reject_mismatch_while_move_inherits_sidebar_p
     )
     .await;
     assert_eq!(valid_child_status, StatusCode::CREATED);
+    assert_eq!(
+        valid_child_payload["data"]["page"]["parent_id"],
+        json!(group_id)
+    );
     let child_id = valid_child_payload["data"]["page"]["id"].as_str().unwrap();
     let (tree_status, tree_before) = get_json(&app, "/api/console/frontstage/pages", &cookie).await;
     assert_eq!(tree_status, StatusCode::OK);
@@ -111,7 +116,6 @@ async fn create_and_group_metadata_reject_mismatch_while_move_inherits_sidebar_p
     assert_eq!(children[0]["id"], json!(page_id));
     assert_eq!(children[1]["id"], json!(child_id));
     for child in children {
-        assert_eq!(child["parent_id"], json!(group_id));
         assert_eq!(child["placement"], "sidebar");
     }
 
