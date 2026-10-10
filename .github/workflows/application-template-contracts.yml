@@ -1,0 +1,81 @@
+name: Application template contract evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev, 'codex/**']
+    paths:
+      - 'api/**/portable_template*'
+      - 'api/**/portable_template/**'
+      - 'api/**/portable_template_repository/**'
+      - 'api/**/system_templates/**'
+      - 'api/**/i18n_merge*'
+      - 'api/**/template_writes.rs'
+      - 'api/**/20261010010000_application_template_resource_baselines.sql'
+      - '.github/workflows/application-template-contracts.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: application-template-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application-template-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      CARGO_INCREMENTAL: '0'
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: application-template-contracts
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Verify template merge, receipts, and backup contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/test-governance/application-templates
+          git rev-parse HEAD > tmp/test-governance/application-templates/candidate-sha.txt
+          export CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS ltree WITH SCHEMA public'
+          verification_status=0
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib portable_template > tmp/test-governance/application-templates/planner.log 2>&1 || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test portable_template_install > tmp/test-governance/application-templates/install.log 2>&1 || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test i18n_catalog_integration template_ > tmp/test-governance/application-templates/i18n.log 2>&1 || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective > tmp/test-governance/application-templates/backup.log 2>&1 || verification_status=1
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib system_templates > tmp/test-governance/application-templates/http.log 2>&1 || verification_status=1
+          exit "$verification_status"
+      - name: Compile API consumers
+        if: always()
+        run: |
+          set -euo pipefail
+          export CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)"
+          cargo check --locked --manifest-path api/Cargo.toml -p api-server --tests 2>&1 | tee tmp/test-governance/application-templates/api-check.log
+      - name: Preserve candidate-bound evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: application-template-contracts-${{ github.sha }}
+          path: tmp/test-governance/application-templates/
+          if-no-files-found: error
