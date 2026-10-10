@@ -163,6 +163,7 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
     for table in [
         "portable_template_identities",
         "application_template_releases",
+        "application_template_resource_baselines",
     ] {
         assert!(
             backups.data_tables.contains(&table.into()),
