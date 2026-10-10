@@ -531,6 +531,8 @@ node scripts/node/plugin/cli.js package <plugin-path> --out ./dist
 node scripts/node/reset-rust-cache/cli.js
 ```
 
+只需执行这一个命令，清理、启动目标编译和完整测试预热会自动串行完成，无需手动分两次执行，也不需要追加参数。
+
 该入口会严格按顺序执行：
 
 1. 停止当前 worktree 的 `api-server`，删除 `api/target/`；
@@ -538,11 +540,13 @@ node scripts/node/reset-rust-cache/cli.js
 3. 启动目标编译成功后，使用项目统一的 `CARGO_PROFILE_TEST_DEBUG=0` 预热 workspace 全部 test targets，但不运行测试。
 
 启动编译阶段不使用 `--all-targets`，避免同时编译大型测试目标；测试预热仍默认执行，供后续 AI 开发复用。
+“启动目标编译完成”只表示第一阶段成功，脚本会自动继续测试预热；请等待最后的全量预热完成提示。
 每阶段输出完成耗时，并通过 `--timings` 在 `api/target/cargo-timings/` 保存 Cargo 构建报告。
 
 预热命令读取 `.1flowbase.verify.local.json` 中的 `backend.cargoJobs` 与
 `backend.incremental`，避免清理、日常构建和测试使用不同的构建身份。任一阶段失败时立即停止；只有输出
 `Rust 缓存清理与全量预热完成` 才表示全部缓存已经成功生成。
+脚本沿用现有资源配置，不修改构建并发或测试并发。它只生成构建缓存，不会自动启动或重启 API 服务；需要运行服务时再使用 `dev-up`。
 
 这个流程会真实删除当前 worktree 的 Rust 缓存并执行完整冷构建，耗时和磁盘写入量都较大。不要把它作为普通开发启动命令；没有清理需求时，继续使用 `dev-up` 或定向 Cargo 命令，让增量缓存自然复用。
 
