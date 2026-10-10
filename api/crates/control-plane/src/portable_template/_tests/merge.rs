@@ -316,9 +316,23 @@ fn mcp_metadata_group_and_binding_project_independently() {
     let before = project_template_resources(&source, &BTreeMap::new()).unwrap();
     source.mcp_bundle.as_mut().unwrap().instances[0].groups[0].display_name = "Local name".into();
     let after = project_template_resources(&source, &BTreeMap::new()).unwrap();
-    assert_eq!(before.len(), 3);
-    assert_eq!(before[0].key.kind, "mcp_instance");
-    assert_eq!(before[0].fingerprint, after[0].fingerprint);
-    assert_ne!(before[1].fingerprint, after[1].fingerprint);
-    assert_eq!(before[2].fingerprint, after[2].fingerprint);
+    assert_eq!(before.len(), 4);
+    assert_eq!(after.len(), 4);
+    for kind in [
+        "mcp_instance",
+        "mcp_discovery_policy",
+        "mcp_group",
+        "mcp_binding",
+    ] {
+        let prior = before.iter().find(|entry| entry.key.kind == kind).unwrap();
+        let current = after.iter().find(|entry| entry.key == prior.key).unwrap();
+        if kind == "mcp_group" {
+            assert_ne!(prior.fingerprint, current.fingerprint);
+        } else {
+            assert_eq!(
+                prior.fingerprint, current.fingerprint,
+                "unexpected change: {kind}"
+            );
+        }
+    }
 }

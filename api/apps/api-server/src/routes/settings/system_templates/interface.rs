@@ -274,7 +274,8 @@ impl TemplateAdapter {
                                 &self.0.mcp_interface_catalog,
                                 actor,
                             )
-                            .await?;
+                            .await
+                            .map_err(|error| error.0)?;
                             control_plane::portable_template::mcp_merge::install(
                                 &repository,
                                 &translation_scope,
