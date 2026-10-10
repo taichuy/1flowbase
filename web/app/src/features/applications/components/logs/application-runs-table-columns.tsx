@@ -28,6 +28,21 @@ function formatRunStatisticNumber(value: number | null | undefined) {
     : '-';
 }
 
+const tokenCountFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 2
+});
+
+function renderRunTokenCount(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+
+  return (
+    <span title={formatNumber(value)}>
+      {tokenCountFormatter.format(value).toLowerCase()}
+    </span>
+  );
+}
+
 function formatRunStatisticRate(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value)
     ? formatNumber(value, {
@@ -273,33 +288,33 @@ export function getApplicationRunsTableColumns(
       key: 'total_tokens',
       title: t('auto.total_tokens'),
       width: 130,
-      render: (_value, run) => formatRunStatisticNumber(run.total_tokens)
+      render: (_value, run) => renderRunTokenCount(run.total_tokens)
     },
     {
       key: 'input_tokens',
       title: t('auto.input_tokens'),
       width: 130,
-      render: (_value, run) => formatRunStatisticNumber(run.input_tokens)
+      render: (_value, run) => renderRunTokenCount(run.input_tokens)
     },
     {
       key: 'output_tokens',
       title: t('auto.output_tokens'),
       width: 130,
-      render: (_value, run) => formatRunStatisticNumber(run.output_tokens)
+      render: (_value, run) => renderRunTokenCount(run.output_tokens)
     },
     {
       key: 'count_tokens_input_tokens',
       title: t('auto.count_tokens'),
       width: 140,
       render: (_value, run) =>
-        formatRunStatisticNumber(run.count_tokens_input_tokens)
+        renderRunTokenCount(run.count_tokens_input_tokens)
     },
     {
       key: 'input_cache_hit_tokens',
       title: t('auto.input_cache_hit_tokens'),
       width: 150,
       render: (_value, run) =>
-        formatRunStatisticNumber(run.input_cache_hit_tokens)
+        renderRunTokenCount(run.input_cache_hit_tokens)
     },
     {
       key: 'input_cache_hit_rate',
