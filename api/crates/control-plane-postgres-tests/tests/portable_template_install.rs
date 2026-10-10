@@ -3,7 +3,10 @@ use control_plane::{
     portable_template::*,
     ports::{ApplicationRepository, FrontstagePageRepository, ModelDefinitionRepository},
 };
-use control_plane_contracts::ports::PortableTemplateIdentityRepository;
+use control_plane_contracts::ports::{
+    PortableTemplateBaselineRepository, PortableTemplateIdentityRepository,
+    PortableTemplateTransactionRepository,
+};
 use serde_json::json;
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -19,9 +22,11 @@ fn fixture() -> PortableTemplatePackage {
 }
 
 #[tokio::test]
-async fn stale_identity_target_is_replaced_when_install_recreates_missing_resource() {
+async fn user_deleted_tracked_model_is_preserved_without_recreation() {
     let (store, workspace, actor) = support::seed_store().await;
-    let package = fixture();
+    let mut package = fixture();
+    package.pages.clear();
+    package.data_models[0].fields.clear();
     let source_id = package.data_models[0].id;
     let stale_target_id = Uuid::now_v7();
     store
@@ -33,27 +38,28 @@ async fn stale_identity_target_is_replaced_when_install_recreates_missing_resour
         )
         .await
         .unwrap();
-
     let result = PortableTemplateInstallService::new(store.clone())
         .install(actor.id, package)
         .await
         .unwrap();
-
     assert!(result.complete, "{:?}", result.failures);
-    let target_id: Uuid = result.id_map[&source_id.to_string()].parse().unwrap();
-    assert_ne!(target_id, stale_target_id);
+    assert!(result.created.is_empty());
+    assert!(result
+        .skipped
+        .iter()
+        .any(|item| item.kind == "data_model" && item.reason == "user_deleted"));
     assert!(
-        ModelDefinitionRepository::get_model_definition(&store, workspace.id, target_id)
+        ModelDefinitionRepository::get_model_definition(&store, workspace.id, stale_target_id)
             .await
             .unwrap()
-            .is_some()
+            .is_none()
     );
     assert_eq!(
         store
             .load_portable_template_identity_map(workspace.id)
             .await
             .unwrap()[&source_id.to_string()],
-        target_id.to_string()
+        stale_target_id.to_string()
     );
 }
 
@@ -201,35 +207,44 @@ async fn installs_main_source_table_and_rewrites_page_without_duplicate_default_
 }
 
 #[tokio::test]
-async fn owner_failure_returns_created_resources_and_stops_before_pages() {
+async fn owner_failure_rolls_back_native_resources_and_baselines_then_retries() {
     let (store, workspace, actor) = support::seed_store().await;
-    let mut package = fixture();
-    package.data_models[0].fields[0].code = "id".into();
-    let source_model = package.data_models[0].id;
+    let valid = fixture();
+    let mut invalid = valid.clone();
+    invalid.data_models[0].fields[0].code = "id".into();
     let result = PortableTemplateInstallService::new(store.clone())
-        .install(actor.id, package)
+        .install(actor.id, invalid)
         .await
         .unwrap();
     assert!(!result.complete);
     assert!(!result.failures.is_empty());
-    assert!(result
-        .created
+    assert!(result.created.is_empty());
+    assert!(result.updated.is_empty());
+    assert!(store
+        .load_template_baselines(&template_baseline_scope(workspace.id, &valid))
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(!store
+        .portable_template_snapshot(actor.id, workspace.id)
+        .await
+        .unwrap()
+        .data_models
         .iter()
-        .any(|r| r.kind == "data_model" && r.source_id == source_model.to_string()));
-    assert!(!result.created.iter().any(|r| r.kind == "page"));
-    let id = result.id_map[&source_model.to_string()].parse().unwrap();
-    assert!(
-        ModelDefinitionRepository::get_model_definition(&store, workspace.id, id)
-            .await
-            .unwrap()
-            .is_some()
-    );
-    assert!(
-        ApplicationRepository::load_actor_context_for_user(&store, actor.id)
-            .await
-            .unwrap()
-            .is_root
-    );
+        .any(|m| m.code == "portable_orders"));
+    let retry = PortableTemplateInstallService::new(store.clone())
+        .install(actor.id, valid.clone())
+        .await
+        .unwrap();
+    assert!(retry.complete, "{:?}", retry.failures);
+    let baselines = store
+        .load_template_baselines(&template_baseline_scope(workspace.id, &valid))
+        .await
+        .unwrap();
+    assert!(!baselines.is_empty());
+    assert!(baselines
+        .iter()
+        .all(|b| b.applied_fingerprint.is_some() && b.pending.is_none()));
 }
 
 fn workflow_document(flow_id: Uuid, name: &str) -> serde_json::Value {
@@ -428,6 +443,9 @@ async fn visibility_merges_existing_target_grants_and_missing_role_blocks_all_wr
         .data_models
         .iter()
         .any(|m| m.code == "portable_orders"));
+    // An unrelated hidden target rule must not be replaced by this visible-only package.
+    sqlx::query("UPDATE frontstage_page_visibility_rules SET visibility='hidden' WHERE workspace_id=$1 AND page_id=$2 AND role_id=(SELECT id FROM roles WHERE workspace_id=$1 AND code='member')")
+        .bind(workspace.id).bind(existing.page.id).execute(store.pool()).await.unwrap();
     package.pages[0].visibility_rules[0].role_code = "member".into();
     let source_page = package.pages[0].id;
     let result = PortableTemplateInstallService::new(store.clone())
@@ -443,7 +461,8 @@ async fn visibility_merges_existing_target_grants_and_missing_role_blocks_all_wr
     assert!(view
         .rules
         .iter()
-        .any(|r| r.page_id == Some(existing.page.id)));
+        .any(|r| r.page_id == Some(existing.page.id)
+            && r.visibility == domain::frontstage::FrontstagePageVisibility::Hidden));
     assert!(view.rules.iter().any(|r| r.page_id == Some(page_id)));
 }
 
@@ -639,4 +658,205 @@ async fn release_ledger_preserves_failed_retry_immutable_digest_and_workspace_sc
         after_retry, initial,
         "retry must preserve platform identity and creation time"
     );
+}
+
+#[tokio::test]
+async fn safe_merge_preserves_local_page_and_unknown_block_but_updates_and_adds_independent_items()
+{
+    use control_plane::frontstage::{FrontstagePageService, UpdateFrontstagePageMetadataCommand};
+    let (store, workspace, actor) = support::seed_store().await;
+    let mut package = fixture();
+    let initial = PortableTemplateInstallService::new(store.clone())
+        .install(actor.id, package.clone())
+        .await
+        .unwrap();
+    assert!(initial.complete, "{:?}", initial.failures);
+    let page_id: Uuid = initial.id_map[&package.pages[0].id.to_string()]
+        .parse()
+        .unwrap();
+    FrontstagePageService::new(store.clone())
+        .update_metadata(UpdateFrontstagePageMetadataCommand {
+            actor_user_id: actor.id,
+            workspace_id: workspace.id,
+            page_id,
+            title: Some(Some("Local title".into())),
+            icon: None,
+            tooltip: None,
+            is_hidden: None,
+            placement: None,
+            content_presentation: None,
+            slug: None,
+        })
+        .await
+        .unwrap();
+    let scope = template_baseline_scope(workspace.id, &package);
+    let old = store.load_template_baselines(&scope).await.unwrap();
+    // Historical packages had identity records but no per-item baseline.
+    let old_block = package.pages[0].tabs[0].blocks[0].block_id.clone();
+    sqlx::query("DELETE FROM application_template_resource_baselines WHERE workspace_id=$1 AND template_id=$2 AND kind='block' AND source_id=$3")
+        .bind(workspace.id).bind(&scope.template_id).bind(&old_block).execute(store.pool()).await.unwrap();
+    package.pages[0].title = Some("Upstream title".into());
+    package.pages[0].tabs[0].blocks[0].source_code =
+        "export default function Component() { return 'upstream overwrite'; }".into();
+    package.data_models[0].title = "Upstream model".into();
+    let mut added = package.pages[0].tabs[0].blocks[0].clone();
+    added.block_id = Uuid::now_v7().to_string();
+    added.code_ref = format!("new-code-{}", added.block_id);
+    added.rank = "b".into();
+    added.source_code =
+        "export default function Component() { return 'new independent block'; }".into();
+    package.pages[0].tabs[0].blocks.push(added.clone());
+    let preview = PortableTemplateService::new(store.clone())
+        .preview(actor.id, &package)
+        .await
+        .unwrap();
+    assert!(preview.valid, "{:?}", preview.failures);
+    assert!(preview.effects.iter().any(|e| e.kind == "page"
+        && e.action == "skip"
+        && e.reason.as_deref() == Some("user_modified")));
+    assert!(preview.effects.iter().any(|e| e.source_id == old_block
+        && e.action == "skip"
+        && e.reason.as_deref() == Some("unknown_baseline")));
+    assert!(preview
+        .effects
+        .iter()
+        .any(|e| e.source_id == added.block_id && e.action == "create"));
+    let installed = PortableTemplateInstallService::new(store.clone())
+        .install(actor.id, package.clone())
+        .await
+        .unwrap();
+    assert!(installed.complete, "{:?}", installed.failures);
+    let snapshot = store
+        .portable_template_snapshot(actor.id, workspace.id)
+        .await
+        .unwrap();
+    let page = snapshot.pages.iter().find(|p| p.id == page_id).unwrap();
+    assert_eq!(page.title.as_deref(), Some("Local title"));
+    assert_eq!(page.tabs[0].blocks.len(), 2);
+    assert!(!page.tabs[0]
+        .blocks
+        .iter()
+        .any(|b| b.source_code.contains("upstream overwrite")));
+    assert!(page.tabs[0]
+        .blocks
+        .iter()
+        .any(|b| b.source_code.contains("new independent block")));
+    assert!(snapshot
+        .data_models
+        .iter()
+        .any(|m| m.title == "Upstream model"));
+    let after = store.load_template_baselines(&scope).await.unwrap();
+    let page_key = TemplateResourceKey {
+        kind: "page".into(),
+        source_id: package.pages[0].id.to_string(),
+    };
+    assert_eq!(
+        old.iter().find(|b| b.key == page_key).unwrap(),
+        after.iter().find(|b| b.key == page_key).unwrap()
+    );
+    assert!(!after
+        .iter()
+        .any(|b| b.key.kind == "block" && b.key.source_id == old_block));
+}
+
+#[tokio::test]
+async fn scoped_native_transaction_savepoints_rollback_and_editor_write_exclusion() {
+    use control_plane::frontstage::{FrontstagePageService, UpdateFrontstagePageMetadataCommand};
+    let (store, workspace, actor) = support::seed_store().await;
+    let package = fixture();
+    let installed = PortableTemplateInstallService::new(store.clone())
+        .install(actor.id, package.clone())
+        .await
+        .unwrap();
+    assert!(installed.complete, "{:?}", installed.failures);
+    let page_id: Uuid = installed.id_map[&package.pages[0].id.to_string()]
+        .parse()
+        .unwrap();
+    let transaction = store.begin_portable_template_transaction().await.unwrap();
+    // The native owner opens and commits its own transaction, which must be a savepoint.
+    FrontstagePageService::new(transaction.repository.clone())
+        .update_metadata(UpdateFrontstagePageMetadataCommand {
+            actor_user_id: actor.id,
+            workspace_id: workspace.id,
+            page_id,
+            title: Some(Some("Uncommitted".into())),
+            icon: None,
+            tooltip: None,
+            is_hidden: None,
+            placement: None,
+            content_presentation: None,
+            slug: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        FrontstagePageRepository::get_frontstage_page(&store, workspace.id, page_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Portable")
+    );
+    let editing_store = store.clone();
+    let mut editor = tokio::spawn(async move {
+        FrontstagePageService::new(editing_store)
+            .update_metadata(UpdateFrontstagePageMetadataCommand {
+                actor_user_id: actor.id,
+                workspace_id: workspace.id,
+                page_id,
+                title: Some(Some("Concurrent editor".into())),
+                icon: None,
+                tooltip: None,
+                is_hidden: None,
+                placement: None,
+                content_presentation: None,
+                slug: None,
+            })
+            .await
+    });
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut editor)
+            .await
+            .is_err(),
+        "ordinary editor must wait for real table write lock"
+    );
+    let scoped_pool = transaction.repository.pool().clone();
+    drop(transaction); // cancellation/Drop must rollback, never commit the native savepoint.
+    tokio::time::timeout(std::time::Duration::from_secs(5), scoped_pool.close_event())
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), &mut editor)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        FrontstagePageRepository::get_frontstage_page(&store, workspace.id, page_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Concurrent editor")
+    );
+}
+
+#[tokio::test]
+async fn transaction_connection_loss_cannot_reconnect_and_commit_a_partial_batch() {
+    let (store, _, _) = support::seed_store().await;
+    let mut transaction = store.begin_portable_template_transaction().await.unwrap();
+    let connection = transaction.repository.pool().acquire().await.unwrap();
+    // Explicitly discard the physical session without altering the shared test store.
+    connection.close().await.unwrap();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        transaction.guard.commit(),
+    )
+    .await;
+    assert!(
+        !matches!(result, Ok(Ok(()))),
+        "lost outer transaction must never commit a replacement session"
+    );
+    transaction.guard.rollback().await.unwrap();
 }

@@ -94,3 +94,31 @@ pub trait PortableTemplateBaselineRepository: Send + Sync {
         operation_id: Uuid,
     ) -> anyhow::Result<bool>;
 }
+
+/// A repository bound to a single atomic native-owner batch. Implementations must
+/// exclude concurrent editor writes to the projected business records until completion.
+pub struct PortableTemplateTransaction<R> {
+    pub repository: R,
+    pub guard: Box<dyn PortableTemplateTransactionGuard>,
+}
+#[async_trait::async_trait]
+pub trait PortableTemplateTransactionGuard: Send {
+    async fn commit(&mut self) -> anyhow::Result<()>;
+    async fn rollback(&mut self) -> anyhow::Result<()>;
+}
+#[async_trait::async_trait]
+pub trait PortableTemplateTransactionRepository: Sized + Send + Sync {
+    async fn begin_portable_template_transaction(
+        &self,
+    ) -> anyhow::Result<PortableTemplateTransaction<Self>>;
+
+    /// Called only on the transaction-bound repository after the owner writes and
+    /// canonical post-image read. Receipt and resource changes commit atomically.
+    async fn acknowledge_portable_template_write(
+        &self,
+        scope: &crate::portable_template::TemplateBaselineScope,
+        key: &crate::portable_template::TemplateResourceKey,
+        intent: &crate::portable_template::TemplateWriteIntent,
+        actual_fingerprint: &str,
+    ) -> anyhow::Result<bool>;
+}

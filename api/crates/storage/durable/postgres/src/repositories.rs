@@ -19,6 +19,7 @@ use crate::mappers::role_mapper::StoredRoleRow;
 #[derive(Clone)]
 pub struct PgControlPlaneStore {
     pool: PgPool,
+    pub(crate) portable_template_transaction: bool,
     pub(crate) managed_operations:
         std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     actor_override: Option<ActorContext>,
@@ -30,6 +31,7 @@ impl PgControlPlaneStore {
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
+            portable_template_transaction: false,
             managed_operations: std::sync::Arc::new(
                 crate::managed_operation_lifetime::ManagedOperationOwner::default(),
             ),
@@ -60,6 +62,7 @@ impl PgControlPlaneStore {
     pub fn for_actor(&self, actor: ActorContext) -> Self {
         Self {
             pool: self.pool.clone(),
+            portable_template_transaction: self.portable_template_transaction,
             managed_operations: self.managed_operations.clone(),
             actor_override: Some(actor),
             runtime_table_name_policy: self.runtime_table_name_policy.clone(),
@@ -110,6 +113,13 @@ impl PgControlPlaneStore {
         &self,
     ) -> std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime> {
         self.managed_operations.clone()
+    }
+
+    pub(crate) fn with_portable_template_pool(&self, pool: PgPool) -> Self {
+        let mut scoped = self.clone();
+        scoped.pool = pool;
+        scoped.portable_template_transaction = true;
+        scoped
     }
 
     pub fn pool(&self) -> &PgPool {

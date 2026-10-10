@@ -82,34 +82,39 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 .and_then(|id| id.parse().ok())
                 .unwrap_or(page.id);
             if let Some(existing) = target.pages.iter().find(|item| item.id == target_id) {
-                owner
-                    .move_page(MoveFrontstagePageCommand {
-                        actor_user_id: actor.user_id,
-                        workspace_id: actor.current_workspace_id,
-                        page_id: existing.id,
-                        parent_id,
-                        rank: Some(page.rank.clone()),
-                        before_id: None,
-                        after_id: None,
-                    })
-                    .await?;
-                owner
-                    .update_metadata(UpdateFrontstagePageMetadataCommand {
-                        actor_user_id: actor.user_id,
-                        workspace_id: actor.current_workspace_id,
-                        page_id: existing.id,
-                        title: Some(page.title.clone()),
-                        icon: Some(page.icon.clone()),
-                        tooltip: Some(page.tooltip.clone()),
-                        is_hidden: Some(page.is_hidden),
-                        placement: Some(page.placement),
-                        content_presentation: (page.kind == domain::FrontstagePageKind::Page)
-                            .then_some(page.content_presentation),
-                        slug: Some(page.slug.clone()),
-                    })
-                    .await?;
-                result.updated("page", page.id, existing.id);
+                if self.can_apply("page", page.id) {
+                    owner
+                        .move_page(MoveFrontstagePageCommand {
+                            actor_user_id: actor.user_id,
+                            workspace_id: actor.current_workspace_id,
+                            page_id: existing.id,
+                            parent_id,
+                            rank: Some(page.rank.clone()),
+                            before_id: None,
+                            after_id: None,
+                        })
+                        .await?;
+                    owner
+                        .update_metadata(UpdateFrontstagePageMetadataCommand {
+                            actor_user_id: actor.user_id,
+                            workspace_id: actor.current_workspace_id,
+                            page_id: existing.id,
+                            title: Some(page.title.clone()),
+                            icon: Some(page.icon.clone()),
+                            tooltip: Some(page.tooltip.clone()),
+                            is_hidden: Some(page.is_hidden),
+                            placement: Some(page.placement),
+                            content_presentation: (page.kind == domain::FrontstagePageKind::Page)
+                                .then_some(page.content_presentation),
+                            slug: Some(page.slug.clone()),
+                        })
+                        .await?;
+                    result.updated("page", page.id, existing.id);
+                }
                 for tab in &page.tabs {
+                    if !self.can_apply("tab", tab.id) {
+                        continue;
+                    }
                     let mapped_id = result
                         .id_map
                         .get(&tab.id.to_string())
@@ -157,6 +162,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                             .insert(tab.document_root_uid.clone(), created.document_root_uid);
                     }
                 }
+                continue;
+            }
+            if !self.can_apply("page", page.id) {
                 continue;
             }
             let created = match page.kind {
@@ -211,6 +219,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 })
                 .await?;
             for tab in &page.tabs {
+                if !self.can_apply("tab", tab.id) {
+                    continue;
+                }
                 let created_tab = if tab.is_default {
                     let default = created.default_tab.as_ref().context("default tab absent")?;
                     owner
@@ -244,10 +255,29 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         }
         // Create the block hierarchy in stable sibling order, then rewrite content in a second pass.
         for page in &package.pages {
+            if !page.tabs.iter().any(|t| {
+                self.can_apply("tab_document", t.id)
+                    || t.blocks
+                        .iter()
+                        .any(|b| self.can_apply("block", &b.block_id))
+            }) {
+                continue;
+            }
             let page_id = result.mapped(page.id)?;
             for tab in &page.tabs {
+                if !tab
+                    .blocks
+                    .iter()
+                    .any(|b| self.can_apply("block", &b.block_id))
+                {
+                    continue;
+                }
                 let tab_id = result.mapped(tab.id)?;
-                let mut pending: Vec<_> = tab.blocks.iter().collect();
+                let mut pending: Vec<_> = tab
+                    .blocks
+                    .iter()
+                    .filter(|block| self.can_apply("block", &block.block_id))
+                    .collect();
                 pending.sort_by(|a, b| a.rank.cmp(&b.rank));
                 let mut last_sibling: BTreeMap<Option<String>, String> = BTreeMap::new();
                 while !pending.is_empty() {
@@ -334,12 +364,36 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
     ) -> Result<()> {
         let owner = self.page_owner(actor);
         for page in &package.pages {
+            if !page.tabs.iter().any(|t| {
+                self.can_apply("tab_document", t.id)
+                    || t.blocks
+                        .iter()
+                        .any(|b| self.can_apply("block", &b.block_id))
+            }) {
+                continue;
+            }
             let page_id = result.mapped(page.id)?;
             for tab in &page.tabs {
                 let mut blocks: Vec<_> = tab.blocks.iter().collect();
                 blocks.sort_by(|left, right| left.rank.cmp(&right.rank));
                 let mut last_sibling: BTreeMap<Option<String>, String> = BTreeMap::new();
                 for block in blocks {
+                    if !self.can_apply("block", &block.block_id) {
+                        if !self.available.contains(&TemplateResourceKey {
+                            kind: "block".into(),
+                            source_id: block.block_id.clone(),
+                        }) {
+                            continue;
+                        }
+                        if let Some(id) = result.id_map.get(&block.block_id) {
+                            let parent = block
+                                .parent_block_id
+                                .as_ref()
+                                .and_then(|p| result.id_map.get(p).cloned());
+                            last_sibling.insert(parent, id.clone());
+                        }
+                        continue;
+                    }
                     let block_id = result
                         .id_map
                         .get(&block.block_id)
@@ -397,6 +451,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                             source_code: rewrite_template_text(&block.source_code, &result.id_map),
                         })
                         .await?;
+                }
+                if !self.can_apply("tab_document", tab.id) {
+                    continue;
                 }
                 owner
                     .save_tab_document(SaveFrontstageTabDocumentCommand {

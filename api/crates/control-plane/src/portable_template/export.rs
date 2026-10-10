@@ -14,6 +14,7 @@ pub struct PortableTemplateService<R> {
 impl<
         R: PortableTemplateReadRepository
             + PortableTemplateIdentityRepository
+            + crate::ports::PortableTemplateBaselineRepository
             + ApplicationRepository
             + McpManagementRepository
             + Clone,
@@ -179,10 +180,38 @@ impl<
             .repository
             .load_portable_template_identity_map(actor.current_workspace_id)
             .await?;
-        Ok(preview_portable_template_with_map(
+        let target = self.snapshot(actor_user_id).await?;
+        let historical = identities.clone();
+        let mut identities = identities;
+        map_existing_template_identities(package, &target, &mut identities);
+        let baselines = self
+            .repository
+            .load_template_baselines(&template_baseline_scope(
+                actor.current_workspace_id,
+                package,
+            ))
+            .await?;
+        for baseline in &baselines {
+            if matches!(
+                baseline.key.kind.as_str(),
+                "page"
+                    | "tab"
+                    | "tab_document"
+                    | "block"
+                    | "application"
+                    | "data_model"
+                    | "model_field"
+            ) {
+                identities.insert(baseline.key.source_id.clone(), baseline.target_id.clone());
+            }
+        }
+        map_existing_template_identities(package, &target, &mut identities);
+        let plan = plan_native_template(package, &target, &identities, &baselines, &historical)?;
+        Ok(preview_portable_template_with_merge_plan(
             package,
-            &self.snapshot(actor_user_id).await?,
+            &target,
             &identities,
+            &plan,
         ))
     }
 }

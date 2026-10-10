@@ -19,6 +19,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         result: &mut PortableTemplateInstallResult,
     ) -> Result<()> {
         for app in &package.applications {
+            if !self.can_apply("application", app.id) {
+                continue;
+            }
             let target_id: Uuid = result
                 .id_map
                 .get(&app.id.to_string())
@@ -37,9 +40,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         name: app.name.clone(),
                         description: app.description.clone(),
                         tag_ids: previous.tags.iter().map(|tag| tag.id).collect(),
-                        icon: app.icon.clone(),
-                        icon_type: app.icon_type.clone(),
-                        icon_background: app.icon_background.clone(),
+                        icon: Some(app.icon.clone().unwrap_or_default()),
+                        icon_type: Some(app.icon_type.clone().unwrap_or_default()),
+                        icon_background: Some(app.icon_background.clone().unwrap_or_default()),
                     })
                     .await?;
                 result.updated("application", app.id, target_id);
@@ -122,6 +125,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         let mappings = ApplicationApiMappingService::new(self.repository.clone());
         let publications = ApplicationPublicationService::new(self.repository.clone());
         for app in &package.applications {
+            if !self.can_apply("application", app.id) {
+                continue;
+            }
             let application_id = result.mapped(app.id)?;
             if let Some(published) = &app.published {
                 flows

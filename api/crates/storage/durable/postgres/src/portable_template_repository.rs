@@ -318,3 +318,4 @@ impl PortableTemplateReadRepository for PgControlPlaneStore {
 
 mod baselines;
 pub(crate) use baselines::acknowledge_template_write;
+mod transaction;
