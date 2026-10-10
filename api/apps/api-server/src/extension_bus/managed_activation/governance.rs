@@ -193,6 +193,20 @@ impl ManagedExtensionComposition {
             )
             .into());
         }
+        drop(visible);
+        self.retire_snapshots_locked(snapshots, &[]).await?;
+        drop(assembly);
+        self.execution_state(workspace_id, installation_id, None)
+            .await
+    }
+
+    /// Caller owns `assembly` until its complete mutation (including artifact deletion) finishes.
+    async fn retire_snapshots_locked(
+        &self,
+        snapshots: Vec<Arc<ManagedWorkspaceSnapshot>>,
+        removing_installations: &[Uuid],
+    ) -> Result<()> {
+        let visible = self.snapshots.lock().await;
         let mut retirement_markers = BTreeMap::new();
         for snapshot in &snapshots {
             for binding in snapshot.bindings.values() {
@@ -259,6 +273,16 @@ impl ManagedExtensionComposition {
         // Freeze is closed before this query. Existing publication leases have finished their
         // commit/rollback, so an empty durable result cannot be invalidated by an old publisher.
         for snapshot in &snapshots {
+            let snapshot_scope = snapshot
+                .bindings
+                .values()
+                .next()
+                .context("retirement snapshot has no managed binding")?
+                .handle
+                .identity()
+                .workspace_id()
+                .as_str()
+                .parse::<Uuid>()?;
             let targets = snapshot
                 .lifecycle_plan
                 .as_ref()
@@ -298,7 +322,7 @@ impl ManagedExtensionComposition {
                     if self
                         .store
                         .lifecycle_target_has_backlog(
-                            workspace_id,
+                            snapshot_scope,
                             snapshot.graph.fingerprint().as_str(),
                             &LifecycleSubscriberTarget {
                                 subscriber_id: subscriber.subscriber_id.clone(),
@@ -317,6 +341,9 @@ impl ManagedExtensionComposition {
                 }
             }
         }
+        // Also cover historical targets that are no longer represented by an in-memory graph.
+        // All selected lifetimes remain closed until this check and retirement finish.
+        self.check_artifact_backlog(removing_installations).await?;
         let mut visible = self.snapshots.lock().await;
         for retained in visible.retained.values_mut() {
             retained.retain(|s| {
@@ -345,9 +372,7 @@ impl ManagedExtensionComposition {
                 .await?;
         }
         drop(drain);
-        drop(assembly);
-        self.execution_state(workspace_id, installation_id, None)
-            .await
+        Ok(())
     }
 }
 #[async_trait::async_trait]
@@ -395,6 +420,48 @@ impl ManagedExecutionGovernancePort for ManagedCompositionGovernance {
 }
 #[async_trait::async_trait]
 impl ManagedArtifactRemovalGuard for ManagedExtensionComposition {
+    async fn prepare_managed_artifact_removal(
+        self: Arc<Self>,
+        installation_ids: &[Uuid],
+    ) -> Result<Box<dyn Send + Sync>> {
+        let operation = self
+            .operations
+            .admit(control_plane_contracts::ports::ManagedOwnedOperation::Retirement)?;
+        let installation_ids = installation_ids.to_vec();
+        // Retirement has an owned tail: disconnecting the uninstall request cannot cancel
+        // deactivation after the frozen graph was retired. A dropped caller also drops the
+        // returned removal guard once this task completes, without authorizing deletion.
+        tokio::spawn(async move {
+            let assembly = self.assembly.clone().lock_owned().await;
+            let visible = self.snapshots.lock().await;
+            let matches = |snapshot: &ManagedWorkspaceSnapshot| {
+                snapshot
+                    .bindings
+                    .values()
+                    .any(|binding| installation_ids.contains(&binding.installation.id))
+            };
+            if visible.current.values().any(|snapshot| matches(snapshot)) {
+                return Err(control_plane::errors::ControlPlaneError::Conflict(
+                    "managed_artifact_has_execution_references",
+                )
+                .into());
+            }
+            let snapshots = visible
+                .retained
+                .values()
+                .flatten()
+                .filter(|snapshot| matches(snapshot))
+                .cloned()
+                .collect();
+            drop(visible);
+            self.retire_snapshots_locked(snapshots, &installation_ids)
+                .await?;
+            Ok(Box::new((assembly, operation)) as Box<dyn Send + Sync>)
+        })
+        .await
+        .context("managed artifact preparation owner terminated")?
+    }
+
     async fn guard_managed_artifact_removal(
         &self,
         installation_ids: &[Uuid],
@@ -420,6 +487,13 @@ impl ManagedArtifactRemovalGuard for ManagedExtensionComposition {
             .into());
         }
         drop(visible);
+        self.check_artifact_backlog(installation_ids).await?;
+        Ok(Box::new((assembly, operation)))
+    }
+}
+
+impl ManagedExtensionComposition {
+    async fn check_artifact_backlog(&self, installation_ids: &[Uuid]) -> Result<()> {
         for installation_id in installation_ids {
             // SQL joins historical authority scopes directly; no unbounded workspace/history Vec.
             if self
@@ -434,6 +508,6 @@ impl ManagedArtifactRemovalGuard for ManagedExtensionComposition {
                 .into());
             }
         }
-        Ok(Box::new((assembly, operation)))
+        Ok(())
     }
 }

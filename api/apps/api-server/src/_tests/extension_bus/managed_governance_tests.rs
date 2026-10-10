@@ -1061,6 +1061,14 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         acknowledge(&runtime, &record, claimant).await;
     }
 
+    // A real invocation reference still prevents uninstall after disable.
+    let uninstall_reference = runtime
+        .composition
+        .snapshot(workspace)
+        .await
+        .unwrap()
+        .freeze_reference()
+        .unwrap();
     // Disable preserves references and does not silently discard delivery rows.
     management
         .disable_plugin(DisablePluginCommand {
@@ -1081,8 +1089,9 @@ async fn root_2007_ac_009_pause_revoke_retire() {
             .await
             .0,
         StatusCode::OK,
-        "family delete cannot bypass retained reference guard"
+        "family delete cannot bypass a live frozen reference"
     );
+    drop(uninstall_reference);
     allow(
         &app,
         &cookie,
@@ -1364,3 +1373,8 @@ async fn root_2325_http_history_cursor_and_authorization() {
     assert_eq!(observed, ids);
     assert_eq!(pages, 3);
 }
+
+#[path = "managed_removal_tests.rs"]
+mod managed_removal_tests;
+
+mod system_scope;

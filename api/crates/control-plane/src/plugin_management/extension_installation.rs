@@ -433,7 +433,8 @@ where
                         .ok_or(ControlPlaneError::Conflict(
                             "managed_artifact_removal_guard_required",
                         ))?
-                        .guard_managed_artifact_removal(&[installation_id])
+                        .clone()
+                        .prepare_managed_artifact_removal(&[installation_id])
                         .await?,
                 )
             } else {

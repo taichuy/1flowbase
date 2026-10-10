@@ -568,15 +568,6 @@ where
             .filter(|installation| installation.contract_version == "1flowbase.extension-bus/v1")
             .map(|installation| installation.id)
             .collect::<Vec<_>>();
-        let _managed_removal = if managed_ids.is_empty() {
-            None
-        } else {
-            Some(
-                self.runtime
-                    .guard_managed_artifact_removal(&managed_ids)
-                    .await?,
-            )
-        };
         let current_installation_id = self
             .repository
             .list_assignments(actor.current_workspace_id)
@@ -617,6 +608,28 @@ where
             .await?;
 
         let uninstall_result = async {
+            // Disable through the existing state/audit owner before taking assembly. A real
+            // frozen invocation or durable delivery may still reject retirement; leave the
+            // installation disabled so a later retry can complete safely without a restart.
+            for installation in &installations {
+                if installation.contract_version == "1flowbase.extension-bus/v1"
+                    && installation.desired_state != domain::PluginDesiredState::Disabled
+                {
+                    self.disable_plugin(DisablePluginCommand {
+                        actor_user_id: command.actor_user_id,
+                        installation_id: installation.id,
+                    }).await?;
+                }
+            }
+            let _managed_removal = if managed_ids.is_empty() {
+                None
+            } else {
+                Some(
+                    self.runtime
+                        .prepare_managed_artifact_removal(&managed_ids)
+                        .await?,
+                )
+            };
             let instances = self
                 .repository
                 .list_instances_by_provider_code(&command.provider_code)

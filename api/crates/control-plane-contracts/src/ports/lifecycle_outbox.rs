@@ -391,6 +391,15 @@ pub trait ManagedLifecycleOutboxRepository: Send + Sync {
 /// The caller holds the returned private guard through filesystem staging and DB completion.
 #[async_trait]
 pub trait ManagedArtifactRemovalGuard: Send + Sync {
+    /// Mutating uninstall preparation. Retires only safe retained executions and holds the
+    /// returned guard through filesystem staging and database completion. Never used by reads.
+    async fn prepare_managed_artifact_removal(
+        self: std::sync::Arc<Self>,
+        _installation_ids: &[Uuid],
+    ) -> anyhow::Result<Box<dyn Send + Sync>> {
+        anyhow::bail!("managed artifact removal preparation is not configured")
+    }
+
     async fn guard_managed_artifact_removal(
         &self,
         installation_ids: &[Uuid],

@@ -32,6 +32,15 @@ pub trait ProviderRuntimePort: Send + Sync {
         selectable: Option<bool>,
     ) -> anyhow::Result<()>;
 
+    /// Mutating uninstall preparation. Retires only safe retained executions and holds the
+    /// returned guard through filesystem staging and database completion. Never used by reads.
+    async fn prepare_managed_artifact_removal(
+        &self,
+        _installation_ids: &[uuid::Uuid],
+    ) -> anyhow::Result<Box<dyn Send + Sync>> {
+        anyhow::bail!("managed artifact removal preparation is not configured")
+    }
+
     async fn guard_managed_artifact_removal(
         &self,
         _installation_ids: &[uuid::Uuid],
