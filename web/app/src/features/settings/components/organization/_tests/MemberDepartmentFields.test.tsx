@@ -1,6 +1,13 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { Form, Button } from 'antd';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AppProviders } from '../../../../../app/AppProviders';
 import { MemberDepartmentFields } from '../MemberDepartmentFields';
 const fetchDepartments = vi.hoisted(() => vi.fn());
@@ -57,6 +64,7 @@ function Harness({
 }
 describe('member department invariants', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     fetchDepartments.mockImplementation(async ({ ids }: { ids?: string }) => ({
       items: departments
         .filter((item) => !ids || ids.split(',').includes(item.id))
@@ -64,6 +72,18 @@ describe('member department invariants', () => {
       has_more: false,
       next_cursor: null
     }));
+  });
+  afterEach(async () => {
+    try {
+      cleanup();
+      // Real Form validation schedules delayed rc-util state updates. Finish
+      // fixture-owned callbacks while JSDOM still exists, including on failure.
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
   test('retains and resolves existing selections absent from the first page', async () => {
     const submit = vi.fn();
