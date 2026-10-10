@@ -88,6 +88,22 @@ HTTP/SSE/WebSocket、MCP/WebMCP 保持各自输入、错误和流式协议。Web
 
 Runtime Worker 是 Dispatch 后的执行目标；Background Worker/Schedule 是主动调用入口，两者不同。内部入口全集、System Principal、durable retry/ack 必须由其 owner 明确，不能由统一逻辑图推导为已全部接入。
 
+### 保存格式兼容与退场
+
+SQL 节点当前字段为 `bindings.sql`。已有保存流程仍可能携带 `config.sql`，编译器与编辑器保留该旧格式读取，已有 compiler normalization 与 node-inspector 测试保护；它不是新增的后端输出字段别名。兼容截止检查更新为 2026-11-30，不能通过删除读取能力让旧流程失效。退场需先统一草稿/发布快照/导入模板的 canonical normalization，核对持久化旧格式 inventory 和读写消费者，再用历史保存流程回归证明字段迁移后行为完整，最后删除两端兼容入口与标记。
+
+动态 i18n key 继续由 hygiene warning 暴露：BlockStudioWorkspace 的 section.labelKey、菜单 label_key 和网络健康后缀由配置/后端字段消费；保留资源与真实 renderer owner。不存在消费者的旧分组文案可删除，不能为消除 warning 改写仍使用的文案。
+
+### BlockContext 描述与 Host 实现
+
+`api-server/resources/ctx/block-context.v1.json` 是供页面编写与 MCP discovery 消费的 Host ABI 描述；接口返回成员的类型与说明，不执行这些成员。前端 Block SDK 定义 `BlockContext`，Host facade 提供实际能力。`i18n` 描述包含 `locale`、`status` 和 `t`，语言状态与翻译 fallback 由前端 Host 提供；后端描述、SDK 类型和真实 facade 的一致性由 contract parity 测试检查。
+
+### 内部持久化身份与门禁
+
+调用及日志内部记录沿用真实 owner，不为满足通用业务表模板制造独立业务身份：删除工作集/停止事实归删除 job，上传回执归 application/source/event，原生消息投影进度归 flow run。组织树与成员/角色绑定沿用 workspace 与关系键。授权仍由业务 owner 决定，存储层外键、主键和对应查找索引保证引用与访问路径。
+
+Schema 门禁对这些有限表使用具体字段/索引例外，并独立检查 owner 外键、非空 routing key、主键和查询索引；普通业务表的 scope/time/id 约束继续执行。正式 migration 不因门禁分类更新而改写。
+
 ### 源码入口
 
 - [external_route_assembly.rs](../../api/apps/api-server/src/external_route_assembly.rs)：挂载与 Inventory 同源构造。
@@ -248,6 +264,8 @@ Core deny 不可被 extension allow 恢复；拒绝后不运行 Handler。Defini
 每个进程保留不可变装配身份。导航、插件 operation 和模板 source 使用同一版本门禁：旧进程不能读取其他进程已应用的新版本模板并搭配旧后端执行。多节点门禁不承诺跨节点原子切换。编辑及启用/升级入口提示覆盖时机，业务配置、凭据和角色权限不属于模板覆盖范围。
 
 源码与局部规则：[interface-runtime/AGENTS.md](../../api/crates/interface-runtime/AGENTS.md)。
+
+用户主动导入的 portable application template 是独立的资源合并流程，不改变上述插件自有启动模板覆盖规则。业务合并与写入意图由 `control-plane/portable_template` 编排，native resource owner 在同一数据库事务提交资源与 durable receipt，PostgreSQL adapter 持久化基线。MCP 中断恢复只从仍存在的 pending intent、相同 committed operation id 与 committed fingerprint 提取可恢复操作；已完成、未提交或身份不匹配的记录不能从当前内容猜测为已提交。preview 投影与 install 恢复复用同一判定，保留用户修改、删除与未知基线的既有合并语义。
 
 
 <a id="finalization-and-delivery"></a>

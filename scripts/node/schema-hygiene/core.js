@@ -1,3 +1,4 @@
+const { ownedTableFindings } = require('./ownership.js');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -975,6 +976,7 @@ function loadConfig(repoRoot, configPath = DEFAULT_CONFIG_FILE) {
 function normalizeConfig(config = {}) {
   return {
     tableProfiles: config.tableProfiles || {},
+    ownedTableContracts: config.ownedTableContracts || {},
     dynamicModelTablePatterns: (config.dynamicModelTablePatterns || []).map((pattern) => new RegExp(pattern, 'u')),
     registeredSystemTables: new Set(config.registeredSystemTables || []),
     registeredSystemTableTemplates: config.registeredSystemTableTemplates || {},
@@ -1258,6 +1260,8 @@ function evaluateSchemaHygiene({ inventory, config = {} }) {
     const needsOwnerReviewReason = normalizedConfig.needsOwnerReviewTables[table.name];
 
     tableFindings.push(...collectExemptionPolicyFindings(table, exemption, normalizedConfig));
+    tableFindings.push(...ownedTableFindings(table, normalizedConfig.ownedTableContracts[table.name])
+      .map((item) => finding({ ...item, table })));
 
     if (needsOwnerReviewReason) {
       tableFindings.push(finding({

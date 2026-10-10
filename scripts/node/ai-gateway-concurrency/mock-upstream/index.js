@@ -558,7 +558,8 @@ function createMockUpstream(options = {}) {
         requestTimeline.record('retryable_tool_result_recovered', { callbackRetryAttempt });
       }
       const errorFixture = errorFixtureFromBody(body);
-      const errorFixtureKey = `${errorFixture?.id ?? ''}:${body.fixture_retry_key ?? ''}`;
+      const retryMarker = JSON.stringify(body).match(/1flowbase-upstream-error-fixture:retry:([a-zA-Z0-9-]+)/u)?.[1];
+      const errorFixtureKey = `http:${errorFixture?.id ?? ''}:${retryMarker ?? body.fixture_retry_key ?? ''}`;
       const errorFixtureAttempt = (errorFixtureAttempts.get(errorFixtureKey) ?? 0) + 1;
       if (errorFixture) errorFixtureAttempts.set(errorFixtureKey, errorFixtureAttempt);
       const shouldEmitFixtureError = errorFixture
@@ -706,7 +707,12 @@ function createMockUpstream(options = {}) {
       );
       const terminalBarrier = terminalBarriers.forRequest(body, requestTimeline);
       const errorFixture = errorFixtureFromBody(body.response ?? body);
-      if (errorFixture) {
+      const payload = body.response ?? body;
+      const retryMarker = JSON.stringify(payload).match(/1flowbase-upstream-error-fixture:retry:([a-zA-Z0-9-]+)/u)?.[1];
+      const errorFixtureKey = `websocket:${errorFixture?.id ?? ''}:${retryMarker ?? payload.fixture_retry_key ?? ''}`;
+      const errorFixtureAttempt = (errorFixtureAttempts.get(errorFixtureKey) ?? 0) + 1;
+      if (errorFixture) errorFixtureAttempts.set(errorFixtureKey, errorFixtureAttempt);
+      if (errorFixture && (errorFixture.id !== 'retry' || errorFixtureAttempt === 1)) {
         sendJson(socket, {
           type: 'error',
           error: {
@@ -719,6 +725,7 @@ function createMockUpstream(options = {}) {
         requestTimeline.finish('upstream-error', {
           status: errorFixture.status,
           errorFixture: errorFixture.id,
+          errorFixtureAttempt,
           successTerminalCount: 0,
         });
         sendClose(socket, 1011, 'mock upstream error');
@@ -733,7 +740,6 @@ function createMockUpstream(options = {}) {
         sendClose(socket, 1011, 'mock upstream error');
         return;
       }
-      const payload = body.response ?? body;
       const isToolTurn = containsValue(payload, '1flowbase-client-tool-vector');
       const toolPlan = clientToolPlan(payload, toolResponses.get(payload?.previous_response_id));
       const emitsToolCallRound = (isToolTurn || toolPlan.hasToolResult) && !toolPlan.final;

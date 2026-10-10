@@ -209,27 +209,84 @@ pub async fn get_client_trajectory_section(
 /// Get a source-neutral log record.
 /// Returns projected system prompt, current question and persisted final answer and explicit provisional output state for the authorized application.
 #[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}",params(("id"=Uuid,Path),("record_id"=Uuid,Path)),responses((status=200,body=super::log_query::schemas::RecordOverviewSchema)))]
-pub async fn get_log_record(State(state):State<Arc<ApiState>>,headers:HeaderMap,Path((application_id,record_id)):Path<(Uuid,Uuid)>)->Result<Json<ApiSuccess<control_plane::ports::ApplicationLogRecordOverview>>,ApiError> {
-    let output=crate::routes::console_interface::invoke(Arc::clone(&state),"http.console.applications.runtime.record.get.v1",crate::extension_bus::ConsoleAuthenticationCredential::Protocol{state,headers},interface_runtime_reads::ApplicationRuntimeReadsInput::GetRecord{application_id,record_id}).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::Record(record)=output else {unreachable!("record binding output")};
+pub async fn get_log_record(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((application_id, record_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ApiSuccess<control_plane::ports::ApplicationLogRecordOverview>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.record.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetRecord {
+            application_id,
+            record_id,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::Record(record) = output else {
+        unreachable!("record binding output")
+    };
     Ok(Json(ApiSuccess::new(record)))
 }
-#[derive(Debug,Default,Deserialize)]
-pub struct RecordClientTrajectoryQuery {pub cursor:Option<String>,pub limit:Option<i64>}
+#[derive(Debug, Default, Deserialize)]
+pub struct RecordClientTrajectoryQuery {
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
+}
 
 /// List recorded client trajectory for a source-neutral log record.
 /// Reads bounded client occurrence summaries for Native and imported records without loading source bodies.
 #[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}/client-trajectory",params(("id"=Uuid,Path),("record_id"=Uuid,Path),("cursor"=Option<String>,Query),("limit"=Option<i64>,Query)),responses((status=200,body=super::log_query::schemas::RecordTrajectoryPageSchema)))]
-pub async fn list_record_client_trajectory(State(state):State<Arc<ApiState>>,headers:HeaderMap,Path((application_id,record_id)):Path<(Uuid,Uuid)>,Query(query):Query<RecordClientTrajectoryQuery>)->Result<Json<ApiSuccess<control_plane::ports::RecordClientTrajectoryPage>>,ApiError> {
-    let output=crate::routes::console_interface::invoke(Arc::clone(&state),"http.console.applications.runtime.record.client-trajectory.list.v1",crate::extension_bus::ConsoleAuthenticationCredential::Protocol{state,headers},interface_runtime_reads::ApplicationRuntimeReadsInput::RecordClientTrajectoryPage{application_id,record_id,query}).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RecordClientTrajectoryPage(page)=output else {unreachable!("record trajectory binding output")};
+pub async fn list_record_client_trajectory(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((application_id, record_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<RecordClientTrajectoryQuery>,
+) -> Result<Json<ApiSuccess<control_plane::ports::RecordClientTrajectoryPage>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.record.client-trajectory.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::RecordClientTrajectoryPage {
+            application_id,
+            record_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RecordClientTrajectoryPage(page) =
+        output
+    else {
+        unreachable!("record trajectory binding output")
+    };
     Ok(Json(ApiSuccess::new(page)))
 }
 /// Get one recorded client trajectory section.
 /// Resolves the selected body from the existing client section store within the authorized log record.
 #[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}/client-trajectory/{step_id}",params(("id"=Uuid,Path),("record_id"=Uuid,Path),("step_id"=Uuid,Path),("section"=Option<String>,Query),("cursor"=Option<i64>,Query),("limit"=Option<i64>,Query)),responses((status=200,body=super::log_query::schemas::TrajectorySectionSchema)))]
-pub async fn get_record_client_trajectory_section(State(state):State<Arc<ApiState>>,headers:HeaderMap,Path((application_id,record_id,step_id)):Path<(Uuid,Uuid,Uuid)>,Query(query):Query<ClientTrajectoryQuery>)->Result<Json<ApiSuccess<control_plane::ports::ClientTrajectorySection>>,ApiError> {
-    let output=crate::routes::console_interface::invoke(Arc::clone(&state),"http.console.applications.runtime.record.client-trajectory.section.get.v1",crate::extension_bus::ConsoleAuthenticationCredential::Protocol{state,headers},interface_runtime_reads::ApplicationRuntimeReadsInput::RecordClientTrajectorySection{application_id,record_id,step_id,query}).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ClientTrajectorySection(section)=output else {unreachable!("record section binding output")};
+pub async fn get_record_client_trajectory_section(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((application_id, record_id, step_id)): Path<(Uuid, Uuid, Uuid)>,
+    Query(query): Query<ClientTrajectoryQuery>,
+) -> Result<Json<ApiSuccess<control_plane::ports::ClientTrajectorySection>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.record.client-trajectory.section.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::RecordClientTrajectorySection {
+            application_id,
+            record_id,
+            step_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ClientTrajectorySection(section) =
+        output
+    else {
+        unreachable!("record section binding output")
+    };
     Ok(Json(ApiSuccess::new(section)))
 }

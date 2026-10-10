@@ -53,11 +53,20 @@ describe('console application management client', () => {
           source_client: 'codex',
           display_name: 'Codex',
           description: 'Collect local sessions',
-          version: '0.1.0',
+          version: '0.2.0',
           execution_target: 'client',
-          documentation_url: 'https://example.com/README.en.md',
-          shell_installer_url: 'https://example.com/install.sh',
-          powershell_installer_url: 'https://example.com/install.ps1'
+          catalog_id: 'runtime-extensions:taichuy/codex-logs-collector',
+          category: 'runtime-extensions',
+          installation_status: 'missing',
+          installed_version: '0.1.0',
+          extension_installation_id: 'retained',
+          installable: true,
+          can_install: false,
+          can_update: false,
+          asset_base_url: null,
+          documentation_url: null,
+          shell_installer_url: null,
+          powershell_installer_url: null
         }
       ]
     } satisfies ConsoleApplicationCatalog;
@@ -70,8 +79,24 @@ describe('console application management client', () => {
       path: '/api/console/applications/catalog'
     });
     vi.mocked(transport.apiFetch).mockResolvedValueOnce(fixture);
-    await expect(getConsoleApplicationCatalog()).resolves.toEqual(fixture);
-    expect(fixture.collectors[0]).not.toHaveProperty('installed');
+    const catalog = await getConsoleApplicationCatalog();
+    expect(catalog).toEqual(fixture);
+    // A newer catalog package does not repair missing local assets or grant
+    // installation permission; retain the old installation and null URLs.
+    expect(catalog.collectors[0]).toMatchObject({
+      installation_status: 'missing',
+      version: '0.2.0',
+      installed_version: '0.1.0',
+      extension_installation_id: 'retained',
+      installable: true,
+      can_install: false,
+      can_update: false,
+      asset_base_url: null,
+      documentation_url: null,
+      shell_installer_url: null,
+      powershell_installer_url: null
+    });
+    expect(catalog.collectors[0]).not.toHaveProperty('installed');
   });
 
   test('AC-004 requests the unified Application node catalog with exact contract fields', async () => {

@@ -1241,37 +1241,25 @@ where
     pub async fn list_items(
         &self,
         actor_user_id: Uuid,
-        instance_id: Option<&str>,
-        path: Option<&str>,
-        path_regex: Option<&str>,
-        keywords: Option<&[String]>,
-        depth: Option<i32>,
-        limit: Option<usize>,
+        query: McpListItemsQuery<'_>,
     ) -> Result<Vec<domain::McpListItemSummary>> {
         let actor = self.authorize_view(actor_user_id).await?;
-        self.list_items_for_actor(
-            &actor,
+        self.list_items_for_actor(&actor, query).await
+    }
+
+    pub async fn list_items_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        query: McpListItemsQuery<'_>,
+    ) -> Result<Vec<domain::McpListItemSummary>> {
+        let McpListItemsQuery {
             instance_id,
             path,
             path_regex,
             keywords,
             depth,
             limit,
-        )
-        .await
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn list_items_for_actor(
-        &self,
-        actor: &domain::ActorContext,
-        instance_id: Option<&str>,
-        path: Option<&str>,
-        path_regex: Option<&str>,
-        keywords: Option<&[String]>,
-        depth: Option<i32>,
-        limit: Option<usize>,
-    ) -> Result<Vec<domain::McpListItemSummary>> {
+        } = query;
         let workspace_id = actor.current_workspace_id;
         let instance = match instance_id {
             Some(instance_id) => {
@@ -1364,6 +1352,7 @@ where
 }
 
 mod query;
+pub use query::McpListItemsQuery;
 use query::{
     bindable_interface, generate_short_id, normalize_group_display_name, validate_group_path,
     validate_list_return_fields,

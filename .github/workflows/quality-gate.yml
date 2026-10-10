@@ -97,7 +97,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: quality-gate-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'latest' }}
+  group: quality-gate-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'latest' }}-${{ inputs.scope || 'ci' }}-${{ inputs.batch_mode || 'full' }}
   cancel-in-progress: true
 
 env:

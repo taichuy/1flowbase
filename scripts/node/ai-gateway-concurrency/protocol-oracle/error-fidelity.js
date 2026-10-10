@@ -1,5 +1,7 @@
 'use strict';
 
+const { isDeepStrictEqual } = require('node:util');
+
 const UPSTREAM_ERROR_FIXTURES = Object.freeze([
   Object.freeze({
     id: 'json', status: 500, contentType: 'application/json',
@@ -77,6 +79,44 @@ function errorFixtureFromBody(body) {
 }
 
 function assertUpstreamErrorFidelity(fixture, observations) {
+  if (observations.surface === 'responses-websocket') {
+    // A non-empty WebSocket frame may explicitly carry an empty message.
+    // It is a supplier fact, not an empty HTTP response requiring a fallback.
+    const expected = { type: 'mock_upstream_error', message: fixture.body, status: fixture.status, nonce: observations.upstreamNonce };
+    const native = observations.nativeError;
+    const durable = observations.durableErrorPayload;
+    const client = observations.clientResponseErrors;
+    if (!observations.upstreamNonce || client?.length !== 1) throw new Error('WebSocket upstream error evidence omitted');
+    for (const [label, error] of [
+      ['Native', native?.details?.upstream_error],
+      ['durable', durable?.provider_details?.upstream_error],
+      ['WebSocket client', client[0]],
+    ]) {
+      if (!isDeepStrictEqual(error, expected)) throw new Error(`${label} WebSocket upstream error object mismatch`);
+    }
+    const expectedRaw = JSON.stringify({ type: 'error', error: expected });
+    for (const [label, raw] of [['Native', native?.details?.raw_body], ['durable', durable?.provider_details?.raw_body]]) {
+      if (raw !== expectedRaw) throw new Error(`${label} WebSocket raw_body mismatch`);
+    }
+    for (const message of [native?.message, durable?.message, ...(observations.clientMessages ?? [])]) {
+      if (message !== fixture.body) throw new Error('WebSocket explicit upstream message mismatch');
+    }
+    if (observations.clientMessages?.length !== 1) throw new Error('WebSocket explicit upstream message omitted');
+    return;
+  }
+  if (observations.surface === 'responses-sse' && fixture.id === 'retry') {
+    // The HTTP fixture's upstream error is a JSON scalar. Responses keeps that
+    // exact value while Native and durable messages retain the full HTTP body.
+    const expected = JSON.parse(fixture.body).error;
+    if (!isDeepStrictEqual(observations.clientResponseErrors, [expected])) throw new Error('Responses upstream scalar error mismatch');
+    for (const [label, error, raw] of [
+      ['Native', observations.nativeError?.details?.upstream_error, observations.nativeError?.details?.raw_body],
+      ['durable', observations.durableErrorPayload?.provider_details?.upstream_error, observations.durableErrorPayload?.provider_details?.raw_body],
+    ]) {
+      if (error !== expected || raw !== fixture.body) throw new Error(`${label} upstream scalar error or raw_body mismatch`);
+    }
+    if (observations.clientMessages?.length !== 0) throw new Error('Responses scalar error acquired an invented message');
+  }
   if (fixture.anthropicError) {
     const expected = fixture.anthropicError;
     const native = observations.nativeError;
@@ -108,6 +148,9 @@ function assertUpstreamErrorFidelity(fixture, observations) {
     return;
   }
   const values = [observations.nativeMessage, observations.durableMessage, ...(observations.clientMessages ?? [])];
+  if (!(observations.surface === 'responses-sse' && fixture.id === 'retry') && !observations.clientMessages?.length) {
+    throw new Error('client upstream error message evidence omitted');
+  }
   if (fixture.body.length > 0) {
     const labels = ['Native error message', 'durable error message'];
     values.forEach((value, index) => {

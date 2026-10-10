@@ -642,6 +642,16 @@ async fn trace_refresh_ignores_runtime_event_sequence_high_water_bumps() {
         .execute(store.pool())
         .await
         .unwrap();
+    sqlx::query("update flow_runs set message_projection_revision=message_projection_revision+1 where id=$1")
+        .bind(run.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        queued().await,
+        0,
+        "internal counters must not requeue trace projection"
+    );
     sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) select $1,id,NULL,runtime_event_sequence_high_water+1,'provider_output_text_delta','runtime_item','host','host_fact','{}'::jsonb,'{}'::jsonb,'internal','durable' from flow_runs where id=$2")
         .bind(Uuid::now_v7())
         .bind(run.id)
@@ -665,11 +675,12 @@ async fn trace_refresh_ignores_runtime_event_sequence_high_water_bumps() {
 async fn trace_refresh_flow_trigger_covers_every_projected_flow_run_column() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
-    // Only pure sequence counters may be excluded from projection invalidation.
+    // Sequence allocation and native-message revision are internal counters,
+    // not projected trace facts. Keep every other non-identity column covered.
     let uncovered: Vec<String> = sqlx::query_scalar(
         r#"select a.attname::text from pg_attribute a
            where a.attrelid = 'flow_runs'::regclass and a.attnum > 0 and not a.attisdropped
-             and a.attname <> 'id' and a.attname <> 'runtime_event_sequence_high_water'
+             and a.attname not in ('id', 'runtime_event_sequence_high_water', 'message_projection_revision')
              and not exists (
                select 1 from pg_trigger t
                where t.tgrelid = a.attrelid and t.tgname = 'trace_refresh_flow'

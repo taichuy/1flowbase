@@ -10,6 +10,25 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { vi } from 'vitest';
 
+vi.mock('antd', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('antd')>();
+  return {
+    ...actual,
+    Grid: {
+      ...actual.Grid,
+      // Keep desktop hook behavior stable through automatic component cleanup.
+      useBreakpoint: () => ({
+        xs: false,
+        sm: true,
+        md: true,
+        lg: true,
+        xl: false,
+        xxl: false
+      })
+    }
+  };
+});
+
 const runtimeApi = vi.hoisted(() => ({
   applicationRunsQueryKey: (
     applicationId: string,
@@ -593,12 +612,16 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        new Date('2026-04-17T10:05:00Z').toLocaleString('zh-CN', { hour12: false })
+        new Date('2026-04-17T10:05:00Z').toLocaleString('zh-CN', {
+          hour12: false
+        })
       )
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        new Date('2026-04-17T12:00:00Z').toLocaleString('zh-CN', { hour12: false })
+        new Date('2026-04-17T12:00:00Z').toLocaleString('zh-CN', {
+          hour12: false
+        })
       )
     ).toBeInTheDocument();
 
@@ -715,7 +738,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
     );
     expect(screen.getByText('共 42 条')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByText('2', { selector: 'li[title="2"] > a' }));
 
     await waitFor(() => {
       expect(runtimeApi.fetchApplicationRuns).toHaveBeenNthCalledWith(

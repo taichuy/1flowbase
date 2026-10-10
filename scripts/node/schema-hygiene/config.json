@@ -1,6 +1,7 @@
 {
   "version": 1,
   "tableProfiles": {
+    "application_run_native_projection_progress": "flow_run_owned_table",
     "application_run_trace_refresh_queue": "flow_run_owned_table",
     "native_trajectory_integrity": "flow_run_owned_table",
     "provider_protocol_trajectory_events": "flow_run_owned_table",
@@ -690,6 +691,71 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "application_log_deletion_jobs": {
+      "kind": "application_owned_job",
+      "reason": "Deletion jobs are addressed by application_id and scope_id with newest-job chronology, while pending work uses the existing status-filtered index.",
+      "skip": [
+        "managed-table-scope-time-index"
+      ]
+    },
+    "application_log_deletion_records": {
+      "kind": "job_owned_workset",
+      "reason": "Deletion worksets use composite job_id and record_id identity, inherit scope from the owning deletion job and cascade with canonical task records.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "application_log_deletion_stop_requests": {
+      "kind": "job_owned_stop_fact",
+      "reason": "A stop request is one presence fact per deletion job, inherits job authorization and is removed with the job rather than tracked as mutable business metadata.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "application_log_upload_receipts": {
+      "kind": "application_owned_event_receipt",
+      "reason": "Upload receipts use application_id source_id event_id identity and point to canonical task and trajectory rows; replay lookup never scans workspace chronology.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "departments": {
+      "kind": "workspace_owned_tree",
+      "reason": "Departments are accessed through scope_id and parent_id tree adjacency and sibling-rank indexes; scope chronology is not an organization query contract.",
+      "skip": [
+        "managed-table-scope-time-index"
+      ]
+    },
+    "department_role_bindings": {
+      "kind": "department_owned_relation",
+      "reason": "Role binding identity and authorization derive from scope_id department_id and role_id; the relation carries no independent mutable timestamp lifecycle.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "user_department_bindings": {
+      "kind": "workspace_owned_membership_relation",
+      "reason": "Department memberships use workspace user and department relation identity with a transactional primary-department invariant rather than independent timestamp chronology.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
     "mcp_oauth_state": {
       "kind": "oauth_protocol_state",
       "reason": "Host-owned OAuth client registration and browser-bound one-time state use (kind, token_hash) identity and explicit expires_at; not workspace CRUD resources. Client registrations are durable, transient states expire and are atomically consumed.",
@@ -1403,6 +1469,224 @@
       "kind": "immutable_conversion_evidence",
       "reason": "conversion shadow rows are immutable evidence addressed by batch or flow rather than a scope chronology scan",
       "skip": ["managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+    }
+  },
+  "ownedTableContracts": {
+    "application_log_deletion_jobs": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "application_id"
+          ],
+          "table": "applications",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "application_id",
+          "scope_id",
+          "created_at",
+          "id"
+        ]
+      ]
+    },
+    "application_log_deletion_records": {
+      "primaryKey": [
+        "job_id",
+        "record_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "table": "application_log_deletion_jobs",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "record_id"
+          ],
+          "table": "application_run_log_tasks",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "record_id"
+        ]
+      ]
+    },
+    "application_log_deletion_stop_requests": {
+      "primaryKey": [
+        "job_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "table": "application_log_deletion_jobs",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "application_log_upload_receipts": {
+      "primaryKey": [
+        "application_id",
+        "source_id",
+        "event_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "application_id"
+          ],
+          "table": "applications",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "record_id"
+          ],
+          "table": "application_run_log_tasks",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "step_id"
+          ],
+          "table": "client_trajectory_steps",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "record_id"
+        ],
+        [
+          "step_id"
+        ]
+      ]
+    },
+    "departments": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "scope_id",
+            "tree_partition_id",
+            "parent_id"
+          ],
+          "table": "departments",
+          "references": [
+            "scope_id",
+            "tree_partition_id",
+            "id"
+          ]
+        }
+      ],
+      "nullableOwnerColumns": [
+        "parent_id"
+      ],
+      "indexes": [
+        [
+          "scope_id",
+          "parent_id"
+        ]
+      ]
+    },
+    "department_role_bindings": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id",
+            "department_id"
+          ],
+          "table": "departments",
+          "references": [
+            "scope_id",
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "role_id"
+          ],
+          "table": "roles",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "user_department_bindings": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id",
+            "department_id"
+          ],
+          "table": "departments",
+          "references": [
+            "scope_id",
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "scope_id",
+            "user_id"
+          ],
+          "table": "workspace_memberships",
+          "references": [
+            "workspace_id",
+            "user_id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "scope_id",
+          "department_id",
+          "user_id"
+        ]
+      ]
     }
   }
 }

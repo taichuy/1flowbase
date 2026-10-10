@@ -8,7 +8,7 @@ const {
   consumeServerFrames,
   runGatewayWebSocketAcceptance,
 } = require('../gateway-websocket');
-const { HTTP_500_ERROR_BODY } = require('../../mock-upstream');
+const WEBSOCKET_ERROR_MESSAGE = 'mock HTTP 500 equivalent';
 
 const RUN_ID = '018f7af7-3694-7ba0-90bf-83b5ec689705';
 
@@ -87,7 +87,7 @@ test('Root #1461 WP-14 connects Gateway WS trace to durable and WireAudit eviden
           type: 'response.failed',
           response: {
             id: `resp_${RUN_ID}`,
-            error: { message: HTTP_500_ERROR_BODY, code: 'provider_upstream_error' },
+            error: { message: WEBSOCKET_ERROR_MESSAGE, code: 'provider_upstream_error' },
           },
         },
       ] : [
@@ -102,7 +102,7 @@ test('Root #1461 WP-14 connects Gateway WS trace to durable and WireAudit eviden
           id: trace.run_id,
           status: trace.terminal_type === 'response.failed' ? 'failed' : 'succeeded',
           ...(trace.terminal_type === 'response.failed'
-            ? { error_message: HTTP_500_ERROR_BODY }
+            ? { error_message: WEBSOCKET_ERROR_MESSAGE }
             : {}),
         },
         digest_sha256: 'a'.repeat(64),
@@ -112,7 +112,7 @@ test('Root #1461 WP-14 connects Gateway WS trace to durable and WireAudit eviden
   assert.equal(result.trace.run_id, RUN_ID);
   assert.equal(result.durable.run.status, 'succeeded');
   assert.equal(result.wire_audit.verdict, 'PASS');
-  assert.equal(result.error_fidelity.trace.error_message, HTTP_500_ERROR_BODY);
-  assert.equal(result.error_fidelity.durable.run.error_message, HTTP_500_ERROR_BODY);
+  assert.equal(result.error_fidelity.trace.error_message, WEBSOCKET_ERROR_MESSAGE);
+  assert.equal(result.error_fidelity.durable.run.error_message, WEBSOCKET_ERROR_MESSAGE);
   assert.doesNotMatch(JSON.stringify(result), /application-secret/u);
 });

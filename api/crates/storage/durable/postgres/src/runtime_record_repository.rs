@@ -680,7 +680,9 @@ fn append_scope_clause(
     }
 }
 
-pub(crate) fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> Result<ModelMetadata> {
+pub(crate) fn to_runtime_model_metadata(
+    model: domain::ModelDefinitionRecord,
+) -> Result<ModelMetadata> {
     let record_capabilities = domain::data_model_capabilities(&model).record;
     let external_capability_snapshot = model
         .external_capability_snapshot

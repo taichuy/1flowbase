@@ -65,6 +65,9 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test i18n_catalog_integration template_ > tmp/test-governance/application-templates/i18n.log 2>&1 || verification_status=1
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib system_backup::selective > tmp/test-governance/application-templates/backup.log 2>&1 || verification_status=1
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib system_templates > tmp/test-governance/application-templates/http.log 2>&1 || verification_status=1
+          for suite in planner install i18n backup http; do
+            node scripts/node/verify/cargo-test-results.js "tmp/test-governance/application-templates/$suite.log" || verification_status=1
+          done
           exit "$verification_status"
       - name: Compile API consumers
         if: always()

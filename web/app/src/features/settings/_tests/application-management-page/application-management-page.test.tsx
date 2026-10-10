@@ -195,6 +195,7 @@ describe('ApplicationManagementPanel', () => {
       }
     );
     applicationsApi.fetchApplicationCatalog.mockResolvedValue({
+      collectors: [],
       types: [
         {
           value: 'agent_flow',
@@ -203,6 +204,10 @@ describe('ApplicationManagementPanel', () => {
         {
           value: 'workflow',
           label: 'Workflow'
+        },
+        {
+          value: 'agent_logs',
+          label: 'Agent Logs'
         }
       ],
       workflow_triggers: [
@@ -707,6 +712,63 @@ describe('ApplicationManagementPanel', () => {
       screen.queryByRole('button', { name: '导入应用' })
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText('导入')).not.toBeInTheDocument();
+  });
+
+  test('restores agent_logs URL filters and renders backend type labels', async () => {
+    applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue(
+      {
+        items: [
+          {
+            id: 'app-logs',
+            application_type: 'agent_logs',
+            workflow_trigger_type: null,
+            name: 'Collected Logs',
+            description: 'Imported application records',
+            icon: null,
+            icon_type: null,
+            icon_background: null,
+            created_by: 'root-user',
+            created_by_display_name: 'Root',
+            created_at: '2026-07-12T08:00:00Z',
+            updated_at: '2026-07-13T08:00:00Z',
+            tags: [],
+            publication_status: 'unpublished'
+          }
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20
+      }
+    );
+    window.history.replaceState(
+      {},
+      '',
+      '/settings/applications?application_type=agent_logs'
+    );
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    const logsRow = await screen.findByRole('row', { name: /Collected Logs/ });
+    expect(await within(logsRow).findByText('Agent Logs')).toBeInTheDocument();
+    expect(within(logsRow).queryByText('Workflow')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        applicationManagementApi.fetchSettingsApplicationManagement
+      ).toHaveBeenLastCalledWith({
+        page: 1,
+        page_size: 20,
+        filter: { $and: [{ application_type: 'agent_logs' }] },
+        sort: 'updated_at:desc'
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
+    expect(
+      new URLSearchParams(window.location.search).get('application_type')
+    ).toBe('agent_logs');
   });
 
   test('applies filter drafts together and resets them from the filter form', async () => {

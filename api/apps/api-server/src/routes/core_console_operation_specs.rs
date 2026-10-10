@@ -106,11 +106,16 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("applications.logs.import", "system.applications"),
     settings("applications.logs.delete", "system.applications"),
     settings("applications.logs.delete.preview", "system.applications"),
-    settings("applications.logs.delete.jobs.create", "system.applications"),
+    settings(
+        "applications.logs.delete.jobs.create",
+        "system.applications",
+    ),
     settings("applications.logs.delete.jobs.get", "system.applications"),
-    settings("applications.logs.delete.jobs.latest", "system.applications"),
+    settings(
+        "applications.logs.delete.jobs.latest",
+        "system.applications",
+    ),
     settings("applications.logs.delete.jobs.stop", "system.applications"),
-
     settings(
         "applications.orchestration.template.export",
         "system.applications",

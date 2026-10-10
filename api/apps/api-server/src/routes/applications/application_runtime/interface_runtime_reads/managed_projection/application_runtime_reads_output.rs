@@ -3,7 +3,16 @@ use super::*;
 impl InterfaceContract for ApplicationRuntimeReadsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("LogQueryResult")),("item_count",mp::count_schema())]),mp::object_schema(&[("variant",mp::tag_schema("RecordClientTrajectoryPage")),("item_count",mp::count_schema())]),mp::object_schema(&[("variant",mp::tag_schema("Record"))]),
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("LogQueryResult")),
+                ("item_count", mp::count_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RecordClientTrajectoryPage")),
+                ("item_count", mp::count_schema()),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("Record"))]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("WorkflowTrajectoryPage")),
                 ("item_count", mp::count_schema()),

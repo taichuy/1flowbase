@@ -129,7 +129,7 @@ fn validate_client_collector_manifest(manifest: &domain::ClientCollectorManifest
         "checksums.txt.sig",
         "signing-public-key.pem",
     ] {
-        if !names.contains(&required.to_string()) {
+        if !names.contains(required) {
             bail!("required collector asset missing: {required}");
         }
     }

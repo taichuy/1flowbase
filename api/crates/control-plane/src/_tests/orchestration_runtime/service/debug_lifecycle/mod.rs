@@ -814,7 +814,15 @@ async fn flow_compile_rejects_unknown_node_type_before_execution() {
         .await
         .expect_err("unsupported node types must fail before a run is executed");
 
-    assert!(error.to_string().contains("invalid input: node_type"));
+    let validation = error
+        .downcast_ref::<orchestration_runtime::compiler::FlowValidationError>()
+        .expect("unsupported nodes return compiler-owned diagnostics");
+    assert_eq!(validation.diagnostics.len(), 1);
+    assert_eq!(
+        validation.diagnostics[0].node_id.as_deref(),
+        Some("node-unknown")
+    );
+    assert_eq!(validation.diagnostics[0].code, "unsupported_node_type");
 }
 
 mod branching;

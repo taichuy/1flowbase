@@ -39,6 +39,31 @@ fn baselines(package: &domain::McpBundlePackage) -> Vec<TemplateResourceBaseline
         .collect()
 }
 #[test]
+fn recovery_requires_pending_intent_and_matching_durable_commit_receipt() {
+    let mut baseline = baselines(&fixture()).remove(0);
+    let operation_id = Uuid::from_u128(101);
+    let committed = "committed-content".to_string();
+    baseline.committed_operation_id = Some(operation_id);
+    baseline.committed_fingerprint = Some(committed.clone());
+    // A receipt without a pending intent is already finalized, not recoverable.
+    assert_eq!(recovery_operation(&baseline), None);
+    baseline.pending = Some(TemplateWriteIntent {
+        operation_id,
+        target_id: baseline.target_id.clone(),
+        expected_fingerprint: baseline.applied_fingerprint.clone(),
+        desired_fingerprint: committed,
+    });
+    assert_eq!(recovery_operation(&baseline), Some(operation_id));
+    baseline.committed_operation_id = Some(Uuid::from_u128(102));
+    assert_eq!(recovery_operation(&baseline), None);
+    baseline.committed_operation_id = None;
+    assert_eq!(recovery_operation(&baseline), None);
+    baseline.committed_operation_id = Some(operation_id);
+    baseline.committed_fingerprint = None;
+    assert_eq!(recovery_operation(&baseline), None);
+}
+
+#[test]
 fn unknown_identical_shared_tool_can_satisfy_reset_without_adoption() {
     let source = fixture();
     let mut current = source.clone();

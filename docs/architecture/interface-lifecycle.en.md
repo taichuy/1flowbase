@@ -177,6 +177,8 @@ First enable or explicit version switch creates a template application identity 
 
 Each process retains immutable assembly identity. Navigation, plugin operations and template source share a version gate: an old process cannot combine a new template applied by another process with its old backend. Multi-node gating does not promise atomic cluster-wide cutover. Editing and enable/upgrade flows explain overwrite timing. Business configuration, credentials and roles are outside template replacement.
 
+User-imported portable application templates follow a separate resource merge flow and do not change the plugin-owned boot-template replacement rule above. `control-plane/portable_template` owns merge decisions and write intents; each native resource owner commits its resource mutation and durable receipt in the same database transaction, while the PostgreSQL adapter persists baselines. Interrupted MCP writes are recoverable only with a pending intent, matching committed operation ID and committed fingerprint. Current content cannot prove that an absent, uncommitted or mismatched intent committed. Preview and installation share this recovery predicate and preserve existing merge behavior for user edits, deletions and unknown baselines.
+
 <a id="finalization-and-delivery"></a>
 
 ## Finalization and delivery

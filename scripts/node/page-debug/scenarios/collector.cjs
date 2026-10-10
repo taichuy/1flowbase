@@ -11,6 +11,8 @@ async function main() {
   const webBaseUrl = process.env.COLLECTOR_WEB_BASE_URL || 'http://127.0.0.1:3100';
   const apiBaseUrl = process.env.COLLECTOR_API_BASE_URL || 'http://127.0.0.1:7800';
   const applicationId = process.env.COLLECTOR_APPLICATION_ID || '01a11699-d833-7373-b825-91d9916896b8';
+  const expectedVersion = process.env.COLLECTOR_EXPECTED_VERSION;
+  assert.match(expectedVersion || '', /^\d+\.\d+\.\d+$/, 'pinned source expected collector version required');
   const out = process.env.COLLECTOR_EVIDENCE_DIR || path.join(repoRoot, 'tmp/test-governance/agent-logs-platform-distribution/browser');
   const playwright = createRequire(path.join(repoRoot, 'web/package.json'))('playwright');
   await fs.mkdir(out, { recursive: true });
@@ -23,7 +25,7 @@ async function main() {
   try {
     await fs.chmod(storageStatePath, 0o600);
     cleanupProbe = await playwright.request.newContext({ storageState: storageStatePath });
-    browser = await playwright.chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/usr/bin/google-chrome', headless: true });
+    browser = await playwright.chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || playwright.chromium.executablePath(), headless: true });
     for (const [name, language, viewport] of [['desktop-zh', 'zh', { width: 1440, height: 1000 }], ['mobile-zh', 'zh', { width: 390, height: 844 }], ['desktop-en', 'en', { width: 1440, height: 1000 }], ['mobile-en', 'en', { width: 390, height: 844 }]]) {
       const context = await browser.newContext({ storageState: storageStatePath, viewport });
       await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: webBaseUrl });
@@ -49,7 +51,7 @@ async function main() {
         catalog = (await catalogResponse.json()).data;
       }
       assert.equal(catalog.collectors[0].installation_status, 'installed');
-      assert.equal(catalog.collectors[0].installed_version, '0.1.0');
+      assert.equal(catalog.collectors[0].installed_version, expectedVersion);
       assert.ok(catalog.collectors[0].shell_installer_url.startsWith('/api/public/client-collectors/'));
       const collectorTab = page.getByRole('tab', { name: 'Codex', exact: true });
       const allTab = page.getByRole('tab', { name: /^(全部|All)$/ });
@@ -69,6 +71,7 @@ async function main() {
       assert.ok(!text.includes('github.com'));
       assert.ok(text.includes('--release-base'));
       const shellCommand = await page.locator('.application-collector__command pre').innerText();
+      assert.equal(shellCommand.match(/--version '([^']+)'/)?.[1], expectedVersion);
       const endpoint = shellCommand.match(/--endpoint '([^']+)'/)?.[1];
       assert.match(endpoint || '', /^https?:\/\//);
       const releaseBase = shellCommand.match(/--release-base '([^']+)'/)?.[1];
@@ -93,6 +96,7 @@ async function main() {
       await page.getByText('Windows (PowerShell)', { exact: true }).click();
       text = await page.locator('body').innerText();
       assert.ok(text.includes('-Endpoint')); assert.ok(text.includes('-InstallationId'));
+      assert.equal(text.match(/-Version '([^']+)'/)?.[1], expectedVersion);
       assert.equal(text.match(/-Endpoint '([^']+)'/)?.[1], endpoint);
       assert.equal(text.match(/-ReleaseBase '([^']+)'/)?.[1], releaseBase);
       assert.ok(text.includes('-MaximumRedirection 0'));

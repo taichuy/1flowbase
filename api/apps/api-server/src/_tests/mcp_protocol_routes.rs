@@ -531,7 +531,24 @@ async fn ac_003_005_builtin_frontstage_tools_are_discoverable_and_callable() {
             .as_array()
             .unwrap()
             .len(),
-        17
+        18
+    );
+    let i18n = contract_call["result"]["structuredContent"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["key"] == "i18n")
+        .expect("MCP must expose the Host i18n ABI alongside the other context entries");
+    assert_eq!(i18n["type"], json!("BlockContextI18n"));
+    assert_eq!(i18n["nullable"], json!(false));
+    assert_eq!(
+        i18n["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| member["name"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["locale", "status", "t"]
     );
 
     let invalid_contract_call = call_mcp_instance(

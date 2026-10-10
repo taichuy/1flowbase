@@ -184,7 +184,7 @@ async fn seed_builtin_bundle_installation(
     .unwrap();
 }
 use control_plane::mcp_management::{
-    CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand,
+    CreateMcpInstanceCommand, CreateMcpToolBindingCommand, CreateMcpToolCommand, McpListItemsQuery,
     McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
     RecordMcpUpstreamDiscoveryCommand, RefreshMcpToolDescriptionCommand,
     SaveMcpUpstreamConnectionCommand, SaveMcpUpstreamCredentialCommand,
@@ -1319,12 +1319,11 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
     let root_items = service
         .list_items(
             actor.id,
-            Some("workspace_ops"),
-            Some("/"),
-            None,
-            None,
-            None,
-            None,
+            McpListItemsQuery {
+                instance_id: Some("workspace_ops"),
+                path: Some("/"),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
@@ -1346,12 +1345,11 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
     let ops_items = service
         .list_items(
             actor.id,
-            Some("workspace_ops"),
-            Some("/ops"),
-            None,
-            None,
-            None,
-            None,
+            McpListItemsQuery {
+                instance_id: Some("workspace_ops"),
+                path: Some("/ops"),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
@@ -1364,12 +1362,10 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
     assert!(service
         .list_items(
             actor.id,
-            Some(&disabled_instance.instance_id),
-            None,
-            None,
-            None,
-            None,
-            None,
+            McpListItemsQuery {
+                instance_id: Some(&disabled_instance.instance_id),
+                ..Default::default()
+            },
         )
         .await
         .is_err());
@@ -1415,7 +1411,7 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
         .await
         .unwrap();
     assert!(service
-        .list_items(actor.id, None, None, None, None, None, None)
+        .list_items(actor.id, McpListItemsQuery::default())
         .await
         .is_err());
 }

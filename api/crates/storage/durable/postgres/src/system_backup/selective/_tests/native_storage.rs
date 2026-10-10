@@ -23,6 +23,11 @@ async fn selective_application_backup_restores_exact_native_snapshot_and_owners(
         durability: domain::RuntimeEventDurability::Durable,
     }).await.unwrap();
     let repo = PgSelectiveBackupRepository::new(db.clone());
+    sqlx::query("insert into application_run_native_projection_progress(flow_run_id,projection_version,output_sequence,result_count,source_revision,conflicting_source_keys) values($1,1,0,0,0,array['retained-conflict']) on conflict(flow_run_id) do update set conflicting_source_keys=excluded.conflicting_source_keys")
+        .bind(run)
+        .execute(&db)
+        .await
+        .unwrap();
     let bytes = capture(&repo, select("applications", true, true)).await;
     // Identical immutable rows must permit restoration, including repeated restore.
     let preview = repo
@@ -40,6 +45,11 @@ async fn selective_application_backup_restores_exact_native_snapshot_and_owners(
         .unwrap();
     let emptied: (i64, i64, i64) = sqlx::query_as("select (select count(*) from runtime_native_snapshot_manifests),(select count(*) from runtime_native_snapshot_items),(select count(*) from runtime_native_snapshot_references)").fetch_one(&db).await.unwrap();
     assert_eq!(emptied, (0, 0, 0));
+    sqlx::query("delete from application_run_native_projection_progress where flow_run_id=$1")
+        .bind(run)
+        .execute(&db)
+        .await
+        .unwrap();
     repo.restore(reader(bytes), "key", "key", true)
         .await
         .unwrap();
@@ -48,4 +58,12 @@ async fn selective_application_backup_restores_exact_native_snapshot_and_owners(
     assert_eq!(restored["body"], body);
     let owners: (i64, i64, i64) = sqlx::query_as("select (select count(*) from runtime_native_snapshot_manifests),(select count(*) from runtime_native_snapshot_items),(select count(*) from runtime_native_snapshot_references)").fetch_one(&db).await.unwrap();
     assert_eq!(owners, (1, 3, 3));
+    let conflicts: Vec<String> = sqlx::query_scalar(
+        "select conflicting_source_keys from application_run_native_projection_progress where flow_run_id=$1",
+    )
+    .bind(run)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(conflicts, vec!["retained-conflict"]);
 }

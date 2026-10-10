@@ -12,6 +12,8 @@ async fn same_waiting_workload_releases_confirmed_ring_bytes_and_capacity_with_w
     let mut confirmed_probes = Vec::new();
     let mut legacy_writers = Vec::new();
     let mut confirmed_writers = Vec::new();
+    let mut legacy_expected_bytes = 0;
+    let mut confirmed_expected_bytes = 0;
 
     for _ in 0..RUNS {
         let run_id = Uuid::now_v7();
@@ -44,6 +46,28 @@ async fn same_waiting_workload_releases_confirmed_ring_bytes_and_capacity_with_w
                 .await
                 .unwrap();
         }
+        let legacy_events = legacy
+            .replay(run_id, None, EVENTS_PER_RUN + 1)
+            .await
+            .unwrap();
+        let mut confirmed_events = confirmed
+            .replay(run_id, None, EVENTS_PER_RUN + 1)
+            .await
+            .unwrap();
+        assert_eq!(legacy_events.len(), EVENTS_PER_RUN + 1);
+        assert_eq!(confirmed_events.len(), EVENTS_PER_RUN + 1);
+        for (index, (old_event, new_event)) in
+            legacy_events.iter().zip(&mut confirmed_events).enumerate()
+        {
+            assert_eq!(old_event.sequence, (index + 1) as i64);
+            legacy_expected_bytes += serde_json::to_vec(old_event).unwrap().len();
+            confirmed_expected_bytes += serde_json::to_vec(new_event).unwrap().len();
+            // Appends sample wall-clock time independently. The serialized timestamp
+            // can differ in width; only normalize it for workload equality,
+            // after accounting for each actual envelope's exact retained wire bytes.
+            new_event.occurred_at = old_event.occurred_at;
+            assert_eq!(&*new_event, old_event);
+        }
         legacy_probes.push(legacy.run_probe_for_tests(run_id).unwrap());
         confirmed_probes.push(confirmed.run_probe_for_tests(run_id).unwrap());
         legacy_writers.push(legacy.terminal_writer(run_id).await.unwrap());
@@ -54,7 +78,8 @@ async fn same_waiting_workload_releases_confirmed_ring_bytes_and_capacity_with_w
     let legacy_capacity: usize = legacy_probes.iter().map(|probe| probe().2).sum();
     let confirmed_capacity: usize = confirmed_probes.iter().map(|probe| probe().2).sum();
     assert!(legacy_before >= RUNS * EVENTS_PER_RUN * BODY_BYTES);
-    assert_eq!(confirmed_before, legacy_before);
+    assert_eq!(legacy_before, legacy_expected_bytes);
+    assert_eq!(confirmed_before, confirmed_expected_bytes);
     assert_eq!(confirmed_capacity, legacy_capacity);
 
     let aged = OffsetDateTime::now_utc() - TimeDuration::minutes(6);

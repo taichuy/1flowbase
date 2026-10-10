@@ -36,6 +36,53 @@ test('Root #1477 AC-008 controlled negatives reject trimmed, decoded, or selecte
   }), /empty-body fallback/u);
 });
 
+test('WebSocket explicit empty message preserves its complete frame without an HTTP fallback', () => {
+  const fixture = UPSTREAM_ERROR_FIXTURES.find((row) => row.id === 'empty');
+  const facts = { type: 'mock_upstream_error', message: '', status: 503, nonce: 'mock-empty' };
+  const raw = JSON.stringify({ type: 'error', error: facts });
+  const observations = {
+    surface: 'responses-websocket', upstreamNonce: facts.nonce,
+    nativeError: { message: '', details: { upstream_error: structuredClone(facts), raw_body: raw } },
+    durableErrorPayload: { message: '', provider_details: { upstream_error: structuredClone(facts), raw_body: raw } },
+    clientMessages: [''], clientResponseErrors: [structuredClone(facts)],
+  };
+  assert.doesNotThrow(() => assertUpstreamErrorFidelity(fixture, observations));
+  for (const mutate of [
+    (value) => { value.clientResponseErrors[0].message = null; },
+    (value) => { value.nativeError.details.raw_body = ''; },
+    (value) => { value.durableErrorPayload.message = 'HTTP 503'; },
+    (value) => { value.clientMessages = []; },
+    (value) => { value.clientResponseErrors[0].extra = true; },
+  ]) {
+    const changed = structuredClone(observations);
+    mutate(changed);
+    assert.throws(() => assertUpstreamErrorFidelity(fixture, changed), /WebSocket/u);
+  }
+});
+
+test('Responses scalar upstream error retains full HTTP body in Native and durable facts', () => {
+  const fixture = UPSTREAM_ERROR_FIXTURES.find((row) => row.id === 'retry');
+  const facts = JSON.parse(fixture.body).error;
+  const observations = {
+    surface: 'responses-sse', nativeMessage: fixture.body, durableMessage: fixture.body,
+    nativeError: { message: fixture.body, details: { upstream_error: facts, raw_body: fixture.body } },
+    durableErrorPayload: { message: fixture.body, provider_details: { upstream_error: facts, raw_body: fixture.body } },
+    clientMessages: [], clientResponseErrors: [facts],
+  };
+  assert.doesNotThrow(() => assertUpstreamErrorFidelity(fixture, observations));
+  for (const mutate of [
+    (value) => { value.clientResponseErrors = [{ message: facts }]; },
+    (value) => { value.nativeError.details.upstream_error = 'changed'; },
+    (value) => { value.durableErrorPayload.provider_details.raw_body = fixture.body.trim(); },
+    (value) => { value.clientMessages = [facts]; },
+    (value) => { value.durableMessage = facts; },
+  ]) {
+    const changed = structuredClone(observations);
+    mutate(changed);
+    assert.throws(() => assertUpstreamErrorFidelity(fixture, changed), /scalar|invented|exact upstream body/u);
+  }
+});
+
 function standardEvidence() {
   const fixture = UPSTREAM_ERROR_FIXTURES.find((row) => row.id === 'anthropic-standard');
   const facts = { ...fixture.anthropicError };

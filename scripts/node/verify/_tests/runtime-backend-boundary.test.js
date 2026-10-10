@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const repoRoot = path.resolve(__dirname, '../../../..');
-const forbidden = /PLUGIN_RUNNER|plugin-runner|plugin_runner|PluginRunner|\b7801\b/u;
+const forbidden = /PLUGIN_RUNNER|plugin-runner|plugin_runner|PluginRunner|PLUGIN_RUNTIME_URL|RUNTIME_SERVER_ADDR/u;
 const ignoredDirectories = new Set([
   '_tests',
   'ai-gateway-concurrency',
@@ -28,6 +28,13 @@ function productionFiles(root, ignored = ignoredDirectories) {
   visit(root);
   return files;
 }
+
+test('runtime service detection distinguishes retired ownership from isolated API ports', () => {
+  assert.equal(forbidden.test("API_SERVER_ADDR: '127.0.0.1:7801'"), false);
+  for (const source of ["PLUGIN_RUNNER_URL=http://localhost:7801", "spawn('plugin-runner')", "RUNTIME_SERVER_ADDR=127.0.0.1:7900"]) {
+    assert.equal(forbidden.test(source), true, source);
+  }
+});
 
 test('Delivery 1898 removes the standalone runtime service from production tooling', () => {
   const roots = ['scripts', 'docker', '.github'].map((directory) => path.join(repoRoot, directory));

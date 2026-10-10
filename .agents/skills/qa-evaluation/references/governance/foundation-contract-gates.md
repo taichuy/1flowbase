@@ -39,7 +39,11 @@
 
 ## Deterministic Evidence And Legal Negatives
 
-路由 fixture 必须覆盖四个基座正例，以及 docs-only、locale-only、无关 CSS 等合法反例。共享 `interface-runtime` / `extension-contracts` 的 Rust 源码、测试与 Cargo manifest，以及 `runtime-core` 的 `runtime_backend` Port 源码与对应测试，必须选择三个后端基座；Native React 不因此触发。crate 规则文档和无关 runtime 模块保持未选择。规则变更还必须证明：
+路由 fixture 必须覆盖四个基座正例，以及 docs-only、locale-only、无关 CSS 等合法反例。共享 `interface-runtime` / `extension-contracts` 的 Rust 源码、测试与 Cargo manifest，以及 `runtime-core` 的 `runtime_backend` Port 源码与对应测试，必须选择三个后端基座；Native React 不因此触发。crate 规则文档和无关 runtime 模块保持未选择。
+
+AI Gateway 的 native HTTP / WebSocket、SSE、stream terminal / cold replay、debug stream、local runtime event stream、provider transport lifecycle、runtime event persister / callback completion 与 orchestration transport session 的 Rust owner 和对应测试必须进入 AI 路由。正例绑定当前真实文件；owner 下文档、i18n、CSS、provider settings 与无关 runtime 模块保持未选择。该路由只选择既有 fast pack，完整恢复、持久化、Provider 与数据库行为仍由 nightly/manual full evidence 结算，不新增全量 PR gate。
+
+规则变更还必须证明：
 
 - 把 `mcp_result` 放进核心三入口会失败；
 - warning-only receipt 仍 passed，error/blocker 才 failed；

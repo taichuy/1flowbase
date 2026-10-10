@@ -759,7 +759,7 @@ test("quality gate workflow supports dispatch targets and nightly latest CI defa
   );
   assert.match(
     workflow,
-    /concurrency:\n\s+group: quality-gate-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.target_branch \|\| 'latest' \}\}\n\s+cancel-in-progress: true/u,
+    /concurrency:\n\s+group: quality-gate-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.target_branch \|\| 'latest' \}\}-\$\{\{ inputs\.scope \|\| 'ci' \}\}-\$\{\{ inputs\.batch_mode \|\| 'full' \}\}\n\s+cancel-in-progress: true/u,
   );
   assert.match(
     workflow,
@@ -1270,4 +1270,51 @@ test('foundation concurrency separates caller workflows, candidates and lanes', 
   assert.ok(group.includes('${{ github.workflow }}'));
   assert.ok(group.includes('${{ inputs.target_ref || github.sha }}'));
   assert.ok(group.includes("${{ inputs.lane || 'pr-evidence' }}"));
+});
+
+test('manual quality scopes and plugin batches retain independent concurrency identities', () => {
+  const group = readQualityGateWorkflow().match(/group: (quality-gate-[^\n]+)/u)?.[1];
+  assert.ok(group);
+  // Render the small declared identity vocabulary to exercise real YAML grouping.
+  const render = (scope, batch = 'full', target = 'candidate') => group
+    .replace('${{ github.event_name }}', 'workflow_dispatch')
+    .replace("${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'latest' }}", target)
+    .replace("${{ inputs.scope || 'ci' }}", scope)
+    .replace("${{ inputs.batch_mode || 'full' }}", batch);
+  assert.notEqual(render('repo-tooling'), render('repo-frontend'));
+  assert.notEqual(render('ci'), render('repo-tooling'));
+  assert.notEqual(render('plugin-composition-2014', 'r3-probe'), render('plugin-composition-2014', 'browser-candidate'));
+  assert.notEqual(render('repo-tooling'), render('repo-tooling', 'full', 'other-candidate'));
+  assert.equal(render('repo-tooling'), 'quality-gate-workflow_dispatch-candidate-repo-tooling-full');
+  assert.doesNotMatch(render('ci'), /\$\{\{/u);
+});
+
+test('template focused gate rejects each empty selector while keeping compile evidence separate', () => {
+  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/application-template-contracts.yml'), 'utf8');
+  const testStep = workflow.slice(workflow.indexOf('- name: Verify template merge'), workflow.indexOf('- name: Compile API consumers'));
+  const logs = [...testStep.matchAll(/> tmp\/test-governance\/application-templates\/([a-z][a-z0-9]*)\.log/gu)].map((match) => match[1]);
+  const checked = testStep.match(/for suite in ([a-z0-9 ]+); do/u)?.[1].split(' ');
+  assert.deepEqual(checked?.sort(), logs.sort());
+  assert.equal(logs.length, 5);
+  assert.match(testStep, /node scripts\/node\/verify\/cargo-test-results\.js "tmp\/test-governance\/application-templates\/\$suite\.log" \|\| verification_status=1/u);
+  assert.match(testStep, /exit "\$verification_status"/u);
+  const compileStep = workflow.slice(workflow.indexOf('- name: Compile API consumers'));
+  assert.match(compileStep, /cargo check --locked/u);
+  assert.doesNotMatch(compileStep, /cargo-test-results\.js/u);
+});
+
+
+test('AI protocol concurrency separates caller workflows and candidate sources', () => {
+  const group = readAiGatewayConcurrencyWorkflow().match(/group: (ai-gateway-protocol-conformance-[^\n]+)/u)?.[1];
+  assert.ok(group);
+  const render = (candidate, caller = 'quality gate', event = 'workflow_dispatch') => group
+    .replace('${{ github.workflow }}', caller)
+    .replace('${{ github.event_name }}', event)
+    .replace('${{ github.ref }}', 'refs/heads/candidate')
+    .replace('${{ inputs.target_ref || github.sha }}', candidate);
+  assert.equal(render('source-a'), 'ai-gateway-protocol-conformance-quality gate-workflow_dispatch-refs/heads/candidate-source-a');
+  assert.notEqual(render('source-a'), render('source-b'));
+  assert.notEqual(render('source-a'), render('source-a', 'standalone protocol'));
+  assert.notEqual(render('source-a'), render('source-a', 'quality gate', 'schedule'));
+  assert.doesNotMatch(render('source-a'), /\$\{\{/u);
 });

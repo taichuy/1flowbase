@@ -231,7 +231,9 @@ const fn hidden_unavailable(
 fn builtin_application_nodes(
     application_type: domain::ApplicationType,
 ) -> Vec<ApplicationNodeCatalogEntry> {
-    if application_type == domain::ApplicationType::AgentLogs { return Vec::new(); }
+    if application_type == domain::ApplicationType::AgentLogs {
+        return Vec::new();
+    }
     let boundary_nodes: &[BuiltinNodeSpec] = match application_type {
         domain::ApplicationType::AgentLogs => &[],
         domain::ApplicationType::AgentFlow => &[
