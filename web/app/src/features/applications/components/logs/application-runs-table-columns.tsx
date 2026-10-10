@@ -38,7 +38,7 @@ function renderRunTokenCount(value: number | null | undefined) {
 
   return (
     <span title={formatNumber(value)}>
-      {tokenCountFormatter.format(value).toLowerCase()}
+      {tokenCountFormatter.format(value)}
     </span>
   );
 }
