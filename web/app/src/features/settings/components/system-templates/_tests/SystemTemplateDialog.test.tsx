@@ -154,7 +154,13 @@ describe('portable template flow', () => {
     fireEvent.mouseDown(
       await screen.findByRole('combobox', { name: 'Translations' })
     );
-    fireEvent.click(await screen.findByText('gateway.title'));
+    // Virtual Select mirrors the label in an accessibility-only option.
+    // Click the rendered choice, not that duplicate text node.
+    fireEvent.click(
+      await screen.findByText('gateway.title', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Download ZIP' }));
     await waitFor(() =>
       expect(api.exportSystemTemplateArchive).toHaveBeenCalledWith(
