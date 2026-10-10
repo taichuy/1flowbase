@@ -29,8 +29,15 @@ const FOUNDATION_DEFINITIONS = {
         || /^scripts\/node\/(?:ai-gateway-concurrency|provider-conformance|verify-state-protocols)(?:\/|\.js$)/u.test(filePath)
         || /^scripts\/node\/cli\/(?:ai-gateway|acp-claude-smoke)/u.test(filePath)
         || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic(?:\/|\.rs$)|client_observer\.rs$|openai(?:\/|\.rs$)|compatibility_interface(?:\/|\.rs$)|compat_sse(?:\/|\.rs$))/u.test(filePath)
+        || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:native|native_interface|native_read_interface|native_websocket|sse|stream_terminal_fallback)(?:\/.*\.rs|\.rs)$/u.test(filePath)
+        || /^api\/apps\/api-server\/src\/routes\/applications\/debug_run_stream(?:\/.*\.rs|\.rs)$/u.test(filePath)
+        || /^api\/apps\/api-server\/src\/host_infrastructure\/local_runtime_event_stream\.rs$/u.test(filePath)
+        || /^api\/apps\/api-server\/src\/provider_runtime\/(?:_tests\/)?transport_session_lifecycle(?:\/.*\.rs|\.rs)$/u.test(filePath)
+        || /^api\/apps\/api-server\/src\/_tests\/runtime_event_stream\/.*\.rs$/u.test(filePath)
         || /^api\/crates\/control-plane\/src\/(?:application_public_api|client_trajectory)(?:\/|\.rs$)/u.test(filePath)
         || /^api\/crates\/control-plane\/src\/orchestration_runtime\/provider_invoker(?:\/|\.rs$)/u.test(filePath)
+        || /^api\/crates\/control-plane\/src\/(?:_tests\/)?orchestration_runtime\/(?:runtime_event_persister|callback_completion)(?:\/.*\.rs|\.rs)$/u.test(filePath)
+        || /^api\/crates\/orchestration-runtime\/src\/transport_session\/.*\.rs$/u.test(filePath)
         || /^\.github\/workflows\/ai-gateway-concurrency\.yml$/u.test(filePath);
     },
     fast: [

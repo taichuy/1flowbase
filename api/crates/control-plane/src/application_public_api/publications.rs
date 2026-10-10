@@ -188,7 +188,9 @@ where
             )
             .await?;
         let compiled_plan = match application.application_type {
-            domain::ApplicationType::AgentLogs => return Err(ControlPlaneError::InvalidInput("application_type").into()),
+            domain::ApplicationType::AgentLogs => {
+                return Err(ControlPlaneError::InvalidInput("application_type").into())
+            }
             domain::ApplicationType::AgentFlow => FlowCompiler::compile(
                 publication_state.flow.id,
                 &publication_state.draft.id.to_string(),

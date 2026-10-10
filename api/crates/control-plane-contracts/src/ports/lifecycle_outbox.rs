@@ -319,12 +319,14 @@ impl ManagedDeliveryCursor {
         installation_id: Uuid,
         workspace_id: Uuid,
     ) -> Result<Self, InvalidManagedDeliveryCursor> {
-        if value.len() % 2 != 0 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if !value.len().is_multiple_of(2) || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(InvalidManagedDeliveryCursor);
         }
         let bytes = value
             .as_bytes()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| {
                 u8::from_str_radix(
                     std::str::from_utf8(pair).map_err(|_| InvalidManagedDeliveryCursor)?,

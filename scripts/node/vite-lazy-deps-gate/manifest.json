@@ -91,6 +91,17 @@
     },
     {
       "source": "web/app/src/features/applications/pages/ApplicationDetailPage.tsx",
+      "specifier": "./ApplicationCollectorPage",
+      "smokePaths": [
+        {
+          "path": "/applications/vite-lazy-deps-application/collector",
+          "requiresFixture": true,
+          "reason": "Use an agent_logs application and its collector catalog; collector scenario owns authenticated UI evidence."
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/applications/pages/ApplicationDetailPage.tsx",
       "specifier": "./WorkflowExtensionApiPage",
       "smokePaths": [
         {

@@ -88,6 +88,12 @@ HTTP/SSE/WebSocket、MCP/WebMCP 保持各自输入、错误和流式协议。Web
 
 Runtime Worker 是 Dispatch 后的执行目标；Background Worker/Schedule 是主动调用入口，两者不同。内部入口全集、System Principal、durable retry/ack 必须由其 owner 明确，不能由统一逻辑图推导为已全部接入。
 
+### 内部持久化身份与门禁
+
+调用及日志内部记录沿用真实 owner，不为满足通用业务表模板制造独立业务身份：删除工作集/停止事实归删除 job，上传回执归 application/source/event，原生消息投影进度归 flow run。组织树与成员/角色绑定沿用 workspace 与关系键。授权仍由业务 owner 决定，存储层外键、主键和对应查找索引保证引用与访问路径。
+
+Schema 门禁对这些有限表使用具体字段/索引例外，并独立检查 owner 外键、非空 routing key、主键和查询索引；普通业务表的 scope/time/id 约束继续执行。正式 migration 不因门禁分类更新而改写。
+
 ### 源码入口
 
 - [external_route_assembly.rs](../../api/apps/api-server/src/external_route_assembly.rs)：挂载与 Inventory 同源构造。

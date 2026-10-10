@@ -77,6 +77,59 @@ test('routes current protocol and invocation owners without selecting unrelated 
   }
 });
 
+test('routes real native transport and replay owners without widening the AI fast pack', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const baselinePack = buildFoundationPlan({ foundation: 'ai-gateway' }).packs['ai-gateway'];
+  for (const changedFile of [
+    'api/apps/api-server/src/routes/application_public_api/native.rs',
+    'api/apps/api-server/src/routes/application_public_api/native_interface.rs',
+    'api/apps/api-server/src/routes/application_public_api/native_read_interface.rs',
+    'api/apps/api-server/src/routes/application_public_api/native/_tests/catalog_admission.rs',
+    'api/apps/api-server/src/routes/application_public_api/native_websocket/turn_bridge.rs',
+    'api/apps/api-server/src/routes/application_public_api/sse.rs',
+    'api/apps/api-server/src/routes/application_public_api/stream_terminal_fallback.rs',
+    'api/apps/api-server/src/routes/application_public_api/stream_terminal_fallback/cold_replay.rs',
+    'api/apps/api-server/src/routes/applications/debug_run_stream.rs',
+    'api/apps/api-server/src/host_infrastructure/local_runtime_event_stream.rs',
+    'api/apps/api-server/src/provider_runtime/transport_session_lifecycle.rs',
+    'api/apps/api-server/src/provider_runtime/_tests/transport_session_lifecycle/dispatch_settlement.rs',
+    'api/apps/api-server/src/_tests/runtime_event_stream/recoverable.rs',
+    'api/crates/control-plane/src/orchestration_runtime/runtime_event_persister.rs',
+    'api/crates/control-plane/src/_tests/orchestration_runtime/runtime_event_persister.rs',
+    'api/crates/control-plane/src/orchestration_runtime/callback_completion.rs',
+    'api/crates/orchestration-runtime/src/transport_session/registry.rs',
+    'api/crates/orchestration-runtime/src/transport_session/_tests/dispatch_settlement.rs',
+  ]) {
+    assert.equal(fs.existsSync(path.join(repoRoot, changedFile)), true, `current owner must exist: ${changedFile}`);
+    const plan = buildFoundationPlan({ changedFiles: [changedFile] });
+    assert.deepEqual(plan.selectedFoundations, ['ai-gateway'], changedFile);
+    assert.deepEqual(plan.packs['ai-gateway'].triggerReasons, [`changed: ${changedFile}`]);
+    assert.deepEqual(plan.packs['ai-gateway'].fast, baselinePack.fast);
+    assert.deepEqual(plan.packs['ai-gateway'].full, baselinePack.full);
+  }
+});
+
+test('native transport routing excludes non-Rust assets and unrelated runtime owners', () => {
+  for (const changedFile of [
+    'api/apps/api-server/src/routes/application_public_api/native/README.md',
+    'api/apps/api-server/src/routes/application_public_api/native/i18n/en_US.json',
+    'api/apps/api-server/src/routes/application_public_api/native/styles.css',
+    'api/apps/api-server/src/routes/application_public_api/native_settings.rs',
+    'api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs',
+    'api/apps/api-server/src/host_infrastructure/local.rs',
+    'api/apps/api-server/src/provider_runtime/README.md',
+    'api/crates/control-plane/src/orchestration_runtime/tests/billing_usage_guard.rs',
+    'api/crates/control-plane/src/orchestration_runtime/frozen_plan/mod.rs',
+    'api/crates/orchestration-runtime/src/transport_session/README.md',
+    'api/crates/runtime-core/src/capability_slots.rs',
+    'docs/architecture/ai-gateway-observation.md',
+    'web/app/src/i18n/zh-CN.json',
+    'web/app/src/features/frontstage/styles/layout.css',
+  ]) {
+    assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, [], changedFile);
+  }
+});
+
 test('AC-002 keeps mcp_result outside the core operations and only adds continuation evidence on risk', () => {
   assert.doesNotThrow(() => validatePackInventory());
 

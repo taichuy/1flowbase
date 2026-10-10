@@ -99,7 +99,6 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "applications.logs.delete.jobs.get",
             "applications.logs.delete.jobs.latest",
             "applications.logs.delete.jobs.stop",
-
             "applications.logs.export",
             "applications.logs.import",
             "applications.orchestration.template.export",
@@ -450,7 +449,6 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "applications.logs.delete.jobs.get",
     "applications.logs.delete.jobs.latest",
     "applications.logs.delete.jobs.stop",
-
     // Organization grants are new authority, never inferred from historical user-management grants.
     "departments.list",
     "departments.create",
