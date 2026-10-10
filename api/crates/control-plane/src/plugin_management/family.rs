@@ -1181,11 +1181,13 @@ where
 pub(super) fn supports_workspace_assignment(
     installation: &domain::PluginInstallationRecord,
 ) -> bool {
-    matches!(
-        installation.contract_version.as_str(),
-        CURRENT_PROVIDER_CONTRACT
-            | "1flowbase.data_source/v1"
-            | "1flowbase.capability/v1"
-            | "1flowbase.extension-bus/v1"
-    )
+    domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+        != domain::SYSTEM_SCOPE_ID
+        && matches!(
+            installation.contract_version.as_str(),
+            CURRENT_PROVIDER_CONTRACT
+                | "1flowbase.data_source/v1"
+                | "1flowbase.capability/v1"
+                | "1flowbase.extension-bus/v1"
+        )
 }

@@ -140,10 +140,39 @@ impl HostContributionGrantPolicy {
 
     fn admits(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        installation: &domain::PluginInstallationRecord,
         contribution: &plugin_framework::extension_bus::ContributionDescriptor,
         request: &GrantContributionPermission,
     ) -> bool {
+        if contribution.point_id.as_str() == plugin_framework::MANAGED_SERVICE_POINT {
+            let is_system =
+                domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                    == domain::SYSTEM_SCOPE_ID;
+            return is_system
+                && contribution.contract_version.as_str() == "1"
+                && request.permission_contract_version == "1"
+                && match request.permission.as_str() {
+                    "service.execute" => {
+                        request.permission_contract_id == "managed-service"
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
+                    "credential.manage" => {
+                        request.permission_contract_id == "plugin-credential"
+                            && request.resource_scope == ContributionResourceScope::System
+                            && installation
+                                .metadata_json
+                                .pointer("/managed_service_permissions/secrets")
+                                .and_then(serde_json::Value::as_str)
+                                == Some("host_managed")
+                    }
+                    "plugin_data.owned.write" => {
+                        request.permission_contract_id == "plugin-data"
+                            && matches!(&request.resource_scope, ContributionResourceScope::OwnedCollection { collection_code }
+                            if !collection_code.is_empty() && collection_code.len() <= 128 && collection_code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+                    }
+                    _ => false,
+                };
+        }
         if let Some(phase) = plugin_framework::extension_bus::managed_interface_point_phase(
             contribution.point_id.as_str(),
         ) {
@@ -222,6 +251,8 @@ where
         self.ensure_operation(actor, CONTRIBUTION_AUTHORIZATION_GRANT)
             .await?;
         let installation = self.managed_installation(installation_id).await?;
+        let scope_id =
+            domain::managed_installation_scope(&installation, actor.current_workspace_id);
         let managed: plugin_framework::ManagedManifest =
             serde_json::from_value(installation.metadata_json.get("managed").cloned().ok_or(
                 ControlPlaneError::InvalidInput("managed_contribution_declaration"),
@@ -269,7 +300,7 @@ where
                 candidate_node_id: self.candidate_node_id.clone(),
                 expected_installation_updated_at: installation.updated_at,
                 installation_id,
-                workspace_id: actor.current_workspace_id,
+                workspace_id: scope_id,
                 contribution_id: request.contribution_id,
                 point_id: contribution.point_id.as_str().to_string(),
                 permission: request.permission,
@@ -290,12 +321,14 @@ where
     ) -> Result<PluginContributionAuthoritySnapshot> {
         self.ensure_operation(actor, CONTRIBUTION_AUTHORIZATION_REVOKE)
             .await?;
-        self.managed_installation(installation_id).await?;
+        let installation = self.managed_installation(installation_id).await?;
+        let scope_id =
+            domain::managed_installation_scope(&installation, actor.current_workspace_id);
         if request.expected_revision < 0 {
             return Err(ControlPlaneError::InvalidInput("expected_revision").into());
         }
         self.repository.revoke_contribution_authorization(&RevokeContributionAuthorizationInput {
-            installation_id, workspace_id: actor.current_workspace_id, authorization_id: request.authorization_id,
+            installation_id, workspace_id: scope_id, authorization_id: request.authorization_id,
             expected_revision: request.expected_revision, actor_user_id: actor.user_id,
             audit_log: audit_log(Some(actor.current_workspace_id), Some(actor.user_id), "plugin_installation", Some(installation_id), "plugin.contribution_authorization.revoked", json!({"authorization_id": request.authorization_id, "expected_revision": request.expected_revision})),
         }).await
@@ -308,11 +341,13 @@ where
     ) -> Result<PluginContributionAuthoritySnapshot> {
         self.ensure_operation(actor, CONTRIBUTION_AUTHORIZATION_VIEW)
             .await?;
-        self.managed_installation(installation_id).await?;
+        let installation = self.managed_installation(installation_id).await?;
+        let scope_id =
+            domain::managed_installation_scope(&installation, actor.current_workspace_id);
         self.repository
             .query_contribution_authority(
                 installation_id,
-                actor.current_workspace_id,
+                scope_id,
                 &audit_log(
                     Some(actor.current_workspace_id),
                     Some(actor.user_id),

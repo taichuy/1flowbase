@@ -9,7 +9,6 @@ use control_plane::{
 };
 use lifetime::*;
 use plugin_framework::{extension_bus::*, ManagedManifest, PluginManifestV1};
-#[cfg(test)]
 use runtime_core::runtime_backend::RuntimeManagedCapabilityRequest;
 use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackend, RuntimeExecutionPrincipal, RuntimeManagedActivation,
@@ -422,14 +421,33 @@ impl ManagedExtensionComposition {
     }
 
     async fn prepare_packages(&self, workspace_id: Uuid) -> Result<Vec<PreparedPackage>> {
-        let assignments = self.store.list_assignments(workspace_id).await?;
-        let mut packages = Vec::new();
-        for assignment in assignments {
-            let installation = self
-                .store
-                .get_installation(assignment.installation_id)
+        let installations = if workspace_id == domain::SYSTEM_SCOPE_ID {
+            self.store
+                .list_installations()
                 .await?
-                .context("assigned installation missing")?;
+                .into_iter()
+                .filter(|installation| {
+                    domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                        == domain::SYSTEM_SCOPE_ID
+                })
+                .collect::<Vec<_>>()
+        } else {
+            let mut installations = Vec::new();
+            for assignment in self.store.list_assignments(workspace_id).await? {
+                let installation = self
+                    .store
+                    .get_installation(assignment.installation_id)
+                    .await?
+                    .context("assigned installation missing")?;
+                if domain::managed_installation_scope(&installation, workspace_id) != workspace_id {
+                    bail!("system managed service cannot have workspace assignment");
+                }
+                installations.push(installation);
+            }
+            installations
+        };
+        let mut packages = Vec::new();
+        for installation in installations {
             if installation.contract_version != "1flowbase.extension-bus/v1"
                 || installation.desired_state != domain::PluginDesiredState::ActiveRequested
             {
@@ -603,7 +621,6 @@ impl ManagedExtensionComposition {
         Ok(())
     }
 
-    #[cfg(test)]
     pub(crate) async fn execute(
         &self,
         workspace_id: Uuid,

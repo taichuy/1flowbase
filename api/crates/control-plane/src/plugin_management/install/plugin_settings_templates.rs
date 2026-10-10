@@ -10,6 +10,9 @@ pub(super) fn prepare_settings_templates(
     if manifest.settings_pages.is_empty() {
         return Ok(Vec::new());
     }
+    if manifest.managed_service.is_some() {
+        return super::projections::load_plugin_settings_templates(manifest, package_root);
+    }
     let native_path = package_root.join(&manifest.runtime.entry);
     let native = plugin_framework::parse_host_extension_contribution_manifest(
         &std::fs::read_to_string(&native_path)

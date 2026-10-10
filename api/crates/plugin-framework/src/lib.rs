@@ -37,6 +37,7 @@ pub use error::*;
 pub use extension_package_runtime::managed_manifest::{
     ManagedContributionExecutionBinding, ManagedContributionPayload, ManagedManifest,
 };
+pub use extension_package_runtime::managed_service::*;
 pub use frontend_module_asset::*;
 pub use host_contract::{HostContractCode, RuntimeSlotCode, StorageImplementationKind};
 pub use host_extension_contribution::{

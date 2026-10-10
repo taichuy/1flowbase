@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ContributionResourceScope {
     Workspace,
+    System,
     OwnedCollection { collection_code: String },
 }
 
@@ -43,4 +44,22 @@ pub struct PluginContributionAuthoritySnapshot {
     pub workspace_id: Uuid,
     pub revision: i64,
     pub authorizations: Vec<PluginContributionAuthorization>,
+}
+
+/// System managed services share one host-owned authorization scope, never a user workspace.
+pub fn managed_installation_scope(
+    installation: &crate::PluginInstallationRecord,
+    workspace_id: Uuid,
+) -> Uuid {
+    if installation.contract_version == "1flowbase.extension-bus/v1"
+        && installation
+            .metadata_json
+            .pointer("/managed_service/scope")
+            .and_then(serde_json::Value::as_str)
+            == Some("system")
+    {
+        crate::SYSTEM_SCOPE_ID
+    } else {
+        workspace_id
+    }
 }

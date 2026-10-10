@@ -1,3 +1,5 @@
 mod managed_manifest_tests;
 mod plugin_data_model_manifest_tests;
 mod provider_distribution_manifest_tests;
+
+mod managed_service_tests;

@@ -243,6 +243,8 @@ pub struct FrontendBlockContributionManifest {
 #[serde(deny_unknown_fields)]
 pub struct PluginManifestV1 {
     #[serde(default)]
+    pub managed_service: Option<crate::managed_service::ManagedServiceManifest>,
+    #[serde(default)]
     pub settings_pages: Vec<crate::PluginSettingsPageManifest>,
     #[serde(default)]
     pub managed: Option<crate::managed_manifest::ManagedManifest>,
@@ -454,6 +456,7 @@ fn validate_plugin_manifest(
     validate_binding_targets(&manifest.binding_targets)?;
     crate::validate_plugin_settings_pages(manifest.plugin_code()?, &manifest.settings_pages)?;
     if !manifest.settings_pages.is_empty()
+        && manifest.managed_service.is_none()
         && (manifest.consumption_kind != PluginConsumptionKind::HostExtension
             || manifest.execution_mode != PluginExecutionMode::InProcess)
     {
@@ -461,6 +464,7 @@ fn validate_plugin_manifest(
             "settings_pages requires a native HostExtension",
         ));
     }
+    crate::managed_service::validate_managed_service(manifest)?;
     if manifest.manifest_version == 2 {
         return crate::managed_manifest::validate_managed_manifest(manifest);
     }
@@ -632,6 +636,8 @@ fn validate_execution_runtime_pair(manifest: &PluginManifestV1) -> FrameworkResu
 
     if manifest.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1
         && manifest.execution_mode != PluginExecutionMode::StatefulProviderWorker
+        && !(manifest.managed_service.is_some()
+            && manifest.execution_mode == PluginExecutionMode::ProcessPerCall)
     {
         return Err(PluginFrameworkError::invalid_provider_package(
             "stdio_json_multiplex_v1 currently requires execution_mode=stateful_provider_worker",
@@ -1235,7 +1241,7 @@ fn validate_binding_targets(binding_targets: &[String]) -> FrameworkResult<()> {
         validate_allowed(
             binding_target,
             "binding_targets[]",
-            &["workspace", "model", "tenant"],
+            &["workspace", "model", "tenant", "system"],
         )?;
     }
     Ok(())

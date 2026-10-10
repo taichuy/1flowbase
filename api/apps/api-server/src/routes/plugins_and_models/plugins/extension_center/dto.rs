@@ -289,6 +289,7 @@ impl From<domain::PluginContributionAuthoritySnapshot> for ContributionAuthoriza
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ContributionResourceScopeDto {
     Workspace,
+    System,
     OwnedCollection { collection_code: String },
 }
 
@@ -341,6 +342,7 @@ impl From<ContributionResourceScopeDto> for domain::ContributionResourceScope {
     fn from(value: ContributionResourceScopeDto) -> Self {
         match value {
             ContributionResourceScopeDto::Workspace => Self::Workspace,
+            ContributionResourceScopeDto::System => Self::System,
             ContributionResourceScopeDto::OwnedCollection { collection_code } => {
                 Self::OwnedCollection { collection_code }
             }
@@ -351,6 +353,7 @@ impl From<domain::ContributionResourceScope> for ContributionResourceScopeDto {
     fn from(value: domain::ContributionResourceScope) -> Self {
         match value {
             domain::ContributionResourceScope::Workspace => Self::Workspace,
+            domain::ContributionResourceScope::System => Self::System,
             domain::ContributionResourceScope::OwnedCollection { collection_code } => {
                 Self::OwnedCollection { collection_code }
             }

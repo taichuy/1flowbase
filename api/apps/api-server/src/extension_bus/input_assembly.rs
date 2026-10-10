@@ -807,5 +807,26 @@ fn managed_host_extension_points() -> Result<Vec<ExtensionPointDescriptor>> {
             .collect(),
         override_policy: OverridePolicy::Sealed,
     });
+    points.push(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(plugin_framework::MANAGED_SERVICE_POINT)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::ResourceAction,
+        contract: ContractDescriptor::new("managed-service", "1")?,
+        scope: ScopeSemantics::System,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Lexicographic,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::Invocation,
+        allowed_permissions: [
+            "service.execute",
+            "plugin_data.owned.write",
+            "credential.manage",
+        ]
+        .into_iter()
+        .map(PermissionCode::new)
+        .collect::<Result<_, _>>()?,
+        override_policy: OverridePolicy::Sealed,
+    });
     Ok(points)
 }

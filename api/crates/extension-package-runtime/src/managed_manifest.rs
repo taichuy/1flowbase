@@ -302,7 +302,10 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
         } else {
             "stdio_json"
         };
-        if binding.runtime.protocol != expected_protocol
+        if (binding.runtime.protocol != expected_protocol
+            && !(manifest.managed_service.is_some()
+                && binding.execution_mode == PluginExecutionMode::ProcessPerCall
+                && binding.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1))
             || (native && module.module_kind != ModuleKind::TrustedHost)
         {
             return Err(invalid("managed execution binding protocol does not match its execution mode or governance"));

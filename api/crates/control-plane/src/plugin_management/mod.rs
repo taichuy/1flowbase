@@ -1,3 +1,5 @@
+mod managed_credential;
+pub use managed_credential::ManagedPluginCredentialService;
 mod managed_execution;
 pub use managed_execution::*;
 mod artifact_instance;

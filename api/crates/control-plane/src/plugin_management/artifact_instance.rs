@@ -146,6 +146,10 @@ where
                     "install_kind": "local_receipt_rebuild",
                     "plugin_type": plugin_type,
                 });
+                if let Some(service) = &manifest.managed_service {
+                    metadata_json["managed_service"] = serde_json::to_value(service)?;
+                    metadata_json["managed_service_permissions"] = serde_json::json!({"secrets": manifest.permissions.secrets, "storage": manifest.permissions.storage});
+                }
                 if let Some(managed) = &manifest.managed {
                     metadata_json["managed"] = serde_json::to_value(managed)?;
                 }

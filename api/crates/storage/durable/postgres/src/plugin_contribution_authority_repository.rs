@@ -312,6 +312,9 @@ async fn lock_candidate_grant(
     input: &GrantContributionAuthorizationInput,
 ) -> Result<()> {
     lock_managed_workspace(transaction, input.workspace_id).await?;
+    if input.workspace_id == domain::SYSTEM_SCOPE_ID {
+        return lock_scope(transaction, input.installation_id, input.workspace_id).await;
+    }
     let assigned: bool = sqlx::query_scalar("select exists(select 1 from plugin_assignments where installation_id=$1 and workspace_id=$2)")
         .bind(input.installation_id).bind(input.workspace_id).fetch_one(&mut **transaction).await?;
     if assigned {
@@ -362,7 +365,13 @@ async fn lock_scope(
     .bind(workspace_id)
     .fetch_optional(&mut **transaction)
     .await?;
-    if assignment.is_none() {
+    if workspace_id == domain::SYSTEM_SCOPE_ID {
+        let system: bool = sqlx::query_scalar("select contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}' = 'system' from extension_installations where id=$1")
+            .bind(installation_id).fetch_one(&mut **transaction).await?;
+        if !system {
+            return Err(Error::PermissionDenied("managed_system_service_required").into());
+        }
+    } else if assignment.is_none() {
         return Err(Error::PermissionDenied("contribution_workspace_assignment_required").into());
     }
     sqlx::query("insert into plugin_contribution_authorization_revisions (installation_id,workspace_id) values ($1,$2) on conflict do nothing")
@@ -567,7 +576,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
     }
 
     async fn contribution_authority_workspaces(&self, installation_id: Uuid) -> Result<Vec<Uuid>> {
-        Ok(sqlx::query_scalar("select workspace_id from plugin_assignments where installation_id=$1 order by workspace_id")
+        Ok(sqlx::query_scalar("select workspace_id from plugin_assignments where installation_id=$1 union select '00000000-0000-0000-0000-000000000000'::uuid from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}' = 'system' order by workspace_id")
             .bind(installation_id).fetch_all(self.pool()).await?)
     }
     async fn lock_installation_contribution_authority(

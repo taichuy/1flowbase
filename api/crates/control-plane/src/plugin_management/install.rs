@@ -240,6 +240,10 @@ fn prepare_installation_commit(
     manifest: &PluginManifestV1,
     package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
 ) -> Result<CommitPluginInstallationInput> {
+    if let Some(service) = &manifest.managed_service {
+        installation.metadata_json["managed_service"] = serde_json::to_value(service)?;
+        installation.metadata_json["managed_service_permissions"] = serde_json::json!({"secrets": manifest.permissions.secrets, "storage": manifest.permissions.storage});
+    }
     if let Some(managed) = &manifest.managed {
         installation.metadata_json["managed"] = serde_json::to_value(managed)?;
     }
