@@ -1,5 +1,16 @@
 use super::*;
 
+/// Discovery selection within one MCP instance; policy defaults remain service-owned.
+#[derive(Default)]
+pub struct McpListItemsQuery<'a> {
+    pub instance_id: Option<&'a str>,
+    pub path: Option<&'a str>,
+    pub path_regex: Option<&'a str>,
+    pub keywords: Option<&'a [String]>,
+    pub depth: Option<i32>,
+    pub limit: Option<usize>,
+}
+
 pub(crate) fn validate_identifier(value: &str, field: &'static str) -> Result<()> {
     if value.trim().is_empty() || value.len() > 255 {
         return Err(ControlPlaneError::InvalidInput(field).into());

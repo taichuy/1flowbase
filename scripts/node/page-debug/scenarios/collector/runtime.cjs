@@ -11,6 +11,7 @@ const out = process.env.COLLECTOR_EVIDENCE_DIR;
 const base = 'http://127.0.0.1:7801', web = 'http://127.0.0.1:3102', dbPort = 35783;
 const container = 'codex-platform-collector-proof';
 const image = process.env.COLLECTOR_PG_IMAGE || 'postgres:18-alpine';
+const resourcePolicy = process.env.COLLECTOR_RESOURCE_POLICY || 'shared-machine';
 const { parseEnvFile } = require('../../../dev-up/env.js');
 const { openTemporaryOwnerSession } = require('../../auth.js');
 const password = crypto.randomBytes(24).toString('hex');
@@ -57,6 +58,13 @@ async function run(cmd,args,name,env) {
 (async()=>{try {
   assert.ok(pluginsRoot && binary && nativeBinary && out,'explicit proof roots, binaries and evidence dir required'); fs.mkdirSync(out,{recursive:true});
   protectedPids = [7800,3100].flatMap(protectedOwners);
+  assert.ok(['shared-machine','github-hosted'].includes(resourcePolicy),'unknown collector resource policy');
+  if(resourcePolicy==='github-hosted'){
+    assert.equal(process.env.GITHUB_ACTIONS,'true','isolated policy requires GitHub Actions');
+    assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted','isolated policy requires a GitHub-hosted runner');
+    assert.equal(protectedPids.length,0,'isolated policy must not relax a shared service owner guard');
+  }
+  receipt.resource_policy={name:resourcePolicy,cpu:resourcePolicy==='github-hosted'?'observation-only':'stop-at-90-percent',physical:'stop-at-90-percent',disk:'stop-at-90-percent'};
   receipt.source_sha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   if(process.env.COLLECTOR_EXPECTED_SHA) assert.equal(receipt.source_sha,process.env.COLLECTOR_EXPECTED_SHA);
   receipt.plugins_sha=execFileSync('git',['rev-parse','HEAD'],{cwd:pluginsRoot,encoding:'utf8'}).trim();
@@ -66,8 +74,11 @@ async function run(cmd,args,name,env) {
   for(const port of [7801,3102,dbPort]) assert.equal(execFileSync('ss',['-H','-ltn','sport','=',':'+port],{encoding:'utf8'}).trim(),'');
   const {createRemoteFixture}=await import(pathToFileURL(path.join(__dirname,'remote-fixture.mjs')));
   remote=await createRemoteFixture({pluginsRoot,directory:path.join(out,'private/remote'),nativeBinary});
+  const bootstrapExample=parseEnvFile(path.join(root,'api/apps/api-server/.env.example'));
+  assert.ok(bootstrapExample.BOOTSTRAP_WORKSPACE_NAME,'tracked bootstrap workspace example required');
   const env={...process.env,...parseEnvFile(process.env.COLLECTOR_API_ENV_FILE || path.join(root,'api/apps/api-server/.env')),
     API_DATABASE_URL:`postgres://postgres:${password}@127.0.0.1:${dbPort}/collector_proof`,API_SERVER_ADDR:'127.0.0.1:7801',API_NODE_ID:'collector-proof-node',
+    BOOTSTRAP_WORKSPACE_NAME:bootstrapExample.BOOTSTRAP_WORKSPACE_NAME,BOOTSTRAP_ROOT_EMAIL:'collector-proof-owner@example.invalid',
     BOOTSTRAP_ROOT_ACCOUNT:'collector-proof-owner',BOOTSTRAP_ROOT_PASSWORD:password,API_ENV:'development',
     API_PROVIDER_INSTALL_ROOT:path.join(out,'private/providers'),API_HOST_EXTENSION_DROPIN_ROOT:path.join(out,'private/dropins'),
     API_SYSTEM_BACKUP_REPOSITORY_ROOT:path.join(out,'private/backups'),API_MCP_TEMPLATE_LIBRARY_ROOT:path.join(out,'private/mcp'),
@@ -82,7 +93,10 @@ async function run(cmd,args,name,env) {
     const mem=Object.fromEntries(fs.readFileSync('/proc/meminfo','utf8').trim().split('\n').map(line=>{const[k,v]=line.split(':');return[k,parseInt(v)];}));
     const physical=100*(mem.MemTotal-mem.MemAvailable)/mem.MemTotal, s=fs.statfsSync(root), disk=100*(s.blocks-s.bfree)/s.blocks;
     for(const[k,v]of Object.entries({cpu,physical,disk})) receipt.peaks[k]=Math.max(receipt.peaks[k],v);
-    if(Math.max(cpu,physical,disk)>=90&&!resourceBreach){resourceBreach=true;void stop(child);void stop(api);void stop(frontend);}
+    // CPU saturation on the explicitly isolated hosted runner is observed;
+    // shared-machine CPU and memory/disk capacity guards remain unchanged.
+    const breached=physical>=90||disk>=90||(resourcePolicy==='shared-machine'&&cpu>=90);
+    if(breached&&!resourceBreach){resourceBreach=true;receipt.resource_failure={cpu,physical,disk};void stop(child);void stop(api);void stop(frontend);}
   },2000);
   containerId=dock(['run','-d','--name',container,'--label','codex.qa.owner='+receipt.source_sha,'--publish',`127.0.0.1:${dbPort}:5432`,'--env','POSTGRES_PASSWORD='+password,'--env','POSTGRES_DB=collector_proof',image]);
   receipt.database={id:containerId,name:container,image,port:dbPort,scope:'fresh proof-owned database only'};

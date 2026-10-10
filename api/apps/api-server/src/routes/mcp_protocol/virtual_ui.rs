@@ -11,7 +11,8 @@ use axum::{
     Router,
 };
 use control_plane::mcp_management::{
-    mcp_llm_registrations, McpLlmOperation, McpLlmRegistrationSource, McpManagementService,
+    mcp_llm_registrations, McpListItemsQuery, McpLlmOperation, McpLlmRegistrationSource,
+    McpManagementService,
 };
 use domain::mcp_management::{McpInstanceStatus, McpToolStatus};
 use orchestration_runtime::{
@@ -860,12 +861,14 @@ async fn list(
             service
                 .list_items_for_actor(
                     actor,
-                    Some(instance_id),
-                    path,
-                    path_regex,
-                    keywords.as_deref(),
-                    depth,
-                    limit,
+                    McpListItemsQuery {
+                        instance_id: Some(instance_id),
+                        path,
+                        path_regex,
+                        keywords: keywords.as_deref(),
+                        depth,
+                        limit,
+                    },
                 )
                 .await?,
         );

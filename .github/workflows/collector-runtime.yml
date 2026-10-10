@@ -45,6 +45,9 @@ jobs:
       COLLECTOR_EVIDENCE_DIR: ${{ github.workspace }}/tmp/test-governance/collector-runtime
       # Match the existing project Compose database; no environment upgrade.
       COLLECTOR_PG_IMAGE: postgres:18-alpine
+      # Opt in only on this dedicated hosted runner. The harness validates
+      # Actions/runner identity and absence of protected shared service owners.
+      COLLECTOR_RESOURCE_POLICY: github-hosted
     steps:
       - uses: actions/checkout@v5
         with:
