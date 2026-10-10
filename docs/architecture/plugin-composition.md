@@ -4,11 +4,33 @@
 
 本文维护当前组合契约。当前验收以实际提交与测试报告为准；[#2007 历史测试入口](archive/2007/plugin-composition-test-batch.md)不作为当前通过证据。通用命名空间事件的后续边界见[调用生命周期](interface-lifecycle.md#契约驱动的插件事件)，下述 Create → A → B/C 是具体实例。
 
+## 插件选择与当前实现边界
+
+插件选择先判断是否实现宿主内部可信 contract，再判断贡献类型、执行方式和激活作用域。`HostExtension`、`RuntimeExtension`、`CapabilityPlugin` 这些现有类型名不能作为权限高低的升级阶梯。
+
+| 判断维度 | 选择依据 |
+| --- | --- |
+| 治理边界 | 需要原生进程内 factory、认证适配器或宿主基础设施实现时使用可信 HostExtension；通过公开协议声明业务能力、由宿主托管注册与执行时使用受管插件 |
+| 贡献类型 | provider、node、tool、数据 schema、设置页面等分别检查对应贡献契约；一个包可以有多个贡献，声明不代表该契约已开放或已授权 |
+| 执行方式 | 受管子进程与可信原生进程内执行分开；由宿主拉起子进程不等于 HostExtension |
+| 激活作用域 | system、workspace、model 等需求由对应激活/绑定契约表达；系统级配置需求本身不授予宿主内部权限 |
+
+例如 SSH 插件通过子进程执行连接测试与命令，向基座声明数据、设置页面和操作，应按受管业务插件设计；不因需要物理表、`/settings/ssh` 或 MCP Tool 而改成 HostExtension。页面及接口授权沿用现有角色与 console operation 体系；插件贡献授权约束插件可做什么，不能替代调用者的接口授权。
+
+**当前代码限制与待补契约：**
+
+- 旧 `RuntimeExtension` 分配仍在 [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs) 中要求 workspace/model；这是当前路径的实现限制，不是受管插件永久只能属于这两种作用域的定义。本文不声明 system 激活已经实现。
+- 已有 managed owned collection、受控接口阶段与事件贡献，不能据此推导任意业务接口、设置页、TSX 区块、MCP Tool 的安装注册链路已经贯通。新贡献须核对 declaration → loader/activation → registry → invocation 的真实入口与验收证据；缺口应补在宿主托管契约。
+- 系统作用域、随宿主启动恢复、按需启动 worker 是不同问题。是否常驻或启动恢复由执行契约决定，不通过提升插件类型解决；具体 SSH 激活与注册协议尚待实现方案确认。
+- 受管插件不因此获得原始认证凭据、平台数据库连接、任意 SQL 或自行挂载路由的权限。schema 由宿主数据 owner 应用，接口由宿主注册并授权。
+
+历史验收报告保留其当时事实，不作为当前插件选型规则；遇到旧整包限制，以本节治理边界判断，并单独记录实际代码缺口。
+
 ## 治理、安装与授权
 
 HostExtension 保留可信启动 / 重启边界；受管插件沿用 worker 进程。贡献、执行方式、作用域分别建模，旧 manifest / catalog 分类仅作为明确的输入格式归一化，不能继续用整包分类限制多贡献，也不批量改写历史配置。Rust native 插件不支持反复热卸载。
 
-正式包经安装、工作区分配、贡献授权、候选图编译和执行绑定后才发布。manifest 中声明权限不等于获得权限。同包贡献不合并权限，安装身份、工作区、贡献、资源范围与契约版本共同限制调用。升级、新安装和旧权限迁移不自动扩大权限；worker 声明、因果标识、旧 claim 或已入队事件都不是新的授权凭据。
+当前工作区受管组合路径中，正式包经安装、工作区分配、贡献授权、候选图编译和执行绑定后才发布。manifest 中声明权限不等于获得权限。同包贡献不合并权限，安装身份、工作区、贡献、资源范围与契约版本共同限制调用。升级、新安装和旧权限迁移不自动扩大权限；worker 声明、因果标识、旧 claim 或已入队事件都不是新的授权凭据。
 
 Extension Center 的 installed/:installation_id 下提供以下独立操作；POST 仍需有效 session、CSRF 与对应操作授权，旧 configure 权限不能替代它们。
 

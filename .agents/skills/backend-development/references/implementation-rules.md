@@ -13,11 +13,10 @@
 - When HostExtension 写 migration，then 使用 `ext_<normalized_extension_id>__*` 命名空间；不修改 Core 真值表。
 - When pre-state infra provider bootstrap 运行，then 它发生在 `ApiState`、session store、control-plane service、runtime engine 和 HTTP router 构造前。
 - When workspace / tenant 消费宿主能力，then 只配置、绑定或消费宿主已安装能力。
-- When runtime extension 绑定目标，then 目标是 `workspace` 或 `model`。
-- When RuntimeExtension 实现 slot，then 保持在已注册 runtime slot 内；不注册 HTTP 接口、resource、auth provider，也不直接写平台主存储。
-- When CapabilityPlugin 贡献能力，then 只进入 workspace 用户显式选择的能力面；不注册系统接口。
+- When 受管插件声明贡献或选择激活作用域，then 按[插件组合](../../../../docs/architecture/plugin-composition.md)核对现有注册、绑定与执行链路；旧 workspace/model 分配限制是待演进的实现事实，不是永久选型规则。
+- When 受管插件贡献数据、页面或业务接口，then 由宿主已开放的 typed contract 注册、授权和执行；未开放时报告契约缺口，不自行挂载路由、接入认证 factory 或直接写平台主存储。
 - When runtime 模型或字段缺少物理表 / 列，then 标记不可用；不健康元数据不进入 runtime registry。
-- When data-source plugin 接入外部数据库、SaaS 或 API，then 它走 runtime extension；不注册 HTTP 接口，不直接写平台数据库，不自管 OAuth callback。
+- When data-source plugin 接入外部数据库、SaaS 或 API，then 它走受管数据源贡献；HTTP 注册与 OAuth callback 由宿主契约承接，不自行挂载接口、不直接写平台数据库。
 - When 命名 storage 边界，then 保持 `storage-durable`、`storage-ephemeral`、`storage-object`；不改名为 cache，不新增 `Driver` 层级。
 - When 需要存储层结构转换，then 新增 mapper；否则不要为凑结构拆空文件。
 - When 新增测试，then 放入对应 `_tests` 子目录。
