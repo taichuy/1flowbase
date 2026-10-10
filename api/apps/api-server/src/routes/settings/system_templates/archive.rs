@@ -138,8 +138,11 @@ fn materialize(
     );
     let package: PortableTemplatePackage = serde_json::from_value(value)?;
     ensure!(
-        package.schema_version
-            == control_plane_contracts::portable_template::PORTABLE_TEMPLATE_SCHEMA_VERSION,
+        matches!(
+            package.schema_version.as_str(),
+            control_plane_contracts::portable_template::PORTABLE_TEMPLATE_SCHEMA_VERSION
+                | control_plane_contracts::portable_template::PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION
+        ),
         "application_template_schema"
     );
     Ok(package)

@@ -119,6 +119,7 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         .unwrap();
     for name in [
         "flow_runs",
+        "application_run_native_projection_progress",
         "provider_protocol_capsules",
         "provider_semantic_trajectory_steps",
         "client_trajectory_node_links",
@@ -155,6 +156,21 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
     for table in &mcp.data_tables {
         assert!(!mcp.structure_tables.contains(table));
         assert!(!inventory::excluded(table));
+    }
+    let members = categories
+        .iter()
+        .find(|category| category.feature_id == "system.members")
+        .unwrap();
+    for table in [
+        "departments",
+        "department_role_bindings",
+        "user_department_bindings",
+    ] {
+        assert!(
+            members.structure_tables.contains(&table.into()),
+            "missing {table}"
+        );
+        assert!(!members.data_tables.contains(&table.into()));
     }
     let backups = categories
         .iter()

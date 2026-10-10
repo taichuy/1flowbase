@@ -1013,7 +1013,7 @@ async fn mcp_template_legacy_instance_reset_keeps_unknown_shared_tool_unowned() 
         .await
         .unwrap()
         .is_empty());
-    let tool:(Uuid,i64)=sqlx::query_as("select id,revision from mcp_tools where workspace_id=$1 and tool_id='shared_template_tool'").bind(workspace.id).fetch_one(store.pool()).await.unwrap();
+    let tool:(Uuid,i32)=sqlx::query_as("select id,revision from mcp_tools where workspace_id=$1 and tool_id='shared_template_tool'").bind(workspace.id).fetch_one(store.pool()).await.unwrap();
     sqlx::query("delete from mcp_instances where workspace_id=$1 and instance_id='1flowbase'")
         .bind(workspace.id)
         .execute(store.pool())
@@ -1024,7 +1024,7 @@ async fn mcp_template_legacy_instance_reset_keeps_unknown_shared_tool_unowned() 
         .unwrap();
     assert!(reset.failures.is_empty(), "{:?}", reset.failures);
     assert_eq!(reset.created.len(), 4);
-    let retained:(Uuid,i64)=sqlx::query_as("select id,revision from mcp_tools where workspace_id=$1 and tool_id='shared_template_tool'").bind(workspace.id).fetch_one(store.pool()).await.unwrap();
+    let retained:(Uuid,i32)=sqlx::query_as("select id,revision from mcp_tools where workspace_id=$1 and tool_id='shared_template_tool'").bind(workspace.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(retained, tool);
     assert!(store
         .load_template_baselines(&scope)

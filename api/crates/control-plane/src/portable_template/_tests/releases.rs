@@ -83,3 +83,41 @@ fn application_template_rejects_previous_successful_release_after_upgrade() {
         records.reverse();
     }
 }
+
+#[test]
+fn legacy_checksum_excludes_empty_translation_field_and_v2_covers_translations() {
+    use sha2::{Digest, Sha256};
+    // Frozen pre-i18n serialized contract: empty translations must not add a field
+    // or force a v1 package to v2 merely because the new reader parsed it.
+    let legacy_wire = r#"{"schema_version":"1flowbase.portable-template/v1","pages":[],"applications":[],"data_models":[],"mcp_bundle":null,"plugins":[]}"#;
+    let legacy: PortableTemplatePackage = serde_json::from_str(legacy_wire).unwrap();
+    let expected = format!("{:x}", Sha256::digest(legacy_wire.as_bytes()));
+    assert_eq!(application_template_checksum(&legacy).unwrap(), expected);
+    let mut explicit_empty = serde_json::to_value(&legacy).unwrap();
+    explicit_empty["i18n_entries"] = serde_json::json!([]);
+    let explicit_empty: PortableTemplatePackage = serde_json::from_value(explicit_empty).unwrap();
+    assert_eq!(
+        application_template_checksum(&explicit_empty).unwrap(),
+        expected
+    );
+
+    let mut translated = legacy;
+    translated.schema_version = PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION.into();
+    translated.release = Some(release(1));
+    translated.i18n_entries.push(PortableI18nEntry {
+        key: "template.demo.title".into(),
+        locale: "en_US".into(),
+        translation: "Title".into(),
+    });
+    assert!(validate_portable_template(&translated).is_empty());
+    validate_application_template_release(translated.release.as_ref().unwrap()).unwrap();
+    let checksum = application_template_checksum(&translated).unwrap();
+    let roundtrip: PortableTemplatePackage =
+        serde_json::from_slice(&serde_json::to_vec(&translated).unwrap()).unwrap();
+    assert_eq!(application_template_checksum(&roundtrip).unwrap(), checksum);
+    translated.i18n_entries[0].translation = "Updated title".into();
+    assert_ne!(
+        application_template_checksum(&translated).unwrap(),
+        checksum
+    );
+}

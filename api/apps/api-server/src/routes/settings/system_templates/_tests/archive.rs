@@ -403,7 +403,7 @@ fn archive_roundtrip_translation_only_v2_and_legacy_checksum_compatibility() {
     translations.schema_version =
         control_plane::portable_template::PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION.into();
     translations.i18n_entries = vec![control_plane::portable_template::PortableI18nEntry {
-        key: "template.demo.title".into(),
+        key: "Template demo title".into(),
         locale: "zh_Hans".into(),
         translation: "模板标题".into(),
     }];
@@ -415,4 +415,14 @@ fn archive_roundtrip_translation_only_v2_and_legacy_checksum_compatibility() {
         serde_json::to_value(decoded).unwrap(),
         serde_json::to_value(translations).unwrap()
     );
+}
+
+#[test]
+fn archive_rejects_unsupported_package_schema() {
+    let mut package = package();
+    package.schema_version = "1flowbase.portable-template/v3".into();
+    assert!(archive::decode(&archive::encode(&package).unwrap())
+        .unwrap_err()
+        .to_string()
+        .contains("application_template_schema"));
 }

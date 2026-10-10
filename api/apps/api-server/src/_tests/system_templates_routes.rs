@@ -337,6 +337,13 @@ async fn mcp_only_application_template_creates_then_updates_the_selected_instanc
 async fn application_template_catalog_is_metadata_only_and_offline_pages_are_independent() {
     use crate::routes::system_templates::archive;
     let (mut state, _) = test_api_state_with_database_url().await;
+    // The lightweight state fixture omits production's official catalog bootstrap.
+    control_plane::ports::I18nCatalogRepository::bootstrap_workspace_catalog_state(
+        &state.store,
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap();
     let root = std::env::temp_dir().join(format!("template-catalog-{}", uuid::Uuid::new_v4()));
     struct Cleanup(std::path::PathBuf);
     impl Drop for Cleanup {
@@ -364,6 +371,7 @@ async fn application_template_catalog_is_metadata_only_and_offline_pages_are_ind
         let app = app.clone();
         let cookie = cookie.clone();
         let uri = format!("/api/console/settings/system-templates/catalog{query}");
+        let query = query.to_owned();
         async move {
             let response = app
                 .oneshot(
@@ -375,12 +383,12 @@ async fn application_template_catalog_is_metadata_only_and_offline_pages_are_ind
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::OK);
-            serde_json::from_slice::<Value>(
-                &to_bytes(response.into_body(), usize::MAX).await.unwrap(),
-            )
-            .unwrap()["data"]
-                .clone()
+            let status = response.status();
+            let payload: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            assert_eq!(status, StatusCode::OK, "catalog{query}: {payload}");
+            payload["data"].clone()
         }
     };
     let first = get("?category=applications-demo").await;
@@ -428,6 +436,13 @@ async fn application_template_catalog_is_metadata_only_and_offline_pages_are_ind
 #[tokio::test]
 async fn translation_only_templates_export_update_and_preserve_user_edits_and_deletions() {
     let (state, _) = test_api_state_with_database_url().await;
+    // The lightweight state fixture omits production's official catalog bootstrap.
+    control_plane::ports::I18nCatalogRepository::bootstrap_workspace_catalog_state(
+        &state.store,
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap();
     let app = crate::app_with_state_and_config(state, &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let send = |method: &str, path: &str, body: Value| {
@@ -458,7 +473,7 @@ async fn translation_only_templates_export_update_and_preserve_user_edits_and_de
             payload["data"].clone()
         }
     };
-    let key = "template.route_fixture.title";
+    let key = "Template route fixture title";
     let mut package = json!({
         "schema_version":"1flowbase.portable-template/v2",
         "pages":[],"applications":[],"data_models":[],"plugins":[],
@@ -516,7 +531,9 @@ async fn translation_only_templates_export_update_and_preserve_user_edits_and_de
         .unwrap()
         .iter()
         .any(|e| e["kind"] == "i18n_entry"));
-    let detail_path = format!("/api/console/settings/i18n/entries/detail?key={key}&locale=zh_Hans");
+    let encoded_key: String = url::form_urlencoded::byte_serialize(key.as_bytes()).collect();
+    let detail_path =
+        format!("/api/console/settings/i18n/entries/detail?key={encoded_key}&locale=zh_Hans");
     let detail = send("GET", &detail_path, json!({})).await;
     assert_eq!(detail["custom_translation"], "更新");
     let edit = send("PUT", "/api/console/settings/i18n/custom-translations", json!({
