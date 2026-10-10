@@ -1,6 +1,6 @@
 use super::support::{
-    actor_with_permissions, MemoryOfficialPluginSource, MemoryPluginManagementRepository,
-    MemoryProviderRuntime,
+    actor_with_permissions, seed_test_installation, MemoryOfficialPluginSource,
+    MemoryPluginManagementRepository, MemoryProviderRuntime,
 };
 use crate::{
     plugin_management::{
@@ -165,5 +165,93 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
         .await
         .iter()
         .all(|event| event == "plugin.installed"));
+    std::fs::remove_dir_all(install_root).unwrap();
+}
+
+#[tokio::test]
+async fn boot_reconciles_enabled_system_service_without_workspace_assignment_only() {
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(Uuid::now_v7(), &[]));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::settings_feature("system.extension-center").unwrap(),
+            "extension_center.install.upload",
+        )
+        .await;
+    let runtime = MemoryProviderRuntime::default();
+    let install_root = std::env::temp_dir().join(format!("managed-boot-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        runtime.clone(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    )
+    .for_extension_center_console_operation("extension_center.install.upload");
+    let mut managed_ids = Vec::new();
+    for (version, desired_state) in [
+        ("0.1.0", PluginDesiredState::ActiveRequested),
+        ("0.2.0", PluginDesiredState::Disabled),
+    ] {
+        let installed = service
+            .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+                actor_user_id: repository.actor.user_id,
+                category: ExtensionCatalogCategory::RuntimeExtensions,
+                file_name: "managed.1flowbasepkg".into(),
+                package_bytes: package(version),
+                source_kind: "uploaded".into(),
+            })
+            .await
+            .unwrap();
+        repository
+            .update_desired_state(&UpdatePluginDesiredStateInput {
+                installation_id: installed.installation.id,
+                actor_user_id: repository.actor.user_id,
+                desired_state,
+            })
+            .await
+            .unwrap();
+        managed_ids.push(installed.installation.id);
+    }
+    let legacy_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "legacy_fixture",
+        "0.1.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    let legacy = repository
+        .get_installation(legacy_id)
+        .await
+        .unwrap()
+        .unwrap();
+    // A legacy record's storage scope alone must never opt it into system managed activation.
+    assert_eq!(legacy.scope_id, domain::SYSTEM_SCOPE_ID);
+    assert!(repository
+        .list_assigned_installation_ids()
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(runtime.loaded_installations().await.is_empty());
+    service.reconcile_all_installations().await.unwrap();
+    assert_eq!(runtime.loaded_installations().await, vec![managed_ids[0]]);
+    assert_eq!(
+        repository
+            .get_installation(managed_ids[1])
+            .await
+            .unwrap()
+            .unwrap()
+            .desired_state,
+        PluginDesiredState::Disabled
+    );
+    assert_eq!(
+        repository
+            .get_installation(legacy_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired_state,
+        PluginDesiredState::ActiveRequested
+    );
     std::fs::remove_dir_all(install_root).unwrap();
 }

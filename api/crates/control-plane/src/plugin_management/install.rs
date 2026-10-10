@@ -220,6 +220,12 @@ use projections::{
     build_node_contribution_sync_input,
 };
 
+// The contract and declaration identify a system service; legacy records may also use nil scope.
+fn is_system_managed_service(installation: &domain::PluginInstallationRecord) -> bool {
+    domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+        == domain::SYSTEM_SCOPE_ID
+}
+
 fn stable_plugin_unique_identifier(plugin_id: &str) -> String {
     plugin_id
         .split_once('@')
@@ -588,7 +594,8 @@ where
                 }
             }
             if installation.desired_state == domain::PluginDesiredState::ActiveRequested
-                && assigned_installation_ids.contains(&installation.id)
+                && (is_system_managed_service(&installation)
+                    || assigned_installation_ids.contains(&installation.id))
             {
                 match self.runtime.activate_plugin(&local_installation).await {
                     Ok(()) => {
@@ -699,8 +706,7 @@ where
         // Managed services need schema application and explicit permission grants before enable.
         // Re-upload retains the repository's deliberate desired state; installation never activates it.
         if is_host_extension_installation(&install.installation)
-            || domain::managed_installation_scope(&install.installation, domain::DEFAULT_SCOPE_ID)
-                == domain::SYSTEM_SCOPE_ID
+            || is_system_managed_service(&install.installation)
         {
             return Ok(install);
         }
@@ -1657,6 +1663,7 @@ where
                     installation.desired_state,
                     domain::PluginDesiredState::ActiveRequested
                 ) && !is_host_extension_installation(&installation)
+                    && !is_system_managed_service(&installation)
                 {
                     let reactivation = async {
                         let local_installation = self
