@@ -37,7 +37,7 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
         "acme.composition-system.list".into();
     declaration["managed_service"] = json!({
         "scope":"system",
-        "feature":{"feature_id":"system_fixture.settings","label":"Fixture","description":"System governance fixture","route_id":"system-fixture","path":"/settings/system-fixture"},
+        "feature":{"feature_id":"acme.composition-system.settings","label":"Fixture","description":"System governance fixture","route_id":"system-fixture","path":"/settings/system-fixture"},
         "operations":[{"interface_id":"acme.composition-system.list","contribution_id":"acme.composition-system.list","method":"GET",
             "path":"/api/console/managed-services/acme.composition-system/items","summary":"List items","description":"List system fixture items.",
             "input_schema":{"type":"object"},"output_schema":{"type":"object"}}]

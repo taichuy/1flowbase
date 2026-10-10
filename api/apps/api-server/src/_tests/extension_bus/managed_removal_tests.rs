@@ -2,6 +2,7 @@
 use super::*;
 
 struct Fixture {
+    _state: Arc<crate::app_state::ApiState>,
     runtime: RuntimeFixture,
     management: PluginManagementService<
         storage_durable_postgres::MainDurableStore,
@@ -66,6 +67,7 @@ impl Fixture {
             .await
             .unwrap();
         Self {
+            _state: state,
             runtime,
             management,
             actor,
