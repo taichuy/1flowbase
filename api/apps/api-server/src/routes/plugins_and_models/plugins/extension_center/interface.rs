@@ -15,7 +15,7 @@ use crate::routes::console_interface::{
 };
 
 pub(crate) enum ExtensionCenterInput {
-    QueryManagedExecution(Uuid),
+    QueryManagedExecution(Uuid, Option<String>),
     ResumeManagedDelivery(Uuid, ResumeManagedDeliveryBody),
     RetireManagedExecution(Uuid, ManagedExecutionTargetBody),
     GrantContributionPermission(Uuid, GrantContributionPermissionRequest),
@@ -62,13 +62,13 @@ impl ExtensionCenterAdapter {
     ) -> Result<ExtensionCenterOutput, ApiError> {
         let actor = principal.actor();
         match input {
-            ExtensionCenterInput::QueryManagedExecution(installation_id) => {
+            ExtensionCenterInput::QueryManagedExecution(installation_id, cursor) => {
                 let service = control_plane::plugin_management::ManagedExecutionService::new(
                     self.0.store.for_actor(actor.clone()),
                     self.0.provider_runtime.managed_composition()?.governance(),
                 );
                 Ok(ExtensionCenterOutput::ManagedExecution(
-                    service.query(actor, installation_id).await?,
+                    service.query(actor, installation_id, cursor).await?,
                 ))
             }
             ExtensionCenterInput::ResumeManagedDelivery(installation_id, body) => {

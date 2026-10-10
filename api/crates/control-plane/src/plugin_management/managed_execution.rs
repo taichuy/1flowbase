@@ -11,6 +11,7 @@ pub trait ManagedExecutionGovernancePort: Send + Sync {
         &self,
         workspace_id: Uuid,
         installation_id: Uuid,
+        cursor: Option<String>,
     ) -> Result<ManagedExecutionState>;
     async fn resume_managed_delivery(
         &self,
@@ -86,6 +87,7 @@ impl<R: RoleConsolePolicyReader + PluginContributionAuthorityRepository + Plugin
         &self,
         actor: &domain::ActorContext,
         installation_id: Uuid,
+        cursor: Option<String>,
     ) -> Result<ManagedExecutionState> {
         self.authorize(
             actor,
@@ -93,8 +95,16 @@ impl<R: RoleConsolePolicyReader + PluginContributionAuthorityRepository + Plugin
             "extension_center.managed_execution.view",
         )
         .await?;
+        if let Some(value) = cursor.as_deref() {
+            control_plane_contracts::ports::ManagedDeliveryCursor::decode(
+                value,
+                installation_id,
+                actor.current_workspace_id,
+            )
+            .map_err(|_| ControlPlaneError::InvalidInput("invalid_managed_delivery_cursor"))?;
+        }
         self.runtime
-            .managed_execution_state(actor.current_workspace_id, installation_id)
+            .managed_execution_state(actor.current_workspace_id, installation_id, cursor)
             .await
     }
     pub async fn resume(

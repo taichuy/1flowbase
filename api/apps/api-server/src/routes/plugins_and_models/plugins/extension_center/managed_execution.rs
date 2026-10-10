@@ -36,8 +36,15 @@ impl From<ResumeManagedDeliveryBody> for ResumeManagedLifecycleDelivery {
     }
 }
 
-#[utoipa::path(get,path="/api/console/settings/extension-center/installed/{installation_id}/managed-execution",operation_id="extension_center_managed_execution_view",summary="View managed executions and durable lifecycle deliveries",responses((status=200),(status=403,body=crate::error_response::ErrorBody)))]
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedExecutionQuery {
+    pub cursor: Option<String>,
+}
+
+#[utoipa::path(get,path="/api/console/settings/extension-center/installed/{installation_id}/managed-execution",operation_id="extension_center_managed_execution_view",summary="View managed executions and durable lifecycle deliveries",params(("cursor" = Option<String>, Query, description = "Continuation cursor from next_cursor; bound to the installation and current workspace")),responses((status=200),(status=400,body=crate::error_response::ErrorBody),(status=403,body=crate::error_response::ErrorBody)))]
 pub(super) async fn view_managed_execution(
+    axum::extract::Query(query): axum::extract::Query<ManagedExecutionQuery>,
     State(state): State<Arc<ApiState>>,
     Path(installation_id): Path<Uuid>,
     headers: HeaderMap,
@@ -46,7 +53,7 @@ pub(super) async fn view_managed_execution(
         state,
         headers,
         "http.console.extension-center.managed-execution.view.v1",
-        interface::ExtensionCenterInput::QueryManagedExecution(installation_id),
+        interface::ExtensionCenterInput::QueryManagedExecution(installation_id, query.cursor),
         false,
     )
     .await?;

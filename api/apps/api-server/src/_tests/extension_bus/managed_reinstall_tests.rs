@@ -523,7 +523,7 @@ async fn root_2007_ir_f01_identical_archive_restores_artifact() {
         fixture.runtime.store.clone(),
         fixture.runtime.composition.governance(),
     )
-    .query(&fixture.actor, id)
+    .query(&fixture.actor, id, None)
     .await
     .unwrap();
     assert!(state

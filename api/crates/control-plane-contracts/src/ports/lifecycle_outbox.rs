@@ -289,8 +289,60 @@ pub struct ManagedExecutionState {
     pub workspace_id: Uuid,
     pub executions: Vec<ManagedExecutionReference>,
     pub deliveries: Vec<ManagedLifecycleDelivery>,
-    /// Only the first bounded subscriber-history window was inspected; this is not an empty-backlog proof.
+    /// More candidates remain; continue with next_cursor, including after an empty filtered page.
     pub deliveries_truncated: bool,
+    pub next_cursor: Option<String>,
+}
+
+/// Scope-bound position, not an authorization credential. Ordering is (event_id, subscriber_id).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedDeliveryCursor {
+    pub installation_id: Uuid,
+    pub workspace_id: Uuid,
+    pub event_id: Uuid,
+    pub subscriber_id: String,
+}
+#[derive(Debug, thiserror::Error)]
+#[error("invalid managed delivery cursor or cursor scope")]
+pub struct InvalidManagedDeliveryCursor;
+impl ManagedDeliveryCursor {
+    pub fn encode(&self) -> String {
+        serde_json::to_vec(self)
+            .expect("cursor serialization")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+    pub fn decode(
+        value: &str,
+        installation_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Self, InvalidManagedDeliveryCursor> {
+        if value.len() % 2 != 0 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(InvalidManagedDeliveryCursor);
+        }
+        let bytes = value
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| {
+                u8::from_str_radix(
+                    std::str::from_utf8(pair).map_err(|_| InvalidManagedDeliveryCursor)?,
+                    16,
+                )
+                .map_err(|_| InvalidManagedDeliveryCursor)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let cursor: Self =
+            serde_json::from_slice(&bytes).map_err(|_| InvalidManagedDeliveryCursor)?;
+        if cursor.installation_id != installation_id
+            || cursor.workspace_id != workspace_id
+            || cursor.subscriber_id.is_empty()
+        {
+            return Err(InvalidManagedDeliveryCursor);
+        }
+        Ok(cursor)
+    }
 }
 
 pub const MANAGED_DELIVERY_PAGE_LIMIT: usize = 256;
@@ -298,6 +350,7 @@ pub const MANAGED_DELIVERY_PAGE_LIMIT: usize = 256;
 pub struct ManagedLifecycleDeliveryPage {
     pub deliveries: Vec<ManagedLifecycleDelivery>,
     pub truncated: bool,
+    pub next_cursor: Option<String>,
 }
 #[derive(Debug, thiserror::Error)]
 #[error("managed backlog check busy: bounded inspection did not prove the scope empty")]
@@ -310,6 +363,7 @@ pub trait ManagedLifecycleOutboxRepository: Send + Sync {
         &self,
         installation_id: Uuid,
         workspace_id: Uuid,
+        cursor: Option<&str>,
     ) -> anyhow::Result<ManagedLifecycleDeliveryPage>;
     async fn managed_lifecycle_delivery(
         &self,

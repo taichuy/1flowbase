@@ -39,7 +39,7 @@ async fn root_2014_ac_008_generic_history_and_f01() {
         })
         .await
         .unwrap();
-    let history = governance.query(&fixture.actor, id).await.unwrap();
+    let history = governance.query(&fixture.actor, id, None).await.unwrap();
     let row = history
         .deliveries
         .iter()
@@ -192,13 +192,13 @@ async fn root_2014_ac_008_generic_history_and_f01() {
         })
         .await
         .unwrap();
-    let history = governance.query(&fixture.actor, id).await.unwrap();
+    let history = governance.query(&fixture.actor, id, None).await.unwrap();
     assert!(history
         .deliveries
         .iter()
         .any(|r| r.event_id == old.event_id && r.target == exact.expected));
     assert!(!governance
-        .query(&fixture.actor, new_id)
+        .query(&fixture.actor, new_id, None)
         .await
         .unwrap()
         .deliveries
@@ -218,7 +218,7 @@ async fn root_2014_ac_008_generic_history_and_f01() {
     let restarted_governance =
         ManagedExecutionService::new(restarted.store.clone(), restarted.composition.governance());
     assert!(restarted_governance
-        .query(&fixture.actor, id)
+        .query(&fixture.actor, id, None)
         .await
         .unwrap()
         .deliveries

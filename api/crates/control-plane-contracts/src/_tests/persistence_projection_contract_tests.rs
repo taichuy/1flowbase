@@ -79,3 +79,32 @@ fn flow_run_title_displays_nul_without_changing_source_payload() {
     assert_eq!(build_flow_run_title(Some("\0"), "fallback"), "␀");
     assert_eq!(input, original);
 }
+
+#[test]
+fn root_2325_managed_delivery_cursor_scope_contract() {
+    use crate::ports::ManagedDeliveryCursor;
+    let cursor = ManagedDeliveryCursor {
+        installation_id: Uuid::now_v7(),
+        workspace_id: Uuid::now_v7(),
+        event_id: Uuid::now_v7(),
+        subscriber_id: "managed.workspace.订阅".into(),
+    };
+    let encoded = cursor.encode();
+    assert_eq!(
+        ManagedDeliveryCursor::decode(&encoded, cursor.installation_id, cursor.workspace_id)
+            .unwrap(),
+        cursor
+    );
+    assert!(ManagedDeliveryCursor::decode(&encoded, Uuid::now_v7(), cursor.workspace_id).is_err());
+    assert!(
+        ManagedDeliveryCursor::decode(&encoded, cursor.installation_id, Uuid::now_v7()).is_err()
+    );
+    for invalid in ["", "not-a-cursor", "00", "a", "🌍"] {
+        assert!(ManagedDeliveryCursor::decode(
+            invalid,
+            cursor.installation_id,
+            cursor.workspace_id
+        )
+        .is_err());
+    }
+}

@@ -44,10 +44,11 @@ impl ManagedExtensionComposition {
         &self,
         workspace_id: Uuid,
         installation_id: Uuid,
+        cursor: Option<String>,
     ) -> Result<ManagedExecutionState> {
         let page = self
             .store
-            .managed_lifecycle_delivery_page(installation_id, workspace_id)
+            .managed_lifecycle_delivery_page(installation_id, workspace_id, cursor.as_deref())
             .await?;
         let snapshots = self.snapshots.lock().await;
         let mut executions = Vec::<ManagedExecutionReference>::new();
@@ -92,6 +93,7 @@ impl ManagedExtensionComposition {
             executions,
             deliveries: page.deliveries,
             deliveries_truncated: page.truncated,
+            next_cursor: page.next_cursor,
         })
     }
     async fn resume_delivery(
@@ -148,7 +150,8 @@ impl ManagedExtensionComposition {
             .await?;
         drop(admitted);
         lease.commit_resume_managed_delivery(input).await?;
-        self.execution_state(workspace_id, installation_id).await
+        self.execution_state(workspace_id, installation_id, None)
+            .await
     }
     async fn retire_execution(
         &self,
@@ -354,7 +357,8 @@ impl ManagedExtensionComposition {
         }
         drop(drain);
         drop(assembly);
-        self.execution_state(workspace_id, installation_id).await
+        self.execution_state(workspace_id, installation_id, None)
+            .await
     }
 }
 #[async_trait::async_trait]
@@ -363,8 +367,11 @@ impl ManagedExecutionGovernancePort for ManagedCompositionGovernance {
         &self,
         workspace_id: Uuid,
         installation_id: Uuid,
+        cursor: Option<String>,
     ) -> Result<ManagedExecutionState> {
-        self.0.execution_state(workspace_id, installation_id).await
+        self.0
+            .execution_state(workspace_id, installation_id, cursor)
+            .await
     }
     async fn resume_managed_delivery(
         &self,

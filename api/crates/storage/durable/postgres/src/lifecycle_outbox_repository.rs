@@ -521,18 +521,38 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
         &self,
         installation_id: Uuid,
         workspace_id: Uuid,
+        cursor: Option<&str>,
     ) -> Result<control_plane_contracts::ports::ManagedLifecycleDeliveryPage> {
         use control_plane_contracts::ports::*;
+        let cursor = cursor
+            .map(|value| ManagedDeliveryCursor::decode(value, installation_id, workspace_id))
+            .transpose()?;
         // The extra row makes truncation explicit. Ownership filtering cannot turn this window
         // into a complete-history claim when a different installation reused the contribution ID.
-        let sql = format!("select o.event_id,o.contract_id,o.contract_version,o.graph_fingerprint,d.subscriber_id,d.handler_id,d.handler_version,d.status,d.pause_reason {MANAGED_HISTORY_SCOPE} order by o.event_id,d.subscriber_id limit $3");
+        let sql = format!("select o.event_id,o.contract_id,o.contract_version,o.graph_fingerprint,d.subscriber_id,d.handler_id,d.handler_version,d.status,d.pause_reason {MANAGED_HISTORY_SCOPE} and ($4::uuid is null or (o.event_id,d.subscriber_id COLLATE \"C\") > ($4,$5::text COLLATE \"C\")) order by o.event_id,d.subscriber_id COLLATE \"C\" limit $3");
         let rows = sqlx::query(&sql)
             .bind(installation_id)
             .bind(workspace_id)
             .bind((MANAGED_DELIVERY_PAGE_LIMIT + 1) as i64)
+            .bind(cursor.as_ref().map(|c| c.event_id))
+            .bind(cursor.as_ref().map(|c| c.subscriber_id.as_str()))
             .fetch_all(self.pool())
             .await?;
         let truncated = rows.len() > MANAGED_DELIVERY_PAGE_LIMIT;
+        let next_cursor = if truncated {
+            let last = &rows[MANAGED_DELIVERY_PAGE_LIMIT - 1];
+            Some(
+                ManagedDeliveryCursor {
+                    installation_id,
+                    workspace_id,
+                    event_id: last.try_get("event_id")?,
+                    subscriber_id: last.try_get("subscriber_id")?,
+                }
+                .encode(),
+            )
+        } else {
+            None
+        };
         let mut deliveries = Vec::new();
         for row in rows.into_iter().take(MANAGED_DELIVERY_PAGE_LIMIT) {
             let version: String = row.try_get("handler_version")?;
@@ -563,6 +583,7 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
         Ok(ManagedLifecycleDeliveryPage {
             deliveries,
             truncated,
+            next_cursor,
         })
     }
     async fn managed_lifecycle_delivery(

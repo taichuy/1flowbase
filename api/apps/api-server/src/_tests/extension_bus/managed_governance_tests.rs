@@ -25,7 +25,7 @@ async fn deliveries(
 ) -> Vec<LifecycleOutboxRecord> {
     let page = runtime
         .store
-        .managed_lifecycle_delivery_page(installation, workspace)
+        .managed_lifecycle_delivery_page(installation, workspace, None)
         .await
         .unwrap();
     assert!(!page.truncated);
@@ -1218,4 +1218,149 @@ async fn root_2007_ac_009_pause_revoke_retire() {
     std::fs::remove_file(worker.with_extension("started")).unwrap();
     std::fs::remove_file(worker.with_extension("release")).unwrap();
     runtime.host.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn root_2325_http_history_cursor_and_authorization() {
+    let (initial, database_url) = test_api_state_with_database_url().await;
+    // The commit barrier and authority operations intentionally need independent real connections.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(8)
+        .connect(&database_url)
+        .await
+        .unwrap();
+    let mut owned = (*initial).clone();
+    owned.store = storage_durable_postgres::PgControlPlaneStore::new(pool.clone());
+    let runtime = RuntimeFixture::new(&owned);
+    owned.store = runtime.store.clone();
+    owned.provider_runtime = runtime.services.clone();
+    let state = Arc::new(owned);
+    let app = crate::app_with_state(state.clone());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let actor_id: Uuid = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let actor = AuthRepository::load_actor_context_for_user(&runtime.store, actor_id)
+        .await
+        .unwrap();
+    let workspace = actor.current_workspace_id;
+    let management = PluginManagementService::new(
+        runtime.store.clone(),
+        crate::provider_runtime::ApiProviderRuntime::new(runtime.services.clone()),
+        state.official_plugin_source.clone(),
+        &state.provider_install_root,
+    )
+    .with_node_id(&state.api_node_id);
+
+    let installation = management
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: actor_id,
+            file_name: "root-2325.1flowbasepkg".into(),
+            package_bytes: package(&manifest("a")),
+        })
+        .await
+        .unwrap()
+        .installation
+        .id;
+    management
+        .assign_plugin(AssignPluginCommand {
+            actor_user_id: actor_id,
+            installation_id: installation,
+        })
+        .await
+        .unwrap();
+    let version = format!(
+        "{}:sha256:{}:sha256:{}:1:{installation}",
+        Uuid::now_v7(),
+        "a".repeat(64),
+        "b".repeat(64)
+    );
+    let subscriber = format!("managed.{workspace}.history");
+    sqlx::query("insert into plugin_contribution_authorization_revisions(installation_id,workspace_id) values($1,$2) on conflict do nothing").bind(installation).bind(workspace).execute(&pool).await.unwrap();
+    let ids = (1..=600).map(Uuid::from_u128).collect::<Vec<_>>();
+    sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,graph_fingerprint) select id,id,'history','v1',decode('ff','hex'),now(),'history' from unnest($1::uuid[]) id").bind(&ids).execute(&pool).await.unwrap();
+    sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version) select id,$2,$2,$3 from unnest($1::uuid[]) id").bind(&ids).bind(&subscriber).bind(&version).execute(&pool).await.unwrap();
+    let view = format!(
+        "/api/console/settings/extension-center/installed/{installation}/managed-execution"
+    );
+    let (status, first) = request(&app, &cookie, &csrf, "GET", &view, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(first["data"]["deliveries"].as_array().unwrap().len(), 256);
+    let token = first["data"]["next_cursor"].as_str().unwrap();
+    let continued = format!("{view}?cursor={token}");
+    assert_eq!(
+        request(&app, "", "", "GET", &continued, Value::Null)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let role = "root_2325_cursor_denied";
+    create_role(&app, &cookie, &csrf, role).await;
+    let member = create_member(&app, &cookie, &csrf, "root-2325-member", "temp-pass").await;
+    replace_member_roles(&app, &cookie, &csrf, &member, &[role]).await;
+    let (member_cookie, member_csrf) =
+        login_and_capture_cookie(&app, "root-2325-member", "temp-pass").await;
+    assert_eq!(
+        request(
+            &app,
+            &member_cookie,
+            &member_csrf,
+            "GET",
+            &continued,
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let mut cursor = ManagedDeliveryCursor::decode(token, installation, workspace).unwrap();
+    cursor.workspace_id = Uuid::now_v7();
+    let cross_workspace = cursor.encode();
+    cursor.workspace_id = workspace;
+    cursor.installation_id = Uuid::now_v7();
+    for invalid in ["invalid".to_owned(), cross_workspace, cursor.encode()] {
+        let (status, body) = request(
+            &app,
+            &cookie,
+            &csrf,
+            "GET",
+            &format!("{view}?cursor={invalid}"),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    let mut observed = Vec::new();
+    let mut page = first;
+    let mut pages = 0;
+    loop {
+        pages += 1;
+        assert!(pages <= 3);
+        observed.extend(
+            page["data"]["deliveries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| Uuid::parse_str(row["event_id"].as_str().unwrap()).unwrap()),
+        );
+        let Some(next) = page["data"]["next_cursor"].as_str() else {
+            assert_eq!(page["data"]["deliveries_truncated"], false);
+            break;
+        };
+        assert_eq!(page["data"]["deliveries_truncated"], true);
+        let (status, body) = request(
+            &app,
+            &cookie,
+            &csrf,
+            "GET",
+            &format!("{view}?cursor={next}"),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        page = body;
+    }
+    assert_eq!(observed, ids);
+    assert_eq!(pages, 3);
 }
