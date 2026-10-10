@@ -11,3 +11,5 @@ mod semantic_terminal_tests;
 mod managed_interface_contract_tests;
 
 mod managed_interface_reference_tests;
+
+mod plugin_credential_contract_tests;

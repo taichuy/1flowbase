@@ -53,6 +53,7 @@ pub enum MultiplexHostMessage {
 #[serde(rename_all = "snake_case")]
 pub enum MultiplexHostService {
     PluginDataV1,
+    PluginCredentialV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

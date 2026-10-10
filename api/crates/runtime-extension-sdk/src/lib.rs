@@ -48,3 +48,9 @@ pub use extension_contracts::{
     ManagedEventSchema, ManagedEventStatus,
 };
 pub use managed_event::serve_managed_event;
+
+mod plugin_credential;
+pub use extension_contracts::{
+    PluginCredentialError, PluginCredentialRequest, PluginCredentialResponse,
+};
+pub use plugin_credential::{PluginCredentialClient, PluginCredentialClientError};

@@ -184,6 +184,23 @@ impl MultiplexProviderWorker {
             .is_some_and(|context| context.protocol_observation.is_some());
         let request_bytes = serialize_provider_stdio_request(request, capture)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+        let request = serde_json::from_slice(&request_bytes)
+            .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+        self.call_json(request, limits, context, lease).await
+    }
+
+    pub(crate) async fn call_json(
+        &self,
+        request: Value,
+        limits: &PluginRuntimeLimits,
+        context: Option<StreamingCallContext>,
+        lease: Option<Box<dyn Send + Sync>>,
+    ) -> FrameworkResult<(Value, Vec<ProviderStreamEvent>)> {
+        if self.is_failed() {
+            return Err(worker_exited_error());
+        }
+        let request_bytes = serde_json::to_vec(&request)
+            .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         if request_bytes.len() + 256 > MULTIPLEX_MAX_FRAME_BYTES {
             return Err(transport_error("multiplex request frame too large"));
         }
@@ -488,9 +505,6 @@ async fn run_reader(
                         let callback_sequence = match callback_id.parse::<u64>() { Ok(value) if value > call.max_callback_id && callback_id == value.to_string() => value, _ => break "invalid or duplicate multiplex callback id".to_string() };
                         if call.cancelling_since.is_some() { break "callback on cancelling multiplex call".to_string(); }
                         call.max_callback_id = callback_sequence;
-                        if service != MultiplexHostService::PluginDataV1 { break "unsupported multiplex host service".to_string(); }
-                        let parsed: PluginDataRequest = match serde_json::from_value(request) { Ok(request) => request, Err(error) => break format!("invalid multiplex host request: {error}") };
-                        if let Err(error) = parsed.validate() { break format!("invalid multiplex host request: {}", error.code); }
                         let binding = call.host_calls.clone();
                         let sender = command_sender.clone();
                         let call_id = id.clone();
@@ -498,15 +512,7 @@ async fn run_reader(
                         let retained_lease = call._lease.clone();
                         let task = tokio::spawn(async move {
                             let _retained_lease = retained_lease;
-                            let result = if let Some(context) = binding {
-                                let remaining = context.binding.deadline_unix_ms.saturating_sub(now_unix_ms());
-                                if remaining <= 0 { Err(plugin_data_error(PluginDataErrorKind::DeadlineExceeded, "plugin_data_deadline", false)) }
-                                else { match tokio::time::timeout(Duration::from_millis(remaining as u64), context.plugin_data.execute(&context.binding, &parsed)).await {
-                                    Ok(result) => result,
-                                    Err(_) => Err(plugin_data_error(PluginDataErrorKind::DeadlineExceeded, "plugin_data_deadline", false)),
-                                }}
-                            } else { Err(plugin_data_error(PluginDataErrorKind::PermissionDenied, "runtime_host_call_not_granted", false)) };
-                            let response = match result { Ok(value) => serde_json::json!({"result":value}), Err(error) => serde_json::json!({"error":error}) };
+                            let response = execute_callback(service, request, binding).await;
                             let _ = sender.send(CommandMessage::CallbackDone { id: call_id, callback_id: callback, response }).await;
                         });
                         call.callbacks.insert(callback_id, task);
@@ -622,3 +628,84 @@ fn send_cancel(id: &str, controls: &mpsc::Sender<ControlFrame>, call: &mut Activ
     // A closed control lane cannot acknowledge cancellation. Retire the child.
     call.cancelling_since = Some(Instant::now() - CANCEL_GRACE);
 }
+
+async fn execute_callback(
+    service: MultiplexHostService,
+    request: Value,
+    context: Option<ProviderHostCallContext>,
+) -> Value {
+    match service {
+        MultiplexHostService::PluginDataV1 => {
+            let result = async {
+                let request: PluginDataRequest = serde_json::from_value(request)
+                    .map_err(|_| PluginDataError::invalid("plugin_data_request_invalid"))?;
+                request.validate()?;
+                let context = context.ok_or_else(|| {
+                    plugin_data_error(
+                        PluginDataErrorKind::PermissionDenied,
+                        "runtime_host_call_not_granted",
+                        false,
+                    )
+                })?;
+                let remaining = context
+                    .binding
+                    .deadline_unix_ms
+                    .saturating_sub(now_unix_ms());
+                if remaining <= 0 {
+                    return Err(plugin_data_error(
+                        PluginDataErrorKind::DeadlineExceeded,
+                        "plugin_data_deadline",
+                        false,
+                    ));
+                }
+                tokio::time::timeout(
+                    Duration::from_millis(remaining as u64),
+                    context.plugin_data.execute(&context.binding, &request),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    Err(plugin_data_error(
+                        PluginDataErrorKind::DeadlineExceeded,
+                        "plugin_data_deadline",
+                        false,
+                    ))
+                })
+            }
+            .await;
+            match result {
+                Ok(value) => serde_json::json!({"result":value}),
+                Err(error) => serde_json::json!({"error":error}),
+            }
+        }
+        MultiplexHostService::PluginCredentialV1 => {
+            use extension_contracts::{PluginCredentialError, PluginCredentialRequest};
+            let result = async {
+                let request: PluginCredentialRequest = serde_json::from_value(request)
+                    .map_err(|_| PluginCredentialError::new("plugin_credential_request_invalid"))?;
+                request.validate()?;
+                let (binding, port) = context
+                    .and_then(|context| context.plugin_credentials)
+                    .ok_or_else(|| PluginCredentialError::new("plugin_credential_not_granted"))?;
+                let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
+                if remaining <= 0 {
+                    return Err(PluginCredentialError::new("plugin_credential_deadline"));
+                }
+                tokio::time::timeout(
+                    Duration::from_millis(remaining as u64),
+                    port.execute(&binding, &request),
+                )
+                .await
+                .unwrap_or_else(|_| Err(PluginCredentialError::new("plugin_credential_deadline")))
+            }
+            .await;
+            match result {
+                Ok(value) => serde_json::json!({"result":value}),
+                Err(error) => serde_json::json!({"error":error}),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "../_tests/plugin_credential_callbacks.rs"]
+mod credential_tests;

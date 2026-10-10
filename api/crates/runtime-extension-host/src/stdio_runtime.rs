@@ -77,6 +77,10 @@ pub struct StreamingProviderOutput {
 pub(crate) struct ProviderHostCallContext {
     pub binding: PluginDataBinding,
     pub plugin_data: Arc<dyn PluginDataPort>,
+    pub plugin_credentials: Option<(
+        extension_contracts::PluginCredentialBinding,
+        Arc<dyn extension_contracts::PluginCredentialPort>,
+    )>,
 }
 
 struct HostCallCompletion {

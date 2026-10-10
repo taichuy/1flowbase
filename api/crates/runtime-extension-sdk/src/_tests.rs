@@ -82,3 +82,6 @@ mod managed_event_tests;
 mod multiplex_tests;
 
 mod multiplex_output_tests;
+
+#[path = "_tests/plugin_credential_client_tests.rs"]
+mod plugin_credential_client_tests;

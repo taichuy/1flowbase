@@ -64,3 +64,6 @@ pub mod mcp_oauth;
 
 pub mod organization;
 pub use organization::*;
+
+pub mod plugin_credential;
+pub use plugin_credential::*;

@@ -1526,6 +1526,7 @@ fn build_host_call_context(
             deadline_unix_ms: principal.deadline_unix_ms,
         },
         plugin_data,
+        plugin_credentials: None,
     }))
 }
 

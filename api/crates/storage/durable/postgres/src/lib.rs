@@ -85,3 +85,6 @@ mod portable_template_repository;
 mod mcp_oauth_repository;
 
 pub mod organization_repository;
+
+mod plugin_credential_repository;
+pub use plugin_credential_repository::PgPluginCredentialRepository;

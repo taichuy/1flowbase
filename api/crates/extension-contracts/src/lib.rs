@@ -51,3 +51,6 @@ pub fn crate_name() -> &'static str {
 
 #[cfg(test)]
 mod _tests;
+
+pub mod plugin_credential_contract;
+pub use plugin_credential_contract::*;

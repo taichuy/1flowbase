@@ -161,5 +161,6 @@ fn distribution_host_calls(
             deadline_unix_ms: principal.deadline_unix_ms,
         },
         plugin_data,
+        plugin_credentials: None,
     }))
 }
