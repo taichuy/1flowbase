@@ -1285,7 +1285,7 @@ test('manual quality scopes and plugin batches retain independent concurrency id
   assert.notEqual(render('ci'), render('repo-tooling'));
   assert.notEqual(render('plugin-composition-2014', 'r3-probe'), render('plugin-composition-2014', 'browser-candidate'));
   assert.notEqual(render('repo-tooling'), render('repo-tooling', 'full', 'other-candidate'));
-  assert.equal(render('repo-tooling'), render('repo-tooling'));
+  assert.equal(render('repo-tooling'), 'quality-gate-workflow_dispatch-candidate-repo-tooling-full');
   assert.doesNotMatch(render('ci'), /\$\{\{/u);
 });
 
