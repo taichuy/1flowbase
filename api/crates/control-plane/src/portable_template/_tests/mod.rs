@@ -487,3 +487,52 @@ fn shared_draft_and_publication_flow_identity_has_one_owner() {
 }
 
 mod releases;
+
+#[test]
+fn selected_translations_can_be_exported_without_native_resources() {
+    let mut all = snapshot();
+    all.pages.push(group(1, None));
+    all.i18n_entries = vec![
+        PortableI18nEntry {
+            key: "Hello".into(),
+            locale: "zh_Hans".into(),
+            translation: "你好".into(),
+        },
+        PortableI18nEntry {
+            key: "Other".into(),
+            locale: "en_US".into(),
+            translation: "Other".into(),
+        },
+    ];
+    let out = export_selected_template(
+        all.clone(),
+        PortableTemplateSelection {
+            i18n_keys: vec!["Hello".into()],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(out.pages.is_empty());
+    assert_eq!(out.schema_version, PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION);
+    assert_eq!(out.i18n_entries, vec![all.i18n_entries[0].clone()]);
+    let native = export_selected_template(
+        all.clone(),
+        PortableTemplateSelection {
+            page_ids: vec![Uuid::from_u128(1)],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(native.schema_version, PORTABLE_TEMPLATE_SCHEMA_VERSION);
+    assert!(native.i18n_entries.is_empty());
+    assert!(export_selected_template(
+        all,
+        PortableTemplateSelection {
+            i18n_keys: vec!["Missing".into()],
+            ..Default::default()
+        }
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("missing_i18n_key"));
+}
