@@ -340,6 +340,10 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundaryApplicationFetch();
     return renderRouterScene('/applications/app-1/api');
   },
+  'page.application-logs-mobile': () => {
+    seedStyleBoundaryApplicationFetch();
+    return renderRouterScene('/applications/app-1/logs');
+  },
   'page.application-logs': () => {
     seedStyleBoundaryApplicationFetch();
     return renderRouterScene('/applications/app-1/logs');

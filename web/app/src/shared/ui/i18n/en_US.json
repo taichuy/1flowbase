@@ -47,6 +47,10 @@
     "total": "total",
     "total_items": "Total {{value1}} items",
     "view_details_after_selecting_interface": "View details after selecting the interface",
-    "zoom_view_named_json": "Zoom in to view {{value1}} JSON"
+    "zoom_view_named_json": "Zoom in to view {{value1}} JSON",
+    "list_load_more": "Load more",
+    "list_retry": "Loading failed. Retry",
+    "list_end": "All records loaded",
+    "list_select_loaded": "Select loaded records"
   }
 }

@@ -14,6 +14,7 @@ export type DataTableColumn<T extends object> = {
   dataIndex?: keyof T;
   render?: (value: unknown, record: T, index: number) => ReactNode;
   ellipsis?: boolean;
+  mobileRole?: 'title' | 'actions';
 };
 
 export type DataTableState = {

@@ -1,3 +1,4 @@
+import { useApplicationRunsQuery } from './use-application-runs-query';
 import {
   getViewportSize,
   getRunDetailInitialRect,
@@ -21,12 +22,13 @@ import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import SortAscendingOutlined from '@ant-design/icons/es/icons/SortAscendingOutlined';
 import SortDescendingOutlined from '@ant-design/icons/es/icons/SortDescendingOutlined';
 import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   App,
   Button,
   Empty,
+  Grid,
   Input,
   Progress,
   Modal,
@@ -55,7 +57,6 @@ import {
   completeApplicationRunArchiveUploadSession,
   createApplicationRunArchiveUploadSession,
   fetchApplicationRunArchiveImportJob,
-  fetchApplicationRuns,
   fetchApplicationRunOverview,
   exportApplicationRunTraceDump,
   exportSelectedApplicationRunsTraceDumpZip,
@@ -502,10 +503,9 @@ export function ApplicationLogsWorkspace({
     }),
     [page, sortBy, sortOrder, timeRange, titleIncludes, statisticsFilters]
   );
-  const runsQuery = useQuery({
-    queryKey: applicationRunsQueryKey(runsScope, runsInput),
-    queryFn: () => fetchApplicationRuns(runsScope, runsInput)
-  });
+  const screens = Grid.useBreakpoint();
+  const mobileListEnabled = screens.md === undefined ? undefined : !screens.md;
+  const runsQuery = useApplicationRunsQuery(runsScope, runsInput, mobileListEnabled);
   const runsPage = runsQuery.data;
   const runs = useMemo(() => runsPage?.items ?? [], [runsPage?.items]);
   const total = runsPage?.total ?? 0;
@@ -635,14 +635,7 @@ export function ApplicationLogsWorkspace({
     setSelectedRunIds([]);
     setRefreshingRuns(true);
     try {
-      const refreshedRuns = await fetchApplicationRuns(runsScope, {
-        ...runsInput,
-        cacheMode: 'refresh'
-      });
-      queryClient.setQueryData(
-        applicationRunsQueryKey(runsScope, runsInput),
-        refreshedRuns
-      );
+      await runsQuery.refresh();
     } catch {
       message.error(t('auto.refresh_failed'));
     } finally {
@@ -1255,6 +1248,7 @@ export function ApplicationLogsWorkspace({
       ) : (
         <ApplicationRunsTable
           loading={runsQuery.isFetching}
+          mobileList={runsQuery.mobileList}
           page={page}
           pageSize={PAGE_SIZE}
           total={total}

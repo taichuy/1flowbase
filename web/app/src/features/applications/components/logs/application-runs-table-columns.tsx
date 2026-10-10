@@ -106,6 +106,7 @@ export function getApplicationRunsTableColumns(
   return [
     {
       key: 'title',
+      mobileRole: 'title',
       title: t('auto.title'),
       dataIndex: 'title',
       width: 240,
@@ -352,6 +353,7 @@ export function getApplicationRunsTableColumns(
     },
     {
       key: 'action',
+      mobileRole: 'actions',
       title: t('auto.operation'),
       width: 180
     }
