@@ -152,7 +152,7 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
         let restored = ManagedSchemaRepository::apply_managed_schema(&state.store, &original_plan)
             .await
             .unwrap();
-        assert_eq!(restored.receipt_id, applied.receipt_id);
+        assert_eq!(restored.receipt_id.to_string(), applied.receipt_id);
         let ownership = ManagedSchemaRepository::list_managed_schema_ownership(&state.store)
             .await
             .unwrap();
