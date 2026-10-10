@@ -35,7 +35,7 @@ real transaction owner
 - AfterCommit 延迟投递使用事实写入时冻结的 graph fingerprint、subscriber identity 与 handler version；当前进程没有对应 frozen handler 时 fail-closed 并重试，不得切换到新版本。
 - 每个 subscriber 独立 claim、fencing、retry 与幂等边界；只有全部 subscriber Delivered 后事实才成为 Delivered。没有 active subscriber 时不写 outbox。
 - HostExtension lifecycle activation 必须从 active package 的 `native.library + native.entry_symbol` 解析受控 factory；factory 返回 typed bindings 后才允许编译 registry。缺失 factory、缺失 binding 或 contract/version 不匹配均在启动阶段 fail closed。
-- trusted HostExtension 通过 native factory 绑定 BootSnapshot / Invocation。RuntimeExtension 与 CapabilityPlugin 通过宿主 managed transport 订阅已开放的 Create committed 或声明式命名空间事件，只开放 Invocation / WorkspaceAssignment；要求匹配事件 contract/version 和逐贡献 `event.subscribe` 授权。User 作用域不开放，认证 factory 仍归可信宿主。编译结构合法不代替执行时权限检查。
+- trusted HostExtension 通过 native factory 绑定 BootSnapshot / Invocation。RuntimeExtension 与 CapabilityPlugin 通过宿主 managed transport 订阅已开放的 Create committed 或声明式命名空间事件，当前事件订阅实现只开放 Invocation / WorkspaceAssignment（不作为所有受管贡献的永久作用域定义，选型见[插件组合](plugin-composition.md)）；要求匹配事件 contract/version 和逐贡献 `event.subscribe` 授权。User 作用域不开放，认证 factory 仍归可信宿主。编译结构合法不代替执行时权限检查。
 - api-server delivery adapter 不按 handler identity 分支实现插件行为；它只消费冻结 plan 和 Composition Root 注入的 typed registry。测试 fixture 必须让独立插件 handler 成功返回后才能确认 subscriber Delivered。
 - 单个 handler 的执行 deadline 必须短于 claim lease；超时产生 TimedOut completion 并进入 retry，且 dispatcher 继续处理同一批次的其他 subscriber。
 

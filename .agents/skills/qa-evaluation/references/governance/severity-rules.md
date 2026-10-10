@@ -23,8 +23,8 @@
 
 | 后端场景 | 建议严重度 |
 | --- | --- |
-| 绕过 service 直接改关键状态、插件可注册系统接口、`public / control / runtime` 混层 | `Blocking` |
-| 公共 API 契约变化未回归、`RuntimeExtension / CapabilityPlugin` 边界被打破、repository 混业务规则、`Resource Action Kernel` 托管边界失效 | `High` |
+| 绕过 service 直接改关键状态、插件绕过宿主注册与授权自行挂载系统接口、`public / control / runtime` 混层 | `Blocking` |
+| 公共 API 契约变化未回归、受管插件绕过宿主注册、执行或授权边界、repository 混业务规则、`Resource Action Kernel` 托管边界失效 | `High` |
 | HostExtension 绕过 manifest contribution 直接扩系统接口、直接改 Core 真值表，或 RuntimeExtension / CapabilityPlugin 直接持有 Redis、NATS、RabbitMQ 等基础设施连接 | `High` |
 | `storage/durable/postgres` 内的 `storage-durable-postgres` repository / mapper 拆分被打回混层实现、`storage-durable / storage-object` 边界被混用、mapper 藏业务规则、dynamic modeling 与 runtime data 被混成同一层 | `High` |
 | `ApiSuccess` / `204` / 错误结构不一致、后端验证命令或验证脚本缺失、测试目录或命名不对齐 | `Medium` |

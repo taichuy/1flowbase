@@ -32,7 +32,7 @@ flowchart LR
 ## 维护边界
 
 - 本文描述架构与不变量，不将某次 CI 通过写成所有接口、所有输入已验证。
-- 接口生命周期管理先提供统一契约；三级插件开放再验证真实声明、加载、组合与执行。受控 plan 测试不能替代真实插件装配，合法空计划也不是缺陷。
+- 接口生命周期管理先提供统一契约；插件贡献开放再验证真实声明、加载、组合与执行。受控 plan 测试不能替代真实插件装配，合法空计划也不是缺陷。
 - 当前实现查源码，候选覆盖查对应 Issue/Assembly Receipt/测试报告；旧 receipt 保留执行版本，不改写为当前验收结果。
 - 详细 crate owner 与依赖以 [crates/AGENTS.md](../../api/crates/AGENTS.md) 为准；宿主规则见 [api/AGENTS.md](../../api/AGENTS.md)。本文只解释边界，不复制完整目录表。
 - 新增解释归入对应章节，保留目录导航，避免重复说明与任务日志。新增行为或改变权限/事务语义需单独定界，不能通过文档同步隐式批准。
@@ -203,7 +203,7 @@ Core deny 不可被 extension allow 恢复；拒绝后不运行 Handler。Defini
 
 插件的空间坐标是目标 Interface、point/phase、scope、权限和隔离；时间坐标是 version、Graph/Registry、artifact/generation、Invocation/Attempt。每项实际开放贡献需声明 typed contract、ordering、可见事实、mutation/failure/delivery 语义和身份。
 
-接口管理可以用受控 typed registration 验证执行契约。三级插件开放则需真实 declaration → loader/activation → graph/registry → invocation，覆盖依赖、冲突、停用、版本切换和在途隔离。native HostExtension 的 restart-scoped 管理不能被快照测试解释成 Rust 热卸载。
+接口管理可以用受控 typed registration 验证执行契约。插件贡献开放则需真实 declaration → loader/activation → graph/registry → invocation，覆盖依赖、冲突、停用、版本切换和在途隔离。native HostExtension 的 restart-scoped 管理不能被快照测试解释成 Rust 热卸载。
 
 受管接口从 compiled Canonical Interface 的契约与执行计划生成 `1flowbase.interface.{interface_id}.{phase}` 坐标，使用版本化的受管接口协议。Authorization / Admission 可继续或拒绝；Before、After、Failure、Completion 仅观察，不能 patch 输入、改写主结果或恢复错误，核心拒绝不可推翻。旧 Create adapter 保留既有兼容契约与回归，不将它的可否决 Before 推广为新通用契约。
 
