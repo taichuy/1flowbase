@@ -99,9 +99,11 @@ fn managed_mcp_projection_uses_existing_catalog_policy_and_flat_dto_mapping() {
         None,
     )
     .unwrap();
-    assert!(items
-        .iter()
-        .any(|item| item.id == "plugin.ssh.hosts.execute"));
+    assert!(
+        items
+            .iter()
+            .any(|item| item.id == "plugin.ssh.hosts.execute")
+    );
     assert!(
         control_plane::mcp_management::list_catalog_items(
             &catalog,
@@ -164,14 +166,16 @@ fn managed_mcp_preserves_user_tools_and_rejects_reserved_collisions() {
     assert_eq!(base.tools[0], custom);
     let mut conflict = base_catalog();
     conflict.tools.push(projected.tools[0].clone());
-    assert!(append_service(
-        &mut conflict,
-        &instance,
-        &service,
-        &[&service.declaration.operations[0]],
-        Uuid::nil()
-    )
-    .is_err());
+    assert!(
+        append_service(
+            &mut conflict,
+            &instance,
+            &service,
+            &[&service.declaration.operations[0]],
+            Uuid::nil()
+        )
+        .is_err()
+    );
 }
 #[test]
 fn managed_mcp_requires_selected_enabled_host_instance_and_role_operation() {
@@ -240,16 +244,17 @@ fn managed_mcp_hides_disabled_or_replaced_installation() {
 
 #[tokio::test]
 async fn managed_mcp_flat_arguments_reach_existing_http_dispatch_and_unwrap_api_data() {
-    use crate::routes::mcp_management::{debug_execute, McpDebugExecuteBody, McpDebugResponseMode};
+    use crate::routes::mcp_management::{McpDebugExecuteBody, McpDebugResponseMode, debug_execute};
     use axum::{
+        Json, Router,
         extract::{Path, Query},
         routing::post,
-        Json, Router,
     };
     let service = registration();
     let operation = &service.declaration.operations[0];
+    // Axum 0.7 routing syntax differs from the canonical interface path.
     let router = Router::new().route(
-        &operation.path,
+        &operation.path.replace("{host_id}", ":host_id"),
         post(
             |Path(host): Path<String>,
              Query(query): Query<std::collections::HashMap<String, String>>,
@@ -294,7 +299,7 @@ async fn managed_mcp_flat_arguments_reach_existing_http_dispatch_and_unwrap_api_
     )
     .await;
     let Ok(value) = result else {
-        panic!("managed MCP mapping must reach the existing HTTP dispatcher")
+        panic!("managed MCP mapping must reach the existing HTTP dispatcher: {result:?}")
     };
     assert_eq!(value, json!({"stdout":"fixture"}));
 }
