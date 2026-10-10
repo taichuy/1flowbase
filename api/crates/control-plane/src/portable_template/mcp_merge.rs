@@ -9,7 +9,7 @@ use crate::{
         PortableTemplateTransactionRepository,
     },
 };
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -73,170 +73,9 @@ async fn snapshot<R: McpManagementRepository>(
         })
         .await
 }
-fn plan(
-    package: &domain::McpBundlePackage,
-    current: &domain::McpBundlePackage,
-    baselines: &[TemplateResourceBaseline],
-) -> Result<(Vec<PlannedTemplateResource>, domain::McpBundlePackage)> {
-    let mut plan = plan_template_resources(
-        project(package)?,
-        &project(current)?,
-        baselines,
-        &BTreeSet::new(),
-    )?;
-    // Missing baseline-owned parents remain deleted. An absent legacy, unbaselined
-    // instance (including 1flowbase) can be explicitly reset by deleting it.
-    let present_instances: BTreeSet<_> = current
-        .instances
-        .iter()
-        .map(|i| i.instance_id.clone())
-        .collect();
-    let usable_instances: BTreeSet<_> = plan
-        .iter()
-        .filter(|p| {
-            p.desired.key.kind == "mcp_instance"
-                && (present_instances.contains(&p.desired.target_id)
-                    || p.decision == TemplateMergeDecision::Initialize)
-        })
-        .map(|p| p.desired.target_id.clone())
-        .collect();
-    let usable_groups: BTreeSet<_> = plan
-        .iter()
-        .filter(|p| {
-            p.desired.key.kind == "mcp_group"
-                && (p.current_fingerprint.is_some()
-                    || p.decision == TemplateMergeDecision::Initialize)
-        })
-        .map(|p| p.desired.key.source_id.clone())
-        .chain(current.instances.iter().flat_map(|i| {
-            i.groups
-                .iter()
-                .map(move |g| composite(&[&i.instance_id, &g.path]))
-        }))
-        .collect();
-    let usable_connections: BTreeSet<_> = plan
-        .iter()
-        .filter(|p| {
-            p.desired.key.kind == "mcp_connection"
-                && (p.write_intent(Uuid::nil()).is_some()
-                    || p.current_fingerprint.as_deref() == Some(p.desired.fingerprint.as_str()))
-        })
-        .map(|p| p.desired.target_id.clone())
-        .collect();
-    for p in &mut plan {
-        if p.desired.key.kind == "mcp_tool" && p.write_intent(Uuid::nil()).is_some() {
-            if let Some(tool) = package
-                .tools
-                .iter()
-                .find(|t| t.tool_id == p.desired.target_id)
-            {
-                if let domain::McpToolExecutionTarget::McpProxy {
-                    upstream_connection_id,
-                    ..
-                } = &tool.execution_target
-                {
-                    if !usable_connections.contains(&upstream_connection_id.to_string()) {
-                        p.decision = TemplateMergeDecision::SkipUserModified;
-                    }
-                }
-            }
-        }
-    }
-    let usable_tools: BTreeSet<_> = plan
-        .iter()
-        .filter(|p| {
-            p.desired.key.kind == "mcp_tool"
-                && (p.write_intent(Uuid::nil()).is_some()
-                    || p.current_fingerprint.as_deref() == Some(p.desired.fingerprint.as_str()))
-        })
-        .map(|p| p.desired.target_id.clone())
-        .collect();
-    for p in &mut plan {
-        if p.desired.key.kind == "mcp_discovery_policy"
-            && !usable_instances.contains(&p.desired.target_id)
-        {
-            p.decision = TemplateMergeDecision::SkipUserDeleted;
-        }
-        if matches!(p.desired.key.kind.as_str(), "mcp_group" | "mcp_binding") {
-            let parts: Vec<String> = serde_json::from_str(&p.desired.key.source_id)?;
-            if !usable_instances.contains(&parts[0]) {
-                p.decision = TemplateMergeDecision::SkipUserDeleted;
-            } else if p.desired.key.kind == "mcp_binding"
-                && p.write_intent(Uuid::nil()).is_some()
-                && (!usable_tools.contains(&parts[2])
-                    || (!parts[1].is_empty()
-                        && !usable_groups.contains(&composite(&[&parts[0], &parts[1]]))))
-            {
-                p.decision = TemplateMergeDecision::SkipUserModified;
-            }
-        }
-    }
-    let allowed: BTreeSet<_> = plan
-        .iter()
-        .filter(|p| p.write_intent(Uuid::nil()).is_some())
-        .map(|p| p.desired.key.clone())
-        .collect();
-    let mut effective = package.clone();
-    effective
-        .tools
-        .retain(|t| allowed.contains(&key("mcp_tool", &t.tool_id)));
-    effective
-        .connections
-        .retain(|c| allowed.contains(&key("mcp_connection", c.connection_id.to_string())));
-    effective.instances.clear();
-    for source in &package.instances {
-        let id = &source.instance_id;
-        let existing = current.instances.iter().find(|i| i.instance_id == *id);
-        let metadata = allowed.contains(&key("mcp_instance", id));
-        let mut instance = match existing {
-            Some(i) => i.clone(),
-            None if metadata => {
-                let mut i = source.clone();
-                i.groups.clear();
-                i.bindings.clear();
-                i
-            }
-            None => continue,
-        };
-        if metadata {
-            let groups = instance.groups;
-            let bindings = instance.bindings;
-            let discovery_policy = instance.discovery_policy;
-            instance = source.clone();
-            instance.groups = groups;
-            instance.bindings = bindings;
-            instance.discovery_policy = discovery_policy;
-        }
-        let policy = allowed.contains(&key("mcp_discovery_policy", id));
-        if policy {
-            instance.discovery_policy = source.discovery_policy.clone();
-        }
-        let mut changed = metadata || policy;
-        for group in &source.groups {
-            if allowed.contains(&key("mcp_group", composite(&[id, &group.path]))) {
-                instance.groups.retain(|g| g.path != group.path);
-                instance.groups.push(group.clone());
-                changed = true;
-            }
-        }
-        for binding in &source.bindings {
-            if allowed.contains(&key(
-                "mcp_binding",
-                composite(&[id, &binding.group_path, &binding.tool_id]),
-            )) {
-                instance
-                    .bindings
-                    .retain(|b| b.group_path != binding.group_path || b.tool_id != binding.tool_id);
-                instance.bindings.push(binding.clone());
-                changed = true;
-            }
-        }
-        if changed {
-            effective.instances.push(instance);
-        }
-    }
-    Ok((plan, effective))
-}
+mod planning;
+use planning::plan;
+
 async fn validate<R: McpManagementRepository>(
     service: &McpManagementService<R>,
     actor: Uuid,
@@ -293,7 +132,9 @@ pub async fn preview<R: McpManagementRepository + PortableTemplateBaselineReposi
             b.committed_operation_id = None;
         }
     }
-    let (plan, effective) = plan(package, &current, &baselines)?;
+    let planned = plan(scope, package, &current, &baselines)?;
+    let plan = planned.resources;
+    let effective = planned.effective;
     let (conflicts, shared_tool_impacts) = validate(
         &service,
         actor_user_id,
@@ -350,7 +191,9 @@ pub async fn install<
             }
         }
         let baselines = repo.load_template_baselines(scope).await?;
-        let (plan, effective) = plan(package, &current, &baselines)?;
+        let planned = plan(scope, package, &current, &baselines)?;
+        let plan = planned.resources;
+        let effective = planned.effective;
         outcome.effects = plan.iter().map(PlannedTemplateResource::effect).collect();
         for p in &plan {
             if let Some(reason) = p.decision.reason() {
@@ -378,37 +221,83 @@ pub async fn install<
             }
         }
         if !writes.is_empty() {
-            service
-                .import_bundle(ImportMcpBundleCommand {
-                    actor_user_id,
-                    package: effective,
-                    interface_catalog: interface_catalog.to_vec(),
-                    current_system_version: current_system_version.into(),
-                })
-                .await?;
+            // Materialize tool copies before redirecting guarded bindings. Both owner
+            // calls, identity CAS and receipts remain inside the same locked transaction.
+            let mut tools = effective.clone();
+            tools.instances.clear();
+            if !tools.tools.is_empty() || !tools.connections.is_empty() {
+                service
+                    .import_bundle(ImportMcpBundleCommand {
+                        actor_user_id,
+                        package: tools,
+                        interface_catalog: interface_catalog.to_vec(),
+                        current_system_version: current_system_version.into(),
+                    })
+                    .await?;
+            }
+            for (p, intent) in &writes {
+                if let Some(old_target) = planned.retargets.get(&p.desired.key) {
+                    ensure!(
+                        repo.retarget_template_mcp_binding(
+                            scope,
+                            &control_plane_contracts::ports::TemplateMcpBindingRetarget {
+                                key: p.desired.key.clone(),
+                                expected_target_id: old_target.clone(),
+                                expected_generation: p
+                                    .baseline_generation
+                                    .context("template_mcp_retarget_baseline_required")?,
+                                intent: intent.clone(),
+                                actor_user_id,
+                            }
+                        )
+                        .await?,
+                        "template_mcp_retarget_conflict"
+                    );
+                }
+            }
+            let mut instances = effective;
+            instances.tools.clear();
+            instances.connections.clear();
+            if !instances.instances.is_empty() {
+                service
+                    .import_bundle(ImportMcpBundleCommand {
+                        actor_user_id,
+                        package: instances,
+                        interface_catalog: interface_catalog.to_vec(),
+                        current_system_version: current_system_version.into(),
+                    })
+                    .await?;
+            }
             let actual = project(
                 &snapshot(&service, actor_user_id, package, current_system_version).await?,
             )?;
             for (p, intent) in writes {
                 let actual = actual
                     .iter()
-                    .find(|a| a.key == p.desired.key)
+                    .find(|a| {
+                        a.key.kind == p.desired.key.kind && a.target_id == p.desired.target_id
+                    })
                     .ok_or_else(|| anyhow::anyhow!("template_mcp_postimage_missing"))?;
                 // The native owner may normalize an unsupported tool to the exact
                 // existing projection. No applied write means no baseline advance.
-                if p.current_fingerprint.as_deref() == Some(actual.fingerprint.as_str()) {
+                let retargeted = planned.retargets.contains_key(&p.desired.key);
+                if !retargeted
+                    && p.current_fingerprint.as_deref() == Some(actual.fingerprint.as_str())
+                {
                     continue;
                 }
-                ensure!(
-                    repo.prepare_template_write(
-                        scope,
-                        &p.desired.key,
-                        p.baseline_generation,
-                        &intent
-                    )
-                    .await?,
-                    "template_mcp_prepare_conflict"
-                );
+                if !retargeted {
+                    ensure!(
+                        repo.prepare_template_write(
+                            scope,
+                            &p.desired.key,
+                            p.baseline_generation,
+                            &intent
+                        )
+                        .await?,
+                        "template_mcp_prepare_conflict"
+                    );
+                }
                 ensure!(
                     repo.acknowledge_portable_template_write(
                         scope,

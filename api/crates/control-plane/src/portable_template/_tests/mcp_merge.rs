@@ -1,5 +1,20 @@
 use super::*;
 use serde_json::json;
+fn scope() -> TemplateBaselineScope {
+    TemplateBaselineScope {
+        workspace_id: Uuid::from_u128(1),
+        template_id: "test-template".into(),
+    }
+}
+fn plan(
+    source: &domain::McpBundlePackage,
+    current: &domain::McpBundlePackage,
+    baselines: &[TemplateResourceBaseline],
+) -> anyhow::Result<(Vec<PlannedTemplateResource>, domain::McpBundlePackage)> {
+    let result = super::planning::plan(&scope(), source, current, baselines)?;
+    Ok((result.resources, result.effective))
+}
+
 fn fixture() -> domain::McpBundlePackage {
     serde_json::from_value(json!({
         "manifest":{"schema_version":"1flowbase.mcp.bundle/v2","organization":"test","bundle_id":"template","bundle_version":"1.0.0","locale":"en_US","minimum_host_version":"1.0.0","exported_from_system_version":"1.0.0","exported_at":"2026-10-10T00:00:00Z","files":[]},
@@ -41,14 +56,24 @@ fn unknown_identical_shared_tool_can_satisfy_reset_without_adoption() {
     );
 }
 #[test]
-fn unknown_different_tool_is_never_overwritten_or_bound_by_reset() {
+fn unknown_different_tool_is_forked_without_overwriting_shared_tool() {
     let source = fixture();
     let mut current = source.clone();
     current.instances.clear();
     current.tools[0].name = "Local".into();
-    let (_, effective) = plan(&source, &current, &[]).unwrap();
-    assert!(effective.tools.is_empty());
-    assert!(effective.instances[0].bindings.is_empty());
+    let (plan, effective) = plan(&source, &current, &[]).unwrap();
+    assert_eq!(effective.tools.len(), 1);
+    assert_ne!(effective.tools[0].tool_id, source.tools[0].tool_id);
+    assert_eq!(
+        effective.instances[0].bindings[0].tool_id,
+        effective.tools[0].tool_id
+    );
+    let tool = plan
+        .iter()
+        .find(|p| p.desired.key.kind == "mcp_tool")
+        .unwrap();
+    assert_eq!(tool.desired.key.source_id, source.tools[0].tool_id);
+    assert_eq!(tool.decision, TemplateMergeDecision::Initialize);
 }
 #[test]
 fn local_metadata_and_target_only_groups_survive_independent_group_update() {
@@ -175,4 +200,337 @@ fn fresh_instance_and_legacy_reset_create_independent_policy_baseline() {
             TemplateMergeDecision::Initialize
         );
     }
+}
+
+fn tool_plan(planned: &super::planning::MergePlan) -> &PlannedTemplateResource {
+    planned
+        .resources
+        .iter()
+        .find(|p| p.desired.key.kind == "mcp_tool")
+        .unwrap()
+}
+fn binding_plan(planned: &super::planning::MergePlan) -> &PlannedTemplateResource {
+    planned
+        .resources
+        .iter()
+        .find(|p| p.desired.key.kind == "mcp_binding")
+        .unwrap()
+}
+fn conflict_current(source: &domain::McpBundlePackage) -> domain::McpBundlePackage {
+    let mut current = source.clone();
+    current.instances.clear();
+    current.tools[0].name = "Local shared tool".into();
+    current
+}
+// Materialize the planner's first successful batch as portable postimage + receipts.
+// Later assertions exercise the real planner against independent user mutations.
+fn first_postimage(
+    source: &domain::McpBundlePackage,
+    current: &domain::McpBundlePackage,
+) -> (
+    domain::McpBundlePackage,
+    Vec<TemplateResourceBaseline>,
+    String,
+) {
+    let planned = super::planning::plan(&scope(), source, current, &[]).unwrap();
+    let target = tool_plan(&planned).desired.target_id.clone();
+    let mut actual = current.clone();
+    actual.tools.extend(planned.effective.tools.clone());
+    actual.instances = planned.effective.instances.clone();
+    let applied = planned
+        .resources
+        .iter()
+        .filter(|p| p.write_intent(Uuid::nil()).is_some())
+        .map(|p| TemplateResourceBaseline {
+            key: p.desired.key.clone(),
+            target_id: p.desired.target_id.clone(),
+            generation: 1,
+            applied_fingerprint: Some(p.desired.fingerprint.clone()),
+            pending: None,
+            committed_operation_id: None,
+            committed_fingerprint: None,
+        })
+        .collect();
+    (actual, applied, target)
+}
+#[test]
+fn copy_target_is_stable_across_repeat_and_versioned_update() {
+    let source = fixture();
+    let current = conflict_current(&source);
+    let (actual, history, target) = first_postimage(&source, &current);
+    let retry = super::planning::plan(&scope(), &source, &actual, &history).unwrap();
+    assert_eq!(tool_plan(&retry).desired.target_id, target);
+    assert_eq!(tool_plan(&retry).decision, TemplateMergeDecision::Unchanged);
+    assert!(retry.effective.tools.is_empty());
+    let mut next = source.clone();
+    next.manifest.bundle_version = "2.0.0".into();
+    next.tools[0].name = "Updated upstream".into();
+    let update = super::planning::plan(&scope(), &next, &actual, &history).unwrap();
+    assert_eq!(tool_plan(&update).desired.target_id, target);
+    assert_eq!(tool_plan(&update).desired.key.source_id, "shared");
+    assert_eq!(tool_plan(&update).decision, TemplateMergeDecision::Update);
+    assert_eq!(update.effective.tools.len(), 1);
+    assert_eq!(update.effective.tools[0].tool_id, target);
+    assert_eq!(
+        actual
+            .tools
+            .iter()
+            .find(|t| t.tool_id == "shared")
+            .unwrap()
+            .name,
+        "Local shared tool"
+    );
+}
+#[test]
+fn occupied_equal_copy_is_not_adopted_and_scopes_get_distinct_copies() {
+    let source = fixture();
+    let mut current = conflict_current(&source);
+    let first = super::planning::plan(&scope(), &source, &current, &[]).unwrap();
+    let occupied = first.effective.tools[0].clone();
+    current.tools.push(occupied.clone());
+    let collision = super::planning::plan(&scope(), &source, &current, &[]).unwrap();
+    assert_ne!(tool_plan(&collision).desired.target_id, occupied.tool_id);
+    assert_eq!(
+        tool_plan(&collision).decision,
+        TemplateMergeDecision::Initialize
+    );
+    let mut other = scope();
+    other.template_id = "other-template".into();
+    let cross_scope = super::planning::plan(&other, &source, &current, &[]).unwrap();
+    assert_ne!(
+        tool_plan(&cross_scope).desired.target_id,
+        tool_plan(&collision).desired.target_id
+    );
+    assert_ne!(tool_plan(&cross_scope).desired.target_id, occupied.tool_id);
+}
+#[test]
+fn copy_allocation_reserves_other_source_tool_ids_in_the_same_batch() {
+    let mut source = fixture();
+    let current = conflict_current(&source);
+    let first = super::planning::plan(&scope(), &source, &current, &[]).unwrap();
+    let candidate = first.effective.tools[0].clone();
+    source.tools.push(candidate.clone());
+    let planned = super::planning::plan(&scope(), &source, &current, &[]).unwrap();
+    let original = planned
+        .resources
+        .iter()
+        .find(|p| p.desired.key.kind == "mcp_tool" && p.desired.key.source_id == "shared")
+        .unwrap();
+    assert_ne!(original.desired.target_id, candidate.tool_id);
+    let ids: BTreeSet<_> = planned.effective.tools.iter().map(|t| &t.tool_id).collect();
+    assert_eq!(ids.len(), 2);
+}
+#[test]
+fn edited_deleted_and_pending_owned_copies_never_fork_again() {
+    let source = fixture();
+    let current = conflict_current(&source);
+    let (actual, history, target) = first_postimage(&source, &current);
+    for mode in ["edited", "deleted", "pending"] {
+        let mut actual = actual.clone();
+        let mut history = history.clone();
+        let decision = match mode {
+            "edited" => {
+                actual
+                    .tools
+                    .iter_mut()
+                    .find(|t| t.tool_id == target)
+                    .unwrap()
+                    .name = "My copy".into();
+                TemplateMergeDecision::SkipUserModified
+            }
+            "deleted" => {
+                actual.tools.retain(|t| t.tool_id != target);
+                TemplateMergeDecision::SkipUserDeleted
+            }
+            _ => {
+                let baseline = history
+                    .iter_mut()
+                    .find(|b| b.key.kind == "mcp_tool")
+                    .unwrap();
+                baseline.pending = Some(TemplateWriteIntent {
+                    operation_id: Uuid::new_v4(),
+                    target_id: target.clone(),
+                    expected_fingerprint: baseline.applied_fingerprint.clone(),
+                    desired_fingerprint: "pending".into(),
+                });
+                TemplateMergeDecision::SkipPendingWrite
+            }
+        };
+        let planned = super::planning::plan(&scope(), &source, &actual, &history).unwrap();
+        assert_eq!(tool_plan(&planned).desired.target_id, target);
+        assert_eq!(tool_plan(&planned).decision, decision);
+        assert!(planned.effective.tools.is_empty());
+    }
+}
+#[test]
+fn copy_mapping_changes_only_typed_ids_not_equal_string_literals() {
+    let mut source = fixture();
+    source.tools[0].name = "shared".into();
+    source.tools[0].full_description = "shared".into();
+    source.tools[0].input_mapping = json!({"literal":"shared"});
+    source.tools[0].output_mapping = json!({"literal":"shared"});
+    source.tools[0].parameter_schema_snapshot = json!({"const":"shared"});
+    source.tools[0].result_schema_snapshot = json!({"const":"shared"});
+    source.instances[0].bindings[0].display_alias = Some("shared".into());
+    let current = conflict_current(&source);
+    let planned = super::planning::plan(&scope(), &source, &current, &[]).unwrap();
+    let copy = &planned.effective.tools[0];
+    assert_ne!(copy.tool_id, "shared");
+    assert_eq!(copy.name, "shared");
+    assert_eq!(copy.full_description, "shared");
+    assert_eq!(copy.input_mapping, source.tools[0].input_mapping);
+    assert_eq!(copy.output_mapping, source.tools[0].output_mapping);
+    assert_eq!(
+        copy.parameter_schema_snapshot,
+        source.tools[0].parameter_schema_snapshot
+    );
+    assert_eq!(
+        copy.result_schema_snapshot,
+        source.tools[0].result_schema_snapshot
+    );
+    assert_eq!(
+        planned.effective.instances[0].bindings[0]
+            .display_alias
+            .as_deref(),
+        Some("shared")
+    );
+    assert_eq!(
+        tool_plan(&planned).desired.fingerprint,
+        project(&source)
+            .unwrap()
+            .iter()
+            .find(|p| p.key.kind == "mcp_tool")
+            .unwrap()
+            .fingerprint
+    );
+}
+#[test]
+fn formerly_reused_tool_forks_and_only_unchanged_owned_binding_retargets() {
+    let original = fixture();
+    let mut current = original.clone();
+    current.instances.clear();
+    let (actual, history, old_target) = first_postimage(&original, &current);
+    assert_eq!(old_target, "shared");
+    assert!(!history.iter().any(|b| b.key.kind == "mcp_tool"));
+    let mut source = original.clone();
+    source.tools[0].name = "Changed upstream".into();
+    let planned = super::planning::plan(&scope(), &source, &actual, &history).unwrap();
+    assert_eq!(planned.retargets.len(), 1);
+    let binding = binding_plan(&planned);
+    assert_eq!(binding.decision, TemplateMergeDecision::Update);
+    assert_eq!(
+        binding.desired.key.source_id,
+        composite(&["1flowbase", "group", "shared"])
+    );
+    assert_eq!(
+        planned.retargets[&binding.desired.key],
+        binding.desired.key.source_id
+    );
+    assert_ne!(binding.desired.target_id, binding.desired.key.source_id);
+    assert_eq!(planned.effective.instances[0].bindings.len(), 1);
+    assert_eq!(
+        planned.effective.instances[0].bindings[0].tool_id,
+        tool_plan(&planned).desired.target_id
+    );
+    let mut next_actual = actual.clone();
+    next_actual.tools.extend(planned.effective.tools.clone());
+    next_actual.instances = planned.effective.instances.clone();
+    let mut next_history = history.clone();
+    for p in planned
+        .resources
+        .iter()
+        .filter(|p| p.write_intent(Uuid::nil()).is_some())
+    {
+        next_history.retain(|b| b.key != p.desired.key);
+        next_history.push(TemplateResourceBaseline {
+            key: p.desired.key.clone(),
+            target_id: p.desired.target_id.clone(),
+            generation: 3,
+            applied_fingerprint: Some(p.desired.fingerprint.clone()),
+            pending: None,
+            committed_operation_id: None,
+            committed_fingerprint: None,
+        });
+    }
+    let repeat = super::planning::plan(&scope(), &source, &next_actual, &next_history).unwrap();
+    assert!(repeat.retargets.is_empty());
+    assert!(repeat.effective.tools.is_empty());
+    assert!(repeat.effective.instances.is_empty());
+    assert_eq!(
+        binding_plan(&repeat).desired.target_id,
+        binding.desired.target_id
+    );
+    // A pre-existing destination binding cannot be silently claimed by retarget.
+    let mut collision_actual = next_actual.clone();
+    collision_actual.instances[0]
+        .bindings
+        .push(actual.instances[0].bindings[0].clone());
+    let mut collision_history = next_history.clone();
+    collision_history.retain(|b| b.key.kind != "mcp_binding");
+    collision_history.extend(
+        history
+            .iter()
+            .filter(|b| b.key.kind == "mcp_binding")
+            .cloned(),
+    );
+    let collision =
+        super::planning::plan(&scope(), &source, &collision_actual, &collision_history).unwrap();
+    assert!(collision.retargets.is_empty());
+    assert_eq!(
+        binding_plan(&collision).decision,
+        TemplateMergeDecision::SkipUnknownBaseline
+    );
+    assert!(collision.effective.instances.is_empty());
+    for mode in ["edited", "deleted", "unowned", "pending"] {
+        let mut current = actual.clone();
+        let mut baselines = history.clone();
+        let expected = match mode {
+            "edited" => {
+                current.instances[0].bindings[0].display_alias = Some("Local alias".into());
+                TemplateMergeDecision::SkipUserModified
+            }
+            "deleted" => {
+                current.instances[0].bindings.clear();
+                TemplateMergeDecision::SkipUserDeleted
+            }
+            "unowned" => {
+                baselines.retain(|b| b.key.kind != "mcp_binding");
+                TemplateMergeDecision::SkipUnknownBaseline
+            }
+            _ => {
+                let b = baselines
+                    .iter_mut()
+                    .find(|b| b.key.kind == "mcp_binding")
+                    .unwrap();
+                b.pending = Some(TemplateWriteIntent {
+                    operation_id: Uuid::new_v4(),
+                    target_id: b.target_id.clone(),
+                    expected_fingerprint: b.applied_fingerprint.clone(),
+                    desired_fingerprint: "pending".into(),
+                });
+                TemplateMergeDecision::SkipPendingWrite
+            }
+        };
+        let skipped = super::planning::plan(&scope(), &source, &current, &baselines).unwrap();
+        assert!(skipped.retargets.is_empty(), "{mode}");
+        assert_eq!(binding_plan(&skipped).decision, expected, "{mode}");
+        assert!(skipped.effective.instances.is_empty(), "{mode}");
+    }
+}
+#[test]
+fn multiple_template_bindings_share_one_copy() {
+    let mut source = fixture();
+    let mut second = source.instances[0].clone();
+    second.instance_id = "second".into();
+    source.instances.push(second);
+    let current = conflict_current(&source);
+    let planned = super::planning::plan(&scope(), &source, &current, &[]).unwrap();
+    assert_eq!(planned.effective.tools.len(), 1);
+    assert_eq!(planned.effective.instances.len(), 2);
+    let target = &planned.effective.tools[0].tool_id;
+    assert!(planned
+        .effective
+        .instances
+        .iter()
+        .all(|i| i.bindings[0].tool_id == *target));
 }
