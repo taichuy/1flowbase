@@ -24,7 +24,8 @@ const emptySelection = (): PortableTemplateSelection => ({
   page_ids: [],
   application_ids: [],
   data_model_ids: [],
-  mcp_instance_ids: []
+  mcp_instance_ids: [],
+  i18n_keys: []
 });
 
 export function SystemTemplateDialog({
@@ -41,6 +42,37 @@ export function SystemTemplateDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation('settingsSystemTemplates');
+  const effectLabel = (action: string) => {
+    switch (action) {
+      case 'skip':
+        return t('effect_skip');
+      case 'unchanged':
+        return t('effect_unchanged');
+      case 'update':
+        return t('effect_update');
+      case 'create':
+        return t('effect_create');
+      default:
+        return t('effect_unknown');
+    }
+  };
+  const reasonLabel = (reason?: string | null) => {
+    switch (reason) {
+      case 'user_modified':
+        return t('skip_local_modified');
+      case 'unknown_baseline':
+        return t('skip_missing_baseline');
+      case 'user_deleted':
+        return t('skip_user_deleted');
+      case 'pending_write':
+        return t('skip_pending_write');
+      case undefined:
+      case null:
+        return null;
+      default:
+        return t('skip_preserved');
+    }
+  };
   const exportOpen = mode === 'export';
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [selection, setSelection] = useState(emptySelection);
@@ -114,9 +146,7 @@ export function SystemTemplateDialog({
         }}
       >
         <Typography.Paragraph>{t('structure_notice')}</Typography.Paragraph>
-        {template && (
-          <Alert type="warning" showIcon title={t('overwrite_notice')} />
-        )}
+        <Alert type="info" showIcon title={t('merge_notice')} />
         <Typography.Paragraph type="secondary">
           {t('plugin_notice')}
         </Typography.Paragraph>
@@ -159,6 +189,11 @@ export function SystemTemplateDialog({
                       key: 'mcp_instances',
                       label: t('mcp_instances'),
                       children: preview.counts.mcp_instances
+                    },
+                    {
+                      key: 'i18n_entries',
+                      label: t('i18n_entries'),
+                      children: preview.counts.i18n_entries
                     }
                   ]}
                 />
@@ -190,12 +225,12 @@ export function SystemTemplateDialog({
                       {
                         title: t('action'),
                         dataIndex: 'action',
-                        render: (action: string) =>
-                          action === 'unchanged'
-                            ? t('effect_unchanged')
-                            : action === 'update'
-                              ? t('effect_update')
-                              : t('effect_create')
+                        render: effectLabel
+                      },
+                      {
+                        title: t('reason'),
+                        dataIndex: 'reason',
+                        render: reasonLabel
                       }
                     ]}
                   />
@@ -248,6 +283,15 @@ export function SystemTemplateDialog({
                     !result.complete ? t('partial_notice') : undefined
                   }
                 />
+                {result.skipped.length > 0 && (
+                  <Alert
+                    type="info"
+                    showIcon
+                    title={t('skipped_notice', {
+                      count: result.skipped.length
+                    })}
+                  />
+                )}
                 {result.failures.map((failure, i) => (
                   <Alert key={i} type="error" title={failure} />
                 ))}
@@ -263,6 +307,10 @@ export function SystemTemplateDialog({
                     ...result.updated.map((item) => ({
                       ...item,
                       action: 'update'
+                    })),
+                    ...result.skipped.map((item) => ({
+                      ...item,
+                      action: 'skip'
                     }))
                   ]}
                   rowKey={(item) => `${item.kind}:${item.source_id}`}
@@ -273,10 +321,12 @@ export function SystemTemplateDialog({
                     {
                       title: t('action'),
                       dataIndex: 'action',
-                      render: (action: string) =>
-                        action === 'update'
-                          ? t('effect_update')
-                          : t('effect_create')
+                      render: effectLabel
+                    },
+                    {
+                      title: t('reason'),
+                      dataIndex: 'reason',
+                      render: reasonLabel
                     }
                   ]}
                 />
@@ -421,6 +471,25 @@ export function SystemTemplateDialog({
               value={selection.mcp_instance_ids}
               onChange={(mcp_instance_ids: string[]) =>
                 setSelection((current) => ({ ...current, mcp_instance_ids }))
+              }
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('i18n_entries')}
+            extra={t('i18n_selection_notice')}
+          >
+            <Select
+              aria-label={t('i18n_entries')}
+              mode="multiple"
+              optionFilterProp="label"
+              loading={catalog.isLoading}
+              options={catalog.data?.i18n_entries.map((item) => ({
+                value: item.key,
+                label: item.key
+              }))}
+              value={selection.i18n_keys}
+              onChange={(i18n_keys: string[]) =>
+                setSelection((current) => ({ ...current, i18n_keys }))
               }
             />
           </Form.Item>

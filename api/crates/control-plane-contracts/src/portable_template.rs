@@ -5,10 +5,14 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+/// Packages containing translations require v2; readers must reject unsupported versions.
+pub const PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION: &str = "1flowbase.portable-template/v2";
 pub const PORTABLE_TEMPLATE_SCHEMA_VERSION: &str = "1flowbase.portable-template/v1";
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PortableTemplateSelection {
+    #[serde(default)]
+    pub i18n_keys: Vec<String>,
     #[serde(default)]
     pub page_ids: Vec<Uuid>,
     #[serde(default)]
@@ -31,6 +35,8 @@ pub struct PortableTemplateRelease {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PortableTemplatePackage {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub i18n_entries: Vec<PortableI18nEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<PortableTemplateRelease>,
     pub schema_version: String,
@@ -176,6 +182,7 @@ pub struct PortablePluginDependency {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PortableTemplateCatalog {
+    pub i18n_entries: Vec<PortableI18nCatalogItem>,
     pub pages: Vec<PortableCatalogItem>,
     pub applications: Vec<PortableCatalogItem>,
     pub data_models: Vec<PortableCatalogItem>,
@@ -195,6 +202,7 @@ pub struct PortableCatalogItem {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PortableTemplateCounts {
+    pub i18n_entries: usize,
     pub pages: usize,
     pub applications: usize,
     pub data_models: usize,
@@ -215,8 +223,38 @@ pub struct PortableTemplatePreview {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortableTemplateEffect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
     pub kind: String,
     pub source_id: String,
     pub target_id: Option<String>,
     pub action: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PortableI18nEntry {
+    pub key: String,
+    pub locale: String,
+    pub translation: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PortableI18nCatalogItem {
+    pub key: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PortableTemplateSkippedResource {
+    pub kind: String,
+    pub source_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
+    pub reason: String,
+}
+
+mod merge;
+pub use merge::*;
+
+mod projection;
+mod references;
+pub use projection::project_template_resources;
+pub use references::{rewrite_template_text, rewrite_template_value};

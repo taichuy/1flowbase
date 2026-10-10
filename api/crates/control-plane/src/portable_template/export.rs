@@ -14,6 +14,7 @@ pub struct PortableTemplateService<R> {
 impl<
         R: PortableTemplateReadRepository
             + PortableTemplateIdentityRepository
+            + crate::ports::PortableTemplateBaselineRepository
             + ApplicationRepository
             + McpManagementRepository
             + Clone,
@@ -55,6 +56,7 @@ impl<
             Err(error) => return Err(error),
         };
         Ok(PortableTemplateCatalog {
+            i18n_entries: Vec::new(),
             mcp_instances: mcp_instances
                 .into_iter()
                 .map(|instance| PortableMcpCatalogItem {
@@ -102,10 +104,22 @@ impl<
     pub async fn export(
         &self,
         actor_user_id: Uuid,
+        selection: PortableTemplateSelection,
+    ) -> Result<PortableTemplatePackage> {
+        self.export_with_i18n(actor_user_id, selection, Vec::new())
+            .await
+    }
+    /// The caller obtains explicit translations through the root catalog owner.
+    /// Selection and package validation still run as one export operation.
+    pub async fn export_with_i18n(
+        &self,
+        actor_user_id: Uuid,
         mut selection: PortableTemplateSelection,
+        i18n_entries: Vec<PortableI18nEntry>,
     ) -> Result<PortableTemplatePackage> {
         let mcp_ids = selection.mcp_instance_ids.clone();
-        let snapshot = self.snapshot(actor_user_id).await?;
+        let mut snapshot = self.snapshot(actor_user_id).await?;
+        snapshot.i18n_entries = i18n_entries;
         let mut selected_bundle = None;
         if !mcp_ids.is_empty() {
             let mut bundle = McpManagementService::new(self.repository.clone())
@@ -178,10 +192,38 @@ impl<
             .repository
             .load_portable_template_identity_map(actor.current_workspace_id)
             .await?;
-        Ok(preview_portable_template_with_map(
+        let target = self.snapshot(actor_user_id).await?;
+        let historical = identities.clone();
+        let mut identities = identities;
+        map_existing_template_identities(package, &target, &mut identities);
+        let baselines = self
+            .repository
+            .load_template_baselines(&template_baseline_scope(
+                actor.current_workspace_id,
+                package,
+            ))
+            .await?;
+        for baseline in &baselines {
+            if matches!(
+                baseline.key.kind.as_str(),
+                "page"
+                    | "tab"
+                    | "tab_document"
+                    | "block"
+                    | "application"
+                    | "data_model"
+                    | "model_field"
+            ) {
+                identities.insert(baseline.key.source_id.clone(), baseline.target_id.clone());
+            }
+        }
+        map_existing_template_identities(package, &target, &mut identities);
+        let plan = plan_native_template(package, &target, &identities, &baselines, &historical)?;
+        Ok(preview_portable_template_with_merge_plan(
             package,
-            &self.snapshot(actor_user_id).await?,
+            &target,
             &identities,
+            &plan,
         ))
     }
 }
@@ -257,6 +299,21 @@ pub fn export_selected_template(
     selection: PortableTemplateSelection,
 ) -> Result<PortableTemplatePackage> {
     let mcp_selected = !selection.mcp_instance_ids.is_empty();
+    let i18n_keys: BTreeSet<_> = selection.i18n_keys.into_iter().collect();
+    all.i18n_entries
+        .retain(|entry| i18n_keys.contains(&entry.key));
+    all.schema_version = if all.i18n_entries.is_empty() {
+        PORTABLE_TEMPLATE_SCHEMA_VERSION
+    } else {
+        PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION
+    }
+    .into();
+    if i18n_keys
+        .iter()
+        .any(|key| !all.i18n_entries.iter().any(|entry| &entry.key == key))
+    {
+        bail!("portable_template_selection_missing_i18n_key");
+    }
     let mut pages: BTreeSet<Uuid> = selection.page_ids.into_iter().collect();
     let mut apps: BTreeSet<Uuid> = selection.application_ids.into_iter().collect();
     let mut models: BTreeSet<Uuid> = selection.data_model_ids.into_iter().collect();
@@ -264,6 +321,7 @@ pub fn export_selected_template(
         && apps.is_empty()
         && models.is_empty()
         && selection.mcp_instance_ids.is_empty()
+        && i18n_keys.is_empty()
     {
         bail!("portable_template_empty_selection");
     }

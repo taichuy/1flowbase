@@ -53,7 +53,7 @@
 | 宿主托管边界 | `Resource Action Kernel` 是否仍由宿主托管，`dynamic modeling` 是否仍是元数据系统而不是 runtime 数据本身 | resource/action registry、descriptor/registry、模型发布流程、runtime engine |
 | 接口包装 | 是否仍遵守 `ApiSuccess`、`204 No Content`、统一错误结构和分页 `meta` | 路由返回、OpenAPI、测试断言 |
 | 状态入口 | 是否仍由命名明确的 service command/action 修改关键状态，route、worker 或 HostExtension route 是否绕过了 `Resource Action Kernel` | route 代码、worker、service 写入口、action dispatch、审计触发点 |
-| 插件消费边界 | 是否仍守住 `HostExtension / RuntimeExtension / CapabilityPlugin` 边界，有没有出现 runtime 或 capability 插件直接扩系统接口或持有基础设施连接 | plugin-framework、runtime-core、host contribution、接口注册点 |
+| 插件消费边界 | 是否区分可信宿主与受管贡献；声明由宿主注册不算越界，自行挂载接口、绕过授权或持有宿主基础设施连接才是越界；新作用域/贡献是否有真实激活证据 | plugin-framework、runtime-core、host contribution、接口注册点 |
 | HostExtension 启动面 | manifest contribution、load plan、pre-state infra provider、route/worker/migration namespace 是否一致 | host-extension.yaml、load plan tests、host infrastructure registry、route/worker/migration registry tests |
 | 分层边界 | 是否出现 repository 混业务逻辑、mapper 混规则、route 混 SQL、service 失焦 | 代码结构、文件职责、写路径 |
 | 存储分层 | `storage/durable/postgres` 内的 `storage-durable-postgres` 是否仍保持 repository / mapper 拆分，`storage-durable` 是否只暴露主存储稳定入口，`storage-object` 是否只承担文件 driver 边界 | storage/durable/postgres、storage-durable、storage-object 目录、repository/mapper tests、driver tests、调用链 |

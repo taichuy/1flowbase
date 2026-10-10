@@ -26,7 +26,7 @@ api-server（唯一进程内 composition root）
 - Canonical Interface 拥有调用身份、阶段与终态；业务 owner 拥有规则和事务，执行与存储模块承接稳定 ports。
 - 调用终态、业务 commit/rollback、协议 delivery/ack 各有 owner，不能互相推断；关闭连接不自动等于取消业务。
 - 这是调用关系，不是 Cargo 依赖图。crate owner 与允许依赖只维护在 `api/crates/AGENTS.md`；实际 mount 与 Catalog、声明与编译快照的关系由架构文档解释。
-- HostExtension 扩展宿主 contract；RuntimeExtension 实现 runtime slot；CapabilityPlugin 贡献用户选择的能力。具体生命周期和允许写入口按相关局部规则取证，不把三者混为同一插件类型。
+- 插件选型按[治理边界、贡献、执行方式与作用域](../../../docs/architecture/plugin-composition.md)分别判断；可信宿主内部实现归 HostExtension，公开协议受管贡献不因设置页、数据或接口注册而升级类型。旧 RuntimeExtension / CapabilityPlugin 分配限制单独作为当前实现事实取证。
 
 ## Truth and Task Routing
 

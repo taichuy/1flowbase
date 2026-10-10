@@ -16,3 +16,12 @@ mod _tests;
 
 mod releases;
 pub use releases::*;
+
+mod merge;
+pub use merge::*;
+
+pub mod i18n;
+
+pub mod i18n_merge;
+
+pub mod mcp_merge;

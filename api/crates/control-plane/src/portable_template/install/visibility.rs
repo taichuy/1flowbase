@@ -29,18 +29,6 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 roles.iter().any(|r| r.code == code),
                 "portable_template_target_role_missing:{code}"
             );
-            let rules = FrontstagePageRepository::list_frontstage_page_visibility_rules_for_role(
-                &self.repository,
-                actor.current_workspace_id,
-                &code,
-            )
-            .await?;
-            anyhow::ensure!(
-                !rules
-                    .iter()
-                    .any(|r| r.visibility == domain::frontstage::FrontstagePageVisibility::Hidden),
-                "portable_template_target_hidden_rule_unsupported:{code}"
-            );
         }
         for page in &package.pages {
             for rule in &page.visibility_rules {
@@ -66,20 +54,47 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
     ) -> Result<()> {
         let owner = RoleService::new(self.repository.clone());
         for code in role_codes(package) {
+            if !package.pages.iter().any(|p| {
+                p.visibility_rules.iter().any(|r| {
+                    r.role_code == code
+                        && self.can_apply(
+                            "page_visibility",
+                            serde_json::to_string(&[
+                                p.id.to_string(),
+                                r.tab_id.map(|id| id.to_string()).unwrap_or_default(),
+                                r.role_code.clone(),
+                            ])
+                            .expect("string array"),
+                        )
+                })
+            }) {
+                continue;
+            }
             let existing = owner.get_frontstage_routes(actor.user_id, &code).await?;
-            // Merge existing grants before calling the sole policy write owner.
-            anyhow::ensure!(
-                !existing
-                    .rules
-                    .iter()
-                    .any(|r| r.visibility == domain::frontstage::FrontstagePageVisibility::Hidden),
-                "portable_template_target_hidden_rule_changed:{code}"
-            );
-            let mut pages: BTreeSet<Uuid> =
-                existing.rules.iter().filter_map(|r| r.page_id).collect();
-            let mut tabs: BTreeSet<Uuid> = existing.rules.iter().filter_map(|r| r.tab_id).collect();
+            // The transaction-bound native owner preserves hidden grants; merge only
+            // visible grants here so a local hidden rule is never converted to visible.
+            let mut pages: BTreeSet<Uuid> = existing
+                .rules
+                .iter()
+                .filter(|r| r.visibility == domain::frontstage::FrontstagePageVisibility::Visible)
+                .filter_map(|r| r.page_id)
+                .collect();
+            let mut tabs: BTreeSet<Uuid> = existing
+                .rules
+                .iter()
+                .filter(|r| r.visibility == domain::frontstage::FrontstagePageVisibility::Visible)
+                .filter_map(|r| r.tab_id)
+                .collect();
             for page in &package.pages {
                 for rule in page.visibility_rules.iter().filter(|r| r.role_code == code) {
+                    let key = serde_json::to_string(&[
+                        page.id.to_string(),
+                        rule.tab_id.map(|id| id.to_string()).unwrap_or_default(),
+                        rule.role_code.clone(),
+                    ])?;
+                    if !self.can_apply("page_visibility", key) {
+                        continue;
+                    }
                     match rule.tab_id {
                         Some(id) => {
                             tabs.insert(result.mapped(id)?);

@@ -64,8 +64,8 @@
 - Application 领域统一使用 `application_id`；不新增 `app_id` 缩写。
 - `Boot Core` 负责启动、加载、deployment policy、root/system bootstrap、extension inventory、health/reconcile。
 - `HostExtension` 是 system/root 级可信 host 模块，可定义、替换、增强 host contract；v1 是 trusted native in-process、boot-time activated、restart-scoped。
-- `RuntimeExtension` 实现已注册 runtime slot，例如 `model_provider`、`data_source`、`file_processor`。
-- `CapabilityPlugin` 贡献 workspace 用户显式选择的能力，例如 canvas node、tool、trigger、publisher。
+- 受管插件按贡献契约、执行方式、激活作用域分别判断；`RuntimeExtension` / `CapabilityPlugin` 保留既有输入与消费语义，不作为整包注册权限上限。选型及当前分配限制见[插件组合](../docs/architecture/plugin-composition.md)。
+- 受管子进程声明数据、设置页、接口或 Tool，由宿主已有契约注册与治理；缺契约应明确补齐，不因 system 作用域或宿主启动子进程而改判 HostExtension。此规则不声明通用注册已实现。
 - `provider`、`data source`、`file processor` 不是插件主类型，分别是 runtime slot 或 host capability。
 - `storage-durable`、`storage-ephemeral`、`storage-object` 是 host contract / implementation kind。
 - `storage-ephemeral`、`cache-store`、`distributed-lock`、`event-bus`、`task-queue`、`rate-limit-store` 是宿主基础设施 contract；Redis、NATS、RabbitMQ 等实现是 HostExtension provider。

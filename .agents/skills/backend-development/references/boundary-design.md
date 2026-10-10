@@ -27,7 +27,7 @@
 - HostExtension 可以拥有 extension namespace 下的资源、migration、service、worker 和受控 route
 - HostExtension 扩展 Core 业务时必须通过 manifest contribution、resource/action、hook、policy、validator、sidecar table 或 domain event
 - HostExtension 不直接改 Core 真值表，不隐式包裹 service，不裸开任意 HTTP route
-- RuntimeExtension 只实现 runtime slot；CapabilityPlugin 只贡献 workspace 显式选择的能力
+- 受管插件可以组合宿主已开放的贡献；执行、激活作用域和授权分别取证，不能用 RuntimeExtension / CapabilityPlugin 的旧分类禁止声明业务接口或数据。缺少通用注册契约应记录为实现缺口，选型见[插件组合](../../../../docs/architecture/plugin-composition.md)。
 
 ## Infrastructure Boundary
 

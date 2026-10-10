@@ -400,6 +400,25 @@ async fn selective_backup_roundtrips_portable_identities_and_requires_workspace(
     assert_eq!(release_before[0]["successful"], true);
     assert_eq!(release_before[1]["successful"], false);
 
+    // Include a committed baseline and an unfinished intent. Backups must retain
+    // both exactly; losing either changes the next upgrade's preservation rules.
+    sqlx::query("insert into application_template_resource_baselines(id,workspace_id,scope_id,template_id,kind,source_id,target_id,applied_fingerprint,pending_operation_id,pending_desired_fingerprint) values($1,$2,$2,$3,'page','source-page','target-page','sha256:applied',NULL,NULL),($4,$2,$2,$3,'block','source-block','target-block',NULL,$5,'sha256:pending')")
+        .bind(Uuid::now_v7())
+        .bind(workspace)
+        .bind(template_id)
+        .bind(Uuid::now_v7())
+        .bind(Uuid::now_v7())
+        .execute(&db)
+        .await
+        .unwrap();
+    let baselines_before: Vec<Value> = sqlx::query_scalar(
+        "select to_jsonb(t) from application_template_resource_baselines t where workspace_id=$1 order by source_id",
+    )
+    .bind(workspace)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+
     let bytes = capture(&repo, select("backups", false, true)).await;
     let lines = archive_lines(&bytes);
     assert_eq!(
@@ -409,6 +428,18 @@ async fn selective_backup_roundtrips_portable_identities_and_requires_workspace(
             .count(),
         2
     );
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line["table"] == "application_template_resource_baselines")
+            .count(),
+        2
+    );
+    sqlx::query("delete from application_template_resource_baselines where workspace_id=$1")
+        .bind(workspace)
+        .execute(&db)
+        .await
+        .unwrap();
     // Restore must roundtrip row identity, generated scope, timestamps, immutable
     // checksum and both successful / unsuccessful ledger facts from the archive.
     sqlx::query("update application_template_releases set successful=not successful, checksum='changed-checksum', created_at=created_at + interval '1 hour', updated_at=updated_at + interval '1 hour' where workspace_id=$1")
@@ -443,6 +474,15 @@ async fn selective_backup_roundtrips_portable_identities_and_requires_workspace(
     .await
     .unwrap();
     assert_eq!(release_after, release_before);
+    let baselines_after: Vec<Value> = sqlx::query_scalar(
+        "select to_jsonb(t) from application_template_resource_baselines t where workspace_id=$1 order by source_id",
+    )
+    .bind(workspace)
+    .fetch_all(&db)
+    .await
+    .unwrap();
+    assert_eq!(baselines_after, baselines_before);
+
     let releases = store
         .load_application_template_releases(workspace, template_id)
         .await

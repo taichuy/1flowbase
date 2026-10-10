@@ -19,6 +19,7 @@ pub(crate) mod catalog;
 pub(crate) mod interface;
 pub(crate) mod plugins;
 pub(crate) mod releases;
+mod translations;
 fn owned(operation: &str) -> access_control::ConsoleRouteOwnership {
     access_control::ConsoleRouteOwnership::ConsoleOperation(operation.to_owned())
 }

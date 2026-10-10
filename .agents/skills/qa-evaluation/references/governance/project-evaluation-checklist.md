@@ -26,7 +26,7 @@
 | 架构边界 | 核心规则、适配层、状态入口、插件边界是否被污染 | 代码结构、写路径、接口边界 |
 | 后端入口与责任平面 | 入口分区与Protocol/Canonical Interface/Business/Execution职责是否清楚；统一生命周期是否被绕过 | [专项验收](../backend/interface-lifecycle-gate.md)、真实装配、Registry与调用链 |
 | Resource Action Kernel / Dynamic Modeling | `Resource Action Kernel` 是否仍由宿主托管，`dynamic modeling` 是否仍是元数据系统而不是 runtime 数据本身 | resource/action registry、hook pipeline、descriptor、模型发布流程、runtime engine |
-| 插件消费分类 | `HostExtension / RuntimeExtension / CapabilityPlugin` 是否仍按各自注册权、绑定方式和消费方式工作 | plugin-framework、runtime-core、host contribution、分配/绑定逻辑、provider/node/datasource/publish 配置 |
+| 插件消费分类 | 是否分别验证可信宿主/受管治理、贡献契约、执行方式和激活作用域；旧分类/绑定限制是否被误当成永久权限边界 | plugin-framework、runtime-core、host contribution、分配/绑定逻辑、provider/node/datasource/publish 配置 |
 | HostExtension 启动面 | HostExtension manifest contribution、load plan、pre-state infra provider、route/worker/migration namespace 是否仍受宿主管理 | host-extension.yaml、loader、host infrastructure registry、route/worker/migration registry、PostgreSQL extension migration tracking |
 | 工程质量门禁 | `route / service / repository / domain / mapper` 是否仍分层，`storage/durable/postgres` 内的 `storage-durable-postgres` 是否保持 repository / mapper 拆分，`storage-durable / storage-object` 是否仍守住各自边界，验证命令和测试目录规则是否被执行 | 代码结构、storage/durable/postgres、storage-durable、storage-object 目录、测试文件、验证脚本、命令输出 |
 | 测试缺口 | 当前项目最关键的行为是否缺少自动化或手动验证覆盖 | 测试文件、命令结果、缺口清单 |

@@ -42,24 +42,26 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                             .unwrap_or_else(|| model.id.to_string())
                 });
                 if let Some(existing) = existing {
-                    result.updated("data_model", model.id, existing.id);
-                    owner
-                        .update_model(UpdateModelDefinitionCommand {
-                            actor_user_id: actor.user_id,
-                            model_id: existing.id,
-                            title: model.title.clone(),
-                            description: model.description.clone(),
-                            external_table_id: None,
-                        })
-                        .await?;
-                    if existing.status != model.status {
+                    if self.can_apply("data_model", model.id) {
+                        result.updated("data_model", model.id, existing.id);
                         owner
-                            .update_model_status(UpdateModelDefinitionStatusCommand {
+                            .update_model(UpdateModelDefinitionCommand {
                                 actor_user_id: actor.user_id,
                                 model_id: existing.id,
-                                status: model.status,
+                                title: model.title.clone(),
+                                description: model.description.clone(),
+                                external_table_id: None,
                             })
                             .await?;
+                        if existing.status != model.status {
+                            owner
+                                .update_model_status(UpdateModelDefinitionStatusCommand {
+                                    actor_user_id: actor.user_id,
+                                    model_id: existing.id,
+                                    status: model.status,
+                                })
+                                .await?;
+                        }
                     }
                     for field in model.fields.iter().filter(|field| field.is_system) {
                         let target_field = existing
@@ -71,6 +73,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                             .id_map
                             .insert(field.id.to_string(), target_field.id.to_string());
                     }
+                    continue;
+                }
+                if !self.can_apply("data_model", model.id) {
                     continue;
                 }
                 let created = owner
@@ -111,6 +116,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 .iter()
                 .find(|item| item.id == result.mapped(model.id).unwrap_or_default());
             for field in model.fields.iter().filter(|f| !f.is_system) {
+                if !self.can_apply("model_field", field.id) {
+                    continue;
+                }
                 if let Some(existing) = target_model.and_then(|item| {
                     item.fields.iter().find(|candidate| {
                         candidate.id.to_string()
@@ -164,6 +172,9 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
 
         for model in package.data_models.iter().filter(|m| !m.builtin) {
             for field in model.fields.iter().filter(|f| !f.is_system) {
+                if !self.can_apply("model_field", field.id) {
+                    continue;
+                }
                 owner
                     .update_field(UpdateModelFieldCommand {
                         actor_user_id: actor.user_id,

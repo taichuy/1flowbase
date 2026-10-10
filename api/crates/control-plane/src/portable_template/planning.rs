@@ -6,16 +6,36 @@ use uuid::Uuid;
 
 pub fn validate_portable_template(package: &PortableTemplatePackage) -> Vec<String> {
     let mut failures = super::identity::validate_identity_namespace(package);
-    if package.schema_version != PORTABLE_TEMPLATE_SCHEMA_VERSION {
+    if package.schema_version != PORTABLE_TEMPLATE_SCHEMA_VERSION
+        && package.schema_version != PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION
+    {
         failures.push("portable_template_schema_version".into());
     }
-    if package.pages.len() + package.applications.len() + package.data_models.len() == 0
+    if package.pages.len()
+        + package.applications.len()
+        + package.data_models.len()
+        + package.i18n_entries.len()
+        == 0
         && package
             .mcp_bundle
             .as_ref()
             .is_none_or(|bundle| bundle.instances.is_empty())
     {
         failures.push("portable_template_empty".into());
+    }
+    if !package.i18n_entries.is_empty()
+        && package.schema_version != PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION
+    {
+        failures.push("portable_template_i18n_requires_v2".into());
+    }
+    let mut translation_ids = BTreeSet::new();
+    for entry in &package.i18n_entries {
+        if entry.key.trim().is_empty()
+            || entry.locale.trim().is_empty()
+            || !translation_ids.insert((&entry.key, &entry.locale))
+        {
+            failures.push("portable_template_invalid_i18n_identity".into());
+        }
     }
     let mut ids = BTreeSet::new();
     for id in package
@@ -365,6 +385,37 @@ pub fn preview_portable_template_with_map(
     target: &PortableTemplatePackage,
     identities: &BTreeMap<String, String>,
 ) -> PortableTemplatePreview {
+    preview_portable_template_skipping(package, target, identities, &BTreeSet::new())
+}
+
+pub fn preview_portable_template_with_merge_plan(
+    package: &PortableTemplatePackage,
+    target: &PortableTemplatePackage,
+    identities: &BTreeMap<String, String>,
+    plan: &[PlannedTemplateResource],
+) -> PortableTemplatePreview {
+    let skipped = plan
+        .iter()
+        .filter(|item| item.decision.reason().is_some())
+        .map(|item| item.desired.key.clone())
+        .collect();
+    let mut preview = preview_portable_template_skipping(package, target, identities, &skipped);
+    preview.effects = plan.iter().map(PlannedTemplateResource::effect).collect();
+    preview
+}
+
+fn preview_portable_template_skipping(
+    package: &PortableTemplatePackage,
+    target: &PortableTemplatePackage,
+    identities: &BTreeMap<String, String>,
+    skipped: &BTreeSet<TemplateResourceKey>,
+) -> PortableTemplatePreview {
+    let skip = |kind: &str, id: String| {
+        skipped.contains(&TemplateResourceKey {
+            kind: kind.into(),
+            source_id: id,
+        })
+    };
     let mut failures = validate_portable_template(package);
     let mut warnings = Vec::new();
     let mut effects = Vec::new();
@@ -375,10 +426,14 @@ pub fn preview_portable_template_with_map(
             .unwrap_or(source)
     };
     for m in &package.data_models {
+        if !m.builtin && skip("data_model", m.id.to_string()) {
+            continue;
+        }
         let target_id = mapped(m.id);
         let matched = target.data_models.iter().find(|item| item.id == target_id);
         if !m.builtin {
             effects.push(PortableTemplateEffect {
+                reason: None,
                 kind: "data_model".into(),
                 source_id: m.id.to_string(),
                 target_id: matched.map(|item| item.id.to_string()),
@@ -434,6 +489,9 @@ pub fn preview_portable_template_with_map(
                 ));
             }
             for field in &m.fields {
+                if skip("model_field", field.id.to_string()) {
+                    continue;
+                }
                 let target_field_id = mapped(field.id);
                 if let Some(existing_field) = matched
                     .fields
@@ -465,6 +523,7 @@ pub fn preview_portable_template_with_map(
         let target_id = mapped(page.id);
         let matched = target.pages.iter().find(|item| item.id == target_id);
         effects.push(PortableTemplateEffect {
+            reason: None,
             kind: "page".into(),
             source_id: page.id.to_string(),
             target_id: matched.map(|item| item.id.to_string()),
@@ -484,8 +543,9 @@ pub fn preview_portable_template_with_map(
                 if let Some(existing_tab) =
                     matched.tabs.iter().find(|item| item.id == target_tab_id)
                 {
-                    if existing_tab.route_segment != tab.route_segment
-                        || existing_tab.is_default != tab.is_default
+                    if !skip("tab", tab.id.to_string())
+                        && (existing_tab.route_segment != tab.route_segment
+                            || existing_tab.is_default != tab.is_default)
                     {
                         failures.push(format!("portable_template_tab_route_conflict:{}", tab.id));
                     }
@@ -499,6 +559,9 @@ pub fn preview_portable_template_with_map(
                     failures.push(format!("portable_template_tab_owner_conflict:{}", tab.id));
                 }
                 for block in &tab.blocks {
+                    if skip("block", block.block_id.clone()) {
+                        continue;
+                    }
                     let target_block_id = identities
                         .get(&block.block_id)
                         .map(String::as_str)
@@ -523,19 +586,24 @@ pub fn preview_portable_template_with_map(
             }
         }
         if let Some(slug) = &page.slug {
-            if target
-                .pages
-                .iter()
-                .any(|p| p.slug.as_ref() == Some(slug) && p.id != target_id)
+            if !skip("page", page.id.to_string())
+                && target
+                    .pages
+                    .iter()
+                    .any(|p| p.slug.as_ref() == Some(slug) && p.id != target_id)
             {
                 failures.push(format!("portable_template_page_slug_conflict:{slug}"));
             }
         }
     }
     for app in &package.applications {
+        if skip("application", app.id.to_string()) {
+            continue;
+        }
         let target_id = mapped(app.id);
         let matched = target.applications.iter().find(|item| item.id == target_id);
         effects.push(PortableTemplateEffect {
+            reason: None,
             kind: "application".into(),
             source_id: app.id.to_string(),
             target_id: matched.map(|item| item.id.to_string()),
@@ -598,6 +666,9 @@ pub fn preview_portable_template_with_map(
         }
     }
     for app in &package.applications {
+        if skip("application", app.id.to_string()) {
+            continue;
+        }
         let target_id = mapped(app.id);
         for extension in app
             .mapping
@@ -640,6 +711,7 @@ pub fn preview_portable_template_with_map(
     PortableTemplatePreview {
         valid: failures.is_empty(),
         counts: PortableTemplateCounts {
+            i18n_entries: package.i18n_entries.len(),
             pages: package.pages.len(),
             applications: package.applications.len(),
             data_models: package.data_models.len(),

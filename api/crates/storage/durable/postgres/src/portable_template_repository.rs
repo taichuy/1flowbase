@@ -113,6 +113,7 @@ impl PortableTemplateReadRepository for PgControlPlaneStore {
         )
         .await?;
         let mut package = PortableTemplatePackage {
+            i18n_entries: Vec::new(),
             release: None,
             schema_version: PORTABLE_TEMPLATE_SCHEMA_VERSION.into(),
             pages: Vec::new(),
@@ -314,3 +315,9 @@ impl PortableTemplateReadRepository for PgControlPlaneStore {
         Ok(package)
     }
 }
+
+mod baselines;
+pub(crate) use baselines::acknowledge_template_write;
+mod transaction;
+
+mod mcp_retarget;

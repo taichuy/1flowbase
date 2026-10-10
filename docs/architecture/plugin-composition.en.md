@@ -4,11 +4,33 @@
 
 This document describes current contracts, not a release acceptance claim. See the [historical #2007 test inventory](archive/2007/plugin-composition-test-batch.md) for that stage's commands. Later namespaced event contracts are described in the [invocation lifecycle](interface-lifecycle.md); Create → A → B/C below is a concrete example.
 
+## Plugin selection and implementation limits
+
+Choose the governance boundary by whether a plugin implements trusted Host internals. Then assess contribution kind, execution mode and activation scope separately. Existing `HostExtension`, `RuntimeExtension` and `CapabilityPlugin` names are not a ladder of increasing permissions.
+
+| Dimension | Selection rule |
+| --- | --- |
+| Governance | Native in-process factories, authentication adapters and Host infrastructure implementations require trusted HostExtensions. Business capabilities declared through public protocols and registered/executed under Host governance belong to managed plugins. |
+| Contribution | Check the contract for each provider, node, tool, data schema or settings surface. One package may contribute several kinds; declaring one does not prove support or authorization. |
+| Execution | Managed subprocesses and trusted native in-process execution are distinct. A child process started by the Host is not thereby a HostExtension. |
+| Activation scope | System, workspace and model requirements belong to activation/binding contracts. System-wide configuration does not itself grant access to Host internals. |
+
+An SSH subprocess that tests connections and executes commands while declaring data, settings and operations should be designed as a managed business plugin. Physical tables, `/settings/ssh` and MCP Tools do not require reclassification as a HostExtension. Page/API access reuses existing roles and console operations; contribution grants constrain the plugin and do not replace caller authorization.
+
+**Current limits and missing contracts:**
+
+- The legacy `RuntimeExtension` path in [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs) still requires workspace/model binding. This is an implementation limit, not a permanent definition of managed scope. System activation is not claimed to exist.
+- Existing managed owned collections, interface stages and events do not prove an installation-to-registration path for arbitrary business APIs, settings pages, TSX blocks or MCP Tools. Verify declaration → loader/activation → registry → invocation for each contribution; missing support belongs in Host-managed contracts.
+- System scope, startup recovery and on-demand worker startup are separate decisions. Resident execution or recovery follows the execution contract, not a higher plugin tier. The specific SSH activation and registration protocol still requires implementation design approval.
+- Managed plugins gain no raw authentication credentials, platform database connections, arbitrary SQL or independent route mounts. Host owners apply schemas, register interfaces and enforce authorization.
+
+Historical acceptance reports retain their original facts; they do not define current plugin selection. Evaluate old whole-package restrictions against this governance boundary and record actual code gaps separately.
+
 ## Governance and authorization
 
 HostExtensions retain their trusted startup/restart boundary. Managed contributions execute in workers. Contribution kind, execution mode and activation scope are separate concepts; legacy manifest categories normalize input without defining whole-package permissions. Rust native libraries are not repeatedly hot-unloaded.
 
-Activation requires installation, workspace assignment, contribution authorization, graph compilation and execution binding. A declared permission is not a grant. Installation, workspace, contribution, resource scope and exact contract version govern each call. Upgrades and old queued events do not grant authority to new candidates.
+The current workspace-managed composition path requires installation, workspace assignment, contribution authorization, graph compilation and execution binding. A declared permission is not a grant. Installation, workspace, contribution, resource scope and exact contract version govern each call. Upgrades and old queued events do not grant authority to new candidates.
 
 The following operations live under `installed/{installation_id}` in Extension Center. POST operations require session, CSRF and their own authorization; legacy configure permission does not replace them.
 

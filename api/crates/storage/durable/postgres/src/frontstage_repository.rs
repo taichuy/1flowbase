@@ -360,10 +360,14 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 .ok_or(ControlPlaneError::NotFound("role"))?;
 
         sqlx::query(
-            "delete from frontstage_page_visibility_rules where workspace_id = $1 and role_id = $2 and (page_id is not null or tab_id is not null)",
+            // Template merge supplies all preserved visible grants. Hidden grants belong
+            // to the target and must survive this template-only merge; normal role editing
+            // retains its full replacement semantics.
+            "delete from frontstage_page_visibility_rules where workspace_id = $1 and role_id = $2 and (page_id is not null or tab_id is not null) and (not $3 or visibility = 'visible')",
         )
         .bind(workspace_id)
         .bind(role_id)
+        .bind(self.portable_template_transaction)
         .execute(&mut *transaction)
         .await?;
 

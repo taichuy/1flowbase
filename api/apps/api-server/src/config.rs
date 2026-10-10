@@ -764,7 +764,7 @@ fn default_mcp_template_library_root() -> String {
         .to_string()
 }
 fn default_official_plugin_trusted_public_keys_json() -> String {
-    r#"[{"key_id":"official-key-2026-04","algorithm":"ed25519","public_key_pem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAuk3oonNd85FNP8CBRKj8RVvpdbhreoJiCguEJXPSgwg=\n-----END PUBLIC KEY-----"}]"#.to_string()
+    r#"[{"key_id":"1flowbase-signing-20261010-e7a2c47a","algorithm":"ed25519","public_key_pem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOMjRrNChRtu4aR+yVpFUwvOVxonoNizhWuQ4+DwJjrg=\n-----END PUBLIC KEY-----"}]"#.to_string()
 }
 
 fn default_business_file_local_root() -> String {

@@ -378,3 +378,51 @@ async fn asynchronous_upload_decode_preserves_package_and_invalid_input_errors()
         );
     }
 }
+
+#[test]
+fn archive_roundtrip_translation_only_v2_and_legacy_checksum_compatibility() {
+    let legacy = package();
+    let serialized = serde_json::to_value(&legacy).unwrap();
+    assert!(serialized.get("i18n_entries").is_none());
+    let legacy_files = archive::source_files(&legacy).unwrap();
+    assert!(!legacy_files.keys().any(|path| path.starts_with("i18n/")));
+    let mut explicit_empty = serialized.clone();
+    explicit_empty["i18n_entries"] = json!([]);
+    let explicit_empty: PortableTemplatePackage = serde_json::from_value(explicit_empty).unwrap();
+    assert_eq!(
+        archive::encode(&legacy).unwrap(),
+        archive::encode(&explicit_empty).unwrap()
+    );
+    assert_eq!(
+        control_plane::portable_template::application_template_checksum(&legacy).unwrap(),
+        control_plane::portable_template::application_template_checksum(&explicit_empty).unwrap(),
+    );
+
+    let mut translations = legacy;
+    translations.data_models.clear();
+    translations.schema_version =
+        control_plane::portable_template::PORTABLE_TEMPLATE_I18N_SCHEMA_VERSION.into();
+    translations.i18n_entries = vec![control_plane::portable_template::PortableI18nEntry {
+        key: "Template demo title".into(),
+        locale: "zh_Hans".into(),
+        translation: "模板标题".into(),
+    }];
+    let files = archive::source_files(&translations).unwrap();
+    assert!(files.keys().any(|path| path.starts_with("i18n/zh_Hans/")));
+    let decoded = archive::decode(&archive::encode(&translations).unwrap()).unwrap();
+    assert_eq!(decoded.i18n_entries, translations.i18n_entries);
+    assert_eq!(
+        serde_json::to_value(decoded).unwrap(),
+        serde_json::to_value(translations).unwrap()
+    );
+}
+
+#[test]
+fn archive_rejects_unsupported_package_schema() {
+    let mut package = package();
+    package.schema_version = "1flowbase.portable-template/v3".into();
+    assert!(archive::decode(&archive::encode(&package).unwrap())
+        .unwrap_err()
+        .to_string()
+        .contains("application_template_schema"));
+}

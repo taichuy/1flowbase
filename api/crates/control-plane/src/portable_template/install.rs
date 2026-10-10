@@ -1,4 +1,4 @@
-//! Sequential installation through resource owners. A failed owner is not a rollback.
+//! Safe native installation through resource owners and an atomic baseline transaction.
 use super::*;
 use crate::ports::*;
 use anyhow::{Context, Result};
@@ -8,10 +8,14 @@ use uuid::Uuid;
 mod applications;
 mod models;
 mod pages;
+mod safe;
 mod visibility;
+pub use safe::{map_existing_template_identities, plan_native_template, template_baseline_scope};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PortableTemplateInstallResult {
+    #[serde(default)]
+    pub skipped: Vec<PortableTemplateSkippedResource>,
     pub complete: bool,
     pub created: Vec<PortableTemplateCreatedResource>,
     pub updated: Vec<PortableTemplateCreatedResource>,
@@ -60,6 +64,8 @@ pub trait PortableTemplateInstallRepository:
     ApplicationRepository
     + PortableTemplateReadRepository
     + PortableTemplateIdentityRepository
+    + PortableTemplateBaselineRepository
+    + PortableTemplateTransactionRepository
     + McpManagementRepository
     + ModelDefinitionRepository
     + FlowRepository
@@ -81,6 +87,8 @@ impl<T> PortableTemplateInstallRepository for T where
     T: ApplicationRepository
         + PortableTemplateReadRepository
         + PortableTemplateIdentityRepository
+        + PortableTemplateBaselineRepository
+        + PortableTemplateTransactionRepository
         + McpManagementRepository
         + ModelDefinitionRepository
         + FlowRepository
@@ -102,6 +110,8 @@ impl<T> PortableTemplateInstallRepository for T where
 pub struct PortableTemplateInstallService<R> {
     repository: R,
     node_id: Option<String>,
+    allowed: Option<std::collections::BTreeSet<TemplateResourceKey>>,
+    available: std::collections::BTreeSet<TemplateResourceKey>,
 }
 impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
     async fn record_created(
@@ -124,6 +134,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         Self {
             repository,
             node_id: None,
+            allowed: None,
+            available: Default::default(),
         }
     }
     pub fn with_node_id(mut self, node_id: impl Into<String>) -> Self {
@@ -149,61 +161,6 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
         actor_user_id: Uuid,
         package: PortableTemplatePackage,
     ) -> Result<PortableTemplateInstallResult> {
-        let preview = PortableTemplateService::new(self.repository.clone())
-            .preview(actor_user_id, &package)
-            .await?;
-        anyhow::ensure!(
-            preview.valid,
-            "portable template preflight: {}",
-            preview.failures.join("; ")
-        );
-        let actor =
-            ApplicationRepository::load_actor_context_for_user(&self.repository, actor_user_id)
-                .await?;
-        let target = self
-            .repository
-            .portable_template_snapshot(actor_user_id, actor.current_workspace_id)
-            .await?;
-        self.preflight_visibility(&actor, &package).await?;
-        let mut result = PortableTemplateInstallResult::default();
-        let source_keys = super::identity::installed_source_keys(&package);
-        result.id_map = self
-            .repository
-            .load_portable_template_identity_map(actor.current_workspace_id)
-            .await?
-            .into_iter()
-            .filter(|(source, _)| source_keys.contains(source))
-            .collect();
-        self.map_frontend_installations(&actor, &package, &mut result)
-            .await?;
-        // Acknowledged owner calls may commit before a later audit/cache operation fails.
-        // Consequently failures explicitly require inspecting the target before retry.
-        let outcome = async {
-            self.install_models(&actor, &package, &target, &mut result)
-                .await
-                .context("data models")?;
-            self.create_applications(&actor, &package, &target, &mut result)
-                .await
-                .context("application creation")?;
-            self.create_pages(&actor, &package, &target, &mut result)
-                .await
-                .context("page creation")?;
-            self.fill_model_fields(&actor, &package, &result)
-                .await
-                .context("field references")?;
-            self.fill_applications(&actor, &package, &mut result)
-                .await
-                .context("application drafts/publications")?;
-            self.fill_pages(&actor, &package, &mut result)
-                .await
-                .context("page content")?;
-            self.install_visibility(&actor, &package, &result)
-                .await
-                .context("page visibility")?;
-            Ok::<_, anyhow::Error>(())
-        }
-        .await;
-        match outcome { Ok(())=>result.complete=true, Err(error)=>result.failures.push(format!("{error:#}; installation stopped. Owners may have committed the failing resource; inspect target before retry.")) }
-        Ok(result)
+        self.safe_install(actor_user_id, package).await
     }
 }

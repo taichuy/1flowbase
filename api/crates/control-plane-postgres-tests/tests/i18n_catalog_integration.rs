@@ -1354,3 +1354,6 @@ async fn ac_008_concurrent_expected_revision_has_exactly_one_winner() {
     .unwrap();
     assert_eq!(audits, 1);
 }
+
+#[path = "_tests/i18n_catalog/template_writes.rs"]
+mod template_writes;
