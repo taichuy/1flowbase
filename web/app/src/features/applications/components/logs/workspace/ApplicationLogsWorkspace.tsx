@@ -1096,19 +1096,20 @@ export function ApplicationLogsWorkspace({
           className="application-logs-page__sort-control"
           data-testid="application-logs-sort-control"
         >
-          <AutosizeSelect<ApplicationRunSortField>
-            aria-label={t('auto.sort_field')}
-            autosizeLabels={runSortFieldMeasureLabels}
-            className="application-logs-page__sort-select"
-            options={runSortFieldOptions}
-            prefix={
-              <span className="application-logs-page__sort-select-prefix">
-                {t('auto.sort_by_prefix')}
-              </span>
-            }
-            value={sortBy}
-            onChange={changeSortBy}
-          />
+          <span className="application-logs-page__sort-select">
+            <AutosizeSelect<ApplicationRunSortField>
+              aria-label={t('auto.sort_field')}
+              autosizeLabels={runSortFieldMeasureLabels}
+              options={runSortFieldOptions}
+              prefix={
+                <span className="application-logs-page__sort-select-prefix">
+                  {t('auto.sort_by_prefix')}
+                </span>
+              }
+              value={sortBy}
+              onChange={changeSortBy}
+            />
+          </span>
           <Button
             aria-label={getSortOrderToggleLabel(sortOrder, t)}
             className="application-logs-page__sort-direction-button"

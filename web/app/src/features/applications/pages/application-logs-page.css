@@ -329,17 +329,21 @@
 
   .application-logs-page__more-filters {
     display: inline-flex;
-    order: 2;
-    margin-left: auto;
+    order: 3;
+    flex: 0 0 auto;
+    margin-left: 0;
   }
 
   .application-logs-page__filter-search {
-    order: 3;
-    width: 100%;
+    order: 2;
+    flex: 1 1 0;
+    min-width: 0;
+    width: 0;
   }
 
   .application-logs-page__sort-select {
     order: 4;
+    flex-basis: 100%;
   }
 
   .application-logs-page__filter-actions {
