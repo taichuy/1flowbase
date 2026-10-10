@@ -6,6 +6,10 @@ use extension_package_runtime::{PluginExecutionMode, PluginRuntimeLimits};
 #[derive(Debug, Clone)]
 pub(crate) struct LoadedManagedBinding {
     pub plugin_id: String,
+    pub publisher_namespace: String,
+    pub plugin_code: String,
+    pub plugin_version: String,
+    pub protocol: String,
     pub runtime_executable: PathBuf,
     pub executable_fingerprint: extension_contracts::ManagedArtifactFingerprint,
     pub execution_mode: PluginExecutionMode,

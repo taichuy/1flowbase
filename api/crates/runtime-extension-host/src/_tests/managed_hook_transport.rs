@@ -34,6 +34,10 @@ impl WorkerFixture {
     fn binding(&self, input: &ManagedCreateHookInput, handler: &str) -> LoadedManagedBinding {
         LoadedManagedBinding {
             plugin_id: "publisher/plugin/1".into(),
+            publisher_namespace: "fixture".into(),
+            plugin_code: "fixture.plugin".into(),
+            plugin_version: "1.0.0".into(),
+            protocol: "stdio_json".into(),
             executable_fingerprint: ManagedArtifactFingerprint::from_bytes(
                 &std::fs::read(&self.executable).unwrap(),
             ),

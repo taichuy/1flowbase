@@ -103,6 +103,10 @@ impl PackageLoader {
         }
         Ok(crate::managed_worker::LoadedManagedBinding {
             plugin_id: request.plugin_id.clone(),
+            publisher_namespace: manifest.publisher_namespace.clone(),
+            plugin_code: manifest.plugin_code()?.to_string(),
+            plugin_version: manifest.version.clone(),
+            protocol: binding.runtime.protocol.clone(),
             executable_fingerprint: ManagedArtifactFingerprint::from_bytes(
                 &fs::read(&runtime_executable).map_err(|error| {
                     PluginFrameworkError::io(Some(&runtime_executable), error.to_string())

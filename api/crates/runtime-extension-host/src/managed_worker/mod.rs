@@ -1,5 +1,6 @@
 mod binding;
 mod capability;
+mod capability_multiplex;
 mod event;
 mod event_stdio;
 mod hook;
@@ -158,6 +159,88 @@ impl ManagedWorkers {
         impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static,
         runtime_core::runtime_backend::RuntimeBackendError,
     > {
+        self.execute_bound(request, None)
+    }
+
+    pub(crate) fn execute_with_services(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+        plugin_data: Arc<dyn extension_contracts::PluginDataPort>,
+        plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
+    ) -> Result<
+        impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static,
+        runtime_core::runtime_backend::RuntimeBackendError,
+    > {
+        let binding = &self.exact_mount(&request.handle)?.binding;
+        let permissions = binding
+            .contribution
+            .required_permissions
+            .iter()
+            .map(|p| p.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut data_permissions = std::collections::BTreeSet::new();
+        if permissions.contains("plugin_data.owned.read")
+            || permissions.contains("plugin_data.owned.write")
+        {
+            data_permissions.insert(extension_contracts::PluginDataPermission::Read);
+        }
+        if permissions.contains("plugin_data.owned.write") {
+            data_permissions.insert(extension_contracts::PluginDataPermission::Write);
+        }
+        let host_calls = crate::stdio_runtime::ProviderHostCallContext {
+            binding: extension_contracts::PluginDataBinding {
+                managed_subject: Some(request.handle.identity().subject().clone()),
+                publisher_namespace: binding.publisher_namespace.clone(),
+                plugin_code: binding.plugin_code.clone(),
+                plugin_version: binding.plugin_version.clone(),
+                storage_binding: "main".into(),
+                workspace_id: request.principal.workspace_id.clone(),
+                actor_id: request.principal.actor_id.clone(),
+                provider_instance_id: request.handle.identity().installation_id().as_str().into(),
+                permissions: data_permissions,
+                deadline_unix_ms: request.principal.deadline_unix_ms,
+            },
+            plugin_data,
+            plugin_credentials: if permissions.contains("credential.manage") {
+                plugin_credentials.map(|port| {
+                    (
+                        extension_contracts::PluginCredentialBinding {
+                            installation_id: request
+                                .handle
+                                .identity()
+                                .installation_id()
+                                .as_str()
+                                .into(),
+                            contribution_id: request
+                                .handle
+                                .identity()
+                                .contribution_id()
+                                .as_str()
+                                .into(),
+                            publisher_namespace: binding.publisher_namespace.clone(),
+                            plugin_code: binding.plugin_code.clone(),
+                            plugin_version: binding.plugin_version.clone(),
+                            scope_id: request.principal.workspace_id.clone(),
+                            deadline_unix_ms: request.principal.deadline_unix_ms,
+                        },
+                        port,
+                    )
+                })
+            } else {
+                None
+            },
+        };
+        self.execute_bound(request, Some(host_calls))
+    }
+
+    fn execute_bound(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+        host_calls: Option<crate::stdio_runtime::ProviderHostCallContext>,
+    ) -> Result<
+        impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static,
+        runtime_core::runtime_backend::RuntimeBackendError,
+    > {
         let mounted = self.exact_mount(&request.handle)?;
         // Hook bindings must use their finite typed transport, never opaque capability JSON.
         if mounted
@@ -219,6 +302,7 @@ impl ManagedWorkers {
                 input: json!({
                     "plugin_id": binding.plugin_id,
                     "contribution_code": binding.handler,
+                    "handler": binding.handler,
                     "config_payload": request.config_payload,
                     "input_payload": request.input_payload,
                 }),
@@ -228,7 +312,13 @@ impl ManagedWorkers {
                 std::time::Duration::from_millis(
                     remaining_ms.min(binding.limits.timeout_ms.unwrap_or(30_000)),
                 ),
-                capability::exchange(&binding, &request, lease),
+                async {
+                    if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
+                        capability_multiplex::exchange(&binding, &request, lease, host_calls).await
+                    } else {
+                        capability::exchange(&binding, &request, lease).await
+                    }
+                },
             )
             .await
             .map_err(|_| invalid("managed execution deadline elapsed"))?
