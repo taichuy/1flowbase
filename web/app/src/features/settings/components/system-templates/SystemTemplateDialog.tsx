@@ -192,7 +192,7 @@ export function SystemTemplateDialog({
                     },
                     {
                       key: 'i18n_entries',
-                      label: t('i18n_entries'),
+                      label: t('translation_entries'),
                       children: preview.counts.i18n_entries
                     }
                   ]}
@@ -475,11 +475,11 @@ export function SystemTemplateDialog({
             />
           </Form.Item>
           <Form.Item
-            label={t('i18n_entries')}
-            extra={t('i18n_selection_notice')}
+            label={t('translation_entries')}
+            extra={t('translation_selection_notice')}
           >
             <Select
-              aria-label={t('i18n_entries')}
+              aria-label={t('translation_entries')}
               mode="multiple"
               optionFilterProp="label"
               loading={catalog.isLoading}

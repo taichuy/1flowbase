@@ -265,6 +265,8 @@ Core deny 不可被 extension allow 恢复；拒绝后不运行 Handler。Defini
 
 源码与局部规则：[interface-runtime/AGENTS.md](../../api/crates/interface-runtime/AGENTS.md)。
 
+用户主动导入的 portable application template 是独立的资源合并流程，不改变上述插件自有启动模板覆盖规则。业务合并与写入意图由 `control-plane/portable_template` 编排，native resource owner 在同一数据库事务提交资源与 durable receipt，PostgreSQL adapter 持久化基线。MCP 中断恢复只从仍存在的 pending intent、相同 committed operation id 与 committed fingerprint 提取可恢复操作；已完成、未提交或身份不匹配的记录不能从当前内容猜测为已提交。preview 投影与 install 恢复复用同一判定，保留用户修改、删除与未知基线的既有合并语义。
+
 
 <a id="finalization-and-delivery"></a>
 
