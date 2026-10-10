@@ -12,8 +12,12 @@ pub(crate) async fn retain_settings_template_defaults(
     installation: &PluginInstallationRecord,
     defaults: &[PluginSettingsTemplateInput],
 ) -> Result<()> {
-    if !defaults.is_empty() && installation.category != domain::ExtensionCategory::HostExtensions {
-        bail!("settings templates require a native host installation");
+    if !defaults.is_empty()
+        && installation.category != domain::ExtensionCategory::HostExtensions
+        && domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+            != SYSTEM_SCOPE_ID
+    {
+        bail!("settings templates require a native host or system managed installation");
     }
     let owner = installation.plugin_id.split('@').next().unwrap_or_default();
     sqlx::query("delete from plugin_settings_template_defaults where installation_id=$1")
@@ -59,6 +63,26 @@ pub(crate) async fn apply_at_startup(
         tx.commit().await?;
         return Ok(());
     }
+    apply_defaults(
+        connection,
+        &installation,
+        &target.artifact_id,
+        target.application_generation,
+    )
+    .await?;
+    sqlx::query("insert into plugin_settings_template_applications(scope_id,category,organization,artifact_id,application_generation,installation_id) values($1,$2,$3,$4,$5,$6)")
+        .bind(target.scope_id).bind(target.category.as_str()).bind(&target.organization).bind(&target.artifact_id)
+        .bind(target.application_generation).bind(target.installation_id).execute(&mut *connection).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn apply_defaults(
+    connection: &mut PgConnection,
+    installation: &PluginInstallationRecord,
+    artifact_id: &str,
+    generation: i64,
+) -> Result<()> {
     let actor_user_id = installation.created_by;
     let owner = installation.plugin_id.split('@').next().unwrap_or_default();
     let pages = sqlx::query("select contribution_code,feature_id,source,language from plugin_settings_template_defaults where installation_id=$1 order by contribution_code")
@@ -72,8 +96,8 @@ pub(crate) async fn apply_at_startup(
             .bind(SYSTEM_SCOPE_ID).bind(owner).bind(&code).fetch_optional(&mut *connection).await?;
         let template_id = if let Some(current) = current {
             if current.get::<String, _>("owner_feature_id") != feature
-                || current.get::<String, _>("owner_organization") != target.organization
-                || current.get::<String, _>("owner_artifact_id") != target.artifact_id
+                || current.get::<String, _>("owner_organization") != installation.organization
+                || current.get::<String, _>("owner_artifact_id") != artifact_id
             {
                 bail!("settings template feature ownership changed");
             }
@@ -83,7 +107,7 @@ pub(crate) async fn apply_at_startup(
             sqlx::query("insert into ui_code_templates (id,scope_id,provider_code,contribution_code,name,owner_plugin_code,owner_feature_id,applied_plugin_version,created_by,updated_by,applied_installation_id,applied_application_generation,owner_category,owner_organization,owner_artifact_id) values ($1,$2,$3,$4,$5,$3,$6,$7,$8,$8,$9,$10,$11,$12,$13)")
                 .bind(id).bind(SYSTEM_SCOPE_ID).bind(owner).bind(&code).bind(&feature)
                 .bind(&feature).bind(&installation.plugin_version).bind(actor_user_id)
-                .bind(target.installation_id).bind(target.application_generation).bind(target.category.as_str()).bind(&target.organization).bind(&target.artifact_id)
+                .bind(installation.id).bind(generation).bind(installation.category.as_str()).bind(&installation.organization).bind(&artifact_id)
                 .execute(&mut *connection).await?;
             id
         };
@@ -102,16 +126,53 @@ pub(crate) async fn apply_at_startup(
             .execute(&mut *connection).await?;
         sqlx::query("update ui_code_templates set applied_plugin_version=$2,updated_by=$3,updated_at=now(),applied_installation_id=$4,applied_application_generation=$5,owner_category=$6,owner_organization=$7,owner_artifact_id=$8 where id=$1")
             .bind(template_id).bind(&installation.plugin_version).bind(actor_user_id)
-            .bind(target.installation_id).bind(target.application_generation).bind(target.category.as_str()).bind(&target.organization).bind(&target.artifact_id).execute(&mut *connection).await?;
+            .bind(installation.id).bind(generation).bind(installation.category.as_str()).bind(&installation.organization).bind(&artifact_id).execute(&mut *connection).await?;
         let default_write = sqlx::query("insert into ui_code_template_defaults (scope_id,provider_code,contribution_code,template_id,updated_by) values ($1,$2,$3,$4,$5) on conflict (scope_id,provider_code,contribution_code) do update set template_id=excluded.template_id,updated_by=excluded.updated_by,updated_at=now() where ui_code_template_defaults.template_id=excluded.template_id")
             .bind(SYSTEM_SCOPE_ID).bind(owner).bind(&code).bind(template_id).bind(actor_user_id).execute(&mut *connection).await?;
         if default_write.rows_affected() != 1 {
             bail!("settings template default changed concurrently");
         }
     }
-    sqlx::query("insert into plugin_settings_template_applications(scope_id,category,organization,artifact_id,application_generation,installation_id) values($1,$2,$3,$4,$5,$6)")
-        .bind(target.scope_id).bind(target.category.as_str()).bind(&target.organization).bind(&target.artifact_id)
-        .bind(target.application_generation).bind(target.installation_id).execute(&mut *connection).await?;
+    Ok(())
+}
+
+pub(crate) async fn apply_managed_at_startup(
+    store: &PgControlPlaneStore,
+    installation_id: Uuid,
+) -> Result<()> {
+    let mut tx = store.pool().begin().await?;
+    // Serialize application against enable/disable and concurrent boot of this installation.
+    let active: bool = sqlx::query_scalar("select desired_state='active_requested' and contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}'='system' from extension_installations where id=$1 for update")
+        .bind(installation_id).fetch_one(&mut *tx).await?;
+    if !active {
+        bail!("managed settings installation is not active");
+    }
+    let installation = store
+        .get_installation(installation_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("managed installation missing"))?;
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!(
+            "managed-settings:{}:{}",
+            installation.organization, installation.provider_code
+        ))
+        .execute(&mut *tx)
+        .await?;
+    let applied: bool = sqlx::query_scalar("select exists(select 1 from plugin_settings_template_applications where installation_id=$1 and managed_service)")
+        .bind(installation_id).fetch_one(&mut *tx).await?;
+    if !applied {
+        let generation: i64 = sqlx::query_scalar("select coalesce(max(application_generation),0)+1 from plugin_settings_template_applications where scope_id=$1 and category=$2 and organization=$3 and artifact_id=$4")
+            .bind(SYSTEM_SCOPE_ID).bind(installation.category.as_str()).bind(&installation.organization).bind(&installation.provider_code).fetch_one(&mut *tx).await?;
+        apply_defaults(
+            &mut tx,
+            &installation,
+            &installation.provider_code,
+            generation,
+        )
+        .await?;
+        sqlx::query("insert into plugin_settings_template_applications(scope_id,category,organization,artifact_id,application_generation,installation_id,managed_service) values($1,$2,$3,$4,$5,$6,true)")
+            .bind(SYSTEM_SCOPE_ID).bind(installation.category.as_str()).bind(&installation.organization).bind(&installation.provider_code).bind(generation).bind(installation_id).execute(&mut *tx).await?;
+    }
     tx.commit().await?;
     Ok(())
 }

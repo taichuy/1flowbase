@@ -1,3 +1,5 @@
+mod managed_service;
+pub use managed_service::*;
 pub mod application;
 pub mod application_public_api;
 pub mod auth;

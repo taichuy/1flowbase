@@ -149,6 +149,31 @@ impl UiManagementAdapter {
                     )
                     .into());
                 }
+                if let Some(service) = self
+                    .0
+                    .surfaces
+                    .managed_services()
+                    .iter()
+                    .find(|service| service.plugin_code == page.plugin_code)
+                {
+                    use control_plane_contracts::ports::PluginRepository;
+                    let current = self
+                        .0
+                        .store
+                        .get_installation(service.installation_id)
+                        .await?
+                        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                            "managed_service",
+                        ))?;
+                    if current.desired_state != domain::PluginDesiredState::ActiveRequested
+                        || current.plugin_version != page.plugin_version
+                    {
+                        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                            "managed_service_inactive",
+                        )
+                        .into());
+                    }
+                }
                 let template = self
                     .management_service()
                     .plugin_settings_template(&page.plugin_code, &page.contribution_code)

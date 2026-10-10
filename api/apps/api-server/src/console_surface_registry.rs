@@ -27,6 +27,7 @@ pub struct ConsoleSurfaceRegistry {
     pages: Vec<NativeSettingsPage>,
     native_features: Vec<(String, String, String)>,
     native_targets: Vec<domain::NativePluginTarget>,
+    managed_services: Vec<crate::managed_services::ManagedServiceRegistration>,
 }
 
 #[derive(Debug, Clone)]
@@ -105,7 +106,95 @@ impl ConsoleSurfaceRegistry {
             pages,
             native_features,
             native_targets: Vec::new(),
+            managed_services: Vec::new(),
         })
+    }
+
+    pub(crate) fn managed_services(
+        &self,
+    ) -> &[crate::managed_services::ManagedServiceRegistration] {
+        &self.managed_services
+    }
+    pub(crate) fn with_managed_services(
+        mut self,
+        services: Vec<crate::managed_services::ManagedServiceRegistration>,
+    ) -> Result<Self, ConsoleSurfaceRegistryError> {
+        let mut route_ids = builtin_console_navigation()
+            .route_definitions
+            .into_iter()
+            .map(|r| r.route_id)
+            .collect::<HashSet<_>>();
+        let mut paths = builtin_console_navigation()
+            .route_definitions
+            .into_iter()
+            .map(|r| r.path)
+            .collect::<HashSet<_>>();
+        let mut item_ids = builtin_console_navigation()
+            .navigation_items
+            .into_iter()
+            .map(|r| r.item_id)
+            .collect::<HashSet<_>>();
+        let mut binding_ids = builtin_console_navigation()
+            .permission_bindings
+            .into_iter()
+            .map(|r| r.binding_id)
+            .collect::<HashSet<_>>();
+        for navigation in &self.contributions {
+            validate_console_navigation(
+                navigation,
+                &mut route_ids,
+                &mut paths,
+                &mut item_ids,
+                &mut binding_ids,
+            )?;
+        }
+        for service in &services {
+            let feature = &service.declaration.feature;
+            let navigation = ConsoleNavigation {
+                route_definitions: vec![ConsoleRouteDefinition {
+                    route_id: feature.route_id.clone(),
+                    surface_key: format!("managed-service:{}", service.plugin_code),
+                    path: feature.path.clone(),
+                    surface_kind: ConsoleSurfaceKind::ManagedService,
+                }],
+                navigation_items: vec![ConsoleNavigationItem {
+                    item_id: format!("{}.settings", service.plugin_code),
+                    route_id: feature.route_id.clone(),
+                    parent_item_id: Some("settings".into()),
+                    label_key: feature.label.clone(),
+                    navigation_slot: ConsoleNavigationSlot::Settings,
+                    order: 1000,
+                }],
+                permission_bindings: vec![ConsolePermissionBinding {
+                    binding_id: format!("{}.access", feature.feature_id),
+                    route_id: feature.route_id.clone(),
+                    permission_codes: vec![format!(
+                        "settings_feature.access.{}",
+                        feature.feature_id
+                    )],
+                    requirement: ConsolePermissionRequirement::AnyPermission,
+                }],
+            };
+            validate_console_navigation(
+                &navigation,
+                &mut route_ids,
+                &mut paths,
+                &mut item_ids,
+                &mut binding_ids,
+            )?;
+            self.contributions.push(navigation);
+            for page in &service.pages {
+                self.pages.push(NativeSettingsPage {
+                    route_id: feature.route_id.clone(),
+                    feature_id: feature.feature_id.clone(),
+                    plugin_code: service.plugin_code.clone(),
+                    plugin_version: service.plugin_version.clone(),
+                    contribution_code: page.contribution_code.clone(),
+                });
+            }
+        }
+        self.managed_services = services;
+        Ok(self)
     }
 
     pub(crate) fn with_native_targets(mut self, targets: Vec<domain::NativePluginTarget>) -> Self {

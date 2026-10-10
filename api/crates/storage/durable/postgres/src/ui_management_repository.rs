@@ -255,6 +255,11 @@ impl UiManagementRepository for PgControlPlaneStore {
         if row.get::<Option<String>, _>("owner_plugin_code").is_none() {
             return Ok(true);
         }
+        let managed: bool = sqlx::query_scalar("select exists(select 1 from ui_code_templates u join plugin_settings_template_applications a on a.installation_id=u.applied_installation_id and a.application_generation=u.applied_application_generation join extension_installations i on i.id=a.installation_id where u.id=$1 and a.managed_service and a.scope_id=$2 and i.desired_state='active_requested' and i.contract_version='1flowbase.extension-bus/v1' and i.metadata_json #>> '{managed_service,scope}'='system')")
+            .bind(template_id).bind(domain::SYSTEM_SCOPE_ID).fetch_one(self.pool()).await?;
+        if managed {
+            return Ok(true);
+        }
         for target in targets {
             if row.get::<Option<Uuid>, _>("applied_installation_id") == Some(target.installation_id)
                 && row.get::<Option<i64>, _>("applied_application_generation")

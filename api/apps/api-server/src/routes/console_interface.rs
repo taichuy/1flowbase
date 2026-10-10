@@ -86,11 +86,11 @@ const AUTHENTICATION_ACTIVATION: &str = "api-server.console.require-session.acti
 const AUTHORIZATION_ADAPTER: &str = "api-server.console.compiled-operation";
 const ADMISSION_ADAPTER: &str = "api-server.console.protocol-admission";
 
-pub(crate) struct ConsoleInterfaceDeclaration {
-    pub(crate) interface_id: &'static str,
-    pub(crate) binding_id: &'static str,
-    pub(crate) method: &'static str,
-    pub(crate) path: &'static str,
+pub(crate) struct ConsoleInterfaceDeclaration<'a> {
+    pub(crate) interface_id: &'a str,
+    pub(crate) binding_id: &'a str,
+    pub(crate) method: &'a str,
+    pub(crate) path: &'a str,
     pub(crate) mutating: bool,
 }
 
@@ -224,10 +224,24 @@ where
 }
 
 pub(crate) fn compile_registry<I, O>(
-    owner: &'static str,
-    graph: &'static str,
-    declarations: &'static [ConsoleInterfaceDeclaration],
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
     port: Arc<dyn ConsoleInterfacePort<I, O>>,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+{
+    compile_registry_with_scope(owner, graph, declarations, port, InterfaceScope::Workspace)
+}
+
+pub(crate) fn compile_registry_with_scope<I, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleInterfacePort<I, O>>,
+    scope: InterfaceScope,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
     I: InterfaceContract,
@@ -273,7 +287,7 @@ where
                 interface_runtime::PrincipalProfile::User,
                 InterfaceAuthenticationPolicy::Authenticated,
                 operation,
-                InterfaceScope::Workspace,
+                scope,
             ),
             InterfaceExecution::new(
                 InterfaceExecutionMode::Unary,
@@ -465,7 +479,7 @@ fn register_authentication(
 
 pub(crate) async fn invoke<I, O>(
     state: Arc<ApiState>,
-    binding_id: &'static str,
+    binding_id: &str,
     credential: crate::extension_bus::ConsoleAuthenticationCredential,
     input: I,
 ) -> Result<O, ApiError>
@@ -527,7 +541,7 @@ fn log_observer_receipt(receipt: &interface_runtime::InterfaceInvocationReceipt)
 /// through the same Console authorization/admission/hook kernel as HTTP.
 pub(crate) async fn invoke_with_principal<I, O>(
     state: Arc<ApiState>,
-    binding_id: &'static str,
+    binding_id: &str,
     principal: UserPrincipal,
     input: I,
 ) -> Result<O, ApiError>
@@ -567,7 +581,7 @@ where
 
 pub(crate) async fn invoke_server_stream<I, S, O>(
     state: Arc<ApiState>,
-    binding_id: &'static str,
+    binding_id: &str,
     credential: crate::extension_bus::ConsoleAuthenticationCredential,
     input: I,
 ) -> Result<interface_runtime::InterfaceStreamInvocation<S, O, ConsoleInterfaceTargetError>, ApiError>

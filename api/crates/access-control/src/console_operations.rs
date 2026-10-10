@@ -1168,8 +1168,10 @@ fn validate_host_extension_namespace(
     identifier: &str,
     field: &str,
 ) -> Result<(), ConsoleOperationRegistryError> {
-    if owner.kind == SettingsFeatureOwnerKind::HostExtension
-        && identifier != owner.owner_id
+    if matches!(
+        owner.kind,
+        SettingsFeatureOwnerKind::HostExtension | SettingsFeatureOwnerKind::ManagedService
+    ) && identifier != owner.owner_id
         && !identifier.starts_with(&format!("{}.", owner.owner_id))
     {
         return Err(ConsoleOperationRegistryError::new(format!(

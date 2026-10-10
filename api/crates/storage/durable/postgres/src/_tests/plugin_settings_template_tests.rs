@@ -360,3 +360,71 @@ fn installation_commit_input(
         retained_frontend_module_assets: Vec::new(),
     }
 }
+
+#[tokio::test]
+async fn managed_settings_application_is_idempotent_and_disable_fails_closed() {
+    let store = store().await;
+    let actor = actor(&store).await;
+    let mut managed = input(actor, "1.0.0", "export default () => <p>managed</p>");
+    managed.installation.category = domain::ExtensionCategory::CapabilityPlugins;
+    managed.installation.contract_version = "1flowbase.extension-bus/v1".into();
+    managed.installation.protocol = "stdio_json_multiplex_v1".into();
+    managed.installation.metadata_json = json!({"managed_service":{"scope":"system"}});
+    let installed = store.commit_plugin_installation(&managed).await.unwrap();
+    assert!(store
+        .apply_managed_plugin_settings_templates(installed.id)
+        .await
+        .is_err());
+    desired(
+        &store,
+        installed.id,
+        actor,
+        PluginDesiredState::ActiveRequested,
+    )
+    .await
+    .unwrap();
+    store
+        .apply_managed_plugin_settings_templates(installed.id)
+        .await
+        .unwrap();
+    let template = store.list_ui_code_templates().await.unwrap().remove(0);
+    assert!(store
+        .native_template_is_available(template.id, &[])
+        .await
+        .unwrap());
+    store
+        .revise_ui_code_template(&ReviseUiCodeTemplateInput {
+            template_id: template.id,
+            name: "Edited".into(),
+            source: "export default () => <p>edited</p>".into(),
+            language: UiCodeTemplateLanguage::Tsx,
+            actor_user_id: actor,
+        })
+        .await
+        .unwrap();
+    store
+        .apply_managed_plugin_settings_templates(installed.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .get_ui_code_template(template.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .latest_revision
+            .source,
+        "export default () => <p>edited</p>"
+    );
+    desired(&store, installed.id, actor, PluginDesiredState::Disabled)
+        .await
+        .unwrap();
+    assert!(!store
+        .native_template_is_available(template.id, &[])
+        .await
+        .unwrap());
+    assert!(store
+        .apply_managed_plugin_settings_templates(installed.id)
+        .await
+        .is_err());
+}

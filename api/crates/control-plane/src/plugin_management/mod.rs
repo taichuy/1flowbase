@@ -1,3 +1,5 @@
+mod managed_data;
+pub use managed_data::ManagedPluginDataService;
 mod managed_credential;
 pub use managed_credential::ManagedPluginCredentialService;
 mod managed_execution;

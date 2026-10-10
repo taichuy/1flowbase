@@ -185,7 +185,7 @@ where
         }
     }
 
-    pub fn route(mut self, path: &'static str, methods: ConsoleMethodRouter<S>) -> Self {
+    pub fn route(mut self, path: &str, methods: ConsoleMethodRouter<S>) -> Self {
         let ConsoleMethodRouter { router, methods } = methods;
         for (method, ownership, request_class) in methods {
             let route = ConsoleRouteBinding {
@@ -1001,6 +1001,20 @@ pub(crate) fn compile_migrated_console_operation_registry(
     bindings: &[ConsoleRouteAssemblyBinding],
     host_contributions: &[HostExtensionContributionManifest],
 ) -> anyhow::Result<ConsoleOperationRegistry> {
+    compile_migrated_console_operation_registry_with_managed(
+        settings_features,
+        bindings,
+        host_contributions,
+        &[],
+    )
+}
+
+pub(crate) fn compile_migrated_console_operation_registry_with_managed(
+    settings_features: &SettingsFeatureRegistry,
+    bindings: &[ConsoleRouteAssemblyBinding],
+    host_contributions: &[HostExtensionContributionManifest],
+    managed_services: &[crate::managed_services::ManagedServiceRegistration],
+) -> anyhow::Result<ConsoleOperationRegistry> {
     validate_settings_feature_route_assembly(settings_features, bindings)?;
     let host_console_contributions = host_contributions
         .iter()
@@ -1010,8 +1024,21 @@ pub(crate) fn compile_migrated_console_operation_registry(
         .iter()
         .flat_map(|contribution| contribution.operations.iter())
         .map(|operation| operation.operation_id.clone())
+        .chain(
+            managed_services
+                .iter()
+                .flat_map(|s| s.operations())
+                .map(|op| op.operation_id),
+        )
         .collect::<BTreeSet<_>>();
     validate_explicit_operation_specs(bindings, &host_operation_ids, settings_features)?;
+    if !managed_services.is_empty() {
+        validate_complete_explicit_operation_specs(
+            bindings,
+            &host_operation_ids.iter().cloned().collect::<Vec<_>>(),
+            settings_features,
+        )?;
+    }
 
     let core_owner = ConsoleOperationOwner {
         kind: SettingsFeatureOwnerKind::Core,
@@ -1103,6 +1130,11 @@ pub(crate) fn compile_migrated_console_operation_registry(
             .iter()
             .flat_map(|contribution| contribution.operations.iter().cloned()),
     );
+    registrations.extend(
+        managed_services
+            .iter()
+            .flat_map(|service| service.operations()),
+    );
     let mut resources = vec![applications_resource, data_source_instances_resource];
     resources.extend(
         host_console_contributions
@@ -1115,6 +1147,11 @@ pub(crate) fn compile_migrated_console_operation_registry(
                 .iter()
                 .map(|contribution| contribution.locale_catalog.clone()),
         )
+        .chain(
+            managed_services
+                .iter()
+                .map(|service| service.locale_catalog()),
+        )
         .collect::<Vec<_>>();
     let registry = ConsoleOperationRegistry::compile_with_locale_catalog(
         settings_features,
@@ -1122,7 +1159,11 @@ pub(crate) fn compile_migrated_console_operation_registry(
         resources,
         locale_contributions,
     )?;
-    let interfaces = compile_console_interface_metadata(bindings, &registry)?;
+    let mut interfaces = compile_console_interface_metadata(bindings, &registry)?;
+    for metadata in managed_services.iter().flat_map(|s| s.metadata()) {
+        interfaces.retain(|existing| existing.interface_id != metadata.interface_id);
+        interfaces.push(metadata);
+    }
     let registry = registry.with_interface_metadata(interfaces)?;
     let interface_bindings = bindings.iter().cloned().map(|mut binding| {
         if !matches!(binding.ownership, ConsoleRouteOwnership::Authenticated) {

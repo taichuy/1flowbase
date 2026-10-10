@@ -11,6 +11,7 @@ pub enum ConsoleSurfaceKind {
     System,
     DynamicPage,
     HostExtension,
+    ManagedService,
 }
 
 impl ConsoleSurfaceKind {
@@ -19,6 +20,7 @@ impl ConsoleSurfaceKind {
             Self::System => "system",
             Self::DynamicPage => "dynamic_page",
             Self::HostExtension => "host_extension",
+            Self::ManagedService => "managed_service",
         }
     }
 }

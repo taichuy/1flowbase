@@ -264,6 +264,12 @@ pub trait OfficialPluginSourcePort: Send + Sync {
 
 #[async_trait]
 pub trait PluginRepository: Send + Sync {
+    async fn apply_managed_plugin_settings_templates(
+        &self,
+        _installation_id: Uuid,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("managed settings template application is not supported")
+    }
     async fn apply_native_plugin_settings_templates(
         &self,
         _target: &domain::NativePluginTarget,

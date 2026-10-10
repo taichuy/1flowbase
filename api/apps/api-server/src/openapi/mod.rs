@@ -45,12 +45,17 @@ impl OpenApi for ApiDoc {
 }
 
 pub(crate) async fn dynamic_openapi_document(state: &ApiState) -> Result<Value, ApiError> {
-    dynamic_openapi_document_with(
+    let mut document = dynamic_openapi_document_with(
         state.store.clone(),
         &state.cookie_name,
         state.runtime_engine.template_catalog(),
     )
-    .await
+    .await?;
+    crate::managed_services::append_openapi(
+        &mut document,
+        state.console_surface_registry.managed_services(),
+    );
+    Ok(document)
 }
 
 pub(crate) async fn dynamic_openapi_document_with(

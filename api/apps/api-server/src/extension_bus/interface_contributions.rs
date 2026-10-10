@@ -13,9 +13,9 @@ use crate::console_operation_compilation::{
 
 #[derive(Clone)]
 pub(crate) struct InterfaceRegistryContribution {
-    contribution_id: &'static str,
-    authorization_operations: &'static [&'static str],
-    owners: &'static [&'static str],
+    contribution_id: String,
+    authorization_operations: Vec<String>,
+    owners: Vec<String>,
     registry: Arc<CompiledInterfaceRegistry>,
 }
 
@@ -27,22 +27,38 @@ impl InterfaceRegistryContribution {
         registry: Arc<CompiledInterfaceRegistry>,
     ) -> Self {
         Self {
-            contribution_id,
-            authorization_operations,
-            owners,
+            contribution_id: contribution_id.into(),
+            authorization_operations: authorization_operations
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            owners: owners.iter().map(|s| s.to_string()).collect(),
+            registry,
+        }
+    }
+
+    pub(crate) fn managed(
+        owner: String,
+        operations: Vec<String>,
+        registry: Arc<CompiledInterfaceRegistry>,
+    ) -> Self {
+        Self {
+            contribution_id: format!("managed-service.{owner}"),
+            authorization_operations: operations,
+            owners: vec![owner],
             registry,
         }
     }
 
     #[cfg(test)]
     pub(crate) fn with_test_contribution_id(mut self, contribution_id: &'static str) -> Self {
-        self.contribution_id = contribution_id;
+        self.contribution_id = contribution_id.into();
         self
     }
 
     fn console_binding_contributions(&self) -> Vec<ConsoleBindingOwnershipContribution> {
         console_bindings_from_registry(
-            self.contribution_id,
+            &self.contribution_id,
             ConsoleBindingOwnerKind::Family,
             self.registry.as_ref(),
         )
@@ -53,7 +69,7 @@ pub(crate) struct InterfaceContributionCollector {
     managed_factory: Option<Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>>,
     graph_fingerprint: GraphFingerprint,
     contributions: Vec<InterfaceRegistryContribution>,
-    contribution_ids: BTreeSet<&'static str>,
+    contribution_ids: BTreeSet<String>,
 }
 
 impl InterfaceContributionCollector {
@@ -70,7 +86,10 @@ impl InterfaceContributionCollector {
         &mut self,
         contribution: InterfaceRegistryContribution,
     ) -> anyhow::Result<()> {
-        if !self.contribution_ids.insert(contribution.contribution_id) {
+        if !self
+            .contribution_ids
+            .insert(contribution.contribution_id.clone())
+        {
             anyhow::bail!(
                 "duplicate interface registry contribution `{}`",
                 contribution.contribution_id
@@ -84,10 +103,10 @@ impl InterfaceContributionCollector {
         let mut operations = BTreeSet::new();
         let mut owners = BTreeSet::new();
         for contribution in &self.contributions {
-            for operation in contribution.authorization_operations {
+            for operation in &contribution.authorization_operations {
                 operations.insert(AuthorizationOperation::new(operation)?);
             }
-            for owner in contribution.owners {
+            for owner in &contribution.owners {
                 owners.insert(InterfaceOwner::new(owner)?);
             }
         }
@@ -124,10 +143,15 @@ impl InterfaceContributionCollector {
                     .map(|definition| definition.owner().as_str().to_string()),
             );
         }
+        let mut migrations = migration_contributions_from_plan(&migration);
+        migrations.extend(console_inventory.operations.iter().filter(|operation| operation.owner.kind == access_control::SettingsFeatureOwnerKind::ManagedService).map(|operation| crate::console_operation_compilation::ConsoleMigrationDispositionContribution {
+            operation_id: operation.operation_id.clone(),
+            disposition: crate::console_operation_compilation::ConsoleMigrationDisposition::DefaultDisabled { evidence: "New managed service operation requires explicit role policy; no legacy grants".into() },
+        }));
         let snapshot = compile_console_operation_snapshot(
             policy_contributions_from_inventory(console_inventory),
             binding_contributions,
-            migration_contributions_from_plan(&migration),
+            migrations,
             known_binding_owners,
         )?;
         let registry = self.compile()?;
@@ -297,7 +321,8 @@ pub(crate) fn production_interface_contributions(
             state.store.clone(),
             state.infrastructure.cache_store(),
             state.provider_secret_master_key.clone(),
-        );
+        )
+        .with_managed_services(state.console_surface_registry.managed_services().to_vec());
     let mcp_interface_catalog_dependencies =
         crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
             store: state.store.clone(),

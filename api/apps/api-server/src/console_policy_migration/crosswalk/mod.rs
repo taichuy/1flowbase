@@ -309,6 +309,7 @@ fn validate_live_core_inventory(
                     );
                 }
             }
+            SettingsFeatureOwnerKind::ManagedService => continue,
             SettingsFeatureOwnerKind::HostExtension => bail!(
                 "active HostExtension {}@{} contributes {} but has no explicit console-policy migration metadata",
                 operation.owner.owner_id,

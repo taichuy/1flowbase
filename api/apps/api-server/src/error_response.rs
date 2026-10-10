@@ -52,6 +52,22 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         if let Some(error) = self
             .0
+            .downcast_ref::<crate::managed_services::ManagedServiceFailure>()
+        {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ErrorBody {
+                    status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
+                    code: error.0.clone(),
+                    message: error.0.clone(),
+                    inventory: None,
+                    details: None,
+                }),
+            )
+                .into_response();
+        }
+        if let Some(error) = self
+            .0
             .downcast_ref::<control_plane::mcp_oauth::OAuthError>()
         {
             return crate::routes::mcp_oauth::ProtocolError(control_plane::mcp_oauth::OAuthError {

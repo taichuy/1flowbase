@@ -131,6 +131,10 @@ fn map_catalog_projection(
 
 #[async_trait]
 impl PluginRepository for PgControlPlaneStore {
+    async fn apply_managed_plugin_settings_templates(&self, installation_id: Uuid) -> Result<()> {
+        crate::plugin_settings_template_repository::apply_managed_at_startup(self, installation_id)
+            .await
+    }
     async fn apply_native_plugin_settings_templates(
         &self,
         target: &domain::NativePluginTarget,

@@ -156,6 +156,11 @@ impl ExtensionBootSnapshot {
         for contribution in production_interface_contributions(state)? {
             collector.add(contribution)?;
         }
+        for service in state.console_surface_registry.managed_services() {
+            collector.add(crate::managed_services::registry_contribution(
+                state, service,
+            )?)?;
+        }
         let (candidate, console_operation_snapshot) = collector
             .compile_complete_console_snapshot(state.console_operation_registry.inventory())?;
         managed.bind_registry(&candidate)?;

@@ -282,12 +282,35 @@ pub(crate) fn compile_console_boot_plan_with_interface_operations_and_plugin_upl
     interface_registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
     plugin_upload_max_bytes: usize,
 ) -> anyhow::Result<CompiledConsoleBootPlan> {
+    compile_console_boot_plan_with_managed_services(
+        host_extensions,
+        interface_registry,
+        plugin_upload_max_bytes,
+        Vec::new(),
+    )
+}
+
+pub(crate) fn compile_console_boot_plan_with_managed_services(
+    host_extensions: impl IntoIterator<Item = ResolvedHostExtensionConsoleContribution>,
+    interface_registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
+    plugin_upload_max_bytes: usize,
+    managed_services: Vec<crate::managed_services::ManagedServiceRegistration>,
+) -> anyhow::Result<CompiledConsoleBootPlan> {
     let host_extensions = host_extensions.into_iter().collect::<Vec<_>>();
     let host_contributions = host_extensions
         .iter()
         .map(|host| host.contribution.clone())
         .collect::<Vec<_>>();
-    let settings_feature_registry = compile_settings_feature_registry(&host_contributions)?;
+    let settings_feature_registry = Arc::new(access_control::SettingsFeatureRegistry::compile(
+        access_control::core_settings_feature_registrations()
+            .into_iter()
+            .chain(
+                host_contributions
+                    .iter()
+                    .flat_map(|c| c.settings_features.iter().cloned()),
+            )
+            .chain(managed_services.iter().map(|service| service.feature())),
+    )?);
     let mut route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
         interface_registry,
         plugin_upload_max_bytes,
@@ -298,14 +321,25 @@ pub(crate) fn compile_console_boot_plan_with_interface_operations_and_plugin_upl
             route_assembly = route_assembly.merge(host_assembly);
         }
     }
-    let console_operation_registry =
-        Arc::new(compile_complete_migrated_console_operation_registry(
+    route_assembly =
+        route_assembly.merge(crate::managed_services::route_assembly(&managed_services));
+    if managed_services.is_empty() {
+        compile_complete_migrated_console_operation_registry(
             &settings_feature_registry,
             route_assembly.bindings(),
             &host_contributions,
+        )?;
+    }
+    let console_operation_registry =
+        Arc::new(crate::routes::console_route_assembly::compile_migrated_console_operation_registry_with_managed(
+            &settings_feature_registry,
+            route_assembly.bindings(),
+            &host_contributions,
+            &managed_services,
         )?);
     let console_surface_registry = Arc::new(
-        ConsoleSurfaceRegistry::from_host_extension_contributions(&host_contributions)?,
+        ConsoleSurfaceRegistry::from_host_extension_contributions(&host_contributions)?
+            .with_managed_services(managed_services)?,
     );
 
     Ok(CompiledConsoleBootPlan {

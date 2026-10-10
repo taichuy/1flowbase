@@ -1,6 +1,8 @@
 #![recursion_limit = "256"]
 
 extern crate self as api_server;
+mod managed_service_mcp;
+mod managed_services;
 
 pub mod app_state;
 pub mod application_public_docs;
@@ -106,7 +108,8 @@ pub(crate) async fn runtime_internal_tool_invoker_factory(
                 state.store.clone(),
                 state.infrastructure.cache_store(),
                 state.provider_secret_master_key.clone(),
-            ),
+            )
+            .with_managed_services(state.console_surface_registry.managed_services().to_vec()),
             Arc::new(
                 routes::mcp_protocol::virtual_ui::McpInterfaceCatalogSnapshot::new(
                     interface_catalog,
@@ -353,6 +356,9 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
     let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
         interface_snapshot.as_deref(),
     );
+    let assembly = assembly.merge(crate::managed_services::route_assembly(
+        state.console_surface_registry.managed_services(),
+    ));
     console_router_with_assembly(state, include_openapi, assembly).0
 }
 
@@ -650,9 +656,16 @@ async fn app_and_runtime_host_from_config(
         runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source(
             process_started_at,
             runtime_artifact_resolver,
-            Arc::new(store.clone()),
+            Arc::new(control_plane::plugin_management::ManagedPluginDataService::new(Arc::new(store.clone()), Arc::new(store.clone()))),
             Arc::clone(&runtime_sample_source),
-        )?,
+        )?.with_plugin_credentials(Arc::new(
+            control_plane::plugin_management::ManagedPluginCredentialService::new(
+                Arc::new(store.clone()),
+                Arc::new(storage_durable_postgres::PgPluginCredentialRepository::new(
+                    store.pool().clone(), config.provider_secret_master_key.clone(),
+                )?),
+            ),
+        )),
     );
     runtime_extension_host
         .configure_provider_worker_idle_grace(config.provider_worker_idle_grace)
@@ -704,9 +717,6 @@ async fn app_and_runtime_host_from_config(
             )),
             data_model_template_catalog,
         ),
-    );
-    let api_docs = Arc::new(
-        openapi_docs::build_default_api_docs_registry_with_cookie_name(&config.cookie_name)?,
     );
     let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
@@ -804,12 +814,19 @@ async fn app_and_runtime_host_from_config(
         .interface_registry()
         .ok_or_else(|| anyhow::anyhow!("interface registry is absent at production boot"))?
         .snapshot();
-    let mut compiled_console_plan =
-        app_state::compile_console_boot_plan_with_interface_operations_and_plugin_upload_max_bytes(
-            console_host_extensions,
-            Some(interface_snapshot.as_ref()),
-            config.plugin_upload_max_bytes,
-        )?;
+    let managed_services = crate::managed_services::load(&store, &config.api_node_id).await?;
+    let mut docs_document = serde_json::to_value(openapi::ApiDoc::openapi())?;
+    crate::managed_services::append_openapi(&mut docs_document, &managed_services);
+    let api_docs = Arc::new(openapi_docs::build_api_docs_registry_with_cookie_name(
+        docs_document,
+        &config.cookie_name,
+    )?);
+    let mut compiled_console_plan = app_state::compile_console_boot_plan_with_managed_services(
+        console_host_extensions,
+        Some(interface_snapshot.as_ref()),
+        config.plugin_upload_max_bytes,
+        managed_services,
+    )?;
     control_plane::role::sync_console_permission_catalog(
         &store,
         compiled_console_plan.console_operation_registry.inventory(),

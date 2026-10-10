@@ -60,6 +60,7 @@ pub const SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_PERMISSION: &str =
 pub enum SettingsFeatureOwnerKind {
     Core,
     HostExtension,
+    ManagedService,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
