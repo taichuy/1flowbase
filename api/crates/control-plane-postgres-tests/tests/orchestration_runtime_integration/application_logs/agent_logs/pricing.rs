@@ -1,23 +1,31 @@
 use super::*;
 
-async fn price(
-    store: &PgControlPlaneStore,
-    provider: &str,
-    model: &str,
-    input: &str,
+struct PricingRuleFixture<'a> {
+    provider_code: &'a str,
+    upstream_model_id: &'a str,
+    input_token_unit_price: &'a str,
     priority: i32,
     enabled: bool,
-    from: &str,
-    window: bool,
-) {
+    effective_from: &'a str,
+    local_time_window: bool,
+}
+
+async fn price(store: &PgControlPlaneStore, rule: PricingRuleFixture<'_>) {
     sqlx::query(r#"insert into model_pricing_rules(id,provider_code,upstream_model_id,
         input_token_unit_size,input_token_unit_price,output_token_unit_size,output_token_unit_price,
         cache_hit_token_unit_size,cache_hit_token_unit_price,cache_write_token_unit_size,cache_write_token_unit_price,
         currency_code,effective_from,timezone,weekday_mask,priority,enabled,source_kind,extensions,rules,local_time_start,local_time_end)
         values($1,$2,$3,1000,$4::numeric,1000,2.5,1000,0.1,1000,1.5,'USD',$5::timestamptz,'UTC',127,$6,$7,'manual','{}','[]',
         case when $8 then '00:00'::time end,case when $8 then '00:01'::time end)"#)
-        .bind(Uuid::now_v7()).bind(provider).bind(model).bind(input).bind(from)
-        .bind(priority).bind(enabled).bind(window).execute(store.pool()).await.unwrap();
+        .bind(Uuid::now_v7())
+        .bind(rule.provider_code)
+        .bind(rule.upstream_model_id)
+        .bind(rule.input_token_unit_price)
+        .bind(rule.effective_from)
+        .bind(rule.priority)
+        .bind(rule.enabled)
+        .bind(rule.local_time_window)
+        .execute(store.pool()).await.unwrap();
 }
 fn usage_event(id: &str, model: &str) -> AgentLogEvent {
     let mut e = event(id, 10, AgentLogEventKind::Usage, None);
@@ -66,68 +74,80 @@ async fn agent_logs_model_id_only_uses_stable_first_match_without_changing_nativ
     let (store, scope, app) = setup().await;
     price(
         &store,
-        "z-client-provider",
-        "priced-model",
-        "99",
-        100,
-        true,
-        "2026-01-01",
-        false,
+        PricingRuleFixture {
+            provider_code: "z-client-provider",
+            upstream_model_id: "priced-model",
+            input_token_unit_price: "99",
+            priority: 100,
+            enabled: true,
+            effective_from: "2026-01-01",
+            local_time_window: false,
+        },
     )
     .await;
     price(
         &store,
-        "a-first",
-        "priced-model",
-        "1.25",
-        1,
-        true,
-        "2026-01-01",
-        false,
+        PricingRuleFixture {
+            provider_code: "a-first",
+            upstream_model_id: "priced-model",
+            input_token_unit_price: "1.25",
+            priority: 1,
+            enabled: true,
+            effective_from: "2026-01-01",
+            local_time_window: false,
+        },
     )
     .await;
     price(
         &store,
-        "a-first",
-        "priced-model",
-        "999",
-        9,
-        true,
-        "2026-01-01",
-        true,
+        PricingRuleFixture {
+            provider_code: "a-first",
+            upstream_model_id: "priced-model",
+            input_token_unit_price: "999",
+            priority: 9,
+            enabled: true,
+            effective_from: "2026-01-01",
+            local_time_window: true,
+        },
     )
     .await;
     price(
         &store,
-        "0-disabled",
-        "priced-model",
-        "999",
-        1,
-        false,
-        "2026-01-01",
-        false,
+        PricingRuleFixture {
+            provider_code: "0-disabled",
+            upstream_model_id: "priced-model",
+            input_token_unit_price: "999",
+            priority: 1,
+            enabled: false,
+            effective_from: "2026-01-01",
+            local_time_window: false,
+        },
     )
     .await;
     price(
         &store,
-        "0-future",
-        "priced-model",
-        "999",
-        1,
-        true,
-        "2027-01-01",
-        false,
+        PricingRuleFixture {
+            provider_code: "0-future",
+            upstream_model_id: "priced-model",
+            input_token_unit_price: "999",
+            priority: 1,
+            enabled: true,
+            effective_from: "2027-01-01",
+            local_time_window: false,
+        },
     )
     .await;
     price(
         &store,
-        "0-prefix",
-        "priced-model-extra",
-        "999",
-        1,
-        true,
-        "2026-01-01",
-        false,
+        PricingRuleFixture {
+            provider_code: "0-prefix",
+            upstream_model_id: "priced-model-extra",
+            input_token_unit_price: "999",
+            priority: 1,
+            enabled: true,
+            effective_from: "2026-01-01",
+            local_time_window: false,
+        },
     )
     .await;
     let at = time::OffsetDateTime::parse(
@@ -190,13 +210,15 @@ async fn agent_logs_model_exact_missing_price_and_partial_usage_are_not_guessed(
     let (store, scope, app) = setup().await;
     price(
         &store,
-        "a",
-        "priced-model-extra",
-        "999",
-        1,
-        true,
-        "2026-01-01",
-        false,
+        PricingRuleFixture {
+            provider_code: "a",
+            upstream_model_id: "priced-model-extra",
+            input_token_unit_price: "999",
+            priority: 1,
+            enabled: true,
+            effective_from: "2026-01-01",
+            local_time_window: false,
+        },
     )
     .await;
     let service = AgentLogsService::new(store.clone());
@@ -213,13 +235,15 @@ async fn agent_logs_model_exact_missing_price_and_partial_usage_are_not_guessed(
     assert_cost(&store, app, unknown, "0").await;
     price(
         &store,
-        "a",
-        "priced-model",
-        "1.25",
-        1,
-        true,
-        "2026-01-01",
-        false,
+        PricingRuleFixture {
+            provider_code: "a",
+            upstream_model_id: "priced-model",
+            input_token_unit_price: "1.25",
+            priority: 1,
+            enabled: true,
+            effective_from: "2026-01-01",
+            local_time_window: false,
+        },
     )
     .await;
     let mut partial = usage_event("partial", "priced-model");
@@ -238,13 +262,15 @@ async fn agent_logs_reprice_changes_only_costs_is_idempotent_and_includes_later_
     let (store, scope, app) = setup().await;
     price(
         &store,
-        "a",
-        "priced-model",
-        "1.25",
-        1,
-        true,
-        "2026-01-01",
-        false,
+        PricingRuleFixture {
+            provider_code: "a",
+            upstream_model_id: "priced-model",
+            input_token_unit_price: "1.25",
+            priority: 1,
+            enabled: true,
+            effective_from: "2026-01-01",
+            local_time_window: false,
+        },
     )
     .await;
     let mut final_event = event(

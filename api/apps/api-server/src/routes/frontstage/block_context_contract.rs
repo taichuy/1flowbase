@@ -231,8 +231,8 @@ pub(crate) fn decode_block_context_contract(
     if contract.block_sdk_version != BLOCK_SDK_VERSION {
         bail!("BlockContext contract and Block SDK versions differ");
     }
-    if contract.entries.len() != 17 {
-        bail!("BlockContext contract must expose exactly 17 top-level entries");
+    if contract.entries.len() != 18 {
+        bail!("BlockContext contract must expose exactly 18 top-level entries");
     }
     validate_named_items(
         contract.entries.iter().map(|entry| entry.key.as_str()),

@@ -22,14 +22,16 @@ function inspectClient(surface, records, success) {
       ? events.filter((event) => event.type === 'message_stop').length
       : records.filter((record) => record.done).length;
   const failureCount = events.filter((event) => event.type === 'response.failed' || event.type === 'error' || (event.error && !event.type)).length;
-  if (success ? (successCount !== 1 || failureCount !== 0 || messages.length !== 0) : (successCount !== 0 || failureCount !== 1 || messages.length !== 1)) {
+  const responseErrors = events.filter((event) => event.type === 'response.failed' && Object.hasOwn(event.response ?? {}, 'error')).map((event) => event.response.error);
+  const validErrorProjection = surface.startsWith('responses-') ? responseErrors.length === 1 && messages.length <= 1 : messages.length === 1;
+  if (success ? (successCount !== 1 || failureCount !== 0 || messages.length !== 0) : (successCount !== 0 || failureCount !== 1 || !validErrorProjection)) {
     throw new Error(`${surface}: terminal/error cardinality mismatch (${successCount} success, ${failureCount} failure, ${messages.length} messages)`);
   }
-  return { messages, errors: events.filter((event) => event.type === 'error'), success_count: successCount, failure_count: failureCount, event_types: events.map((event) => event.type ?? event.object ?? 'error') };
+  return { messages, response_errors: responseErrors, errors: events.filter((event) => event.type === 'error'), success_count: successCount, failure_count: failureCount, event_types: events.map((event) => event.type ?? event.object ?? 'error') };
 }
 
 async function observeClient(surface, target, fixture, traceId, retryKey) {
-  const input = errorFixtureMarker(fixture.id);
+  const input = `${errorFixtureMarker(fixture.id)}${fixture.id === 'retry' ? `:${retryKey}` : ''}`;
   const common = { model: target.model, stream: true, metadata: { trace_id: traceId }, fixture_retry_key: retryKey };
   if (surface === 'responses-websocket') {
     const { collectGatewayFrames } = require('../workflow-contract/gateway-websocket');
@@ -102,19 +104,17 @@ async function runGatewayErrorMatrix({ ready, mockSnapshot }, dependencies = {})
           const arrivals = upstream.filter((entry) => entry.event === 'arrival');
           row.attempts.push({ attempt, http_status: observed.http_status, client: projection, ...persisted, upstream_nonce: arrivals[0]?.nonce ?? null });
           const providerAttempts = persisted.durable.error_payload?.ai_native_recovery?.provider_attempts_consumed;
-          // The mock WebSocket rejects every retry marker. Its HTTP fallback fails
-          // on the first client turn and succeeds on the second, so both turns
-          // consume one WebSocket and one HTTP request. Only failed runs persist
-          // the recovery receipt.
+          // Semantic WebSocket errors are terminal. A second independent client
+          // invocation exercises the fixture's recovery without an HTTP fallback.
           const expectedArrivals = surface === 'responses-websocket'
-            ? (Number.isInteger(providerAttempts) ? providerAttempts : fixture.id === 'retry' && success ? 2 : 1)
+            ? (Number.isInteger(providerAttempts) ? providerAttempts : 1)
             : 1;
           if (arrivals.length !== expectedArrivals) {
             throw new Error(`error matrix observed ${arrivals.length} controlled upstream requests, expected ${expectedArrivals} from the provider recovery receipt`);
           }
-          if (surface === 'responses-websocket' && fixture.id === 'retry' && success
-            && (arrivals[0]?.transport !== 'responses-websocket' || arrivals[1]?.transport !== 'responses-sse')) {
-            throw new Error('retry recovery must use one WebSocket attempt followed by one HTTP fallback');
+          if (surface === 'responses-websocket' && fixture.id === 'retry'
+            && (arrivals.length !== 1 || arrivals[0]?.transport !== 'responses-websocket')) {
+            throw new Error('semantic retry fixture must use one WebSocket attempt per independent invocation');
           }
           if (persisted.native.status !== (success ? 'succeeded' : 'failed')) throw new Error('error matrix wrong durable outcome');
           if (!success) {
@@ -126,6 +126,9 @@ async function runGatewayErrorMatrix({ ready, mockSnapshot }, dependencies = {})
               nativeError: persisted.native.error,
               durableErrorPayload: persisted.durable.error_payload,
               clientErrors: projection.errors,
+              clientResponseErrors: projection.response_errors,
+              surface,
+              upstreamNonce: arrivals[0]?.nonce,
             });
           }
           if (success && (persisted.native.error !== null || persisted.durable.error_payload !== null)) throw new Error('retry success retained an error');

@@ -4,11 +4,11 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 
 const { SCENARIO, mockScenarioSentinel } = require('../contracts');
-const { HTTP_500_ERROR_BODY } = require('../mock-upstream');
 const { decodeGatewayFrames } = require('../responses-websocket-acceptance/decoder');
 const { queryDurableRun } = require('../responses-websocket-acceptance/durable');
 const { createGatewayTarget } = require('../responses-websocket-acceptance/target');
 const { createWireAudit } = require('../responses-websocket-acceptance/wire-audit');
+const WEBSOCKET_ERROR_MESSAGE = 'mock HTTP 500 equivalent';
 
 function clientFrame(payload, opcode = 0x1) {
   const body = Buffer.from(payload);
@@ -171,11 +171,11 @@ async function runGatewayWebSocketAcceptance({ ready, mockSnapshot }, dependenci
   if (errorTrace.terminal_type !== 'response.failed') {
     throw new Error(`expected Gateway response.failed, received ${errorTrace.terminal_type}`);
   }
-  if (errorTrace.error_message !== HTTP_500_ERROR_BODY) {
-    throw new Error('Responses WebSocket public error.message did not preserve the upstream response body');
+  if (errorTrace.error_message !== WEBSOCKET_ERROR_MESSAGE) {
+    throw new Error('Responses WebSocket public error.message did not preserve the upstream WebSocket error message');
   }
-  if (errorDurable.run.error_message !== HTTP_500_ERROR_BODY) {
-    throw new Error('Responses WebSocket durable error.message did not preserve the upstream response body');
+  if (errorDurable.run.error_message !== WEBSOCKET_ERROR_MESSAGE) {
+    throw new Error('Responses WebSocket durable error.message did not preserve the upstream WebSocket error message');
   }
   return {
     trace,
@@ -184,7 +184,7 @@ async function runGatewayWebSocketAcceptance({ ready, mockSnapshot }, dependenci
     error_fidelity: {
       trace: errorTrace,
       durable: errorDurable,
-      expected_message: HTTP_500_ERROR_BODY,
+      expected_message: WEBSOCKET_ERROR_MESSAGE,
     },
   };
 }

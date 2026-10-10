@@ -60,6 +60,13 @@ const rolesApi = vi.hoisted(() => ({
   replaceSettingsRolePermissions: vi.fn()
 }));
 
+const departmentsApi = vi.hoisted(() => ({
+  fetchSettingsDepartmentAccess: vi.fn(),
+  fetchSettingsDepartments: vi.fn(),
+  fetchSettingsMemberRoleOptions: vi.fn(),
+  replaceSettingsMemberDepartments: vi.fn()
+}));
+
 const permissionsApi = vi.hoisted(() => ({
   settingsPermissionsQueryKey: ['settings', 'permissions'],
   fetchSettingsPermissions: vi.fn()
@@ -388,6 +395,11 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
     resetConsoleMemberPassword: membersApi.resetSettingsMemberPassword,
     changeConsolePassword: membersApi.changeCurrentUserPassword,
     replaceConsoleMemberRoles: membersApi.replaceSettingsMemberRoles,
+    getConsoleDepartmentAccess: departmentsApi.fetchSettingsDepartmentAccess,
+    listConsoleDepartments: departmentsApi.fetchSettingsDepartments,
+    listConsoleMemberRoleOptions: departmentsApi.fetchSettingsMemberRoleOptions,
+    replaceConsoleMemberDepartments:
+      departmentsApi.replaceSettingsMemberDepartments,
     listConsoleRoles: rolesApi.fetchSettingsRoles,
     fetchConsoleRolePermissions: rolesApi.fetchSettingsRolePermissions,
     createConsoleRole: rolesApi.createSettingsRole,
@@ -476,6 +488,10 @@ function renderApp(pathname: string) {
 
 describe('SettingsPage', () => {
   beforeEach(() => {
+    departmentsApi.fetchSettingsDepartmentAccess.mockReset();
+    departmentsApi.fetchSettingsDepartments.mockReset();
+    departmentsApi.fetchSettingsMemberRoleOptions.mockReset();
+    departmentsApi.replaceSettingsMemberDepartments.mockReset();
     echartsMock.init.mockReturnValue(echartsMock.chart);
     resetAuthStore();
     useBreakpointSpy.mockReturnValue({
@@ -938,19 +954,30 @@ describe('SettingsPage', () => {
 
   test('allows root safe member edits while keeping destructive actions locked', async () => {
     authenticateWithPermissions(['user.view.all', 'user.manage.all'], 'root');
-    rolesApi.fetchSettingsRoles.mockResolvedValue([
-      {
-        code: 'operator',
-        name: 'Operator',
-        introduction: 'operator role',
-        scope_kind: 'workspace',
-        is_builtin: false,
-        is_editable: true,
-        auto_grant_new_permissions: false,
-        is_default_member_role: false,
-        permission_codes: []
-      }
+    // OrganizationAccess is backend-owned; a real root actor has these grants.
+    departmentsApi.fetchSettingsDepartmentAccess.mockResolvedValue({
+      can_list: true,
+      can_create: true,
+      can_update: true,
+      can_delete: true,
+      can_assign_roles: true,
+      can_replace_member_departments: true
+    });
+    departmentsApi.fetchSettingsDepartments.mockResolvedValue({
+      items: [],
+      has_more: false,
+      next_cursor: null
+    });
+    departmentsApi.fetchSettingsMemberRoleOptions.mockResolvedValue([
+      { code: 'operator', name: 'Operator' }
     ]);
+    departmentsApi.replaceSettingsMemberDepartments.mockResolvedValue(
+      undefined
+    );
+    departmentsApi.replaceSettingsMemberDepartments.mockClear();
+    membersApi.updateSettingsMember.mockClear();
+    membersApi.replaceSettingsMemberRoles.mockClear();
+    membersApi.changeCurrentUserPassword.mockClear();
     membersApi.updateSettingsMember.mockResolvedValue({
       id: 'user-1',
       account: 'root',
@@ -963,7 +990,9 @@ describe('SettingsPage', () => {
       email_login_enabled: true,
       phone_login_enabled: false,
       status: 'active',
-      role_codes: ['root']
+      role_codes: ['root'],
+      department_ids: [],
+      primary_department_id: null
     });
     membersApi.replaceSettingsMemberRoles.mockResolvedValue(undefined);
     membersApi.changeCurrentUserPassword.mockResolvedValue(undefined);
@@ -980,7 +1009,9 @@ describe('SettingsPage', () => {
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'active',
-        role_codes: ['root']
+        role_codes: ['root'],
+        department_ids: [],
+        primary_department_id: null
       },
       {
         id: 'manager-1',
@@ -994,7 +1025,9 @@ describe('SettingsPage', () => {
         email_login_enabled: true,
         phone_login_enabled: false,
         status: 'active',
-        role_codes: ['member']
+        role_codes: ['member'],
+        department_ids: [],
+        primary_department_id: null
       }
     ]);
 
@@ -1064,7 +1097,7 @@ describe('SettingsPage', () => {
       target: { value: 'updated root profile' }
     });
     expect(
-      within(profileDialog).getByRole('combobox', { name: '角色' })
+      await within(profileDialog).findByRole('combobox', { name: '直接角色' })
     ).toBeInTheDocument();
     fireEvent.click(
       within(profileDialog).getByRole('button', { name: /保\s*存/ })
@@ -1088,13 +1121,24 @@ describe('SettingsPage', () => {
         { role_codes: ['root'] },
         'csrf-123'
       );
+      expect(
+        departmentsApi.replaceSettingsMemberDepartments
+      ).toHaveBeenCalledWith(
+        'user-1',
+        { department_ids: [], primary_department_id: null },
+        'csrf-123'
+      );
       expect(profileDialog).not.toBeInTheDocument();
     });
 
     fireEvent.click(within(rootRow).getByRole('button', { name: /重置密码$/ }));
-    const passwordDialog = await screen.findByRole('dialog', {
-      name: /重置密码/
-    });
+    const currentPasswordInput = await screen.findByLabelText('当前密码');
+    const passwordDialog =
+      currentPasswordInput.closest<HTMLElement>('[role="dialog"]');
+    if (!passwordDialog)
+      throw new Error('Password field is not inside a dialog');
+    expect(within(passwordDialog).getByText('重置密码')).toBeVisible();
+    expect(passwordDialog).toHaveAttribute('aria-modal', 'true');
     fireEvent.change(within(passwordDialog).getByLabelText('当前密码'), {
       target: { value: 'change-me' }
     });
@@ -1115,6 +1159,11 @@ describe('SettingsPage', () => {
         },
         'csrf-123'
       );
+    });
+    await waitFor(() => {
+      expect(passwordDialog).not.toBeInTheDocument();
+      expect(window.location.pathname).toBe('/sign-in');
+      expect(useAuthStore.getState().sessionStatus).toBe('anonymous');
     });
   }, 20_000);
 

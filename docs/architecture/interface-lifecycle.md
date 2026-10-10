@@ -94,6 +94,10 @@ SQL 节点当前字段为 `bindings.sql`。已有保存流程仍可能携带 `co
 
 动态 i18n key 继续由 hygiene warning 暴露：BlockStudioWorkspace 的 section.labelKey、菜单 label_key 和网络健康后缀由配置/后端字段消费；保留资源与真实 renderer owner。不存在消费者的旧分组文案可删除，不能为消除 warning 改写仍使用的文案。
 
+### BlockContext 描述与 Host 实现
+
+`api-server/resources/ctx/block-context.v1.json` 是供页面编写与 MCP discovery 消费的 Host ABI 描述；接口返回成员的类型与说明，不执行这些成员。前端 Block SDK 定义 `BlockContext`，Host facade 提供实际能力。`i18n` 描述包含 `locale`、`status` 和 `t`，语言状态与翻译 fallback 由前端 Host 提供；后端描述、SDK 类型和真实 facade 的一致性由 contract parity 测试检查。
+
 ### 内部持久化身份与门禁
 
 调用及日志内部记录沿用真实 owner，不为满足通用业务表模板制造独立业务身份：删除工作集/停止事实归删除 job，上传回执归 application/source/event，原生消息投影进度归 flow run。组织树与成员/角色绑定沿用 workspace 与关系键。授权仍由业务 owner 决定，存储层外键、主键和对应查找索引保证引用与访问路径。

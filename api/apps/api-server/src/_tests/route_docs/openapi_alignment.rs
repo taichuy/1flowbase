@@ -230,7 +230,7 @@ async fn openapi_self_describes_application_catalog_trigger_and_publication_cont
     // AC-001: closed enums and route summaries are available without reading frontend code.
     assert_eq!(
         openapi["components"]["schemas"]["ApplicationTypeDto"]["enum"],
-        json!(["agent_flow", "workflow"])
+        json!(["agent_logs", "agent_flow", "workflow"])
     );
     assert_eq!(
         openapi["components"]["schemas"]["WorkflowTriggerTypeDto"]["enum"],

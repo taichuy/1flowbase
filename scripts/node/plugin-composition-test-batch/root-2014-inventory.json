@@ -944,8 +944,21 @@
     "ws.console.assistant.runs.command.v1"
   ],
   "approvedAddedDefinitions": [
+    "application.logs.events.ingest",
+    "applications.logs.delete",
+    "applications.logs.delete.jobs.create",
+    "applications.logs.delete.jobs.get",
+    "applications.logs.delete.jobs.latest",
+    "applications.logs.delete.jobs.stop",
+    "applications.logs.delete.preview",
     "applications.runtime.client-trajectory.list",
     "applications.runtime.client-trajectory.section.get",
+    "applications.runtime.record.client-trajectory.list",
+    "applications.runtime.record.client-trajectory.query",
+    "applications.runtime.record.client-trajectory.section.get",
+    "applications.runtime.record.get",
+    "applications.runtime.records.query",
+    "applications.runtime.records.query-fields",
     "applications.runtime.run.payload.get",
     "applications.runtime.run.trajectory.list",
     "applications.runtime.trajectory.body.get",
@@ -953,8 +966,15 @@
     "applications.runtime.workflow-trajectory.body.get",
     "applications.runtime.workflow-trajectory.list",
     "billing.pricing_catalog.sync",
+    "console.departments.access",
+    "departments.create",
+    "departments.delete",
+    "departments.list",
+    "departments.update",
+    "members.departments.replace",
     "network_egress_proxies.get",
     "network_egress_proxies.update",
+    "public.client-collectors.asset.download",
     "system.runtime_process.terminate",
     "system.runtime_processes.view",
     "system_backups.catalog",
@@ -966,16 +986,35 @@
     "ui_management.templates.delete"
   ],
   "approvedAddedBindings": [
+    "http.application.logs.events.ingest.v1",
+    "http.console.applications.logs.delete.jobs.create.v1",
+    "http.console.applications.logs.delete.jobs.get.v1",
+    "http.console.applications.logs.delete.jobs.latest.v1",
+    "http.console.applications.logs.delete.jobs.stop.v1",
+    "http.console.applications.logs.delete.preview.v1",
+    "http.console.applications.logs.delete.v1",
     "http.console.applications.runtime.client-trajectory.list.v1",
     "http.console.applications.runtime.client-trajectory.section.get.v1",
+    "http.console.applications.runtime.record.client-trajectory.list.v1",
+    "http.console.applications.runtime.record.client-trajectory.query.v1",
+    "http.console.applications.runtime.record.client-trajectory.section.get.v1",
+    "http.console.applications.runtime.record.get.v1",
+    "http.console.applications.runtime.records.query-fields.v1",
+    "http.console.applications.runtime.records.query.v1",
     "http.console.applications.runtime.run.payload.get.v1",
     "http.console.applications.runtime.run.trajectory.list.v1",
     "http.console.applications.runtime.trajectory.body.get.v1",
     "http.console.applications.runtime.trajectory.list.v1",
     "http.console.applications.runtime.workflow-trajectory.body.get.v1",
     "http.console.applications.runtime.workflow-trajectory.list.v1",
+    "http.console.departments.access.v1",
+    "http.console.departments.create.v1",
+    "http.console.departments.delete.v1",
+    "http.console.departments.list.v1",
+    "http.console.departments.update.v1",
     "http.console.frontstage.blocks.code-replace.post.v1",
     "http.console.frontstage.blocks.code-search.get.v1",
+    "http.console.members.departments.replace.v1",
     "http.console.network-egress-proxies.get.v1",
     "http.console.network-egress-proxies.update.v1",
     "http.console.settings.billing.pricing-catalog.sync.v1",
@@ -987,7 +1026,8 @@
     "http.console.system.runtime-processes.get.v1",
     "http.console.system.runtime-profile.process-terminate.post.v1",
     "http.console.ui-management.plugin-settings-page.get.v1",
-    "http.console.ui-management.templates.delete.delete.v1"
+    "http.console.ui-management.templates.delete.delete.v1",
+    "http.public.client-collectors.assets.v1"
   ],
   "approvedRemovedDefinitions": [
     "ui_management.templates.archive"
@@ -995,5 +1035,5 @@
   "approvedRemovedBindings": [
     "http.console.ui-management.templates.archive.put.v1"
   ],
-  "evidence": "E00 frozen input; no second export. Candidate equality applies source-proven additions and the archive-to-delete replacement as explicit deltas."
+  "evidence": "E00 frozen input; no second export. Candidate equality applies source-proven additions and the archive-to-delete replacement as explicit deltas. Current approved increment: 20 definitions and 20 bindings from organization declarations, shared log runtime-read declarations, log deletion declarations, application agent-log ingestion, and public collector-asset declarations. Managed contracts add 13 unique identities: organization 2, ingestion 3, collector assets 3, deletion 2, deletion jobs 2, preview output 1; preview shares deletion input and Console families share the existing target error."
 }

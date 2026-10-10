@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes() {
+async fn create_and_group_metadata_reject_mismatch_while_move_inherits_sidebar_placement() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let _workspace_id = current_workspace_id(&app, &cookie).await;
@@ -50,6 +50,10 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     .await;
     assert_eq!(page_status, StatusCode::CREATED);
     let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
+    let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
+    let document_root_uid = page_payload["data"]["default_tab"]["document_root_uid"]
+        .as_str()
+        .unwrap();
 
     let (move_status, move_payload) = send_json(
         &app,
@@ -60,10 +64,27 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
         json!({"parent_id": group_id, "rank": "b"}),
     )
     .await;
-    assert_eq!(move_status, StatusCode::BAD_REQUEST);
-    assert_eq!(move_payload["code"], "frontstage_page_placement_mismatch");
+    assert_eq!(move_status, StatusCode::OK);
+    assert_eq!(move_payload["data"]["id"], json!(page_id));
+    assert_eq!(move_payload["data"]["parent_id"], json!(group_id));
+    assert_eq!(move_payload["data"]["placement"], "sidebar");
+    assert_eq!(move_payload["data"]["rank"], "b");
+    assert_eq!(move_payload["data"]["slug"], Value::Null);
 
-    let (valid_child_status, _) = send_json(
+    let (detail_status, detail_payload) = get_json(
+        &app,
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(detail_status, StatusCode::OK);
+    assert_eq!(detail_payload["data"]["page"]["id"], json!(page_id));
+    assert_eq!(
+        detail_payload["data"]["document"]["root_uid"],
+        json!(document_root_uid)
+    );
+
+    let (valid_child_status, valid_child_payload) = send_json(
         &app,
         "POST",
         "/api/console/frontstage/pages",
@@ -78,6 +99,21 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     )
     .await;
     assert_eq!(valid_child_status, StatusCode::CREATED);
+    let child_id = valid_child_payload["data"]["page"]["id"].as_str().unwrap();
+    let (tree_status, tree_before) = get_json(&app, "/api/console/frontstage/pages", &cookie).await;
+    assert_eq!(tree_status, StatusCode::OK);
+    let roots = tree_before["data"].as_array().unwrap();
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0]["id"], json!(group_id));
+    assert_eq!(roots[0]["placement"], "sidebar");
+    let children = roots[0]["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    assert_eq!(children[0]["id"], json!(page_id));
+    assert_eq!(children[1]["id"], json!(child_id));
+    for child in children {
+        assert_eq!(child["parent_id"], json!(group_id));
+        assert_eq!(child["placement"], "sidebar");
+    }
 
     let (metadata_status, metadata_payload) = send_json(
         &app,
@@ -93,10 +129,13 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
         metadata_payload["code"],
         "frontstage_group_placement_requires_empty_group"
     );
+    let (tree_status, tree_after) = get_json(&app, "/api/console/frontstage/pages", &cookie).await;
+    assert_eq!(tree_status, StatusCode::OK);
+    assert_eq!(tree_after["data"], tree_before["data"]);
 }
 
 #[tokio::test]
-async fn group_under_group_is_allowed() {
+async fn group_under_group_is_allowed_but_move_under_descendant_is_atomic() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
@@ -105,7 +144,7 @@ async fn group_under_group_is_allowed() {
     assert_eq!(status, StatusCode::CREATED);
     let parent_id = payload["data"]["id"].as_str().unwrap();
 
-    let (nested_status, _) = send_json(
+    let (nested_status, nested_payload) = send_json(
         &app,
         "POST",
         "/api/console/frontstage/pages/groups",
@@ -120,6 +159,22 @@ async fn group_under_group_is_allowed() {
     .await;
 
     assert_eq!(nested_status, StatusCode::CREATED);
+    let nested_id = nested_payload["data"]["id"].as_str().unwrap();
+    let (tree_status, tree_before) = get_json(&app, "/api/console/frontstage/pages", &cookie).await;
+    assert_eq!(tree_status, StatusCode::OK);
+    let (move_status, _) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/pages/{parent_id}/move"),
+        &cookie,
+        &csrf,
+        json!({"parent_id": nested_id, "rank": "c"}),
+    )
+    .await;
+    assert_eq!(move_status, StatusCode::BAD_REQUEST);
+    let (tree_status, tree_after) = get_json(&app, "/api/console/frontstage/pages", &cookie).await;
+    assert_eq!(tree_status, StatusCode::OK);
+    assert_eq!(tree_after["data"], tree_before["data"]);
 }
 
 #[tokio::test]
@@ -154,6 +209,34 @@ async fn cross_workspace_parent_is_rejected() {
     .await;
 
     assert_eq!(page_status, StatusCode::BAD_REQUEST);
+
+    let (page_status, page_payload) = create_page(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        Some("Local page"),
+        None,
+        "a",
+    )
+    .await;
+    assert_eq!(page_status, StatusCode::CREATED);
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
+    let (tree_status, tree_before) = get_json(&app, "/api/console/frontstage/pages", &cookie).await;
+    assert_eq!(tree_status, StatusCode::OK);
+    let (move_status, _) = send_json(
+        &app,
+        "POST",
+        &format!("/api/console/frontstage/pages/{page_id}/move"),
+        &cookie,
+        &csrf,
+        json!({"parent_id": other_group_id, "rank": "b"}),
+    )
+    .await;
+    assert_eq!(move_status, StatusCode::BAD_REQUEST);
+    let (tree_status, tree_after) = get_json(&app, "/api/console/frontstage/pages", &cookie).await;
+    assert_eq!(tree_status, StatusCode::OK);
+    assert_eq!(tree_after["data"], tree_before["data"]);
 }
 
 #[tokio::test]

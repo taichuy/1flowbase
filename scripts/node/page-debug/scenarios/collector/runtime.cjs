@@ -74,6 +74,10 @@ async function run(cmd,args,name,env) {
   for(const port of [7801,3102,dbPort]) assert.equal(execFileSync('ss',['-H','-ltn','sport','=',':'+port],{encoding:'utf8'}).trim(),'');
   const {createRemoteFixture}=await import(pathToFileURL(path.join(__dirname,'remote-fixture.mjs')));
   remote=await createRemoteFixture({pluginsRoot,directory:path.join(out,'private/remote'),nativeBinary});
+  const expectedVersion=remote.manifest.version;
+  assert.match(expectedVersion,/^\d+\.\d+\.\d+$/,'pinned source collector version required');
+  receipt.collector_version=expectedVersion;
+  assert.equal(execFileSync(nativeBinary,['--version'],{encoding:'utf8'}).trim(),`${remote.manifest.entry} ${expectedVersion}`,'native binary must match pinned source manifest');
   const bootstrapExample=parseEnvFile(path.join(root,'api/apps/api-server/.env.example'));
   assert.ok(bootstrapExample.BOOTSTRAP_WORKSPACE_NAME,'tracked bootstrap workspace example required');
   const env={...process.env,...parseEnvFile(process.env.COLLECTOR_API_ENV_FILE || path.join(root,'api/apps/api-server/.env')),
@@ -136,11 +140,11 @@ async function run(cmd,args,name,env) {
   const app=await request('POST','/api/console/applications',{application_type:'agent_logs',name:'Platform collector proof',description:'proof owned',icon:null,icon_type:null,icon_background:null});assert.equal(app.status,201);
   const applicationId=app.body.data.id;receipt.application_id=applicationId;
   // Real browser mutation installs package. Desktop installs, mobile reads retained state.
-  await run(process.execPath,['scripts/node/page-debug/scenarios/collector.cjs'],'browser',{...env,COLLECTOR_WEB_BASE_URL:web,COLLECTOR_API_BASE_URL:base,COLLECTOR_APPLICATION_ID:applicationId,COLLECTOR_EVIDENCE_DIR:path.join(out,'browser'),COLLECTOR_EXPECTED_ENDPOINT:web+'/api/logs/v1/events'});
+  await run(process.execPath,['scripts/node/page-debug/scenarios/collector.cjs'],'browser',{...env,COLLECTOR_WEB_BASE_URL:web,COLLECTOR_API_BASE_URL:base,COLLECTOR_APPLICATION_ID:applicationId,COLLECTOR_EVIDENCE_DIR:path.join(out,'browser'),COLLECTOR_EXPECTED_ENDPOINT:web+'/api/logs/v1/events',COLLECTOR_EXPECTED_VERSION:expectedVersion});
   const after=await request('GET','/api/console/applications/catalog');assert.equal(after.status,200);
   const installed=after.body.data.collectors.find(item=>item.catalog_id===pending.catalog_id);
-  assert.equal(installed.installation_status,'installed');assert.equal(installed.installed_version,'0.1.0');assert.ok(installed.extension_installation_id);
-  const installInput={category:installed.category,catalog_id:installed.catalog_id,version:installed.installed_version};
+  assert.equal(installed.installation_status,'installed');assert.equal(installed.installed_version,expectedVersion);assert.ok(installed.extension_installation_id);
+  const installInput={category:installed.category,catalog_id:installed.catalog_id,version:expectedVersion};
   const runtimeRows=dock(['exec',container,'psql','-U','postgres','-d','collector_proof','-Atc',"SELECT COUNT(*) FROM extension_installations WHERE id = '"+installed.extension_installation_id+"' AND plugin_id IS NULL AND contract_version IS NULL AND protocol IS NULL AND application_action = 'none'"]);assert.equal(runtimeRows,'1');
   for(const table of ['plugin_assignments','plugin_worker_leases','plugin_tasks'])assert.equal(dock(['exec',container,'psql','-U','postgres','-d','collector_proof','-Atc',"SELECT COUNT(*) FROM "+table+" WHERE installation_id = '"+installed.extension_installation_id+"'"]),'0');
   remote.disable();const remoteCount=remote.requests.length;
@@ -150,17 +154,24 @@ async function run(cmd,args,name,env) {
   for(const asset of remote.manifest.assets){
     const response=await fetch(base+installed.asset_base_url+'/'+asset.name,{redirect:'error'});assert.equal(response.status,200);assert.equal(response.headers.get('location'),null);
     const bytes=Buffer.from(await response.arrayBuffer());assert.equal(bytes.length,asset.size);assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),asset.sha256);
+    if(asset.name==='release.json'){
+      const release=JSON.parse(bytes.toString('utf8'));
+      assert.equal(release.version,expectedVersion);assert.equal(release.source_sha,receipt.plugins_sha);assert.equal(release.collector_code,remote.manifest.collector_code);
+    }
     assetReceipt.push({name:asset.name,bytes:bytes.length,sha256:asset.sha256});
   }
   assert.equal(remote.requests.length,remoteCount,'asset serving and existing install must not contact remote source');
   for(const suffix of ['/not-whitelisted','/%2e%2e%2fsecret','/%2fetc%2fpasswd']){
     const response=await fetch(base+installed.asset_base_url+suffix);assert.ok(response.status>=400);
   }
-  for(const route of [installed.asset_base_url.replace('/0.1.0/','/9.9.9/')+'/install.sh',installed.asset_base_url.replace('/taichuy/','/other/')+'/install.sh'])assert.ok((await fetch(base+route)).status>=400);
+  const versionPath=`/${expectedVersion}/`,ownerPath=`/${remote.manifest.organization}/`;
+  assert.ok(installed.asset_base_url.includes(versionPath));assert.ok(installed.asset_base_url.includes(ownerPath));
+  const unavailableVersion=expectedVersion==='9.9.9'?'9.9.8':'9.9.9',foreignOwner=remote.manifest.organization==='other'?'foreign':'other';
+  for(const route of [installed.asset_base_url.replace(versionPath,`/${unavailableVersion}/`)+'/install.sh',installed.asset_base_url.replace(ownerPath,`/${foreignOwner}/`)+'/install.sh'])assert.ok((await fetch(base+route)).status>=400);
   const installer=await fetch(base+installed.shell_installer_url);assert.equal(installer.status,200);
   const localScript=path.join(out,'private/install.sh');fs.writeFileSync(localScript,await installer.text());
-  await run('bash',[localScript,'--endpoint',base+'/api/logs/v1/events','--release-base',base+installed.asset_base_url,'--installation-id',applicationId,'--install-dir',path.join(out,'private/client'),'--source',path.join(out,'private/codex'),'--no-start'],'local-cli-install',{...env,FLOWBASE_AGENT_LOGS_API_KEY:'proof-only-key'});
-  assert.match(execFileSync(path.join(out,'private/client/bin/codex-logs-collector'),['--version'],{encoding:'utf8'}),/0\.1\.0/);
+  await run('bash',[localScript,'--endpoint',base+'/api/logs/v1/events','--version',expectedVersion,'--release-base',base+installed.asset_base_url,'--installation-id',applicationId,'--install-dir',path.join(out,'private/client'),'--source',path.join(out,'private/codex'),'--no-start'],'local-cli-install',{...env,FLOWBASE_AGENT_LOGS_API_KEY:'proof-only-key'});
+  assert.equal(execFileSync(path.join(out,'private/client/bin/codex-logs-collector'),['--version'],{encoding:'utf8'}).trim(),`${remote.manifest.entry} ${expectedVersion}`);
   assert.equal(remote.requests.length,remoteCount,'terminal installation must not contact remote');
   // Clear process catalog caches: retained DB/package still owns offline metadata.
   await owner.dispose(); owner=null;
@@ -170,7 +181,7 @@ async function run(cmd,args,name,env) {
   owner=await openTemporaryOwnerSession({apiBaseUrl:base,account:env.BOOTSTRAP_ROOT_ACCOUNT,password});
   const offlineCatalog=await request('GET','/api/console/applications/catalog');assert.equal(offlineCatalog.status,200);
   const retained=offlineCatalog.body.data.collectors.find(entry=>entry.catalog_id===installed.catalog_id);
-  assert.equal(retained.installation_status,'installed');assert.equal(retained.installed_version,'0.1.0');
+  assert.equal(retained.installation_status,'installed');assert.equal(retained.installed_version,expectedVersion);
   const restartedRemoteCount=remote.requests.length;
   assert.equal((await fetch(base+retained.shell_installer_url)).status,200);
   assert.equal(remote.requests.length,restartedRemoteCount);
