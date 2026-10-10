@@ -1,5 +1,7 @@
 # Runtime Extension Backend 演进边界
 
+[English](runtime-extension-backend-evolution.en.md)
+
 ## 当前事实
 
 开源版只有一个 Backend 容器和一个 `api-server` 主进程。`api-server` 是
@@ -8,8 +10,8 @@ Provider、DataSource、Capability、Network Egress Registry，Worker 进程、f
 stdio、Runtime Profile 与生命周期状态。
 
 Control Plane 与 Orchestration 不得创建具体 Host。Orchestration 先完成 target
-选择，再通过 `runtime-core` 拥有的 `RuntimeExecutionPort` 执行，通过
-`RuntimeObservationPort` 观察。API Backend 业务路径通过 typed
+选择；其 Runtime Backend 适配器只持有 `runtime-core` 拥有的 `RuntimeExecutionPort`。
+`RuntimeObservationPort` 提供宿主状态快照，不是编排执行适配器的依赖。API Backend 业务路径通过 typed
 `ProviderRuntimePort`、`DataSourceRuntimePort`、`CapabilityRuntimePort` 与
 `NetworkEgressRuntimePort` 使用对应能力，不读取具体 Registry。六个 Port 组合成
 `RuntimeBackend`，由 `RuntimeBackendSlot` 以
@@ -17,8 +19,10 @@ Control Plane 与 Orchestration 不得创建具体 Host。Orchestration 先完�
 
 ## 稳定 Port
 
-`RuntimeExecutionPort` 只接受强类型 `RuntimeExecutionRequest`，并提供：
+`RuntimeExecutionPort` 提供强类型执行和供应商分发操作：
 
+- `activate_provider_distribution_rule` / `deactivate_provider_distribution_rule`：激活或停用分发规则插件；
+- `select_provider_distribution`：接收 typed 分发请求并返回选择回执，业务路由策略仍归调用方；
 - `execute`：一次请求、一次终态结果；
 - `execute_stream`：同一请求的 required 与 diagnostic 事件流；
 - `cancel`：按 `request_id` 取消 Host 管理的活跃任务。
@@ -46,11 +50,11 @@ worker incarnation 分配严格递增的 `call_id`，关联该进程内的消息
 
 ```text
 Discover -> Validate -> Compile Graph -> Select Backend
--> Reconcile Packages -> Activate Workers -> Ready
+-> Reconcile Packages -> Ready
 -> Execute -> Drain -> Stop
 ```
 
-Host 在 `Starting` 完成 package reconcile 后进入 `Ready`。`Draining` 拒绝新请求并
+Host 在 `Starting` 完成 package reconcile 后进入 `Ready`。Ready 不表示所有插件子进程均已启动或常驻。`Draining` 拒绝新请求并
 取消仍由 Host 管理的活跃任务；`Stop` 依次停止各 Registry 的 Worker，最终进入
 `Stopped`。启动、执行、取消或停止失败必须映射为稳定的
 `RuntimeBackendError` 分类，不得伪造成另一个远端服务不可达。
@@ -90,6 +94,14 @@ Host 不承担 Provider Routing、权限、事务、安装或签名决策。
 这些观测和估计不等于物理内存的硬保证；manifest memory_bytes 仍是独立的进程地址空间
 保护。六个共享官方供应商不再声明原先不适合共享并发的 256 MiB RLIMIT_AS。
 
+## 供应商 Worker 的按需与空闲回收
+
+供应商 worker 由 Host 按实际调用取得或启动；安装、可选状态与进程存活分别管理。Control Plane 通过带 revision 的 demand 更新表达插件是否可选，旧 revision 不覆盖新状态。Host 使用现有 Tokio `DelayQueue` 管理空闲截止时间；默认宽限为 90 秒，明确不可选的插件在满足空闲条件时不再等待该宽限。这是进程回收策略，不是会话数量或业务容量上限。
+
+到期时重新核对 incarnation 与 idle revision，再由 supervisor 准入/绑定状态判断是否可进入 quiesce。定时器不能推断 transport 已释放，不能退出仍承载有效调用或绑定的共享 worker；退出及清理沿原生命周期取得证据。通信分发、取消、通知和回收由 Host / SDK 统一承担，插件不各自维护同一套监督协议。
+
+实现入口：[执行 Port](../../api/crates/runtime-core/src/runtime_backend.rs)、[编排适配器](../../api/crates/orchestration-runtime/src/runtime_backend.rs)、[空闲调度](../../api/crates/runtime-extension-host/src/provider_host/idle_workers.rs)。
+
 ## 有限 Rust SDK
 
 `runtime-extension-sdk` 为 `runtime_host_call/v1` 提供 typed PluginData client、Host
@@ -101,7 +113,7 @@ Plane、Domain、数据库或 `api-server` 类型。TypeScript/Python SDK、通�
 
 ## 未来 Remote Adapter
 
-本阶段不实现远程协议、SDK 或集群。未来可信 `HostExtension` 可以贡献
+本阶段不实现远程协议、远程 SDK 或集群；上节有限本地 Rust SDK 已实现。未来可信 `HostExtension` 可以贡献
 `RemoteRuntimeClusterAdapter`，但它只能替换 composition root 中
 `RuntimeBackendSlot` 的唯一 binding。Control Plane、Orchestration 与业务路由不得
 因此修改。远程 Adapter 解析同一 `RuntimeArtifactReference`，不能要求业务路径传递

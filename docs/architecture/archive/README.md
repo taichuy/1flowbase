@@ -12,6 +12,7 @@
 | #1963 外部入口迁移 | [装配记录](1963/1963-external-interface-lifecycle-assembly-receipt.md) |
 | #2007 插件组合 | [历史测试入口与冻结库存](2007/plugin-composition-test-batch.md) |
 | #1998 生命周期补齐 | [认证入口disposition](1998/1998-authentication-entry-disposition.md)、[当时的fixture验收矩阵](1998/1998-interface-lifecycle-acceptance.md) |
+| #2228 Gateway 资源 | [阶段验收](2228/gateway-resource-acceptance.md)、[测量](2228/measurements.json)、[长时测量](2228/long-measurements.json)、[mock 测量](2228/mock-measurements.jsonl)；保留原候选身份和未验证项 |
 
 ## 合并记录
 

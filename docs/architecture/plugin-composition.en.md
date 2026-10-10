@@ -33,6 +33,8 @@ In the example, A contributes Create.before hooks and an owned collection. Its e
 
 The Create fact and Outbox targets commit in the business transaction. A's derived publication commits in a separate transaction. B/C effects and consumption receipts commit atomically through PluginData. Idempotency uses installation/workspace/contribution/event, not worker generation. This does not guarantee exactly-once external side effects. The in-process AfterCommit lane does not replace durable Outbox delivery.
 
+The legacy Create veto is adapter-specific; generic managed Before only observes. The [lifecycle permission table](plugin-lifecycle-contracts.en.md#managed-interface-phase-permissions) owns these rules; this example does not grant broader plugin authority.
+
 ## History, recovery and retirement
 
 Targets retain exact epoch, graph, handler/version, artifact and binding. Missing old epochs after restart pause conservatively; they never resolve to the current version. Re-granting or re-enabling does not automatically resume delivery. Resume requires event/subscriber IDs and the expected graph/handler/version, then revalidates exact identity and current authority. Retirement rejects current targets, live references and pending durable work. Unknown legacy history remains conservative and blocks unsafe recovery/deletion. Each claim has a fresh identity; a stale ACK cannot complete a newer claim.

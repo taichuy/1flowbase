@@ -2,7 +2,21 @@
 
 研究日期：2026-09-08。状态：架构研究稿，不是实现完成或运行验收声明。
 
-已确认方向：保留 HostExtension 与受管插件两种治理边界；供应商、节点、组件、Hook、事件等作为贡献类型，执行方式与激活作用域分别表达。可信原生 HostExtension 随宿主重启。本文研究如何把既有 Extension Bus 发展为统一治理、分通道执行的底座；具体 schema、协议及迁移尚未批准实施。
+已确认方向：保留 HostExtension 与受管插件两种治理边界；供应商、节点、组件、Hook、事件等作为贡献类型，执行方式与激活作用域分别表达。可信原生 HostExtension 随宿主重启。本文研究如何把既有 Extension Bus 发展为统一治理、分通道执行的底座；“具体 schema、协议及迁移尚未批准实施”是研究日期当时的状态，不代表后续实现。
+
+## 阅读状态（2026-10-10 核对）
+
+本文保留研究时的推导与候选，不作为当前产品契约。下文“当前”“本阶段”均指原研究上下文；当前实现从以下维护入口读取。
+
+| 研究主题 | 后续状态与当前入口 |
+| --- | --- |
+| typed graph、冻结快照、逐订阅者 Outbox 与权限 | 已有实现；边界见[生命周期契约](plugin-lifecycle-contracts.md)和[插件组合](plugin-composition.md)，不代表所有候选方案均落地 |
+| managed schema / reference 协议、命名空间事件和数据所有权 | 已有开放范围；见[调用生命周期](interface-lifecycle.md)和[受管数据模型](plugin-managed-data-model.md) |
+| Before 修改函数、可交换性与冲突分析 | 仍是研究模型，不能视作普通插件 API；通用 managed Before 仅观察，legacy Create 只读否决 |
+| 共享 worker、通信与 Rust SDK | 已有有限实现；以[Backend 边界](runtime-extension-backend-evolution.md)为准 |
+| SAT/SMT、形式化模型、远程与多语言 SDK 扩展 | 不在本文声明已实现或已验证；采用需要具体需求与单独验收，优先复用已有图算法和运行库 |
+
+数学推导解释条件与取舍，不替代代码或运行证据；假设性容量示例不能转为硬编码业务上限。研究全文保留在原路径，避免破坏既有引用。
 
 ## 1. 问题与现有基础
 

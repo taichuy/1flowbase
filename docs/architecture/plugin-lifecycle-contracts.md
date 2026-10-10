@@ -39,6 +39,18 @@ real transaction owner
 - api-server delivery adapter 不按 handler identity 分支实现插件行为；它只消费冻结 plan 和 Composition Root 注入的 typed registry。测试 fixture 必须让独立插件 handler 成功返回后才能确认 subscriber Delivered。
 - 单个 handler 的执行 deadline 必须短于 claim lease；超时产生 TimedOut completion 并进入 retry，且 dispatcher 继续处理同一批次的其他 subscriber。
 
+## 受管接口阶段权限
+
+Kernel 的 typed Hook 能力不等于普通受管插件的 wire 权限。Host 按阶段验证 outcome；插件返回 Deny 不能取得未开放的控制权。
+
+| 阶段 | 通用受管接口（schema frame v1 / reference v2） | 旧 Create adapter |
+| --- | --- | --- |
+| Authorization / Admission | 可继续或否决，不能推翻核心拒绝 | 保留原来的继续或否决 |
+| Before | 仅观察，不 patch 输入、不否决主调用 | 只读且可按原契约否决，不 patch 输入 |
+| After / Failure / Completion | 仅观察，失败不能覆盖主结果 | 保持观察语义，不改写主结果 |
+
+其他可信 typed contract 的输入修改能力必须由对应契约明确授权，不从 Create 示例推导。调用顺序见[请求生命周期](interface-lifecycle.md#execution-and-extensions)。
+
 ## Verification
 
 - Contract、Graph compiler、Kernel order/terminal、outbox commit/rollback 分别使用 deterministic fixture。

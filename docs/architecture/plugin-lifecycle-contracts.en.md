@@ -30,6 +30,18 @@ Trusted HostExtensions bind BootSnapshot / Invocation handlers through `native.l
 
 The delivery adapter consumes frozen plans and injected handlers, never hard-coded plugin behavior. Enqueuing an event is not handler completion. The handler deadline must precede claim expiry; timeout yields TimedOut and retry while other subscribers can proceed.
 
+## Managed interface phase permissions
+
+Kernel typed Hook capabilities do not grant ordinary managed plugins the same wire permissions. The Host validates outcomes by phase; returning Deny cannot grant control that the protocol does not expose.
+
+| Phase | Generic managed interface (schema frame v1 / reference v2) | Legacy Create adapter |
+| --- | --- | --- |
+| Authorization / Admission | Continue or veto; cannot reverse a core denial | Original continue/veto contract |
+| Before | Observe only; no input patching or veto | Read-only veto under the original contract; no input patching |
+| After / Failure / Completion | Observe only; failures cannot replace the primary result | Observation only; preserve the primary result |
+
+Any input mutation in other trusted typed contracts requires explicit authority from that contract, not inference from Create. See the [invocation lifecycle](interface-lifecycle.en.md#execution-and-extensions) for ordering.
+
 ## Evidence
 
 Deterministic fixtures separately cover contracts, graph compilation, Kernel order/terminal and Outbox commit/rollback. Dependency checks prevent `interface-runtime` from depending on `plugin-framework`, storage, Runtime Host or protocol adapters. Actual handlers, transactions and protocols must be verified against a frozen candidate; historical Root completion is not evidence for today's code.

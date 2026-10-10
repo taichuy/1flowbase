@@ -1,5 +1,7 @@
 # AI Gateway 翻译与执行证据
 
+[English](ai-gateway-observation.en.md)
+
 ## 职责
 
 执行保持 `映射协议层 ⇄ AI Native ⇄ 供应商插件 ⇄ 上游`。
@@ -50,3 +52,29 @@
 两端采集可异步到达，已有Native事件窄索引保存明确身份；读取时在同运行解析trigger，在同应用且明确前序运行的emitted响应索引内解析context。不为先后顺序新增外键依赖，不按节点/时间猜测或回填历史；不存在的来源不生成可导航链接。
 
 两个列表支持request过滤与首屏focus定位，后续沿普通cursor分页。详情source链接打开具体请求，客户端请求打开对应调用列表；一对多关系明确呈现。查询仍经现有console授权入口，跨运行来源同样按目标应用验证。前端保留返回时的筛选、选择和滚动状态。原有工作流节点树、输入/处理/输出与Resume时间线保持职责。
+
+## AI Native 调用轨迹与协议诊断
+
+AI Gateway 的映射协议层将请求接入 AI Native 统一契约；供应商插件负责将 Native 翻译为上游协议及通讯。日志不迁移这一翻译职责。
+
+- 主轨迹在 Native 调用边界记录安全输入快照、标准输出/工具请求、调用结果及供应商扩展信息。工具请求与提交的工具结果不证明工具已执行；真实执行沿工作流执行记录关联。
+- 原始供应商协议是可选诊断证据，不是主轨迹成立的前提。Native 详情不能标成供应商实际报文，未知供应商元信息只保留为扩展，不据此推断插件内部重试或执行成功。
+- `FLOWBASE_PROVIDER_PROTOCOL_CAPTURE=1` 在 API 服务端显式启用原始采集，默认关闭；启用后重启服务生效。宿主仅在具备原始观测 sink 的调用上向插件协商能力，客户端输入不能打开该能力。插件不支持此可选能力时，Native 主轨迹仍可用。
+- 供应商流计时默认仅保留每次 attempt 的精确摘要（事件数、字节总量、事件种类计数、入站时间范围、最大写入延迟），不保留逐事件计时数组。执行前在 API 服务端设置 `FLOWBASE_PROVIDER_STREAM_TIMING_CAPTURE=1` 并重启，才完整保留五字段计时明细；调用开始时固定模式，不截断记录。摘要位于 `metrics.attempts[].provider_stream_timing_summary`，诊断明细位于同级 `provider_stream_timing`；这只改变性能诊断明细，不改变语义、工具、恢复或投递事实。
+- 语义记录与原始协议分别计算采集完整性；一次失败调用可以被完整记录，缺少原始证据不会降低完整的 Native 轨迹。旁路丢失、写失败、取消和超限必须如实表达。
+- 列表只读取摘要；选择步骤获取 `view=semantic` 的 Native 详情或历史投影详情，显式打开协议证据才读取 `view=protocol`。Native 步骤的原始证据按 invocation/attempt 关联，显示调用级范围，不伪造逐步骤网络对应关系。
+- 历史供应商投影保留 `supplier_protocol` 来源；新 Native 记录标明 `ai_native`。不从旧协议反向伪造 Native 历史，不在 GET 路径重建投影。
+
+## 日志读模型与观察结果收敛
+
+日志投影收敛不表示工作流或计费已经完成。`waiting_callback` 的一次等待阶段有 5 分钟投影期限；真实执行进展（进入等待、成员运行或调用/回调次数变化）开启新的等待阶段，重复 projector 写入、用量修正和页面读取不能延长期限。该期限只管理日志读模型，不取消执行、不伪造工具回调，也不删除恢复证据。
+
+已收敛投影优先读取最后客户端文本，其次读取非冲突的供应商完整 assistant message，最后使用已有 `final_output`。有真实文本时标记 `observed_output`；没有时使用 `timeout` 来源与 `Timeout` 占位。后端 overview 将 `persisted_answer` / `provider_output_item` 对应的业务答复放入 assistant 消息，超时占位仍是独立投影输出；不把供应商片段或占位当成真实答复。overview 为返回列表重新分配唯一顺序，避免多个运行的局部序号碰撞。
+
+费用读取已结束成员的持久费用快照；快照缺失时汇总已有 cost ledger。用量优先汇总已有 usage ledger，没有 ledger 记录才读取成员摘要。每次从事实重新计算，不向旧投影累加；缺失观察保持未知，不补零。此过程只更新日志投影，不写回执行状态、callback、usage 或 cost ledger，不形成第二套结算真值。
+
+实现入口：[投影维护迁移](../../api/crates/storage/durable/postgres/migrations/20261010120000_observed_log_projection_settlement.sql)、[overview reader](../../api/crates/storage/durable/postgres/src/orchestration_runtime_repository/agent_logs/reads.rs)。
+
+任务聚合与单次尝试分别保留状态：只要仍有活跃成员，任务 outcome 为 `in_progress`，即使先前已有答复也不宣称完成。全部成员终结后，任务状态优先取最新 generate 尝试；无 generate 时按其他调用的最新尝试回退，避免计数或压缩调用掩盖生成结果。失败尝试仍保留在源运行和轨迹中，已知费用跨全部尝试汇总，全部未知仍为 NULL；不把重试成功当成先前调用未发生。
+
+实现入口：[终态任务投影](../../api/crates/storage/durable/postgres/migrations/20261010130000_project_terminal_task_attempt_outcome.sql)。

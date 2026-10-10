@@ -35,6 +35,8 @@ Extension Center 的 installed/:installation_id 下提供以下独立操作；PO
 
 每次调用冻结图、绑定、artifact、generation 和执行身份。候选只有在权限与版本仍有效时才能发布；过期候选不能恢复已撤销权限。旧调用继续持有原快照，新调用使用完整发布的新快照，禁止拼接不同版本或查找 latest 作为替代。
 
+旧 Create 的 Before 否决是该 adapter 的特例；通用受管 Before 仅观察。阶段权限统一见[生命周期权限表](plugin-lifecycle-contracts.md#受管接口阶段权限)，不能从本节示例扩大插件权限。
+
 ## A → B/C 与两种事务
 
 A 的原 manifest 在同一安装下绑定两个 Create.before 贡献和一个声明式 owned collection。事件变体订阅 `model_definition.committed@v1`，其 `publish` handler 发布 `acme.composition-a.processed@1`。B/C 分别以自己的 `apply_processed` handler 消费并写入各自 `processed_models`。安装验收先由真实 managed schema owner 应用表结构，再启用 B/C；插件作者不获得任意 SQL 入口。
