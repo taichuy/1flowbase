@@ -141,6 +141,14 @@ impl TemplateAdapter {
                     }
                 }
                 if let Some(bundle) = &package.mcp_bundle {
+                    let identities = repository
+                        .load_portable_template_identity_map(actor.current_workspace_id)
+                        .await?;
+                    let mut bundle = bundle.clone();
+                    control_plane::portable_template::remap_mcp_bundle_interfaces(
+                        &mut bundle,
+                        &identities,
+                    );
                     let mcp_preview = control_plane::portable_template::mcp_merge::preview(
                         &repository,
                         &control_plane::portable_template::template_baseline_scope(
@@ -148,12 +156,13 @@ impl TemplateAdapter {
                             &package,
                         ),
                         actor.user_id,
-                        bundle,
+                        &bundle,
                         &mcp_interface_catalog_entries_with(&self.0.mcp_interface_catalog, actor)
                             .await?,
                         env!("CARGO_PKG_VERSION"),
                     )
                     .await?;
+                    preview.mcp_shared_tool_impacts = mcp_preview.shared_tool_impacts;
                     preview.effects.extend(mcp_preview.effects);
                     preview.failures.extend(mcp_preview.conflicts);
                     preview.valid = preview.valid && preview.failures.is_empty();
@@ -205,6 +214,14 @@ impl TemplateAdapter {
                     .preflight_visibility(actor, &package)
                     .await?;
                 if let Some(bundle) = &package.mcp_bundle {
+                    let identities = repository
+                        .load_portable_template_identity_map(actor.current_workspace_id)
+                        .await?;
+                    let mut bundle = bundle.clone();
+                    control_plane::portable_template::remap_mcp_bundle_interfaces(
+                        &mut bundle,
+                        &identities,
+                    );
                     let mcp_preview = control_plane::portable_template::mcp_merge::preview(
                         &repository,
                         &control_plane::portable_template::template_baseline_scope(
@@ -212,7 +229,7 @@ impl TemplateAdapter {
                             &package,
                         ),
                         actor.user_id,
-                        bundle,
+                        &bundle,
                         &mcp_interface_catalog_entries_with(&self.0.mcp_interface_catalog, actor)
                             .await?,
                         env!("CARGO_PKG_VERSION"),
