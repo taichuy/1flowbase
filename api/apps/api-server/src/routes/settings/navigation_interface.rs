@@ -170,9 +170,9 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                                 "permission_codes",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((item)
-                                                        .permission_codes
-                                                        .len()),
+                                                    serde_json::json!(
+                                                        (item).permission_codes.len()
+                                                    ),
                                                 )]),
                                             ),
                                             (
@@ -222,13 +222,65 @@ impl ConsoleNavigationAdapter {
         match input {
             ConsoleNavigationInput::Get => {
                 let mut unavailable = std::collections::BTreeSet::new();
+                use control_plane::ports::{PluginRepository, UiManagementRepository};
+                let templates = if self.0.surfaces.managed_services().is_empty() {
+                    Vec::new()
+                } else {
+                    self.0.store.list_ui_code_templates().await?
+                };
                 for page in self.0.surfaces.pages() {
-                    use control_plane::ports::PluginRepository;
-                    let available = match self.0.surfaces.target_for_feature(&page.feature_id) {
-                        Some(target) => {
-                            self.0.store.native_plugin_target_is_applied(target).await?
+                    let managed = self.0.surfaces.managed_services().iter().find(|service| {
+                        service.plugin_code == page.plugin_code
+                            && service.declaration.feature.feature_id == page.feature_id
+                    });
+                    let available = if let Some(service) = managed {
+                        let current = self
+                            .0
+                            .store
+                            .get_installation(service.installation_id)
+                            .await?;
+                        let current_is_active = current.is_some_and(|current| {
+                            current.desired_state == domain::PluginDesiredState::ActiveRequested
+                                && current.plugin_version == page.plugin_version
+                                && current.contract_version == "1flowbase.extension-bus/v1"
+                                && domain::managed_installation_scope(
+                                    &current,
+                                    domain::DEFAULT_SCOPE_ID,
+                                ) == domain::SYSTEM_SCOPE_ID
+                        });
+                        let template = templates.iter().find(|template| {
+                            template.owner_plugin_code.as_deref() == Some(page.plugin_code.as_str())
+                                && template.contribution_code == page.contribution_code
+                                && template.owner_feature_id.as_deref()
+                                    == Some(page.feature_id.as_str())
+                                && template.applied_plugin_version.as_deref()
+                                    == Some(page.plugin_version.as_str())
+                                && template.is_default
+                                && template.published_revision.is_some()
+                        });
+                        if current_is_active {
+                            match template {
+                                Some(template) => {
+                                    self.0
+                                        .store
+                                        .native_template_is_available(
+                                            template.id,
+                                            self.0.surfaces.native_targets(),
+                                        )
+                                        .await?
+                                }
+                                None => false,
+                            }
+                        } else {
+                            false
                         }
-                        None => false,
+                    } else {
+                        match self.0.surfaces.target_for_feature(&page.feature_id) {
+                            Some(target) => {
+                                self.0.store.native_plugin_target_is_applied(target).await?
+                            }
+                            None => false,
+                        }
                     };
                     if !available {
                         unavailable.insert(page.route_id.as_str());

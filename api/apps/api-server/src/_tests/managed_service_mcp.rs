@@ -298,8 +298,14 @@ async fn managed_mcp_flat_arguments_reach_existing_http_dispatch_and_unwrap_api_
         },
     )
     .await;
-    let Ok(value) = result else {
-        panic!("managed MCP mapping must reach the existing HTTP dispatcher: {result:?}")
+    let value = match result {
+        Ok(value) => value,
+        Err(debug_execute::McpDebugExecuteError::Api(error)) => {
+            panic!("managed MCP dispatch failed: {error:#}")
+        }
+        Err(debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
+            panic!("managed MCP target returned {}", response.status())
+        }
     };
     assert_eq!(value, json!({"stdout":"fixture"}));
 }
