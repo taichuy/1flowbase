@@ -19,3 +19,5 @@ pub use releases::*;
 
 mod merge;
 pub use merge::*;
+
+pub mod i18n;

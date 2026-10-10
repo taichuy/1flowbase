@@ -135,8 +135,24 @@ pub struct AuditedDeleteCustomCatalogMessageInput {
     pub audit: domain::AuditLogRecord,
 }
 
+/// Dedicated template write: the resource mutation and journal receipt share one transaction.
+#[derive(Debug, Clone)]
+pub struct AuditedTemplateCatalogTranslationInput {
+    pub translation: AuditedCatalogTranslationInput,
+    pub scope: crate::portable_template::TemplateBaselineScope,
+    pub key: crate::portable_template::TemplateResourceKey,
+    pub intent: crate::portable_template::TemplateWriteIntent,
+}
+
 #[async_trait]
 pub trait I18nCatalogManagementRepository: Send + Sync {
+    async fn upsert_template_catalog_translation(
+        &self,
+        _input: &AuditedTemplateCatalogTranslationInput,
+    ) -> anyhow::Result<domain::WorkspaceCatalogState> {
+        anyhow::bail!("template_catalog_atomic_write_unsupported")
+    }
+
     async fn list_catalog_management_entries(
         &self,
         query: &CatalogManagementQuery,

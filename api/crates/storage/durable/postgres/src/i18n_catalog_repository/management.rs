@@ -307,6 +307,105 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         Ok(state)
     }
 
+    async fn upsert_template_catalog_translation(
+        &self,
+        input: &control_plane_contracts::ports::AuditedTemplateCatalogTranslationInput,
+    ) -> Result<WorkspaceCatalogState> {
+        use sha2::{Digest, Sha256};
+        let translation = &input.translation;
+        validate_audit_workspace(translation.workspace_id, &translation.audit)?;
+        let source_id = serde_json::to_string(&[
+            translation.value.identity().key(),
+            translation.value.locale().as_str(),
+        ])?;
+        if input.scope.workspace_id != translation.workspace_id
+            || input.key.kind != "i18n_entry"
+            || input.key.source_id != source_id
+            || input.intent.target_id != source_id
+        {
+            return Err(ControlPlaneError::InvalidInput("template_i18n_write_scope").into());
+        }
+        // A single-field JSON object has the same canonical ordering as the planner.
+        let fingerprint = |value: &str| -> Result<String> {
+            Ok(format!(
+                "{:x}",
+                Sha256::digest(serde_json::to_vec(
+                    &serde_json::json!({"translation": value})
+                )?)
+            ))
+        };
+        let actual_fingerprint = fingerprint(translation.value.translation())?;
+        if actual_fingerprint != input.intent.desired_fingerprint {
+            return Err(ControlPlaneError::Conflict("template_i18n_desired_fingerprint").into());
+        }
+        let mut transaction = self.pool().begin().await?;
+        lock_expected_state(
+            &mut transaction,
+            translation.workspace_id,
+            translation.expected_revision,
+        )
+        .await?;
+        let official = official_identity_exists(
+            &mut transaction,
+            translation.workspace_id,
+            translation.value.identity().key(),
+        )
+        .await?;
+        let current: Option<String> = if official {
+            sqlx::query_scalar(
+                r#"select coalesce(
+                  (select translation from workspace_i18n_catalog_overrides
+                   where workspace_id=$1 and key=$2 and locale=$3),
+                  (select translation from i18n_catalog_release_translations translations
+                   join workspace_i18n_catalog_states state on state.active_release_id=translations.release_id
+                   where state.workspace_id=$1 and translations.key=$2 and translations.locale=$3)
+                )"#,
+            ).bind(translation.workspace_id).bind(translation.value.identity().key())
+             .bind(translation.value.locale().as_str()).fetch_one(&mut *transaction).await?
+        } else {
+            sqlx::query_scalar(
+                "select translation from workspace_i18n_catalog_custom_translations where workspace_id=$1 and key=$2 and locale=$3",
+            ).bind(translation.workspace_id).bind(translation.value.identity().key())
+             .bind(translation.value.locale().as_str()).fetch_optional(&mut *transaction).await?
+        };
+        if current.as_deref().map(fingerprint).transpose()? != input.intent.expected_fingerprint {
+            return Err(ControlPlaneError::Conflict("template_i18n_current_fingerprint").into());
+        }
+        let query = if official {
+            "insert into workspace_i18n_catalog_overrides (workspace_id,key,locale,translation) values ($1,$2,$3,$4) on conflict (workspace_id,key,locale) do update set translation=excluded.translation,updated_at=now()"
+        } else {
+            "insert into workspace_i18n_catalog_custom_translations (workspace_id,key,locale,translation) values ($1,$2,$3,$4) on conflict (workspace_id,key,locale) do update set translation=excluded.translation,updated_at=now()"
+        };
+        sqlx::query(query)
+            .bind(translation.workspace_id)
+            .bind(translation.value.identity().key())
+            .bind(translation.value.locale().as_str())
+            .bind(translation.value.translation())
+            .execute(&mut *transaction)
+            .await?;
+        // Template imports write only explicit translations; do not generate an English row.
+        let state = finish_mutation(
+            &mut transaction,
+            translation.workspace_id,
+            &translation.audit,
+        )
+        .await?;
+        if !crate::portable_template_repository::acknowledge_template_write(
+            &mut transaction,
+            &input.scope,
+            &input.key,
+            &input.intent,
+            &actual_fingerprint,
+        )
+        .await?
+        {
+            transaction.rollback().await?;
+            return Err(ControlPlaneError::Conflict("template_i18n_receipt").into());
+        }
+        transaction.commit().await?;
+        Ok(state)
+    }
+
     async fn restore_official_catalog_translation(
         &self,
         input: &AuditedDeleteCatalogTranslationInput,

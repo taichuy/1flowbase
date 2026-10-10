@@ -77,6 +77,16 @@ pub struct DeleteCustomMessageCommand {
     pub expected_revision: WorkspaceCatalogRevision,
 }
 
+#[derive(Debug, Clone)]
+pub struct ApplyTemplateTranslationCommand {
+    pub access: CatalogManagementAccess,
+    pub value: CatalogTranslation,
+    pub expected_revision: WorkspaceCatalogRevision,
+    pub scope: control_plane_contracts::portable_template::TemplateBaselineScope,
+    pub key: control_plane_contracts::portable_template::TemplateResourceKey,
+    pub intent: control_plane_contracts::portable_template::TemplateWriteIntent,
+}
+
 pub struct I18nCatalogManagementService<R> {
     repository: R,
     bootstrap_workspace_id: Uuid,
@@ -172,6 +182,45 @@ where
                 expected_revision: command.expected_revision,
                 audit,
             })
+            .await
+    }
+
+    pub async fn apply_template_translation(
+        &self,
+        command: ApplyTemplateTranslationCommand,
+    ) -> Result<WorkspaceCatalogState> {
+        self.authorize(&command.access)?;
+        let source_id = serde_json::to_string(&[
+            command.value.identity().key(),
+            command.value.locale().as_str(),
+        ])?;
+        if command.scope.workspace_id != self.bootstrap_workspace_id
+            || command.key.kind != "i18n_entry"
+            || command.key.source_id != source_id
+            || command.intent.target_id != source_id
+        {
+            return Err(ControlPlaneError::InvalidInput("template_i18n_write_scope").into());
+        }
+        let audit = self.audit(
+            &command.access.actor,
+            "i18n_catalog.template_translation.upserted",
+            json!({"key": command.value.identity().key(), "locale": command.value.locale().as_str(),
+                   "template_id": command.scope.template_id, "operation_id": command.intent.operation_id}),
+        );
+        self.repository
+            .upsert_template_catalog_translation(
+                &crate::ports::AuditedTemplateCatalogTranslationInput {
+                    translation: AuditedCatalogTranslationInput {
+                        workspace_id: self.bootstrap_workspace_id,
+                        value: command.value,
+                        expected_revision: command.expected_revision,
+                        audit,
+                    },
+                    scope: command.scope,
+                    key: command.key,
+                    intent: command.intent,
+                },
+            )
             .await
     }
 
