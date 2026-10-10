@@ -1,6 +1,8 @@
 # 插件组合与事件交付
 
-本文描述当前源码的有限机制。源码、示例与验收 fixture 已提供；Root #2007 的当前修复候选尚待集中 QA，本文不构成验收通过或生产就绪证据。
+[English](plugin-composition.en.md)
+
+本文维护当前组合契约。当前验收以实际提交与测试报告为准；[#2007 历史测试入口](archive/2007/plugin-composition-test-batch.md)不作为当前通过证据。通用命名空间事件的后续边界见[调用生命周期](interface-lifecycle.md#契约驱动的插件事件)，下述 Create → A → B/C 是具体实例。
 
 ## 治理、安装与授权
 
@@ -56,15 +58,19 @@ claim 身份每次领取独立，过期 worker ACK 不能确认新 claim。冻�
 | store / composition 托管操作 | 各 128，先取得 owner permit 再 spawn |
 | 受管 mount / 调用 | mount 4096；每 scope 32、全局 128 |
 | hash / loading | 4，permit 随真实阻塞工作保留 |
-| 当前工作区 / 保留快照 / 冻结引用 | 各 256；满额拒绝，不驱逐存活对象 |
-| 退休标记 | 4096；满额拒绝 |
-| 治理状态历史 | 首个 256 条候选元数据窗口；额外 1 条检测 `deliveries_truncated`，不读取历史 payload |
+| 当前工作区 / 保留快照 / 冻结引用 | 不以固定业务数量拒绝；保留真实在途引用和待处理历史 |
+| 退休标记 | 保留至宿主关闭；防止共享 worker generation 重建已退休目标，不按数量驱逐 |
+| 治理状态历史 | 默认每页 256 条候选元数据，通过 `next_cursor` 续读；不读取历史 payload，不限制历史总量 |
 | 退休 / 删除积压检查 | 安装 / 历史作用域 / 贡献限定的未完成元数据，最多检查 4096 条；应用与数据库各 5 秒预算，无法证明为空则返回 Busy |
 | 受管 capability 消息 | request / stdout / stderr 各 1 MiB |
 | 临时 AfterCommit lane | 4096，含完成幂等标记；容量失败 attempts=0 |
 | Outbox dispatcher | 单批 32；deadline 10 秒且不越过 30 秒 lease；最多 5 次；诊断 4096 字节 |
 
-状态响应保留 `deliveries`，并增加 `deliveries_truncated`。查询按 event_id / subscriber_id 读取首个 256 条候选窗口；已验证属于其他安装的行被排除，因此返回数可以少于 256。`deliveries_truncated=true` 表示还有候选历史未检查，不能把当前列表当成完整历史或空积压证明。单条 resume 使用 installation / workspace / event / subscriber / graph / handler / version 精确查询，最多读取一个目标 payload。
+状态响应保留 `deliveries`、`deliveries_truncated`，增加 `next_cursor`。GET `managed-execution` 将上一页游标作为 `cursor` 原样传回；未提供时读取第一页，末页返回空游标。游标绑定安装和工作区，不授予权限；格式错误或作用域不匹配明确拒绝。resume / retire 的响应仍返回第一页。
+
+查询使用 `(event_id, subscriber_id)` keyset。游标来自最后已扫描候选，而不是最后返回项；过滤属于其他安装的历史后，页面可能为空，但有 `next_cursor` 就应继续。静态历史可完整遍历，不重不漏；跨请求不承诺数据库快照，期间状态变化由重新读取反映。单条 resume 保持按 installation / workspace / event / subscriber / graph / handler / version 精确读取，不依赖展示分页。
+
+资源治理不能把内部集合长度变成未经业务定义的工作区、历史或调用容量。冻结引用使用既有引用计数和关闭通知；retained 快照只有经过显式退休、引用与持久积压检查后才释放。退休标记是防复活状态，不是可任意淘汰的缓存；同一 generation 可能被其他快照共享，因此保留到宿主关闭。这里不承诺内存恒定，也不根据开发机猜测部署容量。其他执行通道的背压、协议帧保护与关闭预算各有独立语义，不由这些业务数量推导。
 
 退休 / 删除的安全检查不使用展示页：SQL 先限定安装、历史授权作用域、贡献与未完成状态，再有界遍历元数据。超过 4096 条或 5 秒预算返回 `managed_backlog_check_busy`（HTTP 409），不误判为空；已完成历史不参与检查。删除直接关联历史 scope，不先收集所有工作区。native subscriber 的精确目标使用 SQL EXISTS，在数据库内投影 Create / processed 的 workspace；未知 legacy 或不能验证的 scope 保守阻塞，不能通过分页绕过。
 
@@ -72,42 +78,10 @@ claim 身份每次领取独立，过期 worker ACK 不能确认新 claim。冻�
 
 required 事件通道保留背压，诊断通道即使接收者丢弃也保留计数。容量错误属于执行失败，不冒充契约失效并永久暂停目标。
 
-## 官方 CLI 复现与证据
-
-SDK 与 fixture 的构建、打包命令见 [SDK README](../../api/crates/runtime-extension-sdk/README.md) 和 [A fixture](../../api/plugins/fixtures/acme.composition-a/README.md)。使用仓库根目录、Linux、锁定依赖与实际 SDK worker，不能把旧 Python fixture 当成 typed Hook/event worker。
-
-有限门禁 scope 为 `plugin-composition-2007`。Root 冻结并推送候选后，先核对远程分支 SHA，再以该分支名 dispatch；两个输入仍使用完整冻结 SHA。GitHub 的 dispatch ref 使用 branch / tag 名，不能用裸 SHA 代替：
-
-```bash
-: "${CANDIDATE_SHA:?请先设置 Root 已冻结的完整候选 SHA}"
-candidate_remote_sha="$(git ls-remote --exit-code origin refs/heads/codex/plugin-composition-2007-reinstall | cut -f1)"
-if [ "$candidate_remote_sha" != "$CANDIDATE_SHA" ]; then
-  echo '远程分支与冻结候选不一致，停止 dispatch' >&2
-  exit 1
-fi
-gh workflow run quality-gate.yml --repo taichuy/1flowbase \
-  --ref codex/plugin-composition-2007-reinstall \
-  -f scope=plugin-composition-2007 -f target_branch="$CANDIDATE_SHA" \
-  -f candidate_sha="$CANDIDATE_SHA"
-```
-
-本地等价入口要求两个显式数据库 URL，复用测试支持的隔离 schema / migrations，不直接使用生产库：
-
-```bash
-export PLUGIN_COMPOSITION_CANDIDATE_SHA="$(git rev-parse HEAD)"
-export DATABASE_URL='postgres://postgres:1flowbase@localhost:5432/1flowbase'
-export API_DATABASE_URL="$DATABASE_URL"
-node scripts/node/plugin-composition-test-batch/runner.js
-```
-
-runner 校验 checkout / workflow SHA，串行构建真实 SDK examples 和 12 个 Rust test target，核对 50 个必需完整测试名，与既定回归过滤范围合并去重后逐项精确执行；另运行 4 组 Node 命令，其中测试命令显式使用 `--test-reporter=tap`，不依赖 Node 24 的终端展示默认值。TAP 证据必须有一致计划 / 结果、非零 tests、pass=tests、fail/cancelled/skipped/todo 全为零且进程退出码为零；单有 tests 数不能算通过。编译并行度复用 `scripts/node/testing/verify-runtime.js` 的 CPU 配置，CI 使用 runner 实际可用 CPU 数；Cargo 命令始终串行，每个 Rust 命令以 `--exact` 选择一项测试。缺名、零测试、忽略、失败、环境缺失都不能算通过。实际回归总数由编译产物 `--list` 决定，不预报通过数。报告及逐命令日志位于 `tmp/test-governance/2007`，工作流始终尝试上传 artifact，报告记录各 Node 组的独立状态、计数和实际 Cargo 并行度。dispatch 请求被拒且没有创建 run 时没有测试执行证据，不能计为一次验证或重试。AC / AUTH 映射是证据索引，最终验收由 Root 集中 QA 结算。
-
-### 同版本重装与历史投递
+## 同版本重装与历史投递
 
 受管插件的同一 `plugin_id + version` 以安装时持久保存的原归档 SHA256 为内容身份。只允许重传**同一原 archive bytes** 恢复制品；安装目录、保存的归档缺失时也可恢复，保留 installation ID、Disabled 意图、贡献 metadata、授权修订与历史积压。相同内容不会仅因存在积压被拒绝。重新打包即使 manifest 看起来相同，只要归档 digest 不同就不是原制品，同版本重装明确拒绝；同步修改 descriptor 与 execution binding 或改为旧包类别也不能覆盖原身份。安装准入和提交使用同一数据库连接的身份锁，支持单连接池，并发首次安装不能让两个不同归档取得同一版本身份。
 
 缺少可靠历史 checksum 的旧安装不能凭当前 manifest 认领或回填内容身份，恢复请求明确拒绝。新版本仍按独立安装、候选显式授权及正式切换执行；原版本授权不会自动授给候选，旧冻结投递也不转交新版本。
 
 历史投递归属依据已持久的安装身份、workspace 与冻结目标，不依赖当前 manifest 的 contribution 列表。停用及完整 host/composition 重启后，旧暂停记录仍可查、精确定位，并阻止删除所需制品；原 epoch 或执行图不可用时明确拒绝恢复。未知 legacy 记录保守保留并阻止清理，不能由新 manifest 推断归属。
-
-新增 IR01–03 在 `managed_reinstall_tests` 中经正式上传安装、真实 `MANAGED_EVENT_WORKER_FIXTURE`、Create owner、PostgreSQL 和 session/CSRF 治理 API 取证；IR04 在原必需 PostgreSQL fixture 中覆盖旧 metadata 已失去贡献的历史。50 项必需库存保留原 47 项与原 12 targets / 4 Node 组，所有新行为结论由冻结候选的集中 CI 给出，机械检查不代表测试通过。

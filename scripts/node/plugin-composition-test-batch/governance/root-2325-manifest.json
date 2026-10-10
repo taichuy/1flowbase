@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "scope": "plugin-composition-2014",
+  "supportedPlatform": "linux",
+  "batchMode": "architecture-governance",
+  "outputDirectory": "tmp/test-governance/2014/architecture-governance",
+  "rootPrefixes": [
+    "root_2325_"
+  ],
+  "requiredAc": [
+    "AC-001",
+    "AC-002"
+  ],
+  "requiredAuth": [],
+  "showTestOutput": true,
+  "targets": [
+    {
+      "id": "control-plane-contracts:lib",
+      "package": "control-plane-contracts",
+      "packageRoot": "api/crates/control-plane-contracts",
+      "target": "lib",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "storage-durable-postgres:lib",
+      "package": "storage-durable-postgres",
+      "packageRoot": "api/crates/storage/durable/postgres",
+      "target": "lib",
+      "regressionFilters": [
+        "_tests::lifecycle_outbox_repository_tests"
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "api-server:lib",
+      "package": "api-server",
+      "packageRoot": "api/apps/api-server",
+      "target": "lib",
+      "regressionFilters": [
+        "extension_bus::managed_activation::lifetime::tests",
+        "_tests::extension_bus::managed_governance_tests",
+        "_tests::extension_bus::managed_reinstall_tests",
+        "_tests::extension_bus::generic_event_history_tests"
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "control-plane-postgres-tests:dependency_boundaries",
+      "package": "control-plane-postgres-tests",
+      "packageRoot": "api/crates/control-plane-postgres-tests",
+      "target": "dependency_boundaries",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    }
+  ],
+  "required": [
+    {
+      "target": "control-plane-contracts:lib",
+      "source": "api/crates/control-plane-contracts/src/_tests/persistence_projection_contract_tests.rs",
+      "name": "_tests::persistence_projection_contract_tests::root_2325_managed_delivery_cursor_scope_contract",
+      "expected": 1,
+      "ac": [
+        "AC-001"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "storage-durable-postgres:lib",
+      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "name": "_tests::lifecycle_outbox_repository_tests::root_2325_keyset_history_crosses_filtered_pages_and_subscriber_boundary",
+      "expected": 1,
+      "ac": [
+        "AC-001"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "api-server:lib",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_governance_tests.rs",
+      "name": "_tests::extension_bus::managed_governance_tests::root_2325_http_history_cursor_and_authorization",
+      "expected": 1,
+      "ac": [
+        "AC-001"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "source": "api/apps/api-server/src/extension_bus/managed_activation/_tests/lifetime.rs",
+      "name": "extension_bus::managed_activation::lifetime::tests::root_2325_reference_overflow_preserves_count_and_recoverable_close",
+      "expected": 1,
+      "ac": [
+        "AC-002"
+      ],
+      "auth": [],
+      "env": []
+    }
+  ],
+  "node": [
+    {
+      "id": "finite-selector",
+      "args": [
+        "--test",
+        "--test-reporter=tap",
+        "scripts/node/plugin-composition-test-batch/_tests/runner.test.js"
+      ]
+    }
+  ],
+  "identityFiles": [
+    "docs/architecture/plugin-composition.md",
+    "docs/architecture/plugin-lifecycle-contracts.md"
+  ]
+}

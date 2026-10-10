@@ -10,6 +10,7 @@
 | #1954 开发环境 | [公网Vite装配记录](1954/1954-dev-vite-assembly-receipt.md) |
 | #1958 兼容入口迁移 | [装配记录](1958/1958-compatibility-interface-migration-assembly-receipt.md) |
 | #1963 外部入口迁移 | [装配记录](1963/1963-external-interface-lifecycle-assembly-receipt.md) |
+| #2007 插件组合 | [历史测试入口与冻结库存](2007/plugin-composition-test-batch.md) |
 | #1998 生命周期补齐 | [认证入口disposition](1998/1998-authentication-entry-disposition.md)、[当时的fixture验收矩阵](1998/1998-interface-lifecycle-acceptance.md) |
 
 ## 合并记录

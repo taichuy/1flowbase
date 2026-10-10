@@ -9,8 +9,12 @@
 | 请求与调用生命周期 | [请求架构与调用生命周期](interface-lifecycle.md) | 入口装配、认证身份、执行计划、终态交付与等价证据 |
 | AI Gateway 执行证据 | [翻译与执行证据](ai-gateway-observation.md) | 三层职责、Native 必要日志、同调用正文引用与按需读取 |
 | Runtime 回放回收 | [热回放与冷恢复](runtime-replay/README.md) · [English](runtime-replay/README.en.md) | generation 落库证明、短期热缓存、分页恢复与数据库保留边界 |
+| 插件组合与治理 | [组合与历史分页](plugin-composition.md) · [English](plugin-composition.en.md) | 贡献授权、冻结身份、完整历史续读及退休边界 |
 | 插件生命周期契约 | [Plugin Lifecycle Contracts](plugin-lifecycle-contracts.md) | Hook、领域事实、Outbox与订阅者责任 |
 | 插件管理的数据模型 | [Plugin Managed Data Model](plugin-managed-data-model.md) | 声明式schema、ownership、增量变更与恢复边界 |
+| PostgreSQL 树 | [中文](ordered-tree/README_CN.md) · [English](ordered-tree/README.md) | ltree、keyset 分页、作用域和结构事务 |
+| MCP 返回控制 | [按需返回与详情续读](mcp/return-controls.md) | 内联预算、字段投影及完整结果读取 |
+| 编排验证诊断 | [中文](orchestration/validation-diagnostics.md) · [English](orchestration/validation-diagnostics.en.md) | 节点诊断跨 API / MCP 保留 |
 | Runtime Backend | [演进边界](runtime-extension-backend-evolution.md) | 进程内Host、稳定Ports、Worker生命周期及Remote演进约束 |
 | 插件组合架构研究 | [时空可组合性研究稿](plugin-composability-research.md) | 两类插件治理边界下的图、状态机、快照、事件交付与数学模型；不是实现覆盖声明 |
 
