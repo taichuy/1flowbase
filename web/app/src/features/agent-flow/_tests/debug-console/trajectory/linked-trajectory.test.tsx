@@ -21,10 +21,11 @@ import { appI18n } from '../../../../../shared/i18n/app-i18n';
 beforeEach(async () => {
   await appI18n.changeLanguage('zh_Hans');
 });
+const nativeRunId = 'run-current';
 const request: ClientTrajectoryStep = {
   id: 'request-current',
   request_id: 'request-current',
-  flow_run_id: 'run-current',
+  flow_run_id: nativeRunId,
   sequence: 900,
   created_at: '2026-09-22T00:00:00Z',
   category: 'request',
@@ -62,7 +63,7 @@ function invocation(
       status: 'recorded',
       step_key: id,
       preview: id,
-      flow_run_id: request.flow_run_id,
+      flow_run_id: nativeRunId,
       node_id: 'llm',
       node_run_id: 'node-current',
       invocation_id: 'invocation-one',
@@ -72,7 +73,7 @@ function invocation(
     links: [
       {
         relation: 'trigger',
-        flow_run_id: request.flow_run_id,
+        flow_run_id: nativeRunId,
         request_id: request.id
       },
       {
@@ -143,7 +144,7 @@ function fixture(nodeRunId?: string) {
       }
     >
       <ProviderTrajectory
-        runId={request.flow_run_id}
+        runId={nativeRunId}
         nodeRunId={nodeRunId}
         loader={loader}
       />
@@ -366,7 +367,11 @@ test('warms only the internal first page, reuses it on switch, and loads remaini
       screen.getAllByRole('button', { name: /^模型调用准备 ·/ })
     ).toHaveLength(2)
   );
-  expect(screen.getAllByRole('status').some((status) => status.textContent === '当前范围已全部加载')).toBe(true);
+  expect(
+    screen
+      .getAllByRole('status')
+      .some((status) => status.textContent === '当前范围已全部加载')
+  ).toBe(true);
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
 });
 

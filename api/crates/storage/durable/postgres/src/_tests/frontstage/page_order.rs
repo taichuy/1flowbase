@@ -107,14 +107,17 @@ async fn relative_page_moves_reparent_and_order_atomically() {
     let source = Uuid::from_u128(700);
     let first = Uuid::from_u128(800);
     let second = Uuid::from_u128(900);
+    let mut transaction = pool.begin().await.unwrap();
     for (id, parent) in [
         (source, source_group),
         (first, target_group),
         (second, target_group),
     ] {
         sqlx::query("insert into frontstage_pages (id, workspace_id, parent_id, kind, title, placement, rank) values ($1, $2, $3, 'page', 'Page', 'sidebar', '002500')")
-            .bind(id).bind(workspace_id).bind(parent).execute(&pool).await.unwrap();
+            .bind(id).bind(workspace_id).bind(parent).execute(&mut *transaction).await.unwrap();
+        insert_order_page_tab(&mut transaction, workspace_id, id).await;
     }
+    transaction.commit().await.unwrap();
     let store = crate::PgControlPlaneStore::new(pool.clone());
     let moved = store
         .move_frontstage_page(&MoveFrontstagePageInput {
@@ -176,6 +179,7 @@ async fn whole_group_moves_convert_navigation_without_losing_descendants() {
     let nested = Uuid::from_u128(1200);
     let leaf = Uuid::from_u128(1300);
     let topbar_leaf = Uuid::from_u128(1400);
+    let mut transaction = pool.begin().await.unwrap();
     for (id, parent, kind, placement, slug) in [
         (source, None, "group", "topbar", Some("move-source")),
         (
@@ -191,8 +195,12 @@ async fn whole_group_moves_convert_navigation_without_losing_descendants() {
     ] {
         sqlx::query("insert into frontstage_pages (id, workspace_id, parent_id, kind, title, placement, slug, rank) values ($1, $2, $3, $4, 'Move fixture', $5, $6, '001000')")
             .bind(id).bind(workspace_id).bind(parent).bind(kind).bind(placement).bind(slug)
-            .execute(&pool).await.unwrap();
+            .execute(&mut *transaction).await.unwrap();
+        if kind == "page" {
+            insert_order_page_tab(&mut transaction, workspace_id, id).await;
+        }
     }
+    transaction.commit().await.unwrap();
     let store = crate::PgControlPlaneStore::new(pool.clone());
     let moved = store
         .move_frontstage_page(&MoveFrontstagePageInput {
@@ -261,4 +269,23 @@ async fn whole_group_moves_convert_navigation_without_losing_descendants() {
     assert_eq!(unchanged.parent_id, None);
     assert_eq!(unchanged.rank, promoted.rank);
     assert_eq!(unchanged.slug, promoted.slug);
+}
+
+// Pages and their default tab must be committed together under the deferred
+// page-tab invariant, including fixtures that only exercise navigation order.
+async fn insert_order_page_tab(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace_id: Uuid,
+    page_id: Uuid,
+) {
+    sqlx::query(
+        "insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid) values ($1, $2, $3, 'Default', '001000', true, $4)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(format!("order-page-{page_id}"))
+    .execute(&mut **transaction)
+    .await
+    .unwrap();
 }

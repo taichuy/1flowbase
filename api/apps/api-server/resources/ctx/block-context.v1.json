@@ -179,6 +179,18 @@
         { "name": "sizing", "kind": "property", "type": "BlockContextSizing | undefined", "description": "Available size and intrinsic-size reporting capability." },
         { "name": "surface", "kind": "property", "type": "BlockContextSurface | undefined", "description": "Host surface reveal capability." }
       ]
+    },
+    {
+      "key": "i18n",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextI18n",
+      "description": "Host-provided catalog translation facade; unavailable catalogs retain source-text fallback.",
+      "members": [
+        { "name": "locale", "kind": "property", "type": "string", "description": "Read-only resolved Host locale for catalog translations." },
+        { "name": "status", "kind": "property", "type": "'loading' | 'ready' | 'error'", "description": "Read-only catalog loading status; authorization and catalog errors remain visible as error." },
+        { "name": "t", "kind": "method", "type": "(key: string, options?: BlockTranslationOptions) => string", "description": "Translates a catalog key with optional defaultValue and interpolation values; falls back to defaultValue or the source key." }
+      ]
     }
   ],
   "non_context_symbols": [

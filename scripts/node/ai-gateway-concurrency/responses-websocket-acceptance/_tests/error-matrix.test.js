@@ -12,7 +12,7 @@ function records(surface, message, success) {
     : { type: 'error', error: { message } } }];
 }
 
-function fixtureDependencies(corrupt = false, websocketRecovery = false, omitSuccessfulWebsocketFallback = false, standardMutation = null) {
+function fixtureDependencies(corrupt = false, websocketRecovery = false, unexpectedSuccessfulWebsocketFallback = false, standardMutation = null) {
   const entries = [];
   const runs = new Map();
   const keys = new Map();
@@ -23,18 +23,21 @@ function fixtureDependencies(corrupt = false, websocketRecovery = false, omitSuc
         const attempt = (keys.get(retryKey) ?? 0) + 1;
         keys.set(retryKey, attempt);
         const success = fixture.id === 'retry' && attempt === 2;
-        const message = fixture.anthropicError?.message ?? (fixture.body || 'upstream returned HTTP 503');
-        const facts = fixture.anthropicError;
-        const nativeDetails = facts ? { upstream_error: { ...facts }, raw_body: fixture.body } : null;
-        const providerDetails = facts ? { upstream_error: { ...facts }, raw_body: fixture.body } : null;
+        const message = fixture.anthropicError?.message ?? (surface === 'responses-websocket' ? fixture.body : fixture.body || 'upstream returned HTTP 503');
+        const nonce = `mock-${String(entries.length + 1).padStart(6, '0')}`;
+        const scalarResponse = surface === 'responses-sse' && fixture.id === 'retry';
+        const facts = fixture.anthropicError ?? (surface === 'responses-websocket' ? { type: 'mock_upstream_error', message: fixture.body, status: fixture.status, nonce } : scalarResponse ? JSON.parse(fixture.body).error : null);
+        const rawBody = surface === 'responses-websocket' ? JSON.stringify({ type: 'error', error: facts }) : fixture.body;
+        const nativeDetails = facts ? { upstream_error: structuredClone(facts), raw_body: rawBody } : null;
+        const providerDetails = facts ? { upstream_error: structuredClone(facts), raw_body: rawBody } : null;
         entries.push({ sequence: entries.length + 1, event: 'arrival', transport: surface, nonce: `mock-${String(entries.length + 1).padStart(6, '0')}` });
-        if (surface === 'responses-websocket' && (websocketRecovery || (success && !omitSuccessfulWebsocketFallback))) {
+        if (surface === 'responses-websocket' && (websocketRecovery || (success && unexpectedSuccessfulWebsocketFallback))) {
           entries.push({ sequence: entries.length + 1, event: 'arrival', transport: 'responses-sse', nonce: `mock-${String(entries.length + 1).padStart(6, '0')}` });
         }
         if (!success) entries.push({ sequence: entries.length + 1, event: 'settled', errorFixture: fixture.id, status: fixture.status });
         runs.set(traceId, { run_id: traceId, native: { status: success ? 'succeeded' : 'failed', error: success ? null : { message, ...(nativeDetails ? { details: nativeDetails } : {}) } }, durable: { error_payload: success ? null : { message: corrupt ? message.trim() : message, ...(providerDetails ? { provider_details: providerDetails } : {}), ...(websocketRecovery && surface === 'responses-websocket' ? { ai_native_recovery: { provider_attempts_consumed: 2 } } : {}) } } });
-        const clientRecords = facts ? [{ data: { type: 'error', error: { type: facts.type, message }, request_id: facts.request_id } }] : records(surface, message, success);
-        if (facts && standardMutation) standardMutation(runs.get(traceId), clientRecords[0].data);
+        const clientRecords = success ? records(surface, message, true) : fixture.anthropicError ? [{ data: { type: 'error', error: { type: facts.type, message }, request_id: facts.request_id } }] : (surface === 'responses-websocket' || scalarResponse) ? [{ data: { type: 'response.failed', response: { error: facts } } }] : records(surface, message, false);
+        if (fixture.anthropicError && standardMutation) standardMutation(runs.get(traceId), clientRecords[0].data);
         return { http_status: 200, records: clientRecords };
       },
       async observeRun(_target, traceId) { return runs.get(traceId); },
@@ -53,14 +56,15 @@ test('Root #1998 P7: executes finite online rows including standard Anthropic er
   assert.equal(new Set(result.rows.flatMap((row) => row.attempts.map((attempt) => attempt.upstream_nonce))).size, expectedAttempts);
 });
 
-test('WebSocket recovery counts controlled upstream attempts from the durable receipt', async () => {
+test('unrelated WebSocket recovery counts controlled upstream attempts from the durable receipt', async () => {
   const fixture = fixtureDependencies(false, true);
   const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
-  assert.equal(result.verdict, 'PASS');
+  assert.ok(result.rows.filter((row) => row.surface === 'responses-websocket' && row.fixture !== 'retry').every((row) => row.verdict === 'PASS'));
+  assert.equal(result.rows.find((row) => row.id === 'retry/responses-websocket').verdict, 'FAIL');
   assert.equal(result.rows.length, ERROR_FIDELITY_ROWS.length);
 });
 
-test('WebSocket retry success rejects a missing HTTP fallback', async () => {
+test('WebSocket semantic retry success rejects an unexpected HTTP fallback', async () => {
   const fixture = fixtureDependencies(false, false, true);
   const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
   assert.equal(result.rows.find((row) => row.id === 'retry/responses-websocket').verdict, 'FAIL');
@@ -71,7 +75,7 @@ test('Root #1998 P7 authenticity: durable whitespace loss fails rows while remai
   const result = await runGatewayErrorMatrix({ ready: { targets: {} }, mockSnapshot: fixture.mockSnapshot }, fixture.dependencies);
   assert.equal(result.verdict, 'FAIL');
   assert.equal(result.rows.length, ERROR_FIDELITY_ROWS.length);
-  assert.ok(result.rows.filter((row) => row.fixture === 'json').every((row) => row.verdict === 'FAIL' && /exact upstream body/u.test(row.error)));
+  assert.ok(result.rows.filter((row) => row.fixture === 'json').every((row) => row.verdict === 'FAIL' && /exact upstream body|explicit upstream message/u.test(row.error)));
   assert.ok(result.rows.filter((row) => row.fixture === 'empty').every((row) => row.verdict === 'PASS'));
 });
 
@@ -82,6 +86,7 @@ test('Root #1998 P7 authenticity: success following error, missing terminal and 
     assert.throws(() => inspectClient(surface, [...failed, ...failed], false), /cardinality/u);
     assert.throws(() => inspectClient(surface, [...failed, ...records(surface, null, true)], false), /cardinality/u);
   }
+  assert.throws(() => inspectClient('responses-sse', [{ data: { type: 'response.failed', response: {} } }], false), /cardinality/u);
 });
 
 

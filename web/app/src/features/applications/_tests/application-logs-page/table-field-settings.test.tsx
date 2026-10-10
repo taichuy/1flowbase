@@ -10,6 +10,25 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { vi } from 'vitest';
 
+vi.mock('antd', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('antd')>();
+  return {
+    ...actual,
+    Grid: {
+      ...actual.Grid,
+      // Keep desktop hook behavior stable through automatic component cleanup.
+      useBreakpoint: () => ({
+        xs: false,
+        sm: true,
+        md: true,
+        lg: true,
+        xl: false,
+        xxl: false
+      })
+    }
+  };
+});
+
 const runtimeApi = vi.hoisted(() => ({
   applicationRunsQueryKey: (
     applicationId: string,
@@ -286,11 +305,17 @@ describe('ApplicationLogsPage - table field settings', () => {
     { total_cost: 0.000000000000000001, expected: '0.000000000000000001 $' },
     { total_cost: 0.17, expected: '0.17 $' },
     { total_cost: null, expected: '—' }
-  ])('renders the saved numeric cost with a display-only dollar suffix: $expected', ({ total_cost, expected }) => {
-    const column = getApplicationRunsTableColumns(appI18n.getFixedT(null, 'applications'))
-      .find((item) => item.key === 'total_cost');
-    expect(column?.render?.(null, { total_cost } as ApplicationRunSummary, 0)).toBe(expected);
-  });
+  ])(
+    'renders the saved numeric cost with a display-only dollar suffix: $expected',
+    ({ total_cost, expected }) => {
+      const column = getApplicationRunsTableColumns(
+        appI18n.getFixedT(null, 'applications')
+      ).find((item) => item.key === 'total_cost');
+      expect(
+        column?.render?.(null, { total_cost } as ApplicationRunSummary, 0)
+      ).toBe(expected);
+    }
+  );
 
   test('shows token breakdown columns from run summaries', async () => {
     render(
@@ -316,11 +341,13 @@ describe('ApplicationLogsPage - table field settings', () => {
     expect(
       screen.getByRole('columnheader', { name: '缓存命中率' })
     ).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '费用' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '费用' })
+    ).toBeInTheDocument();
     expect(screen.getByText('0.15000125 $')).toBeInTheDocument();
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.getByText('28')).toBeInTheDocument();
-    expect(screen.getByText('6,956')).toBeInTheDocument();
+    expect(screen.getByTitle('6,956')).toHaveTextContent('6.96K');
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('98.32%')).toBeInTheDocument();
   });

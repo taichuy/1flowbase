@@ -344,8 +344,8 @@ test('Root #1477 AC-008: retry fixture fails once and then succeeds for one corr
     const request = () => fetch(`${httpBaseUrl}${MOCK_ROUTE.CHAT_COMPLETIONS}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'mock-model', fixture_retry_key: 'retry-correlation-1',
-        messages: [{ role: 'user', content: errorFixtureMarker('retry') }],
+        model: 'mock-model',
+        messages: [{ role: 'user', content: `${errorFixtureMarker('retry')}:retry-correlation-1` }],
       }),
     });
     const first = await request();
@@ -354,6 +354,38 @@ test('Root #1477 AC-008: retry fixture fails once and then succeeds for one corr
     const second = await request();
     assert.equal(second.status, 200);
     assert.match(await second.text(), /chat\.completion\.chunk/u);
+  });
+});
+
+test('WebSocket empty messages are explicit facts and retry succeeds on a second independent invocation', async () => {
+  await withMockUpstream(async ({ upstream, websocketBaseUrl }) => {
+    const invoke = (input) => new Promise((resolve, reject) => {
+      const received = [];
+      const socket = new WebSocket(`${websocketBaseUrl}${MOCK_ROUTE.RESPONSES}`);
+      socket.addEventListener('open', () => socket.send(JSON.stringify({
+        type: 'response.create', response: { model: 'mock-model', input },
+      })));
+      socket.addEventListener('message', (event) => received.push(JSON.parse(event.data)));
+      socket.addEventListener('close', () => resolve(received));
+      socket.addEventListener('error', reject);
+    });
+    const empty = await invoke(errorFixtureMarker('empty'));
+    assert.deepEqual(empty.map((event) => event.type), ['error']);
+    assert.equal(empty[0].error.message, '');
+    assert.equal(empty[0].error.status, 503);
+    const input = `${errorFixtureMarker('retry')}:ws-retry-correlation-1`;
+    const first = await invoke(input);
+    assert.deepEqual(first.map((event) => event.type), ['error']);
+    assert.equal(first[0].error.message, upstreamErrorFixture('retry').body);
+    const second = await invoke(input);
+    assert.equal(second.filter((event) => event.type === 'response.completed').length, 1);
+    assert.equal(second.some((event) => event.type === 'error'), false);
+    const separate = await invoke(`${errorFixtureMarker('retry')}:ws-retry-correlation-2`);
+    assert.deepEqual(separate.map((event) => event.type), ['error']);
+    const arrivals = arrivalEntries(upstream);
+    assert.equal(arrivals.length, 4);
+    assert.equal(arrivals.every((entry) => entry.transport === TRANSPORT.RESPONSES_WEBSOCKET), true);
+    assert.equal(new Set(arrivals.map((entry) => entry.nonce)).size, 4);
   });
 });
 

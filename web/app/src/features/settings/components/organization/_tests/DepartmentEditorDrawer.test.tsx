@@ -1,11 +1,12 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   fetchSettingsDepartments: vi.fn(),
@@ -80,6 +81,7 @@ function save() {
 
 describe('organization parent selector', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.clearAllMocks();
     resetAuthStore();
     useAuthStore.setState({ csrfToken: 'csrf' });
@@ -98,6 +100,18 @@ describe('organization parent selector', () => {
     );
     api.createSettingsDepartment.mockResolvedValue({ id: 'created' });
     api.updateSettingsDepartment.mockResolvedValue(development);
+  });
+
+  afterEach(async () => {
+    try {
+      // Complete Form's delayed state updates while the fixture DOM is alive.
+      // Mounted-tree cleanup remains owned by the test runner.
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('an empty organization tree displays and offers the organization root and submits null', async () => {

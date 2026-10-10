@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use control_plane::mcp_management::McpListItemsQuery;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 
 use super::*;
@@ -1013,12 +1014,14 @@ impl McpCatalogAdapter {
                 let items = service
                     .list_items_for_actor(
                         actor,
-                        query.instance_id.as_deref(),
-                        query.path.as_deref(),
-                        query.path_regex.as_deref(),
-                        query.keywords.as_deref(),
-                        query.depth,
-                        query.limit,
+                        McpListItemsQuery {
+                            instance_id: query.instance_id.as_deref(),
+                            path: query.path.as_deref(),
+                            path_regex: query.path_regex.as_deref(),
+                            keywords: query.keywords.as_deref(),
+                            depth: query.depth,
+                            limit: query.limit,
+                        },
                     )
                     .await?;
                 let instance_id = query.instance_id.as_deref().ok_or(

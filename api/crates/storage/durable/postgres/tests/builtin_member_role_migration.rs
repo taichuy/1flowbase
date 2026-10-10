@@ -38,33 +38,52 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
         .upsert_workspace(tenant.id, "historical-workspace")
         .await
         .unwrap();
-    control_plane_test_support::upsert_permission_catalog(&store)
-        .await
-        .unwrap();
-    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
-        .await
-        .unwrap();
+    // This schema intentionally predates current catalog synchronization and
+    // bootstrap writers. Seed the historical role and its durable bindings
+    // through the SQL contract that existed before the migration under test.
+    let manager_role_id = Uuid::now_v7();
     sqlx::query(
         r#"
-        update roles
-        set code = 'manager',
-            system_kind = 'manager',
-            is_builtin = true,
-            is_editable = false
-        where workspace_id = $1 and code = 'member'
+        insert into roles (
+            id, scope_id, scope_kind, workspace_id, code, name, system_kind,
+            is_builtin, is_editable, auto_grant_new_permissions, is_default_member_role
+        ) values ($1, $2, 'workspace', $2, 'manager', 'Historical manager',
+            'manager', true, false, false, true)
         "#,
     )
+    .bind(manager_role_id)
     .bind(workspace.id)
     .execute(store.pool())
     .await
     .unwrap();
+    let permission_id = Uuid::now_v7();
+    sqlx::query(
+        "insert into permission_definitions (id, scope_id, resource, action, scope, code, name) values ($1, $2, 'historical_resource', 'read', 'workspace', 'historical_resource.read', 'Historical permission')",
+    )
+    .bind(permission_id)
+    .bind(domain::SYSTEM_SCOPE_ID)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into role_permissions (id, scope_id, role_id, permission_id) values ($1, $2, $3, $4)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace.id)
+    .bind(manager_role_id)
+    .bind(permission_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into role_data_policies (id, role_id, can_view, can_create, can_update, can_delete) values ($1, $2, true, true, true, true)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(manager_role_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
 
-    let manager_role_id: Uuid =
-        sqlx::query_scalar("select id from roles where workspace_id = $1 and code = 'manager'")
-            .bind(workspace.id)
-            .fetch_one(store.pool())
-            .await
-            .unwrap();
     let user_id = Uuid::now_v7();
     sqlx::query(
         r#"
@@ -136,6 +155,11 @@ async fn historical_manager_role_migrates_in_place_with_all_bindings() {
             .fetch_one(store.pool())
             .await
             .unwrap();
+
+    assert_eq!(
+        permission_count_before, 1,
+        "historical permission binding must exist"
+    );
 
     sqlx::migrate!("./migrations")
         .run(store.pool())

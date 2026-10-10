@@ -128,6 +128,7 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         "runtime_native_snapshot_manifests",
         "runtime_native_snapshot_references",
         "runtime_observation_body_ownership",
+        "application_run_native_projection_progress",
         "client_trajectory_archive_heads",
         "client_trajectory_archive_blocks",
         "client_trajectory_archive_parts",
@@ -140,6 +141,37 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         );
     }
     assert_eq!(application.label_key, "auto.application_management");
+    let members = categories
+        .iter()
+        .find(|category| category.feature_id == "system.members")
+        .unwrap();
+    for table in [
+        "departments",
+        "department_role_bindings",
+        "user_department_bindings",
+    ] {
+        assert!(members.structure_tables.contains(&table.into()));
+        assert!(!members.data_tables.contains(&table.into()));
+        assert!(!inventory::excluded(table));
+    }
+    let progress = "application_run_native_projection_progress";
+    assert!(!application.structure_tables.contains(&progress.into()));
+    assert!(!inventory::excluded(progress));
+    let mut connection = db.acquire().await.unwrap();
+    let inv = inventory::inventory(&mut connection).await.unwrap();
+    let organization = inventory::selected(&inv, &select("members", true, false)).unwrap();
+    for table in [
+        "departments",
+        "department_role_bindings",
+        "user_department_bindings",
+    ] {
+        assert!(organization.contains(table));
+    }
+    assert!(!organization.contains(progress));
+    let execution = inventory::selected(&inv, &select("applications", false, true)).unwrap();
+    assert!(execution.contains(progress));
+    assert!(!execution.contains("departments"));
+    drop(connection);
     let mcp = categories
         .iter()
         .find(|category| category.feature_id == "system.mcp-management")

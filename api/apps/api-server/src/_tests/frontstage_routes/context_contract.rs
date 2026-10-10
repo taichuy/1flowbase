@@ -39,7 +39,7 @@ async fn ac_001_002_block_context_contract_is_authenticated_and_complete() {
     assert_eq!(contract["contract_version"], json!("1.0.0"));
     assert_eq!(contract["block_sdk_version"], json!("1.0.0"));
     let entries = contract["entries"].as_array().unwrap();
-    assert_eq!(entries.len(), 17);
+    assert_eq!(entries.len(), 18);
     assert_eq!(
         entries
             .iter()
@@ -63,6 +63,7 @@ async fn ac_001_002_block_context_contract_is_authenticated_and_complete() {
             "navigation",
             "theme",
             "ui",
+            "i18n",
         ]
     );
     assert!(entries.iter().all(|entry| {
@@ -74,6 +75,33 @@ async fn ac_001_002_block_context_contract_is_authenticated_and_complete() {
                 .is_some_and(|value| !value.is_empty())
             && entry["members"].is_array()
     }));
+    let i18n = entries.iter().find(|entry| entry["key"] == "i18n").unwrap();
+    assert_eq!(i18n["kind"], json!("object"));
+    assert_eq!(i18n["nullable"], json!(false));
+    assert_eq!(i18n["type"], json!("BlockContextI18n"));
+    assert_eq!(
+        i18n["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| {
+                (
+                    member["name"].as_str().unwrap(),
+                    member["kind"].as_str().unwrap(),
+                    member["type"].as_str().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            ("locale", "property", "string"),
+            ("status", "property", "'loading' | 'ready' | 'error'"),
+            (
+                "t",
+                "method",
+                "(key: string, options?: BlockTranslationOptions) => string"
+            ),
+        ]
+    );
     assert_eq!(
         contract["non_context_symbols"],
         json!([
@@ -138,6 +166,18 @@ fn ac_001_embedded_contract_rejects_invalid_versions_and_duplicate_names() {
     assert!(
         crate::routes::frontstage::block_context_contract::decode_block_context_contract(
             &serde_json::to_vec(&duplicate).unwrap()
+        )
+        .is_err()
+    );
+
+    let mut missing_i18n: Value = serde_json::from_slice(source).unwrap();
+    missing_i18n["entries"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|entry| entry["key"] != "i18n");
+    assert!(
+        crate::routes::frontstage::block_context_contract::decode_block_context_contract(
+            &serde_json::to_vec(&missing_i18n).unwrap()
         )
         .is_err()
     );

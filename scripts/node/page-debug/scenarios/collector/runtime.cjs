@@ -10,16 +10,21 @@ const nativeBinary = process.env.FLOWBASE_COLLECTOR_TEST_BINARY;
 const out = process.env.COLLECTOR_EVIDENCE_DIR;
 const base = 'http://127.0.0.1:7801', web = 'http://127.0.0.1:3102', dbPort = 35783;
 const container = 'codex-platform-collector-proof';
-const image = process.env.COLLECTOR_PG_IMAGE || 'sha256:b07129cc272f688c98f5b343138a0a52fa45b3d82f50d7a53ff441330624cd2e';
+const image = process.env.COLLECTOR_PG_IMAGE || 'postgres:18-alpine';
+const resourcePolicy = process.env.COLLECTOR_RESOURCE_POLICY || 'shared-machine';
 const { parseEnvFile } = require('../../../dev-up/env.js');
 const { openTemporaryOwnerSession } = require('../../auth.js');
 const password = crypto.randomBytes(24).toString('hex');
 let api, frontend, child, owner, containerId, timer, remote, resourceBreach = false;
 const receipt = { checks: [], cleanup: {}, peaks: { cpu: 0, physical: 0, disk: 0 } };
-const protectedPids = [7800,3100].map(port => {
-  const pids = execFileSync('fuser', ['-n','tcp',String(port)], {encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split(/\s+/).map(Number);
-  return pids.map(pid => ({ pid, start: fs.readFileSync(`/proc/${pid}/stat`,'utf8').split(' ')[21], cwd: fs.readlinkSync(`/proc/${pid}/cwd`) }));
-}).flat();
+let protectedPids = [];
+function protectedOwners(port) {
+  let output;
+  try { output = execFileSync('fuser', ['-n','tcp',String(port)], {encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); }
+  catch(error) { if(error.status === 1) return []; throw error; }
+  if(!output) return [];
+  return output.split(/\s+/).map(Number).map(pid => ({ pid, start: fs.readFileSync(`/proc/${pid}/stat`,'utf8').split(' ')[21], cwd: fs.readlinkSync(`/proc/${pid}/cwd`) }));
+}
 function dock(args) { return execFileSync('docker', args, {encoding:'utf8',maxBuffer:1024*1024,stdio:['ignore','pipe','ignore']}).trim(); }
 function start(cmd,args,cwd,name,env) {
   const fd = fs.openSync(path.join(out,`${name}.log`),'w');
@@ -52,15 +57,32 @@ async function run(cmd,args,name,env) {
 }
 (async()=>{try {
   assert.ok(pluginsRoot && binary && nativeBinary && out,'explicit proof roots, binaries and evidence dir required'); fs.mkdirSync(out,{recursive:true});
+  protectedPids = [7800,3100].flatMap(protectedOwners);
+  assert.ok(['shared-machine','github-hosted'].includes(resourcePolicy),'unknown collector resource policy');
+  if(resourcePolicy==='github-hosted'){
+    assert.equal(process.env.GITHUB_ACTIONS,'true','isolated policy requires GitHub Actions');
+    assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted','isolated policy requires a GitHub-hosted runner');
+    assert.equal(protectedPids.length,0,'isolated policy must not relax a shared service owner guard');
+  }
+  receipt.resource_policy={name:resourcePolicy,cpu:resourcePolicy==='github-hosted'?'observation-only':'stop-at-90-percent',physical:'stop-at-90-percent',disk:'stop-at-90-percent'};
   receipt.source_sha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   if(process.env.COLLECTOR_EXPECTED_SHA) assert.equal(receipt.source_sha,process.env.COLLECTOR_EXPECTED_SHA);
   receipt.plugins_sha=execFileSync('git',['rev-parse','HEAD'],{cwd:pluginsRoot,encoding:'utf8'}).trim();
+  if(process.env.COLLECTOR_EXPECTED_PLUGINS_SHA) assert.equal(receipt.plugins_sha,process.env.COLLECTOR_EXPECTED_PLUGINS_SHA);
   receipt.binary_sha256=crypto.createHash('sha256').update(fs.readFileSync(binary)).digest('hex');
+  receipt.native_binary_sha256=crypto.createHash('sha256').update(fs.readFileSync(nativeBinary)).digest('hex');
   for(const port of [7801,3102,dbPort]) assert.equal(execFileSync('ss',['-H','-ltn','sport','=',':'+port],{encoding:'utf8'}).trim(),'');
   const {createRemoteFixture}=await import(pathToFileURL(path.join(__dirname,'remote-fixture.mjs')));
   remote=await createRemoteFixture({pluginsRoot,directory:path.join(out,'private/remote'),nativeBinary});
-  const env={...process.env,...parseEnvFile('/home/taichuy/git/1flowbase/api/apps/api-server/.env'),
+  const expectedVersion=remote.manifest.version;
+  assert.match(expectedVersion,/^\d+\.\d+\.\d+$/,'pinned source collector version required');
+  receipt.collector_version=expectedVersion;
+  assert.equal(execFileSync(nativeBinary,['--version'],{encoding:'utf8'}).trim(),`${remote.manifest.entry} ${expectedVersion}`,'native binary must match pinned source manifest');
+  const bootstrapExample=parseEnvFile(path.join(root,'api/apps/api-server/.env.example'));
+  assert.ok(bootstrapExample.BOOTSTRAP_WORKSPACE_NAME,'tracked bootstrap workspace example required');
+  const env={...process.env,...parseEnvFile(process.env.COLLECTOR_API_ENV_FILE || path.join(root,'api/apps/api-server/.env')),
     API_DATABASE_URL:`postgres://postgres:${password}@127.0.0.1:${dbPort}/collector_proof`,API_SERVER_ADDR:'127.0.0.1:7801',API_NODE_ID:'collector-proof-node',
+    BOOTSTRAP_WORKSPACE_NAME:bootstrapExample.BOOTSTRAP_WORKSPACE_NAME,BOOTSTRAP_ROOT_EMAIL:'collector-proof-owner@example.invalid',
     BOOTSTRAP_ROOT_ACCOUNT:'collector-proof-owner',BOOTSTRAP_ROOT_PASSWORD:password,API_ENV:'development',
     API_PROVIDER_INSTALL_ROOT:path.join(out,'private/providers'),API_HOST_EXTENSION_DROPIN_ROOT:path.join(out,'private/dropins'),
     API_SYSTEM_BACKUP_REPOSITORY_ROOT:path.join(out,'private/backups'),API_MCP_TEMPLATE_LIBRARY_ROOT:path.join(out,'private/mcp'),
@@ -75,10 +97,13 @@ async function run(cmd,args,name,env) {
     const mem=Object.fromEntries(fs.readFileSync('/proc/meminfo','utf8').trim().split('\n').map(line=>{const[k,v]=line.split(':');return[k,parseInt(v)];}));
     const physical=100*(mem.MemTotal-mem.MemAvailable)/mem.MemTotal, s=fs.statfsSync(root), disk=100*(s.blocks-s.bfree)/s.blocks;
     for(const[k,v]of Object.entries({cpu,physical,disk})) receipt.peaks[k]=Math.max(receipt.peaks[k],v);
-    if(Math.max(cpu,physical,disk)>=90&&!resourceBreach){resourceBreach=true;void stop(child);void stop(api);void stop(frontend);}
+    // CPU saturation on the explicitly isolated hosted runner is observed;
+    // shared-machine CPU and memory/disk capacity guards remain unchanged.
+    const breached=physical>=90||disk>=90||(resourcePolicy==='shared-machine'&&cpu>=90);
+    if(breached&&!resourceBreach){resourceBreach=true;receipt.resource_failure={cpu,physical,disk};void stop(child);void stop(api);void stop(frontend);}
   },2000);
   containerId=dock(['run','-d','--name',container,'--label','codex.qa.owner='+receipt.source_sha,'--publish',`127.0.0.1:${dbPort}:5432`,'--env','POSTGRES_PASSWORD='+password,'--env','POSTGRES_DB=collector_proof',image]);
-  receipt.database={id:containerId,name:container,port:dbPort,scope:'fresh proof-owned database only'};
+  receipt.database={id:containerId,name:container,image,port:dbPort,scope:'fresh proof-owned database only'};
   for(let i=0;i<60;i++){try{dock(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','collector_proof']);break;}catch{}if(i===59)throw Error('PG readiness failed');await new Promise(resolve=>setTimeout(resolve,500));}
   api=start(binary,[],root+'/api','api',env); frontend=start(process.execPath,[root+'/web/app/node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','3102','--strictPort'],root+'/web/app','web',env);
   await ready(base+'/health'); await ready(web+'/__1flowbase_dev_ready');
@@ -115,11 +140,11 @@ async function run(cmd,args,name,env) {
   const app=await request('POST','/api/console/applications',{application_type:'agent_logs',name:'Platform collector proof',description:'proof owned',icon:null,icon_type:null,icon_background:null});assert.equal(app.status,201);
   const applicationId=app.body.data.id;receipt.application_id=applicationId;
   // Real browser mutation installs package. Desktop installs, mobile reads retained state.
-  await run(process.execPath,['scripts/node/page-debug/scenarios/collector.cjs'],'browser',{...env,COLLECTOR_WEB_BASE_URL:web,COLLECTOR_API_BASE_URL:base,COLLECTOR_APPLICATION_ID:applicationId,COLLECTOR_EVIDENCE_DIR:path.join(out,'browser'),COLLECTOR_EXPECTED_ENDPOINT:web+'/api/logs/v1/events'});
+  await run(process.execPath,['scripts/node/page-debug/scenarios/collector.cjs'],'browser',{...env,COLLECTOR_WEB_BASE_URL:web,COLLECTOR_API_BASE_URL:base,COLLECTOR_APPLICATION_ID:applicationId,COLLECTOR_EVIDENCE_DIR:path.join(out,'browser'),COLLECTOR_EXPECTED_ENDPOINT:web+'/api/logs/v1/events',COLLECTOR_EXPECTED_VERSION:expectedVersion});
   const after=await request('GET','/api/console/applications/catalog');assert.equal(after.status,200);
   const installed=after.body.data.collectors.find(item=>item.catalog_id===pending.catalog_id);
-  assert.equal(installed.installation_status,'installed');assert.equal(installed.installed_version,'0.1.0');assert.ok(installed.extension_installation_id);
-  const installInput={category:installed.category,catalog_id:installed.catalog_id,version:installed.installed_version};
+  assert.equal(installed.installation_status,'installed');assert.equal(installed.installed_version,expectedVersion);assert.ok(installed.extension_installation_id);
+  const installInput={category:installed.category,catalog_id:installed.catalog_id,version:expectedVersion};
   const runtimeRows=dock(['exec',container,'psql','-U','postgres','-d','collector_proof','-Atc',"SELECT COUNT(*) FROM extension_installations WHERE id = '"+installed.extension_installation_id+"' AND plugin_id IS NULL AND contract_version IS NULL AND protocol IS NULL AND application_action = 'none'"]);assert.equal(runtimeRows,'1');
   for(const table of ['plugin_assignments','plugin_worker_leases','plugin_tasks'])assert.equal(dock(['exec',container,'psql','-U','postgres','-d','collector_proof','-Atc',"SELECT COUNT(*) FROM "+table+" WHERE installation_id = '"+installed.extension_installation_id+"'"]),'0');
   remote.disable();const remoteCount=remote.requests.length;
@@ -129,17 +154,24 @@ async function run(cmd,args,name,env) {
   for(const asset of remote.manifest.assets){
     const response=await fetch(base+installed.asset_base_url+'/'+asset.name,{redirect:'error'});assert.equal(response.status,200);assert.equal(response.headers.get('location'),null);
     const bytes=Buffer.from(await response.arrayBuffer());assert.equal(bytes.length,asset.size);assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),asset.sha256);
+    if(asset.name==='release.json'){
+      const release=JSON.parse(bytes.toString('utf8'));
+      assert.equal(release.version,expectedVersion);assert.equal(release.source_sha,receipt.plugins_sha);assert.equal(release.collector_code,remote.manifest.collector_code);
+    }
     assetReceipt.push({name:asset.name,bytes:bytes.length,sha256:asset.sha256});
   }
   assert.equal(remote.requests.length,remoteCount,'asset serving and existing install must not contact remote source');
   for(const suffix of ['/not-whitelisted','/%2e%2e%2fsecret','/%2fetc%2fpasswd']){
     const response=await fetch(base+installed.asset_base_url+suffix);assert.ok(response.status>=400);
   }
-  for(const route of [installed.asset_base_url.replace('/0.1.0/','/9.9.9/')+'/install.sh',installed.asset_base_url.replace('/taichuy/','/other/')+'/install.sh'])assert.ok((await fetch(base+route)).status>=400);
+  const versionPath=`/${expectedVersion}/`,ownerPath=`/${remote.manifest.organization}/`;
+  assert.ok(installed.asset_base_url.includes(versionPath));assert.ok(installed.asset_base_url.includes(ownerPath));
+  const unavailableVersion=expectedVersion==='9.9.9'?'9.9.8':'9.9.9',foreignOwner=remote.manifest.organization==='other'?'foreign':'other';
+  for(const route of [installed.asset_base_url.replace(versionPath,`/${unavailableVersion}/`)+'/install.sh',installed.asset_base_url.replace(ownerPath,`/${foreignOwner}/`)+'/install.sh'])assert.ok((await fetch(base+route)).status>=400);
   const installer=await fetch(base+installed.shell_installer_url);assert.equal(installer.status,200);
   const localScript=path.join(out,'private/install.sh');fs.writeFileSync(localScript,await installer.text());
-  await run('bash',[localScript,'--endpoint',base+'/api/logs/v1/events','--release-base',base+installed.asset_base_url,'--installation-id',applicationId,'--install-dir',path.join(out,'private/client'),'--source',path.join(out,'private/codex'),'--no-start'],'local-cli-install',{...env,FLOWBASE_AGENT_LOGS_API_KEY:'proof-only-key'});
-  assert.match(execFileSync(path.join(out,'private/client/bin/codex-logs-collector'),['--version'],{encoding:'utf8'}),/0\.1\.0/);
+  await run('bash',[localScript,'--endpoint',base+'/api/logs/v1/events','--version',expectedVersion,'--release-base',base+installed.asset_base_url,'--installation-id',applicationId,'--install-dir',path.join(out,'private/client'),'--source',path.join(out,'private/codex'),'--no-start'],'local-cli-install',{...env,FLOWBASE_AGENT_LOGS_API_KEY:'proof-only-key'});
+  assert.equal(execFileSync(path.join(out,'private/client/bin/codex-logs-collector'),['--version'],{encoding:'utf8'}).trim(),`${remote.manifest.entry} ${expectedVersion}`);
   assert.equal(remote.requests.length,remoteCount,'terminal installation must not contact remote');
   // Clear process catalog caches: retained DB/package still owns offline metadata.
   await owner.dispose(); owner=null;
@@ -149,7 +181,7 @@ async function run(cmd,args,name,env) {
   owner=await openTemporaryOwnerSession({apiBaseUrl:base,account:env.BOOTSTRAP_ROOT_ACCOUNT,password});
   const offlineCatalog=await request('GET','/api/console/applications/catalog');assert.equal(offlineCatalog.status,200);
   const retained=offlineCatalog.body.data.collectors.find(entry=>entry.catalog_id===installed.catalog_id);
-  assert.equal(retained.installation_status,'installed');assert.equal(retained.installed_version,'0.1.0');
+  assert.equal(retained.installation_status,'installed');assert.equal(retained.installed_version,expectedVersion);
   const restartedRemoteCount=remote.requests.length;
   assert.equal((await fetch(base+retained.shell_installer_url)).status,200);
   assert.equal(remote.requests.length,restartedRemoteCount);
@@ -174,6 +206,9 @@ finally {
   if(containerId)try{const info=JSON.parse(dock(['inspect',container]))[0];assert.equal(info.Id,containerId);assert.equal(info.Config.Labels['codex.qa.owner'],receipt.source_sha);dock(['rm','-fv',container]);receipt.cleanup.database_removed=true;}catch(error){receipt.cleanup.database_error=error.message;process.exitCode=1;}
   receipt.cleanup.shared_services_unchanged=protectedPids.every(item=>{try{return fs.readFileSync(`/proc/${item.pid}/stat`,'utf8').split(' ')[21]===item.start&&fs.readlinkSync(`/proc/${item.pid}/cwd`)===item.cwd;}catch{return false;}});
   receipt.cleanup.ports_free=[7801,3102,dbPort].every(port=>execFileSync('ss',['-H','-ltn','sport','=',':'+port],{encoding:'utf8'}).trim()==='');
+  if(receipt.status==='pass' && (process.exitCode || !receipt.cleanup.session_revoked || !receipt.cleanup.database_removed || !receipt.cleanup.shared_services_unchanged || !receipt.cleanup.ports_free)){
+    receipt.status='fail';receipt.error='collector proof cleanup did not complete';process.exitCode=1;
+  }
   if(out){fs.rmSync(path.join(out,'private'),{recursive:true,force:true});fs.writeFileSync(path.join(out,'runtime.json'),JSON.stringify(receipt,null,2));}
   fs.rmSync(path.join(root,'web/app/.vite/collector-distribution-proof'),{recursive:true,force:true});
   process.stdout.write(JSON.stringify({status:receipt.status,error:receipt.error,checks:receipt.checks.map(({name,status,exit})=>({name,status,exit})),cleanup:receipt.cleanup,peaks:receipt.peaks})+'\n');

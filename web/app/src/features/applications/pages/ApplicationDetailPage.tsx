@@ -140,6 +140,7 @@ export function ApplicationDetailPage({
       <Navigate
         to="/applications/$applicationId/logs"
         params={{ applicationId }}
+        search={{ run_id: undefined, view: undefined }}
         replace
       />
     );

@@ -681,21 +681,6 @@ fn log_compatible_sse_closed(
 use super::super::stream_terminal_fallback::durable_record_to_runtime_event_envelope;
 pub(super) use super::super::stream_terminal_fallback::durable_round_prefix;
 
-fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {
-    payload.get(key).and_then(|value| {
-        value
-            .as_i64()
-            .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
-    })
-}
-
-fn compat_payload_string(payload: &Value, key: &str) -> Option<String> {
-    payload
-        .get(key)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-}
-
 #[cfg(test)]
 struct CompatibleRuntimeEventsForward<'a, F> {
     state: &'a ApiState,

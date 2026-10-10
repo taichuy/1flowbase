@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ai-gateway-protocol-conformance-${{ github.ref }}
+  group: ai-gateway-protocol-conformance-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ inputs.target_ref || github.sha }}
   cancel-in-progress: true
 
 env:

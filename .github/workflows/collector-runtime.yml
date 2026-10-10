@@ -1,0 +1,147 @@
+name: Collector runtime evidence
+
+on:
+  workflow_call:
+    inputs:
+      main_source_sha:
+        description: Exact full main repository source SHA
+        required: true
+        type: string
+      official_source_sha:
+        description: Exact full official collector source SHA
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      main_source_sha:
+        description: Exact full main repository source SHA
+        required: true
+        type: string
+      official_source_sha:
+        description: Exact full official collector source SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collector-runtime-${{ inputs.main_source_sha }}-${{ inputs.official_source_sha }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  runtime-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COLLECTOR_EXPECTED_SHA: ${{ inputs.main_source_sha }}
+      COLLECTOR_EXPECTED_PLUGINS_SHA: ${{ inputs.official_source_sha }}
+      COLLECTOR_PLUGINS_ROOT: ${{ github.workspace }}/tmp/collector-runtime/official-source
+      COLLECTOR_API_BINARY: ${{ github.workspace }}/tmp/quality-gate-cache/collector-api/target/debug/api-server
+      FLOWBASE_COLLECTOR_TEST_BINARY: ${{ github.workspace }}/tmp/quality-gate-cache/collector-native/target/debug/codex-logs-collector
+      COLLECTOR_EVIDENCE_DIR: ${{ github.workspace }}/tmp/test-governance/collector-runtime
+      # Match the existing project Compose database; no environment upgrade.
+      COLLECTOR_PG_IMAGE: postgres:18-alpine
+      # Opt in only on this dedicated hosted runner. The harness validates
+      # Actions/runner identity and absence of protected shared service owners.
+      COLLECTOR_RESOURCE_POLICY: github-hosted
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.main_source_sha }}
+      - name: Require exact source identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          for (const name of ['COLLECTOR_EXPECTED_SHA', 'COLLECTOR_EXPECTED_PLUGINS_SHA']) {
+            assert.match(process.env[name], /^[0-9a-f]{40}$/, `${name} requires a full SHA`);
+          }
+          assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), process.env.COLLECTOR_EXPECTED_SHA);
+          JS
+      - uses: actions/checkout@v6
+        with:
+          repository: taichuy/1flowbase-official-plugins
+          ref: ${{ inputs.official_source_sha }}
+          path: tmp/collector-runtime/official-source
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 11.5.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - name: Install the repository Playwright Chromium
+        run: pnpm --dir web exec playwright install --with-deps chromium
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tmp/quality-gate-cache/collector-api/target
+            tmp/quality-gate-cache/collector-native/target
+          key: collector-runtime-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml', 'tmp/collector-runtime/official-source/runtime-extensions/@taichuy/codex-logs-collector/Cargo.lock') }}
+          restore-keys: |
+            collector-runtime-nodebug-${{ runner.os }}-
+      - name: Resolve existing Cargo resource policy and runtime tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$COLLECTOR_EVIDENCE_DIR"
+          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+          for tool in docker fuser ss tar; do command -v "$tool"; done
+          docker pull "$COLLECTOR_PG_IMAGE"
+      - name: Build the exact API source
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/collector-api/target
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > "$COLLECTOR_EVIDENCE_DIR/api-build.log" 2>&1 || { tail -c 4000 "$COLLECTOR_EVIDENCE_DIR/api-build.log"; exit 1; }
+      - name: Build the official native collector using its integration mechanism
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/collector-native/target
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path "$COLLECTOR_PLUGINS_ROOT/runtime-extensions/@taichuy/codex-logs-collector/Cargo.toml" > "$COLLECTOR_EVIDENCE_DIR/collector-build.log" 2>&1 || { tail -c 4000 "$COLLECTOR_EVIDENCE_DIR/collector-build.log"; exit 1; }
+      - name: Run the existing complete collector proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/node/page-debug/scenarios/collector/runtime.cjs > "$COLLECTOR_EVIDENCE_DIR/runtime.log" 2>&1 || { tail -c 4000 "$COLLECTOR_EVIDENCE_DIR/runtime.log"; exit 1; }
+      - name: Require candidate-bound runtime and cleanup receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const receipt = JSON.parse(fs.readFileSync(path.join(process.env.COLLECTOR_EVIDENCE_DIR, 'runtime.json'), 'utf8'));
+          assert.equal(receipt.status, 'pass');
+          assert.equal(receipt.source_sha, process.env.COLLECTOR_EXPECTED_SHA);
+          assert.equal(receipt.plugins_sha, process.env.COLLECTOR_EXPECTED_PLUGINS_SHA);
+          for (const field of ['session_revoked', 'database_removed', 'shared_services_unchanged', 'ports_free']) {
+            assert.equal(receipt.cleanup[field], true, `cleanup ${field}`);
+          }
+          for (const field of ['binary_sha256', 'native_binary_sha256']) assert.match(receipt[field], /^[0-9a-f]{64}$/);
+          JS
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test-governance-collector-runtime-${{ inputs.main_source_sha }}-${{ inputs.official_source_sha }}
+          path: tmp/test-governance/collector-runtime
+          if-no-files-found: error
+          retention-days: 14

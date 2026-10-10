@@ -208,7 +208,10 @@ where
             .get_application(api_key.scope_id, application_id)
             .await?
             .ok_or_else(|| anyhow!("not_authenticated"))?;
-        if !matches!(application.application_type, domain::ApplicationType::AgentFlow | domain::ApplicationType::AgentLogs) {
+        if !matches!(
+            application.application_type,
+            domain::ApplicationType::AgentFlow | domain::ApplicationType::AgentLogs
+        ) {
             return Err(anyhow!("not_authenticated"));
         }
         self.record_api_key_used(&api_key).await;
@@ -263,7 +266,10 @@ where
 fn ensure_application_api_keys_supported(
     application: &domain::ApplicationRecord,
 ) -> Result<(), ControlPlaneError> {
-    if matches!(application.application_type, domain::ApplicationType::AgentFlow | domain::ApplicationType::AgentLogs) {
+    if matches!(
+        application.application_type,
+        domain::ApplicationType::AgentFlow | domain::ApplicationType::AgentLogs
+    ) {
         Ok(())
     } else {
         Err(ControlPlaneError::InvalidInput(

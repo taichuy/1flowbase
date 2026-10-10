@@ -6,10 +6,11 @@ use axum::{
     http::HeaderMap,
     Json,
 };
-use control_plane::ports::{AgentLogsBatch, AgentLogsReceipt};
+use control_plane::ports::{
+    AgentLogsBatch, AgentLogsReceipt, BillingRepository, OrchestrationRuntimeRepository,
+};
 use interface_runtime::*;
 use std::sync::Arc;
-use storage_durable_postgres::MainDurableStore;
 
 pub(crate) const BINDING: &str = "http.application.logs.events.ingest.v1";
 const ID: &str = "application.logs.events.ingest";
@@ -40,8 +41,11 @@ contract!(TargetError, "application-agent-logs-error");
 #[path = "agent_logs/_tests/managed_projection.rs"]
 mod managed_projection_tests;
 
-struct Handler(MainDurableStore);
-impl InterfaceHandler<Input, Output, TargetError, ApplicationPrincipal> for Handler {
+struct Handler<R>(R);
+impl<R> InterfaceHandler<Input, Output, TargetError, ApplicationPrincipal> for Handler<R>
+where
+    R: BillingRepository + OrchestrationRuntimeRepository + Clone + Send + Sync + 'static,
+{
     fn invoke(
         &self,
         context: InterfaceHandlerContext<ApplicationPrincipal>,
@@ -68,7 +72,8 @@ impl InterfaceHandler<Input, Output, TargetError, ApplicationPrincipal> for Hand
 struct Authorization;
 impl InterfaceAuthorizationPort<ApplicationPrincipal> for Authorization {
     fn adapter_reference(&self) -> AuthorizationAdapterReference {
-        AuthorizationAdapterReference::new(OWNER).unwrap()
+        AuthorizationAdapterReference::new(OWNER)
+            .expect("static agent logs interface identity is valid")
     }
     fn authorize(
         &self,
@@ -77,21 +82,33 @@ impl InterfaceAuthorizationPort<ApplicationPrincipal> for Authorization {
         Box::pin(async { Ok(()) })
     }
 }
-pub(crate) fn compile_registry(
-    store: MainDurableStore,
-) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
-    let owner = InterfaceOwner::new(OWNER).unwrap();
-    let operation = AuthorizationOperation::new(ID).unwrap();
-    let id = InterfaceId::new(ID).unwrap();
-    let identity = InterfaceIdentity::new(id.clone(), InterfaceVersion::new("1").unwrap());
-    let handler = HandlerReference::new(OWNER).unwrap();
+pub(crate) fn compile_registry<R>(
+    store: R,
+) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError>
+where
+    R: BillingRepository + OrchestrationRuntimeRepository + Clone + Send + Sync + 'static,
+{
+    let owner = InterfaceOwner::new(OWNER).expect("static agent logs interface identity is valid");
+    let operation =
+        AuthorizationOperation::new(ID).expect("static agent logs interface identity is valid");
+    let id = InterfaceId::new(ID).expect("static agent logs interface identity is valid");
+    let identity = InterfaceIdentity::new(
+        id.clone(),
+        InterfaceVersion::new("1").expect("static agent logs interface identity is valid"),
+    );
+    let handler =
+        HandlerReference::new(OWNER).expect("static agent logs interface identity is valid");
     let contracts = InterfaceContracts::unary(
-        ContractIdentity::new(Input::CONTRACT_ID, "1").unwrap(),
-        ContractIdentity::new(Output::CONTRACT_ID, "1").unwrap(),
-        ContractIdentity::new(TargetError::CONTRACT_ID, "1").unwrap(),
+        ContractIdentity::new(Input::CONTRACT_ID, "1")
+            .expect("static agent logs interface identity is valid"),
+        ContractIdentity::new(Output::CONTRACT_ID, "1")
+            .expect("static agent logs interface identity is valid"),
+        ContractIdentity::new(TargetError::CONTRACT_ID, "1")
+            .expect("static agent logs interface identity is valid"),
     );
     let mut compiler = RegistryCompiler::new(
-        GraphFingerprint::new("graph:application-agent-logs-v1").unwrap(),
+        GraphFingerprint::new("graph:application-agent-logs-v1")
+            .expect("static agent logs interface identity is valid"),
         [operation.clone()],
         [owner.clone()],
     );
@@ -107,7 +124,7 @@ pub(crate) fn compile_registry(
         InterfaceExecution::new(
             InterfaceExecutionMode::Unary,
             handler.clone(),
-            TargetReference::new(OWNER).unwrap(),
+            TargetReference::new(OWNER).expect("static agent logs interface identity is valid"),
         ),
         InterfaceAuditPolicy::Mutating,
         InterfaceErrorPolicy::TypedTarget,
@@ -118,7 +135,8 @@ pub(crate) fn compile_registry(
         &id,
         1,
         InterfaceExtensionRegistration::new(
-            PluginIdentity::new("api-server.application-authentication").unwrap(),
+            PluginIdentity::new("api-server.application-authentication")
+                .expect("static agent logs interface identity is valid"),
             InterfaceExtensionTier::BuiltIn,
             InterfaceExtensionPoint::AuthenticationAdapter,
             InterfaceExtensionPermission::Authenticate,
@@ -126,26 +144,33 @@ pub(crate) fn compile_registry(
             InterfaceExtensionIsolation::TrustedInProcess,
             [],
         )
-        .unwrap(),
+        .expect("static agent logs interface identity is valid"),
         ActivatedAuthenticationAdapter::new(
-            PluginIdentity::new("api-server.application-authentication").unwrap(),
+            PluginIdentity::new("api-server.application-authentication")
+                .expect("static agent logs interface identity is valid"),
             InterfaceExtensionTier::BuiltIn,
-            AuthenticationAdapterReference::new("api-server.application-api-key").unwrap(),
+            AuthenticationAdapterReference::new("api-server.application-api-key")
+                .expect("static agent logs interface identity is valid"),
             AuthenticationActivationIdentity::new("api-server.application-api-key.activation.v1")
-                .unwrap(),
+                .expect("static agent logs interface identity is valid"),
             PrincipalProfile::Application,
         ),
     )?;
     compiler.register_binding(
         ProtocolBinding::new(
-            BindingId::new(BINDING).unwrap(),
+            BindingId::new(BINDING).expect("static agent logs interface identity is valid"),
             identity,
             contracts,
-            ProtocolProjection::http(RouteIdentity::new("POST", "/api/logs/v1/events").unwrap()),
+            ProtocolProjection::http(
+                RouteIdentity::new("POST", "/api/logs/v1/events")
+                    .expect("static agent logs interface identity is valid"),
+            ),
         ),
         InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("api-server.application-api-key").unwrap(),
-            AuthorizationAdapterReference::new(OWNER).unwrap(),
+            AuthenticationAdapterReference::new("api-server.application-api-key")
+                .expect("static agent logs interface identity is valid"),
+            AuthorizationAdapterReference::new(OWNER)
+                .expect("static agent logs interface identity is valid"),
             None,
         ),
     )?;
@@ -179,7 +204,7 @@ pub async fn ingest_events(
         .interface_registry()
         .ok_or_else(|| anyhow::anyhow!("interface_registry_unavailable"))?
         .snapshot();
-    let binding = BindingId::new(BINDING).unwrap();
+    let binding = BindingId::new(BINDING).expect("static agent logs interface identity is valid");
     let authenticated = boot
         .authenticate_invocation::<_, ApplicationPrincipal>(
             Arc::clone(&snapshot),

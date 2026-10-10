@@ -51,10 +51,10 @@ fn project(bundle: &domain::McpBundlePackage) -> Result<Vec<ProjectedTemplateRes
         &BTreeMap::new(),
     )
 }
-fn recoverable(b: &TemplateResourceBaseline) -> bool {
-    b.pending.as_ref().is_some_and(|i| {
-        b.committed_operation_id == Some(i.operation_id) && b.committed_fingerprint.is_some()
-    })
+fn recovery_operation(b: &TemplateResourceBaseline) -> Option<Uuid> {
+    let intent = b.pending.as_ref()?;
+    (b.committed_operation_id == Some(intent.operation_id) && b.committed_fingerprint.is_some())
+        .then_some(intent.operation_id)
 }
 async fn snapshot<R: McpManagementRepository>(
     service: &McpManagementService<R>,
@@ -126,7 +126,7 @@ pub async fn preview<R: McpManagementRepository + PortableTemplateBaselineReposi
     let current = snapshot(&service, actor_user_id, package, current_system_version).await?;
     let mut baselines = repository.load_template_baselines(scope).await?;
     for b in &mut baselines {
-        if recoverable(b) {
+        if recovery_operation(b).is_some() {
             b.applied_fingerprint = b.committed_fingerprint.take();
             b.pending = None;
             b.committed_operation_id = None;
@@ -178,14 +178,13 @@ pub async fn install<
         let current = snapshot(&service, actor_user_id, package, current_system_version).await?;
         let baselines = repo.load_template_baselines(scope).await?;
         for b in &baselines {
-            if b.key.kind.starts_with("mcp_") && recoverable(b) {
+            if !b.key.kind.starts_with("mcp_") {
+                continue;
+            }
+            if let Some(operation_id) = recovery_operation(b) {
                 ensure!(
-                    repo.finalize_template_write(
-                        scope,
-                        &b.key,
-                        b.pending.as_ref().unwrap().operation_id
-                    )
-                    .await?,
+                    repo.finalize_template_write(scope, &b.key, operation_id)
+                        .await?,
                     "template_mcp_recovery_conflict"
                 );
             }

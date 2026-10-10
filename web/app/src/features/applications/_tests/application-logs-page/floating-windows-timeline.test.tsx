@@ -19,6 +19,25 @@ type ConversationMessagePageItem = {
   finished_at?: string | null;
 };
 
+vi.mock('antd', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('antd')>();
+  return {
+    ...actual,
+    Grid: {
+      ...actual.Grid,
+      // Keep desktop hook behavior stable through automatic component cleanup.
+      useBreakpoint: () => ({
+        xs: false,
+        sm: true,
+        md: true,
+        lg: true,
+        xl: false,
+        xxl: false
+      })
+    }
+  };
+});
+
 const runtimeApi = vi.hoisted(() => ({
   applicationRunsQueryKey: (
     applicationId: string,

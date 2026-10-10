@@ -805,17 +805,13 @@ where
                             item.clone(),
                         );
                         fact.payload["response_round_id"] = json!(response_round_id_for_task);
-                        if let Err(error) =
-                            runtime_event_persister::persist_runtime_event_payload_for_generation(
-                                &repository_for_events,
-                                flow_run_id,
-                                &fact,
-                                generation_writer_for_task.as_deref(),
-                            )
-                            .await
-                        {
-                            return Err(error);
-                        }
+                        runtime_event_persister::persist_runtime_event_payload_for_generation(
+                            &repository_for_events,
+                            flow_run_id,
+                            &fact,
+                            generation_writer_for_task.as_deref(),
+                        )
+                        .await?;
                     }
                     project_canonical_provider_deltas(
                         runtime_event_stream.as_ref(),

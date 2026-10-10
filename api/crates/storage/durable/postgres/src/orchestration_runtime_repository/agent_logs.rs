@@ -54,9 +54,10 @@ pub(super) async fn ingest(
         let request_id = record_id;
         sqlx::query("insert into client_trajectory_captures(request_id,record_id,event_sequence,status) values($1,$1,0,'complete') on conflict(request_id) do nothing").bind(record_id).execute(&mut *tx).await?;
         let step_id = Uuid::now_v7();
-        let kind = serde_json::to_value(event.kind)?
+        let kind_value = serde_json::to_value(event.kind)?;
+        let kind = kind_value
             .as_str()
-            .unwrap()
+            .ok_or_else(|| anyhow!("agent_logs.event_kind_contract"))?
             .to_owned();
         let step = ClientTrajectoryStep {
             id: step_id,
@@ -185,7 +186,7 @@ async fn refresh_task(
     let mut reasoning_effort = None;
     let mut system_contents = Vec::new();
     let mut system_sequence = None;
-    let mut usage_groups: BTreeMap<String, Vec<&(AgentLogEvent, Option<String>)>> = BTreeMap::new();
+    let mut usage_groups: BTreeMap<String, Vec<&AgentLogUsage>> = BTreeMap::new();
     for item in &events {
         let e = &item.0;
         if e.parent_source_task_id.is_some() {
@@ -235,7 +236,7 @@ async fn refresh_task(
             usage_groups
                 .entry(u.response_id.clone().unwrap_or_default())
                 .or_default()
-                .push(item);
+                .push(u);
         }
     }
     if let Some(sequence) = system_sequence {
@@ -276,7 +277,7 @@ async fn refresh_task(
     for group in usage_groups.values() {
         let deltas = group
             .iter()
-            .filter(|(e, _)| e.usage.as_ref().unwrap().basis == AgentLogUsageBasis::Delta)
+            .filter(|usage| usage.basis == AgentLogUsageBasis::Delta)
             .copied()
             .collect::<Vec<_>>();
         let selected = if deltas.is_empty() {
@@ -284,8 +285,7 @@ async fn refresh_task(
         } else {
             deltas
         };
-        for (e, _) in selected {
-            let u = e.usage.as_ref().unwrap();
+        for u in selected {
             for (index, value) in [
                 u.total_tokens,
                 u.input_tokens,

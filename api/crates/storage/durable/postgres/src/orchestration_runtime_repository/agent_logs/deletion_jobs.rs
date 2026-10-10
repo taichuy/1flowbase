@@ -158,7 +158,11 @@ pub(in crate::orchestration_runtime_repository) async fn advance(
     .await?;
     let deleted = job.deleted_records + count;
     let status = AgentLogsDeleteJobStatus::after_batch(deleted, job.total_records, stopped);
-    sqlx::query("update application_log_deletion_jobs set deleted_records=$2,status=$3,updated_at=clock_timestamp() where id=$1").bind(id).bind(i64::try_from(deleted)?).bind(serde_json::to_value(status)?.as_str().unwrap()).execute(&mut *tx).await?;
+    let status_value = serde_json::to_value(status)?;
+    let status_name = status_value
+        .as_str()
+        .ok_or_else(|| anyhow!("agent_logs.delete_job_status_contract"))?;
+    sqlx::query("update application_log_deletion_jobs set deleted_records=$2,status=$3,updated_at=clock_timestamp() where id=$1").bind(id).bind(i64::try_from(deleted)?).bind(status_name).execute(&mut *tx).await?;
     if !status.is_active() {
         sqlx::query("delete from application_log_deletion_records where job_id=$1")
             .bind(id)

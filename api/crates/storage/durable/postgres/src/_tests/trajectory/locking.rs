@@ -116,6 +116,12 @@ async fn trace_projection_cross_run_summary_fk_does_not_deadlock() {
         .await
         .unwrap()
         .unwrap();
+    // Require a fresh summary insert so its cross-run FK is actually checked.
+    sqlx::query("delete from application_run_log_summaries where flow_run_id=$1")
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
     let mut writer = pool.begin().await.unwrap();
     let writer_pid: i32 = sqlx::query_scalar("select pg_backend_pid()")
         .fetch_one(&mut *writer)
@@ -123,6 +129,23 @@ async fn trace_projection_cross_run_summary_fk_does_not_deadlock() {
         .unwrap();
     // The real sequencing helper represents the runtime writer's held member lock.
     flow_run_scope_id_for_update(&mut writer, member)
+        .await
+        .unwrap();
+    let runtime_input = projection(anchor, member, "runtime-writer");
+    timeout(
+        WAIT_LIMIT,
+        store.replace_application_run_trace_projection(&runtime_input),
+    )
+    .await
+    .expect("runtime writer's NO KEY UPDATE must permit the cross-run FK")
+    .unwrap();
+    assert_projection(&store, &runtime_input).await;
+
+    // A destructive/identity writer may hold the stronger lock. Recreate that
+    // dependency explicitly instead of assuming runtime sequencing uses it.
+    sqlx::query("select id from flow_runs where id=$1 for update")
+        .bind(member)
+        .fetch_one(&mut *writer)
         .await
         .unwrap();
     let input = projection(anchor, member, "cross-run");

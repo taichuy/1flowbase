@@ -190,7 +190,7 @@ environment: leave empty
 For manual `scope: ci`, runs use the full quality gate shape: repo tooling,
 full repo frontend, React Doctor, backend static/fmt/package shards, backend app test
 package shards, backend consistency, frontend coverage, backend coverage package shards,
-state protocols, container image security, the four-foundation contract receipt, and
+container image security, the four-foundation contract receipt, and
 mock-backed AI Gateway protocol conformance
 run as separate jobs. Scheduled `scope: ci`
 runs use the same component set.
@@ -210,8 +210,16 @@ uses real Provider credentials or local client binaries.
 For narrower dispatch scopes such as `repo-frontend-pr`, `repo-frontend`, `repo-frontend-react-doctor`, `repo-backend`, `backend-consistency`,
 `coverage-backend`, or `container-images`,
 `quality-gate.yml` runs one targeted job and publishes that single-scope report directly.
-Manual runs share the same target-branch concurrency group as automatic quality gates.
+Manual concurrency includes the target, scope and batch mode. Independent scopes and
+plugin batches retain their evidence; only redundant runs of the same scope/batch cancel.
 Scheduled runs target `latest`, use `scope: ci`, and set `environment: nightly-latest`.
+
+`state-protocols`, release rollback, collector runtime and real-provider conformance
+remain independent scoped workflows, so a full CI green does not certify those runs.
+The application-template workflow supplements the full backend test shards with focused
+merge, transaction, translation, backup and HTTP evidence. Each test command log must
+contain executed passing tests; empty selectors and ignored-only suites fail. Its
+separate `cargo check` step supplies compilation evidence only.
 
 ## Scope Options
 
@@ -301,3 +309,5 @@ FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 ```
 
 This keeps hosted-action runtime annotations aligned with the repository's Node 24 test runtime.
+
+The reusable AI protocol gate separates caller workflow, event, ref and candidate source in its concurrency identity. Full CI runs against different candidate SHAs cannot cancel each other’s protocol evidence.

@@ -1,9 +1,9 @@
 use std::{collections::HashSet, convert::Infallible, sync::Arc};
 
 use access_control::{
-    APPLICATIONS_LOGS_DELETE_OPERATION_ID, APPLICATIONS_LOGS_EXPORT_OPERATION_ID, APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
-    APPLICATIONS_RUN_OPERATION_ID, APPLICATIONS_UPDATE_OPERATION_ID,
-    APPLICATIONS_VIEW_OPERATION_ID,
+    APPLICATIONS_LOGS_DELETE_OPERATION_ID, APPLICATIONS_LOGS_EXPORT_OPERATION_ID,
+    APPLICATIONS_LOGS_IMPORT_OPERATION_ID, APPLICATIONS_RUN_OPERATION_ID,
+    APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_OPERATION_ID,
 };
 use axum::{
     extract::{Path, Query, RawQuery, State},
@@ -40,13 +40,12 @@ use super::debug_run_stream;
 pub(crate) mod provider_trajectory;
 use provider_trajectory::workflow::{get_workflow_trajectory_body, list_workflow_trajectory};
 use provider_trajectory::{
-    get_client_trajectory_section, get_provider_trajectory_body, get_run_payload,
-    list_client_trajectory, list_provider_trajectory, list_run_trajectory, get_log_record, list_record_client_trajectory, get_record_client_trajectory_section,
+    get_client_trajectory_section, get_log_record, get_provider_trajectory_body,
+    get_record_client_trajectory_section, get_run_payload, list_client_trajectory,
+    list_provider_trajectory, list_record_client_trajectory, list_run_trajectory,
 };
 mod application_log_cache;
 mod application_logs;
-pub(crate) mod logs_delete;
-pub(crate) mod log_query;
 pub(crate) mod application_monitoring;
 pub(crate) mod archive;
 pub(crate) mod debug_variable_cache;
@@ -57,6 +56,8 @@ pub(crate) mod interface_debug_variables;
 pub(crate) mod interface_runtime_reads;
 pub(crate) mod interface_trace_exports;
 pub(crate) mod interface_trace_payloads;
+pub(crate) mod log_query;
+pub(crate) mod logs_delete;
 mod runtime_debug_artifacts;
 
 use archive::{
