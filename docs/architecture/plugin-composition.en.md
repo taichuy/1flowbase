@@ -17,12 +17,15 @@ Choose the governance boundary by whether a plugin implements trusted Host inter
 
 An SSH subprocess that tests connections and executes commands while declaring data, settings and operations should be designed as a managed business plugin. Physical tables, `/settings/ssh` and MCP Tools do not require reclassification as a HostExtension. Page/API access reuses existing roles and console operations; contribution grants constrain the plugin and do not replace caller authorization.
 
-**Current limits and missing contracts:**
+**Current entry points and boundaries:**
 
-- The legacy `RuntimeExtension` path in [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs) still requires workspace/model binding. This is an implementation limit, not a permanent definition of managed scope. System activation is not claimed to exist.
-- Existing managed owned collections, interface stages and events do not prove an installation-to-registration path for arbitrary business APIs, settings pages, TSX blocks or MCP Tools. Verify declaration → loader/activation → registry → invocation for each contribution; missing support belongs in Host-managed contracts.
-- System scope, startup recovery and on-demand worker startup are separate decisions. Resident execution or recovery follows the execution contract, not a higher plugin tier. The specific SSH activation and registration protocol still requires implementation design approval.
-- Managed plugins gain no raw authentication credentials, platform database connections, arbitrary SQL or independent route mounts. Host owners apply schemas, register interfaces and enforce authorization.
+- Legacy workspace/model assignments still use [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs). Explicit v2 `managed_service.scope: system` packages activate independently, without a business workspace assignment. Neither path grants authority to the other.
+- `managed_service` declares a settings feature and method/path/JSON Schema operations; `settings_pages` references packaged TSX. At startup the Host compiles these into the same console operations, routes, Canonical Interfaces, navigation and OpenAPI snapshot. Installing or upgrading declarations requires a Host restart to activate the new registrations. New calls check current durable activation and contribution grants, so disabling or revoking does not wait for a restart.
+- An operation's optional `mcp` declaration projects fixed tools under `/plugins/{plugin_code}` through the existing MCP catalog and Interface invocation. Package declarations do not overwrite user configuration, and browser-only instances do not receive system tools. Selected instances, discovery policy and role/API authorization still govern visibility.
+- `process_per_call` with `stdio_json_multiplex_v1` reuses the shared SDK and Host carrier. The Host binds installation, contribution, scope and deadline to system PluginData and outbound-credential callbacks and checks live authority on every call. Credentials are encrypted at rest and omitted from ordinary page data. Plugins receive neither Host login credentials nor SQL/database connections.
+- System scope, startup registration recovery and on-demand workers are independent dimensions. A system service remains a managed subprocess. `@1flowbase/data-table` exposes the existing table; `@1flowbase/plugin-settings` uses the current session and CSRF token. Authorization remains exclusively on the backend.
+
+Implementation entry points are `extension-package-runtime/src/managed_service.rs`, `api-server/src/managed_services/` and the shared `runtime-extension-sdk`. This contract description does not replace centralized QA or release-artifact evidence.
 
 Historical acceptance reports retain their original facts; they do not define current plugin selection. Evaluate old whole-package restrictions against this governance boundary and record actual code gaps separately.
 

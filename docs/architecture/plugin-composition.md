@@ -17,12 +17,15 @@
 
 例如 SSH 插件通过子进程执行连接测试与命令，向基座声明数据、设置页面和操作，应按受管业务插件设计；不因需要物理表、`/settings/ssh` 或 MCP Tool 而改成 HostExtension。页面及接口授权沿用现有角色与 console operation 体系；插件贡献授权约束插件可做什么，不能替代调用者的接口授权。
 
-**当前代码限制与待补契约：**
+**当前入口与实现边界：**
 
-- 旧 `RuntimeExtension` 分配仍在 [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs) 中要求 workspace/model；这是当前路径的实现限制，不是受管插件永久只能属于这两种作用域的定义。本文不声明 system 激活已经实现。
-- 已有 managed owned collection、受控接口阶段与事件贡献，不能据此推导任意业务接口、设置页、TSX 区块、MCP Tool 的安装注册链路已经贯通。新贡献须核对 declaration → loader/activation → registry → invocation 的真实入口与验收证据；缺口应补在宿主托管契约。
-- 系统作用域、随宿主启动恢复、按需启动 worker 是不同问题。是否常驻或启动恢复由执行契约决定，不通过提升插件类型解决；具体 SSH 激活与注册协议尚待实现方案确认。
-- 受管插件不因此获得原始认证凭据、平台数据库连接、任意 SQL 或自行挂载路由的权限。schema 由宿主数据 owner 应用，接口由宿主注册并授权。
+- 旧 `RuntimeExtension` workspace/model 分配继续沿用 [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs)。显式 v2 `managed_service.scope: system` 包走独立系统激活，不创建业务工作区分配；两条路径不能互相推导权限。
+- `managed_service` 声明 settings feature 与 method/path/JSON Schema 操作，`settings_pages` 引用包内 TSX。宿主启动时将其编译到同一 console operation、路由、Canonical Interface、导航与 OpenAPI 快照；安装或升级改变这些声明后需要重启宿主使新注册生效。停用和贡献撤权在新调用时按当前持久化状态拒绝，不等待重启。
+- 操作的可选 `mcp` 声明投影为 `/plugins/{plugin_code}` 下固定工具，复用现有 MCP 目录和 Interface 调用。它属于包声明，不覆盖用户配置；浏览器专用实例不注入这些系统工具。具体可见性继续受所选实例、discovery policy 与角色 API 权限约束。
+- `process_per_call` + `stdio_json_multiplex_v1` 复用共享 SDK 和宿主 carrier。系统 PluginData 与出站 credential 回调由宿主注入安装、贡献、作用域与期限，每次校验当前授权；凭据加密持久化，普通页面数据不返回凭据原文。宿主登录凭据、SQL 与数据库连接不向插件开放。
+- 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。
+
+实现入口为 `extension-package-runtime/src/managed_service.rs`、`api-server/src/managed_services/` 与共享 `runtime-extension-sdk`。本文描述契约，实际通过范围以集中 QA 与发布产物证据为准。
 
 历史验收报告保留其当时事实，不作为当前插件选型规则；遇到旧整包限制，以本节治理边界判断，并单独记录实际代码缺口。
 

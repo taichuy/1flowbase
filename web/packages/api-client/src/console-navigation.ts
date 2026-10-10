@@ -1,6 +1,10 @@
 import { apiFetch } from './transport';
 
-export type ConsoleSurfaceKind = 'system' | 'dynamic_page' | 'host_extension';
+export type ConsoleSurfaceKind =
+  | 'system'
+  | 'dynamic_page'
+  | 'host_extension'
+  | 'managed_service';
 export type ConsoleNavigationSlot = 'primary' | 'secondary' | 'settings';
 export type ConsolePermissionRequirement = 'authenticated' | 'any_permission';
 
@@ -33,7 +37,9 @@ export interface ConsoleNavigation {
   permission_bindings: ConsolePermissionBinding[];
 }
 
-export function getConsoleNavigation(baseUrl?: string): Promise<ConsoleNavigation> {
+export function getConsoleNavigation(
+  baseUrl?: string
+): Promise<ConsoleNavigation> {
   return apiFetch<ConsoleNavigation>({
     path: '/api/console/navigation',
     baseUrl

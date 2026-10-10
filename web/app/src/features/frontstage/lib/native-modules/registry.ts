@@ -184,24 +184,33 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   })),
   registration(
     '@1flowbase/data-table',
-    ['DataTable', 'DataTableColumnSettings', 'usePersistedDataTableConfiguration', 'DataTableLayout'],
+    [
+      'DataTable',
+      'DataTableColumnSettings',
+      'usePersistedDataTableConfiguration',
+      'DataTableLayout'
+    ],
     async () => {
-      const [table, state, layout, tableStyle, layoutStyle, mobileStyle] = await Promise.all([
-        import('../../../../shared/ui/data-table/DataTable'),
-        import('../../../../shared/ui/data-table/data-table-state'),
-        import('../../../../shared/ui/data-table/DataTableLayout'),
-        import('../../../../shared/ui/data-table/data-table.css?inline'),
-        import('../../../../shared/ui/data-table/data-table-layout.css?inline'),
-        import('../../../../shared/ui/data-table/data-table-mobile-list.css?inline')
-      ]);
+      const [table, state, layout, tableStyle, layoutStyle, mobileStyle] =
+        await Promise.all([
+          import('../../../../shared/ui/data-table/DataTable'),
+          import('../../../../shared/ui/data-table/data-table-state'),
+          import('../../../../shared/ui/data-table/DataTableLayout'),
+          import('../../../../shared/ui/data-table/data-table.css?inline'),
+          import('../../../../shared/ui/data-table/data-table-layout.css?inline'),
+          import('../../../../shared/ui/data-table/data-table-mobile-list.css?inline')
+        ]);
       return {
         module: {
           DataTable: table.DataTable,
           DataTableColumnSettings: table.DataTableColumnSettings,
-          usePersistedDataTableConfiguration: state.usePersistedDataTableConfiguration,
+          usePersistedDataTableConfiguration:
+            state.usePersistedDataTableConfiguration,
           DataTableLayout: layout.DataTableLayout
         },
-        styles: [tableStyle, layoutStyle, mobileStyle].map((style) => ({ css: style.default }))
+        styles: [tableStyle, layoutStyle, mobileStyle].map((style) => ({
+          css: style.default
+        }))
       };
     }
   ),
