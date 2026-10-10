@@ -30,18 +30,6 @@ function buildRustWarmupPlan({ cargoJobs, incremental }) {
 
   return [
     {
-      label: 'workspace dev targets',
-      args: [
-        'build',
-        '--manifest-path',
-        'api/Cargo.toml',
-        '--workspace',
-        '--all-targets',
-        '--locked',
-      ],
-      env: devEnv,
-    },
-    {
       label: 'api-server dev-up target',
       args: [
         'build',
@@ -51,7 +39,10 @@ function buildRustWarmupPlan({ cargoJobs, incremental }) {
         'api-server',
         '--bin',
         'api-server',
+        '--features',
+        'tikv-jemallocator/stats',
         '--locked',
+        '--timings',
       ],
       env: devEnv,
     },
@@ -65,6 +56,7 @@ function buildRustWarmupPlan({ cargoJobs, incremental }) {
         '--all-targets',
         '--no-run',
         '--locked',
+        '--timings',
       ],
       env: buildCargoEnv({ cargoJobs, incremental, testProfile: true }),
     },
@@ -120,6 +112,7 @@ async function runRustCacheReset({
   }
 
   for (const stage of plan) {
+    const startedAt = Date.now();
     writeStdout(
       `[1flowbase-reset-rust-cache] 预热 ${stage.label} `
       + `(jobs=${stage.env.CARGO_BUILD_JOBS}, incremental=${stage.env.CARGO_INCREMENTAL})。\n`,
@@ -131,6 +124,9 @@ async function runRustCacheReset({
       );
       return status;
     }
+    writeStdout(
+      `[1flowbase-reset-rust-cache] ${stage.label} 完成（耗时 ${((Date.now() - startedAt) / 1000).toFixed(1)}s）。\n`,
+    );
   }
 
   writeStdout('[1flowbase-reset-rust-cache] Rust 缓存清理与全量预热完成。\n');

@@ -534,9 +534,11 @@ node scripts/node/reset-rust-cache/cli.js
 该入口会严格按顺序执行：
 
 1. 停止当前 worktree 的 `api-server`，删除 `api/target/`；
-2. 预热 workspace 全部 dev targets；
-3. 精确预热 `dev-up` 使用的 `api-server` binary；
-4. 使用项目统一的 `CARGO_PROFILE_TEST_DEBUG=0` 预热 workspace test targets，但不运行测试。
+2. 单独编译 `dev-up` 使用的 `api-server` binary，包含 `tikv-jemallocator/stats` feature；
+3. 启动目标编译成功后，使用项目统一的 `CARGO_PROFILE_TEST_DEBUG=0` 预热 workspace 全部 test targets，但不运行测试。
+
+启动编译阶段不使用 `--all-targets`，避免同时编译大型测试目标；测试预热仍默认执行，供后续 AI 开发复用。
+每阶段输出完成耗时，并通过 `--timings` 在 `api/target/cargo-timings/` 保存 Cargo 构建报告。
 
 预热命令读取 `.1flowbase.verify.local.json` 中的 `backend.cargoJobs` 与
 `backend.incremental`，避免清理、日常构建和测试使用不同的构建身份。任一阶段失败时立即停止；只有输出

@@ -5,8 +5,8 @@ const { runRustCacheReset } = require('./core.js');
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(`用法：node scripts/node/reset-rust-cache/cli.js
 
-停止 api-server，删除 api/target，然后依次预热 workspace dev、
-api-server dev-up 和 workspace test 构建目标。
+停止当前 worktree 的 api-server，删除 api/target，先编译 dev-up 使用的
+api-server binary，完成后再预热 workspace 全部测试目标（不运行测试）。
 `);
 }
 
