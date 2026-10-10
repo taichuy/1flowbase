@@ -900,7 +900,7 @@ async fn mcp_template_updates_independent_group_preserving_local_instance_and_re
         .await
         .unwrap();
     assert!(first.failures.is_empty(), "{:?}", first.failures);
-    assert_eq!(first.created.len(), 4);
+    assert_eq!(first.created.len(), 5);
     let instance_id: Uuid = sqlx::query_scalar(
         "select id from mcp_instances where workspace_id=$1 and instance_id='1flowbase'",
     )
@@ -1023,7 +1023,7 @@ async fn mcp_template_legacy_instance_reset_keeps_unknown_shared_tool_unowned() 
         .await
         .unwrap();
     assert!(reset.failures.is_empty(), "{:?}", reset.failures);
-    assert_eq!(reset.created.len(), 3);
+    assert_eq!(reset.created.len(), 4);
     let retained:(Uuid,i64)=sqlx::query_as("select id,revision from mcp_tools where workspace_id=$1 and tool_id='shared_template_tool'").bind(workspace.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(retained, tool);
     assert!(store
@@ -1085,5 +1085,5 @@ async fn mcp_owner_failure_rolls_back_tools_and_baseline_intents_together() {
     .await
     .unwrap();
     assert!(retry.failures.is_empty(), "{:?}", retry.failures);
-    assert_eq!(retry.created.len(), 4);
+    assert_eq!(retry.created.len(), 5);
 }

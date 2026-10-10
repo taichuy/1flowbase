@@ -152,6 +152,11 @@ fn plan(
         .map(|p| p.desired.target_id.clone())
         .collect();
     for p in &mut plan {
+        if p.desired.key.kind == "mcp_discovery_policy"
+            && !usable_instances.contains(&p.desired.target_id)
+        {
+            p.decision = TemplateMergeDecision::SkipUserDeleted;
+        }
         if matches!(p.desired.key.kind.as_str(), "mcp_group" | "mcp_binding") {
             let parts: Vec<String> = serde_json::from_str(&p.desired.key.source_id)?;
             if !usable_instances.contains(&parts[0]) {
@@ -196,11 +201,17 @@ fn plan(
         if metadata {
             let groups = instance.groups;
             let bindings = instance.bindings;
+            let discovery_policy = instance.discovery_policy;
             instance = source.clone();
             instance.groups = groups;
             instance.bindings = bindings;
+            instance.discovery_policy = discovery_policy;
         }
-        let mut changed = metadata;
+        let policy = allowed.contains(&key("mcp_discovery_policy", id));
+        if policy {
+            instance.discovery_policy = source.discovery_policy.clone();
+        }
+        let mut changed = metadata || policy;
         for group in &source.groups {
             if allowed.contains(&key("mcp_group", composite(&[id, &group.path]))) {
                 instance.groups.retain(|g| g.path != group.path);

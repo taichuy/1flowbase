@@ -153,7 +153,18 @@ pub fn project_template_resources(
                 "mcp_instance",
                 id.clone(),
                 mapped(id),
-                without(instance, &["instance_id", "groups", "bindings"])?,
+                without(
+                    instance,
+                    &["instance_id", "groups", "bindings", "discovery_policy"],
+                )?,
+                identities,
+            )?;
+            projected(
+                &mut out,
+                "mcp_discovery_policy",
+                id.clone(),
+                mapped(id),
+                serde_json::to_value(&instance.discovery_policy)?,
                 identities,
             )?;
             for group in &instance.groups {

@@ -98,3 +98,81 @@ fn deleted_group_is_not_restored_by_a_new_binding() {
     let (_, effective) = plan(&source, &current, &history).unwrap();
     assert!(effective.instances.is_empty());
 }
+
+#[test]
+fn local_rename_does_not_block_template_discovery_policy_update() {
+    let original = fixture();
+    let mut current = original.clone();
+    let mut source = original.clone();
+    current.instances[0].name = "Local name".into();
+    source.instances[0].discovery_policy.list_default_limit = 40;
+    let (plan, effective) = plan(&source, &current, &baselines(&original)).unwrap();
+    assert_eq!(effective.instances[0].name, "Local name");
+    assert_eq!(
+        effective.instances[0].discovery_policy.list_default_limit,
+        40
+    );
+    assert_eq!(
+        plan.iter()
+            .find(|p| p.desired.key.kind == "mcp_instance")
+            .unwrap()
+            .decision,
+        TemplateMergeDecision::SkipUserModified
+    );
+    assert_eq!(
+        plan.iter()
+            .find(|p| p.desired.key.kind == "mcp_discovery_policy")
+            .unwrap()
+            .decision,
+        TemplateMergeDecision::Update
+    );
+}
+#[test]
+fn local_discovery_policy_does_not_block_template_rename() {
+    let original = fixture();
+    let mut current = original.clone();
+    let mut source = original.clone();
+    current.instances[0].discovery_policy.list_default_limit = 75;
+    source.instances[0].name = "New official name".into();
+    let (plan, effective) = plan(&source, &current, &baselines(&original)).unwrap();
+    assert_eq!(effective.instances[0].name, "New official name");
+    assert_eq!(
+        effective.instances[0].discovery_policy.list_default_limit,
+        75
+    );
+    assert_eq!(
+        plan.iter()
+            .find(|p| p.desired.key.kind == "mcp_instance")
+            .unwrap()
+            .decision,
+        TemplateMergeDecision::Update
+    );
+    assert_eq!(
+        plan.iter()
+            .find(|p| p.desired.key.kind == "mcp_discovery_policy")
+            .unwrap()
+            .decision,
+        TemplateMergeDecision::SkipUserModified
+    );
+}
+#[test]
+fn fresh_instance_and_legacy_reset_create_independent_policy_baseline() {
+    let source = fixture();
+    let mut empty = source.clone();
+    empty.instances.clear();
+    empty.tools.clear();
+    let (new_plan, _) = plan(&source, &empty, &[]).unwrap();
+    let mut legacy = source.clone();
+    legacy.instances.clear();
+    let (reset_plan, _) = plan(&source, &legacy, &[]).unwrap();
+    for plans in [new_plan, reset_plan] {
+        assert_eq!(
+            plans
+                .iter()
+                .find(|p| p.desired.key.kind == "mcp_discovery_policy")
+                .unwrap()
+                .decision,
+            TemplateMergeDecision::Initialize
+        );
+    }
+}
