@@ -10,16 +10,20 @@ const nativeBinary = process.env.FLOWBASE_COLLECTOR_TEST_BINARY;
 const out = process.env.COLLECTOR_EVIDENCE_DIR;
 const base = 'http://127.0.0.1:7801', web = 'http://127.0.0.1:3102', dbPort = 35783;
 const container = 'codex-platform-collector-proof';
-const image = process.env.COLLECTOR_PG_IMAGE || 'sha256:b07129cc272f688c98f5b343138a0a52fa45b3d82f50d7a53ff441330624cd2e';
+const image = process.env.COLLECTOR_PG_IMAGE || 'postgres:18-alpine';
 const { parseEnvFile } = require('../../../dev-up/env.js');
 const { openTemporaryOwnerSession } = require('../../auth.js');
 const password = crypto.randomBytes(24).toString('hex');
 let api, frontend, child, owner, containerId, timer, remote, resourceBreach = false;
 const receipt = { checks: [], cleanup: {}, peaks: { cpu: 0, physical: 0, disk: 0 } };
-const protectedPids = [7800,3100].map(port => {
-  const pids = execFileSync('fuser', ['-n','tcp',String(port)], {encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split(/\s+/).map(Number);
-  return pids.map(pid => ({ pid, start: fs.readFileSync(`/proc/${pid}/stat`,'utf8').split(' ')[21], cwd: fs.readlinkSync(`/proc/${pid}/cwd`) }));
-}).flat();
+let protectedPids = [];
+function protectedOwners(port) {
+  let output;
+  try { output = execFileSync('fuser', ['-n','tcp',String(port)], {encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); }
+  catch(error) { if(error.status === 1) return []; throw error; }
+  if(!output) return [];
+  return output.split(/\s+/).map(Number).map(pid => ({ pid, start: fs.readFileSync(`/proc/${pid}/stat`,'utf8').split(' ')[21], cwd: fs.readlinkSync(`/proc/${pid}/cwd`) }));
+}
 function dock(args) { return execFileSync('docker', args, {encoding:'utf8',maxBuffer:1024*1024,stdio:['ignore','pipe','ignore']}).trim(); }
 function start(cmd,args,cwd,name,env) {
   const fd = fs.openSync(path.join(out,`${name}.log`),'w');
@@ -52,14 +56,17 @@ async function run(cmd,args,name,env) {
 }
 (async()=>{try {
   assert.ok(pluginsRoot && binary && nativeBinary && out,'explicit proof roots, binaries and evidence dir required'); fs.mkdirSync(out,{recursive:true});
+  protectedPids = [7800,3100].flatMap(protectedOwners);
   receipt.source_sha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   if(process.env.COLLECTOR_EXPECTED_SHA) assert.equal(receipt.source_sha,process.env.COLLECTOR_EXPECTED_SHA);
   receipt.plugins_sha=execFileSync('git',['rev-parse','HEAD'],{cwd:pluginsRoot,encoding:'utf8'}).trim();
+  if(process.env.COLLECTOR_EXPECTED_PLUGINS_SHA) assert.equal(receipt.plugins_sha,process.env.COLLECTOR_EXPECTED_PLUGINS_SHA);
   receipt.binary_sha256=crypto.createHash('sha256').update(fs.readFileSync(binary)).digest('hex');
+  receipt.native_binary_sha256=crypto.createHash('sha256').update(fs.readFileSync(nativeBinary)).digest('hex');
   for(const port of [7801,3102,dbPort]) assert.equal(execFileSync('ss',['-H','-ltn','sport','=',':'+port],{encoding:'utf8'}).trim(),'');
   const {createRemoteFixture}=await import(pathToFileURL(path.join(__dirname,'remote-fixture.mjs')));
   remote=await createRemoteFixture({pluginsRoot,directory:path.join(out,'private/remote'),nativeBinary});
-  const env={...process.env,...parseEnvFile('/home/taichuy/git/1flowbase/api/apps/api-server/.env'),
+  const env={...process.env,...parseEnvFile(process.env.COLLECTOR_API_ENV_FILE || path.join(root,'api/apps/api-server/.env')),
     API_DATABASE_URL:`postgres://postgres:${password}@127.0.0.1:${dbPort}/collector_proof`,API_SERVER_ADDR:'127.0.0.1:7801',API_NODE_ID:'collector-proof-node',
     BOOTSTRAP_ROOT_ACCOUNT:'collector-proof-owner',BOOTSTRAP_ROOT_PASSWORD:password,API_ENV:'development',
     API_PROVIDER_INSTALL_ROOT:path.join(out,'private/providers'),API_HOST_EXTENSION_DROPIN_ROOT:path.join(out,'private/dropins'),
@@ -78,7 +85,7 @@ async function run(cmd,args,name,env) {
     if(Math.max(cpu,physical,disk)>=90&&!resourceBreach){resourceBreach=true;void stop(child);void stop(api);void stop(frontend);}
   },2000);
   containerId=dock(['run','-d','--name',container,'--label','codex.qa.owner='+receipt.source_sha,'--publish',`127.0.0.1:${dbPort}:5432`,'--env','POSTGRES_PASSWORD='+password,'--env','POSTGRES_DB=collector_proof',image]);
-  receipt.database={id:containerId,name:container,port:dbPort,scope:'fresh proof-owned database only'};
+  receipt.database={id:containerId,name:container,image,port:dbPort,scope:'fresh proof-owned database only'};
   for(let i=0;i<60;i++){try{dock(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','collector_proof']);break;}catch{}if(i===59)throw Error('PG readiness failed');await new Promise(resolve=>setTimeout(resolve,500));}
   api=start(binary,[],root+'/api','api',env); frontend=start(process.execPath,[root+'/web/app/node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','3102','--strictPort'],root+'/web/app','web',env);
   await ready(base+'/health'); await ready(web+'/__1flowbase_dev_ready');
@@ -174,6 +181,9 @@ finally {
   if(containerId)try{const info=JSON.parse(dock(['inspect',container]))[0];assert.equal(info.Id,containerId);assert.equal(info.Config.Labels['codex.qa.owner'],receipt.source_sha);dock(['rm','-fv',container]);receipt.cleanup.database_removed=true;}catch(error){receipt.cleanup.database_error=error.message;process.exitCode=1;}
   receipt.cleanup.shared_services_unchanged=protectedPids.every(item=>{try{return fs.readFileSync(`/proc/${item.pid}/stat`,'utf8').split(' ')[21]===item.start&&fs.readlinkSync(`/proc/${item.pid}/cwd`)===item.cwd;}catch{return false;}});
   receipt.cleanup.ports_free=[7801,3102,dbPort].every(port=>execFileSync('ss',['-H','-ltn','sport','=',':'+port],{encoding:'utf8'}).trim()==='');
+  if(receipt.status==='pass' && (process.exitCode || !receipt.cleanup.session_revoked || !receipt.cleanup.database_removed || !receipt.cleanup.shared_services_unchanged || !receipt.cleanup.ports_free)){
+    receipt.status='fail';receipt.error='collector proof cleanup did not complete';process.exitCode=1;
+  }
   if(out){fs.rmSync(path.join(out,'private'),{recursive:true,force:true});fs.writeFileSync(path.join(out,'runtime.json'),JSON.stringify(receipt,null,2));}
   fs.rmSync(path.join(root,'web/app/.vite/collector-distribution-proof'),{recursive:true,force:true});
   process.stdout.write(JSON.stringify({status:receipt.status,error:receipt.error,checks:receipt.checks.map(({name,status,exit})=>({name,status,exit})),cleanup:receipt.cleanup,peaks:receipt.peaks})+'\n');

@@ -1,5 +1,8 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { MoveFrontstageNodeInput } from '../api/page-tree';
+import type { FrontStageTreeNode } from '../lib/page-tree';
+import { resolveNavigationMove } from '../lib/navigation-drag/move-plan';
 
 const pageTreeApi = vi.hoisted(() => ({
   frontstagePageTreeQueryKey: (workspaceId: string) => [
@@ -76,6 +79,8 @@ const pageTreeMutations = vi.hoisted(() => {
 
 const frontStagePageView = vi.hoisted(() => ({
   props: null as null | {
+    pageTreeRootId?: string | null;
+    navigationPageTree?: FrontStageTreeNode[];
     blockRoots?: Array<{ block_id: string; tab_id: string }>;
     blockRuntimeAssembly?: { layers: Array<{ block_id: string }> };
     blockRuntimeInputs?: Record<string, unknown>;
@@ -93,7 +98,7 @@ const frontStagePageView = vi.hoisted(() => ({
     ) => void;
     onMovePageNode?: (
       nodeId: string,
-      input: { parentId: string | null; rank: string }
+      input: MoveFrontstageNodeInput
     ) => Promise<unknown>;
     onNavigateTab?: (tab: {
       id: string;
@@ -259,30 +264,56 @@ describe('frontstage topbar root routing', () => {
       expect(frontStagePageView.props?.onMovePageNode).toEqual(
         expect.any(Function)
       );
+      expect(frontStagePageView.props?.pageTreeRootId).toBe('group-sales');
+      expect(frontStagePageView.props?.navigationPageTree).toEqual([
+        topbarGroup
+      ]);
     });
+    // The destination planner owns the explicit parent and relative anchor;
+    // the route forwards this command without rewriting its destination.
+    const navigationTree = frontStagePageView.props?.navigationPageTree;
+    if (!navigationTree) throw new Error('Expected the full navigation tree');
+    const ungroupInput = resolveNavigationMove(
+      navigationTree,
+      'page-in-group',
+      {
+        targetNodeId: 'page-top-level',
+        position: 'before'
+      }
+    );
+    if (!ungroupInput) throw new Error('Expected a scoped-root move command');
     await act(async () => {
-      await frontStagePageView.props?.onMovePageNode?.('page-in-group', {
-        parentId: null,
-        rank: '001500'
-      });
+      await frontStagePageView.props?.onMovePageNode?.(
+        'page-in-group',
+        ungroupInput
+      );
     });
 
     expect(pageTreeMutations.moveNode).toHaveBeenCalledWith('page-in-group', {
       parentId: 'group-sales',
-      rank: '001500'
+      before_id: 'page-top-level'
     });
 
+    const groupedInput = resolveNavigationMove(
+      navigationTree,
+      'page-top-level',
+      {
+        targetNodeId: 'group-collapsed',
+        position: 'inside'
+      }
+    );
+    if (!groupedInput) throw new Error('Expected a nested-group move command');
     await act(async () => {
-      await frontStagePageView.props?.onMovePageNode?.('page-top-level', {
-        parentId: 'group-collapsed',
-        rank: '002000'
-      });
+      await frontStagePageView.props?.onMovePageNode?.(
+        'page-top-level',
+        groupedInput
+      );
     });
     expect(pageTreeMutations.moveNode).toHaveBeenLastCalledWith(
       'page-top-level',
       {
         parentId: 'group-collapsed',
-        rank: '002000'
+        after_id: 'page-in-group'
       }
     );
   });

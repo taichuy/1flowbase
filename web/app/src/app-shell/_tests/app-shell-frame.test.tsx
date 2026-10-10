@@ -333,19 +333,19 @@ describe('AppShellFrame', () => {
       /\.app-shell-action-row\.ant-space \{([\s\S]*?)\n\}/
     )?.[1];
     const mobileActionsRule = appShellCss.match(
-      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-actions \{([\s\S]*?)\n {2}\}/
+      /@media \(max-width: 991px\) \{[\s\S]*?\.app-shell-actions \{([\s\S]*?)\n {2}\}/
     )?.[1];
     const mobileHeaderMainRule = appShellCss.match(
-      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-header-main \{([\s\S]*?)\n {2}\}/
+      /@media \(max-width: 991px\) \{[\s\S]*?\.app-shell-header-main \{([\s\S]*?)\n {2}\}/
     )?.[1];
     const mobileNavigationRule = appShellCss.match(
-      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-navigation \{([\s\S]*?)\n {2}\}/
+      /@media \(max-width: 991px\) \{[\s\S]*?\.app-shell-navigation \{([\s\S]*?)\n {2}\}/
     )?.[1];
     const mobileMenuRule = appShellCss.match(
-      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-menu\.ant-menu-horizontal \{([\s\S]*?)\n {2}\}/
+      /@media \(max-width: 991px\) \{[\s\S]*?\.app-shell-menu\.ant-menu-horizontal \{([\s\S]*?)\n {2}\}/
     )?.[1];
     const mobileTriggerRule = appShellCss.match(
-      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-mobile-navigation-trigger\.ant-btn \{([\s\S]*?)\n {2}\}/
+      /@media \(max-width: 991px\) \{[\s\S]*?\.app-shell-mobile-navigation-trigger\.ant-btn \{([\s\S]*?)\n {2}\}/
     )?.[1];
 
     expect(headerRule).toContain('flex-wrap: nowrap;');
@@ -361,7 +361,7 @@ describe('AppShellFrame', () => {
     expect(mobileHeaderMainRule).toContain('flex: none;');
     expect(mobileHeaderMainRule).toContain('min-width: max-content;');
     expect(appShellCss).toMatch(
-      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-brand \{[\s\S]*?display: none;/
+      /@media \(max-width: 991px\) \{[\s\S]*?\.app-shell-brand \{[\s\S]*?display: none;/
     );
     expect(mobileNavigationRule).toContain('flex: none;');
     expect(mobileNavigationRule).toContain('min-width: 0;');
@@ -374,10 +374,10 @@ describe('AppShellFrame', () => {
       /\.app-shell-language-label,\n {2}\.app-shell-account-label,[\s\S]*?display: none;/
     );
     expect(appShellCss).toMatch(
-      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-header\.ant-layout-header \{[\s\S]*?overflow-x: auto;/
+      /@media \(max-width: 991px\) \{[\s\S]*?\.app-shell-header\.ant-layout-header \{[\s\S]*?overflow-x: auto;/
     );
     expect(appShellCss).toMatch(
-      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-nav \{[\s\S]*?order: -1;/
+      /@media \(max-width: 991px\) \{[\s\S]*?\.app-shell-nav \{[\s\S]*?order: -1;/
     );
   });
 

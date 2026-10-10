@@ -512,8 +512,25 @@ async fn issue_2105_business_turn_pages_keep_facts_and_reads_do_not_lock_writers
     assert_eq!(page.items[0].answer.as_deref(), Some("Answer 1"));
     assert_eq!(
         page.items[3].answer.as_deref(),
-        Some("Answer 4"),
-        "successful ordinary text without phase is retained"
+        Some("done"),
+        "the later retained execution answer wins over ordinary text without phase"
+    );
+    let ordinary_text_retained: bool = sqlx::query_scalar(
+        r#"select exists (
+            select 1 from application_run_conversation_message_items
+            where flow_run_id=$1 and output_source='provider_output_item'
+                and native_message #>> '{_source_item,id}'='final-4'
+                and native_message #>> '{_source_item,phase}' is null
+                and content='Answer 4'
+        )"#,
+    )
+    .bind(ids[4])
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(
+        ordinary_text_retained,
+        "answer selection must preserve ordinary native facts"
     );
     assert!(
         page.items[4].answer.is_none(),

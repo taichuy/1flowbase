@@ -174,6 +174,13 @@ jobs:
       foundation: ${{ github.event_name == 'workflow_dispatch' && 'all' || 'auto' }}
       lane: pr-evidence
 
+  collector-runtime:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/collector-runtime.yml
+    with:
+      main_source_sha: ${{ inputs.main_source_sha }}
+      official_source_sha: ${{ inputs.official_source_sha }}
+
   verify:
     needs:
       - repo-tooling-gate
@@ -181,6 +188,7 @@ jobs:
       - repo-backend-gate
       - foundation-contract-gate
       - provider-conformance
+      - collector-runtime
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -192,6 +200,26 @@ jobs:
           pattern: test-governance-*
           path: tmp/test-governance/parallel
           merge-multiple: false
+      - name: Require separate collector runtime evidence for manual acceptance
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          COLLECTOR_RUNTIME_JOB_RESULT: ${{ needs.collector-runtime.result }}
+          COLLECTOR_EXPECTED_SHA: ${{ inputs.main_source_sha }}
+          COLLECTOR_EXPECTED_PLUGINS_SHA: ${{ inputs.official_source_sha }}
+        run: |
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          assert.equal(process.env.COLLECTOR_RUNTIME_JOB_RESULT, 'success', 'collector runtime job must succeed');
+          const main = process.env.COLLECTOR_EXPECTED_SHA;
+          const official = process.env.COLLECTOR_EXPECTED_PLUGINS_SHA;
+          const receiptPath = path.join('tmp/test-governance/parallel', `test-governance-collector-runtime-${main}-${official}`, 'runtime.json');
+          const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+          assert.equal(receipt.status, 'pass');
+          assert.equal(receipt.source_sha, main);
+          assert.equal(receipt.plugins_sha, official);
+          JS
       - run: node scripts/node/cli/github-quality-gate-aggregate.js
         env:
           GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}

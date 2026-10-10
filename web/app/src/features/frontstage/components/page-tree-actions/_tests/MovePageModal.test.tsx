@@ -185,7 +185,11 @@ test.each(['before', 'after'] as const)(
         (position === 'before'
           ? Node.DOCUMENT_POSITION_PRECEDING
           : Node.DOCUMENT_POSITION_FOLLOWING)
-    ).toBeTruthy();
+    ).toBe(
+      position === 'before'
+        ? Node.DOCUMENT_POSITION_PRECEDING
+        : Node.DOCUMENT_POSITION_FOLLOWING
+    );
     expect(
       within(dialog).getByRole('button', { name: /确\s*定/ })
     ).toBeDisabled();
@@ -257,7 +261,7 @@ test('the after-group projection follows its visible subtree at the group indent
   expect(
     nestedRow.compareDocumentPosition(projection) &
       Node.DOCUMENT_POSITION_FOLLOWING
-  ).toBeTruthy();
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   fireEvent.drop(projection, { dataTransfer: transfer });
   await act(async () =>
     within(dialog)

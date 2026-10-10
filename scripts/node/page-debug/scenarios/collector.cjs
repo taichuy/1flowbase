@@ -23,7 +23,7 @@ async function main() {
   try {
     await fs.chmod(storageStatePath, 0o600);
     cleanupProbe = await playwright.request.newContext({ storageState: storageStatePath });
-    browser = await playwright.chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/usr/bin/google-chrome', headless: true });
+    browser = await playwright.chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || playwright.chromium.executablePath(), headless: true });
     for (const [name, language, viewport] of [['desktop-zh', 'zh', { width: 1440, height: 1000 }], ['mobile-zh', 'zh', { width: 390, height: 844 }], ['desktop-en', 'en', { width: 1440, height: 1000 }], ['mobile-en', 'en', { width: 390, height: 844 }]]) {
       const context = await browser.newContext({ storageState: storageStatePath, viewport });
       await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: webBaseUrl });

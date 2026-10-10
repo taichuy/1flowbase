@@ -1520,6 +1520,11 @@
             "id"
           ]
         }
+      ],
+      "indexes": [
+        [
+          "record_id"
+        ]
       ]
     },
     "application_log_deletion_stop_requests": {
@@ -1572,6 +1577,14 @@
             "id"
           ]
         }
+      ],
+      "indexes": [
+        [
+          "record_id"
+        ],
+        [
+          "step_id"
+        ]
       ]
     },
     "departments": {

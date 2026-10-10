@@ -1,6 +1,8 @@
+import type { ConsoleApplicationType } from '@1flowbase/api-client';
+
 export interface ApplicationManagementRouteState {
   page: number;
-  application_type?: 'agent_flow' | 'workflow';
+  application_type?: ConsoleApplicationType;
   publication_status?: 'published' | 'unpublished';
   created_by?: string;
   tag_id?: string;
@@ -24,7 +26,9 @@ export function readApplicationManagementRouteState(): ApplicationManagementRout
   return {
     page: Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
     application_type:
-      applicationType === 'agent_flow' || applicationType === 'workflow'
+      applicationType === 'agent_flow' ||
+      applicationType === 'workflow' ||
+      applicationType === 'agent_logs'
         ? applicationType
         : undefined,
     publication_status:

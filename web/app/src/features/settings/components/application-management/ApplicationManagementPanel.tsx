@@ -74,14 +74,6 @@ import './application-management-panel.css';
 
 const PAGE_SIZE = 20;
 
-function applicationTypeLabel(
-  applicationType: SettingsApplicationManagementItem['application_type']
-) {
-  return applicationType === 'agent_flow'
-    ? i18nText('applications', 'auto.application_type_agent_flow')
-    : i18nText('applications', 'auto.application_type_workflow');
-}
-
 function triggerTypeLabel(
   triggerType: SettingsApplicationManagementItem['workflow_trigger_type']
 ) {
@@ -471,7 +463,11 @@ export function ApplicationManagementPanel() {
         ),
         width: 120,
         render: (_, application) => (
-          <Tag>{applicationTypeLabel(application.application_type)}</Tag>
+          <Tag>
+            {catalogQuery.data?.types.find(
+              (type) => type.value === application.application_type
+            )?.label ?? '—'}
+          </Tag>
         )
       },
       {
@@ -668,6 +664,7 @@ export function ApplicationManagementPanel() {
     ],
     [
       batchDeleteMutation.isPending,
+      catalogQuery.data,
       deleteMutation.isPending,
       canCreate,
       canDelete,
@@ -687,6 +684,7 @@ export function ApplicationManagementPanel() {
     storageKey: 'settings.application_management'
   });
   const catalog: ApplicationCatalog = catalogQuery.data ?? {
+    collectors: [],
     types: [],
     workflow_triggers: [],
     tags: []

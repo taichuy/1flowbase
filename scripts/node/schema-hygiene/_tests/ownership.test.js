@@ -29,8 +29,12 @@ test('specialized logs and organization tables retain real ownership and lookup 
     const owner = contract.foreignKeys[0].columns[0];
     rejected({ ...original, columns: original.columns.map((column) => column.name === owner
       ? { ...column, nullable: true } : column) }, 'owned-table-owner-column');
-    if (contract.indexes?.length) {
-      rejected({ ...original, indexes: [], uniqueConstraints: [] }, 'owned-table-lookup-index');
+    for (const columns of contract.indexes || []) {
+      const matches = (index) => columns.every((column, position) => index.columns[position] === column);
+      rejected({ ...original,
+        indexes: original.indexes.filter((index) => !matches(index)),
+        uniqueConstraints: original.uniqueConstraints.filter((index) => !matches(index)),
+      }, 'owned-table-lookup-index');
     }
   }
   const progress = inventory.tables.find((table) => table.name === 'application_run_native_projection_progress');

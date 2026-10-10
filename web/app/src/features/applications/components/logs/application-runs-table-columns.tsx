@@ -103,7 +103,7 @@ export function getApplicationRunsTableColumns(
       dataIndex: 'source_client',
       width: 150,
       defaultVisibility: 'hidden',
-      render: (value) => value ?? '—'
+      render: (_value, record) => record.source_client ?? '—'
     },
     {
       key: 'task_summary',

@@ -88,6 +88,12 @@ HTTP/SSE/WebSocket、MCP/WebMCP 保持各自输入、错误和流式协议。Web
 
 Runtime Worker 是 Dispatch 后的执行目标；Background Worker/Schedule 是主动调用入口，两者不同。内部入口全集、System Principal、durable retry/ack 必须由其 owner 明确，不能由统一逻辑图推导为已全部接入。
 
+### 保存格式兼容与退场
+
+SQL 节点当前字段为 `bindings.sql`。已有保存流程仍可能携带 `config.sql`，编译器与编辑器保留该旧格式读取，已有 compiler normalization 与 node-inspector 测试保护；它不是新增的后端输出字段别名。兼容截止检查更新为 2026-11-30，不能通过删除读取能力让旧流程失效。退场需先统一草稿/发布快照/导入模板的 canonical normalization，核对持久化旧格式 inventory 和读写消费者，再用历史保存流程回归证明字段迁移后行为完整，最后删除两端兼容入口与标记。
+
+动态 i18n key 继续由 hygiene warning 暴露：BlockStudioWorkspace 的 section.labelKey、菜单 label_key 和网络健康后缀由配置/后端字段消费；保留资源与真实 renderer owner。不存在消费者的旧分组文案可删除，不能为消除 warning 改写仍使用的文案。
+
 ### 内部持久化身份与门禁
 
 调用及日志内部记录沿用真实 owner，不为满足通用业务表模板制造独立业务身份：删除工作集/停止事实归删除 job，上传回执归 application/source/event，原生消息投影进度归 flow run。组织树与成员/角色绑定沿用 workspace 与关系键。授权仍由业务 owner 决定，存储层外键、主键和对应查找索引保证引用与访问路径。

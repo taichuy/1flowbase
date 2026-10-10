@@ -10,7 +10,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => {
   const zrender = {
-    animation: { start: vi.fn(), stop: vi.fn(), pause: vi.fn(), resume: vi.fn() },
+    animation: {
+      start: vi.fn(),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn()
+    },
     wakeUp: vi.fn()
   };
   return {
@@ -466,9 +471,7 @@ function authenticateWithPermissions(
 function renderApp(pathname: string) {
   window.history.pushState({}, '', pathname);
 
-  return render(
-    <ApplicationRuntimeBootstrap />
-  );
+  return render(<ApplicationRuntimeBootstrap />);
 }
 
 describe('SettingsPage', () => {
@@ -1038,9 +1041,13 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(within(rootRow).getByRole('button', { name: /编辑$/ }));
-    const profileDialog = await screen.findByRole('dialog', {
-      name: /编辑用户资料/
-    });
+    // rc-component shares test heading ids across dialogs; bind the actual
+    // modal through its visible title, as the member-panel contract test does.
+    const profileTitle = await screen.findByText('编辑用户资料 Root');
+    const profileDialog = profileTitle.closest<HTMLElement>('[role="dialog"]');
+    if (!profileDialog) throw new Error('Profile title is not inside a dialog');
+    await waitFor(() => expect(profileDialog).toBeVisible());
+    expect(profileDialog).toHaveAttribute('aria-modal', 'true');
     fireEvent.change(within(profileDialog).getByLabelText('姓名'), {
       target: { value: 'Root Next' }
     });
@@ -1076,9 +1083,12 @@ describe('SettingsPage', () => {
       );
     });
     await waitFor(() => {
-      expect(
-        screen.queryByRole('dialog', { name: /编辑用户资料/ })
-      ).not.toBeInTheDocument();
+      expect(membersApi.replaceSettingsMemberRoles).toHaveBeenCalledWith(
+        'user-1',
+        { role_codes: ['root'] },
+        'csrf-123'
+      );
+      expect(profileDialog).not.toBeInTheDocument();
     });
 
     fireEvent.click(within(rootRow).getByRole('button', { name: /重置密码$/ }));
@@ -1183,11 +1193,20 @@ describe('SettingsPage', () => {
   test('retired infrastructure URL falls back without showing an infrastructure entry', async () => {
     authenticateWithPermissions(['plugin_config.view.all']);
     renderApp('/settings/host-infrastructure');
-    await waitFor(() => {
-      expect(window.location.pathname).not.toBe('/settings/host-infrastructure');
-    }, { timeout: 10000 });
-    expect(screen.queryByRole('link', { name: '基础设施' })).not.toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: '内存观察' })).toHaveAttribute('href', '/settings/memory-observation');
+    await waitFor(
+      () => {
+        expect(window.location.pathname).not.toBe(
+          '/settings/host-infrastructure'
+        );
+      },
+      { timeout: 10000 }
+    );
+    expect(
+      screen.queryByRole('link', { name: '基础设施' })
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: '内存观察' })
+    ).toHaveAttribute('href', '/settings/memory-observation');
   });
 
   test('renders memory observation as a settings section route', async () => {

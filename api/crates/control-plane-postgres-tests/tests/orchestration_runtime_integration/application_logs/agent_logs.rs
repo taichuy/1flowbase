@@ -1035,8 +1035,19 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
             .await
             .unwrap();
     assert!(ingested_at >= migration_start && ingested_at <= migration_end);
-    let preserved:Value=sqlx::query_scalar("select to_jsonb(t)-array['source_kind','source_id','source_client','source_session_id','source_task_id','parent_source_task_id','native_run_id','cost_breakdown','ingested_at'] from application_run_log_tasks t where id=$1").bind(run_id).fetch_one(store.pool()).await.unwrap();
+    let preserved:Value=sqlx::query_scalar("select to_jsonb(t)-array['source_kind','source_id','source_client','source_session_id','source_task_id','parent_source_task_id','native_run_id','cost_breakdown','ingested_at','projection_output_source'] from application_run_log_tasks t where id=$1").bind(run_id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(preserved, old);
+    let projection_source: Option<String> = sqlx::query_scalar(
+        "select projection_output_source from application_run_log_tasks where id=$1",
+    )
+    .bind(run_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        projection_source, None,
+        "running native tasks are not settled"
+    );
     let record = store
         .application_log_record(seeded.application_id, run_id)
         .await
