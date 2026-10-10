@@ -1290,117 +1290,29 @@ where
             .get_mcp_instance_discovery_policy(instance.id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance_discovery_policy"))?;
-        let path_regex_filter = compile_list_path_regex(
-            path_regex,
-            discovery_policy.list_regex_enabled,
-            discovery_policy.list_regex_max_length,
-        )?;
-
         let groups = self.repository.list_mcp_groups(&[instance.id]).await?;
         let bindings = self
             .repository
             .list_mcp_tool_bindings(&[instance.id])
             .await?;
         let tools = self.repository.list_mcp_tools(workspace_id).await?;
-        let enabled_tool_ids = tools
-            .iter()
-            .filter(|tool| tool.status == domain::McpToolStatus::Enabled)
-            .map(|tool| tool.id)
-            .collect::<HashSet<_>>();
-        let mut children_counts = HashMap::<String, i64>::new();
-        for group in groups.iter().filter(|group| group.enabled) {
-            if let Some(parent_path) = parent_group_path(&group.path) {
-                *children_counts.entry(parent_path.to_owned()).or_default() += 1;
-            }
-        }
-        for binding in bindings
-            .iter()
-            .filter(|binding| binding.visible && enabled_tool_ids.contains(&binding.tool_record_id))
-        {
-            *children_counts
-                .entry(binding.group_path.clone())
-                .or_default() += 1;
-        }
-        let base_path = path.unwrap_or(instance.default_entry_path.as_str());
-        let max_depth = depth
-            .unwrap_or(discovery_policy.list_max_depth)
-            .clamp(0, discovery_policy.list_max_depth);
-        let mut items = Vec::new();
-
-        for group in groups.into_iter().filter(|group| {
-            group.enabled
-                && path_matches_list_query(
-                    base_path,
-                    &group.path,
-                    max_depth,
-                    path_regex_filter.as_ref(),
-                )
-        }) {
-            if list_item_matches_keywords(
-                keywords,
-                &group.path,
-                &group.display_name,
-                group.description_short.as_deref(),
-            ) {
-                let children_count = children_counts
-                    .get(&group.path)
-                    .copied()
-                    .unwrap_or_default();
-                items.push(domain::McpListItemSummary {
-                    id: group.id.to_string(),
-                    item_kind: domain::McpListItemKind::Group,
-                    path: group.path,
-                    name: group.display_name,
-                    description_short: group.description_short,
-                    children_count,
-                    risk_level: None,
-                });
-            }
-        }
-
-        for binding in bindings.into_iter().filter(|binding| {
-            binding.visible
-                && path_matches_list_query(
-                    base_path,
-                    &binding.group_path,
-                    max_depth,
-                    path_regex_filter.as_ref(),
-                )
-        }) {
-            if let Some(tool) = tools
-                .iter()
-                .find(|tool| tool.id == binding.tool_record_id)
-                .filter(|tool| tool.status == domain::McpToolStatus::Enabled)
-            {
-                let display_name = binding
-                    .display_alias
-                    .as_deref()
-                    .unwrap_or(tool.name.as_str());
-                if list_item_matches_keywords(
-                    keywords,
-                    &binding.group_path,
-                    display_name,
-                    Some(&tool.short_description),
-                ) {
-                    items.push(domain::McpListItemSummary {
-                        id: tool.tool_id.clone(),
-                        item_kind: domain::McpListItemKind::Tool,
-                        path: binding.group_path,
-                        name: binding
-                            .display_alias
-                            .clone()
-                            .unwrap_or_else(|| tool.name.clone()),
-                        description_short: Some(tool.short_description.clone()),
-                        children_count: 0,
-                        risk_level: Some(tool.risk_level),
-                    });
-                }
-            }
-        }
-
-        let limit = limit.unwrap_or(discovery_policy.list_default_limit as usize);
-        items.truncate(limit);
-        Ok(items)
+        let selected_id = instance.instance_id.clone();
+        let catalog = domain::McpCatalogSnapshot {
+            instances: vec![instance],
+            groups,
+            tools,
+            bindings,
+            discovery_policies: vec![discovery_policy],
+        };
+        list_catalog_items(
+            &catalog,
+            &selected_id,
+            path,
+            path_regex,
+            keywords,
+            depth,
+            limit,
+        )
     }
 
     pub async fn authorize_interface_catalog_view(&self, actor_user_id: Uuid) -> Result<()> {
@@ -1453,8 +1365,9 @@ where
 
 mod query;
 use query::{
-    bindable_interface, compile_list_path_regex, generate_short_id, list_item_matches_keywords,
-    normalize_group_display_name, parent_group_path, path_matches_list_query, validate_group_path,
+    bindable_interface, generate_short_id, normalize_group_display_name, validate_group_path,
     validate_list_return_fields,
 };
 pub(crate) use query::{normalize_des_id, validate_identifier, validate_path, validate_positive};
+
+pub use query::list_catalog_items;

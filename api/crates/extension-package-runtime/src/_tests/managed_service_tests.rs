@@ -70,3 +70,71 @@ fn managed_service_rejects_scope_route_identity_authority_and_protocol_forgery()
         assert!(parse(&value).is_err(), "{pointer} must fail closed");
     }
 }
+
+#[test]
+fn managed_mcp_declarations_are_optional_and_have_unique_local_names() {
+    let mut value = fixture();
+    assert!(
+        parse(&value).unwrap().managed_service.unwrap().operations[0]
+            .mcp
+            .is_none()
+    );
+    value["managed_service"]["operations"][0]["mcp"] =
+        json!({"name":"hosts.list","description":"List configured hosts."});
+    assert_eq!(
+        parse(&value).unwrap().managed_service.unwrap().operations[0]
+            .mcp
+            .as_ref()
+            .unwrap()
+            .name,
+        "hosts.list"
+    );
+    for invalid in [
+        json!({"name":"../host","description":"Bad name"}),
+        json!({"name":"hosts.list","description":""}),
+        json!({"name":"hosts.list","description":"List", "installation_id":"forged"}),
+    ] {
+        value["managed_service"]["operations"][0]["mcp"] = invalid;
+        assert!(parse(&value).is_err());
+    }
+}
+
+#[test]
+fn managed_mcp_rejects_ambiguous_flat_parameters_and_unsafe_route_identity() {
+    let mut valid = fixture();
+    valid["managed_service"]["operations"][0]["mcp"] =
+        json!({"name":"hosts.list","description":"List hosts"});
+    valid["managed_service"]["operations"][0]["input_schema"] = json!({"type":"object","properties":{"path":{"type":"object","properties":{"host_id":{"type":"string"}}},"body":{"type":"object","properties":{"command":{"type":"string"}}}}});
+    valid["managed_service"]["operations"][0]["output_schema"] =
+        json!({"type":"object","properties":{"stdout":{"type":"string"}}});
+    assert!(
+        parse(&valid).is_ok(),
+        "service schemas must not inherit hook summary string limits"
+    );
+    let mut duplicate = valid.clone();
+    duplicate["managed_service"]["operations"][0]["input_schema"]["properties"]["body"]
+        ["properties"]["host_id"] = json!({"type":"string"});
+    assert!(parse(&duplicate).is_err());
+    for (pointer, value) in [
+        (
+            "/managed_service/operations/0/interface_id",
+            json!("managed_fixture.bad id"),
+        ),
+        (
+            "/managed_service/feature/feature_id",
+            json!("managed_fixture."),
+        ),
+        (
+            "/managed_service/operations/0/path",
+            json!("/api/console/managed-services/managed_fixture/{}"),
+        ),
+        (
+            "/managed_service/operations/0/path",
+            json!("/api/console/managed-services/managed_fixture/:host_id"),
+        ),
+    ] {
+        let mut invalid = valid.clone();
+        *invalid.pointer_mut(pointer).unwrap() = value;
+        assert!(parse(&invalid).is_err(), "{pointer}");
+    }
+}

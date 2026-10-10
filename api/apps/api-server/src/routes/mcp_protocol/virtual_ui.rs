@@ -224,6 +224,7 @@ impl McpInterfaceDispatchPort for ConsoleRouterMcpInterfaceDispatchPort {
 /// this boundary until their API-root port is extracted in the follow-up split.
 #[derive(Clone)]
 pub(crate) struct RuntimeInternalToolInvokerDependencies {
+    managed_services: Arc<[crate::managed_services::ManagedServiceRegistration]>,
     store: MainDurableStore,
     provider_secret_master_key: String,
     result_delivery: result_delivery::McpResultDeliveryDependencies,
@@ -236,6 +237,7 @@ impl RuntimeInternalToolInvokerDependencies {
         provider_secret_master_key: String,
     ) -> Self {
         Self {
+            managed_services: Arc::from([]),
             result_delivery: result_delivery::McpResultDeliveryDependencies::new(
                 store.clone(),
                 cache_store,
@@ -243,6 +245,13 @@ impl RuntimeInternalToolInvokerDependencies {
             store,
             provider_secret_master_key,
         }
+    }
+    pub(crate) fn with_managed_services(
+        mut self,
+        services: Vec<crate::managed_services::ManagedServiceRegistration>,
+    ) -> Self {
+        self.managed_services = services.into();
+        self
     }
 }
 
@@ -745,6 +754,27 @@ pub(crate) async fn dispatch(
         .map(|item| VirtualMcpScope::single(item.instance_id.clone()))
         .unwrap_or_else(|| scope.clone());
     let operation = registration.map(|item| item.operation);
+    // Recompute package-owned discovery on every dispatch; a long-lived invoker cannot
+    // retain a disabled installation or a user's revoked console operation grant.
+    let mut projected_catalog =
+        if matches!(operation, Some(McpLlmOperation::List)) || name == MCP_LIST {
+            McpManagementService::new(dependencies.store.clone())
+                .read_catalog_for_actor(actor)
+                .await?
+        } else {
+            catalog.clone()
+        };
+    crate::managed_service_mcp::append(
+        &dependencies.store,
+        &dependencies.managed_services,
+        actor,
+        &mut projected_catalog,
+        &effective_scope.instance_ids,
+        interface_catalog,
+    )
+    .await?;
+    let catalog = &projected_catalog;
+
     let allow_assistant_client = match assistant_client {
         Some(client) => client.has_frontstage_capability_bundle().await,
         None => false,
@@ -820,8 +850,8 @@ pub(crate) async fn dispatch(
 }
 
 async fn list(
-    dependencies: &RuntimeInternalToolInvokerDependencies,
-    actor: &domain::ActorContext,
+    _dependencies: &RuntimeInternalToolInvokerDependencies,
+    _actor: &domain::ActorContext,
     catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
     arguments: &Value,
@@ -853,22 +883,17 @@ async fn list(
         .get("limit")
         .and_then(Value::as_u64)
         .and_then(|value| usize::try_from(value).ok());
-    let service = McpManagementService::new(dependencies.store.clone());
     let mut items = Vec::new();
     for instance_id in &scope.instance_ids {
-        items.extend(
-            service
-                .list_items_for_actor(
-                    actor,
-                    Some(instance_id),
-                    path,
-                    path_regex,
-                    keywords.as_deref(),
-                    depth,
-                    limit,
-                )
-                .await?,
-        );
+        items.extend(control_plane::mcp_management::list_catalog_items(
+            catalog,
+            instance_id,
+            path,
+            path_regex,
+            keywords.as_deref(),
+            depth,
+            limit,
+        )?);
     }
     if let Some(limit) = limit {
         items.truncate(limit);
