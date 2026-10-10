@@ -84,6 +84,7 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
         .entries
         .iter()
         .all(|entry| entry.action == "create"));
+    let original_plan = prepared.plan.clone();
     let applied = prepared.apply(&dependencies).await.unwrap();
     assert_eq!(applied.created_objects, 3);
 
@@ -109,6 +110,33 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
         artifact_id: "managed_schema".to_string(),
         version: "1.0.0".to_string(),
     };
+    let (table, column) = original_plan
+        .operations
+        .iter()
+        .find_map(|op| match op {
+            ManagedSchemaOperation::EnsureOwnedField {
+                physical_table,
+                physical_column,
+                ..
+            } => Some((physical_table.clone(), physical_column.clone())),
+            _ => None,
+        })
+        .unwrap();
+    assert!(table
+        .chars()
+        .chain(column.chars())
+        .all(|c| c.is_ascii_alphanumeric() || c == '_'));
+    let host_id = uuid::Uuid::now_v7();
+    let preserved_value = uuid::Uuid::now_v7();
+    sqlx::query(&format!(
+        "insert into \"{table}\" (id, scope_id, \"{column}\") values ($1,$2,$3)"
+    ))
+    .bind(host_id)
+    .bind(domain::SYSTEM_SCOPE_ID)
+    .bind(preserved_value)
+    .execute(state.store.pool())
+    .await
+    .unwrap();
     let retained = retain_managed_schema(&dependencies, state.bootstrap_workspace_id, &identity)
         .await
         .unwrap()
@@ -119,6 +147,33 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
         .unwrap();
     assert_eq!(ownership.len(), 3);
     assert!(ownership.iter().all(|record| !record.active));
+    // Receipt reuse must follow current-state reconciliation, including the second enable cycle.
+    for _ in 0..2 {
+        let restored = ManagedSchemaRepository::apply_managed_schema(&state.store, &original_plan)
+            .await
+            .unwrap();
+        assert_eq!(restored.receipt_id, applied.receipt_id);
+        let ownership = ManagedSchemaRepository::list_managed_schema_ownership(&state.store)
+            .await
+            .unwrap();
+        assert!(ownership
+            .iter()
+            .all(|record| record.active && record.owner_version == "1.0.0"));
+        let stored: uuid::Uuid =
+            sqlx::query_scalar(&format!("select \"{column}\" from \"{table}\" where id=$1"))
+                .bind(host_id)
+                .fetch_one(state.store.pool())
+                .await
+                .unwrap();
+        assert_eq!(stored, preserved_value);
+        retain_managed_schema(&dependencies, state.bootstrap_workspace_id, &identity)
+            .await
+            .unwrap();
+        let ownership = ManagedSchemaRepository::list_managed_schema_ownership(&state.store)
+            .await
+            .unwrap();
+        assert!(ownership.iter().all(|record| !record.active));
+    }
 }
 
 #[test]

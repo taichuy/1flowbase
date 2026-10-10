@@ -33,9 +33,8 @@ impl ManagedSchemaRepository for PgControlPlaneStore {
         plan: &ManagedSchemaPlan,
     ) -> Result<ManagedSchemaApplyReceipt> {
         validate_plan(plan)?;
-        if let Some(receipt) = find_receipt(self.pool(), &plan.owner_id, &plan.fingerprint).await? {
-            return Ok(receipt);
-        }
+        // A historical receipt is not proof of current ownership state (disable retains inactive).
+        // Replay the idempotent operations under the owner lock before reusing the receipt below.
 
         let mut transaction = self.pool().begin().await?;
         sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
@@ -579,22 +578,6 @@ async fn column_contract_tx(
             row.try_get::<String, _>("is_nullable")? == "YES",
         ))
     })
-    .transpose()
-}
-
-async fn find_receipt(
-    pool: &PgPool,
-    owner_id: &str,
-    fingerprint: &str,
-) -> Result<Option<ManagedSchemaApplyReceipt>> {
-    sqlx::query(
-        "select * from plugin_schema_reconcile_receipts where owner_id = $1 and plan_fingerprint = $2",
-    )
-    .bind(owner_id)
-    .bind(fingerprint)
-    .fetch_optional(pool)
-    .await?
-    .map(map_receipt)
     .transpose()
 }
 

@@ -407,6 +407,12 @@ impl ExtensionCenterAdapter {
                 ))
             }
             ExtensionCenterInput::Enable(installation_id) => {
+                super::managed_schema::restore_installed_managed_schema(
+                    &self.0,
+                    actor.current_workspace_id,
+                    installation_id,
+                )
+                .await?;
                 let task = service(&self.0, actor, "extension_center.installed.enable")
                     .enable_plugin(EnablePluginCommand {
                         actor_user_id: actor.user_id,
