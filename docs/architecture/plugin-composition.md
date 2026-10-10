@@ -20,7 +20,7 @@
 **当前入口与实现边界：**
 
 - 旧 `RuntimeExtension` workspace/model 分配继续沿用 [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs)。显式 v2 `managed_service.scope: system` 包走独立系统激活，不创建业务工作区分配；两条路径不能互相推导权限。
-- `managed_service` 声明 settings feature 与 method/path/JSON Schema 操作，`settings_pages` 引用包内 TSX。宿主启动时将其编译到同一 console operation、路由、Canonical Interface、导航与 OpenAPI 快照；安装或升级改变这些声明后需要重启宿主使新注册生效。停用和贡献撤权在新调用时按当前持久化状态拒绝，不等待重启。
+- `managed_service` 声明 settings feature 与 method/path/JSON Schema 操作，`settings_pages` 引用包内 TSX。宿主启动时将其编译到同一 console operation、路由、Canonical Interface、导航与 OpenAPI 快照；安装或升级改变这些声明后需要重启宿主使新注册生效。停用和贡献撤权在新调用时按当前持久化状态拒绝，不等待重启。受管插件卸载不要求宿主重启：底座先停用，自动退役无在途引用、无未完成持久投递的旧执行快照，再清理安装制品；真实引用或事件积压会明确拒绝删除，保留数据并允许重试。系统级插件的执行治理沿用系统作用域和现有角色 operation 授权，不要求工作区分配。
 - 操作的可选 `mcp` 声明投影为 `/plugins/{plugin_code}` 下固定工具，复用现有 MCP 目录和 Interface 调用。它属于包声明，不覆盖用户配置；浏览器专用实例不注入这些系统工具。具体可见性继续受所选实例、discovery policy 与角色 API 权限约束。
 - `process_per_call` + `stdio_json_multiplex_v1` 复用共享 SDK 和宿主 carrier。系统 PluginData 与出站 credential 回调由宿主注入安装、贡献、作用域与期限，每次校验当前授权；凭据加密持久化，普通页面数据不返回凭据原文。宿主登录凭据、SQL 与数据库连接不向插件开放。
 - 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。

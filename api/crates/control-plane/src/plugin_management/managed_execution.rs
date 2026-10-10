@@ -45,7 +45,7 @@ impl<R: RoleConsolePolicyReader + PluginContributionAuthorityRepository + Plugin
         actor: &domain::ActorContext,
         installation_id: Uuid,
         operation: &str,
-    ) -> Result<()> {
+    ) -> Result<Uuid> {
         if !actor.is_root {
             let policies = self
                 .repository
@@ -67,10 +67,12 @@ impl<R: RoleConsolePolicyReader + PluginContributionAuthorityRepository + Plugin
         if installation.contract_version != "1flowbase.extension-bus/v1" {
             return Err(ControlPlaneError::InvalidInput("managed_installation_required").into());
         }
+        let scope_id =
+            domain::managed_installation_scope(&installation, actor.current_workspace_id);
         self.repository
             .query_contribution_authority(
                 installation_id,
-                actor.current_workspace_id,
+                scope_id,
                 &audit_log(
                     Some(actor.current_workspace_id),
                     Some(actor.user_id),
@@ -81,7 +83,7 @@ impl<R: RoleConsolePolicyReader + PluginContributionAuthorityRepository + Plugin
                 ),
             )
             .await?;
-        Ok(())
+        Ok(scope_id)
     }
     pub async fn query(
         &self,
@@ -89,22 +91,23 @@ impl<R: RoleConsolePolicyReader + PluginContributionAuthorityRepository + Plugin
         installation_id: Uuid,
         cursor: Option<String>,
     ) -> Result<ManagedExecutionState> {
-        self.authorize(
-            actor,
-            installation_id,
-            "extension_center.managed_execution.view",
-        )
-        .await?;
+        let scope_id = self
+            .authorize(
+                actor,
+                installation_id,
+                "extension_center.managed_execution.view",
+            )
+            .await?;
         if let Some(value) = cursor.as_deref() {
             control_plane_contracts::ports::ManagedDeliveryCursor::decode(
                 value,
                 installation_id,
-                actor.current_workspace_id,
+                scope_id,
             )
             .map_err(|_| ControlPlaneError::InvalidInput("invalid_managed_delivery_cursor"))?;
         }
         self.runtime
-            .managed_execution_state(actor.current_workspace_id, installation_id, cursor)
+            .managed_execution_state(scope_id, installation_id, cursor)
             .await
     }
     pub async fn resume(
@@ -113,14 +116,15 @@ impl<R: RoleConsolePolicyReader + PluginContributionAuthorityRepository + Plugin
         installation_id: Uuid,
         input: ResumeManagedLifecycleDelivery,
     ) -> Result<ManagedExecutionState> {
-        self.authorize(
-            actor,
-            installation_id,
-            "extension_center.lifecycle_deliveries.resume",
-        )
-        .await?;
+        let scope_id = self
+            .authorize(
+                actor,
+                installation_id,
+                "extension_center.lifecycle_deliveries.resume",
+            )
+            .await?;
         self.runtime
-            .resume_managed_delivery(actor.current_workspace_id, installation_id, input)
+            .resume_managed_delivery(scope_id, installation_id, input)
             .await
     }
     pub async fn retire(
@@ -129,14 +133,15 @@ impl<R: RoleConsolePolicyReader + PluginContributionAuthorityRepository + Plugin
         installation_id: Uuid,
         target: ManagedFrozenExecutionTarget,
     ) -> Result<ManagedExecutionState> {
-        self.authorize(
-            actor,
-            installation_id,
-            "extension_center.managed_executions.retire",
-        )
-        .await?;
+        let scope_id = self
+            .authorize(
+                actor,
+                installation_id,
+                "extension_center.managed_executions.retire",
+            )
+            .await?;
         self.runtime
-            .retire_managed_execution(actor.current_workspace_id, installation_id, target)
+            .retire_managed_execution(scope_id, installation_id, target)
             .await
     }
 }
