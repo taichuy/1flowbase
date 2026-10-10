@@ -35,11 +35,12 @@ fn service_boot_registry_registers_one_operation_per_route_and_managed_page() {
         operation.routes[0].path,
         "/api/console/managed-services/fixture/items"
     );
-    assert!(plan
-        .route_assembly
-        .bindings()
-        .iter()
-        .any(|binding| binding.route.path == operation.routes[0].path));
+    assert!(
+        plan.route_assembly
+            .bindings()
+            .iter()
+            .any(|binding| binding.route.path == operation.routes[0].path)
+    );
     assert_eq!(
         plan.console_surface_registry
             .page("fixture")
@@ -74,14 +75,35 @@ fn service_duplicate_route_rejects_whole_boot_snapshot() {
 #[test]
 fn service_openapi_projects_real_path_query_body_and_result_contract() {
     let mut doc = json!({"paths":{}});
-    append_openapi(&mut doc, &[fixture()]);
+    let mut service = fixture();
+    service.declaration.operations[0].output_schema = json!({
+        "type":"object", "properties":{"items":{"type":"array","items":{"type":"string"}}},
+        "required":["items"], "additionalProperties":false
+    });
+    append_openapi(&mut doc, &[service.clone()]);
     let operation = &doc["paths"]["/api/console/managed-services/fixture/items"]["get"];
     assert_eq!(operation["operationId"], "fixture.list");
     assert_eq!(
-        operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
-            ["data"],
-        json!({"type":"object"})
+        operation["responses"]["200"]["content"]["application/json"]["schema"],
+        service.declaration.operations[0].output_schema
     );
+    let catalog = crate::openapi_interface::catalog_entry_from_operation(
+        &crate::openapi_docs::DocsCatalogOperation {
+            id: "fixture.list".into(),
+            method: "GET".into(),
+            path: "/api/console/managed-services/fixture/items".into(),
+            summary: None,
+            description: None,
+            tags: vec![],
+            group: "fixture".into(),
+            deprecated: false,
+        },
+        &doc,
+    )
+    .unwrap();
+    let validator = jsonschema::validator_for(&catalog.response_schema).unwrap();
+    assert!(validator.is_valid(&json!({"items":["fixture"]})));
+    assert!(!validator.is_valid(&json!({"data":{"items":["fixture"]}})));
 }
 #[test]
 fn business_failures_expose_only_classification_codes() {

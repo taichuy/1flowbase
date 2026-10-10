@@ -190,8 +190,10 @@ pub(crate) fn append_openapi(
                     }
                 }
             }
+            // Host catalog response contracts describe ApiSuccess.data, as static DTO docs do.
+            // The shared dispatcher unwraps the HTTP envelope before validating this schema.
             let mut operation = json!({"operationId":op.interface_id,"summary":op.summary,"description":op.description,"tags":[service.declaration.feature.label],"parameters":parameters,
-            "responses":{"200":{"description":"Successful operation","content":{"application/json":{"schema":{"type":"object","properties":{"data":op.output_schema},"required":["data"]}}}}}});
+            "responses":{"200":{"description":"Successful operation","content":{"application/json":{"schema":op.output_schema}}}}});
             if op.method != "GET" && op.method != "DELETE" {
                 operation["requestBody"] = json!({"required":true,"content":{"application/json":{"schema":op.input_schema.pointer("/properties/body").cloned().unwrap_or(json!({"type":"object"}))}}});
             }
