@@ -286,7 +286,13 @@ impl ManagedWorkers {
             binding
                 .limits
                 .timeout_ms
-                .unwrap_or(30_000)
+                .unwrap_or(
+                    if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
+                        remaining_ms
+                    } else {
+                        30_000
+                    },
+                )
                 .min(remaining_ms),
         );
         Ok(async move {
@@ -310,7 +316,7 @@ impl ManagedWorkers {
             // The request deadline also bounds process start and stdin writes, not only output.
             tokio::time::timeout(
                 std::time::Duration::from_millis(
-                    remaining_ms.min(binding.limits.timeout_ms.unwrap_or(30_000)),
+                    remaining_ms.min(binding.limits.timeout_ms.unwrap_or(remaining_ms)),
                 ),
                 async {
                     if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
