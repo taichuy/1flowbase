@@ -348,7 +348,7 @@ fn edited_deleted_and_pending_owned_copies_never_fork_again() {
                     .find(|b| b.key.kind == "mcp_tool")
                     .unwrap();
                 baseline.pending = Some(TemplateWriteIntent {
-                    operation_id: Uuid::new_v4(),
+                    operation_id: Uuid::now_v7(),
                     target_id: target.clone(),
                     expected_fingerprint: baseline.applied_fingerprint.clone(),
                     desired_fingerprint: "pending".into(),
@@ -503,7 +503,7 @@ fn formerly_reused_tool_forks_and_only_unchanged_owned_binding_retargets() {
                     .find(|b| b.key.kind == "mcp_binding")
                     .unwrap();
                 b.pending = Some(TemplateWriteIntent {
-                    operation_id: Uuid::new_v4(),
+                    operation_id: Uuid::now_v7(),
                     target_id: b.target_id.clone(),
                     expected_fingerprint: b.applied_fingerprint.clone(),
                     desired_fingerprint: "pending".into(),
