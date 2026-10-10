@@ -473,7 +473,17 @@ fn overview_contract_fixture_contains_metadata_without_body_or_answer_claims() {
             assert!(properties["flow_run"]["properties"].get(field).is_none());
         }
     }
-    assert_eq!(value.as_object().unwrap().len(), 3);
+    let mut fields = value
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    fields.sort_unstable();
+    assert_eq!(
+        fields,
+        ["flow_run", "log_conversation_id", "run", "statistics"]
+    );
     assert_eq!(value["flow_run"]["id"], flow_run.id.to_string());
     assert_eq!(value["flow_run"]["status"], "waiting_callback");
     assert_eq!(value["statistics"]["total_tokens"], 154);
