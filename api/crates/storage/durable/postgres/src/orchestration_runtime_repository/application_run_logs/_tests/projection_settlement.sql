@@ -60,7 +60,7 @@ select pg_temp.append_fact(5,'{"kind":"section","step_id":"00000000-0000-4000-80
 select pg_temp.append_fact(6,'{"kind":"step","step":{"id":"00000000-0000-4000-8000-000000000093","category":"assistant","origin":"submitted"}}');
 select pg_temp.append_fact(7,'{"kind":"section","step_id":"00000000-0000-4000-8000-000000000093","section":"result","value":"history NO"}');
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
-select pg_temp.check_message('最后回复','projection_timeout');
+select pg_temp.check_message('最后回复','provider_output_item');
 -- Usage corrections update the existing snapshot instead of adding old totals.
 update runtime_cost_ledger set normalized_cost=0.5;
 update application_run_log_summaries set input_tokens=12,output_tokens=4,total_tokens=16 where flow_run_id='00000000-0000-4000-8000-000000000011';
@@ -82,7 +82,7 @@ update runtime_cost_ledger set normalized_cost=null;
 update application_run_log_tasks set projection_deadline_at=now()-interval '1 second' where status='waiting_callback';
 select settle_next_application_log_projection();
 do $$ begin
- assert (select total_cost is null and input_tokens is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'missing values stay unknown';
+ assert (select total_cost=0.25 and input_tokens=20 from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'settlement retains known member amounts without manufacturing missing values';
 end $$;
 
 -- Observed usage with missing fields must not become zero via summary fallback.
@@ -90,7 +90,7 @@ insert into runtime_usage_ledger(id,flow_run_id,usage_status)
 values(gen_random_uuid(),'00000000-0000-4000-8000-000000000011','unknown');
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin
- assert (select input_tokens is null and output_tokens is null and total_tokens is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'unknown observed usage remains unknown';
+ assert (select input_tokens=20 and output_tokens=3 and total_tokens=23 from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'unknown usage does not erase known observations from another member';
 end $$;
 update runtime_usage_ledger set input_tokens=0,output_tokens=0,total_tokens=0;
 update runtime_cost_ledger set normalized_cost=0;

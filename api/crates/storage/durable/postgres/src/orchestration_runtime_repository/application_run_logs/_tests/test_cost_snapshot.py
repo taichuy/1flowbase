@@ -4,7 +4,9 @@ Set API_DATABASE_URL (or DATABASE_URL) to a development PostgreSQL database.
 The test applies the real forward migrations to an isolated schema and removes
 that schema in finally. Output is retained under tmp/test-governance/.
 """
+import json
 import os
+import sys
 from pathlib import Path
 import subprocess
 from urllib.parse import unquote, urlparse
@@ -50,6 +52,15 @@ def main():
     # Exercise the exact production conversation read, not a test-only equivalent.
     sql += 'prepare read_task(uuid,uuid,integer) as ' + cte + ' select * from task_message_items;\n'
     sql += (here / 'projection_settlement.sql').read_text() + '\nrollback;\n'
+    # The authorized completed Codex turn supplies the real expected user/final
+    # text and observed totals. The compact mock has one aggregate observation
+    # and one unavailable-error row, preserving the failure-relevant NULL shape.
+    fixture = json.loads((here / 'fixtures/completed_codex_turn.json').read_text())
+    sql += (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
+    sql += "create temp table completed_turn_fixture(data jsonb); insert into completed_turn_fixture values ('" + json.dumps(fixture, ensure_ascii=False).replace("'", "''") + "');\n"
+    if '--negative-settlement' in sys.argv:
+        sql += (migrations / '20260922130000_repair_superseded_log_cost_snapshots.sql').read_text().split('-- Repair only missing terminal')[0]
+    sql += (here / 'fixtures/completed_codex_turn.sql').read_text() + '\nrollback;\n'
     with log.open('w') as output:
         try:
             result = subprocess.run(command, input=sql, text=True, env=env,

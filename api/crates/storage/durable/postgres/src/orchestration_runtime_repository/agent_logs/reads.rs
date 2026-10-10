@@ -22,36 +22,7 @@ pub(in crate::orchestration_runtime_repository) async fn overview(
                 },
             )
             .await?;
-        let mut messages: Vec<_> = page
-            .contexts
-            .into_iter()
-            .map(|c| AgentLogMessage {
-                role: c.role,
-                content: c.content,
-                sequence: c.display_sequence,
-            })
-            .collect();
-        let mut projection_output = None;
-        for item in page.items {
-            if let Some(content) = item.query {
-                messages.push(AgentLogMessage {
-                    role: "user".into(),
-                    content,
-                    sequence: item.display_sequence,
-                });
-            }
-            if let Some(content) = item.answer {
-                if item.output_source.as_deref() == Some("persisted_answer") {
-                    messages.push(AgentLogMessage {
-                        role: "assistant".into(),
-                        content,
-                        sequence: item.display_sequence,
-                    });
-                } else {
-                    projection_output = Some(content);
-                }
-            }
-        }
+        let (messages, projection_output) = native_overview_messages(page.contexts, page.items);
         (messages, page.output_state, projection_output)
     } else {
         let rows = sqlx::query("select role,content,raw_json_payloads->>'content' as content_original,display_sequence from application_run_conversation_message_items where application_id=$1 and record_id=$2 and role in ('system','user','assistant') order by display_sequence,id")
@@ -215,3 +186,54 @@ pub(in crate::orchestration_runtime_repository) async fn record_native_run(
     sqlx::query_scalar("select case when source_kind='native' then id else native_run_id end from application_run_log_tasks where application_id=$1 and id=$2")
         .bind(application_id).bind(record_id).fetch_optional(store.pool()).await.map_err(Into::into)
 }
+
+// The task reader already selects one observed business answer. This mapper
+// never promotes raw provider fragments or timeout placeholders into replies.
+fn native_overview_messages(
+    contexts: Vec<domain::ApplicationRunConversationContextItem>,
+    items: Vec<domain::ApplicationRunConversationMessageItem>,
+) -> (Vec<AgentLogMessage>, Option<String>) {
+    let mut messages: Vec<_> = contexts
+        .into_iter()
+        .map(|c| AgentLogMessage {
+            role: c.role,
+            content: c.content,
+            sequence: c.display_sequence,
+        })
+        .collect();
+    let mut projection_output = None;
+    for item in items {
+        if let Some(content) = item.query {
+            messages.push(AgentLogMessage {
+                role: "user".into(),
+                content,
+                sequence: item.display_sequence,
+            });
+        }
+        if let Some(content) = item.answer {
+            if matches!(
+                item.output_source.as_deref(),
+                Some("persisted_answer" | "provider_output_item")
+            ) {
+                messages.push(AgentLogMessage {
+                    role: "assistant".into(),
+                    content,
+                    sequence: item.display_sequence,
+                });
+            } else {
+                projection_output = Some(content);
+            }
+        }
+    }
+    // Each native context uses a run-local sequence and the business query
+    // and answer share one turn position. The record response owns a single
+    // ordered message list: assign unique positions before the UI keys it.
+    for (sequence, message) in messages.iter_mut().enumerate() {
+        message.sequence = sequence as i64;
+    }
+    (messages, projection_output)
+}
+
+#[cfg(test)]
+#[path = "_tests/native_overview.rs"]
+mod native_overview_tests;

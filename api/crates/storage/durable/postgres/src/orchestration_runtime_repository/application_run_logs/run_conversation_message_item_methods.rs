@@ -680,6 +680,8 @@ fn application_run_task_message_items_cte() -> &'static str {
             t.created_at,t.updated_at,'{}'::jsonb as raw_json_payloads,
             case when t.outcome='final_answer_observed' and t.final_output is not null
                 then 'persisted_answer'
+                when t.projection_settled_at is not null and t.projection_output_source='observed_output'
+                    then 'provider_output_item'
                 when t.projection_settled_at is not null then 'projection_timeout'
                 when t.status='waiting_callback' then 'waiting_callback'
                 else 'none' end as output_source
