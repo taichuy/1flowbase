@@ -23,3 +23,5 @@ pub use merge::*;
 pub mod i18n;
 
 pub mod i18n_merge;
+
+pub mod mcp_merge;

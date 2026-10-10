@@ -72,7 +72,7 @@ impl PortableTemplateTransactionRepository for PgControlPlaneStore {
                     sqlx::query("SET LOCAL lock_timeout = '10s'").execute(&mut *connection).await?;
                     // These are actual PostgreSQL write locks, including ordinary editor
                     // UPDATE/INSERT/DELETE transactions. READ queries remain available.
-                    sqlx::query("LOCK TABLE application_api_mappings, application_publication_versions, application_tag_bindings, application_tags, applications, flows, flow_drafts, flow_versions, frontstage_block_codes, frontstage_block_nodes, frontstage_page_schemas, frontstage_page_tabs, frontstage_page_visibility_rules, frontstage_pages, model_definitions, model_fields, roles, workflow_extension_triggers, workflow_schedule_triggers IN SHARE ROW EXCLUSIVE MODE")
+                    sqlx::query("LOCK TABLE application_api_mappings, application_publication_versions, application_tag_bindings, application_tags, applications, flows, flow_drafts, flow_versions, frontstage_block_codes, frontstage_block_nodes, frontstage_page_schemas, frontstage_page_tabs, frontstage_page_visibility_rules, frontstage_pages, mcp_groups, mcp_instance_discovery_policies, mcp_instances, mcp_tool_bindings, mcp_tools, mcp_upstream_connection_secrets, mcp_upstream_connections, model_definitions, model_fields, roles, workflow_extension_triggers, workflow_schedule_triggers IN SHARE ROW EXCLUSIVE MODE")
                         .execute(&mut *connection).await?;
                     Ok(())
                 })

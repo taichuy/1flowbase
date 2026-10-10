@@ -139,7 +139,7 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
     }
 
     for instance in &input.instances {
-        let instance_record_id: Uuid = sqlx::query_scalar(
+        let instance_record_id: Option<Uuid> = sqlx::query_scalar(
             r#"
                 insert into mcp_instances (
                     id, workspace_id, instance_id, name, description_short, status,
@@ -156,6 +156,9 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                     managed_bundle_version=excluded.managed_bundle_version,
                     updated_by=excluded.updated_by,
                     updated_at=now()
+                where (mcp_instances.name, mcp_instances.description_short, mcp_instances.status, mcp_instances.default_entry_path)
+                    is distinct from (excluded.name, excluded.description_short, excluded.status, excluded.default_entry_path)
+                   or not $12
                 returning id
                 "#,
         )
@@ -170,18 +173,33 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
         .bind(&input.source.bundle_id)
         .bind(&input.source.bundle_version)
         .bind(input.actor_user_id)
-        .fetch_one(&mut *transaction)
+        .bind(store.portable_template_transaction)
+        .fetch_optional(&mut *transaction)
         .await
         .map_err(map_mcp_instance_insert_error)?;
+        let instance_record_id = match instance_record_id {
+            Some(id) => id,
+            None => {
+                sqlx::query_scalar::<_, Uuid>(
+                    "select id from mcp_instances where workspace_id=$1 and instance_id=$2",
+                )
+                .bind(input.workspace_id)
+                .bind(&instance.instance_id)
+                .fetch_one(&mut *transaction)
+                .await?
+            }
+        };
 
-        sqlx::query("delete from mcp_tool_bindings where instance_record_id=$1")
-            .bind(instance_record_id)
-            .execute(&mut *transaction)
-            .await?;
-        sqlx::query("delete from mcp_groups where instance_record_id=$1")
-            .bind(instance_record_id)
-            .execute(&mut *transaction)
-            .await?;
+        if !store.portable_template_transaction {
+            sqlx::query("delete from mcp_tool_bindings where instance_record_id=$1")
+                .bind(instance_record_id)
+                .execute(&mut *transaction)
+                .await?;
+            sqlx::query("delete from mcp_groups where instance_record_id=$1")
+                .bind(instance_record_id)
+                .execute(&mut *transaction)
+                .await?;
+        }
 
         for group in &instance.groups {
             sqlx::query(
@@ -190,6 +208,12 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                         id, instance_record_id, path, display_name, description_short,
                         enabled, sort_order, scope_id, created_by, updated_by
                     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
+                    on conflict (instance_record_id, path) do update set
+                        display_name=excluded.display_name, description_short=excluded.description_short,
+                        enabled=excluded.enabled, sort_order=excluded.sort_order,
+                        updated_by=excluded.updated_by, updated_at=now()
+                    where (mcp_groups.display_name, mcp_groups.description_short, mcp_groups.enabled, mcp_groups.sort_order)
+                        is distinct from (excluded.display_name, excluded.description_short, excluded.enabled, excluded.sort_order)
                     "#,
             )
             .bind(Uuid::now_v7())
@@ -214,6 +238,11 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                     ) select $1,$2,tool.id,$3,$4,$5,$6,$7,$8,$8
                       from mcp_tools tool
                      where tool.workspace_id=$7 and tool.tool_id=$9
+                    on conflict (instance_record_id, group_path, tool_record_id) do update set
+                        display_alias=excluded.display_alias, visible=excluded.visible,
+                        sort_order=excluded.sort_order, updated_by=excluded.updated_by, updated_at=now()
+                    where (mcp_tool_bindings.display_alias, mcp_tool_bindings.visible, mcp_tool_bindings.sort_order)
+                        is distinct from (excluded.display_alias, excluded.visible, excluded.sort_order)
                     "#,
             )
             .bind(Uuid::now_v7())
@@ -228,7 +257,16 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
             .execute(&mut *transaction)
             .await?;
             if inserted.rows_affected() != 1 {
-                return Err(ControlPlaneError::NotFound("mcp_tool").into());
+                let exists: bool = sqlx::query_scalar(
+                    "select exists(select 1 from mcp_tools where workspace_id=$1 and tool_id=$2)",
+                )
+                .bind(input.workspace_id)
+                .bind(&binding.tool_id)
+                .fetch_one(&mut *transaction)
+                .await?;
+                if !exists {
+                    return Err(ControlPlaneError::NotFound("mcp_tool").into());
+                }
             }
         }
 
@@ -248,6 +286,12 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                     list_return_fields=excluded.list_return_fields,
                     updated_by=excluded.updated_by,
                     updated_at=now()
+                where (mcp_instance_discovery_policies.list_default_limit, mcp_instance_discovery_policies.list_max_depth,
+                    mcp_instance_discovery_policies.list_regex_enabled, mcp_instance_discovery_policies.list_regex_max_length,
+                    mcp_instance_discovery_policies.list_return_fields) is distinct from
+                    (excluded.list_default_limit, excluded.list_max_depth, excluded.list_regex_enabled,
+                    excluded.list_regex_max_length, excluded.list_return_fields)
+                    or not $10
                 "#,
         )
         .bind(Uuid::now_v7())
@@ -259,6 +303,7 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
         .bind(policy.list_regex_max_length)
         .bind(&policy.list_return_fields)
         .bind(input.actor_user_id)
+        .bind(store.portable_template_transaction)
         .execute(&mut *transaction)
         .await?;
     }

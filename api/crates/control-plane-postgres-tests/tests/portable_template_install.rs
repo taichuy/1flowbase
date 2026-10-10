@@ -860,3 +860,230 @@ async fn transaction_connection_loss_cannot_reconnect_and_commit_a_partial_batch
     );
     transaction.guard.rollback().await.unwrap();
 }
+
+fn mcp_template_fixture() -> domain::McpBundlePackage {
+    serde_json::from_value(json!({
+        "manifest":{"schema_version":"1flowbase.mcp.bundle/v2","organization":"test","bundle_id":"template","bundle_version":"1.0.0","locale":"en_US","minimum_host_version":"1.0.0","exported_from_system_version":"1.0.0","exported_at":"2026-10-10T00:00:00Z","files":[]},
+        "connections":[],
+        "tools":[{"tool_id":"shared_template_tool","name":"Tool","short_description":"Tool","full_description":"Tool","interface_id":"workspace_list","parameter_schema_snapshot":{},"result_schema_snapshot":{},"input_mapping":{},"output_mapping":{},"risk_level_snapshot":"low","status":"enabled"}],
+        "instances":[{"instance_id":"1flowbase","name":"Official","description_short":null,"status":"enabled","default_entry_path":"/","groups":[{"path":"/group","display_name":"Group","description_short":null,"enabled":true,"sort_order":0}],"bindings":[{"group_path":"/group","tool_id":"shared_template_tool","display_alias":null,"visible":true,"sort_order":0}],"discovery_policy":{"list_default_limit":20,"list_max_depth":8,"list_regex_enabled":false,"list_regex_max_length":128,"list_return_fields":[]}}]
+    })).unwrap()
+}
+fn mcp_template_catalog() -> Vec<domain::McpInterfaceCatalogEntry> {
+    vec![domain::McpInterfaceCatalogEntry {
+        interface_id: "workspace_list".into(),
+        source: domain::McpInterfaceCatalogSource::StaticApi,
+        method: "GET".into(),
+        path: "/api/workspaces".into(),
+        name: "Workspaces".into(),
+        short_description: "Workspaces".into(),
+        parameter_descriptors: vec![],
+        parameter_schema: json!({}),
+        result_schema: json!({}),
+        permission_code: None,
+        security: json!([]),
+        risk_level: domain::McpRiskLevel::Low,
+        bindable: true,
+        disabled_reason: None,
+    }]
+}
+#[tokio::test]
+async fn mcp_template_updates_independent_group_preserving_local_instance_and_record_ids() {
+    let (store, workspace, actor) = support::seed_store().await;
+    let scope = TemplateBaselineScope {
+        workspace_id: workspace.id,
+        template_id: "mcp-safe".into(),
+    };
+    let mut package = mcp_template_fixture();
+    let catalog = mcp_template_catalog();
+    let first = mcp_merge::install(&store, &scope, actor.id, &package, &catalog, "1.0.0")
+        .await
+        .unwrap();
+    assert!(first.failures.is_empty(), "{:?}", first.failures);
+    assert_eq!(first.created.len(), 4);
+    let instance_id: Uuid = sqlx::query_scalar(
+        "select id from mcp_instances where workspace_id=$1 and instance_id='1flowbase'",
+    )
+    .bind(workspace.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let group_id: Uuid = sqlx::query_scalar(
+        "select id from mcp_groups where instance_record_id=$1 and path='/group'",
+    )
+    .bind(instance_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    let binding_id: Uuid =
+        sqlx::query_scalar("select id from mcp_tool_bindings where instance_record_id=$1")
+            .bind(instance_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    sqlx::query("update mcp_instances set name='Local' where id=$1")
+        .bind(instance_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    package.instances[0].name = "New official".into();
+    package.instances[0].groups[0].display_name = "New group".into();
+    let preview = mcp_merge::preview(&store, &scope, actor.id, &package, &catalog, "1.0.0")
+        .await
+        .unwrap();
+    assert!(preview
+        .effects
+        .iter()
+        .any(|e| e.kind == "mcp_instance" && e.reason.as_deref() == Some("user_modified")));
+    let next = mcp_merge::install(&store, &scope, actor.id, &package, &catalog, "1.0.0")
+        .await
+        .unwrap();
+    assert!(next.failures.is_empty(), "{:?}", next.failures);
+    assert_eq!(next.updated.len(), 1);
+    assert_eq!(next.updated[0].kind, "mcp_group");
+    let name: String = sqlx::query_scalar("select name from mcp_instances where id=$1")
+        .bind(instance_id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(name, "Local");
+    let group: (Uuid, String) = sqlx::query_as(
+        "select id,display_name from mcp_groups where instance_record_id=$1 and path='/group'",
+    )
+    .bind(instance_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(group, (group_id, "New group".into()));
+    let retained: Uuid =
+        sqlx::query_scalar("select id from mcp_tool_bindings where instance_record_id=$1")
+            .bind(instance_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(retained, binding_id);
+    let baseline = store.load_template_baselines(&scope).await.unwrap();
+    assert_eq!(
+        baseline
+            .iter()
+            .find(|b| b.key.kind == "mcp_instance")
+            .unwrap()
+            .generation,
+        1
+    );
+}
+#[tokio::test]
+async fn mcp_template_legacy_instance_reset_keeps_unknown_shared_tool_unowned() {
+    use control_plane::mcp_bundle::{ExportMcpBundleCommand, ImportMcpBundleCommand};
+    use control_plane::mcp_management::McpManagementService;
+    let (store, workspace, actor) = support::seed_store().await;
+    let service = McpManagementService::new(store.clone());
+    let catalog = mcp_template_catalog();
+    service
+        .import_bundle(ImportMcpBundleCommand {
+            actor_user_id: actor.id,
+            package: mcp_template_fixture(),
+            interface_catalog: catalog.clone(),
+            current_system_version: "1.0.0".into(),
+        })
+        .await
+        .unwrap();
+    let package = service
+        .export_bundle(ExportMcpBundleCommand {
+            actor_user_id: actor.id,
+            organization: "test".into(),
+            bundle_id: "template".into(),
+            bundle_version: "1.0.0".into(),
+            locale: "en_US".into(),
+            current_system_version: "1.0.0".into(),
+        })
+        .await
+        .unwrap();
+    let scope = TemplateBaselineScope {
+        workspace_id: workspace.id,
+        template_id: "legacy-reset".into(),
+    };
+    let existing = mcp_merge::install(&store, &scope, actor.id, &package, &catalog, "1.0.0")
+        .await
+        .unwrap();
+    assert!(existing.created.is_empty());
+    assert!(existing.updated.is_empty());
+    assert!(store
+        .load_template_baselines(&scope)
+        .await
+        .unwrap()
+        .is_empty());
+    let tool:(Uuid,i64)=sqlx::query_as("select id,revision from mcp_tools where workspace_id=$1 and tool_id='shared_template_tool'").bind(workspace.id).fetch_one(store.pool()).await.unwrap();
+    sqlx::query("delete from mcp_instances where workspace_id=$1 and instance_id='1flowbase'")
+        .bind(workspace.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let reset = mcp_merge::install(&store, &scope, actor.id, &package, &catalog, "1.0.0")
+        .await
+        .unwrap();
+    assert!(reset.failures.is_empty(), "{:?}", reset.failures);
+    assert_eq!(reset.created.len(), 3);
+    let retained:(Uuid,i64)=sqlx::query_as("select id,revision from mcp_tools where workspace_id=$1 and tool_id='shared_template_tool'").bind(workspace.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(retained, tool);
+    assert!(store
+        .load_template_baselines(&scope)
+        .await
+        .unwrap()
+        .iter()
+        .all(|b| b.key.kind != "mcp_tool"));
+}
+
+#[tokio::test]
+async fn mcp_owner_failure_rolls_back_tools_and_baseline_intents_together() {
+    let (store, workspace, actor) = support::seed_store().await;
+    let scope = TemplateBaselineScope {
+        workspace_id: workspace.id,
+        template_id: "mcp-rollback".into(),
+    };
+    sqlx::query("create function reject_template_mcp_group() returns trigger language plpgsql as $$ begin raise exception 'template fixture group failure'; end $$")
+        .execute(store.pool()).await.unwrap();
+    sqlx::query("create trigger reject_template_mcp_group before insert on mcp_groups for each row execute function reject_template_mcp_group()")
+        .execute(store.pool()).await.unwrap();
+    let result = mcp_merge::install(
+        &store,
+        &scope,
+        actor.id,
+        &mcp_template_fixture(),
+        &mcp_template_catalog(),
+        "1.0.0",
+    )
+    .await
+    .unwrap();
+    assert!(!result.failures.is_empty());
+    assert!(result.created.is_empty());
+    assert!(store
+        .load_template_baselines(&scope)
+        .await
+        .unwrap()
+        .is_empty());
+    let count: i64 = sqlx::query_scalar(
+        "select count(*) from mcp_tools where workspace_id=$1 and tool_id='shared_template_tool'",
+    )
+    .bind(workspace.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
+    sqlx::query("drop trigger reject_template_mcp_group on mcp_groups")
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let retry = mcp_merge::install(
+        &store,
+        &scope,
+        actor.id,
+        &mcp_template_fixture(),
+        &mcp_template_catalog(),
+        "1.0.0",
+    )
+    .await
+    .unwrap();
+    assert!(retry.failures.is_empty(), "{:?}", retry.failures);
+    assert_eq!(retry.created.len(), 4);
+}
