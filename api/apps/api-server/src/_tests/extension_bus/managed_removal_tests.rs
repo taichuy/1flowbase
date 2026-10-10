@@ -20,9 +20,7 @@ impl Fixture {
             .fetch_one(runtime.store.pool())
             .await
             .unwrap();
-        let actor = runtime
-            .store
-            .load_actor_context_for_user(actor_id)
+        let actor = AuthRepository::load_actor_context_for_user(&runtime.store, actor_id)
             .await
             .unwrap();
         let management = PluginManagementService::new(
@@ -300,5 +298,85 @@ async fn cancelled_removal_caller_does_not_cancel_owned_retirement() {
         .unwrap()
         .unwrap();
     assert!(std::path::Path::new(artifact.local_path.as_deref().unwrap()).exists());
+    fixture.runtime.host.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn family_uninstall_reconciles_interrupted_disable_with_missing_sibling() {
+    let fixture = Fixture::new().await;
+    let old = fixture
+        .runtime
+        .composition
+        .snapshot(fixture.actor.current_workspace_id)
+        .await
+        .unwrap();
+    let mut sibling_manifest = manifest("a");
+    sibling_manifest["version"] = "1.0.1".into();
+    sibling_manifest["managed"]["module"]["module_version"] = "1.0.1".into();
+    let sibling = fixture
+        .management
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: fixture.actor.user_id,
+            file_name: "removal-missing-sibling.1flowbasepkg".into(),
+            package_bytes: package(&sibling_manifest),
+        })
+        .await
+        .unwrap()
+        .installation;
+    assert_eq!(sibling.desired_state, domain::PluginDesiredState::Disabled);
+    let artifact = fixture
+        .runtime
+        .store
+        .get_artifact_instance(&fixture.node_id, sibling.id)
+        .await
+        .unwrap()
+        .unwrap();
+    std::fs::remove_dir_all(artifact.local_path.as_deref().unwrap()).unwrap();
+    sqlx::query("update extension_artifact_instances set artifact_status='missing', runtime_status='inactive', local_path=null where node_id=$1 and installation_id=$2")
+        .bind(&fixture.node_id).bind(sibling.id).execute(fixture.runtime.store.pool()).await.unwrap();
+    // Exact state left by cancellation after disable's durable write but before its
+    // runtime rebuild acquires assembly. The production repository writes the state;
+    // deliberately do not invoke the runtime to manufacture that interrupted boundary.
+    fixture
+        .runtime
+        .store
+        .update_desired_state(&UpdatePluginDesiredStateInput {
+            installation_id: fixture.installation_id,
+            desired_state: domain::PluginDesiredState::Disabled,
+            actor_user_id: fixture.actor.user_id,
+        })
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .executions()
+            .await
+            .executions
+            .iter()
+            .any(|execution| execution.current),
+        "fixture must retain the stale current graph after persisting Disabled"
+    );
+    let task = fixture
+        .management
+        .delete_family(DeletePluginFamilyCommand {
+            actor_user_id: fixture.actor.user_id,
+            provider_code: "acme.composition-a".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(task.status, domain::PluginTaskStatus::Succeeded);
+    assert!(fixture.executions().await.executions.is_empty());
+    assert!(old.freeze_reference().is_err());
+    let removed = fixture
+        .runtime
+        .store
+        .get_artifact_instance(&fixture.node_id, fixture.installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        removed.artifact_status,
+        domain::PluginArtifactInstanceStatus::Missing
+    );
     fixture.runtime.host.stop().await.unwrap();
 }

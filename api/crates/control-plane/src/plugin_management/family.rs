@@ -611,14 +611,29 @@ where
             // Disable through the existing state/audit owner before taking assembly. A real
             // frozen invocation or durable delivery may still reject retirement; leave the
             // installation disabled so a later retry can complete safely without a restart.
+            let assigned_installations = if managed_ids.is_empty() {
+                Vec::new()
+            } else {
+                self.repository.list_assigned_installation_ids().await?
+            };
             for installation in &installations {
-                if installation.contract_version == "1flowbase.extension-bus/v1"
-                    && installation.desired_state != domain::PluginDesiredState::Disabled
-                {
+                if installation.contract_version != "1flowbase.extension-bus/v1" {
+                    continue;
+                }
+                if installation.desired_state != domain::PluginDesiredState::Disabled {
                     self.disable_plugin(DisablePluginCommand {
                         actor_user_id: command.actor_user_id,
                         installation_id: installation.id,
                     }).await?;
+                } else if domain::managed_installation_scope(installation, actor.current_workspace_id)
+                    == domain::SYSTEM_SCOPE_ID
+                    || assigned_installations.contains(&installation.id)
+                {
+                    // Disabled commits before runtime publication. An interrupted disable can
+                    // therefore leave a current graph; reconcile it on every uninstall retry.
+                    // Unlike disable_plugin, this does not require an available local artifact.
+                    // Never-assigned workspace siblings have no graph scope to rebuild.
+                    self.runtime.deactivate_plugin(installation).await?;
                 }
             }
             let _managed_removal = if managed_ids.is_empty() {
