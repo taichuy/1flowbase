@@ -120,35 +120,40 @@ function runtimeCoreArtifactForTarget(target) {
 }
 
 function writeStagedRuntimeEntry(manifestPath, runtimeEntry) {
+  const originalEntry = readRuntimeEntry(manifestPath);
   const lines = fs.readFileSync(manifestPath, 'utf8').split(/\r?\n/);
   let runtimeIndent = null;
-
+  let changed = false;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    // CLI scaffolds may encode managed bindings as a JSON-valued YAML field.
+    if (/^managed:\s*\{/.test(line)) {
+      const managed = JSON.parse(line.replace(/^managed:\s*/, ''));
+      for (const binding of managed.execution_bindings || []) {
+        if (binding.runtime?.entry === originalEntry) binding.runtime.entry = runtimeEntry;
+      }
+      lines[index] = `managed: ${JSON.stringify(managed)}`;
+      continue;
+    }
     const runtimeMatch = line.match(/^(\s*)runtime:\s*(?:#.*)?$/);
     if (runtimeMatch) {
       runtimeIndent = runtimeMatch[1].length;
       continue;
     }
-
-    if (runtimeIndent === null || /^\s*(?:#.*)?$/.test(line)) {
-      continue;
-    }
-
+    if (runtimeIndent === null || /^\s*(?:#.*)?$/.test(line)) continue;
     const indent = line.match(/^\s*/)[0].length;
     if (indent <= runtimeIndent) {
       runtimeIndent = null;
       continue;
     }
-
-    if (/^\s*entry:\s*[^\s#]+\s*(?:#.*)?$/.test(line)) {
+    const entry = line.match(/^\s*entry:\s*([^\s#]+)\s*(?:#.*)?$/);
+    if (entry?.[1] === originalEntry) {
       lines[index] = `${line.match(/^\s*/)[0]}entry: ${runtimeEntry}`;
-      fs.writeFileSync(manifestPath, lines.join('\n'), 'utf8');
-      return;
+      changed = true;
     }
   }
-
-  throw new Error('staged manifest 必须声明 runtime.entry');
+  if (!changed) throw new Error('staged manifest 必须声明 runtime.entry');
+  fs.writeFileSync(manifestPath, lines.join('\n'), 'utf8');
 }
 
 function parseRustTargetTriple(raw) {

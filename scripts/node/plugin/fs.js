@@ -117,6 +117,10 @@ function createPackageArtifactRoot(pluginPath) {
       'models',
       'provider',
       'readme',
+      'ui',
+      'LICENSE',
+      'README.md',
+      'README.en.md',
     ],
   });
 }
