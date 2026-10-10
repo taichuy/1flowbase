@@ -4,8 +4,6 @@
     "close": "关闭",
     "total_cost": "费用",
     "api_keys": "API Keys",
-    "application_type_agent_flow": "AgentFlow",
-    "application_type_workflow": "Workflow",
     "workflow_section": "工作流",
     "create_application_failed": "创建应用失败",
     "frozen_by_application_type": "由 application_type 冻结，06B 再落地",

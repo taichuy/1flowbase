@@ -4,8 +4,6 @@
     "close": "Close",
     "total_cost": "Cost",
     "api_keys": "API Keys",
-    "application_type_agent_flow": "AgentFlow",
-    "application_type_workflow": "Workflow",
     "workflow_section": "Workflow section",
     "create_application_failed": "Create app failed",
     "frozen_by_application_type": "Frozen by application_type, 06B will be implemented again",
