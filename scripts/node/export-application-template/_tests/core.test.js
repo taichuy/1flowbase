@@ -28,7 +28,7 @@ function fixture(t) {
     } };
   const initial = { target, selection: { page_ids: ['page-1'], mcp_instance_ids: ['1flowbase'] }, name: 'Demo' };
   return { target, initial, dependencies, archiveTools, requests, disposed: () => disposed,
-    change: () => { pkg.pages[0].title = 'after'; }, fail: () => { exportFailure = true; } };
+    change: () => { pkg.pages[0].title = 'after'; }, translate: () => { pkg.schema_version = '1flowbase.portable-template/v2'; pkg.i18n_entries = [{ key: 'Reports', locale: 'zh_Hans', translation: '报表' }]; }, fail: () => { exportFailure = true; } };
 }
 
 test('first export saves canonical selection without credentials; update reuses it and increments only for changed content', async (t) => {
@@ -74,4 +74,31 @@ test('atomic replacement restores old directory when the final rename fails', (t
 test('rejects empty selections and noncanonical fields before network activity', () => {
   assert.throws(() => selectionOf({}), /at least one/);
   assert.throws(() => selectionOf({ app_ids: ['id'] }), /unknown/);
+});
+
+
+test('translation-only selection is persisted and forwarded without changing message keys', async (t) => {
+  const f = fixture(t);
+  const selection = { i18n_keys: ['Reports', 'Daily reports', 'Reports'] };
+  await exportApplicationTemplate({ ...f.initial, selection }, f.dependencies);
+  assert.deepEqual(f.requests[0], {
+    page_ids: [], application_ids: [], data_model_ids: [], mcp_instance_ids: [],
+    i18n_keys: ['Reports', 'Daily reports'],
+  });
+  await exportApplicationTemplate({ target: f.target }, f.dependencies);
+  assert.deepEqual(f.requests[1], f.requests[0]);
+  assert.throws(() => selectionOf({ i18n_keys: [42] }), /invalid selection i18n_keys/);
+});
+
+
+test('v2 translation export is retained in the package and increments the immutable release', async (t) => {
+  const f = fixture(t);
+  await exportApplicationTemplate(f.initial, f.dependencies);
+  f.translate();
+  const result = await exportApplicationTemplate({ target: f.target, selection: { i18n_keys: ['Reports'] } }, f.dependencies);
+  assert.equal(result.release_version, 2);
+  const pkg = await f.archiveTools.readPackage(f.target);
+  assert.equal(pkg.schema_version, '1flowbase.portable-template/v2');
+  assert.deepEqual(pkg.i18n_entries, [{ key: 'Reports', locale: 'zh_Hans', translation: '报表' }]);
+  assert.equal((await exportApplicationTemplate({ target: f.target }, f.dependencies)).changed, false);
 });

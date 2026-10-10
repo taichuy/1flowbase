@@ -5,7 +5,7 @@ const { isDeepStrictEqual } = require('node:util');
 const { loadRootCredentials, openTemporaryOwnerSession } = require('../page-debug/auth.js');
 
 const CONFIG_FILE = 'export.config.json';
-const SELECTION_KEYS = ['page_ids', 'application_ids', 'data_model_ids', 'mcp_instance_ids'];
+const SELECTION_KEYS = ['page_ids', 'application_ids', 'data_model_ids', 'mcp_instance_ids', 'i18n_keys'];
 function selectionOf(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('selection must be an object');
   if (Object.keys(value).some((key) => !SELECTION_KEYS.includes(key))) throw new Error('unknown selection field');
@@ -87,7 +87,7 @@ async function exportApplicationTemplate(options, dependencies = {}) {
     if (!response.ok) throw new Error(`template export failed: HTTP ${response.status} ${(await response.text()).slice(0, 500)}`);
     const body = await response.json();
     const pkg = body.data;
-    if (pkg?.schema_version !== '1flowbase.portable-template/v1') throw new Error('unexpected template export response');
+    if (!['1flowbase.portable-template/v1', '1flowbase.portable-template/v2'].includes(pkg?.schema_version)) throw new Error('unexpected template export response');
     const oldContent = previous && contentWithoutExportTime(previous);
     const content = contentWithoutExportTime(pkg);
     const changed = !previous || !isDeepStrictEqual(oldContent, content) || previous.release.name !== config.name || previous.release.description !== config.description;
