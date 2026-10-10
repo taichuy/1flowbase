@@ -1292,8 +1292,8 @@ test('manual quality scopes and plugin batches retain independent concurrency id
 test('template focused gate rejects each empty selector while keeping compile evidence separate', () => {
   const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/application-template-contracts.yml'), 'utf8');
   const testStep = workflow.slice(workflow.indexOf('- name: Verify template merge'), workflow.indexOf('- name: Compile API consumers'));
-  const logs = [...testStep.matchAll(/> tmp\/test-governance\/application-templates\/([a-z]+)\.log/gu)].map((match) => match[1]);
-  const checked = testStep.match(/for suite in ([a-z ]+); do/u)?.[1].split(' ');
+  const logs = [...testStep.matchAll(/> tmp\/test-governance\/application-templates\/([a-z][a-z0-9]*)\.log/gu)].map((match) => match[1]);
+  const checked = testStep.match(/for suite in ([a-z0-9 ]+); do/u)?.[1].split(' ');
   assert.deepEqual(checked?.sort(), logs.sort());
   assert.equal(logs.length, 5);
   assert.match(testStep, /node scripts\/node\/verify\/cargo-test-results\.js "tmp\/test-governance\/application-templates\/\$suite\.log" \|\| verification_status=1/u);

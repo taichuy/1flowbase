@@ -1,7 +1,7 @@
 mod support;
 use control_plane::{
     portable_template::*,
-    ports::{ApplicationRepository, FrontstagePageRepository, ModelDefinitionRepository},
+    ports::{FrontstagePageRepository, ModelDefinitionRepository},
 };
 use control_plane_contracts::ports::{
     PortableTemplateBaselineRepository, PortableTemplateIdentityRepository,

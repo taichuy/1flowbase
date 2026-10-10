@@ -218,16 +218,17 @@ async fn native_owner_passes_revision_audit_and_journal_without_using_regular_wr
         .apply_template_translation(command.clone())
         .await
         .unwrap();
-    let writes = repository.writes.lock().unwrap();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].translation.expected_revision,
-        WorkspaceCatalogRevision::new(7).unwrap()
-    );
-    assert_eq!(writes[0].translation.audit.workspace_id, Some(workspace_id));
-    assert_eq!(writes[0].translation.audit.actor_user_id, Some(actor_id));
-    assert_eq!(writes[0].intent.operation_id, operation_id);
-    drop(writes);
+    {
+        let writes = repository.writes.lock().unwrap();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(
+            writes[0].translation.expected_revision,
+            WorkspaceCatalogRevision::new(7).unwrap()
+        );
+        assert_eq!(writes[0].translation.audit.workspace_id, Some(workspace_id));
+        assert_eq!(writes[0].translation.audit.actor_user_id, Some(actor_id));
+        assert_eq!(writes[0].intent.operation_id, operation_id);
+    }
     let mut stale = command;
     stale.expected_revision = WorkspaceCatalogRevision::new(6).unwrap();
     assert!(service.apply_template_translation(stale).await.is_err());
