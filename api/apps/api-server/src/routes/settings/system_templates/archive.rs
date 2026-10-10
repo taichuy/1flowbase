@@ -295,6 +295,30 @@ pub(crate) fn source_files(package: &PortableTemplatePackage) -> Result<BTreeMap
             *resource = put(&mut files, path, resource.take())?;
         }
     }
+    if let Some(entries) = skeleton
+        .get_mut("i18n_entries")
+        .and_then(Value::as_array_mut)
+    {
+        for entry in entries {
+            let locale = identity(entry, "locale")?;
+            let hash = format!(
+                "{:x}",
+                Sha256::digest(serde_json::to_vec(&[
+                    entry["key"]
+                        .as_str()
+                        .context("application_template_archive_identity")?,
+                    entry["locale"]
+                        .as_str()
+                        .context("application_template_archive_identity")?,
+                ])?)
+            );
+            *entry = put(
+                &mut files,
+                format!("i18n/{locale}/{}/{hash}.json", &hash[..2]),
+                entry.take(),
+            )?;
+        }
+    }
     skeleton["plugins"] = put(
         &mut files,
         "plugins/dependencies.json".into(),

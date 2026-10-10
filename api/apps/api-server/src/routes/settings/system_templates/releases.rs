@@ -136,6 +136,7 @@ pub(crate) async fn synchronize_at_startup(
     )
     .await?;
     let dependencies = TemplateDependencies {
+        bootstrap_workspace_id: state.bootstrap_workspace_id,
         store: state.store.clone(),
         application_template_root: state.application_template_root.clone(),
         runtime_registry_sync: crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(

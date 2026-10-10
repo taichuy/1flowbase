@@ -6,12 +6,10 @@ use crate::routes::console_interface::{
 };
 use crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with;
 use anyhow::Context;
-use control_plane::mcp_bundle::{ImportMcpBundleCommand, PreviewMcpBundleCommand};
-use control_plane::mcp_management::McpManagementService;
 use control_plane::portable_template::PortableTemplateIdentityRepository;
 use control_plane::portable_template::{
-    PortableTemplateEffect, PortableTemplateInstallService, PortableTemplatePackage,
-    PortableTemplateSelection, PortableTemplateService,
+    PortableTemplateInstallService, PortableTemplatePackage, PortableTemplateSelection,
+    PortableTemplateService,
 };
 use control_plane::ports::RuntimeRegistrySync;
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -76,11 +74,15 @@ impl TemplateAdapter {
         let repository = self.0.store.for_actor(actor.clone());
         let service = PortableTemplateService::new(repository.clone());
         let result = match input {
-            TemplateInput::Catalog => serde_json::to_value(service.catalog(actor.user_id).await?)?,
+            TemplateInput::Catalog => {
+                let mut catalog = service.catalog(actor.user_id).await?;
+                catalog.i18n_entries = self.0.translation_catalog(actor).await?;
+                serde_json::to_value(catalog)?
+            }
             TemplateInput::Library(query) => super::catalog::list(&self.0, actor, query).await?,
             TemplateInput::ExportArchive(selection) => {
                 use base64::Engine;
-                let package = service.export(actor.user_id, selection).await?;
+                let package = self.0.export_template(actor, selection).await?;
                 tokio::task::spawn_blocking(move || {
                     let bytes = super::archive::encode(&package)?;
                     Ok::<_, anyhow::Error>(json!({"archive_base64":base64::engine::general_purpose::STANDARD.encode(bytes),"file_name":"application-template.zip"}))
@@ -92,10 +94,32 @@ impl TemplateAdapter {
                 unreachable!("resolved before dispatch")
             }
             TemplateInput::Export(selection) => {
-                serde_json::to_value(service.export(actor.user_id, selection).await?)?
+                serde_json::to_value(self.0.export_template(actor, selection).await?)?
             }
             TemplateInput::Preview(package) => {
                 let mut preview = service.preview(actor.user_id, &package).await?;
+                if !package.i18n_entries.is_empty() {
+                    match control_plane::portable_template::i18n_merge::preview(
+                        &self.0.translation_service(),
+                        &repository,
+                        &control_plane::portable_template::template_baseline_scope(
+                            actor.current_workspace_id,
+                            &package,
+                        ),
+                        &self.0.translation_access(actor),
+                        &package.i18n_entries,
+                    )
+                    .await
+                    {
+                        Ok(effects) => preview.effects.extend(effects),
+                        Err(error) => {
+                            preview.valid = false;
+                            preview
+                                .failures
+                                .push(format!("Translation preview: {error:#}"));
+                        }
+                    }
+                }
                 if let Some(release) = &package.release {
                     let records = repository
                         .load_application_template_releases(
@@ -117,78 +141,22 @@ impl TemplateAdapter {
                     }
                 }
                 if let Some(bundle) = &package.mcp_bundle {
-                    let mcp_preview = McpManagementService::new(self.0.store.clone())
-                        .preserve_unmentioned_instance_entries(actor.user_id, bundle.clone())
-                        .await?;
-                    let mcp_preview = McpManagementService::new(self.0.store.clone())
-                        .preview_bundle(PreviewMcpBundleCommand {
-                            actor_user_id: actor.user_id,
-                            package: mcp_preview,
-                            interface_catalog: mcp_interface_catalog_entries_with(
-                                &self.0.mcp_interface_catalog,
-                                actor,
-                            )
+                    let mcp_preview = control_plane::portable_template::mcp_merge::preview(
+                        &repository,
+                        &control_plane::portable_template::template_baseline_scope(
+                            actor.current_workspace_id,
+                            &package,
+                        ),
+                        actor.user_id,
+                        bundle,
+                        &mcp_interface_catalog_entries_with(&self.0.mcp_interface_catalog, actor)
                             .await?,
-                            current_system_version: env!("CARGO_PKG_VERSION").into(),
-                        })
-                        .await?;
-                    if mcp_preview.effect_summary.conflicts > 0
-                        || mcp_preview.effect_summary.failed > 0
-                    {
-                        preview
-                            .failures
-                            .push("portable_template_mcp_conflict".into());
-                        preview.valid = false;
-                    }
-                    preview
-                        .effects
-                        .extend(mcp_preview.instances.iter().map(|item| {
-                            PortableTemplateEffect {
-                                reason: None,
-                                kind: "mcp_instance".into(),
-                                source_id: item.id.clone(),
-                                target_id: matches!(
-                                    item.effect,
-                                    domain::McpBundleItemEffect::Update
-                                        | domain::McpBundleItemEffect::AlreadyPresent
-                                )
-                                .then(|| item.id.clone()),
-                                action: match item.effect {
-                                    domain::McpBundleItemEffect::Create => "create",
-                                    domain::McpBundleItemEffect::AlreadyPresent => "unchanged",
-                                    _ => "update",
-                                }
-                                .into(),
-                            }
-                        }));
-                    for (kind, items) in [
-                        ("mcp_tool", &mcp_preview.tools),
-                        ("mcp_connection", &mcp_preview.connections),
-                    ] {
-                        preview.effects.extend(items.iter().map(|item| {
-                            PortableTemplateEffect {
-                                reason: None,
-                                kind: kind.into(),
-                                source_id: item.id.clone(),
-                                target_id: (item.effect != domain::McpBundleItemEffect::Create)
-                                    .then(|| item.id.clone()),
-                                action: match item.effect {
-                                    domain::McpBundleItemEffect::Create => "create",
-                                    domain::McpBundleItemEffect::AlreadyPresent => "unchanged",
-                                    _ => "update",
-                                }
-                                .into(),
-                            }
-                        }));
-                    }
-                    for item in mcp_preview.tools.iter().chain(&mcp_preview.connections) {
-                        if let Some(reason) = &item.reason {
-                            preview
-                                .warnings
-                                .push(format!("MCP {}: {}", item.id, reason));
-                        }
-                    }
-                    preview.mcp_shared_tool_impacts = mcp_preview.shared_tool_impacts;
+                        env!("CARGO_PKG_VERSION"),
+                    )
+                    .await?;
+                    preview.effects.extend(mcp_preview.effects);
+                    preview.failures.extend(mcp_preview.conflicts);
+                    preview.valid = preview.valid && preview.failures.is_empty();
                 }
                 if let Err(error) = PortableTemplateInstallService::new(repository.clone())
                     .preflight_visibility(actor, &package)
@@ -199,7 +167,7 @@ impl TemplateAdapter {
                 }
                 serde_json::to_value(preview)?
             }
-            TemplateInput::Install(mut package) => {
+            TemplateInput::Install(package) => {
                 // A dedicated database session lock serializes API and startup installs across nodes.
                 let _install_guard = repository
                     .lock_application_template_install(actor.current_workspace_id)
@@ -226,21 +194,6 @@ impl TemplateAdapter {
                             .map(|checksum| (release, checksum))
                     })
                     .transpose()?;
-                if let Some(bundle) = package.mcp_bundle.take() {
-                    package.mcp_bundle = Some(
-                        McpManagementService::new(self.0.store.clone())
-                            .preserve_unmentioned_instance_entries(actor.user_id, bundle)
-                            .await?,
-                    );
-                }
-                let mcp_catalog = if package.mcp_bundle.is_some() {
-                    Some(
-                        mcp_interface_catalog_entries_with(&self.0.mcp_interface_catalog, actor)
-                            .await?,
-                    )
-                } else {
-                    None
-                };
                 let preview = service.preview(actor.user_id, &package).await?;
                 if !preview.valid {
                     return Err(control_plane::errors::ControlPlaneError::InvalidInput(
@@ -252,24 +205,42 @@ impl TemplateAdapter {
                     .preflight_visibility(actor, &package)
                     .await?;
                 if let Some(bundle) = &package.mcp_bundle {
-                    let mcp_preview = McpManagementService::new(self.0.store.clone())
-                        .preview_bundle(PreviewMcpBundleCommand {
-                            actor_user_id: actor.user_id,
-                            package: bundle.clone(),
-                            interface_catalog: mcp_catalog.clone().unwrap_or_default(),
-                            current_system_version: env!("CARGO_PKG_VERSION").into(),
-                        })
-                        .await?;
-                    if mcp_preview.effect_summary.conflicts > 0
-                        || mcp_preview.effect_summary.failed > 0
-                    {
+                    let mcp_preview = control_plane::portable_template::mcp_merge::preview(
+                        &repository,
+                        &control_plane::portable_template::template_baseline_scope(
+                            actor.current_workspace_id,
+                            &package,
+                        ),
+                        actor.user_id,
+                        bundle,
+                        &mcp_interface_catalog_entries_with(&self.0.mcp_interface_catalog, actor)
+                            .await?,
+                        env!("CARGO_PKG_VERSION"),
+                    )
+                    .await?;
+                    if !mcp_preview.conflicts.is_empty() {
                         return Err(control_plane::errors::ControlPlaneError::Conflict(
                             "portable_template_mcp_conflict",
                         )
                         .into());
                     }
                 }
+                let translation_scope = control_plane::portable_template::template_baseline_scope(
+                    actor.current_workspace_id,
+                    &package,
+                );
+                if !package.i18n_entries.is_empty() {
+                    control_plane::portable_template::i18n_merge::preview(
+                        &self.0.translation_service(),
+                        &repository,
+                        &translation_scope,
+                        &self.0.translation_access(actor),
+                        &package.i18n_entries,
+                    )
+                    .await?;
+                }
                 self.0.resolve_plugins(actor, &package.plugins).await?;
+                let translations = package.i18n_entries.clone();
                 let mcp_bundle = package.mcp_bundle.clone();
                 let mut installed = PortableTemplateInstallService::new(repository.clone())
                     .with_node_id(self.0.api_node_id.clone())
@@ -281,52 +252,52 @@ impl TemplateAdapter {
                             &mut bundle,
                             &installed.id_map,
                         );
-                        let report = McpManagementService::new(self.0.store.clone())
-                            .import_bundle(ImportMcpBundleCommand {
-                                actor_user_id: actor.user_id,
-                                package: bundle,
-                                interface_catalog: mcp_interface_catalog_entries_with(
-                                    &self.0.mcp_interface_catalog,
-                                    actor,
-                                )
-                                .await?,
-                                current_system_version: env!("CARGO_PKG_VERSION").into(),
-                            })
-                            .await;
+                        let report = async {
+                            let catalog = mcp_interface_catalog_entries_with(
+                                &self.0.mcp_interface_catalog,
+                                actor,
+                            )
+                            .await?;
+                            control_plane::portable_template::mcp_merge::install(
+                                &repository,
+                                &translation_scope,
+                                actor.user_id,
+                                &bundle,
+                                &catalog,
+                                env!("CARGO_PKG_VERSION"),
+                            )
+                            .await
+                        }
+                        .await;
                         match report {
-                            Ok(report) => {
-                                if report.effect_summary.conflicts > 0
-                                    || report.effect_summary.failed > 0
-                                {
-                                    installed.complete = false;
-                                    installed
-                                        .failures
-                                        .push("portable_template_mcp_import_incomplete".into());
-                                }
-                                for (kind, items) in [
-                                    ("mcp_instance", report.instances),
-                                    ("mcp_tool", report.tools),
-                                    ("mcp_connection", report.connections),
-                                ] {
-                                    for item in items {
-                                        let resource = control_plane::portable_template::PortableTemplateCreatedResource {
-                                            kind: kind.into(), source_id: item.id.clone(), target_id: item.id,
-                                        };
-                                        if item.effect == domain::McpBundleItemEffect::Create {
-                                            installed.created.push(resource);
-                                        } else if item.effect == domain::McpBundleItemEffect::Update
-                                        {
-                                            installed.updated.push(resource);
-                                        }
-                                    }
-                                }
+                            Ok(outcome) => {
+                                installed.created.extend(outcome.created);
+                                installed.updated.extend(outcome.updated);
+                                installed.skipped.extend(outcome.skipped);
+                                installed.failures.extend(outcome.failures);
+                                installed.complete = installed.failures.is_empty();
                             }
                             Err(error) => {
                                 installed.complete = false;
-                                installed.failures.push(format!("MCP instance import: {error:#}; earlier definitions may already be committed"));
+                                installed.failures.push(format!("MCP template installation: {error:#}; earlier definitions may already be committed"));
                             }
                         }
                     }
+                }
+                if !translations.is_empty() {
+                    match control_plane::portable_template::i18n_merge::install(
+                        &self.0.translation_service(), &repository, &translation_scope,
+                        &self.0.translation_access(actor), &translations,
+                    ).await {
+                        Ok(outcome) => {
+                            installed.created.extend(outcome.created);
+                            installed.updated.extend(outcome.updated);
+                            installed.skipped.extend(outcome.skipped);
+                            installed.failures.extend(outcome.failures);
+                        }
+                        Err(error) => installed.failures.push(format!("Translation installation: {error:#}; earlier definitions may already be committed")),
+                    }
+                    installed.complete = installed.complete && installed.failures.is_empty();
                 }
                 // Owner writes may partially commit. Synchronize those definitions too.
                 if let Err(error) = self.0.runtime_registry_sync.rebuild().await {

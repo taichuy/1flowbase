@@ -1646,6 +1646,7 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-system-templates"],
             crate::routes::system_templates::interface::compile_registry(
                 crate::routes::system_templates::plugins::TemplateDependencies {
+                    bootstrap_workspace_id: state.bootstrap_workspace_id,
                     application_template_root: state.application_template_root.clone(),
                     store: state.store.clone(), provider_runtime: state.provider_runtime.clone(),
                     runtime_registry_sync: crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(

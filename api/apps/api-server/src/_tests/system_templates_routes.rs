@@ -101,6 +101,7 @@ async fn portable_template_routes_enforce_independent_grants_and_reject_invalid_
             assert!(payload["data"]["applications"].is_array());
             assert!(payload["data"]["data_models"].is_array());
             assert!(payload["data"]["mcp_instances"].is_array());
+            assert_eq!(payload["data"]["i18n_entries"], json!([]));
         }
     }
     let package = json!({"schema_version":format!("invalid{}", "x".repeat(2 * 1024 * 1024)),"pages":[],"applications":[],"data_models":[],"plugins":[]});
@@ -422,4 +423,147 @@ async fn application_template_catalog_is_metadata_only_and_offline_pages_are_ind
         .await
         .unwrap();
     assert_eq!(bad_archive.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn translation_only_templates_export_update_and_preserve_user_edits_and_deletions() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let send = |method: &str, path: &str, body: Value| {
+        let app = app.clone();
+        let cookie = cookie.clone();
+        let csrf = csrf.clone();
+        let method = method.to_owned();
+        let path = path.to_owned();
+        async move {
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .method(method.as_str())
+                        .uri(path)
+                        .header("cookie", cookie)
+                        .header("x-csrf-token", csrf)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(body.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let payload: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            assert_eq!(status, StatusCode::OK, "{payload}");
+            payload["data"].clone()
+        }
+    };
+    let key = "template.route_fixture.title";
+    let mut package = json!({
+        "schema_version":"1flowbase.portable-template/v2",
+        "pages":[],"applications":[],"data_models":[],"plugins":[],
+        "i18n_entries":[{"key":key,"locale":"zh_Hans","translation":"初始"}]
+    });
+    let preview = send(
+        "POST",
+        "/api/console/settings/system-templates/preview",
+        package.clone(),
+    )
+    .await;
+    assert_eq!(preview["valid"], true, "{preview}");
+    assert!(preview["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["kind"] == "i18n_entry" && e["action"] == "create"));
+    let installed = send(
+        "POST",
+        "/api/console/settings/system-templates/install",
+        package.clone(),
+    )
+    .await;
+    assert_eq!(installed["complete"], true, "{installed}");
+    let catalog = send(
+        "GET",
+        "/api/console/settings/system-templates/catalog",
+        json!({}),
+    )
+    .await;
+    assert!(catalog["i18n_entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["key"] == key));
+    let exported = send(
+        "POST",
+        "/api/console/settings/system-templates/export",
+        json!({"i18n_keys":[key]}),
+    )
+    .await;
+    assert_eq!(exported["schema_version"], "1flowbase.portable-template/v2");
+    assert_eq!(exported["i18n_entries"], package["i18n_entries"]);
+    assert_eq!(exported["pages"], json!([]));
+    package["i18n_entries"][0]["translation"] = json!("更新");
+    let updated = send(
+        "POST",
+        "/api/console/settings/system-templates/install",
+        package.clone(),
+    )
+    .await;
+    assert_eq!(updated["complete"], true, "{updated}");
+    assert!(updated["updated"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["kind"] == "i18n_entry"));
+    let detail_path = format!("/api/console/settings/i18n/entries/detail?key={key}&locale=zh_Hans");
+    let detail = send("GET", &detail_path, json!({})).await;
+    assert_eq!(detail["custom_translation"], "更新");
+    let edit = send("PUT", "/api/console/settings/i18n/custom-translations", json!({
+        "key":key,"locale":"zh_Hans","translation":"用户改动","expected_revision":detail["revision"]
+    })).await;
+    package["i18n_entries"][0]["translation"] = json!("新版默认");
+    let skipped = send(
+        "POST",
+        "/api/console/settings/system-templates/install",
+        package.clone(),
+    )
+    .await;
+    assert_eq!(skipped["complete"], true, "{skipped}");
+    assert!(skipped["skipped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["kind"] == "i18n_entry"));
+    let detail = send("GET", &detail_path, json!({})).await;
+    assert_eq!(detail["custom_translation"], "用户改动");
+    send(
+        "DELETE",
+        "/api/console/settings/i18n/custom-keys",
+        json!({"key":key,"expected_revision":edit["revision"]}),
+    )
+    .await;
+    let deleted = send(
+        "POST",
+        "/api/console/settings/system-templates/install",
+        package,
+    )
+    .await;
+    assert_eq!(deleted["complete"], true, "{deleted}");
+    assert!(deleted["skipped"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["kind"] == "i18n_entry"));
+    let catalog = send(
+        "GET",
+        "/api/console/settings/system-templates/catalog",
+        json!({}),
+    )
+    .await;
+    assert!(!catalog["i18n_entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["key"] == key));
 }
