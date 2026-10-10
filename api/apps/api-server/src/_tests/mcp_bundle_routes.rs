@@ -27,6 +27,7 @@ use crate::_tests::support::{
     test_app_with_runtime_profile_error, test_config,
 };
 
+mod import_atomicity;
 mod openapi_contract;
 
 #[derive(Clone)]
@@ -633,39 +634,6 @@ async fn mcp_bundle_import_keeps_missing_interface_disabled_and_continues_instan
         second_payload["data"]["instances"][0]["result"],
         json!("already_present")
     );
-}
-
-#[tokio::test]
-async fn mcp_bundle_import_rolls_back_an_instance_when_assembly_fails() {
-    // AC-013: duplicate bindings fail inside the repository transaction without a partial instance.
-    let app = test_app().await;
-    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let bundle = bundle_zip("removed_interface", "0.2.6", true);
-
-    let response = post_bundle(
-        &app,
-        "/api/console/mcp/bundles/import-upload",
-        &cookie,
-        &csrf,
-        &bundle,
-    )
-    .await;
-    assert!(response.status().is_server_error());
-
-    let catalog_response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/console/mcp/catalog")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let catalog = response_json(catalog_response).await;
-    assert!(catalog["data"]["instances"].as_array().unwrap().is_empty());
-    assert!(catalog["data"]["groups"].as_array().unwrap().is_empty());
-    assert!(catalog["data"]["bindings"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
