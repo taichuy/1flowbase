@@ -502,6 +502,7 @@ pub struct ApplicationRunDetailResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApplicationRunOverviewResponse {
+    pub log_conversation_id: Option<String>,
     pub run: application_logs::ApplicationRunLogResponse,
     pub statistics: application_logs::ApplicationRunStatisticsResponse,
     pub flow_run: FlowRunMetadataResponse,

@@ -44,6 +44,7 @@ pub struct ApplicationRunCountTokensResult {
 
 pub struct ListApplicationConversationRunsPageInput {
     pub external_conversation_id: String,
+    /// Inclusive task cutoff for every page; None follows the latest conversation.
     pub around_run_id: Option<Uuid>,
     pub before_run_id: Option<Uuid>,
     pub after_run_id: Option<Uuid>,
@@ -149,6 +150,7 @@ impl From<&domain::FlowRunRecord> for FlowRunMetadataReadModel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationRunOverviewReadModel {
+    pub log_conversation_id: Option<Uuid>,
     pub flow_run: FlowRunMetadataReadModel,
     pub tool_callback_count: i64,
     pub waiting_node_id: Option<String>,

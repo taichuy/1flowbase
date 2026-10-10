@@ -345,7 +345,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
             seeded.application_id,
             ListApplicationConversationRunsPageInput {
                 external_conversation_id: conversation_id.to_string(),
-                around_run_id: Some(ids[0]),
+                around_run_id: Some(ids[4]),
                 before_run_id: None,
                 after_run_id: None,
                 limit: 50,

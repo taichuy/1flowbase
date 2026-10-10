@@ -878,3 +878,177 @@ async fn task_trace_narrow_sources_match_lossless_full_detail() {
         )
     );
 }
+
+// #2336: protocol membership does not make prewarm a business turn. The
+// selected task (including a continuation or prewarm) bounds every page.
+#[tokio::test]
+async fn conversation_task_cutoff_excludes_prewarm_and_bounds_all_cursors() {
+    let database = isolated_database().await;
+    let store = PgControlPlaneStore::new(database.connect().await.unwrap());
+    run_migrations(store.pool()).await.unwrap();
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let key = seed_application_api_key(&store, &seeded).await;
+    let mut input = task_fixture_input(&seeded, &compiled, key, "bounded conversation");
+    let started_at = OffsetDateTime::now_utc();
+    let mut ids = Vec::new();
+    // 0,2,4 are business turns. 1,3 are prewarms; 5 is a continuation of 2.
+    // 4 intentionally has no prompt/turn ID: only explicit request_kind filters.
+    for index in 0..6 {
+        let prewarm = index == 1 || index == 3;
+        input.started_at = started_at + time::Duration::seconds(index);
+        input.idempotency_key = Some(format!("cutoff-{index}"));
+        input.application_run_log_context = Some(ApplicationRunLogContext {
+            identity_status: if prewarm || index == 4 {
+                "unknown_turn"
+            } else {
+                "identified"
+            }
+            .into(),
+            protocol: Some("openai_responses".into()),
+            request_kind: Some(if prewarm { "prewarm" } else { "generate" }.into()),
+            thread_id: Some("cutoff-thread".into()),
+            turn_id: if prewarm || index == 4 {
+                None
+            } else {
+                Some(format!("turn-{}", if index == 5 { 2 } else { index }))
+            },
+            ..Default::default()
+        });
+        let run = ApplicationPublishedFlowRunRepository::create_published_flow_run(&store, &input)
+            .await
+            .unwrap()
+            .flow_run;
+        ids.push(run.id);
+        finish(&store, run.id, 10).await;
+    }
+    let conversation_id = store
+        .get_application_run_log_task(seeded.application_id, ids[0])
+        .await
+        .unwrap()
+        .unwrap()
+        .log_conversation_id
+        .unwrap();
+    let overview = store
+        .get_application_run_overview(seeded.application_id, ids[5])
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(overview.log_conversation_id, Some(conversation_id));
+    let base = ListApplicationConversationRunsPageInput {
+        external_conversation_id: conversation_id.to_string(),
+        around_run_id: Some(ids[2]),
+        before_run_id: None,
+        after_run_id: None,
+        limit: 1,
+    };
+    let latest = store
+        .list_application_conversation_runs_page(seeded.application_id, base.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        latest.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+        vec![ids[2]]
+    );
+    assert!(latest.has_before);
+    assert!(!latest.has_after);
+    let previous = store
+        .list_application_conversation_runs_page(
+            seeded.application_id,
+            ListApplicationConversationRunsPageInput {
+                before_run_id: latest.before_cursor,
+                ..base.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        previous.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+        vec![ids[0]]
+    );
+    assert!(!previous.has_before);
+    assert!(previous.has_after);
+    let forward = store
+        .list_application_conversation_runs_page(
+            seeded.application_id,
+            ListApplicationConversationRunsPageInput {
+                after_run_id: previous.after_cursor,
+                limit: 50,
+                ..base.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        forward.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+        vec![ids[2]]
+    );
+    assert!(!forward.has_after);
+    for anchor in [ids[2], ids[3], ids[5]] {
+        let page = store
+            .list_application_conversation_runs_page(
+                seeded.application_id,
+                ListApplicationConversationRunsPageInput {
+                    around_run_id: Some(anchor),
+                    limit: 50,
+                    ..base.clone()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            page.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+            vec![ids[0], ids[2]]
+        );
+        assert!(!page.has_after);
+    }
+    let unbounded = store
+        .list_application_conversation_runs_page(
+            seeded.application_id,
+            ListApplicationConversationRunsPageInput {
+                around_run_id: None,
+                limit: 50,
+                ..base.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        unbounded.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+        vec![ids[0], ids[2], ids[4]]
+    );
+    let beyond = store
+        .list_application_conversation_runs_page(
+            seeded.application_id,
+            ListApplicationConversationRunsPageInput {
+                after_run_id: Some(ids[2]),
+                ..base.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(beyond.items.is_empty());
+    let invalid_anchor = store
+        .list_application_conversation_runs_page(
+            seeded.application_id,
+            ListApplicationConversationRunsPageInput {
+                around_run_id: Some(Uuid::now_v7()),
+                ..base.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(invalid_anchor.items.is_empty());
+    let wrong_app = store
+        .list_application_conversation_runs_page(Uuid::now_v7(), base)
+        .await
+        .unwrap();
+    assert!(wrong_app.items.is_empty());
+    // Filtering is read-only: the prewarm task and its real session identity remain.
+    let prewarm = store
+        .get_application_run_log_task(seeded.application_id, ids[3])
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(prewarm.log_conversation_id, Some(conversation_id));
+}

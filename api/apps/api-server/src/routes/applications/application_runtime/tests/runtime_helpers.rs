@@ -428,6 +428,7 @@ fn overview_contract_fixture_contains_metadata_without_body_or_answer_claims() {
         serde_json::json!({"answer":"not loaded by overview"}),
     );
     let overview = control_plane::ports::ApplicationRunOverviewReadModel {
+        log_conversation_id: Some(Uuid::from_u128(22)),
         flow_run: (&flow_run).into(),
         tool_callback_count: 3,
         waiting_node_id: Some("node-tool".into()),
@@ -442,6 +443,7 @@ fn overview_contract_fixture_contains_metadata_without_body_or_answer_claims() {
     );
     let response = to_application_run_overview_response(&application, overview, statistics);
     let value = serde_json::to_value(&response).unwrap();
+    assert_eq!(value["log_conversation_id"], Uuid::from_u128(22).to_string());
     let managed = interface_runtime::InterfaceContract::project_for_managed_hook(
         &interface_runtime_reads::ApplicationRuntimeReadsOutput::RunOverview(response),
     )

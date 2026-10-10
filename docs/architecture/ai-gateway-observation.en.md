@@ -77,3 +77,9 @@ Implementation: [projection migration](../../api/crates/storage/durable/postgres
 Task aggregation and individual attempts retain separate states. Any active member keeps the task outcome `in_progress`, even when an earlier answer exists. Once all members are terminal, task status prefers the latest generate attempt, falling back to the latest other call if no generation exists; counting or compaction cannot mask generation outcomes. Failed attempts remain in source runs and traces. Known costs include all attempts, with all-unknown totals remaining NULL; a successful retry does not erase earlier calls.
 
 Implementation: [terminal task projection](../../api/crates/storage/durable/postgres/migrations/20261010130000_project_terminal_task_attempt_outcome.sql).
+
+## Task boundaries in conversation detail
+
+Conversation detail obtains `log_conversation_id` independently from the run overview rather than the current list page. `around_run_id` is an inclusive task cutoff for the initial page and both paging directions: a completed task ends at its final response. Omitting the anchor still opens the latest conversation page. Continuation requests resolve to their owning task; a prewarm anchor locates the preceding business turns.
+
+Explicit `request_kind=prewarm` denotes protocol connection setup. Preserve its raw request and conversation membership, but exclude it from business turns and their pagination. Empty input, missing output, or a missing `turn_id` cannot establish prewarm classification. System context accompanies its business turn; later prewarm context must not follow the selected task.
