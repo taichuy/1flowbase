@@ -309,3 +309,49 @@
     max-height: calc(100vh - 16px);
   }
 }
+
+.application-logs-page__more-filters {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .application-logs-page__filters {
+    gap: 8px;
+  }
+
+  .application-logs-page__sort-control {
+    display: contents;
+  }
+
+  .application-logs-page__sort-direction-button {
+    order: 1;
+  }
+
+  .application-logs-page__more-filters {
+    display: inline-flex;
+    order: 2;
+    margin-left: auto;
+  }
+
+  .application-logs-page__filter-search {
+    order: 3;
+    width: 100%;
+  }
+
+  .application-logs-page__sort-select {
+    order: 4;
+  }
+
+  .application-logs-page__filter-actions {
+    order: 5;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .application-logs-page__filters:not(.application-logs-page__filters--expanded) .application-logs-page__sort-select,
+  .application-logs-page__filters:not(.application-logs-page__filters--expanded) .application-logs-page__filter-actions {
+    display: none;
+  }
+}

@@ -16,6 +16,7 @@ import {
   fetchRunPayload
 } from '../../../api/trajectory';
 import { AgentLogsDeleteButton } from './AgentLogsDeleteButton';
+import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
@@ -387,6 +388,7 @@ export function ApplicationLogsWorkspace({
     setPage(1);
   };
   const [keywordSearch, setKeywordSearch] = useState('');
+  const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] =
     useState<ApplicationRunSortField>(DEFAULT_SORT_BY);
@@ -1077,7 +1079,10 @@ export function ApplicationLogsWorkspace({
           }
         />
       )}
-      <div className="application-logs-page__filters" role="search">
+      <div
+        className={`application-logs-page__filters${mobileFiltersExpanded ? ' application-logs-page__filters--expanded' : ''}`}
+        role="search"
+      >
         <AutosizeSelect<ApplicationLogTimeRange>
           aria-label={t('auto.time_range')}
           options={timeRangeOptions}
@@ -1125,6 +1130,13 @@ export function ApplicationLogsWorkspace({
           prefix={<SearchOutlined />}
           value={keywordSearch}
           onChange={changeKeywordSearch}
+        />
+        <Button
+          className="application-logs-page__more-filters"
+          aria-label={t('auto.more_log_controls')}
+          aria-expanded={mobileFiltersExpanded}
+          icon={<MoreOutlined />}
+          onClick={() => setMobileFiltersExpanded(value => !value)}
         />
         <div className="application-logs-page__filter-actions">
           {applicationType !== 'agent_logs' ? (
@@ -1248,7 +1260,10 @@ export function ApplicationLogsWorkspace({
       ) : (
         <ApplicationRunsTable
           loading={runsQuery.isFetching}
-          mobileList={runsQuery.mobileList}
+          mobileList={runsQuery.mobileList ? {
+            ...runsQuery.mobileList,
+            showSelectAll: mobileFiltersExpanded
+          } : undefined}
           page={page}
           pageSize={PAGE_SIZE}
           total={total}

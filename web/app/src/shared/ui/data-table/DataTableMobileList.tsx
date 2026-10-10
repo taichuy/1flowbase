@@ -13,6 +13,7 @@ import './data-table-mobile-list.css';
 
 export type DataTableMobilePagination = {
   resetKey?: string;
+  showSelectAll?: boolean;
   hasMore: boolean;
   loading: boolean;
   failed: boolean;
@@ -92,7 +93,7 @@ export function DataTableMobileList<T extends object>({
 
   return (
     <div className="data-table-mobile">
-      {rowSelection && (
+      {rowSelection && pagination.showSelectAll !== false && (
         <div className="data-table-mobile__selection">
           <Checkbox
             checked={allSelected}

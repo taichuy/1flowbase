@@ -292,7 +292,8 @@
     "show_current_task": "返回当前任务",
     "show_log_conversation": "查看此会话",
     "parent_task": "父任务",
-    "node_execution": "节点执行"
+    "node_execution": "节点执行",
+    "more_log_controls": "更多筛选和操作"
   },
   "archive_import": {
     "path_conflict": "应用路径已被占用，无法导入。",
