@@ -1653,6 +1653,8 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('D6-AC-003 previews and activates the installed local i18n catalog', async () => {
+    // Verify the real activation flow without timing cold coverage instrumentation.
+    await import('../components/i18n-catalog/I18nCatalogActivationFlow');
     const i18nRow = {
       ...installedEntry,
       id: 'i18n-installation-1',
