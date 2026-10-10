@@ -1475,10 +1475,6 @@ export function ApplicationLogsWorkspace({
                     runs.find((run) => run.id === selectedRunId)
                       ?.reasoning_effort
                   }
-                  logConversationId={
-                    runs.find((run) => run.id === selectedRunId)
-                      ?.log_conversation_id
-                  }
                   onClose={() => selectRun(null)}
                   onOpenMessageLog={openConversationLog}
                   onOpenRunTrace={() => {

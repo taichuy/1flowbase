@@ -916,6 +916,10 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     expect(window.location.search).toBe('');
   });
   test('collects four backend-associated calls in the original detail and opens each original trace', async () => {
+    runtimeApi.fetchApplicationRunOverview.mockResolvedValue({
+      ...sampleRunOverview(),
+      log_conversation_id: 'conversation-1'
+    });
     runtimeApi.fetchApplicationRuns.mockResolvedValue(
       applicationRunsPage([
         {
@@ -1004,10 +1008,10 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     runtimeApi.fetchApplicationLogConversationMessages.mockResolvedValue(
       conversationMessagesPage([
         {
-          id: 'session-task-2',
-          flow_run_id: 'run-5',
+          id: 'session-task-1',
+          flow_run_id: 'run-1',
           role: 'assistant',
-          content: '会话中的第二任务',
+          content: '所选任务的会话截止回复',
           sequence: 5
         }
       ])
@@ -1015,10 +1019,13 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));
     expect(await screen.findByText('调用 4')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '查看此会话' }));
-    expect(await screen.findByText('会话中的第二任务')).toBeInTheDocument();
+    expect(
+      await screen.findByText('所选任务的会话截止回复')
+    ).toBeInTheDocument();
     expect(
       runtimeApi.fetchApplicationLogConversationMessages
     ).toHaveBeenCalledWith('app-1', 'conversation-1', {
+      aroundRunId: 'run-1',
       limit: 5
     });
     fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));

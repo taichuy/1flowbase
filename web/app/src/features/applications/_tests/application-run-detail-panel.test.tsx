@@ -15,6 +15,15 @@ import type { AgentFlowDebugMessage } from '../../agent-flow/api/runtime';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 
 const runtimeApi = vi.hoisted(() => ({
+  applicationRunOverviewQueryKey: (applicationId: string, runId: string) => [
+    'applications',
+    applicationId,
+    'runtime',
+    'runs',
+    runId,
+    'overview'
+  ],
+  fetchApplicationRunOverview: vi.fn(),
   applicationRunConversationMessagesQueryKey: (
     applicationId: string,
     runId: string,
@@ -33,13 +42,14 @@ const runtimeApi = vi.hoisted(() => ({
   applicationLogConversationMessagesQueryKey: (
     applicationId: string,
     conversationId: string,
-    input?: { limit?: number }
+    input?: { limit?: number; aroundRunId?: string }
   ) =>
     [
       'applications',
       applicationId,
       'log-conversation',
       conversationId,
+      input?.aroundRunId,
       input?.limit ?? 'default'
     ] as const,
   fetchApplicationLogConversationMessages: vi.fn()
@@ -51,20 +61,30 @@ const debugConsoleState = vi.hoisted(() => ({
 
 vi.mock('../api/runtime', () => runtimeApi);
 
+const trajectoryApi = vi.hoisted(() => ({
+  fetchApplicationLogRecord: vi.fn()
+}));
+vi.mock('../api/trajectory', () => trajectoryApi);
+
 vi.mock(
   '../../agent-flow/components/debug-console/AgentFlowDebugConsole',
   () => ({
     AgentFlowDebugConsole: ({
       messages,
-      onOpenMessageLog
+      onOpenMessageLog,
+      onReachConversationTop,
+      assistantMessageActions
     }: {
       messages: AgentFlowDebugMessage[];
       onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
+      onReachConversationTop?: () => void;
+      assistantMessageActions?: (message: AgentFlowDebugMessage) => ReactNode;
     }) => {
       debugConsoleState.latestMessages = messages;
 
       return (
         <section data-testid="debug-console">
+          <button onClick={onReachConversationTop}>load history</button>
           {messages.map((message) => (
             <article
               data-can-open-detail={String(message.canOpenDetail)}
@@ -72,6 +92,9 @@ vi.mock(
               key={message.id}
             >
               <div data-testid="message-content">{message.content}</div>
+              {message.role === 'assistant'
+                ? assistantMessageActions?.(message)
+                : null}
               {message.canOpenDetail !== false ? (
                 <button
                   aria-label={`open-${message.role}-${message.runId ?? 'none'}`}
@@ -191,12 +214,20 @@ function renderPanel({
 describe('ApplicationRunDetailPanel', () => {
   beforeEach(async () => {
     await appI18n.changeLanguage('zh_Hans');
+    runtimeApi.fetchApplicationRunOverview.mockReset();
+    runtimeApi.fetchApplicationRunOverview.mockResolvedValue({
+      log_conversation_id: null
+    });
     runtimeApi.fetchApplicationRunConversationMessages.mockReset();
     runtimeApi.fetchApplicationLogConversationMessages.mockReset();
+    trajectoryApi.fetchApplicationLogRecord.mockReset();
     debugConsoleState.latestMessages = [];
   });
 
-  test('#2105 opens the complete series at its latest five turns and refetches on reopen', async () => {
+  test('#2336 uses overview ownership without a list row and anchors the selected old run on reopen', async () => {
+    runtimeApi.fetchApplicationRunOverview.mockResolvedValue({
+      log_conversation_id: 'series-1'
+    });
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } }
     });
@@ -204,23 +235,32 @@ describe('ApplicationRunDetailPanel', () => {
       conversationPage(
         Array.from({ length: 5 }, (_, index) => ({
           message_id: `turn-${index}`,
-          run_id: `run-${index}`,
-          detail_run_id: `run-${index}`,
+          run_id: index === 4 ? 'old-selected-run' : `run-${index}`,
+          detail_run_id: index === 4 ? 'old-selected-run' : `run-${index}`,
           status: 'succeeded',
           query: `${prefix} question ${index}`,
           answer: `${prefix} answer ${index}`
         }))
       );
-    runtimeApi.fetchApplicationLogConversationMessages
-      .mockResolvedValueOnce(page('first'))
-      .mockResolvedValueOnce(page('latest'));
+    let opens = 0;
+    runtimeApi.fetchApplicationLogConversationMessages.mockImplementation(
+      (_applicationId, _conversationId, input) => {
+        opens += 1;
+        return Promise.resolve(
+          input?.aroundRunId === 'old-selected-run'
+            ? page(opens === 1 ? 'first' : 'latest')
+            : conversationPage([
+                { status: 'succeeded', answer: 'future answer' }
+              ])
+        );
+      }
+    );
     const surface = (open: boolean) => (
       <QueryClientProvider client={client}>
         <App>
           <ApplicationRunDetailPanel
             applicationId="app-1"
             runId={open ? 'old-selected-run' : null}
-            logConversationId="series-1"
             onClose={() => {}}
           />
         </App>
@@ -230,9 +270,23 @@ describe('ApplicationRunDetailPanel', () => {
     expect(await screen.findByText('first answer 4')).toBeInTheDocument();
     expect(screen.getAllByTestId('message-user')).toHaveLength(5);
     expect(screen.getAllByTestId('message-assistant')).toHaveLength(5);
+    expect(screen.queryByText('future answer')).not.toBeInTheDocument();
+    expect(debugConsoleState.latestMessages.at(-1)).toEqual(
+      expect.objectContaining({
+        runId: 'old-selected-run',
+        content: 'first answer 4'
+      })
+    );
     expect(
       runtimeApi.fetchApplicationLogConversationMessages
-    ).toHaveBeenCalledWith('app-1', 'series-1', { limit: 5 });
+    ).toHaveBeenCalledWith('app-1', 'series-1', {
+      aroundRunId: 'old-selected-run',
+      limit: 5
+    });
+    expect(runtimeApi.fetchApplicationRunOverview).toHaveBeenCalledWith(
+      'app-1',
+      'old-selected-run'
+    );
     expect(
       runtimeApi.fetchApplicationRunConversationMessages
     ).not.toHaveBeenCalled();
@@ -242,6 +296,210 @@ describe('ApplicationRunDetailPanel', () => {
     expect(
       runtimeApi.fetchApplicationLogConversationMessages
     ).toHaveBeenCalledTimes(2);
+  });
+
+  test('#2336 history paging keeps the selected cutoff and the current-task switch remains available', async () => {
+    runtimeApi.fetchApplicationRunOverview.mockResolvedValue({
+      log_conversation_id: 'series-1'
+    });
+    runtimeApi.fetchApplicationLogConversationMessages.mockImplementation(
+      (_applicationId, _conversationId, input) =>
+        Promise.resolve(
+          input?.before
+            ? conversationPage([
+                {
+                  message_id: 'older',
+                  run_id: 'older-run',
+                  status: 'succeeded',
+                  query: 'older question',
+                  answer: 'older answer'
+                }
+              ])
+            : conversationPage(
+                [
+                  {
+                    message_id: 'selected',
+                    status: 'succeeded',
+                    query: 'selected question',
+                    answer: 'selected final answer'
+                  }
+                ],
+                {
+                  has_before: true,
+                  before_cursor: 'run-1'
+                }
+              )
+        )
+    );
+    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+      conversationPage([
+        {
+          message_id: 'current-only',
+          status: 'succeeded',
+          answer: 'current task answer'
+        }
+      ])
+    );
+    renderPanel({});
+    expect(
+      await screen.findByText('selected final answer')
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'load history' }));
+    expect(await screen.findByText('older answer')).toBeInTheDocument();
+    expect(screen.getByText('selected final answer')).toBeInTheDocument();
+    expect(
+      runtimeApi.fetchApplicationLogConversationMessages
+    ).toHaveBeenCalledWith('app-1', 'series-1', {
+      aroundRunId: 'run-1',
+      before: 'run-1',
+      limit: 5
+    });
+    fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));
+    expect(await screen.findByText('current task answer')).toBeInTheDocument();
+    expect(screen.queryByText('older answer')).not.toBeInTheDocument();
+    expect(
+      runtimeApi.fetchApplicationRunConversationMessages
+    ).toHaveBeenCalledWith('app-1', 'run-1', { limit: 5 });
+  });
+
+  test('#2336 active conversation refresh and catchup keep the cutoff while replacing streamed output', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      runtimeApi.fetchApplicationRunOverview.mockResolvedValue({
+        log_conversation_id: 'series-1'
+      });
+      let refreshes = 0;
+      const item = (
+        message_id: string,
+        content: string,
+        status = 'running'
+      ) => ({
+        message_id,
+        run_id: 'run-1',
+        status,
+        role: 'assistant' as const,
+        content
+      });
+      runtimeApi.fetchApplicationLogConversationMessages.mockImplementation(
+        (_applicationId, _conversationId, input) => {
+          if (input?.after === 'draft-cursor') {
+            return Promise.resolve(
+              conversationPage(
+                [
+                  item('stream', 'final output', 'succeeded'),
+                  item('between', 'output between pages', 'succeeded')
+                ],
+                { after_cursor: 'final-cursor', newest_cursor: 'final-cursor' }
+              )
+            );
+          }
+          refreshes += 1;
+          return Promise.resolve(
+            refreshes === 1
+              ? conversationPage([item('stream', 'streamed draft')], {
+                  newest_cursor: 'draft-cursor'
+                })
+              : conversationPage(
+                  [item('stream', 'final output', 'succeeded')],
+                  { newest_cursor: 'final-cursor' }
+                )
+          );
+        }
+      );
+      renderPanel({});
+      expect(await screen.findByText('streamed draft')).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(await screen.findByText('final output')).toBeInTheDocument();
+      expect(
+        await screen.findByText('output between pages')
+      ).toBeInTheDocument();
+      expect(screen.queryByText('streamed draft')).not.toBeInTheDocument();
+      expect(
+        runtimeApi.fetchApplicationLogConversationMessages
+      ).toHaveBeenCalledWith('app-1', 'series-1', {
+        aroundRunId: 'run-1',
+        after: 'draft-cursor',
+        limit: 5
+      });
+      for (const call of runtimeApi.fetchApplicationLogConversationMessages.mock
+        .calls) {
+        expect(call[2]).toEqual(
+          expect.objectContaining({ aroundRunId: 'run-1' })
+        );
+      }
+      expect(
+        runtimeApi.fetchApplicationRunConversationMessages
+      ).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('#2336 different selected runs in one series do not share a conversation cache entry', async () => {
+    runtimeApi.fetchApplicationRunOverview.mockResolvedValue({
+      log_conversation_id: 'series-1'
+    });
+    runtimeApi.fetchApplicationLogConversationMessages.mockImplementation(
+      (_applicationId, _conversationId, input) =>
+        Promise.resolve(
+          conversationPage([
+            { status: 'succeeded', answer: `final for ${input.aroundRunId}` }
+          ])
+        )
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } }
+    });
+    const panel = (runId: string) => (
+      <QueryClientProvider client={client}>
+        <App>
+          <ApplicationRunDetailPanel
+            applicationId="app-1"
+            runId={runId}
+            onClose={() => {}}
+          />
+        </App>
+      </QueryClientProvider>
+    );
+    const view = render(panel('old-run'));
+    expect(await screen.findByText('final for old-run')).toBeInTheDocument();
+    view.rerender(panel('new-run'));
+    expect(await screen.findByText('final for new-run')).toBeInTheDocument();
+    expect(screen.queryByText('final for old-run')).not.toBeInTheDocument();
+    expect(
+      runtimeApi.fetchApplicationLogConversationMessages
+    ).toHaveBeenCalledWith('app-1', 'series-1', {
+      aroundRunId: 'new-run',
+      limit: 5
+    });
+  });
+
+  test('#2336 imported records do not request native overview or conversations', async () => {
+    trajectoryApi.fetchApplicationLogRecord.mockResolvedValue({
+      native_run_id: null,
+      available_views: ['client_trajectory'],
+      messages: [{ sequence: 1, role: 'assistant', content: 'imported answer' }]
+    });
+    renderPanel({
+      children: (
+        <ApplicationRunDetailPanel
+          applicationId="app-1"
+          runId="record-1"
+          recordId="record-1"
+          onClose={() => {}}
+        />
+      )
+    });
+    expect(await screen.findByText('imported answer')).toBeInTheDocument();
+    expect(runtimeApi.fetchApplicationRunOverview).not.toHaveBeenCalled();
+    expect(
+      runtimeApi.fetchApplicationRunConversationMessages
+    ).not.toHaveBeenCalled();
+    expect(
+      runtimeApi.fetchApplicationLogConversationMessages
+    ).not.toHaveBeenCalled();
   });
 
   test.each([

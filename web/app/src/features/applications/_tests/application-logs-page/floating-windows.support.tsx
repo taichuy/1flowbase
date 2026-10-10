@@ -292,6 +292,7 @@ export function sampleRunOverview() {
   const detail = sampleRunDetail();
 
   return {
+    log_conversation_id: null,
     run: detail.run,
     statistics: detail.statistics,
     flow_run: detail.flow_run,
