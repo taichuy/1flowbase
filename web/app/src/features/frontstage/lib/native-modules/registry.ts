@@ -179,6 +179,32 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@1flowbase/ui', UI_MODULE_EXPORTS, async () => ({
     module: await import('@1flowbase/ui')
   })),
+  registration('@1flowbase/plugin-settings', ['request'], async () => ({
+    module: await import('./plugin-settings/runtime')
+  })),
+  registration(
+    '@1flowbase/data-table',
+    ['DataTable', 'DataTableColumnSettings', 'usePersistedDataTableConfiguration', 'DataTableLayout'],
+    async () => {
+      const [table, state, layout, tableStyle, layoutStyle, mobileStyle] = await Promise.all([
+        import('../../../../shared/ui/data-table/DataTable'),
+        import('../../../../shared/ui/data-table/data-table-state'),
+        import('../../../../shared/ui/data-table/DataTableLayout'),
+        import('../../../../shared/ui/data-table/data-table.css?inline'),
+        import('../../../../shared/ui/data-table/data-table-layout.css?inline'),
+        import('../../../../shared/ui/data-table/data-table-mobile-list.css?inline')
+      ]);
+      return {
+        module: {
+          DataTable: table.DataTable,
+          DataTableColumnSettings: table.DataTableColumnSettings,
+          usePersistedDataTableConfiguration: state.usePersistedDataTableConfiguration,
+          DataTableLayout: layout.DataTableLayout
+        },
+        styles: [tableStyle, layoutStyle, mobileStyle].map((style) => ({ css: style.default }))
+      };
+    }
+  ),
   registration('@1flowbase/block-sdk', ['blockSdkVersion'], async () => ({
     module: await import('@1flowbase/block-sdk')
   })),

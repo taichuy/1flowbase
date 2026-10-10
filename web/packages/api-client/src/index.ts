@@ -43,3 +43,5 @@ export * from './public/mcp-oauth';
 export * from './console/departments';
 
 export * from './runtime/tree';
+
+export * from './console/managed-services';
