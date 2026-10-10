@@ -1,6 +1,5 @@
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -75,9 +74,8 @@ describe('member department invariants', () => {
   });
   afterEach(async () => {
     try {
-      cleanup();
       // Real Form validation schedules delayed rc-util state updates. Finish
-      // fixture-owned callbacks while JSDOM still exists, including on failure.
+      // fixture-owned callbacks before the runner's automatic cleanup, even on failure.
       await act(async () => {
         await vi.runOnlyPendingTimersAsync();
       });
