@@ -3392,6 +3392,7 @@ name = "runtime-extension-sdk"
 version = "0.5.4"
 dependencies = [
  "extension-contracts",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
