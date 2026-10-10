@@ -404,6 +404,46 @@ pub(crate) async fn install_uploaded_artifact(
                     )
                 })?;
         }
+        // A previous upload may have committed installation before schema application failed.
+        // Re-admit the same archive before using its schema: identity alone is not content proof.
+        let recover_managed_schema = if artifact.node_plugin && artifact.managed_schema.is_some() {
+            control_plane::ports::PluginRepository::get_installation(
+                &dependencies.store,
+                installation.id,
+            )
+            .await?
+            .is_some_and(|record| {
+                domain::managed_installation_scope(&record, domain::DEFAULT_SCOPE_ID)
+                    == domain::SYSTEM_SCOPE_ID
+            })
+        } else {
+            false
+        };
+        let (managed_schema_preview, managed_schema_receipt) = if recover_managed_schema {
+            service(dependencies, actor, "extension_center.install.upload")
+                .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+                    actor_user_id,
+                    category: artifact.category,
+                    file_name: file_name.clone(),
+                    package_bytes: artifact_bytes.clone(),
+                    source_kind: "uploaded".to_string(),
+                })
+                .await?;
+            let prepared = prepare_managed_schema(
+                dependencies,
+                actor.current_workspace_id,
+                artifact.managed_schema.as_ref(),
+            )
+            .await?;
+            let preview = prepared.as_ref().map(|value| value.preview());
+            let receipt = match prepared {
+                Some(value) => Some(value.apply(dependencies).await?),
+                None => None,
+            };
+            (preview, receipt)
+        } else {
+            (None, None)
+        };
         let node_plugin_installation_id = if artifact.node_plugin {
             Some(installation.id.to_string())
         } else {
@@ -417,8 +457,8 @@ pub(crate) async fn install_uploaded_artifact(
                 installation: to_local_inventory_entry(installation),
                 local_artifact_was_present: true,
                 node_plugin_installation_id,
-                managed_schema_preview: None,
-                managed_schema_receipt: None,
+                managed_schema_preview,
+                managed_schema_receipt,
             },
         ));
     }

@@ -696,7 +696,12 @@ where
                 }),
             )
             .await?;
-        if is_host_extension_installation(&install.installation) {
+        // Managed services need schema application and explicit permission grants before enable.
+        // Re-upload retains the repository's deliberate desired state; installation never activates it.
+        if is_host_extension_installation(&install.installation)
+            || domain::managed_installation_scope(&install.installation, domain::DEFAULT_SCOPE_ID)
+                == domain::SYSTEM_SCOPE_ID
+        {
             return Ok(install);
         }
         self.enable_plugin(EnablePluginCommand {
