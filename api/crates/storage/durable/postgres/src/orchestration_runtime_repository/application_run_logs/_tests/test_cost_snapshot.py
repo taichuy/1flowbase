@@ -42,6 +42,10 @@ def main():
             fixture = (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
             before, after = (here / 'superseded_cost_upgrade.sql').read_text().split('-- APPLY MIGRATION')
             sql += fixture + before + migration.read_text() + after + '\nrollback;\n'
+        if migration.name == '20261010130000_project_terminal_task_attempt_outcome.sql':
+            fixture = (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
+            before, after = (here / 'fixtures/terminal_task_projection.sql').read_text().split('-- APPLY MIGRATION')
+            sql += fixture + before + migration.read_text() + after + '\nrollback;\n'
         if not migration.name.endswith('.down.sql'):
             sql += 'begin;\n' + migration.read_text() + '\ncommit;\n'
     sql += 'prepare save_cost(uuid) as ' + (here.parent / 'cost_snapshot.sql').read_text() + ';\n'
@@ -61,6 +65,17 @@ def main():
     if '--negative-settlement' in sys.argv:
         sql += (migrations / '20260922130000_repair_superseded_log_cost_snapshots.sql').read_text().split('-- Repair only missing terminal')[0]
     sql += (here / 'fixtures/completed_codex_turn.sql').read_text() + '\nrollback;\n'
+    terminal = (here / 'fixtures/terminal_task_projection.sql').read_text()
+    before, after = terminal.split('-- APPLY MIGRATION')
+    if '--negative-terminal-task' in sys.argv:
+        old = (migrations / '20261002120000_fix_input_cache_hit_rates.sql').read_text()
+        sql += 'create or replace function application_run_log_task_refresh' + old.split('create or replace function application_run_log_task_refresh')[1].split('-- Rebuild derived input counts only;')[0]
+    if '--negative-terminal-cost' in sys.argv:
+        changed = (migrations / '20261010130000_project_terminal_task_attempt_outcome.sql').read_text().split('-- Repair native terminal')[0]
+        sql += changed.replace('then sum(observed_cost) end as total_cost',
+                               'then case when count(observed_cost)=count(*) then sum(observed_cost) end end as total_cost')
+    sql += (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
+    sql += before.split('-- EXPECT OLD')[0] + after + '\nrollback;\n'
     with log.open('w') as output:
         try:
             result = subprocess.run(command, input=sql, text=True, env=env,

@@ -54,8 +54,8 @@ select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin
  assert (select total_cost = 0.150006250000000001 from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'snapshot survives source cleanup';
 end $$;
--- Reopened tasks and tasks with an unknown member must not present a partial
--- amount as a completed total.
+-- Reopened tasks are not settled. Terminal tasks retain known observations
+-- even when another member has no cost; no missing amount is invented.
 update application_run_log_summaries set finished_at=null,status='running' where flow_run_id='00000000-0000-4000-8000-000000000011';
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin
@@ -64,7 +64,7 @@ end $$;
 update application_run_log_summaries set finished_at=now(),status='succeeded',total_cost=null where flow_run_id='00000000-0000-4000-8000-000000000011';
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin
- assert (select total_cost is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'unknown member must not be silently omitted';
+ assert (select total_cost=0.100003250000000001 from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'terminal task retains observed costs from known members';
 end $$;
 deallocate save_cost;
 rollback;
