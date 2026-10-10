@@ -1,4 +1,4 @@
-import { App as AntdApp } from 'antd';
+import { App as AntdApp, Grid } from 'antd';
 import {
   fireEvent,
   render,
@@ -183,7 +183,18 @@ describe('ApplicationLogsPage - table field settings', () => {
   let innerWidthSpy: { mockRestore: () => void } | undefined;
   let dateNowSpy: { mockRestore: () => void } | undefined;
 
+  let useBreakpointSpy: { mockRestore: () => void } | undefined;
+
   beforeEach(async () => {
+    // These scenarios assert desktop table rows, columns and pagination.
+    useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint').mockReturnValue({
+      xs: false,
+      sm: true,
+      md: true,
+      lg: true,
+      xl: false,
+      xxl: false
+    });
     window.localStorage.clear();
     window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
@@ -270,6 +281,8 @@ describe('ApplicationLogsPage - table field settings', () => {
   });
 
   afterEach(() => {
+    useBreakpointSpy?.mockRestore();
+    useBreakpointSpy = undefined;
     resetAuthStore();
     getBoundingClientRectSpy?.mockRestore();
     getBoundingClientRectSpy = undefined;
