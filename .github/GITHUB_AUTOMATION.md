@@ -309,3 +309,5 @@ FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 ```
 
 This keeps hosted-action runtime annotations aligned with the repository's Node 24 test runtime.
+
+The reusable AI protocol gate separates caller workflow, event, ref and candidate source in its concurrency identity. Full CI runs against different candidate SHAs cannot cancel each other’s protocol evidence.

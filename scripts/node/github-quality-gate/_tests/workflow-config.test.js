@@ -1302,3 +1302,19 @@ test('template focused gate rejects each empty selector while keeping compile ev
   assert.match(compileStep, /cargo check --locked/u);
   assert.doesNotMatch(compileStep, /cargo-test-results\.js/u);
 });
+
+
+test('AI protocol concurrency separates caller workflows and candidate sources', () => {
+  const group = readAiGatewayConcurrencyWorkflow().match(/group: (ai-gateway-protocol-conformance-[^\n]+)/u)?.[1];
+  assert.ok(group);
+  const render = (candidate, caller = 'quality gate', event = 'workflow_dispatch') => group
+    .replace('${{ github.workflow }}', caller)
+    .replace('${{ github.event_name }}', event)
+    .replace('${{ github.ref }}', 'refs/heads/candidate')
+    .replace('${{ inputs.target_ref || github.sha }}', candidate);
+  assert.equal(render('source-a'), 'ai-gateway-protocol-conformance-quality gate-workflow_dispatch-refs/heads/candidate-source-a');
+  assert.notEqual(render('source-a'), render('source-b'));
+  assert.notEqual(render('source-a'), render('source-a', 'standalone protocol'));
+  assert.notEqual(render('source-a'), render('source-a', 'quality gate', 'schedule'));
+  assert.doesNotMatch(render('source-a'), /\$\{\{/u);
+});
