@@ -106,11 +106,31 @@ pub trait PortableTemplateTransactionGuard: Send {
     async fn commit(&mut self) -> anyhow::Result<()>;
     async fn rollback(&mut self) -> anyhow::Result<()>;
 }
+/// A binding-only identity transition. The source key is stable; old target,
+/// generation and applied fingerprint must all match before moving the native row.
+#[derive(Debug, Clone)]
+pub struct TemplateMcpBindingRetarget {
+    pub key: crate::portable_template::TemplateResourceKey,
+    pub expected_target_id: String,
+    pub expected_generation: i64,
+    pub intent: crate::portable_template::TemplateWriteIntent,
+    pub actor_user_id: Uuid,
+}
+
 #[async_trait::async_trait]
 pub trait PortableTemplateTransactionRepository: Sized + Send + Sync {
     async fn begin_portable_template_transaction(
         &self,
     ) -> anyhow::Result<PortableTemplateTransaction<Self>>;
+
+    /// Requires the existing native-owner transaction/locks. Atomically preserve the
+    /// binding row identity while moving its tool reference and preparing the baseline
+    /// at the new target. False performs no writes; caller rolls back on any error.
+    async fn retarget_template_mcp_binding(
+        &self,
+        scope: &crate::portable_template::TemplateBaselineScope,
+        command: &TemplateMcpBindingRetarget,
+    ) -> anyhow::Result<bool>;
 
     /// Called only on the transaction-bound repository after the owner writes and
     /// canonical post-image read. Receipt and resource changes commit atomically.

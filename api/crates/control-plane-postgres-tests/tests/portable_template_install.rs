@@ -1087,3 +1087,6 @@ async fn mcp_owner_failure_rolls_back_tools_and_baseline_intents_together() {
     assert!(retry.failures.is_empty(), "{:?}", retry.failures);
     assert_eq!(retry.created.len(), 5);
 }
+
+#[path = "portable_template_install/mcp_forks.rs"]
+mod mcp_forks;

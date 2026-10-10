@@ -90,6 +90,20 @@ impl PortableTemplateTransactionRepository for PgControlPlaneStore {
             }),
         })
     }
+    async fn retarget_template_mcp_binding(
+        &self,
+        scope: &TemplateBaselineScope,
+        command: &TemplateMcpBindingRetarget,
+    ) -> Result<bool> {
+        let mut connection = self.pool().acquire().await?;
+        anyhow::ensure!(
+            self.portable_template_transaction
+                && PgTransactionManager::get_transaction_depth(&connection) == 1,
+            "portable_template_retarget_requires_owner_transaction"
+        );
+        super::mcp_retarget::retarget(&mut connection, scope, command).await
+    }
+
     async fn acknowledge_portable_template_write(
         &self,
         scope: &TemplateBaselineScope,
