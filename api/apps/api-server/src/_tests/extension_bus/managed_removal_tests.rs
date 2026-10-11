@@ -67,7 +67,7 @@ impl Fixture {
             .await
             .unwrap();
         Self {
-            _state: state,
+            _state: state.clone(),
             runtime,
             management,
             actor,
