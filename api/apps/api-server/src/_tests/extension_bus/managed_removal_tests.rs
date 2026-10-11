@@ -285,6 +285,7 @@ async fn cancelled_removal_caller_does_not_cancel_owned_retirement() {
     .await;
     drop(pending);
     drop(assembly_owner);
+    composition.close_owned_admission();
     composition
         .wait_owned_shutdown(std::time::Duration::from_secs(5))
         .await

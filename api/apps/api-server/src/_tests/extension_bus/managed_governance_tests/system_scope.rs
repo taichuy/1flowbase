@@ -28,6 +28,9 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
     let mut declaration = manifest("system");
     let module = "acme.composition-system";
     declaration["binding_targets"] = json!(["system"]);
+    declaration["runtime"]["protocol"] = "stdio_json_multiplex_v1".into();
+    declaration["managed"]["execution_bindings"][0]["runtime"]["protocol"] =
+        "stdio_json_multiplex_v1".into();
     declaration["managed"]["module"]["contributions"] = json!([{
         "contribution_id":"acme.composition-system.list", "contributor_module_id":module,
         "point_id":"1flowbase.managed-service.operation", "contract_version":"1",
