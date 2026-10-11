@@ -13,7 +13,7 @@ use plugin_framework::extension_bus::{
 };
 use runtime_core::runtime_backend::{RuntimeExecutionPrincipal, RuntimeManagedHookInput};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, OnceLock, Weak},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -63,14 +63,29 @@ impl FrozenManagedProjection {
 pub(crate) struct ManagedInterfaceFactory {
     state: Weak<ApiState>,
     baseline: Arc<EffectiveExtensionGraph>,
+    managed_service_interfaces: BTreeSet<String>,
     contracts: OnceLock<Arc<Contracts>>,
+    interface_module: OnceLock<plugin_framework::extension_bus::ModuleDescriptor>,
 }
 impl ManagedInterfaceFactory {
     pub(crate) fn new(state: &Arc<ApiState>, baseline: Arc<EffectiveExtensionGraph>) -> Arc<Self> {
         Arc::new(Self {
             state: Arc::downgrade(state),
             baseline,
+            managed_service_interfaces: state
+                .console_surface_registry
+                .managed_services()
+                .iter()
+                .flat_map(|service| {
+                    service
+                        .declaration
+                        .operations
+                        .iter()
+                        .map(|op| op.interface_id.clone())
+                })
+                .collect(),
             contracts: OnceLock::new(),
+            interface_module: OnceLock::new(),
         })
     }
     pub(crate) fn bind_registry(&self, registry: &CompiledInterfaceRegistry) -> anyhow::Result<()> {
@@ -129,6 +144,15 @@ impl ManagedInterfaceFactory {
                 .is_some_and(CompiledInvocationPlan::has_managed_invocation_bridge)),
             "compiled binding lacks managed bridge"
         );
+        self.interface_module
+            .set(
+                plugin_framework::extension_bus::compile_managed_interface_module(
+                    registry
+                        .definitions()
+                        .map(|definition| definition.interface_id().as_str()),
+                )?,
+            )
+            .map_err(|_| anyhow::anyhow!("managed interface module already frozen"))?;
         self.contracts
             .set(Arc::new(contracts))
             .map_err(|_| anyhow::anyhow!("managed schemas already frozen"))
@@ -181,7 +205,15 @@ impl ManagedInterfaceInvocationFactory for ManagedInterfaceFactory {
             let Ok(composition) = state.provider_runtime.managed_composition() else {
                 return Ok(Arc::new(frozen) as Arc<dyn ManagedInterfaceInvocation>);
             };
-            let Some(snapshot) = composition.snapshot(workspace_id).await else {
+            let snapshot = match state
+                .extension_boot_snapshot
+                .as_ref()
+                .filter(|boot| boot.has_pinned_managed_snapshots())
+            {
+                Some(boot) => boot.managed_snapshot(workspace_id),
+                None => composition.snapshot(workspace_id).await,
+            };
+            let Some(snapshot) = snapshot else {
                 return Ok(Arc::new(frozen) as Arc<dyn ManagedInterfaceInvocation>);
             };
             let reference = snapshot
@@ -192,8 +224,9 @@ impl ManagedInterfaceInvocationFactory for ManagedInterfaceFactory {
                     return Err("managed-host-baseline-mismatch");
                 }
             }
-            let module = composition
-                .interface_module()
+            let module = self
+                .interface_module
+                .get()
                 .ok_or("managed-point-catalog-missing")?;
             let mut stages = BTreeMap::new();
             for phase in MANAGED_INTERFACE_PHASES {
@@ -210,8 +243,25 @@ impl ManagedInterfaceInvocationFactory for ManagedInterfaceFactory {
                     .graph
                     .points()
                     .iter()
-                    .find(|point| point.descriptor().point_id.as_str() == id)
-                    .ok_or("managed-point-not-compiled")?;
+                    .find(|point| point.descriptor().point_id.as_str() == id);
+                let Some(point) = point else {
+                    // An older workspace cannot have an active hook for a newly registered
+                    // service endpoint it has never declared. Its other hooks keep their
+                    // frozen graph and backlog identity until that workspace is rebuilt.
+                    if self
+                        .managed_service_interfaces
+                        .contains(&frozen.interface_id)
+                        && !snapshot
+                            .graph
+                            .contribution_receipts()
+                            .iter()
+                            .any(|receipt| receipt.descriptor().point_id.as_str() == id)
+                    {
+                        stages.insert(phase, Vec::new());
+                        continue;
+                    }
+                    return Err("managed-point-not-compiled");
+                };
                 if point.descriptor() != declared {
                     return Err("managed-point-contract-mismatch");
                 }

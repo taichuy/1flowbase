@@ -43,6 +43,14 @@ pub trait ManagedInstallationSwitchLease: Send {
     fn commit(
         self: Box<Self>,
         audit_log: AuditLogRecord,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
+        self.commit_with_catalog(audit_log, None)
+    }
+    /// Commit the selection and optional permission projection in the same transaction.
+    fn commit_with_catalog(
+        self: Box<Self>,
+        audit_log: AuditLogRecord,
+        catalog: Option<crate::CompiledConsolePolicyCatalog>,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }
@@ -74,6 +82,14 @@ pub trait ContributionAuthorityLease: Send {
         self: Box<Self>,
         input: super::ResumeManagedLifecycleDelivery,
     ) -> Pin<Box<dyn Future<Output = Result<super::LifecycleOutboxRecord>> + Send>>;
+    /// Apply settings defaults for the locked, enabled system installations and commit this
+    /// authority lease atomically, including the optional permission catalog. An empty list skips
+    /// template application; any failure rolls back defaults and grants.
+    fn commit_managed_settings_templates(
+        self: Box<Self>,
+        installation_ids: Vec<Uuid>,
+        catalog: Option<crate::CompiledConsolePolicyCatalog>,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }
 

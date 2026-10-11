@@ -278,206 +278,100 @@ async fn root_2007_ac_009_pause_revoke_retire_candidate_switch() {
             .await
             .unwrap(),
     );
-    // A finite timeout/revoke/commit matrix holds the real worker at the same barrier.
-    // Both failed drain and failed final authority check must reopen G1 admission.
-    for outcome in ["timeout", "revoke", "commit"] {
-        let owner = fixture.runtime.composition.clone();
-        let frozen = g1.clone();
-        let actor = fixture.actor.user_id;
-        let running = tokio::spawn(async move {
-            owner
-                .execute_hook(
-                    &frozen,
-                    &ContributionId::new("acme.composition-a.first").unwrap(),
-                    principal(workspace, actor),
-                    hook_invocation(&frozen),
-                    hook_input("fixture_barrier"),
-                )
-                .await
-        });
-        started(&worker).await;
-        let switching = fixture.switch(target);
-        // Wait for the real runtime gate, dropping admitted futures without executing extra work.
-        tokio::time::timeout(std::time::Duration::from_secs(3), async {
-            loop {
-                let request = RuntimeManagedHookRequest {
-                    handle: g1.bindings[&contribution].handle.clone(),
-                    principal: principal(workspace, fixture.actor.user_id),
-                    invocation: hook_invocation(&g1),
-                    input: hook_input("identify").into(),
-                };
-                match fixture.runtime.host.admit_managed_hook(request).await {
-                    Ok(operation) => drop(operation),
-                    Err(_) => break,
-                }
-                tokio::task::yield_now().await;
-            }
-        })
+    // A revoked candidate remains unauthorized even though its artifact was prepared before.
+    let grants = fixture
+        .authority()
+        .query(&fixture.actor, target)
         .await
         .unwrap();
-        assert!(!switching.is_finished());
-        assert!(Arc::ptr_eq(
-            &g1,
-            &fixture
-                .runtime
-                .composition
-                .snapshot(workspace)
-                .await
-                .unwrap()
-        ));
-        assert_eq!(
-            fixture
-                .runtime
-                .store
-                .list_assignments(workspace)
-                .await
-                .unwrap()
-                .into_iter()
-                .find(|assignment| assignment.provider_code == "acme.composition-a")
-                .unwrap()
-                .installation_id,
-            source
-        );
-        if outcome == "timeout" {
-            let rejected = tokio::time::timeout(std::time::Duration::from_secs(8), switching)
-                .await
-                .unwrap()
-                .unwrap();
-            assert!(rejected
-                .unwrap_err()
-                .to_string()
-                .contains("drain timed out"));
-            assert!(Arc::ptr_eq(
+    fixture
+        .authority()
+        .revoke(
+            &fixture.actor,
+            target,
+            RevokeContributionPermission {
+                authorization_id: grants.authorizations[0].id,
+                expected_revision: grants.revision,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(fixture.switch(target).await.unwrap().is_err());
+    assert!(Arc::ptr_eq(
+        &g1,
+        &fixture
+            .runtime
+            .composition
+            .snapshot(workspace)
+            .await
+            .unwrap()
+    ));
+    assert_eq!(
+        fixture
+            .runtime
+            .store
+            .list_assignments(workspace)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|assignment| assignment.provider_code == "acme.composition-a")
+            .unwrap()
+            .installation_id,
+        source
+    );
+    assert_eq!(
+        fixture
+            .runtime
+            .composition
+            .execute_hook(
                 &g1,
-                &fixture
-                    .runtime
-                    .composition
-                    .snapshot(workspace)
-                    .await
-                    .unwrap()
-            ));
-            assert_eq!(
-                fixture
-                    .runtime
-                    .composition
-                    .execute_hook(
-                        &g1,
-                        &contribution,
-                        principal(workspace, fixture.actor.user_id),
-                        hook_invocation(&g1),
-                        hook_input("identify")
-                    )
-                    .await
-                    .unwrap(),
-                ManagedHookOutcome::Deny {
-                    classification: "fixture.first".into()
-                }
-            );
-            std::fs::write(worker.with_extension("release"), "release").unwrap();
-            assert_eq!(
-                running.await.unwrap().unwrap(),
-                ManagedHookOutcome::Continue
-            );
-            std::fs::remove_file(worker.with_extension("release")).unwrap();
-            std::fs::remove_file(worker.with_extension("started")).unwrap();
-            continue;
-        }
-        if outcome == "revoke" {
-            let grants = fixture
-                .authority()
-                .query(&fixture.actor, target)
-                .await
-                .unwrap();
-            fixture
-                .authority()
-                .revoke(
-                    &fixture.actor,
-                    target,
-                    RevokeContributionPermission {
-                        authorization_id: grants.authorizations[0].id,
-                        expected_revision: grants.revision,
-                    },
-                )
-                .await
-                .unwrap();
-        }
-        if outcome == "commit" {
-            // Cancelling the protocol waiter does not cancel the owned business switch.
-            switching.abort();
-        }
-        std::fs::write(worker.with_extension("release"), "release").unwrap();
-        assert_eq!(
-            running.await.unwrap().unwrap(),
-            ManagedHookOutcome::Continue
-        );
-        let result = if outcome == "commit" {
-            assert!(switching.await.unwrap_err().is_cancelled());
-            Ok(
-                tokio::time::timeout(std::time::Duration::from_secs(5), async {
-                    loop {
-                        if let Some(task) = fixture
-                            .runtime
-                            .store
-                            .list_tasks()
-                            .await
-                            .unwrap()
-                            .into_iter()
-                            .find(|task| {
-                                task.installation_id == Some(target)
-                                    && task.status == domain::PluginTaskStatus::Succeeded
-                                    && task.task_kind == domain::PluginTaskKind::SwitchVersion
-                            })
-                        {
-                            break task;
-                        }
-                        tokio::task::yield_now().await;
-                    }
-                })
-                .await
-                .unwrap(),
+                &contribution,
+                principal(workspace, fixture.actor.user_id),
+                hook_invocation(&g1),
+                hook_input("identify"),
             )
-        } else {
-            switching.await.unwrap()
-        };
-        std::fs::remove_file(worker.with_extension("release")).unwrap();
-        std::fs::remove_file(worker.with_extension("started")).unwrap();
-        if outcome == "revoke" {
-            assert!(result.is_err());
-            assert!(Arc::ptr_eq(
-                &g1,
-                &fixture
-                    .runtime
-                    .composition
-                    .snapshot(workspace)
-                    .await
-                    .unwrap()
-            ));
-            assert_eq!(
-                fixture
-                    .runtime
-                    .composition
-                    .execute_hook(
-                        &g1,
-                        &contribution,
-                        principal(workspace, fixture.actor.user_id),
-                        hook_invocation(&g1),
-                        hook_input("identify")
-                    )
-                    .await
-                    .unwrap(),
-                ManagedHookOutcome::Deny {
-                    classification: "fixture.first".into()
-                }
-            );
-            fixture
-                .authority()
-                .grant(&fixture.actor, target, grant("a"))
-                .await
-                .unwrap();
-        } else {
-            assert_eq!(result.unwrap().status, domain::PluginTaskStatus::Succeeded);
+            .await
+            .unwrap(),
+        ManagedHookOutcome::Deny {
+            classification: "fixture.first".into()
         }
-    }
+    );
+    fixture
+        .authority()
+        .grant(&fixture.actor, target, grant("a"))
+        .await
+        .unwrap();
+
+    // Admission pins V1 even when execution is polled after publication of V2.
+    let admitted_v1 = fixture
+        .runtime
+        .host
+        .admit_managed_hook(request())
+        .await
+        .unwrap();
+    let owner = fixture.runtime.composition.clone();
+    let frozen = g1.clone();
+    let actor = fixture.actor.user_id;
+    let running = tokio::spawn(async move {
+        owner
+            .execute_hook(
+                &frozen,
+                &ContributionId::new("acme.composition-a.first").unwrap(),
+                principal(workspace, actor),
+                hook_invocation(&frozen),
+                hook_input("fixture_barrier"),
+            )
+            .await
+    });
+    started(&worker).await;
+    // Publication must finish while the actual old worker is still held; it cannot drain V1.
+    let result = tokio::time::timeout(std::time::Duration::from_secs(4), fixture.switch(target))
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.status, domain::PluginTaskStatus::Succeeded);
+    assert!(!running.is_finished());
     let g2 = fixture
         .runtime
         .composition
@@ -515,6 +409,23 @@ async fn root_2007_ac_009_pause_revoke_retire_candidate_switch() {
             classification: "fixture.second".into()
         }
     );
+    assert_eq!(
+        admitted_v1.await.unwrap(),
+        ManagedHookOutcome::Deny {
+            classification: "fixture.first".into()
+        }
+    );
+    assert!(
+        !running.is_finished(),
+        "new execution must not release the old worker"
+    );
+    std::fs::write(worker.with_extension("release"), "release").unwrap();
+    assert_eq!(
+        running.await.unwrap().unwrap(),
+        ManagedHookOutcome::Continue
+    );
+    std::fs::remove_file(worker.with_extension("release")).unwrap();
+    std::fs::remove_file(worker.with_extension("started")).unwrap();
     assert!(fixture
         .runtime
         .composition
@@ -535,7 +446,7 @@ async fn root_2007_ac_009_pause_revoke_retire_candidate_switch() {
     .await
     .unwrap();
     assert!(
-        failed >= 4,
+        failed >= 3,
         "each rejected switch has a durable failed task"
     );
     fixture.runtime.host.stop().await.unwrap();

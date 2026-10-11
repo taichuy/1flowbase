@@ -62,6 +62,11 @@ const applicationsApi = vi.hoisted(() => ({
 }));
 
 const mcpManagementApi = vi.hoisted(() => ({
+  settingsMcpInterfaceCapabilitiesQueryKey: [
+    'settings',
+    'mcp-management',
+    'interface-capabilities'
+  ] as const,
   settingsMcpCatalogQueryKey: [
     'settings',
     'mcp-management',

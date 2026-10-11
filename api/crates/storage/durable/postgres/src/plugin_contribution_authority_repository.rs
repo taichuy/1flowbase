@@ -31,6 +31,7 @@ struct PgManagedInstallationSwitchLease {
     current: Uuid,
     target: Uuid,
     node_id: String,
+    system_service: bool,
 }
 impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
     fn authority(&self) -> &dyn ContributionAuthorityLease {
@@ -42,9 +43,10 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
             Ok(())
         })
     }
-    fn commit(
+    fn commit_with_catalog(
         mut self: Box<Self>,
         audit_log: domain::AuditLogRecord,
+        catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
         Box::pin(async move {
             let revision = self
@@ -55,15 +57,41 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
                 .ok_or(Error::InvalidInput("managed_candidate_authority"))?
                 .revision;
             let transaction = &mut self.authority.transaction;
-            let changed = sqlx::query("update plugin_assignments set installation_id=$3,assigned_by=$4 where workspace_id=$1 and installation_id=$2")
-                .bind(self.workspace_id).bind(self.current).bind(self.target).bind(audit_log.actor_user_id).execute(&mut **transaction).await?.rows_affected();
-            if changed != 1 {
-                return Err(Error::Conflict("managed_assignment_changed").into());
+            if self.system_service {
+                // The enabled installation is the durable selection for system services.
+                // Both sides change in this transaction; no workspace assignment is created.
+                sqlx::query("update extension_installations set desired_state='disabled',updated_at=now(),updated_by=$2 where id=$1")
+                    .bind(self.current).bind(audit_log.actor_user_id).execute(&mut **transaction).await?;
+            } else {
+                let changed = sqlx::query("update plugin_assignments set installation_id=$3,assigned_by=$4 where workspace_id=$1 and installation_id=$2")
+                    .bind(self.workspace_id).bind(self.current).bind(self.target).bind(audit_log.actor_user_id).execute(&mut **transaction).await?.rows_affected();
+                if changed != 1 {
+                    return Err(Error::Conflict("managed_assignment_changed").into());
+                }
             }
             sqlx::query("update extension_installations set desired_state='active_requested',updated_at=now(),updated_by=$2 where id=$1")
                 .bind(self.target).bind(audit_log.actor_user_id).execute(&mut **transaction).await?;
+            if self.system_service {
+                let installation = self
+                    .authority
+                    .installations
+                    .get(&self.target)
+                    .ok_or(Error::InvalidInput("managed_candidate_installation"))?;
+                crate::plugin_settings_template_repository::apply_managed_in_transaction(
+                    &mut **transaction,
+                    installation,
+                )
+                .await?;
+            }
             sqlx::query("update extension_artifact_instances set is_current=(installation_id=$3),runtime_status=case when installation_id=$3 then 'active' else runtime_status end,availability_status=case when installation_id=$3 then 'available' else availability_status end,last_error=case when installation_id=$3 then null else last_error end,checked_at=now() where node_id=$1 and installation_id in ($2,$3)")
                 .bind(&self.node_id).bind(self.current).bind(self.target).execute(&mut **transaction).await?;
+            if let Some(catalog) = catalog {
+                crate::role_repository::sync_console_permission_catalog_in_transaction(
+                    transaction,
+                    &catalog,
+                )
+                .await?;
+            }
             append_audit(transaction, &audit_log, revision).await?;
             self.authority.transaction.commit().await?;
             Ok(())
@@ -250,6 +278,49 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                 .await?;
             self.transaction.commit().await?;
             Ok(record)
+        })
+    }
+    fn commit_managed_settings_templates(
+        mut self: Box<Self>,
+        installation_ids: Vec<Uuid>,
+        catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
+        Box::pin(async move {
+            for id in installation_ids
+                .into_iter()
+                .collect::<std::collections::BTreeSet<_>>()
+            {
+                let installation = self.installations.get(&id).ok_or(Error::PermissionDenied(
+                    "managed_settings_installation_not_locked",
+                ))?;
+                if installation.desired_state != domain::PluginDesiredState::ActiveRequested
+                    || domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                        != domain::SYSTEM_SCOPE_ID
+                    || !self.snapshots.iter().any(|snapshot| {
+                        snapshot.installation_id == id
+                            && snapshot.workspace_id == domain::SYSTEM_SCOPE_ID
+                    })
+                {
+                    return Err(Error::PermissionDenied(
+                        "managed_settings_active_system_authority_required",
+                    )
+                    .into());
+                }
+                crate::plugin_settings_template_repository::apply_managed_in_transaction(
+                    &mut self.transaction,
+                    installation,
+                )
+                .await?;
+            }
+            if let Some(catalog) = catalog {
+                crate::role_repository::sync_console_permission_catalog_in_transaction(
+                    &mut self.transaction,
+                    &catalog,
+                )
+                .await?;
+            }
+            self.transaction.commit().await?;
+            Ok(())
         })
     }
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
@@ -490,18 +561,46 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         {
             return Err(Error::PermissionDenied("managed_candidate_family_mismatch").into());
         }
-        let assignment: Option<Uuid> = sqlx::query_scalar("select id from plugin_assignments where workspace_id=$1 and installation_id=$2 for update")
-            .bind(input.workspace_id).bind(current.id).fetch_optional(&mut *transaction).await?;
-        if assignment.is_none() {
-            return Err(Error::Conflict("managed_assignment_changed").into());
+        let system_service = domain::managed_installation_scope(&current, domain::DEFAULT_SCOPE_ID)
+            == domain::SYSTEM_SCOPE_ID;
+        let target_system_service =
+            domain::managed_installation_scope(&target, domain::DEFAULT_SCOPE_ID)
+                == domain::SYSTEM_SCOPE_ID;
+        if system_service != target_system_service
+            || (system_service && input.workspace_id != domain::SYSTEM_SCOPE_ID)
+            || (!system_service && input.workspace_id == domain::SYSTEM_SCOPE_ID)
+            || current.id == target.id
+        {
+            return Err(Error::PermissionDenied("managed_candidate_scope_mismatch").into());
+        }
+        if system_service {
+            if current.desired_state != domain::PluginDesiredState::ActiveRequested
+                || target.desired_state == domain::PluginDesiredState::ActiveRequested
+            {
+                return Err(Error::Conflict("managed_system_selection_changed").into());
+            }
+        } else {
+            let assignment: Option<Uuid> = sqlx::query_scalar("select id from plugin_assignments where workspace_id=$1 and installation_id=$2 for update")
+                .bind(input.workspace_id).bind(current.id).fetch_optional(&mut *transaction).await?;
+            if assignment.is_none() {
+                return Err(Error::Conflict("managed_assignment_changed").into());
+            }
         }
         let artifact: Option<Uuid> = sqlx::query_scalar("select installation_id from extension_artifact_instances where node_id=$1 and installation_id=$2 and artifact_status='ready' for share")
             .bind(&input.node_id).bind(target.id).fetch_optional(&mut *transaction).await?;
         if artifact.is_none() {
             return Err(Error::Conflict("managed_candidate_artifact_unavailable").into());
         }
-        let mut active = sqlx::query_scalar::<_,Uuid>("select i.id from plugin_assignments a join extension_installations i on i.id=a.installation_id where a.workspace_id=$1 and i.contract_version='1flowbase.extension-bus/v1' and i.desired_state='active_requested'")
-            .bind(input.workspace_id).fetch_all(&mut *transaction).await?.into_iter().collect::<std::collections::BTreeSet<_>>();
+        let active_ids = if system_service {
+            sqlx::query_scalar::<_, Uuid>("select id from extension_installations where contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}' = 'system' and desired_state='active_requested'")
+                .fetch_all(&mut *transaction).await?
+        } else {
+            sqlx::query_scalar::<_, Uuid>("select i.id from plugin_assignments a join extension_installations i on i.id=a.installation_id where a.workspace_id=$1 and i.contract_version='1flowbase.extension-bus/v1' and i.desired_state='active_requested'")
+                .bind(input.workspace_id).fetch_all(&mut *transaction).await?
+        };
+        let mut active = active_ids
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
         active.insert(current.id);
         active.insert(target.id);
         if active != ids {
@@ -536,6 +635,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             current: current.id,
             target: target.id,
             node_id: input.node_id.clone(),
+            system_service,
         }))
     }
 

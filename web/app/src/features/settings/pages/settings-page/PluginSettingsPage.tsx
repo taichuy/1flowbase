@@ -19,6 +19,10 @@ import { createFrontstageNativeReactModuleRegistry } from '../../../frontstage/l
 import { pluginSettingsPageQueryOptions } from '../../api/ui-management';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 
+function pageRenderEpoch(page: ConsolePluginSettingsPage) {
+  return `${page.route_id}:${page.template_id}:${page.applied_plugin_version}:${page.revision}`;
+}
+
 export function PluginSettingsPage({ route_id }: { route_id: string }) {
   const { t } = useTranslation('settings');
   const query = useQuery(pluginSettingsPageQueryOptions(route_id));
@@ -32,7 +36,7 @@ export function PluginSettingsPage({ route_id }: { route_id: string }) {
         />
       ) : query.data ? (
         <PublishedPluginSettingsPage
-          key={`${query.data.route_id}:${query.data.template_id}:${query.data.revision}`}
+          key={pageRenderEpoch(query.data)}
           page={query.data}
         />
       ) : (
@@ -54,7 +58,7 @@ function PublishedPluginSettingsPage({
   const [prepared, setPrepared] =
     useState<NativeReactSourcePreparationResult | null>(null);
   const [failed, setFailed] = useState(false);
-  const renderEpoch = `${page.route_id}:${page.template_id}:${page.revision}`;
+  const renderEpoch = pageRenderEpoch(page);
   const plan = useMemo<NativeTrustedBlockPreparePlan>(
     () => ({
       runtime: 'native_trusted_block',

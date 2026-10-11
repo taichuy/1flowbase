@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 
 extern crate self as api_server;
+mod managed_publication;
 mod managed_service_mcp;
 mod managed_services;
 
@@ -124,7 +125,8 @@ pub(crate) async fn runtime_internal_tool_invoker_factory(
     )
 }
 
-struct ApiLifecycleDeliveryCompletion;
+#[derive(Default)]
+struct ApiLifecycleDeliveryCompletion(std::sync::Weak<extension_bus::ManagedExtensionComposition>);
 
 impl control_plane::lifecycle_outbox_dispatcher::LifecycleDeliveryCompletionPort
     for ApiLifecycleDeliveryCompletion
@@ -135,6 +137,9 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleDeliveryCompletionPort
             control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryCompletion,
         >,
     ) {
+        if let Some(composition) = self.0.upgrade() {
+            composition.notify_reclamation();
+        }
         tracing::info!(
             event_id = %outcome.payload().event_id,
             terminal = ?outcome.terminal(),
@@ -695,7 +700,9 @@ async fn app_and_runtime_host_from_config(
         control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
             store.clone(),
             Arc::new(lifecycle_delivery),
-            Arc::new(ApiLifecycleDeliveryCompletion),
+            Arc::new(ApiLifecycleDeliveryCompletion(Arc::downgrade(
+                &managed_composition,
+            ))),
         )
         .spawn();
     extension_boot_snapshot.attach_managed_composition(provider_runtime.managed_composition()?)?;
@@ -798,6 +805,10 @@ async fn app_and_runtime_host_from_config(
         &config.provider_install_root,
     )
     .await?;
+    let generation_host_contributions = active_host_extensions
+        .iter()
+        .map(|(_, contribution)| contribution.clone())
+        .collect::<Vec<_>>();
     let console_host_extensions = active_host_extensions
         .iter()
         .map(|(_, contribution)| {
@@ -922,6 +933,7 @@ async fn app_and_runtime_host_from_config(
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
     extension_boot_snapshot.publish_complete_catalog(&state)?;
+    extension_boot_snapshot.set_pinned_managed_snapshots(managed_composition.current_snapshots().await)?;
     let builtin_mcp_interfaces =
         openapi_interface::build_openapi_capability_catalog(&state, bootstrap_result.workspace_id)
             .await
@@ -963,13 +975,15 @@ async fn app_and_runtime_host_from_config(
     let external_openapi_document = openapi::dynamic_openapi_document(&state)
         .await
         .map_err(|error| error.0)?;
+    let initial_router = app_with_state_and_config_and_console_route_assembly(
+        state.clone(), config, compiled_console_plan.route_assembly, &external_openapi_document,
+    );
+    let generation_publisher = managed_publication::ManagedGenerationPublisher::new(
+        &state, config.clone(), generation_host_contributions, initial_router,
+    )?;
+    managed_composition.attach_generation_publisher(Arc::downgrade(&generation_publisher))?;
     Ok((
-        app_with_state_and_config_and_console_route_assembly(
-            state,
-            config,
-            compiled_console_plan.route_assembly,
-            &external_openapi_document,
-        ),
+        generation_publisher.ingress(),
         ApiRuntimeShutdown {
             host: runtime_extension_host,
             services: provider_runtime,

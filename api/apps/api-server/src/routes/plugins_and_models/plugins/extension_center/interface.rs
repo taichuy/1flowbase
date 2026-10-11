@@ -407,18 +407,33 @@ impl ExtensionCenterAdapter {
                 ))
             }
             ExtensionCenterInput::Enable(installation_id) => {
-                super::managed_schema::restore_installed_managed_schema(
-                    &self.0,
-                    actor.current_workspace_id,
-                    installation_id,
-                )
-                .await?;
-                let task = service(&self.0, actor, "extension_center.installed.enable")
-                    .enable_plugin(EnablePluginCommand {
-                        actor_user_id: actor.user_id,
+                // This owner spans the desired-state write, runtime publication, failure CAS
+                // and task finalization. Losing the HTTP/MCP waiter cannot skip restoration.
+                let operation = self
+                    .0
+                    .store
+                    .managed_operation_lifetime()
+                    .admit(control_plane_contracts::ports::ManagedOwnedOperation::Candidate)?;
+                let dependencies = self.0.clone();
+                let actor = actor.clone();
+                let task = tokio::spawn(async move {
+                    let _operation = operation;
+                    super::managed_schema::restore_installed_managed_schema(
+                        &dependencies,
+                        actor.current_workspace_id,
                         installation_id,
-                    })
-                    .await?;
+                    )
+                    .await
+                    .map_err(|error| error.0)?;
+                    service(&dependencies, &actor, "extension_center.installed.enable")
+                        .enable_plugin(EnablePluginCommand {
+                            actor_user_id: actor.user_id,
+                            installation_id,
+                        })
+                        .await
+                })
+                .await
+                .map_err(anyhow::Error::from)??;
                 Ok(ExtensionCenterOutput::Task(to_task_response(task)))
             }
             ExtensionCenterInput::Disable(installation_id) => {

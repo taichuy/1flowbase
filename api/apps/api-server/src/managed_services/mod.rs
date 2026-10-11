@@ -1,9 +1,11 @@
-//! Boot-frozen managed services. Package declarations become ordinary host-owned console APIs.
+//! Generation-frozen managed services. Package declarations become ordinary host-owned console APIs.
 mod interface;
 mod registration;
 mod routes;
 pub(crate) use interface::registry_contribution;
-pub(crate) use registration::{append_openapi, load, ManagedServiceRegistration};
+pub(crate) use registration::{
+    append_openapi, load, load_installations, ManagedServiceRegistration,
+};
 pub(crate) use routes::route_assembly;
 
 #[derive(Debug, thiserror::Error)]

@@ -2,6 +2,8 @@
 mod candidate_switch;
 mod governance;
 mod lifetime;
+mod publication;
+mod reclamation;
 use anyhow::{bail, Context, Result};
 use control_plane::{
     plugin_management::{ready_current_node_plugin_installation, HostContributionGrantPolicy},
@@ -53,6 +55,10 @@ struct PreparedPackage {
 }
 
 pub(crate) struct ManagedExtensionComposition {
+    generation_publisher: std::sync::OnceLock<
+        std::sync::Weak<crate::managed_publication::ManagedGenerationPublisher>,
+    >,
+    reclamation: Arc<reclamation::ReclamationWorker>,
     store: MainDurableStore,
     node_id: String,
     backend: Arc<dyn RuntimeBackend>,
@@ -76,6 +82,8 @@ impl ManagedExtensionComposition {
     ) -> Self {
         let operations = store.new_managed_operation_lifetime();
         Self {
+            generation_publisher: Default::default(),
+            reclamation: Default::default(),
             store,
             node_id,
             backend,
@@ -102,10 +110,23 @@ impl ManagedExtensionComposition {
             .cloned()
     }
 
-    pub(crate) async fn rebuild_installation(&self, installation_id: Uuid) -> Result<()> {
-        let _operation = self
+    pub(crate) async fn rebuild_installation(
+        self: &Arc<Self>,
+        installation_id: Uuid,
+    ) -> Result<()> {
+        let operation = self
             .operations
             .admit(control_plane_contracts::ports::ManagedOwnedOperation::Candidate)?;
+        let owner = self.clone();
+        tokio::spawn(async move {
+            let _operation = operation;
+            owner.rebuild_installation_owned(installation_id).await
+        })
+        .await
+        .context("managed activation owner terminated")?
+    }
+
+    async fn rebuild_installation_owned(&self, installation_id: Uuid) -> Result<()> {
         let _assembly = self.assembly.lock().await;
         let previous_state = self.snapshots.lock().await.clone();
         let mut published = previous_state.current.clone();
@@ -128,12 +149,38 @@ impl ManagedExtensionComposition {
         if workspaces.is_empty() {
             bail!("managed installation requires a workspace assignment");
         }
+        let mut packages_by_scope = BTreeMap::new();
+        for workspace in workspaces {
+            packages_by_scope.insert(workspace, self.prepare_packages(workspace).await?);
+        }
+        let services = if self.publisher().is_some() {
+            self.candidate_services(
+                packages_by_scope
+                    .get(&domain::SYSTEM_SCOPE_ID)
+                    .map(Vec::as_slice),
+            )
+            .await?
+        } else {
+            Vec::new()
+        };
+        let interface_module = self
+            .publisher()
+            .map(|publisher| publisher.interface_module(&services))
+            .transpose()?;
+        let template_ids = if packages_by_scope.contains_key(&domain::SYSTEM_SCOPE_ID) {
+            services
+                .iter()
+                .map(|service| service.installation_id)
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut candidates = BTreeMap::new();
         let mut expected = BTreeMap::new();
         let mut new_handles = Vec::new();
         let result = async {
-            for workspace_id in workspaces {
-                let packages = self.prepare_packages(workspace_id).await?;
+            for (workspace_id, packages) in &packages_by_scope {
+                let workspace_id = *workspace_id;
                 let candidate = self
                     .prepare_snapshot(
                         workspace_id,
@@ -141,6 +188,7 @@ impl ManagedExtensionComposition {
                         &owned_handles,
                         &mut expected,
                         &mut new_handles,
+                        interface_module.as_ref(),
                     )
                     .await?;
                 candidates.insert(workspace_id, candidate);
@@ -162,30 +210,14 @@ impl ManagedExtensionComposition {
                     lease.release().await?;
                 }
             }
-            let removed = published
-                .iter()
-                .filter(|(workspace, _)| candidates.contains_key(workspace))
-                .flat_map(|(_, snapshot)| snapshot.bindings.values())
-                .filter(|binding| {
-                    !candidates.values().any(|candidate| {
-                        candidate
-                            .bindings
-                            .values()
-                            .any(|next| next.handle == binding.handle)
-                    })
-                })
-                .map(|binding| binding.handle.clone())
-                .collect::<Vec<_>>();
-            let drain = if removed.is_empty() {
-                None
-            } else {
-                Some(self.backend.drain_managed_contributions(&removed).await?)
-            };
-            if let Some(drain) = &drain {
-                tokio::time::timeout(std::time::Duration::from_secs(5), drain.wait_drained())
-                    .await
-                    .context("managed graph drain timed out; current graph retained")??;
-            }
+            let mut generation_snapshots = published.clone();
+            generation_snapshots.extend(candidates.clone());
+            let prepared_host = self
+                .prepare_host_generation(services, generation_snapshots)
+                .await?;
+            let permission_catalog = prepared_host
+                .as_ref()
+                .map(|(_, prepared)| prepared.permission_catalog.clone());
             let scopes = expected.keys().copied().collect::<Vec<_>>();
             let lease = self
                 .store
@@ -206,7 +238,10 @@ impl ManagedExtensionComposition {
                 published.insert(*workspace, candidate.clone());
             }
             let mut visible = self.snapshots.lock().await;
-            let original = visible.clone();
+
+            lease
+                .commit_managed_settings_templates(template_ids, permission_catalog)
+                .await?;
             for old in previous.values() {
                 if candidates
                     .values()
@@ -226,10 +261,11 @@ impl ManagedExtensionComposition {
                 }
             }
             visible.current = published.clone();
-            if let Err(error) = lease.release().await {
-                *visible = original;
-                return Err(error);
+            if let Some((publisher, prepared)) = prepared_host {
+                publisher.publish(prepared);
             }
+            drop(visible);
+            self.notify_reclamation();
             Ok::<_, anyhow::Error>(previous)
         }
         .await;
@@ -255,9 +291,10 @@ impl ManagedExtensionComposition {
         owned_handles: &[ManagedExecutionHandle],
         expected: &mut BTreeMap<(Uuid, Uuid), (i64, time::OffsetDateTime)>,
         new_handles: &mut Vec<ManagedExecutionHandle>,
+        interface_module: Option<&ModuleDescriptor>,
     ) -> Result<Arc<ManagedWorkspaceSnapshot>> {
         let mut modules = self.base_modules.clone();
-        if let Some(module) = self.interface_module.get() {
+        if let Some(module) = interface_module.or_else(|| self.interface_module.get()) {
             modules.push(module.clone());
         }
         let mut authority = ManagedGraphAuthority::new(self.policy.identity());
@@ -377,7 +414,11 @@ impl ManagedExtensionComposition {
                     })
             })
             .map(|snapshot| snapshot.lifetime.clone())
-            .unwrap_or_default();
+            .unwrap_or_else(|| {
+                Arc::new(SnapshotLifetime::with_reclamation_notify(
+                    self.reclamation.notify.clone(),
+                ))
+            });
         lifetime.ensure_open()?;
         let snapshot = Arc::new(ManagedWorkspaceSnapshot {
             lifetime,
@@ -621,6 +662,7 @@ impl ManagedExtensionComposition {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) async fn execute(
         &self,
         workspace_id: Uuid,
@@ -636,6 +678,30 @@ impl ManagedExtensionComposition {
             .snapshot(workspace_id)
             .await
             .context("managed workspace is not activated")?;
+        self.execute_snapshot(
+            snapshot,
+            workspace_id,
+            contribution_id,
+            principal,
+            config_payload,
+            input_payload,
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_snapshot(
+        &self,
+        snapshot: Arc<ManagedWorkspaceSnapshot>,
+        workspace_id: Uuid,
+        contribution_id: &ContributionId,
+        principal: RuntimeExecutionPrincipal,
+        config_payload: serde_json::Value,
+        input_payload: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        anyhow::ensure!(
+            principal.workspace_id == workspace_id.to_string(),
+            "managed execution workspace mismatch"
+        );
         let _execution_reference = snapshot.freeze_reference()?;
         let binding = snapshot
             .bindings
@@ -1177,9 +1243,6 @@ impl ManagedExtensionComposition {
         self.interface_module
             .set(module)
             .map_err(|_| anyhow::anyhow!("managed interface catalogue already frozen"))
-    }
-    pub(crate) fn interface_module(&self) -> Option<&ModuleDescriptor> {
-        self.interface_module.get()
     }
 }
 

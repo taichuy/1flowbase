@@ -19,6 +19,7 @@ pub(crate) struct MemoryPluginManagementRepository {
     js_dependencies: Arc<RwLock<Vec<domain::JsDependencyRegistryEntry>>>,
     frontend_blocks: Arc<RwLock<Vec<domain::FrontendBlockCatalogEntry>>>,
     audit_events: Arc<RwLock<Vec<String>>>,
+    fail_next_audit: Arc<RwLock<bool>>,
     artifact_snapshot_updates: Arc<RwLock<Vec<Uuid>>>,
     created_task_status_override: Arc<RwLock<Option<PluginTaskStatus>>>,
     fail_installation_catalog_commit: Arc<RwLock<bool>>,
@@ -50,6 +51,7 @@ impl MemoryPluginManagementRepository {
             js_dependencies: Arc::new(RwLock::new(Vec::new())),
             frontend_blocks: Arc::new(RwLock::new(Vec::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
+            fail_next_audit: Arc::new(RwLock::new(false)),
             artifact_snapshot_updates: Arc::new(RwLock::new(Vec::new())),
             created_task_status_override: Arc::new(RwLock::new(None)),
             fail_installation_catalog_commit: Arc::new(RwLock::new(false)),
@@ -78,6 +80,10 @@ impl MemoryPluginManagementRepository {
 
     pub(crate) async fn fail_worker_demand_query(&self) {
         *self.fail_worker_demand_query.write().await = true;
+    }
+
+    pub(crate) async fn fail_next_audit(&self) {
+        *self.fail_next_audit.write().await = true;
     }
 
     pub(crate) async fn audit_events(&self) -> Vec<String> {
@@ -472,6 +478,9 @@ impl AuthRepository for MemoryPluginManagementRepository {
     }
 
     async fn append_audit_log(&self, event: &AuditLogRecord) -> Result<()> {
+        if std::mem::take(&mut *self.fail_next_audit.write().await) {
+            anyhow::bail!("fixture audit write rejected");
+        }
         self.audit_events
             .write()
             .await
@@ -761,6 +770,27 @@ impl PluginRepository for MemoryPluginManagementRepository {
         installation.desired_state = input.desired_state;
         installation.updated_at = OffsetDateTime::now_utc();
         Ok(installation.clone())
+    }
+
+    async fn compare_restore_desired_state(
+        &self,
+        input: &control_plane_contracts::ports::CompareRestorePluginDesiredStateInput,
+    ) -> Result<bool> {
+        let mut installations = self.installations.write().await;
+        let Some(installation) = installations.get_mut(&input.installation_id) else {
+            return Ok(false);
+        };
+        if installation.updated_at != input.expected_updated_at
+            || installation.desired_state != input.expected_desired_state
+            || installation.category != ExtensionCategory::RuntimeExtensions
+            || installation.contract_version != "1flowbase.extension-bus/v1"
+        {
+            return Ok(false);
+        }
+        installation.desired_state = input.restore_desired_state;
+        installation.updated_by = Some(input.actor_user_id);
+        installation.updated_at = OffsetDateTime::now_utc();
+        Ok(true)
     }
 
     async fn upsert_artifact_instance(

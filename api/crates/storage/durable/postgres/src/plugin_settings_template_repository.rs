@@ -147,32 +147,46 @@ pub(crate) async fn apply_managed_at_startup(
     if !active {
         bail!("managed settings installation is not active");
     }
-    let installation = store
-        .get_installation(installation_id)
-        .await?
+    // Keep the locked read on this transaction; acquiring another pool connection can
+    // deadlock a single-connection pool and would read outside the application boundary.
+    let row = sqlx::query("select *, artifact_id as provider_code, artifact_version as plugin_version, receipt->>'legacy_manifest_compatibility' as legacy_manifest_compatibility from extension_installations where id=$1 and plugin_id is not null")
+        .bind(installation_id).fetch_optional(&mut *tx).await?
         .ok_or_else(|| anyhow::anyhow!("managed installation missing"))?;
+    let installation = crate::plugin_repository::map_installation(row)?;
+    apply_managed_in_transaction(&mut tx, &installation).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Selection and template publication share the caller's transaction during a version switch.
+pub(crate) async fn apply_managed_in_transaction(
+    connection: &mut PgConnection,
+    installation: &PluginInstallationRecord,
+) -> Result<()> {
+    let installation_id = installation.id;
     sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(format!(
             "managed-settings:{}:{}",
             installation.organization, installation.provider_code
         ))
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
-    let applied: bool = sqlx::query_scalar("select exists(select 1 from plugin_settings_template_applications where installation_id=$1 and managed_service)")
-        .bind(installation_id).fetch_one(&mut *tx).await?;
-    if !applied {
+    // Idempotence follows the latest family publication, not whether this installation
+    // appeared anywhere in history: a rollback must reapply its defaults as a new generation.
+    let applied: Option<Uuid> = sqlx::query_scalar("select installation_id from plugin_settings_template_applications where scope_id=$1 and category=$2 and organization=$3 and artifact_id=$4 and managed_service order by application_generation desc limit 1")
+        .bind(SYSTEM_SCOPE_ID).bind(installation.category.as_str()).bind(&installation.organization).bind(&installation.provider_code).fetch_optional(&mut *connection).await?;
+    if applied != Some(installation_id) {
         let generation: i64 = sqlx::query_scalar("select coalesce(max(application_generation),0)+1 from plugin_settings_template_applications where scope_id=$1 and category=$2 and organization=$3 and artifact_id=$4")
-            .bind(SYSTEM_SCOPE_ID).bind(installation.category.as_str()).bind(&installation.organization).bind(&installation.provider_code).fetch_one(&mut *tx).await?;
+            .bind(SYSTEM_SCOPE_ID).bind(installation.category.as_str()).bind(&installation.organization).bind(&installation.provider_code).fetch_one(&mut *connection).await?;
         apply_defaults(
-            &mut tx,
+            connection,
             &installation,
             &installation.provider_code,
             generation,
         )
         .await?;
         sqlx::query("insert into plugin_settings_template_applications(scope_id,category,organization,artifact_id,application_generation,installation_id,managed_service) values($1,$2,$3,$4,$5,$6,true)")
-            .bind(SYSTEM_SCOPE_ID).bind(installation.category.as_str()).bind(&installation.organization).bind(&installation.provider_code).bind(generation).bind(installation_id).execute(&mut *tx).await?;
+            .bind(SYSTEM_SCOPE_ID).bind(installation.category.as_str()).bind(&installation.organization).bind(&installation.provider_code).bind(generation).bind(installation_id).execute(&mut *connection).await?;
     }
-    tx.commit().await?;
     Ok(())
 }

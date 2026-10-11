@@ -3,7 +3,11 @@ use super::*;
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
-pub(super) struct SnapshotLifetime(Mutex<LifetimeState>, tokio::sync::Notify);
+pub(super) struct SnapshotLifetime(
+    Mutex<LifetimeState>,
+    tokio::sync::Notify,
+    Option<Arc<tokio::sync::Notify>>,
+);
 #[derive(Default)]
 struct LifetimeState {
     references: usize,
@@ -12,6 +16,9 @@ struct LifetimeState {
 }
 pub(crate) struct SnapshotReference(Arc<SnapshotLifetime>);
 impl SnapshotLifetime {
+    pub(super) fn with_reclamation_notify(notify: Arc<tokio::sync::Notify>) -> Self {
+        Self(Mutex::default(), tokio::sync::Notify::new(), Some(notify))
+    }
     pub(super) fn close_for_shutdown(&self) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).closed = true;
     }
@@ -72,6 +79,9 @@ impl Drop for SnapshotReference {
             .unwrap_or_else(|e| e.into_inner())
             .references -= 1;
         self.0 .1.notify_waiters();
+        if let Some(notify) = &self.0 .2 {
+            notify.notify_one();
+        }
     }
 }
 pub(super) struct SnapshotRetirement(Arc<SnapshotLifetime>);
@@ -125,12 +135,15 @@ impl ManagedWorkspaceSnapshot {
 
 impl ManagedExtensionComposition {
     pub(crate) fn close_owned_admission(&self) {
+        self.reclamation.stop();
         self.operations.close();
     }
     pub(crate) async fn wait_owned_shutdown(&self, budget: std::time::Duration) -> Result<()> {
+        self.reclamation.wait_stopped(budget).await?;
         self.operations.wait(budget).await
     }
     pub(crate) async fn wait_for_shutdown(&self, budget: std::time::Duration) -> Result<()> {
+        self.reclamation.wait_stopped(budget).await?;
         self.operations.wait(budget).await?;
         // Assembly completes before graph gates close; admitted Create/E2 references may finish.
         let lifetimes = {

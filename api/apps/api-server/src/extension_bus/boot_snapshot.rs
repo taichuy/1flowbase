@@ -1,4 +1,7 @@
-use std::sync::{Arc, OnceLock};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, OnceLock},
+};
 
 use plugin_framework::extension_bus::{
     ContributionResolutionReceipt, EffectiveExtensionGraph, EffectiveExtensionPoint, ModuleId,
@@ -19,7 +22,8 @@ pub struct ExtensionBootSnapshot {
     managed_composition: OnceLock<Arc<super::ManagedExtensionComposition>>,
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
-    authentication_factories: AuthenticationAdapterFactoryRegistry,
+    authentication_factories: Arc<AuthenticationAdapterFactoryRegistry>,
+    managed_snapshots: OnceLock<BTreeMap<uuid::Uuid, Arc<super::ManagedWorkspaceSnapshot>>>,
     external_endpoint_catalog:
         OnceLock<Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>>,
     console_operation_snapshot:
@@ -58,13 +62,63 @@ impl ExtensionBootSnapshot {
             .set(composition)
             .map_err(|_| anyhow::anyhow!("managed composition already attached"))
     }
+    /// A host generation owns a separate registry and projections, but keeps the boot-scoped
+    /// native graph and activated authentication factories unchanged.
+    pub(crate) fn fork_generation(
+        &self,
+        snapshots: BTreeMap<uuid::Uuid, Arc<super::ManagedWorkspaceSnapshot>>,
+    ) -> anyhow::Result<Self> {
+        let registry = interface_runtime::RegistryCompiler::new(
+            interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
+            [],
+            [],
+        )
+        .compile()?;
+        let fork = Self {
+            managed_composition: OnceLock::new(),
+            graph: self.graph.clone(),
+            interface_registry: Some(Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
+                registry,
+            ))),
+            authentication_factories: self.authentication_factories.clone(),
+            managed_snapshots: OnceLock::new(),
+            external_endpoint_catalog: OnceLock::new(),
+            console_operation_snapshot: OnceLock::new(),
+        };
+        fork.set_pinned_managed_snapshots(snapshots)?;
+        Ok(fork)
+    }
+
+    pub(crate) fn set_pinned_managed_snapshots(
+        &self,
+        snapshots: BTreeMap<uuid::Uuid, Arc<super::ManagedWorkspaceSnapshot>>,
+    ) -> anyhow::Result<()> {
+        self.managed_snapshots
+            .set(snapshots)
+            .map_err(|_| anyhow::anyhow!("managed snapshots already pinned"))
+    }
+
+    pub(crate) fn has_pinned_managed_snapshots(&self) -> bool {
+        self.managed_snapshots.get().is_some()
+    }
+
+    pub(crate) fn managed_snapshot(
+        &self,
+        workspace_id: uuid::Uuid,
+    ) -> Option<Arc<super::ManagedWorkspaceSnapshot>> {
+        self.managed_snapshots.get()?.get(&workspace_id).cloned()
+    }
+
     #[cfg(test)]
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self {
             graph,
             interface_registry: None,
-            authentication_factories: AuthenticationAdapterFactoryRegistry::built_in()
-                .expect("built-in authentication factories must be valid"),
+            authentication_factories: Arc::new(
+                AuthenticationAdapterFactoryRegistry::built_in()
+                    .expect("built-in authentication factories must be valid"),
+            ),
+            managed_snapshots: OnceLock::new(),
             managed_composition: OnceLock::new(),
             external_endpoint_catalog: OnceLock::new(),
             console_operation_snapshot: OnceLock::new(),
@@ -93,7 +147,8 @@ impl ExtensionBootSnapshot {
         Ok(Self {
             graph,
             interface_registry: Some(interface_registry),
-            authentication_factories,
+            authentication_factories: Arc::new(authentication_factories),
+            managed_snapshots: OnceLock::new(),
             managed_composition: OnceLock::new(),
             external_endpoint_catalog: OnceLock::new(),
             console_operation_snapshot: OnceLock::new(),
@@ -169,8 +224,10 @@ impl ExtensionBootSnapshot {
                 .definitions()
                 .map(|definition| definition.interface_id().as_str()),
         )?;
-        if let Ok(composition) = state.provider_runtime.managed_composition() {
-            composition.attach_interface_module(module)?;
+        if !self.has_pinned_managed_snapshots() {
+            if let Ok(composition) = state.provider_runtime.managed_composition() {
+                composition.attach_interface_module(module)?;
+            }
         }
         self.authentication_factories
             .validate_registry(&candidate)?;

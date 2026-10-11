@@ -146,7 +146,7 @@ fn grant(phase: &str) -> GrantContributionPermission {
     }
 }
 impl Fixture {
-    async fn new() -> Self {
+    pub(super) async fn new() -> Self {
         Self::new_with_package(package(), PHASES.into_iter().map(grant).collect()).await
     }
     pub(super) async fn new_with_package(

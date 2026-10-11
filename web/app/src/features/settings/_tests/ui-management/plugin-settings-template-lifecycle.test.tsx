@@ -123,21 +123,18 @@ const page = {
   applied_plugin_version: '1.0.0',
   overwrite_on_plugin_upgrade: true
 };
-function renderSurface(children: import('react').ReactNode) {
+function renderSurface(
+  children: import('react').ReactNode,
+  client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false }
+    }
+  })
+) {
   return render(
     <App>
-      <QueryClientProvider
-        client={
-          new QueryClient({
-            defaultOptions: {
-              queries: { retry: false },
-              mutations: { retry: false }
-            }
-          })
-        }
-      >
-        {children}
-      </QueryClientProvider>
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
     </App>
   );
 }
@@ -269,7 +266,9 @@ describe('AC-009/012 plugin settings published page', () => {
     });
     renderPage();
     await screen.findByRole('alert');
-    expect(screen.queryByTestId('plugin-settings-page')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('plugin-settings-page')
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText('export default function broken({')
     ).not.toBeInTheDocument();
@@ -305,6 +304,148 @@ describe('AC-012/014 template editor and formal activation entry', () => {
   });
   afterEach(() => {
     resetAuthStore();
+  });
+
+  test('AC-007 refreshes an open managed page and template catalogue after activation without replacing the editor draft', async () => {
+    const upgradedSource =
+      'export default function Settings() { return <h1>Upgraded preferences</h1>; }';
+    const template = {
+      id: page.template_id,
+      provider_code: page.provider_code,
+      contribution_code: page.contribution_code,
+      name: 'Acme preferences',
+      latest_revision: {
+        revision: 2,
+        source: page.source,
+        language: 'tsx',
+        is_published: true
+      },
+      published_revision: {
+        revision: 2,
+        source: page.source,
+        language: 'tsx',
+        is_published: true
+      },
+      is_default: false,
+      owner_plugin_code: 'acme',
+      owner_feature_id: page.feature_id,
+      applied_plugin_version: '1.0.0',
+      overwrite_on_plugin_upgrade: true
+    };
+    const installed = {
+      id: 'installation-2',
+      category: 'runtime-extensions',
+      catalog_id: 'runtime-extensions:acme/preferences',
+      organization: 'acme',
+      artifact_id: 'preferences',
+      version: '2.0.0',
+      node_id: 'node-1',
+      source_kind: 'local',
+      trust_level: 'trusted_managed',
+      warnings: [],
+      status: 'installed',
+      is_current: true,
+      desired_state: 'disabled',
+      runtime_status: 'inactive',
+      availability_status: 'disabled',
+      application_action: 'none',
+      application_status: 'not_required',
+      installed_versions: [],
+      created_by: 'user-1',
+      created_at: '',
+      updated_at: ''
+    };
+    api.fetchConsolePluginSettingsPage.mockResolvedValue(page);
+    api.fetchConsoleUiTemplates.mockResolvedValue({
+      official: [],
+      default_template: null,
+      managed: [template]
+    });
+    api.listConsoleInstalledExtensions.mockResolvedValue({
+      entries: [installed],
+      total_entries: 1,
+      limit: 20,
+      next_cursor: null
+    });
+    api.enableConsoleInstalledExtension.mockImplementation(async () => {
+      api.fetchConsolePluginSettingsPage.mockResolvedValue({
+        ...page,
+        applied_plugin_version: '2.0.0',
+        source: upgradedSource
+      });
+      const revision = {
+        ...template.latest_revision,
+        revision: 3,
+        source: upgradedSource
+      };
+      api.fetchConsoleUiTemplates.mockResolvedValue({
+        official: [],
+        default_template: null,
+        managed: [
+          {
+            ...template,
+            applied_plugin_version: '2.0.0',
+            latest_revision: revision,
+            published_revision: revision
+          }
+        ]
+      });
+      return { id: 'enable-task', status: 'completed' };
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } }
+    });
+    const inactiveKeys = [
+      ['settings', 'console-navigation'],
+      ['settings', 'console-policy-catalog', 'en_US'],
+      ['settings', 'docs', 'operation', 'acme.preferences.get', 'openapi'],
+      ['settings', 'mcp-management', 'interface-capabilities'],
+      ['settings', 'plugin-settings-page', 'plugin.acme.other']
+    ];
+    for (const key of inactiveKeys)
+      client.setQueryData(key, { version: '1.0.0' });
+    renderSurface(
+      <>
+        <SettingsExtensionCenterSection category="installed" />
+        <PluginSettingsPage route_id={page.route_id} />
+        <CodeTemplatesTab canManage />
+      </>,
+      client
+    );
+    const activation = await screen.findByRole('switch', {
+      name: /preferences/
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('plugin-settings-page').shadowRoot?.textContent
+      ).toContain('Published preferences')
+    );
+    const row = await screen.findByRole('row', { name: /Acme preferences/ });
+    fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+    const draftSource = 'export default () => <p>Unsaved local draft</p>';
+    fireEvent.change(screen.getByRole('textbox', { name: 'Template source' }), {
+      target: { value: draftSource }
+    });
+    fireEvent.click(activation);
+    await waitFor(() =>
+      expect(api.enableConsoleInstalledExtension).toHaveBeenCalledWith(
+        'installation-2',
+        'csrf-123'
+      )
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('plugin-settings-page').shadowRoot?.textContent
+      ).toContain('Upgraded preferences')
+    );
+    await waitFor(() => expect(row).toHaveTextContent('r3'));
+    expect(
+      screen.getByRole('textbox', { name: 'Template source' })
+    ).toHaveValue(draftSource);
+    expect(api.updateConsoleUiTemplate).not.toHaveBeenCalled();
+    for (const key of inactiveKeys) {
+      expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    }
   });
 
   test.each(['en_US', 'zh_Hans'])(
@@ -529,9 +670,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
         next_cursor: null
       });
       renderSurface(<SettingsExtensionCenterSection category="installed" />);
-      expect(await screen.findByTestId('plugin-runtime-status')).toHaveTextContent(
-        label
-      );
+      expect(
+        await screen.findByTestId('plugin-runtime-status')
+      ).toHaveTextContent(label);
     }
   );
 

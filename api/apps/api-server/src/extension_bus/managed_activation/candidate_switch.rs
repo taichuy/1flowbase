@@ -104,6 +104,18 @@ impl ManagedExtensionComposition {
             self.prepare_package(target_installation, target_authority)
                 .await?,
         );
+        let services = if self.publisher().is_some() {
+            self.candidate_services(
+                (workspace_id == domain::SYSTEM_SCOPE_ID).then_some(packages.as_slice()),
+            )
+            .await?
+        } else {
+            Vec::new()
+        };
+        let interface_module = self
+            .publisher()
+            .map(|publisher| publisher.interface_module(&services))
+            .transpose()?;
         let mut handles = Vec::new();
         let switched = async {
             let mut candidate_expected = BTreeMap::new();
@@ -114,6 +126,7 @@ impl ManagedExtensionComposition {
                     &owned,
                     &mut candidate_expected,
                     &mut handles,
+                    interface_module.as_ref(),
                 )
                 .await?;
             for (id, facts) in candidate_expected {
@@ -121,28 +134,20 @@ impl ManagedExtensionComposition {
                     bail!("managed candidate changed during preparation");
                 }
             }
-            let affected = owned
-                .iter()
-                .filter(|handle| {
-                    handle.identity().installation_id().as_str() == current.to_string()
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-            if affected.is_empty() {
-                bail!("managed source has no current executable bindings");
-            }
-            // The reversible runtime gate is independent of authority locks. Already admitted
-            // event effects can acquire their final grant lease and finish while we drain.
-            let drain = self.backend.drain_managed_contributions(&affected).await?;
-            tokio::time::timeout(std::time::Duration::from_secs(5), drain.wait_drained())
-                .await
-                .context("managed upgrade drain timed out; current graph retained")??;
+            let mut generation_snapshots = self.current_snapshots().await;
+            generation_snapshots.insert(workspace_id, candidate.clone());
+            let prepared_host = self
+                .prepare_host_generation(services, generation_snapshots)
+                .await?;
+            let permission_catalog = prepared_host
+                .as_ref()
+                .map(|(_, prepared)| prepared.permission_catalog.clone());
             let lease = self.store.lock_managed_installation_switch(&input).await?;
             Self::validate_candidate(&expected, lease.authority())?;
             let mut visible = self.snapshots.lock().await;
-            // All fallible compilation/activation/drain work precedes this short durable commit.
+            // All fallible compilation and activation precedes this durable commit.
             // The owned task cannot be cancelled by a dropped request while committing.
-            lease.commit(audit).await?;
+            lease.commit_with_catalog(audit, permission_catalog).await?;
             let retained = visible
                 .retained
                 .entry(old.graph.fingerprint().as_str().into())
@@ -151,8 +156,11 @@ impl ManagedExtensionComposition {
                 retained.push(old.clone());
             }
             visible.current.insert(workspace_id, candidate);
+            if let Some((publisher, prepared)) = prepared_host {
+                publisher.publish(prepared);
+            }
             drop(visible);
-            drop(drain);
+            self.notify_reclamation();
             Ok::<_, anyhow::Error>(())
         }
         .await;

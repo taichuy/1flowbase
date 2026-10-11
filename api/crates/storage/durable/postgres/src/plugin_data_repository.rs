@@ -262,28 +262,42 @@ async fn resolve_target(
     owner_version: &str,
     target: &PluginDataTarget,
 ) -> Result<ResolvedTarget, PluginDataError> {
+    // A package version owns a fixed logical projection. Reconciliation of another version
+    // may retain its physical columns without making those columns visible to the new version.
+    // Family deactivation still revokes access; managed callers also hold current authority.
+    let active: bool = sqlx::query_scalar(
+        "select exists(select 1 from plugin_schema_ownership where owner_id=$1 and active)",
+    )
+    .bind(owner_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(storage_error)?;
+    if !active {
+        return Err(ownership_error("plugin_data_collection_ownership"));
+    }
     let (table, owned_collection) = match target {
         PluginDataTarget::OwnedCollection { collection_code } => {
             let row = sqlx::query(
-                "select physical_table, owner_version from plugin_schema_ownership where owner_id = $1 and object_kind = $2 and logical_name = $3 and active = true",
+                "select o.physical_table from plugin_schema_ownership o join plugin_schema_version_objects v on v.owner_id=o.owner_id and v.ownership_key=o.ownership_key where o.owner_id=$1 and o.object_kind=$2 and o.logical_name=$3 and v.owner_version=$4",
             )
             .bind(owner_id)
             .bind(OWNED_COLLECTION)
             .bind(collection_code)
+            .bind(owner_version)
             .fetch_optional(&mut **transaction)
             .await
             .map_err(storage_error)?
             .ok_or_else(|| ownership_error("plugin_data_collection_ownership"))?;
-            require_version(&row, owner_version)?;
             (row.try_get("physical_table").map_err(storage_error)?, true)
         }
         PluginDataTarget::ExtensionProjection { target_table } => {
             let exists = sqlx::query_scalar::<_, bool>(
-                "select exists(select 1 from plugin_schema_ownership where owner_id = $1 and object_kind = $2 and physical_table = $3 and active = true)",
+                "select exists(select 1 from plugin_schema_ownership o join plugin_schema_version_objects v on v.owner_id=o.owner_id and v.ownership_key=o.ownership_key where o.owner_id=$1 and o.object_kind=$2 and o.physical_table=$3 and v.owner_version=$4)",
             )
             .bind(owner_id)
             .bind(EXTENSION_FIELD)
             .bind(target_table)
+            .bind(owner_version)
             .fetch_one(&mut **transaction)
             .await
             .map_err(storage_error)?;
@@ -295,11 +309,12 @@ async fn resolve_target(
     };
 
     let rows = sqlx::query(
-        "select logical_name, physical_column, field_type, owner_version from plugin_schema_ownership where owner_id = $1 and physical_table = $2 and object_kind = $3 and active = true order by logical_name",
+        "select o.logical_name, o.physical_column, o.field_type from plugin_schema_ownership o join plugin_schema_version_objects v on v.owner_id=o.owner_id and v.ownership_key=o.ownership_key where o.owner_id=$1 and o.physical_table=$2 and o.object_kind=$3 and v.owner_version=$4 order by o.logical_name",
     )
     .bind(owner_id)
     .bind(&table)
     .bind(if owned_collection { OWNED_FIELD } else { EXTENSION_FIELD })
+    .bind(owner_version)
     .fetch_all(&mut **transaction)
     .await
     .map_err(storage_error)?;
@@ -328,7 +343,6 @@ async fn resolve_target(
         );
     }
     for row in rows {
-        require_version(&row, owner_version)?;
         let stored_name: String = row.try_get("logical_name").map_err(storage_error)?;
         let logical = if owned_collection {
             stored_name
@@ -351,14 +365,6 @@ async fn resolve_target(
         owned_collection,
         fields,
     })
-}
-
-fn require_version(row: &PgRow, expected: &str) -> Result<(), PluginDataError> {
-    let actual: String = row.try_get("owner_version").map_err(storage_error)?;
-    if actual != expected {
-        return Err(ownership_error("plugin_data_owner_version"));
-    }
-    Ok(())
 }
 
 fn require_owned(target: &ResolvedTarget, code: &'static str) -> Result<(), PluginDataError> {

@@ -109,15 +109,34 @@ pub(crate) async fn load(
     store: &MainDurableStore,
     node_id: &str,
 ) -> Result<Vec<ManagedServiceRegistration>> {
+    let installations = store
+        .list_installations()
+        .await?
+        .into_iter()
+        .filter(|installation| {
+            installation.desired_state == domain::PluginDesiredState::ActiveRequested
+                && domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                    == domain::SYSTEM_SCOPE_ID
+        })
+        .collect::<Vec<_>>();
+    let registrations = load_installations(store, node_id, &installations).await?;
+    for registration in &registrations {
+        store
+            .apply_managed_plugin_settings_templates(registration.installation_id)
+            .await?;
+    }
+    Ok(registrations)
+}
+
+/// Pure candidate loading. No published template or durable selection changes during preparation.
+pub(crate) async fn load_installations(
+    store: &MainDurableStore,
+    node_id: &str,
+    installations: &[domain::PluginInstallationRecord],
+) -> Result<Vec<ManagedServiceRegistration>> {
     let mut registrations = Vec::new();
     let mut owners = std::collections::BTreeSet::new();
-    for installation in store.list_installations().await? {
-        if installation.desired_state != domain::PluginDesiredState::ActiveRequested
-            || domain::managed_installation_scope(&installation, domain::DEFAULT_SCOPE_ID)
-                != domain::SYSTEM_SCOPE_ID
-        {
-            continue;
-        }
+    for installation in installations {
         let local = control_plane::plugin_management::ready_current_node_plugin_installation(
             store,
             node_id,
@@ -145,9 +164,6 @@ pub(crate) async fn load(
         for page in &manifest.settings_pages {
             plugin_framework::read_plugin_settings_page_source(root, page)?;
         }
-        store
-            .apply_managed_plugin_settings_templates(installation.id)
-            .await?;
         registrations.push(ManagedServiceRegistration {
             installation_id: installation.id,
             plugin_code: code,

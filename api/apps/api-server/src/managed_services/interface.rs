@@ -107,10 +107,15 @@ impl Adapter {
                 None
             };
             let composition = state.provider_runtime.managed_composition()?;
-            let snapshot = composition
-                .snapshot(domain::SYSTEM_SCOPE_ID)
-                .await
-                .ok_or(Error::Conflict("managed_service_inactive"))?;
+            let snapshot = match state
+                .extension_boot_snapshot
+                .as_ref()
+                .filter(|boot| boot.has_pinned_managed_snapshots())
+            {
+                Some(boot) => boot.managed_snapshot(domain::SYSTEM_SCOPE_ID),
+                None => composition.snapshot(domain::SYSTEM_SCOPE_ID).await,
+            }
+            .ok_or(Error::Conflict("managed_service_inactive"))?;
             let contribution_id = plugin_framework::extension_bus::ContributionId::new(
                 &op.declaration.contribution_id,
             )?;
@@ -121,10 +126,11 @@ impl Adapter {
             if binding.handle.identity().installation_id().as_str()
                 != self.registration.installation_id.to_string()
             {
-                return Err(Error::Conflict("managed_service_restart_required").into());
+                return Err(Error::Conflict("managed_service_generation_mismatch").into());
             }
             let output = composition
-                .execute(
+                .execute_snapshot(
+                    snapshot.clone(),
                     domain::SYSTEM_SCOPE_ID,
                     &contribution_id,
                     runtime_core::runtime_backend::RuntimeExecutionPrincipal {

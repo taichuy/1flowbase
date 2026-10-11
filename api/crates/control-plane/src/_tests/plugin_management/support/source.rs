@@ -3,14 +3,26 @@ use super::*;
 
 type WorkerDemand = (Uuid, u64, Option<bool>);
 
+struct ActivationFailure {
+    concurrent_update: Option<(MemoryPluginManagementRepository, PluginDesiredState)>,
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct MemoryProviderRuntime {
     loaded_installations: Arc<RwLock<Vec<Uuid>>>,
     unloaded_installations: Arc<RwLock<Vec<Uuid>>>,
     worker_demands: Arc<RwLock<Vec<WorkerDemand>>>,
+    activation_failure: Arc<RwLock<Option<ActivationFailure>>>,
 }
 
 impl MemoryProviderRuntime {
+    pub(crate) async fn fail_activation(
+        &self,
+        concurrent_update: Option<(MemoryPluginManagementRepository, PluginDesiredState)>,
+    ) {
+        *self.activation_failure.write().await = Some(ActivationFailure { concurrent_update });
+    }
+
     pub(crate) async fn worker_demands(&self) -> Vec<WorkerDemand> {
         self.worker_demands.read().await.clone()
     }
@@ -174,6 +186,22 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
             .await
             .push((installation.id, revision, selectable));
         Ok(())
+    }
+
+    async fn activate_plugin(&self, installation: &LocalPluginInstallationRecord) -> Result<()> {
+        if let Some(failure) = self.activation_failure.write().await.take() {
+            if let Some((repository, desired_state)) = failure.concurrent_update {
+                repository
+                    .update_desired_state(&UpdatePluginDesiredStateInput {
+                        installation_id: installation.id,
+                        desired_state,
+                        actor_user_id: repository.actor.user_id,
+                    })
+                    .await?;
+            }
+            anyhow::bail!("fixture managed candidate rejected");
+        }
+        self.ensure_loaded(installation).await
     }
 
     async fn deactivate_plugin(

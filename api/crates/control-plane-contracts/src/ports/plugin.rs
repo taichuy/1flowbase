@@ -113,6 +113,16 @@ pub struct UpdatePluginDesiredStateInput {
     pub actor_user_id: Uuid,
 }
 
+/// Activation failure may restore only the desired-state write made by that activation.
+#[derive(Debug, Clone)]
+pub struct CompareRestorePluginDesiredStateInput {
+    pub installation_id: Uuid,
+    pub expected_updated_at: time::OffsetDateTime,
+    pub expected_desired_state: domain::PluginDesiredState,
+    pub restore_desired_state: domain::PluginDesiredState,
+    pub actor_user_id: Uuid,
+}
+
 #[derive(Debug, Clone)]
 pub struct UpsertPluginArtifactInstanceInput {
     pub node_id: String,
@@ -384,6 +394,14 @@ pub trait PluginRepository: Send + Sync {
         &self,
         input: &UpdatePluginDesiredStateInput,
     ) -> anyhow::Result<domain::PluginInstallationRecord>;
+    /// Restore a rejected managed runtime activation only while its revision still owns selection.
+    /// False means a newer selection or installation change must remain untouched.
+    async fn compare_restore_desired_state(
+        &self,
+        _input: &CompareRestorePluginDesiredStateInput,
+    ) -> anyhow::Result<bool> {
+        anyhow::bail!("conditional managed desired-state restoration is not configured")
+    }
     async fn upsert_artifact_instance(
         &self,
         input: &UpsertPluginArtifactInstanceInput,

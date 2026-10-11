@@ -62,12 +62,12 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
         })
     }
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    let composition = ManagedExtensionComposition::new(
+    let composition = Arc::new(ManagedExtensionComposition::new(
         state.store.clone(),
         state.api_node_id.clone(),
         state.provider_runtime.runtime_backend().clone(),
         vec![],
-    );
+    ));
     let workspace: Uuid = sqlx::query_scalar("select id from workspaces limit 1")
         .fetch_one(state.store.pool())
         .await
@@ -98,7 +98,14 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
     }
     // Exercise actual candidate preparation beyond all previous host cardinality ceilings.
     composition
-        .prepare_snapshot(workspace, &[], &[], &mut BTreeMap::new(), &mut Vec::new())
+        .prepare_snapshot(
+            workspace,
+            &[],
+            &[],
+            &mut BTreeMap::new(),
+            &mut Vec::new(),
+            None,
+        )
         .await
         .unwrap();
     composition
@@ -120,7 +127,14 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
     assert!(retirement.ensure_unreferenced().is_err());
     assert!(
         composition
-            .prepare_snapshot(workspace, &[], &[], &mut BTreeMap::new(), &mut Vec::new())
+            .prepare_snapshot(
+                workspace,
+                &[],
+                &[],
+                &mut BTreeMap::new(),
+                &mut Vec::new(),
+                None
+            )
             .await
             .is_err(),
         "a closing exact snapshot cannot be rebuilt"
@@ -131,7 +145,14 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
     drop(retirement);
     assert!(
         composition
-            .prepare_snapshot(workspace, &[], &[], &mut BTreeMap::new(), &mut Vec::new())
+            .prepare_snapshot(
+                workspace,
+                &[],
+                &[],
+                &mut BTreeMap::new(),
+                &mut Vec::new(),
+                None
+            )
             .await
             .is_err(),
         "a retired exact snapshot cannot be rebuilt"
@@ -179,4 +200,76 @@ fn root_2325_reference_overflow_preserves_count_and_recoverable_close() {
     closing.retire();
     drop(closing);
     assert!(lifetime.acquire().is_err());
+}
+
+#[tokio::test]
+async fn hot_lifecycle_reference_release_retains_reclamation_wakeup() {
+    let notify = Arc::new(tokio::sync::Notify::new());
+    let lifetime = Arc::new(SnapshotLifetime::with_reclamation_notify(notify.clone()));
+    let reference = lifetime.acquire().unwrap();
+    drop(reference);
+    // The drop precedes registration: notify_waiters would lose this required retry.
+    tokio::time::timeout(std::time::Duration::from_secs(1), notify.notified())
+        .await
+        .unwrap();
+    assert_eq!(lifetime.reference_count(), 0);
+}
+
+#[tokio::test]
+async fn hot_lifecycle_automatic_reclamation_retries_after_reference_release() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let composition = Arc::new(ManagedExtensionComposition::new(
+        state.store.clone(),
+        state.api_node_id.clone(),
+        state.provider_runtime.runtime_backend().clone(),
+        vec![],
+    ));
+    let make_snapshot = |name: &str| {
+        Arc::new(ManagedWorkspaceSnapshot {
+            lifetime: Arc::new(SnapshotLifetime::with_reclamation_notify(
+                composition.reclamation.notify.clone(),
+            )),
+            graph: Arc::new(EffectiveExtensionGraph::new(
+                ExtensionBusVersion::V1,
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                ExtensionGraphFingerprint::new(name.to_owned()),
+            )),
+            authority: ManagedGraphAuthority::new("fixture-policy".into()),
+            bindings: BTreeMap::new(),
+            lifecycle_plan: None,
+        })
+    };
+    let retained = make_snapshot("retained");
+    let current = make_snapshot("current");
+    let reference = retained.freeze_reference().unwrap();
+    {
+        let mut snapshots = composition.snapshots.lock().await;
+        snapshots
+            .retained
+            .insert("retained".into(), vec![retained.clone()]);
+        snapshots.current.insert(Uuid::now_v7(), current.clone());
+    }
+    // Deterministically prove a sweep protects the reference before starting its worker.
+    composition.reclaim_retained_snapshots().await;
+    assert_eq!(composition.snapshots.lock().await.retained.len(), 1);
+    composition.start_reclamation();
+    drop(reference);
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !composition.snapshots.lock().await.retained.is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(retained.freeze_reference().is_err());
+    assert!(current.freeze_reference().is_ok());
+    composition.close_owned_admission();
+    composition
+        .wait_owned_shutdown(std::time::Duration::from_secs(5))
+        .await
+        .unwrap();
 }

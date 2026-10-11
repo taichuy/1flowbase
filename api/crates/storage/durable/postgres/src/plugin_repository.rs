@@ -129,6 +129,22 @@ fn map_catalog_projection(
     })
 }
 
+async fn lock_managed_desired_state_scopes(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    installation_id: Uuid,
+) -> Result<()> {
+    let workspaces: Vec<Uuid> = sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 union select workspace_id from plugin_assignments where installation_id=$1 union select '00000000-0000-0000-0000-000000000000'::uuid from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}' = 'system' order by workspace_id")
+        .bind(installation_id).fetch_all(&mut **transaction).await?;
+    for workspace in workspaces {
+        crate::plugin_contribution_authority_repository::lock_managed_workspace(
+            transaction,
+            workspace,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl PluginRepository for PgControlPlaneStore {
     async fn apply_managed_plugin_settings_templates(&self, installation_id: Uuid) -> Result<()> {
@@ -599,15 +615,7 @@ impl PluginRepository for PgControlPlaneStore {
             return crate::native_plugin_target_repository::update_desired_state(self, input).await;
         }
         let mut transaction = self.pool().begin().await?;
-        let workspaces: Vec<Uuid> = sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 union select workspace_id from plugin_assignments where installation_id=$1 order by workspace_id")
-            .bind(input.installation_id).fetch_all(&mut *transaction).await?;
-        for workspace in workspaces {
-            crate::plugin_contribution_authority_repository::lock_managed_workspace(
-                &mut transaction,
-                workspace,
-            )
-            .await?;
-        }
+        lock_managed_desired_state_scopes(&mut transaction, input.installation_id).await?;
         let row = sqlx::query(
             r#"
             update extension_installations
@@ -668,6 +676,30 @@ impl PluginRepository for PgControlPlaneStore {
         }
         transaction.commit().await?;
         Ok(installation)
+    }
+
+    async fn compare_restore_desired_state(
+        &self,
+        input: &control_plane_contracts::ports::CompareRestorePluginDesiredStateInput,
+    ) -> Result<bool> {
+        let mut transaction = self.pool().begin().await?;
+        lock_managed_desired_state_scopes(&mut transaction, input.installation_id).await?;
+        let changed = sqlx::query("update extension_installations set desired_state=$4,updated_by=$5,updated_at=now() where id=$1 and updated_at=$2 and desired_state=$3 and category='runtime-extensions' and contract_version='1flowbase.extension-bus/v1'")
+            .bind(input.installation_id).bind(input.expected_updated_at)
+            .bind(input.expected_desired_state.as_str()).bind(input.restore_desired_state.as_str())
+            .bind(input.actor_user_id).execute(&mut *transaction).await?.rows_affected() == 1;
+        if changed && input.restore_desired_state == domain::PluginDesiredState::Disabled {
+            crate::lifecycle_outbox_repository::pause_managed_installation_deliveries(
+                &mut transaction,
+                input.installation_id,
+                None,
+                None,
+                control_plane_contracts::ports::LifecycleDeliveryPauseReason::InstallationInactive,
+            )
+            .await?;
+        }
+        transaction.commit().await?;
+        Ok(changed)
     }
 
     async fn upsert_artifact_instance(

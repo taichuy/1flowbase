@@ -124,3 +124,5 @@ fn business_failures_expose_only_classification_codes() {
     ));
     assert!(ManagedServiceFailure::from_runtime(&raw).is_none());
 }
+
+mod hot_generation;

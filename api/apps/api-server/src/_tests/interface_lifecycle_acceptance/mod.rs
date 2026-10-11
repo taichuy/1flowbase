@@ -6,3 +6,5 @@ mod managed_create_pair;
 mod managed_projection;
 
 mod managed_interfaces;
+
+mod managed_service_coexistence;

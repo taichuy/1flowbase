@@ -402,7 +402,7 @@ mod tests {
         let dispatcher = control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
             store.clone(),
             Arc::new(delivery),
-            Arc::new(crate::ApiLifecycleDeliveryCompletion),
+            Arc::new(crate::ApiLifecycleDeliveryCompletion::default()),
         );
         assert_eq!(dispatcher.run_once().await.unwrap(), 2);
         assert_eq!(

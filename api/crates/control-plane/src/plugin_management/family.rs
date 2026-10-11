@@ -199,12 +199,37 @@ where
                         runtime_installation.installation.clone()
                     }
                     Err(error) => {
-                        self.mark_current_node_runtime_status(
-                            &runtime_installation,
-                            domain::PluginRuntimeStatus::LoadFailed,
-                            Some(error.to_string()),
-                        )
-                        .await?;
+                        let managed = installation.category == domain::ExtensionCategory::RuntimeExtensions
+                            && installation.contract_version == "1flowbase.extension-bus/v1";
+                        let mark_failure = if managed {
+                            match self.repository.compare_restore_desired_state(
+                                &control_plane_contracts::ports::CompareRestorePluginDesiredStateInput {
+                                    installation_id: installation.id,
+                                    expected_updated_at: runtime_installation.updated_at,
+                                    expected_desired_state: runtime_installation.desired_state,
+                                    restore_desired_state: installation.desired_state,
+                                    actor_user_id: command.actor_user_id,
+                                },
+                            ).await {
+                                Ok(restored) => restored,
+                                Err(restore_error) => {
+                                    tracing::error!(installation_id = %installation.id, %restore_error,
+                                        "failed to restore rejected managed activation desired state");
+                                    false
+                                }
+                            }
+                        } else { true };
+                        if mark_failure {
+                            if let Err(status_error) = self.mark_current_node_runtime_status(
+                                &runtime_installation,
+                                domain::PluginRuntimeStatus::LoadFailed,
+                                Some(error.to_string()),
+                            ).await {
+                                if !managed { return Err(status_error); }
+                                tracing::warn!(installation_id = %installation.id, %status_error,
+                                    "failed to record rejected managed activation status");
+                            }
+                        }
                         return Err(error);
                     }
                 }
@@ -928,12 +953,17 @@ where
         workspace_id: Uuid,
         provider_code: &str,
     ) -> Result<domain::PluginInstallationRecord> {
-        let native = self
+        let family = self
             .repository
             .list_installations()
             .await?
             .into_iter()
-            .filter(|i| is_host_extension_installation(i) && i.provider_code == provider_code)
+            .filter(|i| i.provider_code == provider_code)
+            .collect::<Vec<_>>();
+        let native = family
+            .iter()
+            .filter(|installation| is_host_extension_installation(installation))
+            .cloned()
             .collect::<Vec<_>>();
         if !native.is_empty() {
             let targets = self.repository.list_native_plugin_targets().await?;
@@ -948,6 +978,27 @@ where
                 .into_iter()
                 .find(|i| i.id == matches[0].installation_id)
                 .ok_or_else(|| ControlPlaneError::NotFound("native_plugin_installation").into());
+        }
+        let system_managed = family
+            .iter()
+            .filter(|installation| {
+                domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                    == domain::SYSTEM_SCOPE_ID
+            })
+            .collect::<Vec<_>>();
+        if !system_managed.is_empty() {
+            let mut active = system_managed.into_iter().filter(|installation| {
+                installation.desired_state == domain::PluginDesiredState::ActiveRequested
+            });
+            let current = active
+                .next()
+                .ok_or(ControlPlaneError::NotFound("managed_active_installation"))?;
+            if active.next().is_some() {
+                return Err(
+                    ControlPlaneError::Conflict("managed_active_installation_ambiguous").into(),
+                );
+            }
+            return Ok(current.clone());
         }
         let assignment = self
             .repository
@@ -1029,13 +1080,25 @@ where
                 )
                 .await;
         }
+        let execution_scope =
+            domain::managed_installation_scope(current, actor.current_workspace_id);
+        if current.contract_version == "1flowbase.extension-bus/v1"
+            && (domain::managed_installation_scope(target, actor.current_workspace_id)
+                != execution_scope
+                || target.contract_version != current.contract_version
+                || target.organization != current.organization
+                || target.provider_code != current.provider_code)
+        {
+            return Err(ControlPlaneError::InvalidInput("plugin_family_target_mismatch").into());
+        }
         let task_id = Uuid::now_v7();
         let task = self
             .repository
             .create_task(&CreatePluginTaskInput {
                 task_id,
                 installation_id: Some(target.id),
-                workspace_id: Some(actor.current_workspace_id),
+                workspace_id: (execution_scope != domain::SYSTEM_SCOPE_ID)
+                    .then_some(execution_scope),
                 provider_code: provider_code.to_string(),
                 task_kind: domain::PluginTaskKind::SwitchVersion,
                 status: domain::PluginTaskStatus::Queued,
@@ -1064,8 +1127,8 @@ where
             .await?;
 
         if current.contract_version == "1flowbase.extension-bus/v1" {
-            return self.runtime.switch_managed_installation(actor.current_workspace_id, current.id, target.id,
-                audit_log(Some(actor.current_workspace_id), Some(actor_user_id), "plugin_assignment", Some(target.id), "plugin.version_switched",
+            return self.runtime.switch_managed_installation(execution_scope, current.id, target.id,
+                audit_log((execution_scope != domain::SYSTEM_SCOPE_ID).then_some(execution_scope), Some(actor_user_id), if execution_scope == domain::SYSTEM_SCOPE_ID { "plugin_installation" } else { "plugin_assignment" }, Some(target.id), "plugin.version_switched",
                     json!({"previous_installation_id":current.id,"target_installation_id":target.id,"provider_code":provider_code})), running_task).await;
         }
         let switch_result = async {

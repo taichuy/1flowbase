@@ -61,6 +61,20 @@ impl ContributionAuthorityLease for Lease {
     ) -> TestFuture<LifecycleOutboxRecord> {
         panic!("unexpected resume")
     }
+    fn commit_managed_settings_templates(
+        self: Box<Self>,
+        installation_ids: Vec<Uuid>,
+        catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
+    ) -> TestFuture<()> {
+        Box::pin(async move {
+            drop(self);
+            anyhow::ensure!(
+                installation_ids.is_empty() && catalog.is_none(),
+                "settings templates are not supported by this fixture"
+            );
+            Ok(())
+        })
+    }
     fn release(self: Box<Self>) -> TestFuture<()> {
         Box::pin(async move {
             drop(self);

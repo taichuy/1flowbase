@@ -43,8 +43,13 @@ export const settingsUiComponentsQueryKey = [
   'components'
 ] as const;
 
+export const pluginSettingsPagesQueryKey = [
+  'settings',
+  'plugin-settings-page'
+] as const;
+
 export const pluginSettingsPageQueryOptions = (route_id: string) => ({
-  queryKey: ['settings', 'plugin-settings-page', route_id] as const,
+  queryKey: [...pluginSettingsPagesQueryKey, route_id] as const,
   queryFn: () => fetchConsolePluginSettingsPage(route_id),
   retry: false
 });

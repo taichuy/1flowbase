@@ -20,8 +20,10 @@
 **当前入口与实现边界：**
 
 - 旧 `RuntimeExtension` workspace/model 分配继续沿用 [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs)。显式 v2 `managed_service.scope: system` 包走独立系统激活，不创建业务工作区分配；两条路径不能互相推导权限。
-- `managed_service` 声明 settings feature 与 method/path/JSON Schema 操作，`settings_pages` 引用包内 TSX。宿主启动时将其编译到同一 console operation、路由、Canonical Interface、导航与 OpenAPI 快照；安装或升级改变这些声明后需要重启宿主使新注册生效。停用和贡献撤权在新调用时按当前持久化状态拒绝，不等待重启。受管插件卸载不要求宿主重启：底座先停用，自动退役无在途引用、无未完成持久投递的旧执行快照，再清理安装制品；真实引用或事件积压会明确拒绝删除，保留数据并允许重试。系统级插件的执行治理沿用系统作用域和现有角色 operation 授权，不要求工作区分配。
+- `managed_service` 声明 settings feature 与 method/path/JSON Schema 操作，`settings_pages` 引用包内 TSX。宿主将其编译到同一 console operation、路由、Canonical Interface、导航、OpenAPI 与 MCP 投影。受管插件安装、升级或切换版本先构建并校验候选代际，再提交版本选择并发布完整代际，不依赖宿主重启；候选失败保留原发布代际。每个新 HTTP 请求只选择一次代际，已由 runtime 准入的调用持有原注册表与执行快照，不能在执行中混用新版本的 schema 或 handler。仍在认证或等待 runtime 准入的请求，切换后可能被当前授权拒绝。停用和贡献撤权在新调用时按当前持久化状态拒绝，不等待重启。受管插件卸载不要求宿主重启：底座先停用，自动退役无在途引用、无未完成持久投递的旧执行快照，再清理安装制品；真实引用或事件积压会明确拒绝删除，保留数据并允许重试。系统级插件的执行治理沿用系统作用域和现有角色 operation 授权，不要求工作区分配。
+- 扩展操作成功后，前端刷新导航、页面版本、模板列表、权限目录、API 文档和 MCP 接口缓存；已打开的模板编辑器保留其起始版本与未保存草稿。服务端发布代际与前端缓存刷新分别拥有自己的完成边界，页面卸载或请求取消不能推导为业务回滚。
 - 操作的可选 `mcp` 声明投影为 `/plugins/{plugin_code}` 下固定工具，复用现有 MCP 目录和 Interface 调用。它属于包声明，不覆盖用户配置；浏览器专用实例不注入这些系统工具。具体可见性继续受所选实例、discovery policy 与角色 API 权限约束。
+- 物理 schema 归属与版本字段投影分开：宿主持久化每个版本实际声明的对象集合，安装新版不会撤销旧版字段，也不会把新字段开放给旧版。成员集合在同版本内不可变；回退复用原集合。移除字段仅保留物理数据，不授予新版访问权。没有默认值契约时，增加必填列或从仍可写的集合移除必填列会破坏共存写入，因此拒绝该 schema 变更。卸载停用整个家族的数据入口并保留表和版本映射；运行调用仍受当前贡献授权约束。
 - `process_per_call` + `stdio_json_multiplex_v1` 复用共享 SDK 和宿主 carrier。系统 PluginData 与出站 credential 回调由宿主注入安装、贡献、作用域与期限，每次校验当前授权；凭据加密持久化，普通页面数据不返回凭据原文。宿主登录凭据、SQL 与数据库连接不向插件开放。
 - 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。
 

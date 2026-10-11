@@ -370,3 +370,6 @@ async fn root_2007_ac_007_receipt_commit_failure_rolls_back_effect() {
         1
     );
 }
+
+#[path = "plugin_data_schema_version_tests.rs"]
+mod schema_versions;

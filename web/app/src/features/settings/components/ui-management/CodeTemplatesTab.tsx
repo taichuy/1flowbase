@@ -61,6 +61,8 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     (state) => state.actor?.current_workspace_id ?? null
   );
   const queryClient = useQueryClient();
+  // Capture the editor's starting revision when it opens. Background registration/template
+  // refreshes update the table, but must not replace an open editor's unsaved source.
   const [studio, setStudio] = useState<StudioSession | null>(null);
   const query = useQuery({
     queryKey: settingsUiTemplatesQueryKey,

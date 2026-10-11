@@ -535,7 +535,7 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
     let dispatcher = control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
         store.clone(),
         Arc::new(delivery),
-        Arc::new(crate::ApiLifecycleDeliveryCompletion),
+        Arc::new(crate::ApiLifecycleDeliveryCompletion::default()),
     );
     // B/C are already durably paused by their governance transactions. Only the fresh
     // unavailable target is claimable; the real dispatcher pauses it without blind retries.

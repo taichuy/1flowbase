@@ -201,12 +201,20 @@ impl ManagedExtensionComposition {
     }
 
     /// Caller owns `assembly` until its complete mutation (including artifact deletion) finishes.
-    async fn retire_snapshots_locked(
+    pub(super) async fn retire_snapshots_locked(
         &self,
         snapshots: Vec<Arc<ManagedWorkspaceSnapshot>>,
         removing_installations: &[Uuid],
     ) -> Result<()> {
         let visible = self.snapshots.lock().await;
+        if visible.current.values().any(|current| {
+            snapshots.iter().any(|candidate| {
+                current.same_execution_snapshot(candidate)
+                    || Arc::ptr_eq(&current.lifetime, &candidate.lifetime)
+            })
+        }) {
+            bail!("managed execution is current");
+        }
         let mut retirement_markers = BTreeMap::new();
         for snapshot in &snapshots {
             for binding in snapshot.bindings.values() {
@@ -273,16 +281,22 @@ impl ManagedExtensionComposition {
         // Freeze is closed before this query. Existing publication leases have finished their
         // commit/rollback, so an empty durable result cannot be invalidated by an old publisher.
         for snapshot in &snapshots {
+            if snapshot.bindings.is_empty() && snapshot.lifecycle_plan.is_some() {
+                bail!("empty managed snapshot unexpectedly owns lifecycle targets");
+            }
             let snapshot_scope = snapshot
                 .bindings
                 .values()
                 .next()
-                .context("retirement snapshot has no managed binding")?
-                .handle
-                .identity()
-                .workspace_id()
-                .as_str()
-                .parse::<Uuid>()?;
+                .map(|binding| {
+                    binding
+                        .handle
+                        .identity()
+                        .workspace_id()
+                        .as_str()
+                        .parse::<Uuid>()
+                })
+                .transpose()?;
             let targets = snapshot
                 .lifecycle_plan
                 .as_ref()
@@ -322,7 +336,8 @@ impl ManagedExtensionComposition {
                     if self
                         .store
                         .lifecycle_target_has_backlog(
-                            snapshot_scope,
+                            snapshot_scope
+                                .context("lifecycle retirement snapshot has no managed binding")?,
                             snapshot.graph.fingerprint().as_str(),
                             &LifecycleSubscriberTarget {
                                 subscriber_id: subscriber.subscriber_id.clone(),

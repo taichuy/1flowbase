@@ -64,7 +64,14 @@ import {
   previewSettingsInstalledI18nCatalog,
   settingsI18nCatalogQueryKey
 } from '../../api/i18n-catalog';
-import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
+import {
+  settingsMcpCatalogQueryKey,
+  settingsMcpInterfaceCapabilitiesQueryKey
+} from '../../api/mcp-management';
+import {
+  pluginSettingsPagesQueryKey,
+  settingsUiTemplatesQueryKey
+} from '../../api/ui-management';
 import type { ExtensionApplicationTarget } from '../../components/extension-center/ExtensionApplicationFlow';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 
@@ -457,6 +464,15 @@ function GenericExtensionCenterSection({
         queryKey: ['settings', 'extension-center']
       }),
       queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey }),
+      queryClient.invalidateQueries({
+        queryKey: settingsMcpInterfaceCapabilitiesQueryKey
+      }),
+      queryClient.invalidateQueries({ queryKey: settingsUiTemplatesQueryKey }),
+      queryClient.invalidateQueries({ queryKey: pluginSettingsPagesQueryKey }),
+      queryClient.invalidateQueries({
+        queryKey: ['settings', 'console-policy-catalog']
+      }),
+      queryClient.invalidateQueries({ queryKey: ['settings', 'docs'] }),
       queryClient.invalidateQueries({ queryKey: settingsI18nCatalogQueryKey })
     ]);
   }, [queryClient]);

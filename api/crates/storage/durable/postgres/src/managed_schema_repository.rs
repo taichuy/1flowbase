@@ -46,6 +46,7 @@ impl ManagedSchemaRepository for PgControlPlaneStore {
             .execute(&mut *transaction)
             .await?;
 
+        let version_objects = validate_version_objects(&mut transaction, plan).await?;
         let mut created_objects = 0_u32;
         let mut existing_objects = 0_u32;
         let mut retained_objects = 0_u32;
@@ -56,6 +57,11 @@ impl ManagedSchemaRepository for PgControlPlaneStore {
                 ManagedSchemaPreviewAction::Retain => retained_objects += 1,
             }
         }
+        // Membership is published only with a completely applied physical schema. Retain-only
+        // plans leave every historical version snapshot intact for admitted execution.
+        sqlx::query("insert into plugin_schema_version_objects (owner_id,owner_version,ownership_key) select $1,$2,unnest($3::text[]) on conflict do nothing")
+            .bind(&plan.owner_id).bind(&plan.owner_version).bind(&version_objects)
+            .execute(&mut *transaction).await?;
         let receipt_id = Uuid::now_v7();
         let row = sqlx::query(
             r#"
@@ -89,6 +95,61 @@ impl ManagedSchemaRepository for PgControlPlaneStore {
             .map(map_ownership)
             .collect()
     }
+}
+
+async fn validate_version_objects(
+    transaction: &mut Transaction<'_, Postgres>,
+    plan: &ManagedSchemaPlan,
+) -> Result<Vec<String>> {
+    let desired = plan
+        .operations
+        .iter()
+        .filter(|operation| !matches!(operation, ManagedSchemaOperation::RetainInactive { .. }))
+        .map(ownership_key)
+        .collect::<std::collections::BTreeSet<_>>();
+    if desired.is_empty() {
+        return Ok(Vec::new());
+    }
+    let existing = sqlx::query_scalar::<_, String>(
+        "select ownership_key from plugin_schema_version_objects where owner_id=$1 and owner_version=$2",
+    ).bind(&plan.owner_id).bind(&plan.owner_version)
+        .fetch_all(&mut **transaction).await?
+        .into_iter().collect::<std::collections::BTreeSet<_>>();
+    if !existing.is_empty() && existing != desired {
+        bail!("managed schema version object membership is immutable");
+    }
+    for operation in &plan.operations {
+        if let ManagedSchemaOperation::EnsureOwnedCollection { physical_table, .. } = operation {
+            // Retaining a physical NOT NULL column while omitting it from this version's
+            // writable projection would break the new version's own inserts. Dropping the
+            // whole collection from its declaration is safe because it can no longer insert.
+            let required = sqlx::query_scalar::<_, String>(
+                "select ownership_key from plugin_schema_ownership where owner_id=$1 and physical_table=$2 and object_kind='owned_field' and nullable=false",
+            ).bind(&plan.owner_id).bind(physical_table)
+                .fetch_all(&mut **transaction).await?;
+            if required.iter().any(|key| !desired.contains(key)) {
+                bail!("managed schema required field removal would break candidate inserts");
+            }
+        }
+        if let ManagedSchemaOperation::EnsureOwnedField {
+            physical_table,
+            nullable: false,
+            ..
+        } = operation
+        {
+            // Any retained version that knows this table may still insert using its original
+            // fields. A newly required column without a default would break those inserts.
+            let breaks_existing_version: bool = sqlx::query_scalar(
+                "select exists(select 1 from plugin_schema_version_objects v join plugin_schema_ownership o on o.ownership_key=v.ownership_key and o.owner_id=v.owner_id where v.owner_id=$1 and v.owner_version<>$2 and o.object_kind='owned_collection' and o.physical_table=$3 and not exists(select 1 from plugin_schema_version_objects f where f.owner_id=v.owner_id and f.owner_version=v.owner_version and f.ownership_key=$4))",
+            ).bind(&plan.owner_id).bind(&plan.owner_version)
+                .bind(physical_table).bind(ownership_key(operation))
+                .fetch_one(&mut **transaction).await?;
+            if breaks_existing_version {
+                bail!("managed schema required field would break retained version inserts");
+            }
+        }
+    }
+    Ok(desired.into_iter().collect())
 }
 
 async fn preview_operation(

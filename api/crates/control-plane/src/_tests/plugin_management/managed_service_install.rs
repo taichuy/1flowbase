@@ -255,3 +255,228 @@ async fn boot_reconciles_enabled_system_service_without_workspace_assignment_onl
     );
     std::fs::remove_dir_all(install_root).unwrap();
 }
+
+#[tokio::test]
+async fn system_family_switch_selects_enabled_version_without_workspace_assignment() {
+    use crate::plugin_management::SwitchPluginVersionCommand;
+
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        Uuid::now_v7(),
+        &["plugin_config.configure.all"],
+    ));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::settings_feature("system.extension-center").unwrap(),
+            "extension_center.install.upload",
+        )
+        .await;
+    let install_root = std::env::temp_dir().join(format!("managed-switch-{}", Uuid::now_v7()));
+    let source = Arc::new(MemoryOfficialPluginSource::default());
+    let installer = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        source.clone(),
+        &install_root,
+    )
+    .for_extension_center_console_operation("extension_center.install.upload");
+    let mut ids = Vec::new();
+    for version in ["0.1.0", "0.2.0"] {
+        ids.push(
+            installer
+                .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+                    actor_user_id: repository.actor.user_id,
+                    category: ExtensionCatalogCategory::RuntimeExtensions,
+                    file_name: "managed.1flowbasepkg".into(),
+                    package_bytes: package(version),
+                    source_kind: "uploaded".into(),
+                })
+                .await
+                .unwrap()
+                .installation
+                .id,
+        );
+    }
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        source,
+        &install_root,
+    );
+    let switch = || SwitchPluginVersionCommand {
+        actor_user_id: repository.actor.user_id,
+        provider_code: "managed_fixture".into(),
+        target_installation_id: ids[1],
+    };
+    let missing = service.switch_version(switch()).await.unwrap_err();
+    assert!(missing.to_string().contains("managed_active_installation"));
+    repository
+        .update_desired_state(&UpdatePluginDesiredStateInput {
+            installation_id: ids[0],
+            actor_user_id: repository.actor.user_id,
+            desired_state: PluginDesiredState::ActiveRequested,
+        })
+        .await
+        .unwrap();
+    // The inert fixture runtime intentionally cannot publish: reaching this error proves
+    // selection succeeded; the durable task identifies the exact source and system scope.
+    let unavailable = service.switch_version(switch()).await.unwrap_err();
+    assert!(unavailable
+        .to_string()
+        .contains("managed installation switching is not configured"));
+    let task = repository
+        .list_tasks()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|task| task.task_kind == domain::PluginTaskKind::SwitchVersion)
+        .unwrap();
+    assert_eq!(task.workspace_id, None);
+    assert_eq!(
+        task.detail_json["previous_installation_id"],
+        ids[0].to_string()
+    );
+    assert_eq!(
+        task.detail_json["target_installation_id"],
+        ids[1].to_string()
+    );
+    assert!(repository
+        .list_assigned_installation_ids()
+        .await
+        .unwrap()
+        .is_empty());
+    repository
+        .update_desired_state(&UpdatePluginDesiredStateInput {
+            installation_id: ids[1],
+            actor_user_id: repository.actor.user_id,
+            desired_state: PluginDesiredState::ActiveRequested,
+        })
+        .await
+        .unwrap();
+    let ambiguous = service.switch_version(switch()).await.unwrap_err();
+    assert!(ambiguous
+        .to_string()
+        .contains("managed_active_installation_ambiguous"));
+    std::fs::remove_dir_all(install_root).unwrap();
+}
+
+#[tokio::test]
+async fn rejected_managed_enable_restores_only_its_own_selection() {
+    use crate::plugin_management::EnablePluginCommand;
+    for (prior, concurrent, activation_fails, audit_fails) in [
+        (PluginDesiredState::Disabled, None, true, false),
+        (PluginDesiredState::ActiveRequested, None, true, false),
+        (
+            PluginDesiredState::Disabled,
+            Some(PluginDesiredState::ActiveRequested),
+            true,
+            false,
+        ),
+        (PluginDesiredState::Disabled, None, false, false),
+        (PluginDesiredState::Disabled, None, false, true),
+    ] {
+        let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+            Uuid::now_v7(),
+            &["plugin_config.configure.all"],
+        ));
+        repository
+            .set_console_operation(
+                domain::ConsolePolicyGroup::settings_feature("system.extension-center").unwrap(),
+                "extension_center.install.upload",
+            )
+            .await;
+        let runtime = MemoryProviderRuntime::default();
+        let source = Arc::new(MemoryOfficialPluginSource::default());
+        let install_root =
+            std::env::temp_dir().join(format!("managed-rejected-enable-{}", Uuid::now_v7()));
+        let installer = PluginManagementService::new(
+            repository.clone(),
+            runtime.clone(),
+            source.clone(),
+            &install_root,
+        )
+        .for_extension_center_console_operation("extension_center.install.upload");
+        let installation = installer
+            .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+                actor_user_id: repository.actor.user_id,
+                category: ExtensionCatalogCategory::RuntimeExtensions,
+                file_name: "managed.1flowbasepkg".into(),
+                package_bytes: package("0.1.0"),
+                source_kind: "uploaded".into(),
+            })
+            .await
+            .unwrap()
+            .installation;
+        repository
+            .update_desired_state(&UpdatePluginDesiredStateInput {
+                installation_id: installation.id,
+                actor_user_id: repository.actor.user_id,
+                desired_state: prior,
+            })
+            .await
+            .unwrap();
+        if activation_fails {
+            runtime
+                .fail_activation(concurrent.map(|state| (repository.clone(), state)))
+                .await;
+        }
+        if audit_fails {
+            repository.fail_next_audit().await;
+        }
+        let service = PluginManagementService::new(
+            repository.clone(),
+            runtime.clone(),
+            source.clone(),
+            &install_root,
+        );
+        let result = service
+            .enable_plugin(EnablePluginCommand {
+                actor_user_id: repository.actor.user_id,
+                installation_id: installation.id,
+            })
+            .await;
+        if activation_fails {
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("fixture managed candidate rejected"));
+        } else if audit_fails {
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("fixture audit write rejected"));
+        } else {
+            assert!(result.is_ok());
+        }
+        let expected = if activation_fails {
+            concurrent.unwrap_or(prior)
+        } else {
+            PluginDesiredState::ActiveRequested
+        };
+        assert_eq!(
+            repository
+                .get_installation(installation.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .desired_state,
+            expected
+        );
+        if expected == PluginDesiredState::Disabled {
+            let boot_runtime = MemoryProviderRuntime::default();
+            PluginManagementService::new(
+                repository.clone(),
+                boot_runtime.clone(),
+                source,
+                &install_root,
+            )
+            .reconcile_all_installations()
+            .await
+            .unwrap();
+            assert!(
+                boot_runtime.loaded_installations().await.is_empty(),
+                "rejected ready artifact must not be boot-selected"
+            );
+        }
+        std::fs::remove_dir_all(install_root).unwrap();
+    }
+}
