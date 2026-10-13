@@ -981,7 +981,7 @@ async fn selected_http_success_without_websocket_receipt_is_accepted() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(input.client_transport, None);
+    assert_eq!(input.client_transport, Some(ProviderClientTransport::Http));
     assert_eq!(prepared.transport, RecoveryTransport::ProviderHttp);
     coordinator
         .finish(
@@ -1751,3 +1751,6 @@ mod dispatch_settlement;
 
 #[path = "transport_session_lifecycle/target_handoff.rs"]
 mod target_handoff;
+
+#[path = "transport_session_lifecycle/http_carrier.rs"]
+mod http_carrier;

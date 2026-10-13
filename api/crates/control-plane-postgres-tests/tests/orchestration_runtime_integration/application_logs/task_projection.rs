@@ -2,6 +2,8 @@ use super::*;
 use control_plane_contracts::application_public_runtime::ApplicationPublishedFlowRunRepository;
 use control_plane_contracts::ports::ApplicationRunLogContext;
 
+mod manual_fork;
+
 type TaskProjectionRow = (
     Uuid,
     Vec<Uuid>,

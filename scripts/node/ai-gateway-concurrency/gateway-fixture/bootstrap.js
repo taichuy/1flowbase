@@ -86,6 +86,14 @@ function configureDraft(document, provider, publicModel) {
   llm.config.external_reasoning_policy = {
     follow_external_reasoning: true,
   };
+  if (provider.responses_transport_policy) {
+    llm.config.llm_parameters ??= {};
+    llm.config.llm_parameters.items ??= {};
+    llm.config.llm_parameters.items.responses_transport_policy = {
+      enabled: true,
+      value: provider.responses_transport_policy,
+    };
+  }
   return document;
 }
 

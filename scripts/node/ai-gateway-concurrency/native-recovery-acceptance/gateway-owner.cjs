@@ -18,7 +18,7 @@ const { persistServiceLogs } = req('ai-gateway-concurrency/gateway-fixture/servi
 
 async function createOwnedGateway({ upstreamBaseUrl, artifactRoot,
   upstreamApiKey = 'fixture-openai-token', pluginPackage = PACKAGE,
-  additionalPluginPackages = [] }) {
+  additionalPluginPackages = [], responsesTransportPolicy = 'force_websocket' }) {
   const upstream = new URL(upstreamBaseUrl);
   if (upstream.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(upstream.hostname)
       || upstream.username || upstream.password || upstream.search || upstream.hash || upstream.pathname !== '/') {
@@ -90,6 +90,7 @@ async function createOwnedGateway({ upstreamBaseUrl, artifactRoot,
     if (!instance.data?.id) throw new Error('Provider instance omitted id');
     published = await createPublishedApplication(client, {
       ...installation, provider_instance_id: instance.data.id, model,
+      responses_transport_policy: responsesTransportPolicy,
     }, model);
     const target = {
       application_id: published.application_id,

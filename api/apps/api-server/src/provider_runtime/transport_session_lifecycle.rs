@@ -379,12 +379,22 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
     ) -> anyhow::Result<Option<PreparedTransportInvocation>> {
         let connection_scope_id = take_transport_connection_scope(input);
         if input.protocol == "openai_responses" {
-            // HTTP Responses can continue a provider WebSocket session. An HTTP
-            // carrier is not an upstream transport policy; leave that choice to
-            // the node/provider configuration unless ingress is a WebSocket.
+            // A cursor-free native HTTP request is also the client's recovery
+            // path after WebSocket retries. Preserve that carrier choice rather
+            // than selecting the same failed transport again. An HTTP delta can
+            // still continue a provider-owned WebSocket cursor.
             input.client_transport = connection_scope_id
                 .as_ref()
-                .map(|_| ProviderClientTransport::Websocket);
+                .map(|_| ProviderClientTransport::Websocket)
+                .or_else(|| {
+                    input.native_transport.as_ref().and_then(|native| {
+                        let has_cursor = native
+                            .wire_body
+                            .get("previous_response_id")
+                            .is_some_and(|value| !value.is_null());
+                        (!has_cursor).then_some(ProviderClientTransport::Http)
+                    })
+                });
         }
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);
