@@ -1,0 +1,90 @@
+name: Rust toolchain comparison
+
+on:
+  push:
+    branches: [codex/rust-199-ci-comparison]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  compare:
+    name: ${{ matrix.toolchain }} / ${{ matrix.lane }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        toolchain: ['1.97.1', '1.99.0']
+        lane:
+          - fmt
+          - compile-core-libs
+          - compile-runtime-storage
+          - compile-apps
+          - test-core-libs
+          - test-runtime-storage-fast
+          - test-storage-postgres-1-of-4
+          - test-storage-postgres-2-of-4
+          - test-storage-postgres-3-of-4
+          - test-storage-postgres-4-of-4
+          - test-control-plane
+          - test-api-server-1-of-4
+          - test-api-server-2-of-4
+          - test-api-server-3-of-4
+          - test-api-server-4-of-4
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: >-
+          --shm-size=512m
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+      COMPARISON_LANE: ${{ matrix.lane }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/rust-comparison-target
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@nextest
+        if: contains(matrix.lane, '-of-4')
+      - name: Match the existing gate database connection budget
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d 1flowbase -c "ALTER SYSTEM SET max_connections = '300'"
+          docker restart "$POSTGRES_CONTAINER"
+          for attempt in $(seq 1 30); do
+            if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres -d 1flowbase; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      # Deliberately no Cargo cache: both versions start with empty targets.
+      # Dependency fetching is measured separately from gate execution.
+      - name: Compare cold gates and successful warm gates
+        run: node scripts/node/rust-toolchain-comparison/run.cjs
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: rust-comparison-${{ matrix.toolchain }}-${{ matrix.lane }}
+          path: tmp/test-governance
+          if-no-files-found: warn
