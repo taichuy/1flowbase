@@ -12,6 +12,7 @@ env:
 
 jobs:
   compare:
+    if: ${{ !contains(github.event.head_commit.message, '[timing-only]') }}
     name: ${{ matrix.toolchain }} / ${{ matrix.lane }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -88,3 +89,40 @@ jobs:
           name: rust-comparison-${{ matrix.toolchain }}-${{ matrix.lane }}
           path: tmp/test-governance
           if-no-files-found: warn
+
+  paired-timing:
+    if: contains(github.event.head_commit.message, '[timing-only]')
+    name: Same-runner timing / ${{ matrix.shard }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [core-libs, runtime-storage, apps]
+    env:
+      COMPARISON_LANE: compile-${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install both exact compilers
+        run: rustup toolchain install 1.97.1 1.99.0 --profile minimal --no-self-update
+      - name: Compare two cold samples per version on the same runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          sample=0
+          for toolchain in 1.97.1 1.99.0 1.99.0 1.97.1; do
+            sample=$((sample + 1))
+            export RUSTUP_TOOLCHAIN="$toolchain"
+            export COMPARISON_SAMPLE="sample-$sample-$toolchain"
+            export CARGO_TARGET_DIR="$RUNNER_TEMP/rust-target-$sample"
+            node scripts/node/rust-toolchain-comparison/run.cjs --timing-only
+            rm -rf "$CARGO_TARGET_DIR"
+          done
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: rust-paired-timing-${{ matrix.shard }}
+          path: tmp/test-governance

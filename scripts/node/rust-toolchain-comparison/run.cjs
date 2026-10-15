@@ -17,10 +17,14 @@ const validLanes = new Set([
 if (!validLanes.has(lane) || !['1.97.1', '1.99.0'].includes(toolchain)) {
   throw new Error('Explicit supported COMPARISON_LANE and RUSTUP_TOOLCHAIN required');
 }
-const commands = lane === 'fmt' ? [gate('fmt')]
+let commands = lane === 'fmt' ? [gate('fmt')]
   : lane.startsWith('compile-')
     ? ['check', 'clippy'].map((kind) => gate(kind, lane.slice('compile-'.length)))
     : [gate('test', lane.slice('test-'.length))];
+if (process.argv.includes('--timing-only')) {
+  if (!lane.startsWith('compile-')) throw new Error('Paired timing supports compile lanes');
+  commands = commands.filter((command) => command[2] === 'check');
+}
 if (process.argv.includes('--plan')) {
   console.log(JSON.stringify({ lane, toolchain, commands }));
 } else {
@@ -29,12 +33,14 @@ if (process.argv.includes('--plan')) {
 
 async function main() {
   if (process.env.GITHUB_ACTIONS !== 'true') throw new Error('Run heavy comparisons in GitHub Actions');
-  const out = path.join(root, 'tmp/test-governance/rust-comparison');
+  const sample = process.env.COMPARISON_SAMPLE || 'rust-comparison';
+  if (!/^[a-zA-Z0-9.-]+$/.test(sample)) throw new Error('Invalid sample name');
+  const out = path.join(root, 'tmp/test-governance', sample);
   fs.mkdirSync(out, { recursive: true });
   const capture = (command, args) => execFileSync(command, args, { cwd: root, encoding: 'utf8' }).trim();
   const lockHash = () => crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'api/Cargo.lock'))).digest('hex');
   const receipt = {
-    lane, toolchain, sha: capture('git', ['rev-parse', 'HEAD']),
+    lane, toolchain, sample, sha: capture('git', ['rev-parse', 'HEAD']),
     baseSha: '6345210d59e95ed9ec34baf2eec5ca39e417dde5',
     rustc: capture('rustc', ['--version', '--verbose']), cargo: capture('cargo', ['--version']),
     runnerImage: process.env.ImageVersion, runnerOS: process.env.ImageOS,
