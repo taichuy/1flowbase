@@ -27,7 +27,7 @@ jobs:
       COMPARISON_MODE: probe
       COMPARISON_VARIANT: latest
       COMPARISON_LANE: compile-${{ matrix.shard }}
-      CARGO_TARGET_DIR: ${{ runner.temp }}/latest-target
+      CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/latest-target
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
@@ -83,7 +83,7 @@ jobs:
       COMPARISON_MODE: correctness
       COMPARISON_VARIANT: compatible
       COMPARISON_LANE: ${{ matrix.lane }}
-      CARGO_TARGET_DIR: ${{ runner.temp }}/compatible-target
+      CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/compatible-target
       DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
       API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
     steps:
