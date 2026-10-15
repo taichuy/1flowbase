@@ -1,99 +1,47 @@
 name: Notification subscription acceptance
-
 on:
-  push:
-    branches: [codex/wechat-subscription]
-    paths:
-      - api/**
-      - .github/workflows/notification-subscription.yml
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Exact frozen candidate SHA
+        description: Exact already-tested source SHA
         required: true
         type: string
-
 permissions:
   contents: read
-
-concurrency:
-  group: notification-subscription-${{ inputs.candidate_sha || github.sha }}
-  cancel-in-progress: false
-
+  actions: read
 jobs:
-  acceptance:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: notification-fixture-only
-          POSTGRES_DB: 1flowbase
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d 1flowbase"
-          --health-interval 5s --health-timeout 5s --health-retries 20
-    env:
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-      CARGO_INCREMENTAL: "0"
-      DATABASE_URL: postgres://postgres:notification-fixture-only@127.0.0.1:5432/1flowbase
-      API_DATABASE_URL: postgres://postgres:notification-fixture-only@127.0.0.1:5432/1flowbase
+  deliver-tested-runtime:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
-          ref: ${{ inputs.candidate_sha || github.sha }}
-      - name: Verify frozen candidate
+          name: notification-subscription-${{ inputs.candidate_sha }}
+          run-id: 38738816294
+          github-token: ${{ github.token }}
+          path: original
+      - name: Verify source and derive compact delivery binary
         env:
-          CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
-        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            api/target
-          key: notification-subscription-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
-          restore-keys: notification-subscription-nodebug-${{ runner.os }}-
-      - name: Contract and SDK acceptance
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        shell: bash
         run: |
-          mkdir -p tmp/test-governance/wechat-subscription/ci
-          set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p extension-contracts notification_contract_tests 2>&1 | tee tmp/test-governance/wechat-subscription/ci/contracts.log
-          cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk notification 2>&1 | tee tmp/test-governance/wechat-subscription/ci/sdk.log
-      - name: Host state and projection acceptance
-        run: |
-          set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib notifications::authorization::_tests 2>&1 | tee tmp/test-governance/wechat-subscription/ci/control-plane.log
-      - name: Build canonical managed workers
-        run: |
-          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker --example notification_authorization_worker --example managed_hook_worker --example managed_event_worker
-          echo "NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/notification_authorization_worker" >> "$GITHUB_ENV"
-          echo "NOTIFICATION_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/notification_worker" >> "$GITHUB_ENV"
-          echo "MANAGED_HOOK_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
-          echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
-      - name: Canonical HTTP, PostgreSQL and real worker acceptance
-        run: |
-          set -o pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib notification_authorization_http_encrypts_fences_late_polls_and_preserves_delivery_outcomes -- --nocapture 2>&1 | tee tmp/test-governance/wechat-subscription/ci/http-postgres.log
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib subscription -- --nocapture 2>&1 | tee tmp/test-governance/wechat-subscription/ci/error-response.log
-      - name: Build local runtime candidate
-        run: |
-          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server
-          cp api/target/debug/api-server tmp/test-governance/wechat-subscription/ci/api-server-candidate
-          cp api/target/debug/examples/notification_authorization_worker tmp/test-governance/wechat-subscription/ci/notification_authorization_worker
-          git rev-parse HEAD > tmp/test-governance/wechat-subscription/ci/candidate-sha.txt
-          sha256sum tmp/test-governance/wechat-subscription/ci/api-server-candidate > tmp/test-governance/wechat-subscription/ci/binary-sha256.txt
+          set -euo pipefail
+          test "$(cat original/candidate-sha.txt)" = "$CANDIDATE_SHA"
+          actual="$(sha256sum original/api-server-candidate | cut -d' ' -f1)"
+          expected="$(cut -d' ' -f1 original/binary-sha256.txt)"
+          test "$actual" = "$expected"
+          mkdir delivery
+          cp original/candidate-sha.txt delivery/
+          cp original/binary-sha256.txt delivery/original-binary-sha256.txt
+          cp original/api-server-candidate delivery/api-server-candidate
+          strip --strip-unneeded delivery/api-server-candidate
+          sha256sum delivery/api-server-candidate > delivery/binary-sha256.txt
+          printf 'source_run=38738816294\noperation=strip --strip-unneeded; xz -6\n' > delivery/derivation.txt
+          ls -lh original/api-server-candidate delivery/api-server-candidate
+          xz -6 -T2 delivery/api-server-candidate
+          ls -lh delivery/api-server-candidate.xz
       - uses: actions/upload-artifact@v6
-        if: always()
         with:
-          name: notification-subscription-${{ inputs.candidate_sha || github.sha }}
+          name: runtime-delivery-${{ inputs.candidate_sha }}
+          path: delivery
+          compression-level: 0
           if-no-files-found: error
-          path: tmp/test-governance/wechat-subscription/ci
