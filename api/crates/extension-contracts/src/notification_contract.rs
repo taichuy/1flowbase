@@ -1,6 +1,6 @@
 //! Canonical notification type metadata. Config belongs to an instance; input and output
 //! belong to one send. Schemas describe provider data, never an in-app message protocol.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -13,12 +13,17 @@ pub const NOTIFICATION_CONTRACT_V1: &str = "1flowbase.notification/v1";
 pub const NOTIFICATION_SEND_PERMISSION: &str = "notification.send";
 pub const SYSTEM_NOTIFICATION_TYPE: &str = "system";
 
+mod i18n;
+pub use i18n::*;
 mod managed;
 pub use managed::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NotificationTypeDescriptor {
+    /// Package-owned presentation overrides; canonical metadata remains the fallback.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub i18n: BTreeMap<String, NotificationTypeLocale>,
     pub type_code: String,
     pub display_name: String,
     pub description: String,
@@ -75,6 +80,7 @@ impl NotificationTypeDescriptor {
                 ));
             }
         }
+        i18n::validate(self)?;
         Ok(())
     }
 

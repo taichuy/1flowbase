@@ -785,6 +785,7 @@ fn split_config(
 
 pub fn system_notification_descriptor() -> NotificationTypeDescriptor {
     NotificationTypeDescriptor{
+        i18n:Default::default(),
         authorization:None,
         type_code:"system".into(),display_name:"System notification".into(),description:"Deliver a message to workspace members' inboxes".into(),
         contribution_id:ContributionId::new("1flowbase.notification.system").expect("builtin contribution"),

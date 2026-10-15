@@ -16,6 +16,26 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Notify;
 use tower::ServiceExt;
 
+fn notification_i18n() -> Value {
+    json!({
+        "zh_Hans": {
+            "display_name":"回执测试", "description":"确认测试回执",
+            "config_form":{"title":"渠道配置", "fields":{
+                "token":{"label":"令牌", "description":"渠道令牌", "placeholder":"输入令牌"},
+                "channel":{"label":"渠道"}
+            }},
+            "input_form":{"title":"消息", "fields":{"text":{"label":"正文"}}},
+            "authorization":{"actions":{"qr":{"label":"扫码授权"}}}
+        },
+        "en_US": {
+            "display_name":"Receipt fixture", "description":"Confirms a fixture receipt",
+            "config_form":{"fields":{"token":{"label":"Token"},"channel":{"label":"Channel"}}},
+            "input_form":{"fields":{"text":{"label":"Message"}}},
+            "authorization":{"actions":{"qr":{"label":"Scan QR code"}}}
+        }
+    })
+}
+
 fn authorizable_package() -> Vec<u8> {
     let source = crate::api_workspace_root()
         .unwrap()
@@ -28,6 +48,7 @@ fn authorizable_package() -> Vec<u8> {
         "actions":[{"code":"qr","label":"Scan QR code","kind":"qr_code"}],
         "managed_secret_keys":["qr_credential","qr_code_url","bot_token","bound_user_id","context_token","cursor"]
     });
+    manifest["notification_types"][0]["i18n"] = notification_i18n();
     plugin_framework::parse_plugin_manifest(&manifest.to_string()).unwrap();
     let bytes = serde_json::to_vec(&manifest).unwrap();
     let executable = PathBuf::from(
@@ -233,6 +254,49 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         crate::app_with_state_and_config(state.clone(), &crate::_tests::support::test_config());
     let (cookie, csrf) =
         crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
+    // Read through the authenticated Types API after upload, assignment, grant and enable.
+    // Both dictionaries remain raw package metadata; no locale is selected by the Host.
+    let (status, catalog) = api(
+        &app,
+        &cookie,
+        &csrf,
+        "GET",
+        "/api/console/notifications/types",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{catalog}");
+    let types = catalog["data"]
+        .as_array()
+        .expect("notification type catalog");
+    let fixture = types
+        .iter()
+        .find(|entry| entry["type_code"] == "acme/notification-fixture/receipt")
+        .expect("installed notification type");
+    assert_eq!(fixture["installation_id"], installation_id.to_string());
+    assert_eq!(fixture["available"], true);
+    assert_eq!(fixture["i18n"], notification_i18n());
+    assert_eq!(fixture["display_name"], "Receipt fixture");
+    assert_eq!(fixture["config_form"]["fields"][0]["key"], "token");
+    assert_eq!(fixture["config_form"]["fields"][0]["control"], "password");
+    assert_eq!(fixture["input_form"]["fields"][0]["label"], "Text");
+    assert_eq!(fixture["authorization"]["actions"][0]["code"], "qr");
+    assert_eq!(
+        fixture["authorization"]["actions"][0]["label"],
+        "Scan QR code"
+    );
+    assert_eq!(
+        fixture["input_schema"]["properties"]["text"]["type"],
+        "string"
+    );
+    let system = types
+        .iter()
+        .find(|entry| entry["type_code"] == "system")
+        .unwrap();
+    assert!(
+        system.get("i18n").is_none(),
+        "legacy descriptor omits empty dictionaries"
+    );
     let member_id = crate::_tests::support::create_member(
         &app,
         &cookie,
