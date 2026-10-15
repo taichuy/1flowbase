@@ -1,28 +1,58 @@
-name: Rust toolchain comparison
+name: Backend dependency comparison
 
 on:
   push:
-    branches: [codex/rust-199-ci-comparison]
+    branches:
+      - codex/backend-dependency-latest-probe
+      - codex/backend-dependency-comparison
 
 permissions:
   contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  RUSTUP_TOOLCHAIN: 1.99.0
 
 jobs:
-  compare:
-    if: ${{ !contains(github.event.head_commit.message, '[timing-only]') }}
-    name: ${{ matrix.toolchain }} / ${{ matrix.lane }}
+  latest-probe:
+    if: github.ref_name == 'codex/backend-dependency-latest-probe'
+    name: All-latest compile / ${{ matrix.shard }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [core-libs, runtime-storage, apps]
+    env:
+      COMPARISON_MODE: probe
+      COMPARISON_VARIANT: latest
+      COMPARISON_LANE: compile-${{ matrix.shard }}
+      CARGO_TARGET_DIR: ${{ runner.temp }}/latest-target
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+      - run: node scripts/node/rust-toolchain-comparison/dependencies.cjs
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: dependency-latest-${{ matrix.shard }}
+          path: tmp/test-governance
+
+  correctness:
+    if: github.ref_name == 'codex/backend-dependency-comparison'
+    name: Compatible upgrade / ${{ matrix.lane }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
     strategy:
       fail-fast: false
       max-parallel: 12
       matrix:
-        toolchain: ['1.97.1', '1.99.0']
         lane:
-          - fmt
           - compile-core-libs
           - compile-runtime-storage
           - compile-apps
@@ -50,9 +80,10 @@ jobs:
           --health-cmd "pg_isready -U postgres -d 1flowbase"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+      COMPARISON_MODE: correctness
+      COMPARISON_VARIANT: compatible
       COMPARISON_LANE: ${{ matrix.lane }}
-      CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/rust-comparison-target
+      CARGO_TARGET_DIR: ${{ runner.temp }}/compatible-target
       DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
       API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
     steps:
@@ -62,67 +93,73 @@ jobs:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ matrix.toolchain }}
-          components: rustfmt, clippy
+          toolchain: 1.99.0
+          components: clippy, rustfmt
       - uses: taiki-e/install-action@nextest
         if: contains(matrix.lane, '-of-4')
-      - name: Match the existing gate database connection budget
+      - name: Match existing gate database capacity
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d 1flowbase -c "ALTER SYSTEM SET max_connections = '300'"
           docker restart "$POSTGRES_CONTAINER"
           for attempt in $(seq 1 30); do
-            if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres -d 1flowbase; then
-              exit 0
-            fi
+            if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres -d 1flowbase; then exit 0; fi
             sleep 1
           done
           exit 1
-      # Deliberately no Cargo cache: both versions start with empty targets.
-      # Dependency fetching is measured separately from gate execution.
-      - name: Compare cold gates and successful warm gates
-        run: node scripts/node/rust-toolchain-comparison/run.cjs
+      - name: Execute existing gates once with durable phase receipts
+        run: node scripts/node/rust-toolchain-comparison/dependencies.cjs
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: rust-comparison-${{ matrix.toolchain }}-${{ matrix.lane }}
+          name: dependency-compatible-${{ matrix.lane }}
           path: tmp/test-governance
-          if-no-files-found: warn
 
   paired-timing:
-    if: contains(github.event.head_commit.message, '[timing-only]')
-    name: Same-runner timing / ${{ matrix.shard }}
+    if: github.ref_name == 'codex/backend-dependency-comparison'
+    name: Same-runner dependency timing / ${{ matrix.shard }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 65
     strategy:
       fail-fast: false
       matrix:
         shard: [core-libs, runtime-storage, apps]
     env:
+      COMPARISON_MODE: timing
       COMPARISON_LANE: compile-${{ matrix.shard }}
+      COMPARISON_OUTPUT_DIR: ${{ github.workspace }}/tmp/test-governance/dependency-comparison
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: candidate
+      - uses: actions/checkout@v6
+        with:
+          ref: 6345210d59e95ed9ec34baf2eec5ca39e417dde5
+          path: baseline
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: Install both exact compilers
-        run: rustup toolchain install 1.97.1 1.99.0 --profile minimal --no-self-update
-      - name: Compare two cold samples per version on the same runner
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+      - name: Compare ABBA empty-target samples under one compiler and runner
         shell: bash
         run: |
           set -euo pipefail
           sample=0
-          for toolchain in 1.97.1 1.99.0 1.99.0 1.97.1; do
+          for variant in baseline compatible compatible baseline; do
             sample=$((sample + 1))
-            export RUSTUP_TOOLCHAIN="$toolchain"
-            export COMPARISON_SAMPLE="sample-$sample-$toolchain"
-            export CARGO_TARGET_DIR="$RUNNER_TEMP/rust-target-$sample"
-            node scripts/node/rust-toolchain-comparison/run.cjs --timing-only
+            export COMPARISON_VARIANT="$variant"
+            export COMPARISON_SAMPLE="sample-$sample"
+            export CARGO_TARGET_DIR="$RUNNER_TEMP/dependency-target-$sample"
+            if [[ "$variant" == baseline ]]; then source_dir=baseline; else source_dir=candidate; fi
+            export COMPARISON_ROOT="$GITHUB_WORKSPACE/$source_dir"
+            node candidate/scripts/node/rust-toolchain-comparison/dependencies.cjs
             rm -rf "$CARGO_TARGET_DIR"
           done
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: rust-paired-timing-${{ matrix.shard }}
+          name: dependency-paired-timing-${{ matrix.shard }}
           path: tmp/test-governance

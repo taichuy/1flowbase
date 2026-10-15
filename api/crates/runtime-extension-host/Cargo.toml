@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-libc = "0.2"
+libc = "0.2.190"
 jsonschema.workspace = true
 http.workspace = true
 extension-contracts = { path = "../extension-contracts" }
@@ -18,7 +18,7 @@ serde_json.workspace = true
 sysinfo.workspace = true
 time.workspace = true
 tokio.workspace = true
-tokio-util = { version = "0.7", features = ["time"] }
+tokio-util = { version = "0.7.20", features = ["time"] }
 tracing.workspace = true
 
 base64.workspace = true

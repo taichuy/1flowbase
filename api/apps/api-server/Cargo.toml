@@ -23,9 +23,9 @@ axum-extra.workspace = true
 base64.workspace = true
 flate2.workspace = true
 futures-util.workspace = true
-form_urlencoded = "1"
+form_urlencoded = "1.2.2"
 hmac.workspace = true
-http-body = "1"
+http-body = "1.1.0"
 jsonschema.workspace = true
 rand_core.workspace = true
 regex.workspace = true
@@ -41,7 +41,7 @@ tar.workspace = true
 time.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-stream = "0.1"
+tokio-stream = "0.1.19"
 tonic-types.workspace = true
 tower.workspace = true
 tower-http.workspace = true
@@ -68,10 +68,10 @@ runtime-extension-host = { path = "../../crates/runtime-extension-host" }
 runtime-profile = { path = "../../crates/runtime-profile" }
 
 [target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
-tikv-jemallocator = { version = "0.7", features = ["background_threads"] }
+tikv-jemallocator = { version = "0.7.0", features = ["background_threads"] }
 
 [dev-dependencies]
-tokio-tungstenite = "0.24"
-serde_yaml = "0.9"
-ed25519-dalek = { version = "2", features = ["pem"] }
+tokio-tungstenite = "0.30.0"
+serde_yaml = "0.9.34+deprecated"
+ed25519-dalek = { version = "3.0.0", features = ["pem"] }
 postgres-test-support = { path = "../../crates/postgres-test-support" }

@@ -31,56 +31,56 @@ license = "MIT"
 version = "0.5.6"
 
 [workspace.dependencies]
-anyhow = "1"
-argon2 = "0.5"
-async-trait = "0.1"
-aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "rustls"] }
-aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio"] }
-axum = { version = "0.7", features = ["macros"] }
-axum-extra = { version = "0.9", features = ["cookie"] }
-base64 = "0.22"
-chacha20poly1305 = "0.10"
-flate2 = "1"
-zstd = "0.13"
-futures-util = "0.3"
-hmac = "0.12"
-http = "1"
-jsonschema = "0.46.5"
-moka = { version = "0.12.15", features = ["future"] }
+anyhow = "1.0.104"
+argon2 = "0.6.0"
+async-trait = "0.1.92"
+aws-config = { version = "1.12.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "rustls"] }
+aws-sdk-s3 = { version = "1.152.0", default-features = false, features = ["rt-tokio"] }
+axum = { version = "0.8.9", features = ["macros"] }
+axum-extra = { version = "0.12.6", features = ["cookie"] }
+base64 = "0.23.1"
+chacha20poly1305 = "0.11.0"
+flate2 = "1.1.10"
+zstd = "0.14.2"
+futures-util = "0.3.34"
+hmac = "0.13.0"
+http = "1.5.0"
+jsonschema = "0.58.6"
+moka = { version = "0.12.16", features = ["future"] }
 opentelemetry-proto = { version = "=0.33.1", default-features = false, features = ["gen-tonic-messages", "trace", "with-serde"] }
-prost = "=0.14.1"
-percent-encoding = "2"
-rand_core = { version = "0.6", features = ["std"] }
-rand = "0.10"
-rand_regex = { version = "0.19", default-features = false }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-regex = "1"
-regex-syntax = "0.8"
-rust_decimal = { version = "1", features = ["serde-with-str"] }
-rquickjs = "0.11"
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
-semver = "1"
-sha2 = "0.10"
+prost = "=0.14.4"
+percent-encoding = "2.3.2"
+rand_core = { version = "0.10.1" }
+rand = "0.10.3"
+rand_regex = { version = "0.19.0", default-features = false }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "query", "form"] }
+regex = "1.13.1"
+regex-syntax = "0.8.11"
+rust_decimal = { version = "1.43.0", features = ["serde-with-str"] }
+rquickjs = "0.14.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+semver = "1.0.28"
+sha2 = "0.11.1"
 # Keep upstream's sequential default: parallel /proc scans spend more CPU on
 # Rayon scheduling than on our narrow observations (sysinfo issue #1352).
-sysinfo = "0.34.2"
-sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "uuid", "macros", "time", "json", "migrate"] }
+sysinfo = "0.39.6"
+sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring", "uuid", "macros", "time", "json", "migrate"] }
 tar = "0.4.46"
-thiserror = "2"
-time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
-time-tz = "2"
-tokio = { version = "1", features = ["full"] }
-tonic-types = { version = "=0.14.1", default-features = false }
-tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["cors", "trace"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-utoipa = { version = "5", features = ["axum_extras", "uuid"] }
-utoipa-swagger-ui = { version = "8", features = ["axum", "vendored"] }
-url = "2"
-uuid = { version = "1", features = ["serde", "v7"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+thiserror = "2.0.21"
+time = { version = "0.3.55", features = ["serde", "formatting", "parsing", "macros"] }
+time-tz = "2.0.0"
+tokio = { version = "1.53.3", features = ["full"] }
+tonic-types = { version = "=0.14.6", default-features = false }
+tower = { version = "0.5.3", features = ["util"] }
+tower-http = { version = "0.7.1", features = ["cors", "trace"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+utoipa = { version = "6.0.0", features = ["axum_extras", "uuid"] }
+utoipa-swagger-ui = { version = "10.0.1", features = ["axum", "vendored"] }
+url = "2.5.8"
+uuid = { version = "1.28.0", features = ["serde", "v7"] }
+zip = { version = "9.0.3", default-features = false, features = ["deflate"] }
 
 [profile.dev]
 debug = 1

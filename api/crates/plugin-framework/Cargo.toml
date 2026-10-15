@@ -9,7 +9,7 @@ extension-contracts = { path = "../extension-contracts" }
 extension-package-runtime = { path = "../extension-package-runtime" }
 access-control = { path = "../access-control" }
 base64.workspace = true
-ed25519-dalek = { version = "2", features = ["pem"] }
+ed25519-dalek = { version = "3.0.0", features = ["pem"] }
 flate2.workspace = true
 jsonschema.workspace = true
 serde.workspace = true
@@ -21,7 +21,7 @@ tokio.workspace = true
 uuid.workspace = true
 url.workspace = true
 zip.workspace = true
-serde_yaml = "0.9"
+serde_yaml = "0.9.34+deprecated"
 
 [dev-dependencies]
 tokio.workspace = true
