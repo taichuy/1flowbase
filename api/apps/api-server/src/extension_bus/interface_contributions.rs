@@ -1026,13 +1026,14 @@ pub(crate) fn production_interface_contributions(
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-business-files",
-            &["files.upload", "files.content.download", "files.access_links.create"],
+            &["files.upload", "files.import_remote", "files.content.download", "files.access_links.create"],
             &["api-server.console-business-files"],
             crate::routes::files::compile_registry(
                 state.store.clone(),
                 state.file_storage_registry.clone(),
                 state.runtime_engine.clone(),
                 state.infrastructure.ephemeral_kv_store(),
+                state.network_egress_http_clients(),
             )?,
         ),
         InterfaceRegistryContribution::new(

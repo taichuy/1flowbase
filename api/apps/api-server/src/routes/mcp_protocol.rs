@@ -183,6 +183,15 @@ async fn handle_mcp_request(
                 Ok(call) => call,
                 Err(message) => return Ok(jsonrpc_error(request.id, -32602, message)),
             };
+            // Preserve the four meta-tools for ordinary discovery. Explicit file
+            // wrappers use a direct name so ChatGPT can attach a top-level file object.
+            let (name, arguments) = if request.method == "tools/call"
+                && virtual_ui::is_direct_file_tool(&catalog, &scope, name)
+            {
+                ("mcp_call", json!({"tool_id":name,"arguments":arguments}))
+            } else {
+                (name, arguments)
+            };
             let Ok(arguments) = McpToolArguments::from_protocol(arguments) else {
                 return Ok(jsonrpc_error(request.id, -32602, "Invalid arguments"));
             };
@@ -252,7 +261,9 @@ async fn handle_mcp_request(
             JsonRpcResponse {
                 jsonrpc: "2.0",
                 id: request.id,
-                result: Some(json!({"tools": virtual_ui::meta_tools(path_regex_enabled)})),
+                result: Some(
+                    json!({"tools": virtual_ui::advertised_tools(&catalog, &scope, path_regex_enabled)}),
+                ),
                 error: None,
             },
         )),

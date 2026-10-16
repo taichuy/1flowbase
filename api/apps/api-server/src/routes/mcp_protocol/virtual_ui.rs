@@ -27,6 +27,8 @@ use super::{input_schema, resources, result_delivery};
 
 #[path = "virtual_ui/description_guard.rs"]
 mod description_guard;
+#[path = "virtual_ui/file_params.rs"]
+mod file_params;
 use crate::{
     error_response::ApiError,
     middleware::require_session::{with_server_delegated_request_context, RequestContext},
@@ -37,6 +39,7 @@ use crate::{
     },
 };
 use description_guard::{description_tool, validate_tool_call_controls};
+pub(crate) use file_params::{advertised_tools, is_direct_file_tool};
 
 const MCP_LIST: &str = portable_meta_tool_name("mcp_list");
 const MCP_GET: &str = portable_meta_tool_name("mcp_get");

@@ -19,6 +19,7 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
+    network_egress_client::NetworkEgressHttpClientResolver,
     response::ApiSuccess,
     routes::{
         console_interface::{
@@ -56,12 +57,34 @@ struct UploadFileMultipartBody {
     file: Vec<u8>,
 }
 
+/// A temporary MCP file reference is a source locator, not a persisted business file.
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RemoteFileReference {
+    pub download_url: String,
+    pub file_id: String,
+    pub mime_type: Option<String>,
+    pub file_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ImportRemoteFileBody {
+    pub file_table_id: Option<String>,
+    #[schema(inline)]
+    pub file: RemoteFileReference,
+}
+
 enum BusinessFilesInput {
     Upload {
         file_table_id: Option<Uuid>,
         original_filename: String,
         content_type: Option<String>,
         bytes: Vec<u8>,
+    },
+    ImportRemote {
+        file_table_id: Option<Uuid>,
+        file: RemoteFileReference,
     },
     CreateTemporaryLink {
         file_table_id: String,
@@ -99,6 +122,14 @@ impl InterfaceContract for BusinessFilesInput {
                     "bytes",
                     mp::object_schema(&[("byte_count", mp::count_schema())]),
                 ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ImportRemote")),
+                (
+                    "file_table_id",
+                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                ),
+                ("file_id", mp::text_schema()),
             ]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("ReadContent")),
@@ -146,6 +177,21 @@ impl InterfaceContract for BusinessFilesInput {
                     "bytes",
                     mp::object_value(&[("byte_count", serde_json::json!((_field_bytes).len()))]),
                 ),
+            ]),
+            Self::ImportRemote {
+                file_table_id,
+                file,
+            } => mp::object_value(&[
+                ("variant", serde_json::json!("ImportRemote")),
+                (
+                    "file_table_id",
+                    file_table_id
+                        .as_ref()
+                        .map_or(serde_json::Value::Null, |id| {
+                            serde_json::json!(id.to_string())
+                        }),
+                ),
+                ("file_id", mp::text(&file.file_id)?),
             ]),
             Self::ReadContent {
                 file_table_id: _field_file_table_id,
@@ -227,6 +273,7 @@ struct BusinessFilesAdapter {
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     grants: Arc<dyn control_plane::ports::EphemeralKvStore>,
+    network_egress: NetworkEgressHttpClientResolver,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -242,6 +289,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(create_temporary_file_link, Authenticated),
         )
         .route("/files/upload", console_post(upload_file, Authenticated))
+        .route(
+            "/files/import-remote",
+            console_post(import_remote_file, Authenticated),
+        )
         .route(
             "/files/:file_table_id/records/:record_id/content",
             console_get(read_file_content, Authenticated),
@@ -264,6 +315,13 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
+        interface_id: "files.import_remote",
+        binding_id: "http.console.files.import-remote.v1",
+        method: "POST",
+        path: "/api/console/files/import-remote",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
         interface_id: "files.content.download",
         binding_id: "http.console.files.content.read.v1",
         method: "GET",
@@ -277,6 +335,7 @@ pub(crate) fn compile_registry(
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     grants: Arc<dyn control_plane::ports::EphemeralKvStore>,
+    network_egress: NetworkEgressHttpClientResolver,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
@@ -290,6 +349,7 @@ pub(crate) fn compile_registry(
             file_storage_registry,
             runtime_engine,
             grants,
+            network_egress,
         }),
     )
 }
@@ -370,6 +430,38 @@ impl BusinessFilesAdapter {
         )
     }
 
+    async fn upload_bytes(
+        &self,
+        actor: domain::ActorContext,
+        file_table_id: Option<Uuid>,
+        original_filename: String,
+        content_type: Option<String>,
+        bytes: Vec<u8>,
+    ) -> Result<BusinessFilesOutput, ApiError> {
+        let uploaded = control_plane::file_management::FileUploadService::new(
+            self.store.clone(),
+            self.file_storage_registry.clone(),
+            self.runtime_engine.clone(),
+        )
+        .upload(control_plane::file_management::UploadFileCommand {
+            actor,
+            target: file_table_id.map_or(
+                control_plane::file_management::FileUploadTarget::Default,
+                control_plane::file_management::FileUploadTarget::Table,
+            ),
+            original_filename,
+            content_type,
+            bytes,
+        })
+        .await
+        .map_err(map_runtime_error)?;
+        Ok(BusinessFilesOutput::Uploaded(UploadedFileResponse {
+            file_table_id: uploaded.file_table_id.to_string(),
+            storage_id: uploaded.storage_id.to_string(),
+            record: uploaded.record,
+        }))
+    }
+
     async fn execute_inner(
         &self,
         principal: &UserPrincipal,
@@ -383,28 +475,47 @@ impl BusinessFilesAdapter {
                 content_type,
                 bytes,
             } => {
-                let uploaded = control_plane::file_management::FileUploadService::new(
-                    self.store.clone(),
-                    self.file_storage_registry.clone(),
-                    self.runtime_engine.clone(),
-                )
-                .upload(control_plane::file_management::UploadFileCommand {
+                self.upload_bytes(actor, file_table_id, original_filename, content_type, bytes)
+                    .await
+            }
+            BusinessFilesInput::ImportRemote {
+                file_table_id,
+                file,
+            } => {
+                let request = self
+                    .network_egress
+                    .resolve_http_request(
+                        actor.current_workspace_id,
+                        domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+                    )
+                    .await
+                    .map_err(map_runtime_error)?;
+                let result = async {
+                    let response = request
+                        .http_client()
+                        .get(&file.download_url)
+                        .send()
+                        .await?
+                        .error_for_status()?;
+                    let content_type = response
+                        .headers()
+                        .get(CONTENT_TYPE)
+                        .and_then(|header| header.to_str().ok())
+                        .map(str::to_owned);
+                    let bytes = response.bytes().await?.to_vec();
+                    Ok::<_, anyhow::Error>((bytes, content_type))
+                }
+                .await;
+                let (bytes, remote_content_type) =
+                    request.finish(result).await.map_err(map_runtime_error)?;
+                self.upload_bytes(
                     actor,
-                    target: file_table_id.map_or(
-                        control_plane::file_management::FileUploadTarget::Default,
-                        control_plane::file_management::FileUploadTarget::Table,
-                    ),
-                    original_filename,
-                    content_type,
+                    file_table_id,
+                    file.file_name.unwrap_or_else(|| "download.bin".to_owned()),
+                    file.mime_type.or(remote_content_type),
                     bytes,
-                })
+                )
                 .await
-                .map_err(map_runtime_error)?;
-                Ok(BusinessFilesOutput::Uploaded(UploadedFileResponse {
-                    file_table_id: uploaded.file_table_id.to_string(),
-                    storage_id: uploaded.storage_id.to_string(),
-                    record: uploaded.record,
-                }))
             }
             BusinessFilesInput::ReadContent {
                 file_table_id,
@@ -512,6 +623,37 @@ pub async fn upload_file(
     .await?;
     let BusinessFilesOutput::Uploaded(response) = output else {
         unreachable!("file upload binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/files/import-remote",
+    request_body = ImportRemoteFileBody,
+    responses((status = 201, body = UploadedFileResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn import_remote_file(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<ImportRemoteFileBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<UploadedFileResponse>>), ApiError> {
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.files.import-remote.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        BusinessFilesInput::ImportRemote {
+            file_table_id: body
+                .file_table_id
+                .as_deref()
+                .map(|id| parse_uuid(id, "file_table_id"))
+                .transpose()?,
+            file: body.file,
+        },
+    )
+    .await?;
+    let BusinessFilesOutput::Uploaded(response) = output else {
+        unreachable!("file import binding returned a different output")
     };
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }

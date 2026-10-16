@@ -946,3 +946,118 @@ async fn stale_or_unauthorized_resource_reads_reject_before_interface_dispatch()
         );
     }
 }
+
+#[test]
+fn chatgpt_file_wrapper_is_exposed_as_direct_tool_only_when_declared() {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].tool_id = "chatgpt_file_import".to_string();
+    catalog.bindings[0].tool_id = "chatgpt_file_import".to_string();
+    catalog.tools[0].parameter_schema = json!({
+        "type":"object", "properties": {"body": {
+            "type":"object", "properties": {"file": {
+                "type":"object",
+                "properties": {
+                    "download_url":{"type":"string"}, "file_id":{"type":"string"},
+                    "mime_type":{"type":"string"}, "file_name":{"type":"string"}
+                },
+                "required":["download_url","file_id"]
+            }}
+        }}
+    });
+    catalog.tools[0].input_mapping = json!({
+        "openai_file_params":["file"],
+        "interface_parameters":[{
+            "name":"file","parameter_type":"json_body","field_type":"object","required":true
+        }],
+        "mappings":[{
+            "interface_param":"file","mcp_param":"file",
+            "source":{"kind":"mcp_argument","path":"file"},"required":true
+        }]
+    });
+    let scope = VirtualMcpScope::selected(&catalog, &["selected".to_owned()]);
+    let tools = advertised_tools(&catalog, &scope, false);
+    assert_eq!(tools.len(), 5);
+    assert_eq!(tools[4]["name"], "chatgpt_file_import");
+    assert_eq!(tools[4]["_meta"]["openai/fileParams"], json!(["file"]));
+    assert_eq!(tools[4]["inputSchema"]["required"], json!(["file"]));
+    assert!(is_direct_file_tool(&catalog, &scope, "chatgpt_file_import"));
+    assert!(!is_direct_file_tool(&catalog, &scope, "mcp_call"));
+
+    catalog.bindings[0].visible = false;
+    assert_eq!(advertised_tools(&catalog, &scope, false).len(), 4);
+    assert!(!is_direct_file_tool(
+        &catalog,
+        &scope,
+        "chatgpt_file_import"
+    ));
+}
+
+#[test]
+fn chatgpt_file_wrapper_rejects_invalid_file_schemas() {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].tool_id = "chatgpt_file_import".to_owned();
+    catalog.bindings[0].tool_id = "chatgpt_file_import".to_owned();
+    catalog.tools[0].input_mapping = json!({
+        "openai_file_params":["file"],
+        "interface_parameters":[{
+            "name":"file","parameter_type":"json_body","field_type":"object","required":true
+        }],
+        "mappings":[{
+            "interface_param":"file","mcp_param":"file","required":true,
+            "source":{"kind":"mcp_argument","path":"file"}
+        }]
+    });
+    catalog.tools[0].parameter_schema = json!({"type":"object","properties":{
+        "body":{"type":"object","properties":{"file":{
+            "type":"object",
+            "properties":{"download_url":{"type":"string"}, "file_id":{"type":"string"}},
+            "required":["download_url","file_id"]
+        }}}
+    }});
+    let scope = VirtualMcpScope::selected(&catalog, &["selected".to_owned()]);
+    assert_eq!(advertised_tools(&catalog, &scope, false).len(), 4);
+    assert!(!is_direct_file_tool(
+        &catalog,
+        &scope,
+        "chatgpt_file_import"
+    ));
+}
+
+#[test]
+fn chatgpt_file_wrapper_normalizes_optional_nullable_strings() {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].tool_id = "file_import".to_owned();
+    catalog.bindings[0].tool_id = "file_import".to_owned();
+    catalog.tools[0].input_mapping = json!({
+        "openai_file_params":["file"],
+        "interface_parameters":[{
+            "name":"file","parameter_type":"json_body","field_type":"object","required":true
+        }],
+        "mappings":[{
+            "interface_param":"file","mcp_param":"file","required":true,
+            "source":{"kind":"mcp_argument","path":"file"}
+        }]
+    });
+    catalog.tools[0].parameter_schema = json!({"type":"object","properties":{
+        "body":{"type":"object","properties":{"file":{
+            "type":"object",
+            "properties":{
+                "download_url":{"type":"string"},"file_id":{"type":"string"},
+                "mime_type":{"type":["string","null"]},
+                "file_name":{"anyOf":[{"type":"string"},{"type":"null"}]}
+            },
+            "required":["download_url","file_id"]
+        }}}
+    }});
+    let scope = VirtualMcpScope::selected(&catalog, &["selected".to_owned()]);
+    let tools = advertised_tools(&catalog, &scope, false);
+    assert_eq!(tools.len(), 5);
+    assert_eq!(
+        tools[4]["inputSchema"]["properties"]["file"]["properties"]["mime_type"],
+        json!({"type":"string"})
+    );
+    assert_eq!(
+        tools[4]["inputSchema"]["properties"]["file"]["properties"]["file_name"],
+        json!({"type":"string"})
+    );
+}

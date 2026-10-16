@@ -362,6 +362,88 @@ async fn ac_001_upload_without_table_id_uses_the_workspace_default_file_table() 
     );
 }
 
+#[tokio::test]
+async fn chatgpt_file_reference_import_uses_existing_default_attachments_storage() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // A controlled, real HTTP response verifies byte fidelity without assuming
+    // any particular ChatGPT upload host or adding a new storage pipeline.
+    let source = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = source.local_addr().unwrap();
+    let image = b"\x89PNG\r\n\x1a\n1flowbase-file-import";
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = source.accept().await.unwrap();
+        let mut request = [0u8; 2048];
+        stream.read(&mut request).await.unwrap();
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            image.len()
+        );
+        stream.write_all(header.as_bytes()).await.unwrap();
+        stream.write_all(image).await.unwrap();
+    });
+
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let payload = json!({
+        "file": {
+            "download_url": format!("http://{address}/cover.png"),
+            "file_id": "file_generated_cover",
+            "mime_type": "image/png",
+            "file_name": "chatgpt-cover.png"
+        }
+    });
+    let uploaded = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/files/import-remote")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (parts, body) = uploaded.into_parts();
+    let body = to_bytes(body, usize::MAX).await.unwrap();
+    assert_eq!(
+        parts.status,
+        StatusCode::CREATED,
+        "remote file import failed: {}",
+        String::from_utf8_lossy(&body)
+    );
+    let saved: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(saved["data"]["record"]["filename"], "chatgpt-cover.png");
+    assert_eq!(saved["data"]["record"]["mimetype"], "image/png");
+    assert_eq!(saved["data"]["record"]["size"], image.len());
+    let file_table_id = saved["data"]["file_table_id"].as_str().unwrap();
+    let record_id = saved["data"]["record"]["id"].as_str().unwrap();
+    let actual = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/files/{file_table_id}/records/{record_id}/content"
+                ))
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(actual.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(actual.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .as_ref(),
+        image.as_slice()
+    );
+    server.await.unwrap();
+}
+
 async fn model_id_for_file_table(database_url: &str, file_table_id: &str) -> String {
     let pool = sqlx::PgPool::connect(database_url).await.unwrap();
     let model_id: Uuid =

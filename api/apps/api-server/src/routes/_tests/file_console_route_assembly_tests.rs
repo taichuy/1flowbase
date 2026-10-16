@@ -45,6 +45,7 @@ fn file_owner_routes_compile_from_exact_assemblies() {
                 "authenticated"
             ),
             ("POST", "/api/console/files/upload", "authenticated",),
+            ("POST", "/api/console/files/import-remote", "authenticated",),
             (
                 "GET",
                 "/api/console/files/:file_table_id/records/:record_id/content",
