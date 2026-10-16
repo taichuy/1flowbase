@@ -1,0 +1,66 @@
+name: MCP Call file params 2479
+
+on:
+  push:
+    branches:
+      - codex/mcp-call-file-2479
+
+permissions:
+  contents: read
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  file-import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: file-import-fixture
+          POSTGRES_DB: 1flowbase
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:file-import-fixture@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:file-import-fixture@127.0.0.1:5432/1flowbase
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: chatgpt-file-import-2479
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Bind exact candidate source
+        run: |
+          mkdir -p tmp/test-governance/chatgpt-file-import-2479/ci
+          git rev-parse HEAD | tee tmp/test-governance/chatgpt-file-import-2479/ci/source-sha.txt
+      - name: Four-meta file params mapping and dispatch
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib mcp_call_ -- --nocapture > tmp/test-governance/chatgpt-file-import-2479/ci/file-import-test.log 2>&1 || { tail -c 7000 tmp/test-governance/chatgpt-file-import-2479/ci/file-import-test.log; exit 1; }
+          cat tmp/test-governance/chatgpt-file-import-2479/ci/file-import-test.log | tail -c 4000
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib mcp_tools_list_always_returns_four_meta_tools > tmp/test-governance/chatgpt-file-import-2479/ci/file-route-test.log 2>&1 || { tail -c 3000 tmp/test-governance/chatgpt-file-import-2479/ci/file-route-test.log; exit 1; }
+      - name: Build runtime candidate and preserve digest
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > tmp/test-governance/chatgpt-file-import-2479/ci/build.log 2>&1 || { tail -c 5000 tmp/test-governance/chatgpt-file-import-2479/ci/build.log; exit 1; }
+          cp api/target/debug/api-server tmp/test-governance/chatgpt-file-import-2479/ci/api-server
+          strip --strip-unneeded tmp/test-governance/chatgpt-file-import-2479/ci/api-server
+          sha256sum tmp/test-governance/chatgpt-file-import-2479/ci/api-server | tee tmp/test-governance/chatgpt-file-import-2479/ci/binary-sha256.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: mcp-call-file-2479
+          if-no-files-found: warn
+          path: tmp/test-governance/chatgpt-file-import-2479/ci/

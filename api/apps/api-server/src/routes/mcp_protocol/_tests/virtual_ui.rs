@@ -947,117 +947,210 @@ async fn stale_or_unauthorized_resource_reads_reject_before_interface_dispatch()
     }
 }
 
-#[test]
-fn chatgpt_file_wrapper_is_exposed_as_direct_tool_only_when_declared() {
+fn file_import_catalog(field_name: &str) -> domain::McpCatalogSnapshot {
     let mut catalog = catalog_with_server_bound_workspace();
-    catalog.tools[0].tool_id = "chatgpt_file_import".to_string();
-    catalog.bindings[0].tool_id = "chatgpt_file_import".to_string();
-    catalog.tools[0].parameter_schema = json!({
-        "type":"object", "properties": {"body": {
-            "type":"object", "properties": {"file": {
-                "type":"object",
-                "properties": {
-                    "download_url":{"type":"string"}, "file_id":{"type":"string"},
-                    "mime_type":{"type":"string"}, "file_name":{"type":"string"}
-                },
-                "required":["download_url","file_id"]
-            }}
-        }}
-    });
-    catalog.tools[0].input_mapping = json!({
-        "openai_file_params":["file"],
-        "interface_parameters":[{
-            "name":"file","parameter_type":"json_body","field_type":"object","required":true
-        }],
-        "mappings":[{
-            "interface_param":"file","mcp_param":"file",
-            "source":{"kind":"mcp_argument","path":"file"},"required":true
-        }]
-    });
-    let scope = VirtualMcpScope::selected(&catalog, &["selected".to_owned()]);
-    let tools = advertised_tools(&catalog, &scope, false);
-    assert_eq!(tools.len(), 5);
-    assert_eq!(tools[4]["name"], "chatgpt_file_import");
-    assert_eq!(tools[4]["_meta"]["openai/fileParams"], json!(["file"]));
-    assert_eq!(tools[4]["inputSchema"]["required"], json!(["file"]));
-    assert!(is_direct_file_tool(&catalog, &scope, "chatgpt_file_import"));
-    assert!(!is_direct_file_tool(&catalog, &scope, "mcp_call"));
-
-    catalog.bindings[0].visible = false;
-    assert_eq!(advertised_tools(&catalog, &scope, false).len(), 4);
-    assert!(!is_direct_file_tool(
-        &catalog,
-        &scope,
-        "chatgpt_file_import"
-    ));
-}
-
-#[test]
-fn chatgpt_file_wrapper_rejects_invalid_file_schemas() {
-    let mut catalog = catalog_with_server_bound_workspace();
-    catalog.tools[0].tool_id = "chatgpt_file_import".to_owned();
-    catalog.bindings[0].tool_id = "chatgpt_file_import".to_owned();
-    catalog.tools[0].input_mapping = json!({
-        "openai_file_params":["file"],
-        "interface_parameters":[{
-            "name":"file","parameter_type":"json_body","field_type":"object","required":true
-        }],
-        "mappings":[{
-            "interface_param":"file","mcp_param":"file","required":true,
-            "source":{"kind":"mcp_argument","path":"file"}
-        }]
-    });
-    catalog.tools[0].parameter_schema = json!({"type":"object","properties":{
-        "body":{"type":"object","properties":{"file":{
-            "type":"object",
-            "properties":{"download_url":{"type":"string"}, "file_id":{"type":"string"}},
-            "required":["download_url","file_id"]
-        }}}
-    }});
-    let scope = VirtualMcpScope::selected(&catalog, &["selected".to_owned()]);
-    assert_eq!(advertised_tools(&catalog, &scope, false).len(), 4);
-    assert!(!is_direct_file_tool(
-        &catalog,
-        &scope,
-        "chatgpt_file_import"
-    ));
-}
-
-#[test]
-fn chatgpt_file_wrapper_normalizes_optional_nullable_strings() {
-    let mut catalog = catalog_with_server_bound_workspace();
-    catalog.tools[0].tool_id = "file_import".to_owned();
+    let tool = &mut catalog.tools[0];
+    tool.tool_id = "file_import".to_owned();
     catalog.bindings[0].tool_id = "file_import".to_owned();
-    catalog.tools[0].input_mapping = json!({
-        "openai_file_params":["file"],
+    tool.parameter_schema = json!({
+        "type":"object", "properties":{"body":{"type":"object","properties":{}}}
+    });
+    tool.parameter_schema["properties"]["body"]["properties"][field_name] = json!({
+        "type":"object",
+        "properties":{
+            "download_url":{"type":"string"}, "file_id":{"type":"string"},
+            "mime_type":{"type":["string","null"]},
+            "file_name":{"anyOf":[{"type":"string"},{"type":"null"}]}
+        },
+        "required":["download_url","file_id"]
+    });
+    tool.input_mapping = json!({
+        "openai_file_params":[field_name],
         "interface_parameters":[{
-            "name":"file","parameter_type":"json_body","field_type":"object","required":true
+            "name":field_name,"parameter_type":"json_body","field_type":"object","required":true
         }],
         "mappings":[{
-            "interface_param":"file","mcp_param":"file","required":true,
-            "source":{"kind":"mcp_argument","path":"file"}
+            "interface_param":field_name,"mcp_param":field_name,
+            "source":{"kind":"mcp_argument","path":field_name},"required":true
         }]
     });
-    catalog.tools[0].parameter_schema = json!({"type":"object","properties":{
-        "body":{"type":"object","properties":{"file":{
-            "type":"object",
-            "properties":{
-                "download_url":{"type":"string"},"file_id":{"type":"string"},
-                "mime_type":{"type":["string","null"]},
-                "file_name":{"anyOf":[{"type":"string"},{"type":"null"}]}
-            },
-            "required":["download_url","file_id"]
-        }}}
-    }});
-    let scope = VirtualMcpScope::selected(&catalog, &["selected".to_owned()]);
-    let tools = advertised_tools(&catalog, &scope, false);
-    assert_eq!(tools.len(), 5);
+    catalog
+}
+
+#[test]
+fn mcp_call_file_params_remain_optional_and_only_meta_tools_are_advertised() {
+    let tools = meta_tools(false);
+    assert_eq!(tools.len(), 4);
+    assert_eq!(tools[3]["name"], "mcp_call");
+    assert_eq!(tools[3]["_meta"]["openai/fileParams"], json!(["file"]));
+    let input = &tools[3]["inputSchema"];
+    assert_eq!(input["required"], json!(["tool_id", "arguments"]));
     assert_eq!(
-        tools[4]["inputSchema"]["properties"]["file"]["properties"]["mime_type"],
-        json!({"type":"string"})
+        input["properties"]["file"]["required"],
+        json!(["download_url", "file_id"])
     );
+    assert_eq!(input["properties"]["file"]["additionalProperties"], false);
+    for name in ["download_url", "file_id", "mime_type", "file_name"] {
+        assert_eq!(
+            input["properties"]["file"]["properties"][name]["type"],
+            "string"
+        );
+    }
+    assert!(tools[..3].iter().all(|tool| tool.get("_meta").is_none()));
+}
+
+#[test]
+fn mcp_call_injects_authorized_file_into_opted_in_interface_wrapper() {
+    let catalog = file_import_catalog("file");
+    let tool = &catalog.tools[0];
+    let file = json!({
+        "download_url":"https://files.example.org/test.png",
+        "file_id":"file_a",
+        "mime_type":"image/png",
+        "file_name":"report.png"
+    });
+    let original = json!({
+        "tool_id":"file_import",
+        "des_id":"current-description",
+        "arguments":{"file_table_id":"attachments"},
+        "file":file,
+        "response_fields":["/record/id"]
+    });
+    let forwarded = file_params::merge_call_file(tool, &original)
+        .unwrap()
+        .unwrap();
+    assert_eq!(forwarded["arguments"]["file"], original["file"]);
+    assert_eq!(forwarded["arguments"]["file_table_id"], "attachments");
+    assert_eq!(forwarded["tool_id"], "file_import");
+    assert_eq!(forwarded["des_id"], "current-description");
+    assert_eq!(forwarded["response_fields"], json!(["/record/id"]));
+    assert!(forwarded.get("file").is_none());
+    assert!(file_params::merge_call_file(
+        tool,
+        &json!({"tool_id":"file_import","arguments":{"file_table_id":"attachments"}})
+    )
+    .unwrap()
+    .is_none());
+}
+
+#[test]
+fn mcp_call_file_target_can_use_another_mapped_argument_name() {
+    let catalog = file_import_catalog("upload");
+    let file = json!({"download_url":"https://files.example.org/test.png","file_id":"file_a"});
+    let forwarded = file_params::merge_call_file(
+        &catalog.tools[0],
+        &json!({"tool_id":"file_import","arguments":{},"file":file}),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(forwarded["arguments"]["upload"], file);
+    assert!(forwarded["arguments"].get("file").is_none());
+}
+
+#[test]
+fn mcp_call_rejects_undeclared_conflicting_and_invalid_file_inputs() {
+    let mut catalog = file_import_catalog("file");
+    let file = json!({"download_url":"https://files.example.org/test.png","file_id":"file_a"});
+    let incoming = json!({"tool_id":"file_import","arguments":{},"file":file});
     assert_eq!(
-        tools[4]["inputSchema"]["properties"]["file"]["properties"]["file_name"],
-        json!({"type":"string"})
+        file_params::merge_call_file(&catalog.tools[0], &incoming)
+            .unwrap()
+            .unwrap()["arguments"]["file"],
+        file
     );
+    catalog.tools[0]
+        .input_mapping
+        .as_object_mut()
+        .unwrap()
+        .remove("openai_file_params");
+    assert_eq!(
+        file_params::merge_call_file(&catalog.tools[0], &incoming),
+        Err("Target tool does not accept file input")
+    );
+    catalog = file_import_catalog("file");
+    let conflict =
+        json!({"tool_id":"file_import","arguments":{"file":{"file_id":"other"}},"file":file});
+    assert_eq!(
+        file_params::merge_call_file(&catalog.tools[0], &conflict),
+        Err("Conflicting file arguments")
+    );
+    let identical = json!({"tool_id":"file_import","arguments":{"file":file},"file":file});
+    let merged = file_params::merge_call_file(&catalog.tools[0], &identical)
+        .unwrap()
+        .unwrap();
+    assert_eq!(merged["arguments"]["file"], file);
+    assert!(merged.get("file").is_none());
+    let missing = json!({"tool_id":"file_import","arguments":{},"file":{"file_id":"file_a"}});
+    assert_eq!(
+        file_params::merge_call_file(&catalog.tools[0], &missing),
+        Err("Invalid file parameter")
+    );
+    let missing_args = json!({"tool_id":"file_import","file":file});
+    assert_eq!(
+        file_params::merge_call_file(&catalog.tools[0], &missing_args),
+        Err("Invalid arguments")
+    );
+    catalog.tools[0].parameter_schema["properties"]["body"]["properties"]["file"]["properties"]
+        ["mime_type"] = json!({"type":"integer"});
+    assert_eq!(
+        file_params::merge_call_file(&catalog.tools[0], &incoming),
+        Err("Target tool does not accept file input")
+    );
+}
+
+struct CapturedFileArgumentDispatch {
+    expected: Value,
+}
+
+#[async_trait::async_trait]
+impl McpInterfaceDispatchPort for CapturedFileArgumentDispatch {
+    async fn execute(
+        &self,
+        _headers: HeaderMap,
+        _interface: domain::McpInterfaceCatalogEntry,
+        body: McpDebugExecuteBody,
+        _server_bound_inputs: McpServerBoundInputs,
+    ) -> Result<Value, debug_execute::McpDebugExecuteError> {
+        assert_eq!(body.mcp_arguments, self.expected);
+        assert_eq!(body.interface_id, "lookup");
+        Ok(json!({"file_received": true}))
+    }
+}
+
+#[tokio::test]
+async fn mcp_call_file_param_reaches_existing_interface_dispatch() {
+    let catalog = file_import_catalog("file");
+    let image_file = json!({
+        "download_url":"https://files.example.org/generated.png",
+        "file_id":"file_generated",
+        "mime_type":"image/png",
+        "file_name":"日报封面.png"
+    });
+    let expected = json!({"file":image_file,"file_table_id":"attachments"});
+    let dispatch_port = CapturedFileArgumentDispatch {
+        expected: expected.clone(),
+    };
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
+    let scope = VirtualMcpScope::single("selected".into());
+    let headers = HeaderMap::new();
+    let arguments = json!({
+        "tool_id":"file_import",
+        "arguments":{"file_table_id":"attachments"},
+        "file":image_file
+    });
+    let result = call(McpCallRequest {
+        dependencies: &media_fixture_dependencies(),
+        interface_catalog: &media_fixture_interfaces(),
+        interface_dispatch: &dispatch_port,
+        headers: &headers,
+        actor: &actor,
+        catalog: &catalog,
+        scope: &scope,
+        arguments: &arguments,
+        assistant_client: None,
+    })
+    .await
+    .unwrap();
+    assert!(matches!(result, VirtualToolOutcome::Success(_)));
 }

@@ -39,7 +39,6 @@ use crate::{
     },
 };
 use description_guard::{description_tool, validate_tool_call_controls};
-pub(crate) use file_params::{advertised_tools, is_direct_file_tool};
 
 const MCP_LIST: &str = portable_meta_tool_name("mcp_list");
 const MCP_GET: &str = portable_meta_tool_name("mcp_get");
@@ -650,13 +649,14 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
         json!({
             "name": MCP_CALL,
             "title": "Call MCP tool",
-            "description": "Call a visible tool after mcp_get. When des_id_required is true, explicitly supply the current des_id from description_tool_id when configured, or from this tool otherwise.",
+             "description": "Call a visible tool after mcp_get. When a target accepts files, provide its authorized ChatGPT file through top-level file (not arguments.file). When des_id_required is true, use the current des_id.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "tool_id": {"type": "string"},
                     "des_id": {"type": "string"},
                     "arguments": {"type": "object"},
+                    "file": file_params::file_schema(),
                     "max_inline_chars": {
                         "type": "integer",
                         "minimum": 1
@@ -664,7 +664,8 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
                 },
                 "required": ["tool_id", "arguments"],
                 "additionalProperties": false
-            }
+            },
+            "_meta": {"openai/fileParams": ["file"]}
         }),
     ];
     for tool in &mut tools[2..] {
@@ -1062,6 +1063,15 @@ pub(super) async fn call_inner(
     if let Err(message) = validate_tool_call_controls(arguments, tool, description) {
         return Ok(VirtualToolOutcome::invalid(message));
     }
+    let augmented;
+    let arguments = match file_params::merge_call_file(tool, arguments) {
+        Ok(Some(merged)) => {
+            augmented = merged;
+            &augmented
+        }
+        Ok(None) => arguments,
+        Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
+    };
     // A public locator retains only caller arguments, never hidden/default bindings.
     let replay_arguments = arguments
         .get("arguments")

@@ -786,6 +786,22 @@ fn assert_meta_tools(payload: &Value) {
     assert!(tools
         .iter()
         .all(|tool| tool["inputSchema"]["type"] == json!("object")));
+    let call = &tools[3];
+    assert_eq!(call["_meta"]["openai/fileParams"], json!(["file"]));
+    assert_eq!(
+        call["inputSchema"]["required"],
+        json!(["tool_id", "arguments"])
+    );
+    assert_eq!(
+        call["inputSchema"]["properties"]["file"]["required"],
+        json!(["download_url", "file_id"])
+    );
+    for key in ["download_url", "file_id", "mime_type", "file_name"] {
+        assert_eq!(
+            call["inputSchema"]["properties"]["file"]["properties"][key]["type"],
+            json!("string")
+        );
+    }
 }
 
 #[tokio::test]
