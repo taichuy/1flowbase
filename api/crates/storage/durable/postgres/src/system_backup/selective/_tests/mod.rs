@@ -3,6 +3,7 @@ mod native_storage;
 mod notifications;
 mod oauth;
 mod plugin_credentials;
+mod provider_sessions;
 mod raw_storage;
 
 use super::*;

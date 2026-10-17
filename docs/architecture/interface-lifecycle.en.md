@@ -59,6 +59,16 @@ HTTP/SSE/WebSocket and MCP/WebMCP retain their input, error and streaming contra
 
 Source entry points: [route assembly](../../api/apps/api-server/src/external_route_assembly.rs), [endpoint catalog](../../api/apps/api-server/src/external_endpoint_catalog.rs), [WebMCP interface](../../api/apps/api-server/src/routes/webmcp/interface.rs).
 
+### Provider session ownership
+
+Authenticated Responses, Messages and Chat ingress seals explicit session signals into Host identity and passes it through Native metadata/input mapping to FlowRun. Message bodies do not infer sessions. Independent requests without a signal do not share a binding; trusted Responses continuation may inherit its original identity. Business conversation fields retain their meaning.
+
+Control Plane derives a scope digest from workspace, application, API key, actor, flow, session, node, original routing pool, provider and model, excluding candidate order and rule revision. Orchestration owns selection: default `None` retains the first instance and propagates its disabled, excluded, deleted, incompatible or failed outcome without rebinding. Explicit distribution and retry rules retain their configured decisions. Provider-private continuation ownership remains an independent constraint.
+
+The repository contract belongs to `control-plane-contracts`; PostgreSQL atomically gets-or-binds `(workspace_id, scope_digest)` and returns the persisted winner on conflict. `model_provider_session_bindings` stores ownership and creation time, not message bodies. It has no provider-instance foreign key, so deleting an instance does not erase its binding. The new table starts empty; sessions without reliable historical identity bind on their first legal request after rollout, without reconstructing a historical original instance. Isolated migration tests do not deploy to a running service.
+
+See [Provider routing](../../api/crates/orchestration-runtime/src/provider_routing.md) for selection, concurrency and continuation boundaries.
+
 <a id="contracts-and-identity"></a>
 
 ## Contracts and identity

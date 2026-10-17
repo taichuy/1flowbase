@@ -10,7 +10,7 @@ use super::*;
 use axum::response::Response;
 use control_plane::ports::{FileManagementRepository, SessionStore};
 use postgres_test_support::PostgresTestSchema;
-use std::time::Duration;
+use std::{io::Write, time::Duration};
 
 #[derive(Clone)]
 struct StaticApiRuntimeProfileCollector {
@@ -101,17 +101,34 @@ async fn isolated_postgres_toolchain(
     let pg_dump = root.join("pg_dump");
     let pg_restore = root.join("pg_restore");
     for path in [&pg_dump, &pg_restore] {
-        std::fs::write(path, &script).expect("test PostgreSQL tool should be written");
+        let mut writer =
+            std::fs::File::create(path).expect("test PostgreSQL tool should be created");
+        writer
+            .write_all(script.as_bytes())
+            .expect("test PostgreSQL tool should be written");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut permissions = std::fs::metadata(path)
+            let mut permissions = writer
+                .metadata()
                 .expect("test PostgreSQL tool metadata should be readable")
                 .permissions();
             permissions.set_mode(0o700);
-            std::fs::set_permissions(path, permissions)
+            writer
+                .set_permissions(permissions)
                 .expect("test PostgreSQL tool should be executable");
         }
+        // A concurrent fork can inherit the writable descriptor until exec even
+        // after this thread closes it (rust-lang/rust#114554). Shared locking
+        // through a new read-only descriptor waits for those writers to close.
+        writer.lock().expect("test tool writer should be locked");
+        drop(writer);
+        let reader =
+            std::fs::File::open(path).expect("published test PostgreSQL tool should be readable");
+        reader
+            .lock_shared()
+            .expect("inherited test tool writers should close");
+        drop(reader);
     }
     let toolchain = storage_durable_postgres::PostgreSqlToolchain::discover(&pg_dump, &pg_restore)
         .await

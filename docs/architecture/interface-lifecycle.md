@@ -112,6 +112,16 @@ SQL 节点当前字段为 `bindings.sql`。已有保存流程仍可能携带 `co
 
 `api-server/resources/ctx/block-context.v1.json` 是供页面编写与 MCP discovery 消费的 Host ABI 描述；接口返回成员的类型与说明，不执行这些成员。前端 Block SDK 定义 `BlockContext`，Host facade 提供实际能力。`i18n` 描述包含 `locale`、`status` 和 `t`，语言状态与翻译 fallback 由前端 Host 提供；后端描述、SDK 类型和真实 facade 的一致性由 contract parity 测试检查。
 
+### 供应商会话归属
+
+认证后的协议入口将 Responses、Messages、Chat 的显式会话信号封装为宿主身份，经 Native metadata / input mapping 进入 FlowRun；不从消息正文猜测会话。无信号的独立请求不共享绑定；受信 Responses continuation 可以继承原身份。业务 conversation 字段仍保持原义。
+
+Control Plane 按 workspace、application、API key、actor、flow、会话、node、原始路由池、provider 与 model 生成 scope digest，不把候选顺序或规则 revision 纳入原始归属。`orchestration-runtime` 独占选择语义：默认 `None` 复用首次实例；原实例停用、排除、删除、能力不符或调用失败时如实失败，不改绑。显式分配及重试规则保持配置语义，首次归属记录不覆盖其选择；供应商私有 continuation owner 仍独立校验。
+
+Repository contract 归 `control-plane-contracts`，PostgreSQL adapter 以 `(workspace_id, scope_digest)` 原子 get-or-bind，冲突返回已有实例。`model_provider_session_bindings` 仅保存归属及创建时间，不保存正文；不设置 provider-instance 外键，删除实例不删除历史绑定。新表初始为空，没有可靠历史身份时只能从新版首次合法请求建立归属，不承诺恢复历史真实首实例。迁移和隔离测试不表示已向运行服务部署。
+
+选择、并发与 continuation 边界详见 [Provider routing](../../api/crates/orchestration-runtime/src/provider_routing.md)。
+
 ### 内部持久化身份与门禁
 
 调用及日志内部记录沿用真实 owner，不为满足通用业务表模板制造独立业务身份：删除工作集/停止事实归删除 job，上传回执归 application/source/event，原生消息投影进度归 flow run。组织树与成员/角色绑定沿用 workspace 与关系键。授权仍由业务 owner 决定，存储层外键、主键和对应查找索引保证引用与访问路径。

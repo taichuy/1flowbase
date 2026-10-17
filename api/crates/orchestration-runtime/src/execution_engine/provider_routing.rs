@@ -129,28 +129,29 @@ where
     })
 }
 
+pub(super) struct ProviderDistributionPolicy<'a> {
+    pub(super) rule: &'a crate::compiled_plan::LlmDistributionRule,
+    pub(super) key: Option<&'a str>,
+}
+
 pub(super) async fn select_session_provider_target(
     runtime: &CompiledLlmRuntime,
     node_id: &str,
-    distribution_rule: &crate::compiled_plan::LlmDistributionRule,
-    distribution_key: Option<&str>,
+    policy: ProviderDistributionPolicy<'_>,
     target_ids: &[String],
     attempt_index: usize,
     runtime_context: &ExecutionRuntimeContext,
     invoker: &(impl ProviderInvoker + ?Sized),
 ) -> Result<ProviderDistributionSelection> {
-    let is_default = matches!(
-        distribution_rule,
-        crate::compiled_plan::LlmDistributionRule::None
-    );
+    let is_default = matches!(policy.rule, crate::compiled_plan::LlmDistributionRule::None);
     let owner = if is_default {
         invoker.get_session_llm_provider(runtime, node_id).await?
     } else {
         None
     };
     let mut selection = select_provider_target(
-        distribution_rule,
-        distribution_key,
+        policy.rule,
+        policy.key,
         target_ids,
         attempt_index,
         runtime_context,

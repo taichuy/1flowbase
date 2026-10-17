@@ -154,8 +154,10 @@ where
         let selection = super::provider_routing::select_session_provider_target(
             runtime,
             node_id,
-            &main_routing.distribution_rule,
-            main_routing.distribution_key.as_deref(),
+            super::provider_routing::ProviderDistributionPolicy {
+                rule: &main_routing.distribution_rule,
+                key: main_routing.distribution_key.as_deref(),
+            },
             &compatible
                 .iter()
                 .map(|(candidate, _)| candidate.runtime.provider_instance_id.clone())
@@ -249,15 +251,17 @@ where
     let selection = super::provider_routing::select_session_provider_target(
         runtime,
         node_id,
-        runtime
-            .routing
-            .as_ref()
-            .map(|routing| &routing.distribution_rule)
-            .unwrap_or(&crate::compiled_plan::LlmDistributionRule::None),
-        runtime
-            .routing
-            .as_ref()
-            .and_then(|routing| routing.distribution_key.as_deref()),
+        super::provider_routing::ProviderDistributionPolicy {
+            rule: runtime
+                .routing
+                .as_ref()
+                .map(|routing| &routing.distribution_rule)
+                .unwrap_or(&crate::compiled_plan::LlmDistributionRule::None),
+            key: runtime
+                .routing
+                .as_ref()
+                .and_then(|routing| routing.distribution_key.as_deref()),
+        },
         &compatible
             .iter()
             .map(|candidate| candidate.runtime.provider_instance_id.clone())

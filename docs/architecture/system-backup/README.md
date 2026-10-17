@@ -8,6 +8,8 @@
 
 通知实例的 `notification_instances` 属于 `system.notifications` 的配置；收件人的 `system_notifications` 是同 owner 的持久 inbox 历史。仅导出配置不包含收件历史，选择数据时沿用 selection contract 组合所需配置。通知实例 credential 密文使用 notification repository 的 workspace / instance associated data 验证身份，并在恢复时按现有 selective rekey 流程换到目标 key；无配置凭证的内置实例保留 null。不得直接搬运源密文、丢失身份绑定或输出明文。备份 owner 不授予普通数据表访问权限，通知 service 仍独占接收人隔离与业务读写。
 
+供应商会话归属 `model_provider_session_bindings` 是 `system.model-providers` 的持久运行数据，不属于配置。仅配置备份不包含它；选择数据时保存和恢复精确 scope、实例归属及创建时间。实例已删除时仍保留归属，不因缺实例而丢弃；恢复保留目标独有绑定并支持 rollback，后续正常 get-or-bind 仍不能覆盖恢复的原实例。
+
 ## 历史迁移验收
 
 历史迁移 fixture 固定迁移前的 schema，使用当时存在的 workspace 行契约建立初始数据。当前 bootstrap 会为新增 feature 建默认实例，因此不能用于通知表尚不存在的历史数据库；测试通过 `postgres-test-support::insert_historical_workspace` 只插入基础行，不补未来 migration、不放宽 rollback 断言。正式 migrations 的版本、顺序和内容保持不变。
