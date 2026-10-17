@@ -10,7 +10,7 @@
 | AI Gateway 执行证据 | [中文](ai-gateway-observation.md) · [English](ai-gateway-observation.en.md) | 三层职责、Native 必要日志、同调用正文引用与按需读取 |
 | Runtime 回放回收 | [热回放与冷恢复](runtime-replay/README.md) · [English](runtime-replay/README.en.md) | generation 落库证明、短期热缓存、分页恢复与数据库保留边界 |
 | 插件组合与治理 | [组合与历史分页](plugin-composition.md) · [English](plugin-composition.en.md) | 贡献授权、冻结身份、完整历史续读及退休边界 |
-| 插件生命周期契约 | [中文](plugin-lifecycle-contracts.md) · [English](plugin-lifecycle-contracts.en.md) | Hook、领域事实、Outbox与订阅者责任 |
+| 插件与事件生命周期契约 | [中文](plugin-lifecycle-contracts.md) · [English](plugin-lifecycle-contracts.en.md) | 三生命周期边界、Hook、事务事实、Outbox、瞬时事件与旧机制退役 |
 | 插件管理的数据模型 | [Plugin Managed Data Model](plugin-managed-data-model.md) | 声明式schema、ownership、增量变更与恢复边界 |
 | 系统设置选择性备份 | [配置、数据与历史迁移](system-backup/README.md) | 内置表 feature owner、配置 / 持久事实与回滚验收 |
 | PostgreSQL 树 | [中文](ordered-tree/README_CN.md) · [English](ordered-tree/README.md) | ltree、keyset 分页、作用域和结构事务 |

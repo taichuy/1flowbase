@@ -1,0 +1,124 @@
+name: Event lifecycle acceptance
+
+on:
+  push:
+    branches: [codex/event-lifecycle-20261018]
+    paths:
+      - api/**
+      - docs/architecture/plugin-lifecycle-contracts*
+      - .github/workflows/event-lifecycle.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: event-lifecycle-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: lifecycle-fixture-only
+          POSTGRES_DB: lifecycle_fixture
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lifecycle_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:lifecycle-fixture-only@127.0.0.1:5432/lifecycle_fixture
+      API_DATABASE_URL: postgres://postgres:lifecycle-fixture-only@127.0.0.1:5432/lifecycle_fixture
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            api/target
+          key: event-lifecycle-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            notification-subscription-nodebug-${{ runner.os }}-
+            event-lifecycle-nodebug-${{ runner.os }}-
+      - name: Freeze source and resources
+        run: |
+          mkdir -p tmp/test-governance/event-lifecycle/ci
+          git rev-parse HEAD > tmp/test-governance/event-lifecycle/ci/source-sha.txt
+          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+      - name: Event delivery, migration and current backup Test Batch
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/event-lifecycle/ci
+          failed=0
+          run_tests() {
+            label="$1"
+            shift
+            if cargo test --locked --manifest-path api/Cargo.toml "$@" > "$evidence/$label.log" 2>&1; then
+              node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || failed=1
+            else
+              tail -c 7000 "$evidence/$label.log"
+              failed=1
+            fi
+          }
+          run_tests memory -p storage-ephemeral --lib memory_event_bus
+          run_tests outbox -p storage-durable-postgres --lib lifecycle_outbox_repository_tests
+          run_tests publication -p storage-durable-postgres --lib notification_publication
+          run_tests retirement -p storage-durable-postgres --lib legacy_retirement
+          run_tests backup -p storage-durable-postgres --lib system_backup::selective
+          run_tests billing -p storage-durable-postgres --lib billing_repository_tests
+          run_tests dispatcher -p control-plane --lib lifecycle_outbox_dispatcher
+          run_tests effects -p control-plane-postgres-tests --test durable_event_bus
+          run_tests activation -p api-server --lib host_infrastructure::event_bus_activation
+          run_tests responses-ws -p api-server --lib routes::application_public_api::responses_websocket
+          run_tests responses-sse -p api-server --lib routes::application_public_api::compat_sse::tests::protocol_projection
+          test "$failed" = 0
+      - name: Prove the large-message fixture rejects a bounded replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          source=api/apps/api-server/src/host_infrastructure/event_bus_activation.rs
+          trap 'git restore --source=HEAD -- "$source"' EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("api/apps/api-server/src/host_infrastructure/event_bus_activation.rs")
+          content = source.read_text()
+          assert content.count("MemoryEventBus::lossless()") == 1
+          source.write_text(content.replace("MemoryEventBus::lossless()", "MemoryEventBus::new()"))
+          PY
+          log=tmp/test-governance/event-lifecycle/ci/controlled-negative.log
+          if cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib builtin_live_events_preserve_complete_large_json_without_database > "$log" 2>&1; then
+            echo "Controlled negative unexpectedly passed"
+            exit 1
+          fi
+          grep -q 'ephemeral_payload_too_large' "$log"
+          grep -q 'builtin_live_events_preserve_complete_large_json_without_database .*FAILED' "$log"
+          echo "The fixture rejected the bounded replacement at payload admission."
+      - name: Build runtime candidate
+        run: |
+          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > tmp/test-governance/event-lifecycle/ci/build.log 2>&1 || { tail -c 7000 tmp/test-governance/event-lifecycle/ci/build.log; exit 1; }
+          cp api/target/debug/api-server tmp/test-governance/event-lifecycle/ci/api-server-candidate
+          sha256sum tmp/test-governance/event-lifecycle/ci/api-server-candidate > tmp/test-governance/event-lifecycle/ci/binary-sha256.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: event-lifecycle-${{ github.sha }}
+          if-no-files-found: error
+          path: tmp/test-governance/event-lifecycle/ci
