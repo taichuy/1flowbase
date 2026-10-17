@@ -161,11 +161,10 @@ impl PgControlPlaneStore {
         Ok(map_cost_ledger_record(row))
     }
 
-    async fn finalize_model_billing(
-        &self,
-        input: &FinalizeModelBillingInput,
-    ) -> Result<FinalizedModelBilling> {
-        let mut tx = self.pool().begin().await?;
+    async fn append_usage_in_transaction(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        input: &AppendUsageLedgerInput,
+    ) -> Result<domain::UsageLedgerRecord> {
         let usage_id = Uuid::now_v7();
         let usage_row = sqlx::query(
             r#"
@@ -190,33 +189,43 @@ impl PgControlPlaneStore {
             "#,
         )
         .bind(usage_id)
-        .bind(input.usage.flow_run_id)
-        .bind(input.usage.node_run_id)
-        .bind(input.usage.span_id)
-        .bind(input.usage.failover_attempt_id)
-        .bind(input.usage.provider_instance_id)
-        .bind(input.usage.gateway_route_id)
-        .bind(input.usage.model_id.as_deref())
-        .bind(input.usage.upstream_model_id.as_deref())
-        .bind(input.usage.upstream_request_id.as_deref())
-        .bind(input.usage.input_tokens)
-        .bind(input.usage.cached_input_tokens)
-        .bind(input.usage.output_tokens)
-        .bind(input.usage.reasoning_output_tokens)
-        .bind(input.usage.total_tokens)
-        .bind(input.usage.input_cache_hit_tokens)
-        .bind(input.usage.input_cache_miss_tokens)
-        .bind(input.usage.cache_read_tokens)
-        .bind(input.usage.cache_write_tokens)
-        .bind(&input.usage.price_snapshot)
-        .bind(&input.usage.cost_snapshot)
-        .bind(input.usage.usage_status.as_str())
-        .bind(&input.usage.raw_usage)
-        .bind(&input.usage.normalized_usage)
-        .fetch_one(&mut *tx)
+        .bind(input.flow_run_id)
+        .bind(input.node_run_id)
+        .bind(input.span_id)
+        .bind(input.failover_attempt_id)
+        .bind(input.provider_instance_id)
+        .bind(input.gateway_route_id)
+        .bind(input.model_id.as_deref())
+        .bind(input.upstream_model_id.as_deref())
+        .bind(input.upstream_request_id.as_deref())
+        .bind(input.input_tokens)
+        .bind(input.cached_input_tokens)
+        .bind(input.output_tokens)
+        .bind(input.reasoning_output_tokens)
+        .bind(input.total_tokens)
+        .bind(input.input_cache_hit_tokens)
+        .bind(input.input_cache_miss_tokens)
+        .bind(input.cache_read_tokens)
+        .bind(input.cache_write_tokens)
+        .bind(&input.price_snapshot)
+        .bind(&input.cost_snapshot)
+        .bind(input.usage_status.as_str())
+        .bind(&input.raw_usage)
+        .bind(&input.normalized_usage)
+        .fetch_one(&mut **tx)
         .await?;
         let usage = map_usage_ledger_record(usage_row)?;
 
+        Ok(usage)
+    }
+
+    async fn append_cost_in_transaction(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        input: &AppendCostLedgerInput,
+        flow_run_id: Uuid,
+        usage_id: Uuid,
+        billing_session_id: Option<Uuid>,
+    ) -> Result<domain::CostLedgerRecord> {
         let cost_id = Uuid::now_v7();
         let cost_row = sqlx::query(
             r#"
@@ -237,28 +246,144 @@ impl PgControlPlaneStore {
             "#,
         )
         .bind(cost_id)
-        .bind(input.cost.flow_run_id.or(Some(input.usage.flow_run_id)))
-        .bind(input.cost.span_id)
-        .bind(usage.id)
-        .bind(input.settlement.billing_session_id)
-        .bind(input.cost.workspace_id)
-        .bind(input.cost.provider_instance_id)
-        .bind(input.cost.provider_account_id)
-        .bind(input.cost.gateway_route_id)
-        .bind(input.cost.model_id.as_deref())
-        .bind(input.cost.upstream_model_id.as_deref())
-        .bind(&input.cost.price_snapshot)
-        .bind(input.cost.raw_cost.as_deref())
-        .bind(input.cost.normalized_cost.as_deref())
-        .bind(input.cost.settlement_currency.as_deref())
-        .bind(&input.cost.cost_source)
-        .bind(&input.cost.cost_status)
-        .fetch_one(&mut *tx)
+        .bind(input.flow_run_id.or(Some(flow_run_id)))
+        .bind(input.span_id)
+        .bind(usage_id)
+        .bind(billing_session_id)
+        .bind(input.workspace_id)
+        .bind(input.provider_instance_id)
+        .bind(input.provider_account_id)
+        .bind(input.gateway_route_id)
+        .bind(input.model_id.as_deref())
+        .bind(input.upstream_model_id.as_deref())
+        .bind(&input.price_snapshot)
+        .bind(input.raw_cost.as_deref())
+        .bind(input.normalized_cost.as_deref())
+        .bind(input.settlement_currency.as_deref())
+        .bind(&input.cost_source)
+        .bind(&input.cost_status)
+        .fetch_one(&mut **tx)
         .await?;
         let cost = map_cost_ledger_record(cost_row);
 
+        Ok(cost)
+    }
+
+    async fn record_model_observation(
+        &self,
+        input: &RecordModelObservationInput,
+    ) -> Result<RecordedModelObservation> {
+        if input.cost.billing_session_id.is_some() {
+            return Err(ControlPlaneError::InvalidInput("billing_session_id").into());
+        }
+        let mut tx = self.pool().begin().await?;
+        let usage = Self::append_usage_in_transaction(&mut tx, &input.usage).await?;
+        let cost = Self::append_cost_in_transaction(
+            &mut tx,
+            &input.cost,
+            input.usage.flow_run_id,
+            usage.id,
+            None,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(RecordedModelObservation { usage, cost })
+    }
+
+    async fn finalize_model_billing(
+        &self,
+        input: &FinalizeModelBillingInput,
+    ) -> Result<FinalizedModelBilling> {
+        let mut tx = self.pool().begin().await?;
+        let mut notifications = Vec::new();
+        // Serialize duplicate finalizers before inserting observational records.
+        let status: String =
+            sqlx::query_scalar("select status from billing_sessions where id=$1 for update")
+                .bind(input.settlement.billing_session_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if status == "settled" {
+            let credit = crate::billing_repository::settle_credit_in_transaction(
+                &mut tx,
+                self,
+                &mut notifications,
+                &input.settlement,
+            )
+            .await?;
+            let cost_row = sqlx::query("select c.id,c.flow_run_id,c.span_id,c.usage_ledger_id,c.billing_session_id,c.workspace_id,c.provider_instance_id,c.provider_account_id,c.gateway_route_id,c.model_id,c.upstream_model_id,c.price_snapshot,c.raw_cost::text as raw_cost,c.normalized_cost::text as normalized_cost,c.settlement_currency,c.cost_source,c.cost_status,c.created_at from runtime_cost_ledger c join runtime_credit_ledger l on l.cost_ledger_id=c.id where l.id=$1")
+                .bind(credit.id).fetch_one(&mut *tx).await?;
+            let cost = map_cost_ledger_record(cost_row);
+            let usage_row = sqlx::query("select * from runtime_usage_ledger where id=$1")
+                .bind(cost.usage_ledger_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            let usage = map_usage_ledger_record(usage_row)?;
+            let amount = |value: Option<&str>| -> Result<Option<rust_decimal::Decimal>> {
+                value.map(str::parse).transpose().map_err(Into::into)
+            };
+            if usage.flow_run_id != input.usage.flow_run_id
+                || usage.node_run_id != input.usage.node_run_id
+                || usage.span_id != input.usage.span_id
+                || usage.failover_attempt_id != input.usage.failover_attempt_id
+                || usage.provider_instance_id != input.usage.provider_instance_id
+                || usage.gateway_route_id != input.usage.gateway_route_id
+                || usage.model_id != input.usage.model_id
+                || usage.upstream_model_id != input.usage.upstream_model_id
+                || usage.upstream_request_id != input.usage.upstream_request_id
+                || usage.input_tokens != input.usage.input_tokens
+                || usage.cached_input_tokens != input.usage.cached_input_tokens
+                || usage.output_tokens != input.usage.output_tokens
+                || usage.reasoning_output_tokens != input.usage.reasoning_output_tokens
+                || usage.total_tokens != input.usage.total_tokens
+                || usage.input_cache_hit_tokens != input.usage.input_cache_hit_tokens
+                || usage.input_cache_miss_tokens != input.usage.input_cache_miss_tokens
+                || usage.cache_read_tokens != input.usage.cache_read_tokens
+                || usage.cache_write_tokens != input.usage.cache_write_tokens
+                || usage.price_snapshot != input.usage.price_snapshot
+                || usage.cost_snapshot != input.usage.cost_snapshot
+                || usage.usage_status != input.usage.usage_status
+                || usage.raw_usage != input.usage.raw_usage
+                || usage.normalized_usage != input.usage.normalized_usage
+                || cost.flow_run_id != input.cost.flow_run_id.or(Some(input.usage.flow_run_id))
+                || cost.span_id != input.cost.span_id
+                || cost.workspace_id != input.cost.workspace_id
+                || cost.provider_instance_id != input.cost.provider_instance_id
+                || cost.provider_account_id != input.cost.provider_account_id
+                || cost.gateway_route_id != input.cost.gateway_route_id
+                || cost.model_id != input.cost.model_id
+                || cost.upstream_model_id != input.cost.upstream_model_id
+                || cost.price_snapshot != input.cost.price_snapshot
+                || amount(cost.raw_cost.as_deref())? != amount(input.cost.raw_cost.as_deref())?
+                || amount(cost.normalized_cost.as_deref())?
+                    != amount(input.cost.normalized_cost.as_deref())?
+                || cost.settlement_currency != input.cost.settlement_currency
+                || cost.cost_source != input.cost.cost_source
+                || cost.cost_status != input.cost.cost_status
+            {
+                return Err(
+                    ControlPlaneError::Conflict("credit_idempotency_payload_mismatch").into(),
+                );
+            }
+            tx.commit().await?;
+            return Ok(FinalizedModelBilling {
+                usage,
+                cost,
+                credit,
+            });
+        }
+        let usage = Self::append_usage_in_transaction(&mut tx, &input.usage).await?;
+        let cost = Self::append_cost_in_transaction(
+            &mut tx,
+            &input.cost,
+            input.usage.flow_run_id,
+            usage.id,
+            Some(input.settlement.billing_session_id),
+        )
+        .await?;
         let credit = crate::billing_repository::settle_credit_in_transaction(
             &mut tx,
+            self,
+            &mut notifications,
             &SettleCreditInput {
                 cost_ledger_id: Some(cost.id),
                 usage_ledger_id: Some(usage.id),

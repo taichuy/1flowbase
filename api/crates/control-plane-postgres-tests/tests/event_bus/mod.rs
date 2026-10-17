@@ -1,5 +1,5 @@
 //! Service + real PostgreSQL handoff and selective backup/restore acceptance.
-use control_plane::billing::dispatch_credit_events;
+use control_plane::billing::handoff_legacy_credit_events;
 use control_plane_contracts::{
     ports::{BillingRepository, EphemeralValueRevealMode, EventBus},
     system_backup::selective::{SelectiveBackupRepository, SelectiveBackupSelection},
@@ -27,12 +27,14 @@ async fn rejected_credit(pool: &sqlx::PgPool) -> uuid::Uuid {
     // A fresh fixture row has no unrelated bootstrap notification dependencies;
     // changing the name passed to bootstrap would still seed those dependencies.
     let workspace = uuid::Uuid::now_v7();
-    sqlx::query("insert into workspaces(id,tenant_id,name) values ($1,$2,'Durable credit handoff fixture')")
-        .bind(workspace)
-        .bind(tenant.id)
-        .execute(pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "insert into workspaces(id,tenant_id,name) values ($1,$2,'Durable credit handoff fixture')",
+    )
+    .bind(workspace)
+    .bind(tenant.id)
+    .execute(pool)
+    .await
+    .unwrap();
     store
         .record_credit_command_rejected(
             workspace,
@@ -43,6 +45,15 @@ async fn rejected_credit(pool: &sqlx::PgPool) -> uuid::Uuid {
         )
         .await
         .unwrap();
+    // Current optional-zero rejection retains a completed fact, with no future
+    // transport obligation. This recovery fixture explicitly converts only its
+    // own source row into the pre-cutover unpublished state.
+    let (event_id, _published_at): (uuid::Uuid, time::OffsetDateTime) = sqlx::query_as(
+        "select event_id,published_at from credit_event_outbox where workspace_id=$1 and event_type='CreditCommandRejected' and payload->>'idempotency_key'='fixture:rejected'",
+    ).bind(workspace).fetch_one(pool).await.unwrap();
+    let changed = sqlx::query("update credit_event_outbox set published_at=null where event_id=$1 and workspace_id=$2 and published_at is not null")
+        .bind(event_id).bind(workspace).execute(pool).await.unwrap();
+    assert_eq!(changed.rows_affected(), 1);
     workspace
 }
 
@@ -82,19 +93,21 @@ async fn archive(pool: &sqlx::PgPool, features: &[&str]) -> Vec<u8> {
 }
 
 #[tokio::test]
-async fn active_durable_provider_dispatches_actual_rejection_and_survives_backup_restore() {
+async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore() {
     let original = pool().await;
     rejected_credit(&original).await;
     let bus = PgEventBus::new(original.clone());
-    let unsupported = storage_ephemeral::MemoryEventBus::new();
-    assert!(dispatch_credit_events(&unsupported, 50).await.is_err());
+    assert!(handoff_legacy_credit_events(None, 50).await.is_err());
     let unpublished: i64 =
         sqlx::query_scalar("select count(*) from credit_event_outbox where published_at is null")
             .fetch_one(&original)
             .await
             .unwrap();
     assert_eq!(unpublished, 1);
-    assert_eq!(dispatch_credit_events(&bus, 50).await.unwrap(), 1);
+    assert_eq!(
+        handoff_legacy_credit_events(Some(&bus), 50).await.unwrap(),
+        1
+    );
     let generic = json!({"nul\0key":["before\0after","literal\\u0000",null],
         "nul\\u0000key":"distinct", "array":[i64::MIN,u64::MAX,1.25,1e100]});
     bus.publish("generic\0events", generic.clone())
@@ -154,7 +167,12 @@ async fn active_durable_provider_dispatches_actual_rejection_and_survives_backup
         restored.poll("generic\0events").await.unwrap(),
         Some(generic)
     );
-    assert_eq!(dispatch_credit_events(&restored, 50).await.unwrap(), 0);
+    assert_eq!(
+        handoff_legacy_credit_events(Some(&restored), 50)
+            .await
+            .unwrap(),
+        0
+    );
     assert!(restored.list_ephemeral_entries().await.unwrap().is_empty());
     restored.publish("new", json!("later")).await.unwrap();
     assert_eq!(
@@ -192,7 +210,10 @@ async fn backup_selection_keeps_business_sources_separate_from_durable_runtime_e
     let original = pool().await;
     rejected_credit(&original).await;
     let bus = PgEventBus::new(original.clone());
-    assert_eq!(dispatch_credit_events(&bus, 50).await.unwrap(), 1);
+    assert_eq!(
+        handoff_legacy_credit_events(Some(&bus), 50).await.unwrap(),
+        1
+    );
     bus.publish(
         "unrelated-runtime-topic",
         json!({"must":"not enter members-only backup"}),
@@ -253,7 +274,10 @@ async fn source_independent_snapshot_and_receipt_restore_after_workspace_cascade
     let original = pool().await;
     let workspace = rejected_credit(&original).await;
     let bus = PgEventBus::new(original.clone());
-    assert_eq!(dispatch_credit_events(&bus, 50).await.unwrap(), 1);
+    assert_eq!(
+        handoff_legacy_credit_events(Some(&bus), 50).await.unwrap(),
+        1
+    );
     let entry = bus.list_ephemeral_entries().await.unwrap().remove(0);
     let expected = bus
         .reveal_ephemeral_entry(&entry.entry_ref, EphemeralValueRevealMode::Full)
@@ -343,3 +367,5 @@ async fn source_independent_snapshot_and_receipt_restore_after_workspace_cascade
         "2"
     );
 }
+
+mod credit_notification_delivery;

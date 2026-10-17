@@ -7,8 +7,9 @@ use control_plane_contracts::{
     ControlPlaneContractError as ControlPlaneError,
     ports::{
         BillingRepository, CreditAccountRecord, CreditCommandInput, CreditReservation,
-        CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput, PricingRulesPage,
-        ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
+        CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput,
+        ModelBillingAdmission, ModelBillingAdmissionInput, PricingRulesPage, ReserveCreditInput,
+        SettleCreditInput, UpsertPricingRuleInput,
     },
 };
 use sqlx::{Postgres, QueryBuilder, Row, Transaction};
@@ -270,28 +271,129 @@ async fn ensure_account<'a>(
     account_record(&row)
 }
 
-async fn insert_outbox(
+async fn publish_credit_notification(
     tx: &mut Transaction<'_, Postgres>,
+    store: &PgControlPlaneStore,
+    lifetimes: &mut Vec<control_plane_contracts::ports::FrozenLifecyclePublication>,
     workspace_id: Uuid,
     account_id: Uuid,
     event_type: &str,
     payload: serde_json::Value,
 ) -> Result<()> {
-    sqlx::query(
-        "insert into credit_event_outbox (event_id, workspace_id, account_id, event_type, payload) values ($1, $2, $3, $4, $5)",
+    crate::notification_publication::record_credit_notification_in_transaction(
+        store,
+        tx,
+        lifetimes,
+        workspace_id,
+        Some(account_id),
+        event_type,
+        payload,
     )
-    .bind(Uuid::now_v7())
-    .bind(workspace_id)
-    .bind(account_id)
-    .bind(event_type)
-    .bind(payload)
+    .await
+}
+
+async fn reserve_credit_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    store: &PgControlPlaneStore,
+    notifications: &mut Vec<control_plane_contracts::ports::FrozenLifecyclePublication>,
+    input: &ReserveCreditInput,
+    account: &CreditAccountRecord,
+) -> Result<CreditReservation> {
+    let amount: rust_decimal::Decimal = input
+        .amount
+        .parse()
+        .map_err(|_| ControlPlaneError::InvalidInput("amount"))?;
+    if amount.is_sign_negative() {
+        return Err(ControlPlaneError::InvalidInput("amount").into());
+    }
+    let key = format!("reserve:{}", input.provider_invocation_id);
+    let effective_amount = if account.charge_enabled {
+        amount
+    } else {
+        rust_decimal::Decimal::ZERO
+    };
+    if let Some(row) = sqlx::query("select id, account_id, user_id, flow_run_id, pricing_rule_id, reserved_amount::text as reserved_amount, metadata from billing_sessions where workspace_id=$1 and idempotency_key=$2")
+            .bind(input.workspace_id).bind(&key).fetch_optional(&mut **tx).await? {
+            let metadata: serde_json::Value = row.try_get("metadata")?;
+            let existing_amount: rust_decimal::Decimal = row.try_get::<String, _>("reserved_amount")?.parse()?;
+            if row.try_get::<Uuid, _>("user_id")? != input.user_id
+                || row.try_get::<Option<Uuid>, _>("flow_run_id")? != input.flow_run_id
+                || row.try_get::<Uuid, _>("pricing_rule_id")? != input.pricing_rule_id
+                || existing_amount != if metadata.get("charge_skipped").and_then(|v| v.as_bool()).unwrap_or(false) { rust_decimal::Decimal::ZERO } else { amount }
+            {
+                return Err(ControlPlaneError::Conflict("credit_idempotency_payload_mismatch").into());
+            }
+            return Ok(CreditReservation { billing_session_id: row.try_get("id")?, account_id: row.try_get("account_id")?,
+                reserved_amount: existing_amount.to_string(), charge_skipped: metadata.get("charge_skipped").and_then(|v| v.as_bool()).unwrap_or(false),
+                charge_skip_reason: metadata.get("charge_skip_reason").and_then(|v| v.as_str()).map(str::to_string) });
+        }
+    let balance: rust_decimal::Decimal = account.current_balance.parse()?;
+    let reserved: rust_decimal::Decimal = account.reserved_amount.parse()?;
+    if account.charge_enabled && balance - reserved <= rust_decimal::Decimal::ZERO {
+        return Err(ControlPlaneError::Conflict("credit_insufficient").into());
+    }
+    let session_id = Uuid::now_v7();
+    let skip_reason = (!account.charge_enabled).then_some("charge_disabled");
+    let metadata = serde_json::json!({"charge_skipped": !account.charge_enabled, "charge_skip_reason": skip_reason,
+            "provider_invocation_id": input.provider_invocation_id});
+    sqlx::query(
+        r#"insert into billing_sessions
+            (id,workspace_id,flow_run_id,idempotency_key,status,user_id,account_id,pricing_rule_id,
+             reserved_amount,reservation_expires_at,last_heartbeat_at,metadata)
+            values ($1,$2,$3,$4,'reserved',$5,$6,$7,$8::numeric,$9,now(),$10)"#,
+    )
+    .bind(session_id)
+    .bind(input.workspace_id)
+    .bind(input.flow_run_id)
+    .bind(&key)
+    .bind(input.user_id)
+    .bind(account.id)
+    .bind(input.pricing_rule_id)
+    .bind(effective_amount.to_string())
+    .bind(input.reservation_expires_at)
+    .bind(&metadata)
     .execute(&mut **tx)
     .await?;
-    Ok(())
+    let updated = sqlx::query("update user_credit_accounts set reserved_amount=reserved_amount+$2::numeric,revision=revision+1,updated_at=now() where id=$1 returning current_balance::text as balance,reserved_amount::text as reserved")
+            .bind(account.id).bind(effective_amount.to_string()).fetch_one(&mut **tx).await?;
+    let balance_after: String = updated.try_get("balance")?;
+    let reserved_after: String = updated.try_get("reserved")?;
+    let ledger_id = Uuid::now_v7();
+    sqlx::query(r#"insert into runtime_credit_ledger
+            (id,transaction_id,account_id,workspace_id,user_id,flow_run_id,billing_session_id,transaction_type,
+             amount,balance_after,reserved_after,credit_unit,reason,idempotency_key,status,metadata)
+            values ($1,$2,$3,$4,$5,$6,$7,'reserve',0,$8::numeric,$9::numeric,'USD','model_invocation',$10,'completed',$11)"#)
+            .bind(ledger_id).bind(Uuid::now_v7()).bind(account.id).bind(input.workspace_id).bind(input.user_id)
+            .bind(input.flow_run_id).bind(session_id).bind(balance_after).bind(reserved_after).bind(&key).bind(&metadata)
+            .execute(&mut **tx).await?;
+    sqlx::query("update billing_sessions set reserved_credit_ledger_id=$2 where id=$1")
+        .bind(session_id)
+        .bind(ledger_id)
+        .execute(&mut **tx)
+        .await?;
+    publish_credit_notification(
+        tx,
+        store,
+        notifications,
+        input.workspace_id,
+        account.id,
+        "CreditReserved",
+        serde_json::json!({"billing_session_id":session_id,"amount":effective_amount.to_string()}),
+    )
+    .await?;
+    Ok(CreditReservation {
+        billing_session_id: session_id,
+        account_id: account.id,
+        reserved_amount: effective_amount.to_string(),
+        charge_skipped: !account.charge_enabled,
+        charge_skip_reason: skip_reason.map(str::to_string),
+    })
 }
 
 pub(crate) async fn settle_credit_in_transaction(
     tx: &mut Transaction<'_, Postgres>,
+    store: &PgControlPlaneStore,
+    notifications: &mut Vec<control_plane_contracts::ports::FrozenLifecyclePublication>,
     input: &SettleCreditInput,
 ) -> Result<CreditTransactionRecord> {
     let actual: rust_decimal::Decimal = input
@@ -364,8 +466,60 @@ pub(crate) async fn settle_credit_in_transaction(
         .fetch_one(&mut **tx).await?;
     sqlx::query("update billing_sessions set status='settled',actual_amount=$2::numeric,settled_credit_ledger_id=$3,updated_at=now() where id=$1")
         .bind(input.billing_session_id).bind(actual.to_string()).bind(ledger_id).execute(&mut **tx).await?;
-    insert_outbox(tx,workspace_id,account_id,"CreditSettled",serde_json::json!({"billing_session_id":input.billing_session_id,"actual_amount":actual.to_string(),"charged_amount":charged.to_string(),"balance_after":balance})).await?;
+    publish_credit_notification(tx,store,notifications,workspace_id,account_id,"CreditSettled",serde_json::json!({"billing_session_id":input.billing_session_id,"actual_amount":actual.to_string(),"charged_amount":charged.to_string(),"balance_after":balance})).await?;
     transaction_record(&ledger)
+}
+
+impl PgControlPlaneStore {
+    pub(crate) async fn admit_model_billing(
+        &self,
+        input: &ModelBillingAdmissionInput,
+    ) -> Result<ModelBillingAdmission> {
+        let mut tx = self.pool().begin().await?;
+        let mut notifications = Vec::new();
+        // This statement is the workspace-switch snapshot for this invocation.
+        let enabled_at: Option<OffsetDateTime> = sqlx::query_scalar("select billing_enabled_at from workspace_billing_settings where workspace_id=$1 for share")
+            .bind(input.workspace_id).fetch_optional(&mut *tx).await?;
+        if !enabled_at.is_some_and(|at| input.started_at >= at) {
+            tx.commit().await?;
+            return Ok(ModelBillingAdmission::Disabled);
+        }
+        let prepared = input
+            .reservation
+            .as_ref()
+            .ok_or(ControlPlaneError::Conflict(
+                "model_billing_preparation_required",
+            ))?;
+        if prepared.workspace_id != input.workspace_id {
+            return Err(ControlPlaneError::InvalidInput("workspace_id").into());
+        }
+        // Existing accounts serialize with administrator setting changes. A missing
+        // default-free account is observed as absent without INSERT/ensure_account.
+        let row = sqlx::query("select id, workspace_id, user_id, credit_unit, charge_enabled, current_balance::text as current_balance, reserved_amount::text as reserved_amount, (current_balance-reserved_amount)::text as available_balance, (current_balance-reserved_amount)<=0 as credit_insufficient, revision, created_at, updated_at from user_credit_accounts where workspace_id=$1 and user_id=$2 and credit_unit='USD' for update")
+            .bind(input.workspace_id).bind(prepared.user_id).fetch_optional(&mut *tx).await?;
+        let account = match row {
+            Some(row) => account_record(&row)?,
+            None if !prepared.charge_enabled_default => {
+                tx.commit().await?;
+                return Ok(ModelBillingAdmission::ObserveOnly);
+            }
+            None => ensure_account(&mut tx, input.workspace_id, prepared.user_id, true).await?,
+        };
+        // An existing reservation is already an owner, even if the administrator
+        // disabled charging meanwhile. Preserve retries of old skipped sessions too.
+        let has_session: bool = sqlx::query_scalar("select exists(select 1 from billing_sessions where workspace_id=$1 and idempotency_key=$2)")
+            .bind(input.workspace_id).bind(format!("reserve:{}", prepared.provider_invocation_id))
+            .fetch_one(&mut *tx).await?;
+        if !account.charge_enabled && !has_session {
+            tx.commit().await?;
+            return Ok(ModelBillingAdmission::ObserveOnly);
+        }
+        let reservation =
+            reserve_credit_in_transaction(&mut tx, self, &mut notifications, prepared, &account)
+                .await?;
+        tx.commit().await?;
+        Ok(ModelBillingAdmission::Reserved(reservation))
+    }
 }
 
 #[async_trait]
@@ -680,6 +834,7 @@ impl BillingRepository for PgControlPlaneStore {
         let charge_enabled_default =
             !crate::repositories::is_root_user(self.pool(), input.user_id).await?;
         let mut tx = self.pool().begin().await?;
+        let mut notifications = Vec::new();
         let account = ensure_account(
             &mut tx,
             input.workspace_id,
@@ -737,7 +892,7 @@ impl BillingRepository for PgControlPlaneStore {
             .bind(input.actor_user_id).bind(&input.actor_plugin_id).bind(&input.command).bind(signed.to_string())
             .bind(&balance).bind(&reserved).bind(&input.reason).bind(&input.source_type).bind(&input.source_id)
             .bind(&input.idempotency_key).bind(&input.metadata).fetch_one(&mut *tx).await?;
-        insert_outbox(&mut tx, input.workspace_id, account.id, match input.command.as_str() {
+        publish_credit_notification(&mut tx, self, &mut notifications, input.workspace_id, account.id, match input.command.as_str() {
             "grant" => "CreditGranted", "charge" => "CreditCharged", "refund" => "CreditRefunded",
             "adjustment" => "CreditAdjusted", _ => "CreditChargeSettingChanged",
         }, serde_json::json!({"ledger_id": ledger_id, "transaction_id": transaction_id, "user_id": input.user_id,
@@ -754,31 +909,19 @@ impl BillingRepository for PgControlPlaneStore {
         reason: &str,
         idempotency_key: &str,
     ) -> Result<()> {
-        sqlx::query(
-            r#"insert into credit_event_outbox
-            (event_id,workspace_id,event_type,payload)
-            values ($1,$2,'CreditCommandRejected',$3)"#,
-        )
-        .bind(Uuid::now_v7())
-        .bind(workspace_id)
-        .bind(serde_json::json!({
-            "actor_plugin_id":actor_plugin_id,"command":command,"reason":reason,
-            "idempotency_key":idempotency_key
-        }))
-        .execute(self.pool())
-        .await?;
+        let mut tx = self.pool().begin().await?;
+        let mut notifications = Vec::new();
+        crate::notification_publication::record_credit_notification_in_transaction(
+            self, &mut tx, &mut notifications, workspace_id, None, "CreditCommandRejected",
+            serde_json::json!({"actor_plugin_id":actor_plugin_id,"command":command,"reason":reason,"idempotency_key":idempotency_key}),
+        ).await?;
+        tx.commit().await?;
         Ok(())
     }
 
     async fn reserve_credit(&self, input: &ReserveCreditInput) -> Result<CreditReservation> {
-        let amount: rust_decimal::Decimal = input
-            .amount
-            .parse()
-            .map_err(|_| ControlPlaneError::InvalidInput("amount"))?;
-        if amount.is_sign_negative() {
-            return Err(ControlPlaneError::InvalidInput("amount").into());
-        }
         let mut tx = self.pool().begin().await?;
+        let mut notifications = Vec::new();
         let account = ensure_account(
             &mut tx,
             input.workspace_id,
@@ -786,86 +929,17 @@ impl BillingRepository for PgControlPlaneStore {
             input.charge_enabled_default,
         )
         .await?;
-        let key = format!("reserve:{}", input.provider_invocation_id);
-        let effective_amount = if account.charge_enabled {
-            amount
-        } else {
-            rust_decimal::Decimal::ZERO
-        };
-        if let Some(row) = sqlx::query("select id, account_id, user_id, flow_run_id, pricing_rule_id, reserved_amount::text as reserved_amount, metadata from billing_sessions where workspace_id=$1 and idempotency_key=$2")
-            .bind(input.workspace_id).bind(&key).fetch_optional(&mut *tx).await? {
-            let metadata: serde_json::Value = row.try_get("metadata")?;
-            let existing_amount: rust_decimal::Decimal = row.try_get::<String, _>("reserved_amount")?.parse()?;
-            if row.try_get::<Uuid, _>("user_id")? != input.user_id
-                || row.try_get::<Option<Uuid>, _>("flow_run_id")? != input.flow_run_id
-                || row.try_get::<Uuid, _>("pricing_rule_id")? != input.pricing_rule_id
-                || existing_amount != effective_amount
-            {
-                return Err(ControlPlaneError::Conflict("credit_idempotency_payload_mismatch").into());
-            }
-            tx.commit().await?;
-            return Ok(CreditReservation { billing_session_id: row.try_get("id")?, account_id: row.try_get("account_id")?,
-                reserved_amount: existing_amount.to_string(), charge_skipped: metadata.get("charge_skipped").and_then(|v| v.as_bool()).unwrap_or(false),
-                charge_skip_reason: metadata.get("charge_skip_reason").and_then(|v| v.as_str()).map(str::to_string) });
-        }
-        let balance: rust_decimal::Decimal = account.current_balance.parse()?;
-        let reserved: rust_decimal::Decimal = account.reserved_amount.parse()?;
-        if account.charge_enabled && balance - reserved <= rust_decimal::Decimal::ZERO {
-            return Err(ControlPlaneError::Conflict("credit_insufficient").into());
-        }
-        let session_id = Uuid::now_v7();
-        let skip_reason = (!account.charge_enabled).then_some("charge_disabled");
-        let metadata = serde_json::json!({"charge_skipped": !account.charge_enabled, "charge_skip_reason": skip_reason,
-            "provider_invocation_id": input.provider_invocation_id});
-        sqlx::query(
-            r#"insert into billing_sessions
-            (id,workspace_id,flow_run_id,idempotency_key,status,user_id,account_id,pricing_rule_id,
-             reserved_amount,reservation_expires_at,last_heartbeat_at,metadata)
-            values ($1,$2,$3,$4,'reserved',$5,$6,$7,$8::numeric,$9,now(),$10)"#,
-        )
-        .bind(session_id)
-        .bind(input.workspace_id)
-        .bind(input.flow_run_id)
-        .bind(&key)
-        .bind(input.user_id)
-        .bind(account.id)
-        .bind(input.pricing_rule_id)
-        .bind(effective_amount.to_string())
-        .bind(input.reservation_expires_at)
-        .bind(&metadata)
-        .execute(&mut *tx)
-        .await?;
-        let updated = sqlx::query("update user_credit_accounts set reserved_amount=reserved_amount+$2::numeric,revision=revision+1,updated_at=now() where id=$1 returning current_balance::text as balance,reserved_amount::text as reserved")
-            .bind(account.id).bind(effective_amount.to_string()).fetch_one(&mut *tx).await?;
-        let balance_after: String = updated.try_get("balance")?;
-        let reserved_after: String = updated.try_get("reserved")?;
-        let ledger_id = Uuid::now_v7();
-        sqlx::query(r#"insert into runtime_credit_ledger
-            (id,transaction_id,account_id,workspace_id,user_id,flow_run_id,billing_session_id,transaction_type,
-             amount,balance_after,reserved_after,credit_unit,reason,idempotency_key,status,metadata)
-            values ($1,$2,$3,$4,$5,$6,$7,'reserve',0,$8::numeric,$9::numeric,'USD','model_invocation',$10,'completed',$11)"#)
-            .bind(ledger_id).bind(Uuid::now_v7()).bind(account.id).bind(input.workspace_id).bind(input.user_id)
-            .bind(input.flow_run_id).bind(session_id).bind(balance_after).bind(reserved_after).bind(&key).bind(&metadata)
-            .execute(&mut *tx).await?;
-        sqlx::query("update billing_sessions set reserved_credit_ledger_id=$2 where id=$1")
-            .bind(session_id)
-            .bind(ledger_id)
-            .execute(&mut *tx)
-            .await?;
-        insert_outbox(&mut tx,input.workspace_id,account.id,"CreditReserved",serde_json::json!({"billing_session_id":session_id,"amount":effective_amount.to_string()})).await?;
+        let reservation =
+            reserve_credit_in_transaction(&mut tx, self, &mut notifications, input, &account)
+                .await?;
         tx.commit().await?;
-        Ok(CreditReservation {
-            billing_session_id: session_id,
-            account_id: account.id,
-            reserved_amount: effective_amount.to_string(),
-            charge_skipped: !account.charge_enabled,
-            charge_skip_reason: skip_reason.map(str::to_string),
-        })
+        Ok(reservation)
     }
 
     async fn settle_credit(&self, input: &SettleCreditInput) -> Result<CreditTransactionRecord> {
         let mut tx = self.pool().begin().await?;
-        let record = settle_credit_in_transaction(&mut tx, input).await?;
+        let mut notifications = Vec::new();
+        let record = settle_credit_in_transaction(&mut tx, self, &mut notifications, input).await?;
         tx.commit().await?;
         Ok(record)
     }
@@ -876,6 +950,7 @@ impl BillingRepository for PgControlPlaneStore {
         reason: &str,
     ) -> Result<Option<CreditTransactionRecord>> {
         let mut tx = self.pool().begin().await?;
+        let mut notifications = Vec::new();
         let Some(session)=sqlx::query("select workspace_id,user_id,account_id,reserved_amount::text as reserved_amount,status from billing_sessions where id=$1 for update")
             .bind(billing_session_id).fetch_optional(&mut *tx).await? else { return Ok(None); };
         if session.try_get::<String, _>("status")? != "reserved" {
@@ -899,8 +974,10 @@ impl BillingRepository for PgControlPlaneStore {
             .bind(&balance).bind(&reserved_after).bind(reason).bind(&key).fetch_one(&mut *tx).await?;
         sqlx::query("update billing_sessions set status='released',refund_credit_ledger_id=$2,updated_at=now() where id=$1")
             .bind(billing_session_id).bind(ledger_id).execute(&mut *tx).await?;
-        insert_outbox(
+        publish_credit_notification(
             &mut tx,
+            self,
+            &mut notifications,
             workspace_id,
             account_id,
             "CreditReleased",

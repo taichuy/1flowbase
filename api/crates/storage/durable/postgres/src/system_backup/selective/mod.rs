@@ -117,6 +117,7 @@ impl PgSelectiveBackupRepository {
             });
         }
         let header = Header {
+            legacy_lifecycle_protocol: false,
             format: archive::FORMAT.into(),
             selection: selection.to_vec(),
             tables,
@@ -339,6 +340,13 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
             let mut deferred = 0u64;
             while let Some(bytes) = archive::line(&mut reader).await? {
                 let mut record: Record = serde_json::from_slice(&bytes)?;
+                archive::normalize_publication(&mut record, header.legacy_lifecycle_protocol)?;
+                if record.table == "lifecycle_outbox" {
+                    ensure!(
+                        !validation::publication_conflict(&mut tx, &record.row).await?,
+                        "immutable lifecycle publication conflict: lifecycle_outbox"
+                    );
+                }
                 validation::rekey(
                     &record.table,
                     &mut record.row,

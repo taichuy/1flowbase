@@ -21,7 +21,7 @@ fn declared(source: &str, provider_code: &str) -> HostExtensionRegistry {
 }
 
 #[tokio::test]
-async fn official_production_factory_installs_durable_provider_without_connecting() {
+async fn official_factory_uses_ephemeral_live_events_and_explicit_legacy_recovery() {
     let hosts = declared(LOCAL_PROVIDER_SOURCE, LOCAL_PROVIDER_CODE);
     let pool = sqlx::postgres::PgPoolOptions::new()
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
@@ -37,9 +37,8 @@ async fn official_production_factory_installs_durable_provider_without_connectin
             .event_bus()
             .ephemeral_inspection_capabilities()
             .storage_medium,
-        Some("postgresql-durable")
+        Some("memory-and-legacy-postgresql")
     );
-    assert!(registry.event_bus().credit_event_handoff().is_some());
 }
 
 #[tokio::test]
@@ -65,5 +64,4 @@ async fn another_declared_provider_is_not_replaced_by_the_official_factory() {
         .unwrap();
     factories.activate(&hosts, pool, &mut registry).unwrap();
     assert_eq!(registry.default_provider("event-bus"), Some("acme-queue"));
-    assert!(registry.event_bus().credit_event_handoff().is_none());
 }

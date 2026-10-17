@@ -1456,7 +1456,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             _ => {
                 return Err(anyhow::anyhow!(
                     "resume claim id and token must be provided together"
-                ))
+                ));
             }
         }
         Ok(Some(crate::ports::PersistedWaitingState {
@@ -1621,7 +1621,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                     return Err(crate::errors::ControlPlaneError::Conflict(
                         "tool_callback_result_conflict",
                     )
-                    .into())
+                    .into());
                 }
                 Some(_) => {}
                 None => {
@@ -1915,6 +1915,42 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         )])
     }
 
+    async fn model_billing_admit(
+        &self,
+        input: &crate::ports::ModelBillingAdmissionInput,
+    ) -> Result<crate::ports::ModelBillingAdmission> {
+        if !self
+            .model_billing_enabled_at_value()
+            .is_some_and(|at| input.started_at >= at)
+        {
+            return Ok(crate::ports::ModelBillingAdmission::Disabled);
+        }
+        let prepared = input
+            .reservation
+            .as_ref()
+            .ok_or(ControlPlaneError::Conflict(
+                "model_billing_preparation_required",
+            ))?;
+        if !prepared.charge_enabled_default {
+            return Ok(crate::ports::ModelBillingAdmission::ObserveOnly);
+        }
+        Ok(crate::ports::ModelBillingAdmission::Reserved(
+            self.model_billing_reserve_credit(prepared).await?,
+        ))
+    }
+
+    async fn record_model_observation(
+        &self,
+        input: &crate::ports::RecordModelObservationInput,
+    ) -> Result<crate::ports::RecordedModelObservation> {
+        let usage = self.append_usage_ledger(&input.usage).await?;
+        let mut cost_input = input.cost.clone();
+        cost_input.usage_ledger_id = Some(usage.id);
+        cost_input.billing_session_id = None;
+        let cost = self.append_cost_ledger(&cost_input).await?;
+        Ok(crate::ports::RecordedModelObservation { usage, cost })
+    }
+
     async fn model_billing_reserve_credit(
         &self,
         input: &crate::ports::ReserveCreditInput,
@@ -1944,6 +1980,10 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         _billing_session_id: Uuid,
         _reservation_expires_at: OffsetDateTime,
     ) -> Result<bool> {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_heartbeat_count += 1;
         Ok(true)
     }
 

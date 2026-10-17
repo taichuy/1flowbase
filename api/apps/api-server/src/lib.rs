@@ -556,15 +556,19 @@ async fn app_and_runtime_host_from_config(
         ),
     ));
     let infrastructure = Arc::new(infrastructure);
+    let notification_publication = Arc::new(
+        host_extensions::notification_publication::HostOptionalNotificationPublication::default(),
+    );
     let (lifecycle_delivery, lifecycle_publication_catalog) =
         host_extensions::lifecycle::ApiLifecycleFactDelivery::bind(
             &lifecycle_plan,
             host_extensions::lifecycle::production_lifecycle_handler_factories(
-                infrastructure.event_bus(),
+                notification_publication.clone(),
             )?
             .activate(&active_host_extensions)?,
         )?;
     let store = store.with_lifecycle_publication_catalog(lifecycle_publication_catalog.clone());
+    notification_publication.activate(Arc::new(store.clone()))?;
     let session_store = infrastructure
         .session_store()
         .expect("storage-ephemeral default provider must provide session store");

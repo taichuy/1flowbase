@@ -685,21 +685,9 @@ fn explicit_rating_time_applies_date_and_utc_window() {
 }
 
 #[tokio::test]
-async fn credit_dispatch_requires_the_actual_active_providers_durable_capability() {
-    use crate::ports::{CreditEventHandoff, EventBus};
+async fn legacy_credit_recovery_requires_an_explicit_durable_capability() {
+    use crate::ports::CreditEventHandoff;
     struct ActiveBus;
-    #[async_trait]
-    impl EventBus for ActiveBus {
-        fn credit_event_handoff(&self) -> Option<&dyn CreditEventHandoff> {
-            Some(self)
-        }
-        async fn publish(&self, _: &str, _: serde_json::Value) -> anyhow::Result<()> {
-            panic!("credit must use transactional handoff, not memory publish")
-        }
-        async fn poll(&self, _: &str) -> anyhow::Result<Option<serde_json::Value>> {
-            panic!("dispatch is not a fake business consumer")
-        }
-    }
     #[async_trait]
     impl CreditEventHandoff for ActiveBus {
         async fn handoff_credit_events(&self, limit: i64) -> anyhow::Result<usize> {
@@ -707,28 +695,18 @@ async fn credit_dispatch_requires_the_actual_active_providers_durable_capability
             Ok(7)
         }
     }
-    struct UnsupportedBus;
-    #[async_trait]
-    impl EventBus for UnsupportedBus {
-        async fn publish(&self, _: &str, _: serde_json::Value) -> anyhow::Result<()> {
-            panic!("must not silently fall back to a non-durable provider")
-        }
-        async fn poll(&self, _: &str) -> anyhow::Result<Option<serde_json::Value>> {
-            Ok(None)
-        }
-    }
     assert_eq!(
-        crate::billing::dispatch_credit_events(&ActiveBus, 50)
+        crate::billing::handoff_legacy_credit_events(Some(&ActiveBus), 50)
             .await
             .unwrap(),
         7
     );
-    let error = crate::billing::dispatch_credit_events(&UnsupportedBus, 50)
+    let error = crate::billing::handoff_legacy_credit_events(None, 50)
         .await
         .unwrap_err();
     assert!(
         error
             .to_string()
-            .contains("active event-bus provider has no durable credit handoff")
+            .contains("legacy credit recovery capability is unavailable")
     );
 }

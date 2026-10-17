@@ -71,6 +71,7 @@ struct InMemoryOrchestrationRuntimeState {
     model_billing_enabled_at: Option<time::OffsetDateTime>,
     model_billing_credit_releases: Vec<(Uuid, String)>,
     model_billing_reserved_session_count: usize,
+    model_billing_heartbeat_count: usize,
     model_billing_finalize_attempt_count: usize,
     model_billing_finalize_succeeds: bool,
     plugin_credit_transactions_by_idempotency:
@@ -162,6 +163,13 @@ impl InMemoryOrchestrationRuntimeRepository {
             .lock()
             .expect("runtime repo mutex poisoned")
             .model_billing_reserved_session_count
+    }
+
+    pub(crate) fn model_billing_heartbeat_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_heartbeat_count
     }
 
     pub(crate) fn model_billing_finalize_attempt_count(&self) -> usize {

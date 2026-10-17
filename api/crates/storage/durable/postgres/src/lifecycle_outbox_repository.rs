@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
     LifecycleClaimLost, LifecycleDeliveryPauseReason, LifecycleOutboxRecord,
@@ -25,8 +25,9 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
         r#"
         insert into lifecycle_outbox (
             event_id, transaction_id, contract_id, contract_version,
-            canonical_payload, occurred_at, graph_fingerprint
-        ) values ($1, $2, $3, $4, $5, $6, $7)
+            canonical_payload, occurred_at, graph_fingerprint, native_publication_version
+        ) values ($1, $2, $3, $4, $5, $6, $7,
+            case when $3 = 'model_definition.committed' then 2 else 1 end)
         on conflict (event_id) do nothing
         "#,
     )
@@ -529,7 +530,9 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
             .transpose()?;
         // The extra row makes truncation explicit. Ownership filtering cannot turn this window
         // into a complete-history claim when a different installation reused the contribution ID.
-        let sql = format!("select o.event_id,o.contract_id,o.contract_version,o.graph_fingerprint,d.subscriber_id,d.handler_id,d.handler_version,d.status,d.pause_reason {MANAGED_HISTORY_SCOPE} and ($4::uuid is null or (o.event_id,d.subscriber_id COLLATE \"C\") > ($4,$5::text COLLATE \"C\")) order by o.event_id,d.subscriber_id COLLATE \"C\" limit $3");
+        let sql = format!(
+            "select o.event_id,o.contract_id,o.contract_version,o.graph_fingerprint,d.subscriber_id,d.handler_id,d.handler_version,d.status,d.pause_reason {MANAGED_HISTORY_SCOPE} and ($4::uuid is null or (o.event_id,d.subscriber_id COLLATE \"C\") > ($4,$5::text COLLATE \"C\")) order by o.event_id,d.subscriber_id COLLATE \"C\" limit $3"
+        );
         // SQL safety: MANAGED_HISTORY_SCOPE is a static fragment; installation, cursor and ownership values remain bound.
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(installation_id)
@@ -597,7 +600,9 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
         if managed_handler_installation(&input.expected.handler_version) != Some(installation_id) {
             return Ok(None);
         }
-        let sql = format!("select exists(select 1 {MANAGED_HISTORY_SCOPE} and o.event_id=$3 and d.subscriber_id=$4 and o.graph_fingerprint=$5 and d.handler_id=$6 and d.handler_version=$7)");
+        let sql = format!(
+            "select exists(select 1 {MANAGED_HISTORY_SCOPE} and o.event_id=$3 and d.subscriber_id=$4 and o.graph_fingerprint=$5 and d.handler_id=$6 and d.handler_version=$7)"
+        );
         let matches: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(installation_id)
             .bind(workspace_id)

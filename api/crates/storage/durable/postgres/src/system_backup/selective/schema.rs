@@ -56,6 +56,19 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
         .columns
         .iter()
         .filter(|c| !c.generated && !table.primary_key.contains(&c.name))
+        .filter(|c| {
+            table.name != "lifecycle_outbox"
+                || !matches!(
+                    c.name.as_str(),
+                    "transaction_id"
+                        | "contract_id"
+                        | "contract_version"
+                        | "canonical_payload"
+                        | "occurred_at"
+                        | "created_at"
+                        | "native_publication_version"
+                )
+        })
         .map(|c| quote(&c.name))
         .collect::<Result<Vec<_>>>()?;
     let action = if writable.is_empty() {
@@ -65,7 +78,13 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
             "do update set {} where ({}) is distinct from ({})",
             writable
                 .iter()
-                .map(|c| format!("{c}=excluded.{c}"))
+                .map(|c| {
+                    if table.name == "lifecycle_outbox" && c == "\"legacy_handoff_sequence\"" {
+                        format!("{c}=coalesce(target.{c},excluded.{c})")
+                    } else {
+                        format!("{c}=excluded.{c}")
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join(","),
             writable

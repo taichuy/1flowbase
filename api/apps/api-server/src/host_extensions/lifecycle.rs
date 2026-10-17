@@ -3,12 +3,15 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::ports::EventBus;
 use control_plane_contracts::ports::{LifecycleOutboxRecord, LifecycleSubscriberTarget};
+use control_plane_contracts::ports::{
+    ModelDefinitionIntegrationNotification, OptionalNotificationContract,
+    OptionalNotificationPublicationPort, PublishOptionalNotificationInput,
+};
 use plugin_framework::extension_bus::{
-    compile_lifecycle_handler_registry, EffectiveLifecycleHandlerRegistry,
-    EffectiveLifecycleSubscriber, EffectiveLifecycleSubscriberPlan, LifecycleHandlerBinding,
-    LifecycleHandlerError, LifecycleHandlerFuture, TypedLifecycleSubscriberHandler,
+    EffectiveLifecycleHandlerRegistry, EffectiveLifecycleSubscriber,
+    EffectiveLifecycleSubscriberPlan, LifecycleHandlerBinding, LifecycleHandlerError,
+    LifecycleHandlerFuture, TypedLifecycleSubscriberHandler, compile_lifecycle_handler_registry,
 };
 
 use super::lifecycle_activation::HostExtensionLifecycleFactoryCatalog;
@@ -16,11 +19,8 @@ use super::lifecycle_activation::HostExtensionLifecycleFactoryCatalog;
 pub(crate) const MODEL_DEFINITION_COMMITTED_HANDLER_ID: &str =
     "official.plugin-host.model-definition-committed";
 pub(crate) const MODEL_DEFINITION_COMMITTED_HANDLER_VERSION: &str = "v1";
-const MODEL_DEFINITION_COMMITTED_TOPIC: &str =
-    "official.plugin-host.lifecycle.model-definition-committed";
-
 struct ModelDefinitionCommittedHandler {
-    event_bus: Arc<dyn EventBus>,
+    publication: Arc<dyn OptionalNotificationPublicationPort>,
 }
 
 impl TypedLifecycleSubscriberHandler<control_plane_contracts::ports::ModelDefinitionCommittedFact>
@@ -33,23 +33,48 @@ impl TypedLifecycleSubscriberHandler<control_plane_contracts::ports::ModelDefini
         >,
     ) -> LifecycleHandlerFuture<'a> {
         Box::pin(async move {
-            self.event_bus
-                .publish(
-                    MODEL_DEFINITION_COMMITTED_TOPIC,
-                    serde_json::to_value(fact).map_err(|error| {
-                        LifecycleHandlerError::new(format!(
-                            "failed to encode plugin lifecycle fact: {error}"
-                        ))
-                    })?,
-                )
-                .await
-                .map_err(|error| LifecycleHandlerError::new(error.to_string()))
+            let publish = async {
+                // Preserve the source's timestamp; retry must not create a new fact body.
+                let source = serde_json::to_value(fact)?;
+                let occurred_at_unix_ms = source["occurred_at_unix_ms"]
+                    .as_i64()
+                    .ok_or_else(|| anyhow::anyhow!("source fact timestamp is missing"))?;
+                let payload = fact.payload();
+                let notification = extension_contracts::AfterCommitFact::new(
+                    fact.fact_id().clone(),
+                    fact.transaction_id().clone(),
+                    occurred_at_unix_ms,
+                    ModelDefinitionIntegrationNotification {
+                        model_definition_id: payload.model_definition_id,
+                        scope_kind: payload.scope_kind,
+                        scope_id: payload.scope_id,
+                    },
+                );
+                self.publication
+                    .publish_optional_notification(&PublishOptionalNotificationInput {
+                        source_event_id: uuid::Uuid::parse_str(fact.fact_id().as_str())?,
+                        transaction_id: uuid::Uuid::parse_str(fact.transaction_id().as_str())?,
+                        workspace_id: (payload.scope_kind == domain::DataModelScopeKind::Workspace)
+                            .then_some(payload.scope_id),
+                        occurred_at: time::OffsetDateTime::from_unix_timestamp_nanos(
+                            i128::from(occurred_at_unix_ms) * 1_000_000,
+                        )?,
+                        contract: OptionalNotificationContract::ModelDefinition,
+                        canonical_payload: serde_json::to_vec(&notification)?,
+                    })
+                    .await?;
+                // Completion here means optional publication adjudication or durable
+                // stage handoff, never completion of downstream target effects.
+                Ok::<(), anyhow::Error>(())
+            }
+            .await;
+            publish.map_err(|error| LifecycleHandlerError::new(error.to_string()))
         })
     }
 }
 
 fn official_plugin_host_lifecycle_bindings(
-    event_bus: Arc<dyn EventBus>,
+    publication: Arc<dyn OptionalNotificationPublicationPort>,
 ) -> Vec<LifecycleHandlerBinding> {
     vec![LifecycleHandlerBinding::typed::<
         control_plane_contracts::ports::ModelDefinitionCommittedFact,
@@ -57,12 +82,12 @@ fn official_plugin_host_lifecycle_bindings(
     >(
         MODEL_DEFINITION_COMMITTED_HANDLER_ID,
         MODEL_DEFINITION_COMMITTED_HANDLER_VERSION,
-        Arc::new(ModelDefinitionCommittedHandler { event_bus }),
+        Arc::new(ModelDefinitionCommittedHandler { publication }),
     )]
 }
 
 pub(crate) fn production_lifecycle_handler_factories(
-    event_bus: Arc<dyn EventBus>,
+    publication: Arc<dyn OptionalNotificationPublicationPort>,
 ) -> Result<HostExtensionLifecycleFactoryCatalog> {
     let mut factories = HostExtensionLifecycleFactoryCatalog::default();
     factories.register(
@@ -70,7 +95,7 @@ pub(crate) fn production_lifecycle_handler_factories(
         "builtin_plugin_host",
         Arc::new(move || {
             Ok(official_plugin_host_lifecycle_bindings(Arc::clone(
-                &event_bus,
+                &publication,
             )))
         }),
     )?;
@@ -208,8 +233,8 @@ mod tests {
     };
     use extension_contracts::{AfterCommitFact, LifecycleFactId, LifecycleTransactionId};
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
         Mutex,
+        atomic::{AtomicBool, Ordering},
     };
     use time::OffsetDateTime;
     use uuid::Uuid;
@@ -239,8 +264,27 @@ mod tests {
         }
     }
 
+    struct RecordingPublication {
+        fail: AtomicBool,
+        received: Mutex<Vec<PublishOptionalNotificationInput>>,
+    }
+    #[async_trait]
+    impl OptionalNotificationPublicationPort for RecordingPublication {
+        async fn publish_optional_notification(
+            &self,
+            input: &PublishOptionalNotificationInput,
+        ) -> anyhow::Result<control_plane_contracts::ports::OptionalNotificationPublicationOutcome>
+        {
+            if self.fail.load(Ordering::SeqCst) {
+                anyhow::bail!("declared notification publication unavailable");
+            }
+            self.received.lock().unwrap().push(input.clone());
+            Ok(control_plane_contracts::ports::OptionalNotificationPublicationOutcome::NoTargets)
+        }
+    }
+
     #[tokio::test]
-    async fn real_host_extension_subscriber_receives_typed_after_commit_fact() {
+    async fn real_host_extension_subscriber_adjudicates_optional_typed_notification() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let assembly = crate::extension_bus::assemble_extension_graph_input(
             &root,
@@ -250,12 +294,14 @@ mod tests {
         .unwrap();
         let graph = assembly.compile_graph().unwrap();
         let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
-        let event_bus = Arc::new(storage_ephemeral::MemoryEventBus::new());
-        let bindings =
-            production_lifecycle_handler_factories(event_bus.clone() as Arc<dyn EventBus>)
-                .unwrap()
-                .activate(assembly.host_extension_manifests())
-                .unwrap();
+        let publication = Arc::new(RecordingPublication {
+            fail: AtomicBool::new(true),
+            received: Mutex::new(Vec::new()),
+        });
+        let bindings = production_lifecycle_handler_factories(publication.clone())
+            .unwrap()
+            .activate(assembly.host_extension_manifests())
+            .unwrap();
         let (delivery, _) = ApiLifecycleFactDelivery::bind(&plan, bindings).unwrap();
         let event_id = Uuid::now_v7();
         let transaction_id = Uuid::now_v7();
@@ -292,12 +338,31 @@ mod tests {
             paused_at: None,
             delivered_at: None,
         };
+        assert!(delivery.deliver(&record).await.is_err());
+        assert!(publication.received.lock().unwrap().is_empty());
+        publication.fail.store(false, Ordering::SeqCst);
         delivery.deliver(&record).await.unwrap();
-        assert!(event_bus
-            .poll(MODEL_DEFINITION_COMMITTED_TOPIC)
-            .await
-            .unwrap()
-            .is_some());
+        let received = publication.received.lock().unwrap();
+        assert_eq!(received.len(), 1);
+        let staged = &received[0];
+        assert_eq!(staged.source_event_id, event_id);
+        assert_eq!(staged.transaction_id, transaction_id);
+        assert_eq!(staged.workspace_id, None);
+        assert_eq!(
+            staged.contract,
+            OptionalNotificationContract::ModelDefinition
+        );
+        let notification: AfterCommitFact<ModelDefinitionIntegrationNotification> =
+            serde_json::from_slice(&staged.canonical_payload).unwrap();
+        assert_eq!(
+            notification.payload().model_definition_id,
+            fact.payload().model_definition_id
+        );
+        assert_eq!(notification.fact_id(), fact.fact_id());
+        assert_eq!(
+            staged.occurred_at.unix_timestamp_nanos(),
+            1_700_000_000_000_000_000
+        );
     }
 
     #[tokio::test]
@@ -320,9 +385,10 @@ mod tests {
             received: Mutex::new(Vec::new()),
         });
         let activated = Arc::new(AtomicBool::new(false));
-        let event_bus = Arc::new(storage_ephemeral::MemoryEventBus::new());
-        let mut factories =
-            production_lifecycle_handler_factories(event_bus as Arc<dyn EventBus>).unwrap();
+        let publication = Arc::new(
+            super::super::notification_publication::HostOptionalNotificationPublication::default(),
+        );
+        let mut factories = production_lifecycle_handler_factories(publication.clone()).unwrap();
         let factory_handler = Arc::clone(&plugin_handler);
         let factory_activated = Arc::clone(&activated);
         factories
@@ -361,6 +427,7 @@ mod tests {
             .unwrap();
         let store = storage_durable_postgres::PgControlPlaneStore::new(pool)
             .with_lifecycle_publication_catalog(publication_catalog);
+        publication.activate(Arc::new(store.clone())).unwrap();
         let tenant = store.upsert_root_tenant().await.unwrap();
         let workspace = store
             .upsert_workspace(
@@ -410,11 +477,13 @@ mod tests {
             lifecycle_status(store.pool(), event_id, &subscriber.subscriber_id).await,
             ("pending", "pending")
         );
-        assert!(plugin_handler
-            .received
-            .lock()
-            .expect("received lifecycle facts mutex poisoned")
-            .is_empty());
+        assert!(
+            plugin_handler
+                .received
+                .lock()
+                .expect("received lifecycle facts mutex poisoned")
+                .is_empty()
+        );
 
         plugin_handler.fail.store(false, Ordering::SeqCst);
         sqlx::query(

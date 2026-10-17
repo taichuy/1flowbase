@@ -67,7 +67,7 @@ impl EventBusActivationFactoryRegistry {
 pub(super) fn builtin_event_bus_factories() -> Result<EventBusActivationFactoryRegistry> {
     let mut factories = EventBusActivationFactoryRegistry::default();
     factories.register(LOCAL_PROVIDER_SOURCE, LOCAL_PROVIDER_CODE, |pool| {
-        Arc::new(storage_durable_postgres::PgEventBus::new(pool))
+        Arc::new(super::recovery_event_bus::RecoveryEventBus::new(pool))
     })?;
     Ok(factories)
 }

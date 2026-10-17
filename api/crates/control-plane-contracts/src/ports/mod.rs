@@ -76,3 +76,6 @@ pub use plugin_credential::*;
 
 pub mod notifications;
 pub use notifications::*;
+
+pub mod notification_publication;
+pub use notification_publication::*;

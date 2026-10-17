@@ -642,30 +642,21 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AppendCostLedgerInput,
     ) -> anyhow::Result<domain::CostLedgerRecord>;
+    /// Implementations must commit usage and cost together, with no credit effects.
+    async fn record_model_observation(
+        &self,
+        _input: &RecordModelObservationInput,
+    ) -> anyhow::Result<RecordedModelObservation> {
+        anyhow::bail!("atomic model observation is not configured")
+    }
+    /// Commit usage, cost, credit, session and required notifications atomically.
+    /// Never fall back to independent appends: failed settlement must leave no
+    /// partial usage/cost records behind.
     async fn finalize_model_billing(
         &self,
-        input: &FinalizeModelBillingInput,
+        _input: &FinalizeModelBillingInput,
     ) -> anyhow::Result<FinalizedModelBilling> {
-        let usage = self.append_usage_ledger(&input.usage).await?;
-        let cost = self
-            .append_cost_ledger(&AppendCostLedgerInput {
-                usage_ledger_id: Some(usage.id),
-                billing_session_id: Some(input.settlement.billing_session_id),
-                ..input.cost.clone()
-            })
-            .await?;
-        let credit = self
-            .model_billing_settle_credit(&SettleCreditInput {
-                cost_ledger_id: Some(cost.id),
-                usage_ledger_id: Some(usage.id),
-                ..input.settlement.clone()
-            })
-            .await?;
-        Ok(FinalizedModelBilling {
-            usage,
-            cost,
-            credit,
-        })
+        anyhow::bail!("atomic model billing finalization is not configured")
     }
     async fn append_credit_ledger(
         &self,
@@ -698,6 +689,21 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<Vec<crate::billing::PricingRule>> {
         let _ = (provider_code, upstream_model_id);
         Ok(Vec::new())
+    }
+    /// Snapshot the workspace switch and account charge setting, reserving in the
+    /// same transaction when needed. Observation never creates an account.
+    async fn model_billing_admit(
+        &self,
+        input: &ModelBillingAdmissionInput,
+    ) -> anyhow::Result<ModelBillingAdmission> {
+        if !self
+            .model_billing_enabled_at(input.workspace_id)
+            .await?
+            .is_some_and(|at| input.started_at >= at)
+        {
+            return Ok(ModelBillingAdmission::Disabled);
+        }
+        anyhow::bail!("atomic model billing admission is not configured")
     }
     async fn model_billing_reserve_credit(
         &self,

@@ -133,6 +133,22 @@ pub struct ReserveCreditInput {
     pub reservation_expires_at: OffsetDateTime,
 }
 
+/// The prepared pricing snapshot may be absent when preparation failed. Disabled
+/// workspaces must still admit without requiring actor, pricing, or flow context.
+#[derive(Debug, Clone)]
+pub struct ModelBillingAdmissionInput {
+    pub workspace_id: Uuid,
+    pub started_at: OffsetDateTime,
+    pub reservation: Option<ReserveCreditInput>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ModelBillingAdmission {
+    Disabled,
+    ObserveOnly,
+    Reserved(CreditReservation),
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CreditReservation {
     pub billing_session_id: Uuid,

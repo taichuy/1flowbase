@@ -47,6 +47,19 @@ pub struct AppendCostLedgerInput {
     pub cost_status: String,
 }
 
+/// Usage and cost observation is atomic and never owns a credit session.
+#[derive(Debug, Clone)]
+pub struct RecordModelObservationInput {
+    pub usage: AppendUsageLedgerInput,
+    pub cost: AppendCostLedgerInput,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordedModelObservation {
+    pub usage: domain::UsageLedgerRecord,
+    pub cost: domain::CostLedgerRecord,
+}
+
 #[derive(Debug, Clone)]
 pub struct FinalizeModelBillingInput {
     pub usage: AppendUsageLedgerInput,

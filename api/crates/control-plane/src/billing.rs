@@ -222,12 +222,14 @@ impl<R: BillingRepository> CreditCommandService<R> {
     }
 }
 
-/// Dispatch only through the capability of the actual active EventBus provider.
-pub async fn dispatch_credit_events(bus: &dyn crate::ports::EventBus, limit: i64) -> Result<usize> {
-    bus.credit_event_handoff()
-        .ok_or_else(|| {
-            anyhow!("active event-bus provider has no durable credit handoff capability")
-        })?
+/// Explicit legacy recovery only. Live notifications use frozen lifecycle publications.
+/// Calling this never proves a business effect; it only preserves the old durable handoff.
+pub async fn handoff_legacy_credit_events(
+    capability: Option<&dyn crate::ports::CreditEventHandoff>,
+    limit: i64,
+) -> Result<usize> {
+    capability
+        .ok_or_else(|| anyhow!("legacy credit recovery capability is unavailable"))?
         .handoff_credit_events(limit)
         .await
 }

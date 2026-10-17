@@ -64,7 +64,7 @@ pub fn build_local_host_infrastructure_from_host_extensions(
     )
 }
 
-/// Production assembly: the official declared provider uses the shared durable spool.
+/// Production assembly: ephemeral live events plus retained pre-cutover recovery snapshots.
 pub fn build_host_infrastructure_from_host_extensions(
     host_extensions: &HostExtensionRegistry,
     graph: &Arc<EffectiveExtensionGraph>,

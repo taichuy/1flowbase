@@ -49,10 +49,13 @@ impl Fixture {
         .unwrap();
         let graph = Arc::new(assembly.compile_graph().unwrap());
         let native_plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+        let notification_publication = Arc::new(
+            crate::host_extensions::notification_publication::HostOptionalNotificationPublication::default(),
+        );
         let native_bindings =
-            crate::host_extensions::lifecycle::production_lifecycle_handler_factories(Arc::new(
-                storage_ephemeral::MemoryEventBus::new(),
-            ))
+            crate::host_extensions::lifecycle::production_lifecycle_handler_factories(
+                notification_publication.clone(),
+            )
             .unwrap()
             .activate(assembly.host_extension_manifests())
             .unwrap();
@@ -66,6 +69,9 @@ impl Fixture {
             .store
             .clone()
             .with_lifecycle_publication_catalog(catalog.clone());
+        notification_publication
+            .activate(Arc::new(store.clone()))
+            .unwrap();
         let resolver = Arc::new(ApiRuntimeArtifactResolver::new(
             store.clone(),
             &state.api_node_id,
@@ -199,9 +205,11 @@ impl Fixture {
     }
     pub(super) async fn owned_count(&self) -> i64 {
         let table:String=sqlx::query_scalar("select physical_table from plugin_schema_ownership where owner_id='lyra/lyra.audit-log' and object_kind='owned_collection' and logical_name='audit_records'").fetch_one(self.store.pool()).await.unwrap();
-        assert!(table
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+        assert!(
+            table
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        );
         sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {table}")))
             .fetch_one(self.store.pool())
             .await
@@ -362,16 +370,18 @@ async fn root_2014_ac_007_transaction_retry_claim_fencing() {
     let retry = fixture.claim(worker).await;
     assert_eq!(retry.len(), 1);
     assert_ne!(retry[0].claim_id, effect.claim_id);
-    assert!(fixture
-        .store
-        .mark_lifecycle_fact_delivered(
-            effect.event_id,
-            &effect.subscriber_id,
-            worker,
-            effect.claim_id.unwrap()
-        )
-        .await
-        .is_err());
+    assert!(
+        fixture
+            .store
+            .mark_lifecycle_fact_delivered(
+                effect.event_id,
+                &effect.subscriber_id,
+                worker,
+                effect.claim_id.unwrap()
+            )
+            .await
+            .is_err()
+    );
     fixture.delivery.deliver(&retry[0]).await.unwrap();
     fixture.ack(worker, &retry[0]).await;
     assert_eq!(fixture.owned_count().await, 1);

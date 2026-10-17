@@ -54,9 +54,11 @@ fn deadline() -> i64 {
         / 1_000_000) as i64
 }
 async fn count(pool: &sqlx::PgPool, table: &str) -> i64 {
-    assert!(table
-        .bytes()
-        .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+    assert!(
+        table
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    );
     sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {table}")))
         .fetch_one(pool)
         .await
@@ -84,10 +86,13 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     .unwrap();
     let graph = Arc::new(assembly.compile_graph().unwrap());
     let native_plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+    let notification_publication = Arc::new(
+        crate::host_extensions::notification_publication::HostOptionalNotificationPublication::default(),
+    );
     let native_bindings =
-        crate::host_extensions::lifecycle::production_lifecycle_handler_factories(Arc::new(
-            storage_ephemeral::MemoryEventBus::new(),
-        ))
+        crate::host_extensions::lifecycle::production_lifecycle_handler_factories(
+            notification_publication.clone(),
+        )
         .unwrap()
         .activate(assembly.host_extension_manifests())
         .unwrap();
@@ -104,6 +109,9 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         .unwrap();
     let store = storage_durable_postgres::PgControlPlaneStore::new(pool.clone())
         .with_lifecycle_publication_catalog(catalog.clone());
+    notification_publication
+        .activate(Arc::new(store.clone()))
+        .unwrap();
     let resolver = Arc::new(ApiRuntimeArtifactResolver::new(
         store.clone(),
         &state.api_node_id,
@@ -303,7 +311,15 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     .unwrap();
     first.unwrap();
     second.unwrap();
-    assert_eq!(sqlx::query_scalar::<_,i64>("select count(*) from lifecycle_outbox where contract_id='acme.composition-a.processed'").fetch_one(&pool).await.unwrap(),1);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "select count(*) from lifecycle_outbox where contract_id='acme.composition-a.processed'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
     for record in &committed {
         if record.subscriber_id != a.subscriber_id {
             delivery.deliver(record).await.unwrap();
@@ -371,11 +387,18 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     assert_eq!(retried.len(), 1);
     let b_new = &retried[0];
     assert_ne!(b.claim_id, b_new.claim_id);
-    assert!(store
-        .mark_lifecycle_fact_delivered(b.event_id, &b.subscriber_id, worker, b.claim_id.unwrap())
-        .await
-        .unwrap_err()
-        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
+    assert!(
+        store
+            .mark_lifecycle_fact_delivered(
+                b.event_id,
+                &b.subscriber_id,
+                worker,
+                b.claim_id.unwrap()
+            )
+            .await
+            .unwrap_err()
+            .is::<control_plane_contracts::ports::LifecycleClaimLost>()
+    );
     // Mutation counter distinguishes receipt replay from another upsert of the same values.
     sqlx::query("create table effect_mutations (owner_table text not null)")
         .execute(&pool)
@@ -383,9 +406,11 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         .unwrap();
     sqlx::query("create function count_effect_mutation() returns trigger language plpgsql as $$ begin insert into effect_mutations values (tg_table_name); return new; end $$").execute(&pool).await.unwrap();
     for (_, table) in &tables {
-        assert!(table
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+        assert!(
+            table
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        );
         sqlx::query(sqlx::AssertSqlSafe(format!("create trigger count_effect after insert or update on {table} for each row execute function count_effect_mutation()"))).execute(&pool).await.unwrap();
     }
     let barrier = Arc::new(tokio::sync::Barrier::new(2));
@@ -527,29 +552,33 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     );
     revoke.await.unwrap();
     assert!(delivery.deliver(b_new).await.is_err());
-    assert!(store
-        .lock_contribution_authority(&b_subject)
-        .await
-        .unwrap()
-        .commit_owned_event_effect(
-            b_subject,
-            b.event_id,
-            MANAGED_PROCESSED_EVENT_ID.into(),
-            effect_operations(&fact.payload),
-            deadline()
-        )
-        .await
-        .is_err());
-    assert!(store
-        .mark_lifecycle_fact_delivered(
-            b_new.event_id,
-            &b_new.subscriber_id,
-            worker,
-            b_new.claim_id.unwrap(),
-        )
-        .await
-        .unwrap_err()
-        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
+    assert!(
+        store
+            .lock_contribution_authority(&b_subject)
+            .await
+            .unwrap()
+            .commit_owned_event_effect(
+                b_subject,
+                b.event_id,
+                MANAGED_PROCESSED_EVENT_ID.into(),
+                effect_operations(&fact.payload),
+                deadline()
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        store
+            .mark_lifecycle_fact_delivered(
+                b_new.event_id,
+                &b_new.subscriber_id,
+                worker,
+                b_new.claim_id.unwrap(),
+            )
+            .await
+            .unwrap_err()
+            .is::<control_plane_contracts::ports::LifecycleClaimLost>()
+    );
     let revoked_and_unclaimed: bool = sqlx::query_scalar(
         "select status='paused' and pause_reason='authority_revoked' and paused_at is not null
             and claimed_by is null and claimed_at is null and claim_id is null

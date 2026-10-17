@@ -6,7 +6,7 @@ use control_plane_contracts::ports::{
 };
 use rust_decimal::Decimal;
 use serde_json::json;
-use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
+use storage_durable_postgres::{PgControlPlaneStore, run_migrations};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::Barrier;
 use uuid::Uuid;
@@ -74,7 +74,19 @@ async fn credit_command_is_idempotent_and_updates_projection_with_ledger() {
             .fetch_one(store.pool())
             .await
             .unwrap();
-    assert_eq!(outbox_count, 1);
+    // Optional-zero notifications create no ownerless transport work. Monetary
+    // truth and command idempotency remain in the real account/ledger.
+    assert_eq!(outbox_count, 0);
+    let ledger: (i64, String, Uuid) = sqlx::query_as(
+        "select count(*) over(),amount::text,account_id from runtime_credit_ledger where workspace_id=$1 and user_id=$2 and idempotency_key=$3",
+    ).bind(workspace_id).bind(user_id).bind(&input.idempotency_key).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(ledger.0, 1);
+    assert_eq!(ledger.1.parse::<Decimal>().unwrap(), Decimal::new(1025, 2));
+    assert_eq!(ledger.2, account.id);
+    let transport: (i64,i64,i64,i64) = sqlx::query_as(
+        "select (select count(*) from host_event_bus_pending),(select count(*) from credit_event_handoffs),(select count(*) from lifecycle_outbox where contract_id='credit.integration_notification'),(select count(*) from lifecycle_outbox_deliveries d join lifecycle_outbox f using(event_id) where f.contract_id='credit.integration_notification')",
+    ).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(transport, (0, 0, 0, 0));
 }
 
 #[tokio::test]
@@ -275,9 +287,11 @@ async fn plugin_credit_command_round_trips_actor_and_enforces_idempotency() {
         .execute_credit_command(&conflicting)
         .await
         .unwrap_err();
-    assert!(conflict
-        .to_string()
-        .contains("credit_idempotency_payload_mismatch"));
+    assert!(
+        conflict
+            .to_string()
+            .contains("credit_idempotency_payload_mismatch")
+    );
 
     let account = store
         .get_credit_account(workspace_id, user_id)
@@ -326,9 +340,11 @@ async fn pricing_candidates_include_exact_rule_and_global_fallback() {
         .await
         .unwrap();
     assert!(candidates.iter().any(|rule| rule.id == exact_id));
-    assert!(candidates
-        .iter()
-        .any(|rule| { rule.provider_code == "zero" && rule.upstream_model_id == "any" }));
+    assert!(
+        candidates
+            .iter()
+            .any(|rule| { rule.provider_code == "zero" && rule.upstream_model_id == "any" })
+    );
 }
 
 #[tokio::test]
@@ -523,10 +539,12 @@ async fn nonpositive_available_credit_blocks_only_charge_enabled_accounts() {
             })
             .await;
         if blocked {
-            assert!(result
-                .unwrap_err()
-                .to_string()
-                .contains("credit_insufficient"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("credit_insufficient")
+            );
             let count: i64 =
                 sqlx::query_scalar("select count(*) from billing_sessions where workspace_id=$1")
                     .bind(workspace_id)
@@ -785,29 +803,35 @@ async fn official_pricing_sync_merges_atomically_and_preserves_manual_rules() {
         .await
         .unwrap();
     official.input_token_unit_price = Decimal::from(55);
-    assert!(store
-        .sync_official_pricing_rules(&[official.clone(), conflict])
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("pricing_rule_conflict"));
+    assert!(
+        store
+            .sync_official_pricing_rules(&[official.clone(), conflict])
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("pricing_rule_conflict")
+    );
     assert_eq!(
         store.get_pricing_rule(original_id).await.unwrap().unwrap(),
         before
     );
-    assert!(store
-        .get_pricing_rule(manual_conflict.id)
-        .await
-        .unwrap()
-        .is_some());
+    assert!(
+        store
+            .get_pricing_rule(manual_conflict.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
     let mut collision = official.clone();
     collision.id = base.id;
     collision.source_catalog_id = Some(base.id.to_string());
     collision.upstream_model_id = "id-collision".into();
-    assert!(store
-        .sync_official_pricing_rules(&[collision])
-        .await
-        .is_err());
+    assert!(
+        store
+            .sync_official_pricing_rules(&[collision])
+            .await
+            .is_err()
+    );
     assert_eq!(
         store.get_pricing_rule(base.id).await.unwrap().unwrap(),
         manual

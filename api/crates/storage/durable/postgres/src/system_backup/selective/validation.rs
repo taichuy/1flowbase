@@ -226,6 +226,17 @@ fn failure(preview: &mut SelectiveBackupPreview, message: String) {
     }
 }
 
+/// Compare only the immutable source fact and durable publication identity.
+/// Mutable dispatch status continues to use the existing restore semantics.
+pub(super) async fn publication_conflict(
+    connection: &mut PgConnection,
+    row: &Value,
+) -> Result<bool> {
+    Ok(sqlx::query_scalar(
+                "select exists(select 1 from lifecycle_outbox t cross join jsonb_populate_record(null::lifecycle_outbox,$1) r where t.event_id=r.event_id and ((t.transaction_id,t.contract_id,t.contract_version,t.canonical_payload,t.occurred_at,t.created_at,t.native_publication_version) is distinct from (r.transaction_id,r.contract_id,r.contract_version,r.canonical_payload,r.occurred_at,r.created_at,r.native_publication_version) or (t.legacy_handoff_sequence is not null and r.legacy_handoff_sequence is not null and t.legacy_handoff_sequence <> r.legacy_handoff_sequence)))"
+            ).bind(row).fetch_one(connection).await?)
+}
+
 pub(super) async fn validate(
     connection: &mut PgConnection,
     scratch: &Scratch,
@@ -378,6 +389,15 @@ pub(super) async fn validate(
             "row references unknown archive table"
         );
         preview.row_count += 1;
+        if let Err(error) =
+            archive::normalize_publication(&mut record, header.legacy_lifecycle_protocol)
+        {
+            failure(
+                &mut preview,
+                format!("lifecycle publication metadata: {error}"),
+            );
+            continue;
+        }
         if record.table == "model_definitions"
             && record.row.get("source_kind").and_then(Value::as_str) == Some("main_source")
             && record
@@ -494,6 +514,15 @@ pub(super) async fn validate(
                 failure(
                     &mut preview,
                     format!("unique identity conflict: {} ({index})", table.name),
+                );
+            }
+        }
+        if table.name == "lifecycle_outbox" {
+            let conflict = publication_conflict(connection, &record.row).await?;
+            if conflict {
+                failure(
+                    &mut preview,
+                    "immutable lifecycle publication conflict: lifecycle_outbox".into(),
                 );
             }
         }

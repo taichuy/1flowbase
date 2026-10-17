@@ -1,11 +1,11 @@
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use control_plane_contracts::{
     ports::{BackupComponentReader, BackupComponentWriter},
     system_backup::selective::SelectiveBackupSelection,
 };
 use flate2::{
-    write::{GzEncoder, MultiGzDecoder},
     Compression,
+    write::{GzEncoder, MultiGzDecoder},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -45,6 +45,8 @@ pub(super) struct SchemaDependency {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Header {
+    #[serde(skip)]
+    pub legacy_lifecycle_protocol: bool,
     pub format: String,
     pub selection: Vec<SelectiveBackupSelection>,
     pub tables: Vec<Table>,
@@ -124,13 +126,73 @@ pub(super) async fn line(reader: &mut BufReader<tokio::fs::File>) -> Result<Opti
 }
 pub(super) async fn header(reader: &mut BufReader<tokio::fs::File>) -> Result<Header> {
     let bytes = line(reader).await?.context("empty settings backup")?;
-    let header: Header = serde_json::from_slice(&bytes)?;
+    let mut header: Header = serde_json::from_slice(&bytes)?;
     ensure!(header.format == FORMAT, "unsupported settings rows format");
     ensure!(
         header.tables.len() + header.schema_dependencies.len() <= 10000,
         "too many settings tables"
     );
+    for table in &mut header.tables {
+        if table.name == "lifecycle_outbox" {
+            let version = table
+                .columns
+                .iter()
+                .any(|c| c.name == "native_publication_version");
+            let receipt = table
+                .columns
+                .iter()
+                .any(|c| c.name == "legacy_handoff_sequence");
+            ensure!(version == receipt, "partial lifecycle publication schema");
+            if !version {
+                header.legacy_lifecycle_protocol = true;
+                // Only this exact additive historical schema is supported. The normal
+                // catalog equality check still rejects every other schema difference.
+                for (name, sql_type, nullable) in [
+                    ("native_publication_version", "smallint", false),
+                    ("legacy_handoff_sequence", "bigint", true),
+                ] {
+                    table.columns.push(Column {
+                        name: name.into(),
+                        sql_type: sql_type.into(),
+                        nullable,
+                        generated: false,
+                        generated_expression: None,
+                    });
+                }
+            }
+        }
+    }
     Ok(header)
+}
+
+pub(super) fn normalize_publication(record: &mut Record, historical: bool) -> Result<()> {
+    if record.table != "lifecycle_outbox" {
+        return Ok(());
+    }
+    let row = record
+        .row
+        .as_object_mut()
+        .context("archive row is not an object")?;
+    let version = row.get("native_publication_version");
+    let receipt = row.get("legacy_handoff_sequence");
+    if version.is_none() && receipt.is_none() {
+        ensure!(
+            historical,
+            "lifecycle publication metadata missing from current archive"
+        );
+        row.insert("native_publication_version".into(), Value::from(1));
+        row.insert("legacy_handoff_sequence".into(), Value::Null);
+        return Ok(());
+    }
+    ensure!(
+        matches!(version.and_then(Value::as_i64), Some(1 | 2)),
+        "invalid lifecycle native publication version"
+    );
+    ensure!(
+        receipt.is_some_and(|r| r.is_null() || r.as_i64().is_some_and(|s| s > 0)),
+        "invalid lifecycle handoff sequence"
+    );
+    Ok(())
 }
 pub(super) struct Encoder {
     gzip: GzEncoder<Vec<u8>>,

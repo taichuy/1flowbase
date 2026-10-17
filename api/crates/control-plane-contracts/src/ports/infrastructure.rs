@@ -968,11 +968,6 @@ pub trait DistributedLock: Send + Sync {
 
 #[async_trait]
 pub trait EventBus: Send + Sync {
-    /// Optional durable capability belonging to this exact active provider.
-    fn credit_event_handoff(&self) -> Option<&dyn super::CreditEventHandoff> {
-        None
-    }
-
     async fn publish(&self, topic: &str, payload: serde_json::Value) -> anyhow::Result<()>;
 
     async fn poll(&self, topic: &str) -> anyhow::Result<Option<serde_json::Value>>;

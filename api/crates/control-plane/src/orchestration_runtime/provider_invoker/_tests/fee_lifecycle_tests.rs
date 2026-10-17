@@ -54,17 +54,17 @@ async fn pricing(repository: &Repository) -> PricingRule {
     ]);
     rule
 }
-fn reservation(repository: Repository, rule: PricingRule) -> FeeReservation<Repository> {
-    FeeReservation::new(
+fn reservation(repository: Repository, rule: PricingRule) -> FeeBilling<Repository> {
+    FeeBilling::new(
         repository,
         rule,
-        CreditReservation {
+        Some(CreditReservation {
             billing_session_id: Uuid::now_v7(),
             account_id: Uuid::now_v7(),
             reserved_amount: "1".into(),
             charge_skipped: false,
             charge_skip_reason: None,
-        },
+        }),
         Uuid::now_v7(),
         Uuid::now_v7(),
         OffsetDateTime::now_utc(),
@@ -180,11 +180,13 @@ async fn required_fee_admission_vetoes_before_a_reservation_without_actor() {
             billing_node_id: None,
         })
         .await;
-    assert!(result
-        .err()
-        .unwrap()
-        .to_string()
-        .contains("billing_actor_context_required"));
+    assert!(
+        result
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("billing_actor_context_required")
+    );
     assert_eq!(repository.model_billing_reserved_session_count(), 0);
 }
 
@@ -244,12 +246,14 @@ async fn required_fee_outcome_releases_invalid_usage_and_finalize_failure() {
         let releases = repository.model_billing_credit_releases();
         assert_eq!(releases.len(), 1);
         assert_eq!(releases[0].1, expected_error);
-        assert!(output
-            .unwrap()
-            .result
-            .provider_metadata
-            .get("_1flowbase_billing")
-            .is_none());
+        assert!(
+            output
+                .unwrap()
+                .result
+                .provider_metadata
+                .get("_1flowbase_billing")
+                .is_none()
+        );
     }
 }
 
@@ -257,7 +261,7 @@ async fn required_fee_outcome_releases_invalid_usage_and_finalize_failure() {
 async fn interrupted_fee_reservation_keeps_a_cleanup_owner() {
     let repository = Repository::with_permissions(vec![]);
     let guard = reservation(repository.clone(), pricing(&repository).await);
-    let session = guard.reservation.billing_session_id;
+    let session = guard.session_id().unwrap();
     drop(guard);
     tokio::task::yield_now().await;
     assert_eq!(
@@ -319,7 +323,6 @@ fn recovery_receipt() -> plugin_framework::provider_contract::ProviderRecoveryRe
     }
 }
 
-// Exercise the real host owner, including AfterUsage and its final metadata wrappers.
 async fn invoke_with_metadata(
     provider_metadata: Value,
     billing_enabled: bool,
@@ -328,9 +331,22 @@ async fn invoke_with_metadata(
     Result<orchestration_runtime::execution_engine::ProviderInvocationOutput>,
     Repository,
 ) {
+    invoke_with_metadata_for_actor(provider_metadata, billing_enabled, include_account, false).await
+}
+
+// Exercise the real host owner, including AfterUsage and its final metadata wrappers.
+async fn invoke_with_metadata_for_actor(
+    provider_metadata: Value,
+    billing_enabled: bool,
+    include_account: bool,
+    root_actor: bool,
+) -> (
+    Result<orchestration_runtime::execution_engine::ProviderInvocationOutput>,
+    Repository,
+) {
     use crate::orchestration_runtime::{
-        test_support::InMemoryProviderRuntime, RuntimeDataModelExecutionContext,
-        RuntimeFlowExecutionContext,
+        RuntimeDataModelExecutionContext, RuntimeFlowExecutionContext,
+        test_support::InMemoryProviderRuntime,
     };
     let repository = Repository::with_permissions(vec![]);
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
@@ -362,12 +378,16 @@ async fn invoke_with_metadata(
             active_node: std::sync::Mutex::new(None),
             tool_delivery_events: std::sync::Mutex::new(Vec::new()),
             data_model: RuntimeDataModelExecutionContext {
-                actor: domain::ActorContext::scoped(
-                    Uuid::now_v7(),
-                    Uuid::nil(),
-                    "member",
-                    Vec::<String>::new(),
-                ),
+                actor: if root_actor {
+                    domain::ActorContext::root(Uuid::now_v7(), Uuid::nil(), "root")
+                } else {
+                    domain::ActorContext::scoped(
+                        Uuid::now_v7(),
+                        Uuid::nil(),
+                        "member",
+                        Vec::<String>::new(),
+                    )
+                },
                 application_id: Uuid::nil(),
                 draft_id: Uuid::nil(),
                 flow_run_id,
@@ -483,4 +503,162 @@ async fn host_does_not_invent_missing_receipts_or_hide_invalid_receipts_after_bi
         );
         assert_eq!(repository.model_billing_finalize_attempt_count(), 1);
     }
+}
+
+#[tokio::test]
+async fn observation_preserves_real_usage_and_missing_provenance_without_credit_owner() {
+    for (usage, failed) in [
+        (
+            ProviderUsage {
+                input_tokens: Some(11),
+                output_tokens: Some(7),
+                ..Default::default()
+            },
+            false,
+        ),
+        (
+            ProviderUsage {
+                input_tokens: Some(11),
+                output_tokens: Some(7),
+                ..Default::default()
+            },
+            true,
+        ),
+        (ProviderUsage::default(), false),
+        (ProviderUsage::default(), true),
+    ] {
+        let repository = Repository::with_permissions(vec![]);
+        let rule = pricing(&repository).await;
+        let flow_run_id = Uuid::now_v7();
+        let billing = FeeBilling::new(
+            repository.clone(),
+            rule,
+            None,
+            Uuid::now_v7(),
+            flow_run_id,
+            OffsetDateTime::now_utc(),
+        );
+        let invoker = invoker(repository.clone());
+        let mut output = (!failed || usage.input_tokens.is_some()).then(|| {
+            crate::ports::ProviderRuntimeInvocationOutput {
+                events: vec![],
+                result: ProviderInvocationResult {
+                    usage: usage.clone(),
+                    ..Default::default()
+                },
+            }
+        });
+        let mut error = failed.then(|| anyhow!("cancelled-without-provider-usage"));
+        ProviderFeeLifecycle::new(&invoker)
+            .dispatch(ProviderFeeEvent::AfterUsage {
+                reservation: Box::new(Some(billing)),
+                outcome: Box::new(ProviderFeeOutcome {
+                    upstream_model_id: "model",
+                    provider_instance_id: Uuid::nil(),
+                    actual_provider_code: "fixture",
+                    invocation_output: &mut output,
+                    invocation_error: &mut error,
+                    canonical_stream_state: None,
+                    native_responses_passthrough: false,
+                }),
+            })
+            .await
+            .unwrap();
+        let usages = repository.model_billing_usage_ledger(flow_run_id);
+        let costs = repository.model_billing_cost_ledger(flow_run_id);
+        assert_eq!(usages.len(), 1);
+        assert_eq!(costs.len(), 1);
+        assert_eq!(usages[0].raw_usage, serde_json::to_value(&usage).unwrap());
+        assert_eq!(usages[0].input_tokens, usage.input_tokens.map(|v| v as i64));
+        assert_eq!(costs[0].billing_session_id, None);
+        assert_eq!(costs[0].usage_ledger_id, Some(usages[0].id));
+        if usage.input_tokens.is_some() {
+            assert_eq!(usages[0].usage_status, domain::UsageLedgerStatus::Recorded);
+            assert!(
+                costs[0]
+                    .normalized_cost
+                    .as_ref()
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+                    > 0.0
+            );
+        } else {
+            assert_eq!(
+                usages[0].usage_status,
+                domain::UsageLedgerStatus::UnavailableError
+            );
+            assert_eq!(costs[0].normalized_cost, None);
+            assert_eq!(usages[0].cost_snapshot, None);
+            assert_eq!(
+                usages[0].normalized_usage["usage_source"],
+                "provider_usage_unavailable"
+            );
+            if let Some(output) = output {
+                assert_eq!(output.result.usage, ProviderUsage::default());
+            }
+        }
+        assert_eq!(error.is_some(), failed);
+        tokio::task::yield_now().await;
+        assert_eq!(repository.model_billing_heartbeat_count(), 0);
+        assert_eq!(repository.model_billing_reserved_session_count(), 0);
+        assert_eq!(repository.model_billing_finalize_attempt_count(), 0);
+        assert!(repository.model_billing_credit_releases().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn dropping_observation_has_no_credit_cleanup_owner() {
+    let repository = Repository::with_permissions(vec![]);
+    let billing = FeeBilling::new(
+        repository.clone(),
+        pricing(&repository).await,
+        None,
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        OffsetDateTime::now_utc(),
+    );
+    drop(billing);
+    tokio::task::yield_now().await;
+    assert!(repository.model_billing_credit_releases().is_empty());
+    assert_eq!(repository.model_billing_reserved_session_count(), 0);
+}
+
+#[tokio::test]
+async fn default_free_admission_keeps_output_and_cost_without_a_credit_reservation() {
+    let (output, repository) =
+        invoke_with_metadata_for_actor(json!({"provider_diagnostic":"retained"}), true, true, true)
+            .await;
+    let output = output.unwrap();
+    assert_eq!(output.result.usage.input_tokens, Some(5));
+    assert_eq!(output.result.usage.output_tokens, Some(7));
+    tokio::task::yield_now().await;
+    assert_eq!(repository.model_billing_reserved_session_count(), 0);
+    assert_eq!(repository.model_billing_finalize_attempt_count(), 0);
+    assert_eq!(repository.model_billing_heartbeat_count(), 0);
+    assert!(repository.model_billing_credit_releases().is_empty());
+    let metadata = &output.result.provider_metadata["_1flowbase_upstream_provider_metadata"]["_1flowbase_upstream_provider_metadata"]
+        ["_1flowbase_billing"];
+    assert_eq!(metadata["charge_skipped"], true);
+    assert!(metadata["billing_session_id"].is_null());
+    assert!(metadata["usage_ledger_id"].as_str().is_some());
+    assert!(metadata["cost_ledger_id"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn disabled_admission_does_not_require_actor_or_pricing() {
+    let repository = Repository::with_permissions(vec![]);
+    let invoker = invoker(repository.clone());
+    let input = ProviderInvocationInput::default();
+    let billing = ProviderFeeLifecycle::new(&invoker)
+        .dispatch(ProviderFeeEvent::BeforeInvocation {
+            input: &input,
+            pricing_provider_code: "unconfigured",
+            pricing_model_id: "unconfigured",
+            billing_node_id: None,
+        })
+        .await
+        .unwrap();
+    assert!(billing.is_none());
+    assert_eq!(repository.model_billing_reserved_session_count(), 0);
 }

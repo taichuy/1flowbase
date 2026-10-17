@@ -94,3 +94,5 @@ mod plugin_credential_repository;
 pub use plugin_credential_repository::PgPluginCredentialRepository;
 
 mod notification_repository;
+
+mod notification_publication;

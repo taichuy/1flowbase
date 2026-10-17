@@ -22,53 +22,29 @@ where
         pricing_provider_code: &str,
         pricing_model_id: &str,
         billing_node_id: Option<&str>,
-    ) -> Result<Option<FeeReservation<R>>> {
+    ) -> Result<Option<FeeBilling<R>>> {
         let billing_started_at = OffsetDateTime::now_utc();
-        Ok(
-            if self
+        // Prepare immutable pricing outside account locks, but defer preparation
+        // errors until the single transactional admission snapshot says enabled.
+        let prepared: Result<(PricingRule, crate::ports::ReserveCreditInput)> = async {
+            let actor = self
                 .invoker
-                .repository
-                .model_billing_enabled_at(self.invoker.workspace_id)
-                .await?
-                .is_some_and(|enabled_at| billing_started_at >= enabled_at)
-            {
-                let actor = self
-                    .invoker
-                    .flow_execution_context
-                    .as_ref()
-                    .map(|context| &context.data_model.actor)
-                    .ok_or(ControlPlaneError::Conflict(
-                        "billing_actor_context_required",
-                    ))?;
-                let candidates = if let Some(cache) = &self.invoker.model_pricing_cache_store {
-                    let key = crate::billing::pricing_rules_cache_key(
-                        pricing_provider_code,
-                        pricing_model_id,
-                    );
-                    match cache.get_json(&key).await? {
-                        Some(value) => match serde_json::from_value(value) {
-                            Ok(rules) => rules,
-                            Err(_) => {
-                                cache.delete(&key).await?;
-                                let rules = self
-                                    .invoker
-                                    .repository
-                                    .model_billing_list_pricing_rules(
-                                        pricing_provider_code,
-                                        pricing_model_id,
-                                    )
-                                    .await?;
-                                cache
-                                    .set_json(
-                                        &key,
-                                        serde_json::to_value(&rules)?,
-                                        Some(time::Duration::minutes(5)),
-                                    )
-                                    .await?;
-                                rules
-                            }
-                        },
-                        None => {
+                .flow_execution_context
+                .as_ref()
+                .map(|context| &context.data_model.actor)
+                .ok_or(ControlPlaneError::Conflict(
+                    "billing_actor_context_required",
+                ))?;
+            let candidates = if let Some(cache) = &self.invoker.model_pricing_cache_store {
+                let key = crate::billing::pricing_rules_cache_key(
+                    pricing_provider_code,
+                    pricing_model_id,
+                );
+                match cache.get_json(&key).await? {
+                    Some(value) => match serde_json::from_value(value) {
+                        Ok(rules) => rules,
+                        Err(_) => {
+                            cache.delete(&key).await?;
                             let rules = self
                                 .invoker
                                 .repository
@@ -86,77 +62,123 @@ where
                                 .await?;
                             rules
                         }
-                    }
-                } else {
-                    self.invoker
-                        .repository
-                        .model_billing_match_pricing_rules(
-                            pricing_provider_code,
-                            pricing_model_id,
-                            billing_started_at,
-                        )
-                        .await?
-                };
-                let rule = crate::billing::choose_pricing_rule_for(
-                    pricing_provider_code,
-                    pricing_model_id,
-                    candidates,
-                    billing_started_at,
-                )?
-                .ok_or(ControlPlaneError::Conflict("pricing_rule_not_configured"))?;
-                let input_tokens = estimate_provider_count_tokens(input)
-                    .map(|estimate| estimate.input_tokens)
-                    .unwrap_or(0);
-                let maximum_output_tokens = input
-                    .model_parameters
-                    .get("max_output_tokens")
-                    .or_else(|| input.model_parameters.get("max_tokens"))
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0);
-                let estimate = crate::billing::rate_token_usage_at(
-                    &rule,
-                    &crate::billing::TokenUsage {
-                        input_tokens: i64::try_from(input_tokens).unwrap_or(i64::MAX),
-                        input_cache_hit_tokens: 0,
-                        input_cache_miss_tokens: Some(
-                            i64::try_from(input_tokens).unwrap_or(i64::MAX),
-                        ),
-                        output_tokens: i64::try_from(maximum_output_tokens).unwrap_or(i64::MAX),
-                        ..Default::default()
                     },
-                    billing_started_at,
-                )?;
-                let flow_run_id = self
-                    .invoker
-                    .flow_run_id
-                    .ok_or(ControlPlaneError::Conflict("billing_flow_run_required"))?;
-                let invocation_id = billing_invocation_id(flow_run_id, billing_node_id, input);
-                let reservation = self
-                    .invoker
-                    .repository
-                    .model_billing_reserve_credit(&crate::ports::ReserveCreditInput {
-                        workspace_id: self.invoker.workspace_id,
-                        user_id: actor.user_id,
-                        amount: estimate.total_cost.to_string(),
-                        flow_run_id: Some(flow_run_id),
-                        provider_invocation_id: invocation_id,
-                        pricing_rule_id: rule.id,
-                        charge_enabled_default: !actor.is_root,
-                        reservation_expires_at: billing_started_at + time::Duration::minutes(15),
-                    })
-                    .await?;
-                Some(FeeReservation::new(
-                    self.invoker.repository.clone(),
-                    rule,
-                    reservation,
-                    invocation_id,
-                    flow_run_id,
-                    billing_started_at,
-                ))
+                    None => {
+                        let rules = self
+                            .invoker
+                            .repository
+                            .model_billing_list_pricing_rules(
+                                pricing_provider_code,
+                                pricing_model_id,
+                            )
+                            .await?;
+                        cache
+                            .set_json(
+                                &key,
+                                serde_json::to_value(&rules)?,
+                                Some(time::Duration::minutes(5)),
+                            )
+                            .await?;
+                        rules
+                    }
+                }
             } else {
-                None
-            },
-        )
+                self.invoker
+                    .repository
+                    .model_billing_match_pricing_rules(
+                        pricing_provider_code,
+                        pricing_model_id,
+                        billing_started_at,
+                    )
+                    .await?
+            };
+            let rule = crate::billing::choose_pricing_rule_for(
+                pricing_provider_code,
+                pricing_model_id,
+                candidates,
+                billing_started_at,
+            )?
+            .ok_or(ControlPlaneError::Conflict("pricing_rule_not_configured"))?;
+            let input_tokens = estimate_provider_count_tokens(input)
+                .map(|estimate| estimate.input_tokens)
+                .unwrap_or(0);
+            let maximum_output_tokens = input
+                .model_parameters
+                .get("max_output_tokens")
+                .or_else(|| input.model_parameters.get("max_tokens"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let estimate = crate::billing::rate_token_usage_at(
+                &rule,
+                &crate::billing::TokenUsage {
+                    input_tokens: i64::try_from(input_tokens).unwrap_or(i64::MAX),
+                    input_cache_hit_tokens: 0,
+                    input_cache_miss_tokens: Some(i64::try_from(input_tokens).unwrap_or(i64::MAX)),
+                    output_tokens: i64::try_from(maximum_output_tokens).unwrap_or(i64::MAX),
+                    ..Default::default()
+                },
+                billing_started_at,
+            )?;
+            let flow_run_id = self
+                .invoker
+                .flow_run_id
+                .ok_or(ControlPlaneError::Conflict("billing_flow_run_required"))?;
+            let invocation_id = billing_invocation_id(flow_run_id, billing_node_id, input);
+            Ok((
+                rule.clone(),
+                crate::ports::ReserveCreditInput {
+                    workspace_id: self.invoker.workspace_id,
+                    user_id: actor.user_id,
+                    amount: estimate.total_cost.to_string(),
+                    flow_run_id: Some(flow_run_id),
+                    provider_invocation_id: invocation_id,
+                    pricing_rule_id: rule.id,
+                    charge_enabled_default: !actor.is_root,
+                    reservation_expires_at: billing_started_at + time::Duration::minutes(15),
+                },
+            ))
+        }
+        .await;
+        let admission = self
+            .invoker
+            .repository
+            .model_billing_admit(&crate::ports::ModelBillingAdmissionInput {
+                workspace_id: self.invoker.workspace_id,
+                started_at: billing_started_at,
+                reservation: prepared.as_ref().ok().map(|(_, input)| input.clone()),
+            })
+            .await;
+        let admission = match admission {
+            Ok(crate::ports::ModelBillingAdmission::Disabled) => return Ok(None),
+            Ok(admission) => admission,
+            Err(error) => {
+                // Only the explicit preparation sentinel unwraps the original
+                // typed error. Storage failures retain their own error owner.
+                if matches!(
+                    error.downcast_ref::<ControlPlaneError>(),
+                    Some(ControlPlaneError::Conflict(
+                        "model_billing_preparation_required"
+                    ))
+                ) {
+                    return Err(prepared.err().unwrap_or(error));
+                }
+                return Err(error);
+            }
+        };
+        let (rule, input) = prepared?;
+        let reservation = match admission {
+            crate::ports::ModelBillingAdmission::Disabled => return Ok(None),
+            crate::ports::ModelBillingAdmission::ObserveOnly => None,
+            crate::ports::ModelBillingAdmission::Reserved(reservation) => Some(reservation),
+        };
+        Ok(Some(FeeBilling::new(
+            self.invoker.repository.clone(),
+            rule,
+            reservation,
+            input.provider_invocation_id,
+            input.flow_run_id.expect("prepared flow run"),
+            billing_started_at,
+        )))
     }
 }
 
@@ -170,27 +192,63 @@ pub(super) struct ProviderFeeOutcome<'a> {
     pub native_responses_passthrough: bool,
 }
 
-pub(super) struct FeeReservation<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static>
-{
-    repository: R,
+/// Shared rating context. Only Reserved constructs a credit cleanup owner.
+pub(super) struct FeeBilling<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> {
     rule: PricingRule,
-    reservation: CreditReservation,
     invocation_id: Uuid,
     flow_run_id: Uuid,
     started_at: OffsetDateTime,
-    heartbeat: tokio::task::JoinHandle<()>,
-    armed: bool,
+    reservation: Option<FeeReservation<R>>,
 }
-
-impl<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> FeeReservation<R> {
+impl<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> FeeBilling<R> {
     fn new(
         repository: R,
         rule: PricingRule,
-        reservation: CreditReservation,
+        reservation: Option<CreditReservation>,
         invocation_id: Uuid,
         flow_run_id: Uuid,
         started_at: OffsetDateTime,
     ) -> Self {
+        Self {
+            rule,
+            invocation_id,
+            flow_run_id,
+            started_at,
+            reservation: reservation
+                .map(|reservation| FeeReservation::new(repository, reservation)),
+        }
+    }
+    fn session_id(&self) -> Option<Uuid> {
+        self.reservation
+            .as_ref()
+            .map(|guard| guard.reservation.billing_session_id)
+    }
+    fn charge_skipped(&self) -> bool {
+        self.reservation
+            .as_ref()
+            .is_none_or(|guard| guard.reservation.charge_skipped)
+    }
+    async fn release(&mut self, reason: &str) -> Result<()> {
+        if let Some(guard) = &mut self.reservation {
+            guard.release(reason).await?;
+        }
+        Ok(())
+    }
+    fn disarm(&mut self) {
+        if let Some(guard) = &mut self.reservation {
+            guard.disarm();
+        }
+    }
+}
+
+struct FeeReservation<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> {
+    repository: R,
+    reservation: CreditReservation,
+    heartbeat: tokio::task::JoinHandle<()>,
+    armed: bool,
+}
+impl<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> FeeReservation<R> {
+    fn new(repository: R, reservation: CreditReservation) -> Self {
         let heartbeat_repository = repository.clone();
         let session = reservation.billing_session_id;
         let heartbeat = tokio::spawn(async move {
@@ -214,11 +272,7 @@ impl<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> FeeReser
         });
         Self {
             repository,
-            rule,
             reservation,
-            invocation_id,
-            flow_run_id,
-            started_at,
             heartbeat,
             armed: true,
         }
@@ -235,14 +289,12 @@ impl<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> FeeReser
         self.heartbeat.abort();
     }
 }
-
 impl<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> Drop for FeeReservation<R> {
     fn drop(&mut self) {
         self.heartbeat.abort();
         if self.armed {
             let repository = self.repository.clone();
             let session = self.reservation.billing_session_id;
-            // Forwarder failures, continuation failures and task cancellation retain a cleanup owner.
             tokio::spawn(async move {
                 if let Err(error) = repository
                     .model_billing_release_credit(session, "provider_billing_interrupted")
@@ -349,7 +401,7 @@ where
 {
     async fn after_usage(
         &self,
-        billing: Option<FeeReservation<R>>,
+        billing: Option<FeeBilling<R>>,
         outcome: ProviderFeeOutcome<'_>,
     ) -> Result<()> {
         let Some(mut billing) = billing else {
@@ -364,7 +416,7 @@ where
             canonical_stream_state,
             native_responses_passthrough,
         } = outcome;
-        let mut usage = invocation_output.as_ref().map_or_else(
+        let usage = invocation_output.as_ref().map_or_else(
             || {
                 canonical_stream_state
                     .map(|state| state.accumulated().usage().value().clone())
@@ -382,7 +434,8 @@ where
             || usage.total_tokens.is_some();
         let mut provider_usage_unavailable = false;
         if !has_usage {
-            if let Some(error) = invocation_error.take() {
+            if billing.reservation.is_some() && invocation_error.is_some() {
+                let error = invocation_error.take().expect("checked invocation error");
                 billing
                     .release("provider_invocation_failed_without_usage")
                     .await?;
@@ -400,10 +453,9 @@ where
                     .flow_execution_context
                     .as_ref()
                     .is_some_and(|context| context.require_provider_usage_for_billing);
-                if billable_output && require_provider_usage && !billing.reservation.charge_skipped
-                {
+                if billable_output && require_provider_usage && !billing.charge_skipped() {
                     billing.release("provider_usage_unavailable").await?;
-                    let metadata = json!({"billing_status":"reconciliation_failed", "billing_error_code":"provider_usage_unavailable", "billing_session_id":billing.reservation.billing_session_id, "provider_invocation_id":billing.invocation_id, "pricing_rule_id":billing.rule.id});
+                    let metadata = json!({"billing_status":"reconciliation_failed", "billing_error_code":"provider_usage_unavailable", "billing_session_id":billing.session_id(), "provider_invocation_id":billing.invocation_id, "pricing_rule_id":billing.rule.id});
                     return Err(with_fee_details(
                         provider_usage_unavailable_conflict(output).into(),
                         metadata,
@@ -416,20 +468,6 @@ where
                 }
             }
             provider_usage_unavailable = true;
-            usage = ProviderUsage {
-                input_tokens: Some(0),
-                input_cache_hit_tokens: Some(0),
-                input_cache_miss_tokens: Some(0),
-                output_tokens: Some(0),
-                reasoning_tokens: Some(0),
-                cache_read_tokens: Some(0),
-                cache_write_tokens: Some(0),
-                total_tokens: Some(0),
-                ..ProviderUsage::default()
-            };
-            if let Some(output) = invocation_output.as_mut() {
-                output.result.usage = usage.clone();
-            }
         }
         let rated = normalized_token_usage(&billing.rule, &usage).and_then(|normalized| {
             crate::billing::rate_token_usage_at(&billing.rule, &normalized, billing.started_at)
@@ -437,7 +475,7 @@ where
         let rated = match rated {
             Ok(rated) => rated,
             Err(error) => {
-                let metadata = json!({"billing_status":"reconciliation_failed", "billing_error_code":"provider_usage_rating_failed", "billing_error":error.to_string(), "billing_session_id":billing.reservation.billing_session_id, "pricing_rule_id":billing.rule.id, "provider_invocation_id":billing.invocation_id, "cache_write_tokens":usage.cache_write_tokens, "cache_write_by_ttl_seconds":usage.cache_write_by_ttl_seconds});
+                let metadata = json!({"billing_status":"reconciliation_failed", "billing_error_code":"provider_usage_rating_failed", "billing_error":error.to_string(), "billing_session_id":billing.session_id(), "pricing_rule_id":billing.rule.id, "provider_invocation_id":billing.invocation_id, "cache_write_tokens":usage.cache_write_tokens, "cache_write_by_ttl_seconds":usage.cache_write_by_ttl_seconds});
                 if let Err(release_error) = billing.release("provider_usage_rating_failed").await {
                     tracing::error!(error = %release_error, "model billing rating failure release failed; cleanup will retry");
                 }
@@ -453,7 +491,8 @@ where
             }
         };
         let rule = &billing.rule;
-        let reservation = &billing.reservation;
+        let session_id = billing.session_id();
+        let charge_skipped = billing.charge_skipped();
         let invocation_id = billing.invocation_id;
         let flow_run_id = billing.flow_run_id;
         let billing_started_at = billing.started_at;
@@ -470,122 +509,138 @@ where
             "rules":rule.rules, "matched_rule_indices":rated.matched_rule_indices,
         });
         let usage_source = if provider_usage_unavailable {
-            "provider_usage_unavailable_zero"
+            "provider_usage_unavailable"
         } else {
             "provider_reported"
         };
-        let usage_snapshot = json!({"usage_source":usage_source, "ordinary_input_tokens":rated.ordinary_input_tokens,
+        let usage_snapshot = if !has_usage {
+            json!({"usage_source":usage_source,"raw_usage":usage})
+        } else {
+            json!({"usage_source":usage_source, "ordinary_input_tokens":rated.ordinary_input_tokens,
             "input_cache_hit_tokens":rated.cache_hit_tokens, "cache_write_tokens":rated.cache_write_tokens,
             "cache_write_by_ttl_seconds":usage.cache_write_by_ttl_seconds, "cache_write_cost":rated.cache_write_cost.to_string(),
-            "output_tokens":rated.output_tokens, "raw_usage":usage});
+            "output_tokens":rated.output_tokens, "raw_usage":usage})
+        };
         let active_node = self
             .invoker
             .flow_execution_context
             .as_ref()
             .and_then(|context| context.active_node.lock().ok()?.clone());
-        let finalized = self
-            .invoker
-            .repository
-            .finalize_model_billing(&crate::ports::FinalizeModelBillingInput {
-                usage: crate::ports::AppendUsageLedgerInput {
-                    flow_run_id,
-                    node_run_id: active_node.as_ref().map(|node| node.node_run_id),
-                    span_id: None,
-                    failover_attempt_id: None,
-                    provider_instance_id: Some(provider_instance_id),
-                    gateway_route_id: None,
-                    model_id: Some(upstream_model_id.to_string()),
-                    upstream_model_id: Some(upstream_model_id.to_string()),
-                    upstream_request_id: invocation_output
-                        .as_ref()
-                        .and_then(|output| output.result.response_id.clone()),
-                    input_tokens: usage
-                        .input_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    cached_input_tokens: usage
-                        .input_cache_hit_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    output_tokens: usage
-                        .output_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    reasoning_output_tokens: usage
-                        .reasoning_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    total_tokens: usage
-                        .total_tokens()
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    input_cache_hit_tokens: usage
-                        .input_cache_hit_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    input_cache_miss_tokens: usage
-                        .input_cache_miss_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    cache_read_tokens: usage
-                        .cache_read_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    cache_write_tokens: usage
-                        .cache_write_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    price_snapshot: Some(price_snapshot.clone()),
-                    cost_snapshot: Some(
-                        json!({"total_cost":rated.total_cost.to_string(),"currency_code":"USD"}),
-                    ),
-                    usage_status: if provider_usage_unavailable {
-                        domain::UsageLedgerStatus::UnavailableError
-                    } else {
-                        domain::UsageLedgerStatus::Recorded
+        let observation = crate::ports::RecordModelObservationInput {
+            usage: crate::ports::AppendUsageLedgerInput {
+                flow_run_id,
+                node_run_id: active_node.as_ref().map(|node| node.node_run_id),
+                span_id: None,
+                failover_attempt_id: None,
+                provider_instance_id: Some(provider_instance_id),
+                gateway_route_id: None,
+                model_id: Some(upstream_model_id.to_string()),
+                upstream_model_id: Some(upstream_model_id.to_string()),
+                upstream_request_id: invocation_output
+                    .as_ref()
+                    .and_then(|output| output.result.response_id.clone()),
+                input_tokens: usage
+                    .input_tokens
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                cached_input_tokens: usage
+                    .input_cache_hit_tokens
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                output_tokens: usage
+                    .output_tokens
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                reasoning_output_tokens: usage
+                    .reasoning_tokens
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                total_tokens: usage
+                    .total_tokens()
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                input_cache_hit_tokens: usage
+                    .input_cache_hit_tokens
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                input_cache_miss_tokens: usage
+                    .input_cache_miss_tokens
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                cache_read_tokens: usage
+                    .cache_read_tokens
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                cache_write_tokens: usage
+                    .cache_write_tokens
+                    .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                price_snapshot: Some(price_snapshot.clone()),
+                cost_snapshot: has_usage.then(
+                    || json!({"total_cost":rated.total_cost.to_string(),"currency_code":"USD"}),
+                ),
+                usage_status: if provider_usage_unavailable {
+                    domain::UsageLedgerStatus::UnavailableError
+                } else {
+                    domain::UsageLedgerStatus::Recorded
+                },
+                raw_usage: serde_json::to_value(&usage)?,
+                normalized_usage: usage_snapshot.clone(),
+            },
+            cost: crate::ports::AppendCostLedgerInput {
+                flow_run_id: Some(flow_run_id),
+                span_id: None,
+                usage_ledger_id: None,
+                billing_session_id: None,
+                workspace_id: self.invoker.workspace_id,
+                provider_instance_id: Some(provider_instance_id),
+                provider_account_id: None,
+                gateway_route_id: None,
+                model_id: Some(upstream_model_id.to_string()),
+                upstream_model_id: Some(upstream_model_id.to_string()),
+                price_snapshot: price_snapshot.clone(),
+                raw_cost: has_usage.then(|| rated.total_cost.to_string()),
+                normalized_cost: has_usage.then(|| rated.total_cost.to_string()),
+                settlement_currency: Some("USD".to_string()),
+                cost_source: if provider_usage_unavailable {
+                    "provider_usage_unavailable"
+                } else {
+                    "local_token_pricing"
+                }
+                .to_string(),
+                cost_status: if provider_usage_unavailable {
+                    "unavailable"
+                } else {
+                    "rated"
+                }
+                .to_string(),
+            },
+        };
+        let finalized = if let Some(session_id) = session_id {
+            self.invoker
+                .repository
+                .finalize_model_billing(&crate::ports::FinalizeModelBillingInput {
+                    usage: observation.usage,
+                    cost: observation.cost,
+                    settlement: crate::ports::SettleCreditInput {
+                        billing_session_id: session_id,
+                        actual_amount: rated.total_cost.to_string(),
+                        cost_ledger_id: None,
+                        usage_ledger_id: None,
+                        price_snapshot: price_snapshot.clone(),
+                        usage_snapshot: usage_snapshot.clone(),
                     },
-                    raw_usage: serde_json::to_value(&usage)?,
-                    normalized_usage: usage_snapshot.clone(),
-                },
-                cost: crate::ports::AppendCostLedgerInput {
-                    flow_run_id: Some(flow_run_id),
-                    span_id: None,
-                    usage_ledger_id: None,
-                    billing_session_id: None,
-                    workspace_id: self.invoker.workspace_id,
-                    provider_instance_id: Some(provider_instance_id),
-                    provider_account_id: None,
-                    gateway_route_id: None,
-                    model_id: Some(upstream_model_id.to_string()),
-                    upstream_model_id: Some(upstream_model_id.to_string()),
-                    price_snapshot: price_snapshot.clone(),
-                    raw_cost: Some(rated.total_cost.to_string()),
-                    normalized_cost: Some(rated.total_cost.to_string()),
-                    settlement_currency: Some("USD".to_string()),
-                    cost_source: if provider_usage_unavailable {
-                        "provider_usage_unavailable_zero"
-                    } else {
-                        "local_token_pricing"
-                    }
-                    .to_string(),
-                    cost_status: if provider_usage_unavailable {
-                        "reconciliation_failed_zero"
-                    } else {
-                        "rated"
-                    }
-                    .to_string(),
-                },
-                settlement: crate::ports::SettleCreditInput {
-                    billing_session_id: reservation.billing_session_id,
-                    actual_amount: rated.total_cost.to_string(),
-                    cost_ledger_id: None,
-                    usage_ledger_id: None,
-                    price_snapshot: price_snapshot.clone(),
-                    usage_snapshot: usage_snapshot.clone(),
-                },
-            })
-            .await;
+                })
+                .await
+                .map(|result| (result.usage, result.cost))
+        } else {
+            self.invoker
+                .repository
+                .record_model_observation(&observation)
+                .await
+                .map(|result| (result.usage, result.cost))
+        };
 
         let mut billing_metadata = json!({
-            "provider_invocation_id":invocation_id, "billing_session_id":reservation.billing_session_id,
+            "provider_invocation_id":invocation_id, "billing_session_id":session_id,
             "pricing_rule_id":rule.id, "pricing_provider_code":rule.provider_code, "pricing_model_id":rule.upstream_model_id,
-            "total_cost":rated.total_cost.to_string(), "currency_code":"USD", "charge_skipped":reservation.charge_skipped,
+            "total_cost":has_usage.then(|| rated.total_cost.to_string()), "currency_code":"USD", "charge_skipped":charge_skipped,
             "cache_write_tokens":rated.cache_write_tokens, "cache_write_by_ttl_seconds":usage.cache_write_by_ttl_seconds,
             "cache_write_cost":rated.cache_write_cost.to_string(),
         });
         match finalized {
-            Ok(finalized) => {
+            Ok((finalized_usage, finalized_cost)) => {
                 billing_metadata["billing_status"] = json!(if provider_usage_unavailable {
                     "reconciliation_failed"
                 } else {
@@ -594,8 +649,8 @@ where
                 if provider_usage_unavailable {
                     billing_metadata["billing_error_code"] = json!("provider_usage_unavailable");
                 }
-                billing_metadata["usage_ledger_id"] = json!(finalized.usage.id);
-                billing_metadata["cost_ledger_id"] = json!(finalized.cost.id);
+                billing_metadata["usage_ledger_id"] = json!(finalized_usage.id);
+                billing_metadata["cost_ledger_id"] = json!(finalized_cost.id);
                 billing.disarm();
             }
             Err(error) => {
@@ -646,7 +701,7 @@ pub(super) enum ProviderFeeEvent<
         billing_node_id: Option<&'a str>,
     },
     AfterUsage {
-        reservation: Box<Option<FeeReservation<R>>>,
+        reservation: Box<Option<FeeBilling<R>>>,
         outcome: Box<ProviderFeeOutcome<'a>>,
     },
 }
@@ -668,7 +723,7 @@ where
     pub(super) async fn dispatch(
         &self,
         event: ProviderFeeEvent<'_, R>,
-    ) -> Result<Option<FeeReservation<R>>> {
+    ) -> Result<Option<FeeBilling<R>>> {
         match event {
             ProviderFeeEvent::BeforeInvocation {
                 input,

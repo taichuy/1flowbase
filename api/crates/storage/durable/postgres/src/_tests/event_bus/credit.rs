@@ -125,7 +125,7 @@ async fn grant_envelope_preserves_enqueue_time_account_and_full_original_wire_sh
     let user = Uuid::now_v7();
     sqlx::query("insert into users(id,account,email,password_hash,name,nickname,introduction,email_login_enabled,phone_login_enabled,status,session_version) values ($1,$2,$3,'hash','User','User','',true,false,'active',1)")
         .bind(user).bind(format!("eventbus-{user}")).bind(format!("{user}@example.test")).execute(&bus.pool).await.unwrap();
-    store
+    let grant = store
         .execute_credit_command(&CreditCommandInput {
             workspace_id: workspace,
             user_id: user,
@@ -142,10 +142,33 @@ async fn grant_envelope_preserves_enqueue_time_account_and_full_original_wire_sh
         })
         .await
         .unwrap();
+    // A current optional-zero grant creates its monetary ledger, not a legacy
+    // transport source. Build that historical source explicitly from the real
+    // committed ledger so this test continues to exercise recovery wire fidelity.
+    let sources: i64 =
+        sqlx::query_scalar("select count(*) from credit_event_outbox where workspace_id=$1")
+            .bind(workspace)
+            .fetch_one(&bus.pool)
+            .await
+            .unwrap();
+    assert_eq!(sources, 0);
+    let legacy_event_id = Uuid::now_v7();
+    let legacy_payload = json!({
+        "ledger_id":grant.id,"transaction_id":grant.transaction_id,"user_id":grant.user_id,
+        "amount":grant.amount.parse::<rust_decimal::Decimal>().unwrap().normalize().to_string(),
+        "balance_after":grant.balance_after,"credit_unit":grant.credit_unit,
+    });
+    sqlx::query("insert into credit_event_outbox(event_id,workspace_id,account_id,event_type,payload,created_at,published_at) values($1,$2,$3,'CreditGranted',$4,$5,null)")
+        .bind(legacy_event_id).bind(workspace).bind(grant.account_id).bind(&legacy_payload).bind(grant.created_at)
+        .execute(&bus.pool).await.unwrap();
     let row = sqlx::query("select event_id,workspace_id,account_id,event_type,payload,created_at from credit_event_outbox where workspace_id=$1")
         .bind(workspace).fetch_one(&bus.pool).await.unwrap();
     let id: Uuid = row.get("event_id");
     let account: Uuid = row.get("account_id");
+    assert_eq!(id, legacy_event_id);
+    assert_eq!(account, grant.account_id);
+    assert_eq!(row.get::<Value, _>("payload"), legacy_payload);
+    assert_eq!(row.get::<OffsetDateTime, _>("created_at"), grant.created_at);
     let expected = json!({
         "event_id":id,"event_type":"CreditGranted","workspace_id":workspace,
         "account_id":account,"occurred_at":row.get::<OffsetDateTime,_>("created_at"),

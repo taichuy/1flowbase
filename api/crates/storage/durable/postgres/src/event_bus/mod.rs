@@ -1,4 +1,4 @@
-//! Shared PostgreSQL EventBus. No pending payload cache, TTL or background consumer.
+//! Legacy durable EventBus recovery adapter. Not the default live publication path.
 mod handoff;
 mod inspection;
 
@@ -29,7 +29,7 @@ impl PgEventBus {
         Ok(())
     }
 
-    async fn next_sequence(tx: &mut Transaction<'_, Postgres>) -> Result<i64> {
+    pub(crate) async fn next_sequence(tx: &mut Transaction<'_, Postgres>) -> Result<i64> {
         // Restored rows may have larger identities than a target's current counter.
         // Never allocate an entry_ref already used by pending entries or handoff receipts.
         Ok(sqlx::query_scalar("update host_event_bus_counter set last_sequence = greatest(last_sequence, (select coalesce(max(sequence),0) from host_event_bus_pending), (select coalesce(max(sequence),0) from credit_event_handoffs)) + 1 where singleton returning last_sequence")
@@ -73,12 +73,6 @@ impl PgEventBus {
 
 #[async_trait]
 impl EventBus for PgEventBus {
-    fn credit_event_handoff(
-        &self,
-    ) -> Option<&dyn control_plane_contracts::ports::CreditEventHandoff> {
-        Some(self)
-    }
-
     async fn publish(&self, topic: &str, payload: Value) -> Result<()> {
         let payload = Self::serialize_payload(payload)?;
         let bytes = payload.len() as i64;

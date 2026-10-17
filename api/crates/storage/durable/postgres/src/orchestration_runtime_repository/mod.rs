@@ -1,7 +1,8 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 mod storage_maintenance;
 use async_trait::async_trait;
 use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     application_public_runtime::{
         ApplicationPublicConversationMessageRecord, ApplicationPublicConversationRecord,
         ApplicationPublicConversationRepository, ApplicationPublishedCallbackAttemptRepository,
@@ -42,24 +43,23 @@ use control_plane_contracts::{
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ListPricingRulesInput,
-        MarkRuntimeEventDeliveryUncertainInput, ModelProviderRequestLogsPage,
-        OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
-        PersistedWaitingState, PutCanonicalRuntimeContentInput,
+        MarkRuntimeEventDeliveryUncertainInput, ModelBillingAdmission, ModelBillingAdmissionInput,
+        ModelProviderRequestLogsPage, OrchestrationRuntimeRepository, PersistWaitingKind,
+        PersistWaitingStateInput, PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
-        ReleaseRuntimeEventDeliveryInput, RenewResumeClaimInput,
-        ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput, ResumeClaimDisposition,
-        ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
-        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, RuntimeEventDeliveryClaim,
-        RuntimeEventReplayWindow, SettleCreditInput, ToolCallbackRoundDisposition,
-        UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
-        UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
-        UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
-        UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
-        UpsertDebugVariableCacheEntryInput,
+        RecordModelObservationInput, RecordedModelObservation, ReleaseRuntimeEventDeliveryInput,
+        RenewResumeClaimInput, ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput,
+        ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus,
+        RollbackLegacyRuntimeShadowInput, RollbackLegacyRuntimeShadowResult,
+        RuntimeContextContentVersion, RuntimeEventDeliveryClaim, RuntimeEventReplayWindow,
+        SettleCreditInput, ToolCallbackRoundDisposition, UpdateCallbackTaskPayloadsInput,
+        UpdateCheckpointPayloadsInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
+        UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
+        UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
+        UpsertDataModelSideEffectReceiptInput, UpsertDebugVariableCacheEntryInput,
     },
-    ControlPlaneContractError as ControlPlaneError,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::{Postgres, QueryBuilder, Row};
 pub use storage_maintenance::RuntimeStorageCompactionReceipt;
 use time::{Duration, OffsetDateTime};
@@ -894,6 +894,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::append_cost_ledger(self, input).await
     }
 
+    async fn record_model_observation(
+        &self,
+        input: &RecordModelObservationInput,
+    ) -> Result<RecordedModelObservation> {
+        PgControlPlaneStore::record_model_observation(self, input).await
+    }
+
     async fn finalize_model_billing(
         &self,
         input: &FinalizeModelBillingInput,
@@ -977,6 +984,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
             candidates.extend(fallback);
         }
         Ok(candidates)
+    }
+
+    async fn model_billing_admit(
+        &self,
+        input: &ModelBillingAdmissionInput,
+    ) -> Result<ModelBillingAdmission> {
+        self.admit_model_billing(input).await
     }
 
     async fn model_billing_reserve_credit(

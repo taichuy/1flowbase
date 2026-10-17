@@ -37,8 +37,11 @@ impl RuntimeFixture {
         .unwrap();
         let graph = Arc::new(assembly.compile_graph().unwrap());
         let native = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+        let notification_publication = Arc::new(
+            crate::host_extensions::notification_publication::HostOptionalNotificationPublication::default(),
+        );
         let bindings = crate::host_extensions::lifecycle::production_lifecycle_handler_factories(
-            Arc::new(storage_ephemeral::MemoryEventBus::new()),
+            notification_publication.clone(),
         )
         .unwrap()
         .activate(assembly.host_extension_manifests())
@@ -48,6 +51,9 @@ impl RuntimeFixture {
             .store
             .clone()
             .with_lifecycle_publication_catalog(catalog.clone());
+        notification_publication
+            .activate(Arc::new(store.clone()))
+            .unwrap();
         let host = Arc::new(
             runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
                 time::OffsetDateTime::now_utc(),
