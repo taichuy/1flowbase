@@ -8,6 +8,12 @@ on:
       - docs/architecture/plugin-lifecycle-contracts*
       - .github/workflows/event-lifecycle.yml
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Full acceptance or supplemental managed-resume evidence
+        type: choice
+        default: full
+        options: [full, managed-resume]
 
 permissions:
   contents: read
@@ -63,6 +69,7 @@ jobs:
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Event delivery, migration and current backup Test Batch
+        if: inputs.scope != 'managed-resume'
         shell: bash
         run: |
           set -euo pipefail
@@ -90,7 +97,17 @@ jobs:
           run_tests responses-ws -p api-server --lib routes::application_public_api::responses_websocket
           run_tests responses-sse -p api-server --lib routes::application_public_api::compat_sse::tests::protocol_projection
           test "$failed" = 0
+      - name: Managed delivery resume and current authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/event-lifecycle/ci
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
+          export MANAGED_EVENT_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker"
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::extension_bus::managed_governance_tests::root_2007_ac_009_pause_revoke_retire -- --exact > "$evidence/managed-resume.log" 2>&1 || { tail -c 7000 "$evidence/managed-resume.log"; exit 1; }
+          node scripts/node/verify/cargo-test-results.js "$evidence/managed-resume.log"
       - name: Prove the large-message fixture rejects a bounded replacement
+        if: inputs.scope != 'managed-resume'
         shell: bash
         run: |
           set -euo pipefail
