@@ -1,4 +1,10 @@
-//! Legacy durable EventBus recovery adapter. Not the default live publication path.
+//! Dedicated storage owner for retained legacy event recovery obligations.
+//!
+//! Live host publication belongs to the memory EventBus. This adapter preserves
+//! historical FIFO snapshots, explicit inspection/take, and permanent credit
+//! handoff receipts. A destructive take is not consumer processing acknowledgement.
+//! The retained model lifecycle v1 writer and explicit legacy import keep their
+//! original protocol; this module does not replay or garbage-collect history.
 mod handoff;
 mod inspection;
 
@@ -10,12 +16,14 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+/// PostgreSQL owner of legacy recovery snapshots, receipts, and sequence state.
+/// This is not the host's live EventBus provider.
 #[derive(Clone)]
-pub struct PgEventBus {
+pub struct PgLegacyEventRecovery {
     pool: PgPool,
 }
 
-impl PgEventBus {
+impl PgLegacyEventRecovery {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -23,7 +31,7 @@ impl PgEventBus {
     // Every mutation takes this lock FIRST. It is held until commit, so allocation order
     // is publication visibility order, and concurrent polls cannot skip a locked head.
     pub(crate) async fn lock_queue(tx: &mut Transaction<'_, Postgres>) -> Result<()> {
-        sqlx::query("select singleton from host_event_bus_counter where singleton for update")
+        sqlx::query("select singleton from legacy_event_recovery_state where singleton for update")
             .fetch_one(&mut **tx)
             .await?;
         Ok(())
@@ -32,7 +40,7 @@ impl PgEventBus {
     pub(crate) async fn next_sequence(tx: &mut Transaction<'_, Postgres>) -> Result<i64> {
         // Restored rows may have larger identities than a target's current counter.
         // Never allocate an entry_ref already used by pending entries or handoff receipts.
-        Ok(sqlx::query_scalar("update host_event_bus_counter set last_sequence = greatest(last_sequence, (select coalesce(max(sequence),0) from host_event_bus_pending), (select coalesce(max(sequence),0) from credit_event_handoffs)) + 1 where singleton returning last_sequence")
+        Ok(sqlx::query_scalar("update legacy_event_recovery_state set last_sequence = greatest(last_sequence, (select coalesce(max(sequence),0) from legacy_event_recovery_pending), (select coalesce(max(sequence),0) from legacy_credit_handoff_receipts)) + 1 where singleton returning last_sequence")
             .fetch_one(&mut **tx).await?)
     }
 
@@ -72,14 +80,14 @@ impl PgEventBus {
 }
 
 #[async_trait]
-impl EventBus for PgEventBus {
+impl EventBus for PgLegacyEventRecovery {
     async fn publish(&self, topic: &str, payload: Value) -> Result<()> {
         let payload = Self::serialize_payload(payload)?;
         let bytes = payload.len() as i64;
         let mut tx = self.pool.begin().await?;
         Self::lock_queue(&mut tx).await?;
         let sequence = Self::next_sequence(&mut tx).await?;
-        sqlx::query("insert into host_event_bus_pending(sequence,topic,payload,value_size_bytes) values ($1,$2,$3,$4)")
+        sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,payload,value_size_bytes) values ($1,$2,$3,$4)")
             .bind(sequence).bind(topic.as_bytes()).bind(payload).bind(bytes).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
@@ -88,7 +96,7 @@ impl EventBus for PgEventBus {
     async fn poll(&self, topic: &str) -> Result<Option<Value>> {
         let mut tx = self.pool.begin().await?;
         Self::lock_queue(&mut tx).await?;
-        let row = sqlx::query("delete from host_event_bus_pending where sequence=(select sequence from host_event_bus_pending where topic=$1 order by sequence limit 1) returning payload")
+        let row = sqlx::query("delete from legacy_event_recovery_pending where sequence=(select sequence from legacy_event_recovery_pending where topic=$1 order by sequence limit 1) returning payload")
             .bind(topic.as_bytes()).fetch_optional(&mut *tx).await?;
         let value = match row {
             Some(row) => Some(Self::payload(&row)?),

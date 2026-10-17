@@ -32,10 +32,10 @@ pub(super) async fn prerequisites(
     Ok(sqlx::query_scalar("select distinct parent.relname::text from pg_constraint f join pg_class child on child.oid=f.conrelid join pg_class parent on parent.oid=f.confrelid join pg_namespace n on n.oid=child.relnamespace where n.nspname=current_schema() and child.relname=$1 and f.contype='f' order by 1").bind(table).fetch_all(connection).await?)
 }
 pub(super) fn upsert_sql(table: &Table) -> Result<String> {
-    if table.name == "host_event_bus_counter" {
+    if table.name == "legacy_event_recovery_state" {
         // Selective restore merges into a live identity space; never rewind its counter
         // or replace the target's cutover identity. Receipt cutover provenance is preserved.
-        return Ok("insert into host_event_bus_counter as target(singleton,last_sequence,cutover_id,created_at) select singleton,last_sequence,cutover_id,created_at from jsonb_populate_record(null::host_event_bus_counter,$1) on conflict(singleton) do update set last_sequence=greatest(target.last_sequence,excluded.last_sequence)".into());
+        return Ok("insert into legacy_event_recovery_state as target(singleton,last_sequence,cutover_id,created_at) select singleton,last_sequence,cutover_id,created_at from jsonb_populate_record(null::legacy_event_recovery_state,$1) on conflict(singleton) do update set last_sequence=greatest(target.last_sequence,excluded.last_sequence)".into());
     }
     if table.name == "extension_installations" {
         return super::plugin_identity::insert_sql();

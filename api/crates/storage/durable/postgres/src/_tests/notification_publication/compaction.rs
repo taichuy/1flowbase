@@ -71,13 +71,13 @@ async fn rejected_command_fact_survives_zero_targets_and_completed_target_transp
             "transport completion cannot discard the independent rejected fact"
         );
         assert_eq!(
-            crate::PgEventBus::new(store.pool().clone())
+            crate::PgLegacyEventRecovery::new(store.pool().clone())
                 .handoff_credit_events(50)
                 .await
                 .unwrap(),
             0
         );
-        let queue:(i64,i64,i64)=sqlx::query_as("select (select count(*) from host_event_bus_pending),(select count(*) from credit_event_handoffs),(select last_sequence from host_event_bus_counter)")
+        let queue:(i64,i64,i64)=sqlx::query_as("select (select count(*) from legacy_event_recovery_pending),(select count(*) from legacy_credit_handoff_receipts),(select last_sequence from legacy_event_recovery_state)")
             .fetch_one(store.pool()).await.unwrap();
         assert_eq!(queue, (0, 0, 0));
     }

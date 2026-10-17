@@ -6,18 +6,18 @@ use control_plane_contracts::ports::{
     EphemeralValueRevealMode, EventBus, ephemeral_metadata_size_bytes,
 };
 use serde_json::Value;
-use storage_durable_postgres::PgEventBus;
+use storage_durable_postgres::PgLegacyEventRecovery;
 use storage_ephemeral::MemoryEventBus;
 
 pub(super) struct RecoveryEventBus {
     live: MemoryEventBus,
-    legacy: PgEventBus,
+    legacy: PgLegacyEventRecovery,
 }
 impl RecoveryEventBus {
     pub(super) fn new(pool: sqlx::PgPool) -> Self {
         Self {
             live: MemoryEventBus::lossless(),
-            legacy: PgEventBus::new(pool),
+            legacy: PgLegacyEventRecovery::new(pool),
         }
     }
     fn legacy_metadata(mut entry: EphemeralEntrySnapshot) -> EphemeralEntrySnapshot {

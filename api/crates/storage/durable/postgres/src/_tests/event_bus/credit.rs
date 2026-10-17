@@ -5,7 +5,7 @@ async fn credit_handoff_is_atomic_snapshot_and_does_not_replay_after_poll() {
     let (bus, _, workspace) = fixture().await;
     let (id, expected) = source(&bus, workspace, false).await;
     assert_eq!(bus.handoff_credit_events(50).await.unwrap(), 1);
-    let row = sqlx::query("select p.payload,p.credit_event_id,h.origin,h.cutover_id,c.published_at from host_event_bus_pending p join credit_event_handoffs h on h.event_id=p.credit_event_id join credit_event_outbox c on c.event_id=h.event_id")
+    let row = sqlx::query("select p.payload,p.credit_event_id,h.origin,h.cutover_id,c.published_at from legacy_event_recovery_pending p join legacy_credit_handoff_receipts h on h.event_id=p.credit_event_id join credit_event_outbox c on c.event_id=h.event_id")
         .fetch_one(&bus.pool).await.unwrap();
     assert_eq!(
         serde_json::from_str::<Value>(&row.get::<String, _>("payload")).unwrap(),
@@ -74,7 +74,7 @@ async fn legacy_is_not_scanned_and_exact_import_preserves_old_timestamp_and_rece
         OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap()
     );
     let ids: Vec<Uuid> = sqlx::query_scalar(
-        "select event_id from credit_event_handoffs where origin='legacy_snapshot'",
+        "select event_id from legacy_credit_handoff_receipts where origin='legacy_snapshot'",
     )
     .fetch_all(&bus.pool)
     .await
@@ -104,7 +104,7 @@ async fn source_confirmation_failure_rolls_back_spool_receipt_and_counter() {
             .await
             .unwrap();
     assert!(published.is_none());
-    let counter: i64 = sqlx::query_scalar("select last_sequence from host_event_bus_counter")
+    let counter: i64 = sqlx::query_scalar("select last_sequence from legacy_event_recovery_state")
         .fetch_one(&bus.pool)
         .await
         .unwrap();
@@ -114,7 +114,7 @@ async fn source_confirmation_failure_rolls_back_spool_receipt_and_counter() {
         .await
         .unwrap();
     assert_eq!(bus.handoff_credit_events(50).await.unwrap(), 1);
-    let reopened = PgEventBus::new(bus.pool.clone());
+    let reopened = PgLegacyEventRecovery::new(bus.pool.clone());
     assert!(reopened.poll("credit.events").await.unwrap().is_some());
 }
 
@@ -188,13 +188,13 @@ async fn grant_envelope_preserves_enqueue_time_account_and_full_original_wire_sh
 async fn missing_credit_receipt_cannot_commit_an_orphan_queue_entry() {
     let (bus, _, _) = fixture().await;
     let mut tx = bus.pool.begin().await.unwrap();
-    PgEventBus::lock_queue(&mut tx).await.unwrap();
-    let sequence = PgEventBus::next_sequence(&mut tx).await.unwrap();
-    sqlx::query("insert into host_event_bus_pending(sequence,topic,credit_event_id,payload,value_size_bytes) values ($1,'credit.events',$2,'{}',2)")
+    PgLegacyEventRecovery::lock_queue(&mut tx).await.unwrap();
+    let sequence = PgLegacyEventRecovery::next_sequence(&mut tx).await.unwrap();
+    sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,credit_event_id,payload,value_size_bytes) values ($1,'credit.events',$2,'{}',2)")
         .bind(sequence).bind(Uuid::now_v7()).execute(&mut *tx).await.unwrap();
     assert!(tx.commit().await.is_err());
     assert_eq!(count(&bus, "pending").await, 0);
-    let counter: i64 = sqlx::query_scalar("select last_sequence from host_event_bus_counter")
+    let counter: i64 = sqlx::query_scalar("select last_sequence from legacy_event_recovery_state")
         .fetch_one(&bus.pool)
         .await
         .unwrap();

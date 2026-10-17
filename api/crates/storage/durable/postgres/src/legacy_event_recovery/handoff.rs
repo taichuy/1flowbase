@@ -2,7 +2,7 @@ use super::*;
 use anyhow::ensure;
 use control_plane_contracts::ports::CreditEventHandoff;
 
-impl PgEventBus {
+impl PgLegacyEventRecovery {
     /// Root-only migration primitive: exact observed IDs, never a historical scan.
     /// Permanent receipts prevent re-enqueue even after a destructive poll.
     pub async fn import_legacy_credit_events(&self, event_ids: &[Uuid]) -> Result<usize> {
@@ -18,7 +18,7 @@ impl PgEventBus {
         let mut pending_ids = Vec::new();
         for id in ids {
             let received: bool = sqlx::query_scalar(
-                "select exists(select 1 from credit_event_handoffs where event_id=$1)",
+                "select exists(select 1 from legacy_credit_handoff_receipts where event_id=$1)",
             )
             .bind(id)
             .fetch_one(&mut *tx)
@@ -54,7 +54,7 @@ impl PgEventBus {
         origin: &str,
     ) -> Result<bool> {
         let received: bool = sqlx::query_scalar(
-            "select exists(select 1 from credit_event_handoffs where event_id=$1)",
+            "select exists(select 1 from legacy_credit_handoff_receipts where event_id=$1)",
         )
         .bind(event_id)
         .fetch_one(&mut **tx)
@@ -72,9 +72,9 @@ impl PgEventBus {
         };
         let bytes = payload.len() as i64;
         let sequence = Self::next_sequence(tx).await?;
-        sqlx::query("insert into credit_event_handoffs(event_id,sequence,cutover_id,origin) select $1,$2,cutover_id,$3 from host_event_bus_counter where singleton")
+        sqlx::query("insert into legacy_credit_handoff_receipts(event_id,sequence,cutover_id,origin) select $1,$2,cutover_id,$3 from legacy_event_recovery_state where singleton")
             .bind(event_id).bind(sequence).bind(origin).execute(&mut **tx).await?;
-        sqlx::query("insert into host_event_bus_pending(sequence,topic,credit_event_id,payload,value_size_bytes) values ($1,'credit.events',$2,$3,$4)")
+        sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,credit_event_id,payload,value_size_bytes) values ($1,'credit.events',$2,$3,$4)")
             .bind(sequence).bind(event_id).bind(payload).bind(bytes).execute(&mut **tx).await?;
         let confirmed = sqlx::query("update credit_event_outbox set published_at=coalesce(published_at,now()),locked_by=null,locked_until=null,last_error=null,delivery_attempts=delivery_attempts+1 where event_id=$1")
             .bind(event_id).execute(&mut **tx).await?.rows_affected();
@@ -87,7 +87,7 @@ impl PgEventBus {
 }
 
 #[async_trait]
-impl CreditEventHandoff for PgEventBus {
+impl CreditEventHandoff for PgLegacyEventRecovery {
     async fn handoff_credit_events(&self, limit: i64) -> Result<usize> {
         let mut tx = self.pool.begin().await?;
         Self::lock_queue(&mut tx).await?;

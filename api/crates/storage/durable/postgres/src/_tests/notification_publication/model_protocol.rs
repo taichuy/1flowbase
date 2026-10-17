@@ -59,7 +59,7 @@ async fn seed_source(
 }
 
 async fn transport_counts(store: &PgControlPlaneStore) -> (i64, i64, i64) {
-    sqlx::query_as("select (select count(*) from lifecycle_outbox),(select count(*) from lifecycle_outbox_deliveries),(select count(*) from host_event_bus_pending)")
+    sqlx::query_as("select (select count(*) from lifecycle_outbox),(select count(*) from lifecycle_outbox_deliveries),(select count(*) from legacy_event_recovery_pending)")
         .fetch_one(store.pool()).await.unwrap()
 }
 
@@ -81,7 +81,7 @@ async fn model_protocol_one_preserves_exact_original_topic_and_fact_body() {
     };
     assert!(sequence > 0);
     let pending: (i64, Vec<u8>, String, i64) = sqlx::query_as(
-        "select sequence,topic,payload,value_size_bytes from host_event_bus_pending",
+        "select sequence,topic,payload,value_size_bytes from legacy_event_recovery_pending",
     )
     .fetch_one(store.pool())
     .await
@@ -138,7 +138,7 @@ async fn model_protocol_one_lost_ack_reuses_sequence_and_polled_receipt_never_re
         first
     );
     assert_eq!(transport_counts(&store).await, (1, 0, 1));
-    let queue = crate::PgEventBus::new(store.pool().clone());
+    let queue = crate::PgLegacyEventRecovery::new(store.pool().clone());
     assert_eq!(
         queue.poll(ORIGINAL_TOPIC).await.unwrap(),
         Some(serde_json::from_slice::<Value>(&original).unwrap())
@@ -159,7 +159,7 @@ async fn model_protocol_one_lost_ack_reuses_sequence_and_polled_receipt_never_re
     .unwrap();
     assert_eq!(receipt, Some(sequence));
     let counter: i64 =
-        sqlx::query_scalar("select last_sequence from host_event_bus_counter where singleton")
+        sqlx::query_scalar("select last_sequence from legacy_event_recovery_state where singleton")
             .fetch_one(store.pool())
             .await
             .unwrap();
@@ -193,7 +193,7 @@ async fn model_protocol_two_optional_zero_creates_no_pending_or_derived_transpor
         assert_eq!(retained, (2, None, original));
     }
     let counter: i64 =
-        sqlx::query_scalar("select last_sequence from host_event_bus_counter where singleton")
+        sqlx::query_scalar("select last_sequence from legacy_event_recovery_state where singleton")
             .fetch_one(store.pool())
             .await
             .unwrap();

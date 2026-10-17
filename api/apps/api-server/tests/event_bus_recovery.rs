@@ -7,7 +7,7 @@ use control_plane_contracts::ports::{
 };
 use recovery_event_bus::RecoveryEventBus;
 use serde_json::json;
-use storage_durable_postgres::PgEventBus;
+use storage_durable_postgres::PgLegacyEventRecovery;
 
 #[tokio::test]
 async fn new_live_publication_does_not_require_a_durable_connection() {
@@ -34,14 +34,14 @@ async fn legacy_recovery_is_visible_lossless_and_precedes_live_without_new_durab
         .await
         .unwrap();
     let old = json!({"nul\u{0}key":[u64::MAX,"before\u{0}after",null]});
-    PgEventBus::new(pool.clone())
+    PgLegacyEventRecovery::new(pool.clone())
         .publish("same", old.clone())
         .await
         .unwrap();
     let bus = RecoveryEventBus::new(pool.clone());
     let live = json!({"new":"完整正文"});
     bus.publish("same", live.clone()).await.unwrap();
-    let counts: (i64,i64) = sqlx::query_as("select (select count(*) from host_event_bus_pending),(select last_sequence from host_event_bus_counter)")
+    let counts: (i64,i64) = sqlx::query_as("select (select count(*) from legacy_event_recovery_pending),(select last_sequence from legacy_event_recovery_state)")
         .fetch_one(&pool).await.unwrap();
     assert_eq!(counts, (1, 1));
     let entries = bus.list_ephemeral_entries().await.unwrap();
@@ -72,7 +72,7 @@ async fn legacy_recovery_is_visible_lossless_and_precedes_live_without_new_durab
     assert_eq!(bus.poll("same").await.unwrap(), Some(live));
     assert!(bus.poll("same").await.unwrap().is_none());
     assert!(bus.list_ephemeral_entries().await.unwrap().is_empty());
-    let sequence: i64 = sqlx::query_scalar("select last_sequence from host_event_bus_counter")
+    let sequence: i64 = sqlx::query_scalar("select last_sequence from legacy_event_recovery_state")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -87,7 +87,7 @@ async fn legacy_recovery_is_visible_lossless_and_precedes_live_without_new_durab
     );
     bus.publish("large", large.clone()).await.unwrap();
     assert_eq!(bus.poll("large").await.unwrap(), Some(large));
-    let durable:(i64,i64)=sqlx::query_as("select (select count(*) from host_event_bus_pending),(select last_sequence from host_event_bus_counter)")
+    let durable:(i64,i64)=sqlx::query_as("select (select count(*) from legacy_event_recovery_pending),(select last_sequence from legacy_event_recovery_state)")
         .fetch_one(&pool).await.unwrap();
     assert_eq!(durable, (0, 1));
 }

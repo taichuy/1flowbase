@@ -42,9 +42,9 @@ async fn selective_runtime_roundtrip_preserves_retirement_archive_without_replay
     for table in [
         "system_default_upgrade_runs",
         "system_default_upgrade_items",
-        "host_event_bus_counter",
-        "host_event_bus_pending",
-        "credit_event_handoffs",
+        "legacy_event_recovery_state",
+        "legacy_event_recovery_pending",
+        "legacy_credit_handoff_receipts",
     ] {
         assert!(
             runtime.data_tables.iter().any(|name| name == table),
@@ -68,9 +68,9 @@ async fn selective_runtime_roundtrip_preserves_retirement_archive_without_replay
             && entry["row"]["id"] == json!(run)
             && entry["row"]["summary_json"] == original_summary));
     for table in [
-        "host_event_bus_counter",
-        "host_event_bus_pending",
-        "credit_event_handoffs",
+        "legacy_event_recovery_state",
+        "legacy_event_recovery_pending",
+        "legacy_credit_handoff_receipts",
     ] {
         assert!(tables
             .iter()

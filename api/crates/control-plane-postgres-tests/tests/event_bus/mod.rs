@@ -5,7 +5,9 @@ use control_plane_contracts::{
     system_backup::selective::{SelectiveBackupRepository, SelectiveBackupSelection},
 };
 use serde_json::json;
-use storage_durable_postgres::{PgControlPlaneStore, PgEventBus, PgSelectiveBackupRepository};
+use storage_durable_postgres::{
+    PgControlPlaneStore, PgLegacyEventRecovery, PgSelectiveBackupRepository,
+};
 use tokio::io::AsyncReadExt;
 
 async fn pool() -> sqlx::PgPool {
@@ -65,9 +67,9 @@ async fn archive(pool: &sqlx::PgPool, features: &[&str]) -> Vec<u8> {
         .find(|category| category.feature_id == "system.system-runtime")
         .unwrap();
     for name in [
-        "host_event_bus_counter",
-        "host_event_bus_pending",
-        "credit_event_handoffs",
+        "legacy_event_recovery_state",
+        "legacy_event_recovery_pending",
+        "legacy_credit_handoff_receipts",
     ] {
         assert!(runtime.data_tables.iter().any(|table| table == name));
     }
@@ -96,7 +98,7 @@ async fn archive(pool: &sqlx::PgPool, features: &[&str]) -> Vec<u8> {
 async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore() {
     let original = pool().await;
     rejected_credit(&original).await;
-    let bus = PgEventBus::new(original.clone());
+    let bus = PgLegacyEventRecovery::new(original.clone());
     assert!(handoff_legacy_credit_events(None, 50).await.is_err());
     let unpublished: i64 =
         sqlx::query_scalar("select count(*) from credit_event_outbox where published_at is null")
@@ -131,11 +133,12 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
         expected["payload"],
         json!({"actor_plugin_id":"fixture.plugin","command":"grant","reason":"permission_denied","idempotency_key":"fixture:rejected"})
     );
-    let snapshots: Vec<(i64, String)> =
-        sqlx::query_as("select sequence,payload from host_event_bus_pending order by sequence")
-            .fetch_all(&original)
-            .await
-            .unwrap();
+    let snapshots: Vec<(i64, String)> = sqlx::query_as(
+        "select sequence,payload from legacy_event_recovery_pending order by sequence",
+    )
+    .fetch_all(&original)
+    .await
+    .unwrap();
     let bytes = archive(&original, &["system.members", "system.system-runtime"]).await;
     let target = pool().await;
     let repository = PgSelectiveBackupRepository::new(target.clone());
@@ -149,16 +152,17 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
         .await
         .unwrap();
     assert!(preview.failures.is_empty());
-    let restored_snapshots: Vec<(i64, String)> =
-        sqlx::query_as("select sequence,payload from host_event_bus_pending order by sequence")
-            .fetch_all(&target)
-            .await
-            .unwrap();
+    let restored_snapshots: Vec<(i64, String)> = sqlx::query_as(
+        "select sequence,payload from legacy_event_recovery_pending order by sequence",
+    )
+    .fetch_all(&target)
+    .await
+    .unwrap();
     assert_eq!(
         restored_snapshots, snapshots,
         "serialized snapshots must restore verbatim"
     );
-    let restored = PgEventBus::new(target.clone());
+    let restored = PgLegacyEventRecovery::new(target.clone());
     assert_eq!(
         restored.poll("credit.events").await.unwrap(),
         Some(expected)
@@ -182,7 +186,7 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
 
     // A restore must not replace a different target event with the same sequence.
     let conflict_pool = pool().await;
-    let conflict = PgEventBus::new(conflict_pool.clone());
+    let conflict = PgLegacyEventRecovery::new(conflict_pool.clone());
     conflict
         .publish("occupied", json!({"must":"survive"}))
         .await
@@ -209,7 +213,7 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
 async fn backup_selection_keeps_business_sources_separate_from_durable_runtime_events() {
     let original = pool().await;
     rejected_credit(&original).await;
-    let bus = PgEventBus::new(original.clone());
+    let bus = PgLegacyEventRecovery::new(original.clone());
     assert_eq!(
         handoff_legacy_credit_events(Some(&bus), 50).await.unwrap(),
         1
@@ -238,9 +242,9 @@ async fn backup_selection_keeps_business_sources_separate_from_durable_runtime_e
             .any(|name| name == "credit_event_outbox")
     );
     for table in [
-        "host_event_bus_counter",
-        "host_event_bus_pending",
-        "credit_event_handoffs",
+        "legacy_event_recovery_state",
+        "legacy_event_recovery_pending",
+        "legacy_credit_handoff_receipts",
     ] {
         assert!(!preview.selected_tables.iter().any(|name| name == table));
     }
@@ -261,9 +265,9 @@ async fn backup_selection_keeps_business_sources_separate_from_durable_runtime_e
             .any(|name| name == "credit_event_outbox")
     );
     for table in [
-        "host_event_bus_counter",
-        "host_event_bus_pending",
-        "credit_event_handoffs",
+        "legacy_event_recovery_state",
+        "legacy_event_recovery_pending",
+        "legacy_credit_handoff_receipts",
     ] {
         assert!(preview.selected_tables.iter().any(|name| name == table));
     }
@@ -273,7 +277,7 @@ async fn backup_selection_keeps_business_sources_separate_from_durable_runtime_e
 async fn source_independent_snapshot_and_receipt_restore_after_workspace_cascade_and_poll() {
     let original = pool().await;
     let workspace = rejected_credit(&original).await;
-    let bus = PgEventBus::new(original.clone());
+    let bus = PgLegacyEventRecovery::new(original.clone());
     assert_eq!(
         handoff_legacy_credit_events(Some(&bus), 50).await.unwrap(),
         1
@@ -316,7 +320,7 @@ async fn source_independent_snapshot_and_receipt_restore_after_workspace_cascade
             .iter()
             .any(|table| table == "credit_event_outbox")
     );
-    let restored = PgEventBus::new(target.clone());
+    let restored = PgLegacyEventRecovery::new(target.clone());
     assert_eq!(
         restored
             .import_legacy_credit_events(&[event_id])
@@ -349,7 +353,7 @@ async fn source_independent_snapshot_and_receipt_restore_after_workspace_cascade
         )
         .await
         .unwrap();
-    let receipts_only = PgEventBus::new(third.clone());
+    let receipts_only = PgLegacyEventRecovery::new(third.clone());
     assert_eq!(
         receipts_only
             .import_legacy_credit_events(&[event_id, event_id])

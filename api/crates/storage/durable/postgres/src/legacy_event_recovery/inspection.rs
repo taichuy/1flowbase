@@ -4,7 +4,7 @@ use control_plane_contracts::ports::{
     EphemeralValueRevealMode, ephemeral_metadata_size_bytes,
 };
 
-impl PgEventBus {
+impl PgLegacyEventRecovery {
     fn metadata(row: &sqlx::postgres::PgRow) -> Result<EphemeralEntrySnapshot> {
         let topic = String::from_utf8(row.try_get::<Vec<u8>, _>("topic")?)?;
         let sequence: i64 = row.try_get("sequence")?;
@@ -35,10 +35,11 @@ impl PgEventBus {
     pub(super) async fn list_metadata(&self) -> Result<Vec<EphemeralEntrySnapshot>> {
         // Project scalar metadata only. Never load all pending JSON to serve inspection.
         // The legacy Vec contract still has O(entry count) transient metadata cost.
-        let rows =
-            sqlx::query("select sequence,topic,value_size_bytes from host_event_bus_pending")
-                .fetch_all(&self.pool)
-                .await?;
+        let rows = sqlx::query(
+            "select sequence,topic,value_size_bytes from legacy_event_recovery_pending",
+        )
+        .fetch_all(&self.pool)
+        .await?;
         let mut entries = rows
             .iter()
             .map(Self::metadata)
@@ -61,7 +62,7 @@ impl PgEventBus {
             .execute(&mut *tx)
             .await?;
         let row = sqlx::query(
-            "select sequence,topic,value_size_bytes from host_event_bus_pending where sequence=$1",
+            "select sequence,topic,value_size_bytes from legacy_event_recovery_pending where sequence=$1",
         )
         .bind(sequence)
         .fetch_optional(&mut *tx)
@@ -84,10 +85,11 @@ impl PgEventBus {
                 full_value_size_bytes: size,
             }));
         }
-        let row = sqlx::query("select payload from host_event_bus_pending where sequence=$1")
-            .bind(sequence)
-            .fetch_one(&mut *tx)
-            .await?;
+        let row =
+            sqlx::query("select payload from legacy_event_recovery_pending where sequence=$1")
+                .bind(sequence)
+                .fetch_one(&mut *tx)
+                .await?;
         let payload = Self::payload(&row)?;
         tx.commit().await?;
         Ok(Some(EphemeralEntryValueSnapshot::from_value(

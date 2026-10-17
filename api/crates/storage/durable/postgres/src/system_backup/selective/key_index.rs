@@ -1,5 +1,5 @@
 //! Disk-backed FK membership. Two archive passes, fixed 256 buckets, bounded read cache.
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
@@ -63,6 +63,44 @@ impl KeyIndex {
             writer.flush()?
         }
         self.writers.clear();
+        Ok(())
+    }
+    /// Reject duplicate recovery primary keys without retaining an unbounded row set.
+    /// Small buckets are sorted in memory; oversized buckets use bounded streaming scans.
+    pub fn finish_unique(&mut self) -> Result<()> {
+        self.finish()?;
+        for bucket in 0..=255u8 {
+            let path = self.path.join(bucket.to_string());
+            let mut file = match File::open(&path) {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e.into()),
+            };
+            let bytes = file.metadata()?.len();
+            if bytes <= CACHE_LIMIT as u64 {
+                let mut raw = Vec::with_capacity(bytes as usize);
+                file.read_to_end(&mut raw)?;
+                let mut keys = raw.as_chunks::<32>().0.to_vec();
+                keys.sort_unstable();
+                ensure!(
+                    !keys.windows(2).any(|pair| pair[0] == pair[1]),
+                    "duplicate recovery archive row"
+                );
+            } else {
+                let mut key = [0u8; 32];
+                let mut position = 0u64;
+                while position < bytes {
+                    file.read_exact(&mut key)?;
+                    let mut previous = File::open(&path)?;
+                    let mut candidate = [0u8; 32];
+                    for _ in 0..position / 32 {
+                        previous.read_exact(&mut candidate)?;
+                        ensure!(candidate != key, "duplicate recovery archive row");
+                    }
+                    position += 32;
+                }
+            }
+        }
         Ok(())
     }
     pub fn contains(

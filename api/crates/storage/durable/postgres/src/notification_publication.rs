@@ -165,7 +165,7 @@ impl PgControlPlaneStore {
             "unsupported native publication version"
         );
         if version == 1 {
-            crate::PgEventBus::lock_queue(tx).await?;
+            crate::PgLegacyEventRecovery::lock_queue(tx).await?;
         }
         let row=sqlx::query("select transaction_id,canonical_payload,native_publication_version,legacy_handoff_sequence from lifecycle_outbox where event_id=$1 and contract_id='model_definition.committed' and contract_version='v1' for update")
             .bind(input.source_event_id).fetch_one(&mut **tx).await?;
@@ -215,8 +215,8 @@ impl PgControlPlaneStore {
         // Preserve the exact original topic and fact shape. The source-row receipt
         // and snapshot commit together; lost lifecycle ACK can only reuse this ID.
         let payload = serde_json::to_string(&original_value)?;
-        let sequence = crate::PgEventBus::next_sequence(tx).await?;
-        sqlx::query("insert into host_event_bus_pending(sequence,topic,payload,value_size_bytes) values($1,$2,$3,$4)")
+        let sequence = crate::PgLegacyEventRecovery::next_sequence(tx).await?;
+        sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,payload,value_size_bytes) values($1,$2,$3,$4)")
             .bind(sequence).bind(b"official.plugin-host.lifecycle.model-definition-committed".as_slice())
             .bind(&payload).bind(payload.len() as i64).execute(&mut **tx).await?;
         sqlx::query("update lifecycle_outbox set legacy_handoff_sequence=$2 where event_id=$1")

@@ -3,9 +3,10 @@ use control_plane_contracts::ports::{CreditEventHandoff, EphemeralValueRevealMod
 use serde_json::json;
 
 mod credit;
+mod migration;
 mod queue;
 
-async fn fixture() -> (PgEventBus, crate::PgControlPlaneStore, Uuid) {
+async fn fixture() -> (PgLegacyEventRecovery, crate::PgControlPlaneStore, Uuid) {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into());
     let database = postgres_test_support::PostgresTestSchema::create(&url)
@@ -16,10 +17,10 @@ async fn fixture() -> (PgEventBus, crate::PgControlPlaneStore, Uuid) {
     let store = crate::PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
     let workspace = store.upsert_workspace(tenant.id, "EventBus").await.unwrap();
-    (PgEventBus::new(pool), store, workspace.id)
+    (PgLegacyEventRecovery::new(pool), store, workspace.id)
 }
 
-async fn source(bus: &PgEventBus, workspace: Uuid, published: bool) -> (Uuid, Value) {
+async fn source(bus: &PgLegacyEventRecovery, workspace: Uuid, published: bool) -> (Uuid, Value) {
     let id = Uuid::now_v7();
     let occurred = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
     let body =
@@ -32,13 +33,13 @@ async fn source(bus: &PgEventBus, workspace: Uuid, published: bool) -> (Uuid, Va
     )
 }
 
-async fn count(bus: &PgEventBus, table: &str) -> i64 {
+async fn count(bus: &PgLegacyEventRecovery, table: &str) -> i64 {
     match table {
-        "pending" => sqlx::query_scalar("select count(*) from host_event_bus_pending")
+        "pending" => sqlx::query_scalar("select count(*) from legacy_event_recovery_pending")
             .fetch_one(&bus.pool)
             .await
             .unwrap(),
-        "receipts" => sqlx::query_scalar("select count(*) from credit_event_handoffs")
+        "receipts" => sqlx::query_scalar("select count(*) from legacy_credit_handoff_receipts")
             .fetch_one(&bus.pool)
             .await
             .unwrap(),

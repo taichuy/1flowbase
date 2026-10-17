@@ -14,7 +14,7 @@ async fn generic_roundtrip_inspection_and_reopen_preserve_pending_fifo() {
     bus.publish("second", json!({"retained":true}))
         .await
         .unwrap();
-    let reopened = PgEventBus::new(bus.pool.clone());
+    let reopened = PgLegacyEventRecovery::new(bus.pool.clone());
     assert_eq!(
         reopened.ephemeral_inspection_capabilities().storage_medium,
         Some("postgresql-durable")
@@ -75,9 +75,9 @@ async fn generic_roundtrip_inspection_and_reopen_preserve_pending_fifo() {
 async fn publication_counter_and_poll_head_wait_for_transaction_commit() {
     let (bus, _, _) = fixture().await;
     let mut tx = bus.pool.begin().await.unwrap();
-    PgEventBus::lock_queue(&mut tx).await.unwrap();
-    let sequence = PgEventBus::next_sequence(&mut tx).await.unwrap();
-    sqlx::query("insert into host_event_bus_pending(sequence,topic,payload,value_size_bytes) values ($1,'ordered','1',1)")
+    PgLegacyEventRecovery::lock_queue(&mut tx).await.unwrap();
+    let sequence = PgLegacyEventRecovery::next_sequence(&mut tx).await.unwrap();
+    sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,payload,value_size_bytes) values ($1,'ordered','1',1)")
         .bind(sequence).execute(&mut *tx).await.unwrap();
     let producer = bus.clone();
     let mut publish = tokio::spawn(async move { producer.publish("ordered", json!(2)).await });
@@ -91,8 +91,8 @@ async fn publication_counter_and_poll_head_wait_for_transaction_commit() {
     publish.await.unwrap().unwrap();
 
     let mut tx = bus.pool.begin().await.unwrap();
-    PgEventBus::lock_queue(&mut tx).await.unwrap();
-    let first: String = sqlx::query_scalar("delete from host_event_bus_pending where sequence=(select min(sequence) from host_event_bus_pending where topic='ordered') returning payload")
+    PgLegacyEventRecovery::lock_queue(&mut tx).await.unwrap();
+    let first: String = sqlx::query_scalar("delete from legacy_event_recovery_pending where sequence=(select min(sequence) from legacy_event_recovery_pending where topic='ordered') returning payload")
         .fetch_one(&mut *tx).await.unwrap();
     assert_eq!(serde_json::from_str::<Value>(&first).unwrap(), json!(1));
     let consumer = bus.clone();
@@ -175,7 +175,7 @@ async fn generic_snapshot_text_roundtrips_every_supported_json_shape_without_jso
     for value in &values {
         bus.publish("lossless\0topic", value.clone()).await.unwrap();
     }
-    let reopened = PgEventBus::new(bus.pool.clone());
+    let reopened = PgLegacyEventRecovery::new(bus.pool.clone());
     let entries = reopened.list_ephemeral_entries().await.unwrap();
     assert_eq!(entries.len(), values.len());
     for (index, value) in values.iter().enumerate() {
@@ -183,12 +183,13 @@ async fn generic_snapshot_text_roundtrips_every_supported_json_shape_without_jso
             .iter()
             .find(|entry| entry.entry_ref == (index + 1).to_string())
             .unwrap();
-        let text: String =
-            sqlx::query_scalar("select payload from host_event_bus_pending where sequence=$1")
-                .bind((index + 1) as i64)
-                .fetch_one(&bus.pool)
-                .await
-                .unwrap();
+        let text: String = sqlx::query_scalar(
+            "select payload from legacy_event_recovery_pending where sequence=$1",
+        )
+        .bind((index + 1) as i64)
+        .fetch_one(&bus.pool)
+        .await
+        .unwrap();
         assert_eq!(text, serde_json::to_string(value).unwrap());
         assert!(!text.contains('\0'));
         assert_eq!(entry.value_size_bytes, text.len() as u64);

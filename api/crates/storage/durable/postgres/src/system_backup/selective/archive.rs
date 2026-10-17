@@ -10,7 +10,11 @@ use flate2::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::{io::Write, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+    path::PathBuf,
+};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 pub(super) const FORMAT: &str = "1flowbase.settings-rows/v1";
@@ -46,6 +50,8 @@ pub(super) struct SchemaDependency {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Header {
+    #[serde(skip)]
+    pub declared_tables: BTreeMap<String, String>,
     #[serde(skip)]
     pub legacy_lifecycle_protocol: bool,
     #[serde(skip)]
@@ -103,6 +109,28 @@ pub(super) fn receipt_manifest(
         hash_receipt_identity(&mut hash, subscriber, handler, version);
     }
     finish_receipt_manifest(targets.len() as u64, hash)
+}
+
+// Only archive relation identifiers are translated; row fields and PostgreSQL SQL are canonical.
+fn canonical_table(name: &str) -> &str {
+    match name {
+        // @field-contract-compat source=1flowbase.settings-rows/v1:host_event_bus_pending alias=legacy_event_recovery_pending remove_by=2027-04-17
+        "host_event_bus_pending" => "legacy_event_recovery_pending",
+        // @field-contract-compat source=1flowbase.settings-rows/v1:credit_event_handoffs alias=legacy_credit_handoff_receipts remove_by=2027-04-17
+        "credit_event_handoffs" => "legacy_credit_handoff_receipts",
+        // @field-contract-compat source=1flowbase.settings-rows/v1:host_event_bus_counter alias=legacy_event_recovery_state remove_by=2027-04-17
+        "host_event_bus_counter" => "legacy_event_recovery_state",
+        _ => name,
+    }
+}
+
+pub(super) fn normalize_record(record: &mut Record, header: &Header) -> Result<()> {
+    record.table = header
+        .declared_tables
+        .get(&record.table)
+        .context("row references undeclared archive table or alias")?
+        .clone();
+    Ok(())
 }
 
 /// The scratch file is private and removed on every exit, including transaction failure.
@@ -177,6 +205,36 @@ pub(super) async fn header(reader: &mut BufReader<tokio::fs::File>) -> Result<He
         header.tables.len() + header.schema_dependencies.len() <= 10000,
         "too many settings tables"
     );
+    let mut names = BTreeSet::new();
+    for table in &mut header.tables {
+        let original = table.name.clone();
+        table.name = canonical_table(&original).to_owned();
+        ensure!(
+            names.insert(table.name.clone()),
+            "duplicate archive table or alias"
+        );
+        header.declared_tables.insert(original, table.name.clone());
+        let mut prerequisites = BTreeSet::new();
+        for prerequisite in &mut table.prerequisites {
+            *prerequisite = canonical_table(prerequisite).to_owned();
+            ensure!(
+                prerequisites.insert(prerequisite.clone()),
+                "duplicate archive prerequisite or alias"
+            );
+        }
+    }
+    let mut dependencies = BTreeSet::new();
+    for dependency in &mut header.schema_dependencies {
+        dependency.name = canonical_table(&dependency.name).to_owned();
+        ensure!(
+            dependencies.insert(dependency.name.clone()),
+            "duplicate schema dependency or alias"
+        );
+        ensure!(
+            !names.contains(&dependency.name),
+            "schema dependency duplicates archive table or alias"
+        );
+    }
     for table in &mut header.tables {
         if table.name == "lifecycle_outbox" {
             let version = table

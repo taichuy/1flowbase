@@ -117,6 +117,7 @@ impl PgSelectiveBackupRepository {
             });
         }
         let header = Header {
+            declared_tables: BTreeMap::new(),
             legacy_lifecycle_protocol: false,
             legacy_notification_digest: false,
             format: archive::FORMAT.into(),
@@ -324,10 +325,12 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
         if incoming.tables.iter().any(|table| {
             matches!(
                 table.name.as_str(),
-                "host_event_bus_counter" | "host_event_bus_pending" | "credit_event_handoffs"
+                "legacy_event_recovery_state"
+                    | "legacy_event_recovery_pending"
+                    | "legacy_credit_handoff_receipts"
             )
         }) {
-            crate::PgEventBus::lock_queue(&mut tx).await?;
+            crate::PgLegacyEventRecovery::lock_queue(&mut tx).await?;
         }
         let (header, preview) =
             validation::validate(&mut tx, &scratch, source_master_key, target_master_key).await?;
@@ -362,7 +365,7 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
             let (next, mut next_file) = archive::Scratch::new()?;
             use tokio::io::AsyncWriteExt;
             let mut reader = pending.reader().await?;
-            let _ = archive::header(&mut reader).await?;
+            let archive_header = archive::header(&mut reader).await?;
             let mut header_bytes = serde_json::to_vec(&header)?;
             header_bytes.push(b'\n');
             next_file.write_all(&header_bytes).await?;
@@ -370,6 +373,7 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
             let mut deferred = 0u64;
             while let Some(bytes) = archive::line(&mut reader).await? {
                 let mut record: Record = serde_json::from_slice(&bytes)?;
+                archive::normalize_record(&mut record, &archive_header)?;
                 archive::normalize_publication(
                     &mut record,
                     header.legacy_lifecycle_protocol,
@@ -422,7 +426,9 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
                         sqlx::query("release savepoint selective_row")
                             .execute(&mut *tx)
                             .await?;
-                        next_file.write_all(&bytes).await?;
+                        let mut canonical = serde_json::to_vec(&record)?;
+                        canonical.push(b'\n');
+                        next_file.write_all(&canonical).await?;
                         deferred += 1;
                     }
                     Err(error) => return Err(error.into()),
