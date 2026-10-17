@@ -2,6 +2,28 @@ use super::*;
 use serde_json::json;
 
 #[tokio::test]
+async fn lossless_event_contract_preserves_large_json_and_clone_policy_without_changing_default() {
+    let body = json!({"nul\u{0}key":[u64::MAX,"原文\u{0}".repeat(200_000),null]});
+    assert!(serde_json::to_vec(&body).unwrap().len() > 1024 * 1024);
+    for bounded in [MemoryEventBus::new(), MemoryEventBus::default()] {
+        assert!(bounded.publish("large", body.clone()).await.is_err());
+        assert!(bounded.list_ephemeral_entries().await.unwrap().is_empty());
+    }
+    let bus = MemoryEventBus::lossless();
+    assert_eq!(
+        bus.ephemeral_inspection_capabilities()
+            .max_payload_size_bytes,
+        u64::MAX
+    );
+    let cloned = bus.clone();
+    cloned.publish("large", body.clone()).await.unwrap();
+    assert_eq!(bus.poll("large").await.unwrap(), Some(body));
+    let state = bus.inner.lock().await;
+    assert!(state.topics.is_empty());
+    assert_eq!(state.topics.capacity(), 0);
+}
+
+#[tokio::test]
 async fn drained_topics_release_containers_without_losing_other_topics_or_sequence() {
     let bus = MemoryEventBus::new();
     for id in 0..256 {

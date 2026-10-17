@@ -77,4 +77,17 @@ async fn legacy_recovery_is_visible_lossless_and_precedes_live_without_new_durab
         .await
         .unwrap();
     assert_eq!(sequence, 1);
+    // Switching provider must not introduce the legacy MemoryEventBus 1 MiB cap.
+    let large = json!({"nul\u{0}key":[u64::MAX,"原文\u{0}".repeat(200_000),null]});
+    assert!(serde_json::to_vec(&large).unwrap().len() > 1024 * 1024);
+    assert_eq!(
+        bus.ephemeral_inspection_capabilities()
+            .max_payload_size_bytes,
+        u64::MAX
+    );
+    bus.publish("large", large.clone()).await.unwrap();
+    assert_eq!(bus.poll("large").await.unwrap(), Some(large));
+    let durable:(i64,i64)=sqlx::query_as("select (select count(*) from host_event_bus_pending),(select last_sequence from host_event_bus_counter)")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(durable, (0, 1));
 }

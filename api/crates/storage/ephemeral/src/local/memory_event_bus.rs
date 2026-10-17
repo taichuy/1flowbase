@@ -14,6 +14,14 @@ use tokio::sync::Mutex;
 #[derive(Clone, Default)]
 pub struct MemoryEventBus {
     inner: Arc<Mutex<EventBusState>>,
+    payload_admission: PayloadAdmission,
+}
+
+#[derive(Clone, Copy, Default)]
+enum PayloadAdmission {
+    #[default]
+    Bounded,
+    LosslessEventContract,
 }
 
 #[derive(Default)]
@@ -31,6 +39,15 @@ struct EventBusEntry {
 impl MemoryEventBus {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Preserve an EventBus contract which accepts complete JSON without an
+    /// additional business-size limit. Inspection retains its own reveal budget.
+    pub fn lossless() -> Self {
+        Self {
+            payload_admission: PayloadAdmission::LosslessEventContract,
+            ..Self::default()
+        }
     }
 
     fn entry_key(topic: &str, sequence: u64) -> String {
@@ -72,7 +89,9 @@ impl MemoryEventBus {
 #[async_trait]
 impl EventBus for MemoryEventBus {
     async fn publish(&self, topic: &str, payload: serde_json::Value) -> anyhow::Result<()> {
-        ensure_ephemeral_payload_size(&payload)?;
+        if matches!(self.payload_admission, PayloadAdmission::Bounded) {
+            ensure_ephemeral_payload_size(&payload)?;
+        }
         let mut state = self.inner.lock().await;
         state.next_sequence += 1;
         let sequence = state.next_sequence;
@@ -102,7 +121,14 @@ impl EventBus for MemoryEventBus {
     }
 
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
-        EphemeralInspectionCapabilities::supported()
+        let mut capabilities = EphemeralInspectionCapabilities::supported();
+        if matches!(
+            self.payload_admission,
+            PayloadAdmission::LosslessEventContract
+        ) {
+            capabilities.max_payload_size_bytes = u64::MAX;
+        }
+        capabilities
     }
 
     async fn list_ephemeral_entries(&self) -> anyhow::Result<Vec<EphemeralEntrySnapshot>> {

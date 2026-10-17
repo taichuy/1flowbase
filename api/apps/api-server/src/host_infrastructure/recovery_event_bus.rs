@@ -16,7 +16,7 @@ pub(super) struct RecoveryEventBus {
 impl RecoveryEventBus {
     pub(super) fn new(pool: sqlx::PgPool) -> Self {
         Self {
-            live: MemoryEventBus::new(),
+            live: MemoryEventBus::lossless(),
             legacy: PgEventBus::new(pool),
         }
     }
@@ -47,6 +47,7 @@ impl EventBus for RecoveryEventBus {
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
         let mut capabilities = EphemeralInspectionCapabilities::supported();
         capabilities.storage_medium = Some("memory-and-legacy-postgresql");
+        capabilities.max_payload_size_bytes = u64::MAX;
         capabilities
     }
     async fn list_ephemeral_entries(&self) -> anyhow::Result<Vec<EphemeralEntrySnapshot>> {
