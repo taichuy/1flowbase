@@ -1,4 +1,4 @@
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap};
 use std::hash::Hash;
 
 /// Process-local associations from trusted resource identities to already selected owners.

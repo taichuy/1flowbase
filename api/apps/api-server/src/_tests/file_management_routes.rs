@@ -373,8 +373,11 @@ async fn chatgpt_file_reference_import_uses_existing_default_attachments_storage
     let image = b"\x89PNG\r\n\x1a\n1flowbase-file-import";
     let server = tokio::spawn(async move {
         let (mut stream, _) = source.accept().await.unwrap();
-        let mut request = [0u8; 2048];
-        stream.read(&mut request).await.unwrap();
+        let mut request = Vec::new();
+        while !request.ends_with(b"\r\n\r\n") {
+            request.push(stream.read_u8().await.unwrap());
+        }
+        assert!(request.starts_with(b"GET /cover.png HTTP/1.1\r\n"));
         let header = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             image.len()

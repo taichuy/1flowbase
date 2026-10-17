@@ -148,7 +148,8 @@ describe('NetworkEgressPoolsPanel', () => {
     expect(shell).toHaveClass('network-center-pools-shell');
     expect(document.querySelector('.data-table-layout')).toBeInTheDocument();
     expect(document.querySelector('.data-table')).toBeInTheDocument();
-    expect(document.querySelector('.data-table__column-selector')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
+    expect(await screen.findByRole('dialog', { name: '自定义显示字段' })).toBeInTheDocument();
   });
 
   test('AC-006 tests every proxy on the current page without testing the next page', async () => {

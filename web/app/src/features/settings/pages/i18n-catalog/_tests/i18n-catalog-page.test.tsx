@@ -181,7 +181,7 @@ describe('I18nCatalogPage batch fixtures', () => {
       within(toolbar as HTMLElement).getByRole('button', { name: /新增/ })
     ).toBeInTheDocument();
     expect(
-      within(toolbar as HTMLElement).getByRole('combobox', {
+      within(toolbar as HTMLElement).getByRole('button', {
         name: '字段配置'
       })
     ).toBeInTheDocument();

@@ -42,6 +42,7 @@ on:
           - repo-backend-fmt
           - repo-backend-image-llm-vision
           - repo-backend-official-i18n-seed
+          - repo-backend-history-maintenance
           - repo-backend-clippy-core-libs
           - repo-backend-clippy-runtime-storage
           - repo-backend-clippy-apps
@@ -260,7 +261,7 @@ jobs:
           report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "true"
-          start_postgres: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || startsWith(inputs.scope, 'backend-consistency') || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-test-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
+          start_postgres: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || startsWith(inputs.scope, 'backend-consistency') || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-test-') || inputs.scope == 'repo-backend-history-maintenance' || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6
         if: always()
@@ -477,47 +478,9 @@ jobs:
           REACT_DOCTOR_MANUAL_BASE: ${{ inputs.react_doctor_base }}
         run: |
           set -euo pipefail
-          candidate_sha="${QUALITY_GATE_TARGET_SHA}"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            base_sha="${REACT_DOCTOR_DIFF_BASE:-${REACT_DOCTOR_MANUAL_BASE:-}}"
-            if [[ -z "${base_sha}" ]]; then
-              echo "React Doctor manual runs require inputs.react_doctor_base (protected baseline SHA)" >&2
-              exit 1
-            fi
-            base_source="workflow_dispatch.react_doctor_base"
-          else
-            previous_successful_run="$(
-              gh api --method GET \
-                -H "Accept: application/vnd.github+json" \
-                -f "branch=${QUALITY_GATE_TARGET_BRANCH}" \
-                -f "status=success" \
-                -f "per_page=50" \
-                "repos/${GITHUB_REPOSITORY}/actions/workflows/quality-gate.yml/runs" \
-                | jq -r --arg candidate "${candidate_sha}" --arg run_id "${GITHUB_RUN_ID}" '
-                    [
-                      .workflow_runs[]
-                      | select((.id | tostring) != $run_id)
-                      | select(.head_sha != $candidate)
-                      | [.head_sha, (.id | tostring)]
-                    ]
-                    | .[0]
-                    | if . then @tsv else empty end
-                  '
-            )"
-            if [[ -z "${previous_successful_run}" ]]; then
-              echo "React Doctor scheduled run has no previous successful quality-gate candidate baseline" >&2
-              exit 1
-            fi
-            base_sha="${previous_successful_run%%$'\t'*}"
-            previous_run_id="${previous_successful_run#*$'\t'}"
-            base_source="previous-successful-quality-gate-run:${previous_run_id}"
-          fi
-          git rev-parse --verify "${base_sha}^{commit}" >/dev/null
-          git rev-parse --verify "${candidate_sha}^{commit}" >/dev/null
+          node scripts/node/github-quality-gate/baseline/cli.js
           {
-            echo "REACT_DOCTOR_DIFF_BASE=${base_sha}"
-            echo "REACT_DOCTOR_CANDIDATE_SHA=${candidate_sha}"
-            echo "REACT_DOCTOR_BASE_SOURCE=${base_source}"
+            echo "REACT_DOCTOR_CANDIDATE_SHA=${QUALITY_GATE_TARGET_SHA}"
             echo "REACT_DOCTOR_CANDIDATE_SOURCE=quality-gate-target-sha"
           } >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v5
@@ -558,6 +521,7 @@ jobs:
           - repo-backend-fmt
           - repo-backend-image-llm-vision
           - repo-backend-official-i18n-seed
+          - repo-backend-history-maintenance
           - repo-backend-clippy-core-libs
           - repo-backend-clippy-runtime-storage
           - repo-backend-clippy-apps
@@ -662,7 +626,7 @@ jobs:
           report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
-          start_postgres: ${{ startsWith(matrix.scope, 'repo-backend-test-') }}
+          start_postgres: ${{ startsWith(matrix.scope, 'repo-backend-test-') || matrix.scope == 'repo-backend-history-maintenance' }}
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -1132,7 +1096,7 @@ jobs:
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage-fast,repo-backend-test-storage-postgres-1-of-4,repo-backend-test-storage-postgres-2-of-4,repo-backend-test-storage-postgres-3-of-4,repo-backend-test-storage-postgres-4-of-4,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency-control-runtime,backend-consistency-storage,backend-consistency-api,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-runtime-extension-host,coverage-backend-storage-postgres,coverage-backend-api-server-merge,container-images,ai-gateway-protocol-conformance,foundation-contracts'
+          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-history-maintenance,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage-fast,repo-backend-test-storage-postgres-1-of-4,repo-backend-test-storage-postgres-2-of-4,repo-backend-test-storage-postgres-3-of-4,repo-backend-test-storage-postgres-4-of-4,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency-control-runtime,backend-consistency-storage,backend-consistency-api,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-runtime-extension-host,coverage-backend-storage-postgres,coverage-backend-api-server-merge,container-images,ai-gateway-protocol-conformance,foundation-contracts'
           INPUT_PUBLISH_ISSUE: "true"
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6

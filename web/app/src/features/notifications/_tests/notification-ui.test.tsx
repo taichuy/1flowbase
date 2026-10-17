@@ -160,9 +160,7 @@ test('switches plugin metadata while an edit drawer is open and preserves user n
     reads
   );
   expect(plugin.display_name).toBe('Raw plugin name');
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Save changes' })
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
   await waitFor(() =>
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
       display_name: 'User supplied 新名称',
@@ -686,7 +684,10 @@ test('selects channels without writes, confines all-read to the selected channel
   fireEvent.click(
     await screen.findByRole('button', { name: /另一渠道.*另一消息摘要/ })
   );
-  await screen.findByRole('button', { name: '另一渠道消息' });
+  await screen.findByText('另一渠道消息');
+  expect(
+    screen.getByRole('button', { name: '另一渠道消息' })
+  ).toBeInTheDocument();
   expect(calls.filter((call) => call.method === 'POST')).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: '全部已读' }));
   await waitFor(() =>

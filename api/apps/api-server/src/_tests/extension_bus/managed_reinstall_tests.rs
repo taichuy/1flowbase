@@ -590,28 +590,27 @@ async fn root_2007_ir_f01_upgrade_and_concurrent_identity() {
         provider_code: "acme.composition-a".into(),
         target_installation_id: target,
     };
-    assert!(
-        fixture.management.switch_version(switch()).await.is_err(),
-        "source authorization cannot authorize candidate"
-    );
-    for permission in ["event.subscribe", "event.publish"] {
-        fixture
-            .authority()
-            .grant(&fixture.actor, target, grant("a", permission))
-            .await
-            .unwrap();
-    }
+    // Installation alone does not inherit the source version's authorization.
+    assert!(fixture
+        .authority()
+        .query(&fixture.actor, target)
+        .await
+        .unwrap()
+        .authorizations
+        .is_empty());
+    // Explicit root switch approves this exact candidate through the activation owner.
+    let task = fixture.management.switch_version(switch()).await.unwrap();
+    assert_eq!(task.status, domain::PluginTaskStatus::Succeeded);
     let candidate_authority = fixture
         .authority()
         .query(&fixture.actor, target)
         .await
         .unwrap();
+    assert!(!candidate_authority.authorizations.is_empty());
     assert!(candidate_authority
         .authorizations
         .iter()
         .all(|a| source_authority.authorizations.iter().all(|b| a.id != b.id)));
-    let task = fixture.management.switch_version(switch()).await.unwrap();
-    assert_eq!(task.status, domain::PluginTaskStatus::Succeeded);
     assert_eq!(
         fixture
             .runtime

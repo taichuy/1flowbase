@@ -50,14 +50,12 @@ async fn register_business_table(pool: &PgPool, table: &str) {
 fn plan(
     owner_id: &str,
     fingerprint: &str,
-    max_target_table_bytes: u64,
     operations: Vec<ManagedSchemaOperation>,
 ) -> ManagedSchemaPlan {
     ManagedSchemaPlan {
         owner_id: owner_id.to_string(),
         owner_version: "1.0.0".to_string(),
         fingerprint: fingerprint.to_string(),
-        max_target_table_bytes,
         lock_timeout_ms: 1_000,
         operations,
     }
@@ -70,7 +68,6 @@ async fn pdm_003_005_owned_and_extension_objects_reconcile_idempotently() {
     let desired = plan(
         "acme.analytics",
         "schema-v1",
-        u64::MAX,
         vec![
             ManagedSchemaOperation::EnsureOwnedCollection {
                 logical_collection: "notes".to_string(),
@@ -122,7 +119,6 @@ async fn pdm_003_005_owned_and_extension_objects_reconcile_idempotently() {
     let retained = plan(
         "acme.analytics",
         "schema-v2",
-        u64::MAX,
         vec![ManagedSchemaOperation::RetainInactive {
             ownership_key: "column:plugin_acme_notes.title".to_string(),
         }],
@@ -152,7 +148,6 @@ async fn pdm_006_008_owner_and_column_contract_drift_fail_closed() {
     let owner_plan = plan(
         "owner.one",
         "owner-one-v1",
-        u64::MAX,
         vec![ManagedSchemaOperation::EnsureOwnedCollection {
             logical_collection: "records".to_string(),
             physical_table: "plugin_owner_records".to_string(),
@@ -162,7 +157,6 @@ async fn pdm_006_008_owner_and_column_contract_drift_fail_closed() {
     let conflicting_owner = plan(
         "owner.two",
         "owner-two-v1",
-        u64::MAX,
         vec![ManagedSchemaOperation::EnsureOwnedCollection {
             logical_collection: "records".to_string(),
             physical_table: "plugin_owner_records".to_string(),
@@ -182,7 +176,6 @@ async fn pdm_006_008_owner_and_column_contract_drift_fail_closed() {
     let drifted = plan(
         "acme.analytics",
         "drift-v1",
-        u64::MAX,
         vec![ManagedSchemaOperation::EnsureExtensionField {
             target_table: "fixture_drift_records".to_string(),
             logical_field: "score".to_string(),
@@ -198,40 +191,76 @@ async fn pdm_006_008_owner_and_column_contract_drift_fail_closed() {
 }
 
 #[tokio::test]
-async fn pdm_010_capacity_failure_rolls_back_the_entire_schema_plan() {
+async fn pdm_010_schema_drift_rolls_back_the_entire_schema_plan() {
     let (store, pool) = store().await;
-    register_business_table(&pool, "fixture_capacity_records").await;
-    let oversized = plan(
+    let existing = plan(
+        "acme.rollback",
+        "existing-v1",
+        vec![ManagedSchemaOperation::EnsureOwnedCollection {
+            logical_collection: "existing".to_string(),
+            physical_table: "plugin_rollback_existing".to_string(),
+        }],
+    );
+    store.apply_managed_schema(&existing).await.unwrap();
+    sqlx::query("alter table plugin_rollback_existing add column x_rollback_marker text")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mut invalid = plan(
         "acme.rollback",
         "rollback-v1",
-        1,
         vec![
             ManagedSchemaOperation::EnsureOwnedCollection {
                 logical_collection: "temporary".to_string(),
                 physical_table: "plugin_rollback_temporary".to_string(),
             },
-            ManagedSchemaOperation::EnsureExtensionField {
-                target_table: "fixture_capacity_records".to_string(),
+            ManagedSchemaOperation::EnsureOwnedField {
+                logical_collection: "existing".to_string(),
                 logical_field: "marker".to_string(),
+                physical_table: "plugin_rollback_existing".to_string(),
                 physical_column: "x_rollback_marker".to_string(),
                 field_type: ManagedSchemaFieldType::Boolean,
+                nullable: true,
             },
         ],
     );
 
-    let error = store.apply_managed_schema(&oversized).await.unwrap_err();
-    assert!(error.to_string().contains("capacity preflight"));
+    invalid.owner_version = "2.0.0".to_string();
+    let error = store.apply_managed_schema(&invalid).await.unwrap_err();
+    assert!(
+        error.to_string().contains("managed schema drift"),
+        "{error:#}"
+    );
     let table: Option<String> =
         sqlx::query_scalar("select to_regclass('plugin_rollback_temporary')::text")
             .fetch_one(&pool)
             .await
             .unwrap();
     assert!(table.is_none());
-    assert!(store
-        .list_managed_schema_ownership()
-        .await
-        .unwrap()
-        .is_empty());
+    let ownership = store.list_managed_schema_ownership().await.unwrap();
+    assert_eq!(ownership.len(), 1);
+    assert_eq!(ownership[0].physical_table, "plugin_rollback_existing");
+    assert_eq!(ownership[0].owner_version, existing.owner_version);
+    assert_eq!(ownership[0].plan_fingerprint, existing.fingerprint);
+    assert!(ownership[0].active);
+    let unpublished_members: i64 = sqlx::query_scalar(
+        "select count(*) from plugin_schema_version_objects where owner_id=$1 and owner_version=$2",
+    )
+    .bind(&invalid.owner_id)
+    .bind(&invalid.owner_version)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(unpublished_members, 0);
+    let unpublished_receipts: i64 = sqlx::query_scalar("select count(*) from plugin_schema_reconcile_receipts where owner_id=$1 and owner_version=$2")
+        .bind(&invalid.owner_id).bind(&invalid.owner_version).fetch_one(&pool).await.unwrap();
+    assert_eq!(unpublished_receipts, 0);
+    let marker: bool = sqlx::query_scalar("select exists(select 1 from information_schema.columns where table_schema=current_schema() and table_name='plugin_rollback_existing' and column_name='x_rollback_marker')")
+        .fetch_one(&pool).await.unwrap();
+    assert!(marker);
+    let marker_type: String = sqlx::query_scalar("select data_type from information_schema.columns where table_schema=current_schema() and table_name='plugin_rollback_existing' and column_name='x_rollback_marker'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(marker_type, "text");
 }
 
 fn versioned_owned_plan(version: &str, fields: &[(&str, bool)]) -> ManagedSchemaPlan {
@@ -249,12 +278,7 @@ fn versioned_owned_plan(version: &str, fields: &[(&str, bool)]) -> ManagedSchema
             nullable: *nullable,
         }
     }));
-    let mut plan = plan(
-        "acme/versioned",
-        &format!("version-{version}"),
-        u64::MAX,
-        operations,
-    );
+    let mut plan = plan("acme/versioned", &format!("version-{version}"), operations);
     plan.owner_version = version.into();
     plan
 }

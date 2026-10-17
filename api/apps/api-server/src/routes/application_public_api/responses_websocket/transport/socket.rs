@@ -17,19 +17,19 @@ use tokio_tungstenite_deflate::{
 
 pub(crate) struct Socket(Inner);
 enum Inner {
-    Axum(WebSocket),
-    Codec(WebSocketStream<UpgradeIo>),
+    Axum(Box<WebSocket>),
+    Codec(Box<WebSocketStream<UpgradeIo>>),
 }
 
 impl Socket {
     pub(super) fn from_codec(socket: WebSocketStream<UpgradeIo>) -> Self {
-        Self(Inner::Codec(socket))
+        Self(Inner::Codec(Box::new(socket)))
     }
 }
 
 impl From<WebSocket> for Socket {
     fn from(socket: WebSocket) -> Self {
-        Self(Inner::Axum(socket))
+        Self(Inner::Axum(Box::new(socket)))
     }
 }
 
@@ -37,9 +37,9 @@ impl Stream for Socket {
     type Item = Result<Message, Error>;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match &mut self.get_mut().0 {
-            Inner::Axum(socket) => Pin::new(socket).poll_next(cx),
+            Inner::Axum(socket) => Pin::new(socket.as_mut()).poll_next(cx),
             Inner::Codec(socket) => loop {
-                match std::task::ready!(Pin::new(&mut *socket).poll_next(cx)) {
+                match std::task::ready!(Pin::new(socket.as_mut()).poll_next(cx)) {
                     Some(Ok(message)) => {
                         if let Some(message) = from_codec(message) {
                             return Poll::Ready(Some(Ok(message)));
@@ -57,28 +57,28 @@ impl Sink<Message> for Socket {
     type Error = Error;
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         match &mut self.get_mut().0 {
-            Inner::Axum(socket) => Pin::new(socket).poll_ready(cx),
-            Inner::Codec(socket) => Pin::new(socket).poll_ready(cx).map_err(Error::new),
+            Inner::Axum(socket) => Pin::new(socket.as_mut()).poll_ready(cx),
+            Inner::Codec(socket) => Pin::new(socket.as_mut()).poll_ready(cx).map_err(Error::new),
         }
     }
     fn start_send(self: Pin<&mut Self>, message: Message) -> Result<(), Error> {
         match &mut self.get_mut().0 {
-            Inner::Axum(socket) => Pin::new(socket).start_send(message),
-            Inner::Codec(socket) => Pin::new(socket)
+            Inner::Axum(socket) => Pin::new(socket.as_mut()).start_send(message),
+            Inner::Codec(socket) => Pin::new(socket.as_mut())
                 .start_send(to_codec(message))
                 .map_err(Error::new),
         }
     }
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         match &mut self.get_mut().0 {
-            Inner::Axum(socket) => Pin::new(socket).poll_flush(cx),
-            Inner::Codec(socket) => Pin::new(socket).poll_flush(cx).map_err(Error::new),
+            Inner::Axum(socket) => Pin::new(socket.as_mut()).poll_flush(cx),
+            Inner::Codec(socket) => Pin::new(socket.as_mut()).poll_flush(cx).map_err(Error::new),
         }
     }
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         match &mut self.get_mut().0 {
-            Inner::Axum(socket) => Pin::new(socket).poll_close(cx),
-            Inner::Codec(socket) => Pin::new(socket).poll_close(cx).map_err(Error::new),
+            Inner::Axum(socket) => Pin::new(socket.as_mut()).poll_close(cx),
+            Inner::Codec(socket) => Pin::new(socket.as_mut()).poll_close(cx).map_err(Error::new),
         }
     }
 }

@@ -107,9 +107,7 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   renderPanel();
 
   expect(await screen.findByText('Story Agent')).toBeInTheDocument();
-  expect(
-    screen.getByRole('combobox', { name: '字段配置' })
-  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '字段配置' })).toBeInTheDocument();
   const filterForm = screen.getByRole('form', { name: '筛选' });
   const toolbar = document.querySelector('.data-table__toolbar');
   const scrollArea = document.querySelector('.data-table__scroll-area');
@@ -190,9 +188,16 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
     expect(lastFilter.started_after).toEqual(expect.any(String));
   });
 
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: '字段配置' }));
-  expect(await screen.findByText('供应商 Code')).toBeInTheDocument();
-  expect(screen.getByText('计费模型 ID')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
+  const columnOptions = await screen.findByRole('dialog', {
+    name: '自定义显示字段'
+  });
+  expect(
+    within(columnOptions).getByRole('checkbox', { name: '供应商 Code' })
+  ).toBeInTheDocument();
+  expect(
+    within(columnOptions).getByRole('checkbox', { name: '计费模型 ID' })
+  ).toBeInTheDocument();
 });
 
 test('AC-006 does not render a conversation link for legacy rows', async () => {

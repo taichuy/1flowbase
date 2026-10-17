@@ -115,6 +115,8 @@ test('verify-backend buildCommands uses independent cargo jobs and cargo test th
         CARGO_INCREMENTAL: '0',
       },
     },
+    ...['official-i18n-seed', 'history-maintenance'].flatMap((target) =>
+      buildCommands({ cargoJobs: 4, cargoTestThreads: 2, target })),
     {
       label: 'cargo-test',
       command: 'cargo',
@@ -513,14 +515,14 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     .trim()
     .split('\n');
 
-  assert.equal(invocations.length, 8);
+  assert.equal(invocations.length, 16);
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
   assert.match(invocations[2], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_textualizes_user_media_when_selected_model_is_not_multimodal -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[3], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_keeps_user_media_when_configured_model_supports_multimodal -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[4], new RegExp(`test -p control-plane --jobs ${expectedParallelism} orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models -- --test-threads=${expectedParallelism}`));
   assert.match(invocations[5], new RegExp(`test -p orchestration-runtime --jobs ${expectedParallelism} visible_internal_llm_tool_media -- --test-threads=${expectedParallelism}`));
-  assert.match(invocations[6], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
-  assert.match(invocations[7], new RegExp(`check --workspace --jobs ${expectedParallelism}`));
+  assert.match(invocations[14], new RegExp(`test --workspace --jobs ${expectedParallelism} -- --test-threads=${expectedParallelism}`));
+  assert.match(invocations[15], new RegExp(`check --workspace --jobs ${expectedParallelism}`));
 
   const warningLogPath = path.join(warningOutputDir, 'verify-backend.warnings.log');
   assert.equal(fs.existsSync(warningLogPath), true);

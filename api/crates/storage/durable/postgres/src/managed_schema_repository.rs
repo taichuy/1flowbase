@@ -300,7 +300,6 @@ async fn apply_operation(
             ensure_owned_table_tx(transaction, &plan.owner_id, physical_table).await?;
             let action = ensure_column(
                 transaction,
-                plan,
                 physical_table,
                 physical_column,
                 *field_type,
@@ -326,7 +325,6 @@ async fn apply_operation(
             ensure_registered_business_table_tx(transaction, target_table).await?;
             let action = ensure_column(
                 transaction,
-                plan,
                 target_table,
                 physical_column,
                 *field_type,
@@ -389,7 +387,6 @@ async fn apply_operation(
 
 async fn ensure_column(
     transaction: &mut Transaction<'_, Postgres>,
-    plan: &ManagedSchemaPlan,
     table: &str,
     column: &str,
     field_type: ManagedSchemaFieldType,
@@ -408,13 +405,6 @@ async fn ensure_column(
         )?;
         return Ok(ManagedSchemaPreviewAction::AlreadyPresent);
     }
-    let size = sqlx::query_scalar::<_, i64>("select pg_total_relation_size($1::regclass)")
-        .bind(table)
-        .fetch_one(&mut **transaction)
-        .await?;
-    if u64::try_from(size)? > plan.max_target_table_bytes {
-        bail!("managed schema target table exceeds configured capacity preflight");
-    }
     let table = quote_identifier(table)?;
     let column = quote_identifier(column)?;
     let nullability = if nullable { "" } else { " not null" };
@@ -431,7 +421,6 @@ fn validate_plan(plan: &ManagedSchemaPlan) -> Result<()> {
     if plan.owner_id.trim().is_empty()
         || plan.owner_version.trim().is_empty()
         || plan.fingerprint.trim().is_empty()
-        || plan.max_target_table_bytes == 0
         || plan.lock_timeout_ms == 0
     {
         bail!("managed schema plan identity and preconditions must be explicit");

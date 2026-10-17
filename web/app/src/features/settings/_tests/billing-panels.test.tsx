@@ -1,3 +1,4 @@
+import '../../../test/fixtures/rc-util-unique-ids';
 import {
   fireEvent,
   render,
@@ -307,26 +308,37 @@ describe('billing settings panels', () => {
       screen.queryByRole('columnheader', { name: '时区' })
     ).not.toBeInTheDocument();
 
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '字段配置' }));
-    const columnOptions = await screen.findByRole('listbox');
+    fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
+    const columnOptions = await screen.findByRole('dialog', {
+      name: '自定义显示字段'
+    });
     for (const name of ['时区', '适用星期', '时段开始', '时段结束', '优先级']) {
       expect(
-        within(columnOptions).getByRole('option', { name })
+        within(columnOptions).getByRole('checkbox', { name })
       ).toBeInTheDocument();
     }
     for (const name of ['适用星期', '时段开始', '时段结束']) {
-      fireEvent.click(within(columnOptions).getByRole('option', { name }));
+      fireEvent.click(within(columnOptions).getByRole('checkbox', { name }));
     }
     expect(await screen.findByText('每天')).toBeInTheDocument();
     expect(screen.getAllByText('不限')).toHaveLength(2);
 
+    fireEvent.keyDown(within(columnOptions).getByRole('textbox'), {
+      key: 'Escape'
+    });
+    expect(screen.getByRole('button', { name: '字段配置' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
     fireEvent.click(screen.getByRole('button', { name: /新增计费规则/ }));
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByLabelText('输入 Token 单位')).toBeInTheDocument();
-    expect(screen.getByLabelText('缓存命中单价')).toBeInTheDocument();
-    expect(screen.getByLabelText('缓存写入单价')).toBeInTheDocument();
-    expect(screen.getByLabelText('条件计费规则')).toHaveValue('[]');
-    expect(screen.getByLabelText('条件计费规则')).toBeEnabled();
+    const editor = await screen.findByRole('dialog', { name: '新增计费规则' });
+    expect(
+      within(editor).getByLabelText('输入 Token 单位')
+    ).toBeInTheDocument();
+    expect(within(editor).getByLabelText('缓存命中单价')).toBeInTheDocument();
+    expect(within(editor).getByLabelText('缓存写入单价')).toBeInTheDocument();
+    expect(within(editor).getByLabelText('条件计费规则')).toHaveValue('[]');
+    expect(within(editor).getByLabelText('条件计费规则')).toBeEnabled();
   });
 
   test('submits pricing filters through the shared server-paginated table', async () => {

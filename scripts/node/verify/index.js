@@ -28,6 +28,7 @@ const {
 } = require('./backend-targets.js');
 
 const { parseCargoTestCounts } = require('./cargo-test-results.js');
+const { buildHistoryMaintenanceCommands } = require('./history-maintenance.js');
 const { buildBackendConsistencyCommands, runBackendConsistencyCommandSequence, runBackendConsistency } = require('./backend-consistency.js');
 
 const VALID_COVERAGE_TARGETS = new Set(['frontend', 'backend', 'all']);
@@ -49,6 +50,7 @@ const VALID_BACKEND_TARGETS = new Set([
   'check',
   'image-llm-vision',
   'official-i18n-seed',
+  'history-maintenance',
 ]);
 const VERIFY_COMMANDS = new Set([
   'backend',
@@ -272,11 +274,17 @@ function buildBackendCommands({
     return buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental });
   }
 
+  if (target === 'history-maintenance') {
+    return buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental });
+  }
+
   return [
     buildRustBackendStaticGateCommand({ repoRoot, env }),
     buildBackendFmtCommand({ cargoJobs }),
     buildBackendCargoCommand({ target: 'clippy', cargoJobs, cargoTestThreads, incremental }),
     ...buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental }),
+    ...buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental }),
+    ...buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental }),
     buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
     buildBackendCargoCommand({ target: 'check', cargoJobs, cargoTestThreads, incremental }),
   ];
@@ -352,7 +360,7 @@ async function runBackend(argv = [], deps = {}) {
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,
     writeStderr: deps.writeStderr,
-    ...(['all', 'image-llm-vision', 'official-i18n-seed'].includes(options.target) || (options.target === 'test' && options.shard === 'storage-postgres-1-of-4') ? {
+    ...(['all', 'image-llm-vision', 'official-i18n-seed', 'history-maintenance'].includes(options.target) || (options.target === 'test' && options.shard === 'storage-postgres-1-of-4') ? {
       runCommandSequenceImpl: (sequenceOptions) => {
         let emptySelection = false;
         const status = runCommandSequence({
@@ -370,7 +378,8 @@ async function runBackend(argv = [], deps = {}) {
               return;
             }
             if (!command.label.startsWith('cargo-test-image-llm-vision-')
-              && !command.label.startsWith('cargo-test-official-i18n-seed-')) return;
+              && !command.label.startsWith('cargo-test-official-i18n-seed-')
+              && !command.label.startsWith('cargo-test-history-maintenance-')) return;
             const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
             if (result.status === 0 && !(counts.passedCount > 0 && counts.failedCount === 0)) {
               emptySelection = true;

@@ -26,3 +26,11 @@ Runtime extensions never receive SQL, a database connection, a local path, or a 
 Install and update inspect, compile, preview, reconcile, and return a typed receipt. Disable and uninstall retain physical tables and columns while marking ownership inactive. Re-enabling or upgrading reconciles the same stable physical identities. Drop, rename, type changes, nullability changes, defaults, constraints, triggers, functions, and runtime DDL are outside v1.
 
 The full PostgreSQL logical backup contains both ownership rows and physical objects. Backup preflight and staged recovery verify that every active or retained ownership record still resolves to its table or column before the database can be promoted.
+
+## Schema Application Safety
+
+Schema application uses the ownership ledger, registered business-table inventory,
+structural drift checks, a transaction and a lock timeout. Table byte size is not a
+business capacity contract: the host does not reject additive schema changes using
+a fixed table-size threshold. PostgreSQL DDL failures roll back both physical
+changes and ownership publication; retained version membership remains intact.

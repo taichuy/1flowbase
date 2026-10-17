@@ -1,4 +1,4 @@
-//! AC-005/006: real uploaded package, independent grant and SDK process through the managed Host.
+//! AC-005/006: real uploaded package, root activation and SDK process through the managed Host.
 use super::managed_snapshot_tests::RuntimeFixture;
 use crate::{
     notification_runtime::ManagedNotificationProvider, provider_runtime::ApiProviderRuntime,
@@ -78,31 +78,7 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         })
         .await
         .unwrap();
-    // A package declaration alone cannot grant notification sending.
-    assert!(management
-        .enable_plugin(EnablePluginCommand {
-            actor_user_id: actor_id,
-            installation_id
-        })
-        .await
-        .is_err());
-    PluginContributionAuthorityService::new(
-        runtime.store.clone(),
-        HostContributionGrantPolicy::root_composition(),
-    )
-    .grant(
-        &actor,
-        installation_id,
-        GrantContributionPermission {
-            contribution_id: "acme.notification-fixture.send".into(),
-            permission: "notification.send".into(),
-            resource_scope: domain::ContributionResourceScope::Workspace,
-            permission_contract_id: "notification".into(),
-            permission_contract_version: "1".into(),
-        },
-    )
-    .await
-    .unwrap();
+    // Explicit root enable approves supported capabilities through the activation owner.
     management
         .enable_plugin(EnablePluginCommand {
             actor_user_id: actor_id,

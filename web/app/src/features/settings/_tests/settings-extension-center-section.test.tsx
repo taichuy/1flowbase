@@ -927,7 +927,8 @@ describe('SettingsExtensionCenterSection', () => {
       ]
     });
     renderSection('agent-flow');
-    const row = await screen.findByRole('row', { name: /Fusion/ });
+    await screen.findByText('Fusion');
+    const row = screen.getByRole('row', { name: /Fusion/ });
     expect(within(row).getByRole('button', { name: '安装' })).toBeEnabled();
     expect(
       screen.getByRole('link', { name: '前往 Agent Flow 模板管理' })

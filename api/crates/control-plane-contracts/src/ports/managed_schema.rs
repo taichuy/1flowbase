@@ -55,7 +55,6 @@ pub struct ManagedSchemaPlan {
     pub owner_id: String,
     pub owner_version: String,
     pub fingerprint: String,
-    pub max_target_table_bytes: u64,
     pub lock_timeout_ms: u32,
     pub operations: Vec<ManagedSchemaOperation>,
 }

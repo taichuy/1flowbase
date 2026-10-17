@@ -81,3 +81,13 @@
 - 没有实际运行证据时，不要声称某条门禁“应该会过”。
 - 不能因为局部测试通过，就跳过共享消费者或 blast radius 检查。
 - 不能因为 `verify-repo` 通过，就省略用户明确要求的页面运行态、截图或 coverage 证据。
+
+## Feature-Gated Maintenance
+
+`verify-backend history-maintenance` 验证 Responses history migration 的 service、
+PostgreSQL adapter / 跨层 fixture、离线 CLI、可执行构建与严格 Clippy。
+完整 `quality-gate scope=ci` 通过 `repo-backend-history-maintenance` 收据汇总；
+默认 workspace target 不包含 required-features binary，不能替代此证据。
+`verify-backend all` 同时保留此专项与 official i18n seed 专项，逐条拒绝零执行测试。
+React Doctor nightly baseline 从完整成功 CI 的根收据读取实际候选；workflow
+来源 SHA、单 scope green 与嵌套历史收据不能充当已验候选。手动运行仍显式指定 baseline。

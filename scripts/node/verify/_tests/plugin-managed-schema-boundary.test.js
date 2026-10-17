@@ -27,8 +27,13 @@ test('PDM production path consumes compiler, preview, apply, and retain lifecycl
     'api/apps/api-server/src/routes/plugins_and_models/plugins/extension_center/upload.rs',
   );
 
-  assert.match(composition, /compile_managed_schema_plan/);
-  assert.match(composition, /preview_managed_schema/);
+  const service = read(
+    'api/crates/control-plane/src/plugin_management/managed_activation/schema.rs',
+  );
+  assert.match(composition, /control_plane::plugin_management::prepare_managed_schema_plan\(/);
+  assert.doesNotMatch(composition, /compile_managed_schema_plan\(/);
+  assert.match(service, /compile_managed_schema_plan\(/);
+  assert.match(service, /repository\.preview_managed_schema\(&plan\)/);
   assert.match(composition, /apply_managed_schema/);
   assert.match(routes, /retain_managed_schema/);
   assert.match(upload, /prepare_managed_schema/);

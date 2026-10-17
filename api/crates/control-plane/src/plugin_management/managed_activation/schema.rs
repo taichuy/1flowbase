@@ -13,7 +13,6 @@ use plugin_framework::{
 
 use anyhow::Result;
 
-const DEFAULT_MAX_TARGET_TABLE_BYTES: u64 = 1_073_741_824;
 const DEFAULT_SCHEMA_LOCK_TIMEOUT_MS: u32 = 5_000;
 
 /// Compile the same ownership-aware schema plan for install, enable and version selection.
@@ -97,7 +96,6 @@ fn repository_plan(effective: &EffectiveManagedSchemaPlan) -> ManagedSchemaPlan 
         owner_id: effective.owner().stable_id(),
         owner_version: effective.owner().plugin_version.clone(),
         fingerprint: effective.fingerprint().to_string(),
-        max_target_table_bytes: DEFAULT_MAX_TARGET_TABLE_BYTES,
         lock_timeout_ms: DEFAULT_SCHEMA_LOCK_TIMEOUT_MS,
         operations: effective
             .entries()

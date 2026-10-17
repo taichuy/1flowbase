@@ -203,31 +203,7 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         })
         .await
         .unwrap();
-    // Manifest declaration without contribution authority remains insufficient.
-    assert!(management
-        .enable_plugin(EnablePluginCommand {
-            actor_user_id: actor_id,
-            installation_id
-        })
-        .await
-        .is_err());
-    PluginContributionAuthorityService::new(
-        runtime.store.clone(),
-        HostContributionGrantPolicy::root_composition(),
-    )
-    .grant(
-        &actor,
-        installation_id,
-        GrantContributionPermission {
-            contribution_id: "acme.notification-fixture.send".into(),
-            permission: "notification.send".into(),
-            resource_scope: domain::ContributionResourceScope::Workspace,
-            permission_contract_id: "notification".into(),
-            permission_contract_version: "1".into(),
-        },
-    )
-    .await
-    .unwrap();
+    // Explicit root enable approves supported capabilities through the activation owner.
     management
         .enable_plugin(EnablePluginCommand {
             actor_user_id: actor_id,
@@ -255,7 +231,7 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         crate::app_with_state_and_config(state.clone(), &crate::_tests::support::test_config());
     let (cookie, csrf) =
         crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
-    // Read through the authenticated Types API after upload, assignment, grant and enable.
+    // Read through the authenticated Types API after upload, assignment and explicit root enable.
     // Both dictionaries remain raw package metadata; no locale is selected by the Host.
     let (status, catalog) = api(
         &app,

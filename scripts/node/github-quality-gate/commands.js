@@ -18,6 +18,7 @@ const REPO_BACKEND_COMPONENT_SCOPES = [
   'repo-backend-fmt',
   'repo-backend-image-llm-vision',
   'repo-backend-official-i18n-seed',
+  'repo-backend-history-maintenance',
   ...REPO_BACKEND_SHARD_TARGETS.flatMap((target) =>
     REPO_BACKEND_SHARDS_BY_TARGET[target].map((shard) => `repo-backend-${target}-${shard.key}`)
   ),
@@ -203,6 +204,10 @@ function buildGateCommand({ repoRoot, scope }) {
       args: [resolveCliEntry(repoRoot, 'verify-backend'), 'image-llm-vision'],
       cwd: repoRoot,
     };
+  }
+
+  if (scope === 'repo-backend-history-maintenance') {
+    return { command, args: [resolveCliEntry(repoRoot, 'verify-backend'), 'history-maintenance'], cwd: repoRoot };
   }
 
   if (scope === 'repo-backend-official-i18n-seed') {

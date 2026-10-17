@@ -51,7 +51,6 @@ fn plan(fingerprint: &str, operations: Vec<ManagedSchemaOperation>) -> ManagedSc
         owner_id: "acme/session".to_string(),
         owner_version: "1.0.0".to_string(),
         fingerprint: fingerprint.to_string(),
-        max_target_table_bytes: u64::MAX,
         lock_timeout_ms: 1_000,
         operations,
     }

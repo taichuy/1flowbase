@@ -397,11 +397,11 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
     workflow,
     /react_doctor_base:\n\s+description: Protected baseline SHA for a manual React Doctor candidate run/u,
   );
-  assert.match(jobBlock, /gh api[\s\S]*actions\/workflows\/quality-gate\.yml\/runs/u);
-  assert.match(jobBlock, /previous-successful-quality-gate-run/u);
+  assert.match(jobBlock, /node scripts\/node\/github-quality-gate\/baseline\/cli\.js/u);
+  assert.doesNotMatch(jobBlock, /\.head_sha|previous_successful_run/u);
   assert.doesNotMatch(jobBlock, /REACT_DOCTOR_DIFF_BASE:-\$\(git rev-parse/u);
-  assert.match(jobBlock, /React Doctor manual runs require inputs\.react_doctor_base/u);
-  assert.match(jobBlock, /REACT_DOCTOR_BASE_SOURCE=/u);
+  assert.match(jobBlock, /REACT_DOCTOR_MANUAL_BASE: \$\{\{ inputs\.react_doctor_base \}\}/u);
+  assert.match(jobBlock, /REACT_DOCTOR_CANDIDATE_SOURCE=quality-gate-target-sha/u);
   assert.match(
     jobBlock,
     /repo-frontend-react-doctor-gate:[\s\S]*?scope: repo-frontend-react-doctor/u,
@@ -876,7 +876,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /scope: \$\{\{ matrix\.scope \}\}/u);
   assert.match(
     workflow,
-    /start_postgres: \$\{\{ startsWith\(matrix\.scope, 'repo-backend-test-'\) \}\}/u,
+    /start_postgres: \$\{\{ startsWith\(matrix\.scope, 'repo-backend-test-'\) \|\| matrix\.scope == 'repo-backend-history-maintenance' \}\}/u,
   );
   assert.match(workflow, /scope: backend-consistency-\$\{\{ matrix\.group \}\}/u);
   assert.match(workflow, /scope: coverage-frontend/u);
@@ -1084,7 +1084,7 @@ test("quality gate workflow keeps regular dispatch scopes on a single targeted j
   assert.match(workflow, /scope: \$\{\{ env\.QUALITY_GATE_SCOPE \}\}/u);
   assert.match(
     workflow,
-    /start_postgres: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| startsWith\(inputs\.scope, 'backend-consistency'\) \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-test-'\) \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}/u,
+    /start_postgres: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| startsWith\(inputs\.scope, 'backend-consistency'\) \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-test-'\) \|\| inputs\.scope == 'repo-backend-history-maintenance' \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}/u,
   );
   assert.match(workflow, /publish_issue: "true"/u);
   assert.doesNotMatch(

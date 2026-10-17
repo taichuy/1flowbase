@@ -105,24 +105,6 @@ impl Fixture {
         )
         .with_node_id(&state.api_node_id)
         .with_managed_activation();
-        let authority = PluginContributionAuthorityService::new(
-            store.clone(),
-            HostContributionGrantPolicy::root_composition(),
-        );
-
-        let schema_dependencies =
-            crate::routes::plugins::extension_center::ExtensionCenterDependencies {
-                store: store.clone(),
-                provider_runtime: services.clone(),
-                official_plugin_source: state.official_plugin_source.clone(),
-                official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
-                official_extension_catalog_source: state.official_extension_catalog_source.clone(),
-                cache_store: state.infrastructure.cache_store(),
-                provider_install_root: state.provider_install_root.clone(),
-                api_node_id: state.api_node_id.clone(),
-                allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
-            };
-
         let mut installations = Vec::new();
         for owner in ["orion.shipments", "lyra.audit-log"] {
             let raw = manifest(owner);
@@ -142,58 +124,8 @@ impl Fixture {
                 })
                 .await
                 .unwrap();
-            assert!(
-                management
-                    .enable_plugin(EnablePluginCommand {
-                        actor_user_id: actor_id,
-                        installation_id: id
-                    })
-                    .await
-                    .is_err(),
-                "ungranted activation"
-            );
-            let declared =
-                plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&raw).unwrap())
-                    .unwrap();
-            if !declared.data_models.is_empty() {
-                crate::routes::plugins::extension_center::apply_fixture_managed_schema(
-                    &schema_dependencies,
-                    actor.current_workspace_id,
-                    &declared,
-                )
-                .await
-                .unwrap();
-            }
-            for contribution in &declared.managed.as_ref().unwrap().module.contributions {
-                for permission in &contribution.required_permissions {
-                    let write = permission.as_str() == "plugin_data.owned.write";
-                    authority
-                        .grant(
-                            &actor,
-                            id,
-                            GrantContributionPermission {
-                                contribution_id: contribution.contribution_id.as_str().into(),
-                                permission: permission.as_str().into(),
-                                resource_scope: if write {
-                                    domain::ContributionResourceScope::OwnedCollection {
-                                        collection_code: "audit_records".into(),
-                                    }
-                                } else {
-                                    domain::ContributionResourceScope::Workspace
-                                },
-                                permission_contract_id: if write {
-                                    "plugin-data"
-                                } else {
-                                    "managed-event"
-                                }
-                                .into(),
-                                permission_contract_version: "1".into(),
-                            },
-                        )
-                        .await
-                        .unwrap();
-                }
-            }
+            // Root activation owns exact capability approval and additive schema preparation.
+            // Non-root refusal and version isolation are exercised by activation_permissions.
             management
                 .enable_plugin(EnablePluginCommand {
                     actor_user_id: actor_id,

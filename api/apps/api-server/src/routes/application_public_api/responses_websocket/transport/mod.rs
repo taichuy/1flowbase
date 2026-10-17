@@ -9,7 +9,7 @@ use axum::{
 use std::future::Future;
 use tokio_tungstenite_deflate::tungstenite::{
     extensions::compression::deflate::DeflateConfig,
-    handshake::server::{Request, Response as HandshakeResponse},
+    handshake::server::{Callback, ErrorResponse, Request, Response as HandshakeResponse},
     protocol::WebSocketConfig,
 };
 
@@ -58,6 +58,21 @@ impl<S: Send + Sync> FromRequestParts<S> for WebSocketUpgrade {
     }
 }
 
+// The codec owns the callback's rejection type. Capture its negotiated response
+// through that typed contract instead of inferring a large error on a closure.
+struct CaptureHandshake<'a>(&'a mut Option<HandshakeResponse>);
+
+impl Callback for CaptureHandshake<'_> {
+    fn on_request(
+        self,
+        _request: &Request,
+        response: HandshakeResponse,
+    ) -> Result<HandshakeResponse, ErrorResponse> {
+        *self.0 = Some(response.clone());
+        Ok(response)
+    }
+}
+
 impl WebSocketUpgrade {
     pub(crate) fn max_message_size(mut self, size: usize) -> Self {
         self.config.max_message_size = Some(size);
@@ -85,10 +100,7 @@ impl WebSocketUpgrade {
         let mut response = None;
         let socket = tokio_tungstenite_deflate::accept_hdr_async_with_config(
             io::UpgradeIo::handshake(&self.headers),
-            |_: &Request, negotiated: HandshakeResponse| {
-                response = Some(negotiated.clone());
-                Ok(negotiated)
-            },
+            CaptureHandshake(&mut response),
             Some(self.config),
         )
         .await;
