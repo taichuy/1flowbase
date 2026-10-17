@@ -81,7 +81,11 @@ fn pending(row: &Value, handoff: Option<&Value>) -> Result<Value> {
     for field in ["topic", "payload", "value_size_bytes"] {
         target[field] = row[field].clone();
     }
-    target["payload_digest"] = json!(format!("\\x{:x}", Sha256::digest(payload.as_bytes())));
+    let digest = Sha256::digest(payload.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    target["payload_digest"] = json!(format!("\\x{digest}"));
     match handoff {
         Some(handoff) => {
             ensure!(
