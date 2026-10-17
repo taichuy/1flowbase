@@ -404,3 +404,4 @@ async fn create_ready_instance(
 
 mod catalogs_and_failover;
 mod instances;
+mod session_affinity;

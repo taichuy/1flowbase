@@ -161,6 +161,25 @@ pub struct UpsertModelProviderMainInstanceInput {
 
 #[async_trait]
 pub trait ModelProviderRepository: Send + Sync {
+    /// The first Provider chosen for a host-scoped session survives later routing changes.
+    async fn get_model_provider_session_binding(
+        &self,
+        _workspace_id: Uuid,
+        _scope_digest: &str,
+    ) -> anyhow::Result<Option<Uuid>> {
+        anyhow::bail!("model provider session binding storage is not configured")
+    }
+
+    /// Atomically bind an unclaimed session or return its existing owner without replacing it.
+    async fn bind_model_provider_session(
+        &self,
+        _workspace_id: Uuid,
+        _scope_digest: &str,
+        _provider_instance_id: Uuid,
+    ) -> anyhow::Result<Uuid> {
+        anyhow::bail!("model provider session binding storage is not configured")
+    }
+
     async fn create_instance(
         &self,
         input: &CreateModelProviderInstanceInput,

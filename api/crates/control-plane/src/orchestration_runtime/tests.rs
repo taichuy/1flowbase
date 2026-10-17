@@ -59,3 +59,5 @@ mod native_transport;
 mod provider_commands;
 mod route_resolution;
 mod terminal_projection;
+
+mod session_affinity;

@@ -691,6 +691,11 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "model_provider_session_bindings": {
+      "kind": "immutable_provider_session_origin",
+      "reason": "Provider session origin is immutable and looked up by authenticated workspace plus scoped digest; it preserves the original instance identity after instance deletion and does not consume generic row identity or time pagination.",
+      "skip": ["managed-table-id", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
     "plugin_credentials": {
       "kind": "plugin_credential_lookup",
       "reason": "Plugin outbound credentials are encrypted values addressed by publisher namespace, plugin code, scope and credential identity; reads and writes use that full composite key rather than chronological resource pagination.",
@@ -1517,6 +1522,12 @@
     }
   },
   "ownedTableContracts": {
+    "model_provider_session_bindings": {
+      "primaryKey": ["workspace_id", "scope_digest"],
+      "foreignKeys": [{"columns": ["workspace_id"], "table": "workspaces", "references": ["id"]}],
+      "ownerColumns": ["scope_digest", "provider_instance_id"],
+      "indexes": [["workspace_id", "scope_digest"]]
+    },
     "plugin_credentials": {
       "primaryKey": [
         "publisher_namespace",

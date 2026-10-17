@@ -13,6 +13,7 @@ where
     let mut request_runtimes = Vec::with_capacity(request_count);
     for attempt_index in 0..request_count {
         let resolved = resolve_llm_request_runtime(
+            &node.node_id,
             runtime,
             runtime_context,
             invoker,
@@ -115,6 +116,7 @@ pub(crate) struct AcceptedLlmRoutePreflight {
 }
 
 pub(crate) async fn resolve_llm_request_runtime<I>(
+    node_id: &str,
     runtime: &CompiledLlmRuntime,
     runtime_context: &ExecutionRuntimeContext,
     invoker: &I,
@@ -125,7 +127,7 @@ pub(crate) async fn resolve_llm_request_runtime<I>(
 where
     I: ProviderInvoker + ?Sized,
 {
-    if let Some(main_routing) = invoker.resolve_main_llm_routing(runtime).await? {
+    if let Some(main_routing) = invoker.resolve_main_llm_routing(runtime, node_id).await? {
         let mut compatible = Vec::with_capacity(main_routing.candidates.len());
         let mut missing = BTreeSet::new();
         let mut projection_causes = Vec::new();
@@ -149,7 +151,9 @@ where
                 &projection_causes,
             ));
         }
-        let selection = llm_target_selection(
+        let selection = super::provider_routing::select_session_provider_target(
+            runtime,
+            node_id,
             &main_routing.distribution_rule,
             main_routing.distribution_key.as_deref(),
             &compatible
@@ -170,7 +174,31 @@ where
         });
     }
 
-    let candidates = llm_route_candidate_runtimes(runtime);
+    let mut candidates = llm_route_candidate_runtimes(runtime);
+    let default_rule = runtime
+        .routing
+        .as_ref()
+        .map(|routing| {
+            matches!(
+                routing.distribution_rule,
+                crate::compiled_plan::LlmDistributionRule::None
+            )
+        })
+        .unwrap_or(true);
+    if default_rule {
+        if let Some(owner) = invoker.get_session_llm_provider(runtime, node_id).await? {
+            candidates.retain(|candidate| candidate.provider_instance_id == owner);
+            if candidates.is_empty() {
+                return Err(extension_contracts::ExtensionContractError::runtime(
+                    ProviderRuntimeError::new(
+                        ProviderRuntimeErrorKind::ProviderAffinityMismatch,
+                        "the session's original Provider instance is no longer eligible",
+                    ),
+                )
+                .into());
+            }
+        }
+    }
     let mut compatible = Vec::with_capacity(candidates.len());
     let mut missing = BTreeSet::new();
     let mut projection_causes = Vec::new();
@@ -218,7 +246,9 @@ where
         ));
     }
 
-    let selection = llm_target_selection(
+    let selection = super::provider_routing::select_session_provider_target(
+        runtime,
+        node_id,
         runtime
             .routing
             .as_ref()
@@ -334,25 +364,6 @@ fn llm_route_candidate_runtimes(runtime: &CompiledLlmRuntime) -> Vec<CompiledLlm
             candidate
         })
         .collect()
-}
-
-async fn llm_target_selection(
-    distribution_rule: &crate::compiled_plan::LlmDistributionRule,
-    distribution_key: Option<&str>,
-    target_ids: &[String],
-    attempt_index: usize,
-    runtime_context: &ExecutionRuntimeContext,
-    invoker: &(impl ProviderInvoker + ?Sized),
-) -> Result<super::provider_routing::ProviderDistributionSelection> {
-    super::provider_routing::select_provider_target(
-        distribution_rule,
-        distribution_key,
-        target_ids,
-        attempt_index,
-        runtime_context,
-        invoker,
-    )
-    .await
 }
 
 fn missing_routing_capabilities(
@@ -1001,6 +1012,7 @@ mod tests {
         async fn resolve_main_llm_routing(
             &self,
             runtime: &CompiledLlmRuntime,
+            _node_id: &str,
         ) -> Result<Option<ResolvedMainLlmRouting>> {
             let candidates = ["provider-current-a", "provider-current-b"]
                 .into_iter()
@@ -1126,6 +1138,7 @@ mod tests {
         };
 
         let selected = resolve_llm_request_runtime(
+            "test-node",
             &runtime,
             &ExecutionRuntimeContext::default(),
             &DynamicMainResolver,
@@ -1190,6 +1203,7 @@ mod tests {
         };
 
         let selected = resolve_llm_request_runtime(
+            "test-node",
             &runtime,
             &ExecutionRuntimeContext::default(),
             &resolver,
@@ -1238,6 +1252,7 @@ mod tests {
         };
 
         let selected = resolve_llm_request_runtime(
+            "test-node",
             &runtime,
             &ExecutionRuntimeContext::default(),
             &resolver,
@@ -1282,6 +1297,7 @@ mod tests {
         };
 
         let error = match resolve_llm_request_runtime(
+            "test-node",
             &runtime,
             &ExecutionRuntimeContext::default(),
             &resolver,
@@ -1324,6 +1340,7 @@ mod tests {
 
         assert!(
             resolve_llm_request_runtime(
+                "test-node",
                 &runtime,
                 &ExecutionRuntimeContext::default(),
                 &resolver,
@@ -1341,6 +1358,7 @@ mod tests {
             .insert("message_blocks.reasoning_history.v1".to_string());
 
         let selected = resolve_llm_request_runtime(
+            "test-node",
             &runtime,
             &ExecutionRuntimeContext::default(),
             &resolver,
@@ -1365,6 +1383,7 @@ mod tests {
         };
 
         let error = match resolve_llm_request_runtime(
+            "test-node",
             &runtime,
             &ExecutionRuntimeContext::default(),
             &resolver,

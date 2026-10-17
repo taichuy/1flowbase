@@ -21,6 +21,7 @@ mod native_trajectory;
 mod protocol_context;
 mod protocol_observation;
 mod runtime_events;
+mod session_binding;
 mod stream_timing;
 pub(super) use failover_queue::freeze_failover_queue_routes;
 use stream_timing::{serialized_frame_size, ProviderStreamTiming};
@@ -459,14 +460,43 @@ where
         self.open_protocol_context_locator_value(locator).await
     }
 
+    async fn get_session_llm_provider(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        node_id: &str,
+    ) -> Result<Option<String>> {
+        self.session_provider_owner(runtime, node_id).await
+    }
+
+    async fn bind_session_llm_provider(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        node_id: &str,
+        selected: &str,
+    ) -> Result<String> {
+        let Some(scope) = self.session_provider_scope(runtime, node_id) else {
+            return Ok(selected.to_owned());
+        };
+        let selected = Uuid::parse_str(selected)
+            .map_err(|_| ControlPlaneError::InvalidInput("provider_instance_id"))?;
+        Ok(self
+            .repository
+            .bind_model_provider_session(self.workspace_id, &scope, selected)
+            .await?
+            .to_string())
+    }
+
     async fn resolve_main_llm_routing(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        node_id: &str,
     ) -> Result<Option<orchestration_runtime::execution_engine::ResolvedMainLlmRouting>> {
         if !runtime.targets_main_instance() {
             return Ok(None);
         }
-        let mut routing = self.resolve_current_main_llm_routing(runtime).await?;
+        let mut routing = self
+            .resolve_current_main_llm_routing(runtime, node_id)
+            .await?;
         if self.continuation_affinity().is_some() {
             routing.candidates.retain(|candidate| {
                 self.ensure_continuation_route(
@@ -1987,6 +2017,7 @@ where
             active_node_run_id: self.active_node_run_id,
             api_node_id: self.api_node_id.clone(),
             provider_install_root: self.provider_install_root.clone(),
+            provider_session_scope: self.provider_session_scope.clone(),
             flow_execution_context: self.flow_execution_context.clone(),
             answer_presentation: self.answer_presentation.clone(),
             transport_connection_scope_override: self.transport_connection_scope_override.clone(),

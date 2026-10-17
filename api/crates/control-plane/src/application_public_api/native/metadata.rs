@@ -10,11 +10,13 @@ use crate::application_public_api::protocol_translation::{
 const METADATA_PATH: &str = "$.metadata";
 
 /// Public and durable Native request metadata has one owner: the external trace id.
-/// The closed type also carries non-durable adapter admission state, which is
-/// intentionally absent from its wire and durable representations.
+/// The closed type also carries adapter admission state, intentionally absent
+/// from ordinary metadata serialization. Provider identity is frozen separately
+/// into the run's internal system input.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeRequestMetadata {
     trace_id: Option<String>,
+    provider_session_identity: Option<String>,
     responses_input_history: Option<Value>,
     responses_configuration_digest: Option<String>,
     recovery: Option<crate::application_public_api::callback_resume::NativeInferenceRecoveryGrant>,
@@ -64,6 +66,7 @@ impl NativeRequestMetadata {
         };
         Ok(Self {
             trace_id,
+            provider_session_identity: None,
             responses_input_history: None,
             responses_configuration_digest: None,
             recovery: None,
@@ -79,6 +82,7 @@ impl NativeRequestMetadata {
     pub fn with_trace_id(trace_id: Option<String>) -> Self {
         Self {
             trace_id,
+            provider_session_identity: None,
             responses_input_history: None,
             responses_configuration_digest: None,
             recovery: None,
@@ -89,6 +93,15 @@ impl NativeRequestMetadata {
             provider_transport_summary: None,
             application_run_log_context: None,
         }
+    }
+
+    /// Sealed by the authenticated protocol adapter; never accepted from public metadata.
+    pub fn set_provider_session_identity(&mut self, identity: Option<String>) {
+        self.provider_session_identity = identity;
+    }
+
+    pub fn provider_session_identity(&self) -> Option<&str> {
+        self.provider_session_identity.as_deref()
     }
 
     /// Only a Native admission can mint this non-wire recovery grant.
@@ -276,6 +289,28 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn provider_session_identity_is_host_only_and_not_wire_metadata() {
+        let mut metadata = NativeRequestMetadata::with_trace_id(Some("trace".into()));
+        metadata.set_provider_session_identity(Some("sealed-session".into()));
+        assert_eq!(metadata.provider_session_identity(), Some("sealed-session"));
+        let wire = serde_json::to_value(&metadata).unwrap();
+        assert_eq!(wire, json!({"trace_id": "trace"}));
+        let decoded: NativeRequestMetadata = serde_json::from_value(wire).unwrap();
+        assert!(decoded.provider_session_identity().is_none());
+        assert!(serde_json::from_value::<NativeRequestMetadata>(json!({
+            "provider_session_identity": "forged"
+        }))
+        .is_err());
+        assert!(
+            serde_json::from_value::<super::super::NativeRunRequest>(json!({
+                "query": "hello",
+                "metadata": {"provider_session_identity": "forged"}
+            }))
+            .is_err()
+        );
+    }
 
     #[test]
     fn workflow_observation_is_host_only_consumed_once_and_not_inherited_from_wire() {

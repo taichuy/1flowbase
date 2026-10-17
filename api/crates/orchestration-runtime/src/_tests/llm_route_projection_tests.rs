@@ -274,6 +274,7 @@ async fn issue_1743_two_candidate_failover_preflights_from_one_canonical_source(
     let snapshot = canonical.clone();
 
     let selected = resolve_llm_request_runtime(
+        "test-node",
         &runtime,
         &ExecutionRuntimeContext::default(),
         &resolver,
@@ -310,6 +311,7 @@ async fn issue_1743_typed_affinity_mismatch_is_ineligible_but_matching_backup_ro
     );
 
     let selected = resolve_llm_request_runtime(
+        "test-node",
         &runtime,
         &ExecutionRuntimeContext::default(),
         &Issue1743AffinityResolver,
@@ -341,6 +343,7 @@ async fn issue_1743_native_continuation_capability_is_a_hard_route_requirement()
     );
 
     let error = match resolve_llm_request_runtime(
+        "test-node",
         &runtime,
         &ExecutionRuntimeContext::default(),
         &resolver,
@@ -392,6 +395,7 @@ async fn issue_1743_reasoning_only_route_error_exposes_only_bounded_typed_projec
         .insert("cursor".to_string(), json!("CURSOR_CANARY"));
 
     let error = match resolve_llm_request_runtime(
+        "test-node",
         &runtime,
         &ExecutionRuntimeContext::default(),
         &resolver,
@@ -458,6 +462,7 @@ async fn issue_1743_invalid_canonical_route_error_retains_typed_nonempty_cause()
     };
 
     let error = match resolve_llm_request_runtime(
+        "test-node",
         &runtime,
         &ExecutionRuntimeContext::default(),
         &resolver,

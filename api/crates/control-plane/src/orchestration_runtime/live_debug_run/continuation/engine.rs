@@ -123,6 +123,7 @@ where
         None => service.runtime_invoker(application.workspace_id),
     }
     .for_flow_run(flow_run.id)
+    .with_provider_session_scope(&flow_run)
     .with_flow_execution_context(flow_execution_context.clone())
     .with_provider_transport_payload(provider_transport_payload)
     .with_transport_connection_scope_override(transport_connection_scope)

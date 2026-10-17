@@ -124,6 +124,23 @@ impl NativeInputMapper {
             )?;
         }
 
+        // Routing identity belongs to the run, independently of protocol-context mounting.
+        if let Some(identity) = request.metadata.provider_session_identity() {
+            write_selector(
+                &mut node_input_payload,
+                "sys.provider_session_identity",
+                Value::String(identity.to_owned()),
+            )?;
+        } else if node_input_payload
+            .pointer("/sys/provider_session_identity")
+            .is_some()
+        {
+            // Public input mappings cannot mint host identity when ingress supplied none.
+            return Err(NativeInputMappingError::SelectorCollision {
+                selector: "sys.provider_session_identity".into(),
+            });
+        }
+
         Ok(NativeMappedInput {
             node_input_payload,
             metadata: build_run_metadata(request),

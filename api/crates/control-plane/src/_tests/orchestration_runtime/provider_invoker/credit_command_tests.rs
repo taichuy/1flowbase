@@ -64,6 +64,7 @@ fn credit_command_invoker(
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
+        provider_session_scope: None,
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,

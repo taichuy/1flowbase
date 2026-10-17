@@ -183,6 +183,8 @@ async fn dispatch_chat_completion(
             return Err(error.into());
         }
     };
+    super::provider_session::session_header(&headers, "session-id")?;
+    super::provider_session::session_header(&headers, "thread-id")?;
     let value = match parse_openai_json_body(body, TranslationProtocol::OpenAiChat) {
         Ok(value) => value,
         Err(error) => {
@@ -367,6 +369,7 @@ async fn dispatch_chat_completion(
             .await?
         }
     };
+    super::provider_session::bind_chat(&mut request, principal.principal(), &headers)?;
     if response_mode.as_deref() == Some("streaming") {
         let stream_binding_id = if uri.path() == "/chat/completions" {
             compatibility_interface::OPENAI_CHAT_ROOT_STREAM_BINDING_ID
@@ -1013,7 +1016,7 @@ async fn dispatch_response_for_endpoint(
     );
     if endpoint == OpenAiResponsesEndpoint::Responses {
         session_context::bind_responses_session_context(
-            &mut request.client_protocol_envelope,
+            &mut request,
             principal.principal(),
             &headers,
             previous_session_identity.as_deref(),

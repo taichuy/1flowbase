@@ -280,6 +280,7 @@ struct RuntimeProviderInvoker<R, H> {
     live_provider_events: Option<LiveProviderStreamEventSender>,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
     flow_run_id: Option<Uuid>,
+    provider_session_scope: Option<String>,
     active_node_id: Option<String>,
     active_node_run_id: Option<Uuid>,
     api_node_id: Option<String>,
@@ -535,6 +536,7 @@ where
             active_node_run_id: None,
             api_node_id: self.api_node_id.clone(),
             provider_install_root: self.provider_install_root.clone(),
+            provider_session_scope: None,
             flow_execution_context: None,
             answer_presentation: None,
             transport_connection_scope_override: None,
@@ -566,6 +568,7 @@ where
             active_node_run_id: None,
             api_node_id: self.api_node_id.clone(),
             provider_install_root: self.provider_install_root.clone(),
+            provider_session_scope: None,
             flow_execution_context: None,
             answer_presentation: None,
             transport_connection_scope_override: None,
@@ -618,6 +621,7 @@ where
         let invoker = self
             .runtime_invoker(input.application.workspace_id)
             .for_flow_run(input.flow_run.id)
+            .with_provider_session_scope(input.flow_run)
             .with_flow_execution_context(flow_execution_context.clone());
         let provider_continuation = if orchestration_runtime::execution_engine::pending_llm_tool_callback_requires_ephemeral_provider_continuation(
             &input.snapshot.variable_pool,
@@ -918,6 +922,7 @@ where
         let invoker = self
             .runtime_invoker(application.workspace_id)
             .for_flow_run(flow_run.id)
+            .with_provider_session_scope(&flow_run)
             .with_flow_execution_context(flow_execution_context);
         let http_file_persister = self.http_response_file_persister(actor);
         let preview_result = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store_and_lifecycle(

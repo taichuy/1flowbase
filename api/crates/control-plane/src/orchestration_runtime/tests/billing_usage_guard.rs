@@ -67,6 +67,7 @@ fn billing_invoker_with_policy(
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
+        provider_session_scope: None,
         flow_execution_context: Some(billing_flow_execution_context(
             flow_run_id,
             is_root,

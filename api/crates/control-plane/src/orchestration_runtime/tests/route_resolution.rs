@@ -20,6 +20,7 @@ async fn main_instance_routing_uses_current_registered_instances_instead_of_froz
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
+        provider_session_scope: None,
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,
@@ -50,7 +51,7 @@ async fn main_instance_routing_uses_current_registered_instances_instead_of_froz
 
     let resolved =
         orchestration_runtime::execution_engine::ProviderInvoker::resolve_main_llm_routing(
-            &invoker, &runtime,
+            &invoker, &runtime, "node-llm",
         )
         .await
         .expect("main routing should resolve")
@@ -89,6 +90,7 @@ async fn main_instance_routing_reads_current_distribution_rule_and_order() {
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
+        provider_session_scope: None,
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,
@@ -109,7 +111,7 @@ async fn main_instance_routing_reads_current_distribution_rule_and_order() {
 
     let resolved =
         orchestration_runtime::execution_engine::ProviderInvoker::resolve_main_llm_routing(
-            &invoker, &runtime,
+            &invoker, &runtime, "node-llm",
         )
         .await
         .expect("main routing should resolve")
@@ -177,6 +179,7 @@ async fn publisher_cutover_agent_flow_route_reads_receipt_marked_legacy_provider
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
+        provider_session_scope: None,
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,
@@ -224,6 +227,7 @@ async fn root_1534_resolved_provider_route_pins_the_installation_used_for_invoca
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
+        provider_session_scope: None,
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,

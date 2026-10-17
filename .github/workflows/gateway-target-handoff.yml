@@ -2,9 +2,13 @@ name: Gateway target handoff regression
 
 on:
   push:
-    branches: [codex/gateway-target-handoff]
+    branches: [codex/gateway-target-handoff, codex/gateway-session-affinity]
   workflow_dispatch:
     inputs:
+      session_affinity_only:
+        description: Verify persistent session ownership and explicit distribution rules without deployment
+        type: boolean
+        default: false
       responses_transport_only:
         description: Verify Responses WebSocket transport and build its candidate API artifact
         type: boolean
@@ -49,7 +53,7 @@ env:
 
 jobs:
   regression:
-    if: ${{ !inputs.history_fixtures_only && !inputs.responses_transport_only }}
+    if: ${{ !inputs.history_fixtures_only && !inputs.responses_transport_only && !inputs.session_affinity_only && github.ref_name != 'codex/gateway-session-affinity' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     services:
@@ -285,3 +289,130 @@ jobs:
           name: responses-websocket-transport-evidence
           path: tmp/test-governance/responses-websocket-transport/ci
           if-no-files-found: error
+
+  session-affinity:
+    if: ${{ inputs.session_affinity_only || github.ref_name == 'codex/gateway-session-affinity' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: gateway-fixture
+          POSTGRES_DB: gateway_fixture
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gateway_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
+      API_DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: gateway-target-handoff
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Record candidate and resource settings
+        run: |
+          mkdir -p tmp/test-governance/session-affinity-20261017/ci
+          git rev-parse HEAD > tmp/test-governance/session-affinity-20261017/ci/source-sha.txt
+          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+      - name: Specialized schema ownership contracts and controlled negatives
+        run: |
+          node --test scripts/node/schema-hygiene/_tests/ownership.test.js > tmp/test-governance/session-affinity-20261017/ci/schema-ownership.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/schema-ownership.log; exit 1; }
+      - name: Stable control-plane contracts
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts > tmp/test-governance/session-affinity-20261017/ci/contracts.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/contracts.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/contracts.log
+      - name: Existing failover, transport recovery and capability selection
+        run: |
+          for suite in answer_and_failover transport_retry llm_metrics; do
+            cargo test --locked --manifest-path api/Cargo.toml -p orchestration-runtime --lib "$suite" > "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log" 2>&1 || { tail -c 6000 "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"; exit 1; }
+            node scripts/node/verify/cargo-test-results.js "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"
+          done
+      - name: Host identity, unavailable owners and continuation safety
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib provider_session > tmp/test-governance/session-affinity-20261017/ci/host-session.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/host-session.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/host-session.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib native_transport > tmp/test-governance/session-affinity-20261017/ci/continuation.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/continuation.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/continuation.log
+      - name: Three protocol ingress identities through the Native mapper
+        run: |
+          for suite in provider_session::tests responses_session_identity_reaches_native_input_and_headerless_continuation claude_code_session_header_fills_missing_metadata_session_id; do
+            cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib "$suite" > "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log" 2>&1 || { tail -c 6000 "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"; exit 1; }
+            node scripts/node/verify/cargo-test-results.js "tmp/test-governance/session-affinity-20261017/ci/${suite//:/_}.log"
+          done
+      - name: PostgreSQL first writer, persistence and deletion behavior
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib provider_session > tmp/test-governance/session-affinity-20261017/ci/postgres-session.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/postgres-session.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/postgres-session.log
+      - name: Prove route fixture rejects the old stateless first-candidate behavior
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+          import subprocess
+          metrics = Path('api/crates/orchestration-runtime/src/execution_engine/llm_metrics.rs')
+          routing = Path('api/crates/orchestration-runtime/src/execution_engine/provider_routing.rs')
+          originals = {p: p.read_bytes() for p in (metrics, routing)}
+          anchor = b'if default_rule {'
+          assert originals[metrics].count(anchor) == 1
+          routing_mutant, count = re.subn(rb'let is_default = matches!\(.*?\);', b'let is_default = false;', originals[routing], count=1, flags=re.S)
+          assert count == 1
+          log = Path('tmp/test-governance/session-affinity-20261017/ci/routing-controlled-negative.log')
+          try:
+              metrics.write_bytes(originals[metrics].replace(anchor, b'if false && default_rule {'))
+              routing.write_bytes(routing_mutant)
+              with log.open('wb') as output:
+                  result = subprocess.run(['cargo', 'test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'orchestration-runtime', '--lib', 'provider_session_none_session_keeps_first_owner_after_candidate_reordering_and_failure'], stdout=output, stderr=subprocess.STDOUT)
+              evidence = log.read_text()
+              assert result.returncode != 0 and 'assertion `left == right` failed' in evidence and '["provider-a", "provider-b"' in evidence, evidence[-6000:]
+              print('Controlled negative rejected stateless None => first candidate through the flow engine')
+          finally:
+              for source, original in originals.items():
+                  source.write_bytes(original)
+          PYCODE
+          git diff --exit-code
+      - name: Prove concurrency fixture rejects overwriting an established owner
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import subprocess
+          source = Path('api/crates/storage/durable/postgres/src/model_provider_repository/session_affinity.rs')
+          original = source.read_bytes()
+          before = b'set provider_instance_id = model_provider_session_bindings.provider_instance_id'
+          after = b'set provider_instance_id = excluded.provider_instance_id'
+          assert original.count(before) == 1, 'controlled-negative anchor must identify one assignment'
+          log = Path('tmp/test-governance/session-affinity-20261017/ci/postgres-controlled-negative.log')
+          try:
+              source.write_bytes(original.replace(before, after))
+              with log.open('wb') as output:
+                  result = subprocess.run(['cargo', 'test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'storage-durable-postgres', '--lib', 'provider_session_binding_has_one_concurrent_first_writer'], stdout=output, stderr=subprocess.STDOUT)
+              evidence = log.read_text()
+              assert result.returncode != 0 and 'assertion failed: owners.iter().all' in evidence, evidence[-6000:]
+              print('Controlled negative rejected owner overwrite through real concurrent PostgreSQL calls')
+          finally:
+              source.write_bytes(original)
+          PYCODE
+          git diff --exit-code
+      - name: Real orchestration adapter consumer test-target compilation
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration --no-run > tmp/test-governance/session-affinity-20261017/ci/consumer-test-compilation.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/consumer-test-compilation.log; exit 1; }
+      - name: Adapter dependency boundaries
+        run: |
+          cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/session-affinity-20261017/ci/fetch.log 2>&1 || { tail -c 4000 tmp/test-governance/session-affinity-20261017/ci/fetch.log; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test dependency_boundaries > tmp/test-governance/session-affinity-20261017/ci/dependencies.log 2>&1 || { tail -c 6000 tmp/test-governance/session-affinity-20261017/ci/dependencies.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/session-affinity-20261017/ci/dependencies.log
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: session-affinity-${{ github.sha }}
+          if-no-files-found: error
+          path: tmp/test-governance/session-affinity-20261017/ci

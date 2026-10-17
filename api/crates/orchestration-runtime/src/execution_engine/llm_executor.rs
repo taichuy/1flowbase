@@ -452,6 +452,7 @@ where
 
     for attempt_index in 0..request_count {
         let resolved_attempt = match resolve_llm_request_runtime(
+            &node.node_id,
             runtime,
             runtime_context,
             invoker,

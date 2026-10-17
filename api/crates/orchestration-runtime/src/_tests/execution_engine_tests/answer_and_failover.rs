@@ -2029,3 +2029,6 @@ async fn semantic_upstream_refusal_without_http_status_never_retries() {
         other => panic!("expected semantic refusal, got {other:?}"),
     }
 }
+
+#[path = "session_affinity/mod.rs"]
+mod session_affinity;

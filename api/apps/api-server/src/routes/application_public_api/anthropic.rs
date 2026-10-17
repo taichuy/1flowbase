@@ -214,6 +214,7 @@ async fn dispatch_message(
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     let source_body = value.clone();
+    super::provider_session::session_header(&headers, "x-claude-code-session-id")?;
     merge_claude_code_session_header(&mut value, &headers);
     let model = value
         .get("model")
@@ -348,6 +349,7 @@ async fn dispatch_message(
             .await?
         }
     };
+    super::provider_session::bind_messages(&mut request, principal.principal());
     if response_mode.as_deref() == Some("streaming") {
         return compatibility_interface::invoke_client_stream_with_principal(
             state,
@@ -436,6 +438,7 @@ async fn dispatch_count_message_tokens(
     let bearer_token = anthropic_token(&headers)?;
     let mut value = parse_anthropic_json_body(body)?;
     let source_body = value.clone();
+    super::provider_session::session_header(&headers, "x-claude-code-session-id")?;
     merge_claude_code_session_header(&mut value, &headers);
     let mut translation = translate_messages_request_with_context_window(
         value,

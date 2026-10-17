@@ -128,3 +128,57 @@ where
         },
     })
 }
+
+pub(super) async fn select_session_provider_target(
+    runtime: &CompiledLlmRuntime,
+    node_id: &str,
+    distribution_rule: &crate::compiled_plan::LlmDistributionRule,
+    distribution_key: Option<&str>,
+    target_ids: &[String],
+    attempt_index: usize,
+    runtime_context: &ExecutionRuntimeContext,
+    invoker: &(impl ProviderInvoker + ?Sized),
+) -> Result<ProviderDistributionSelection> {
+    let is_default = matches!(
+        distribution_rule,
+        crate::compiled_plan::LlmDistributionRule::None
+    );
+    let owner = if is_default {
+        invoker.get_session_llm_provider(runtime, node_id).await?
+    } else {
+        None
+    };
+    let mut selection = select_provider_target(
+        distribution_rule,
+        distribution_key,
+        target_ids,
+        attempt_index,
+        runtime_context,
+        invoker,
+    )
+    .await?;
+    // Read before binding so an ineligible original owner never creates a replacement.
+    let winner = if let Some(owner) = owner {
+        owner
+    } else {
+        let winner = invoker
+            .bind_session_llm_provider(runtime, node_id, &target_ids[selection.target_index])
+            .await?;
+        if !is_default {
+            return Ok(selection);
+        }
+        winner
+    };
+    selection.target_index = target_ids
+        .iter()
+        .position(|id| id == &winner)
+        .ok_or_else(|| {
+            extension_contracts::ExtensionContractError::runtime(ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::ProviderAffinityMismatch,
+                "the session's original Provider instance is no longer eligible",
+            ))
+        })?;
+    selection.receipt.decision =
+        extension_contracts::ProviderDistributionDecision::Select { target_id: winner };
+    Ok(selection)
+}

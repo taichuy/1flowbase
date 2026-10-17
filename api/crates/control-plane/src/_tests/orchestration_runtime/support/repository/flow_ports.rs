@@ -932,6 +932,35 @@ impl NodeContributionRepository for InMemoryOrchestrationRuntimeRepository {
 
 #[async_trait]
 impl ModelProviderRepository for InMemoryOrchestrationRuntimeRepository {
+    async fn get_model_provider_session_binding(
+        &self,
+        workspace_id: Uuid,
+        scope_digest: &str,
+    ) -> Result<Option<Uuid>> {
+        Ok(self
+            .inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .provider_session_bindings
+            .get(&(workspace_id, scope_digest.to_owned()))
+            .copied())
+    }
+
+    async fn bind_model_provider_session(
+        &self,
+        workspace_id: Uuid,
+        scope_digest: &str,
+        provider_instance_id: Uuid,
+    ) -> Result<Uuid> {
+        Ok(*self
+            .inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .provider_session_bindings
+            .entry((workspace_id, scope_digest.to_owned()))
+            .or_insert(provider_instance_id))
+    }
+
     async fn create_instance(
         &self,
         _input: &crate::ports::CreateModelProviderInstanceInput,

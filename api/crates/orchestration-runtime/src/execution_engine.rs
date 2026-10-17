@@ -206,8 +206,27 @@ pub trait ProviderInvoker: Send + Sync {
     async fn resolve_main_llm_routing(
         &self,
         _runtime: &CompiledLlmRuntime,
+        _node_id: &str,
     ) -> Result<Option<ResolvedMainLlmRouting>> {
         Ok(None)
+    }
+
+    async fn get_session_llm_provider(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _node_id: &str,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// Atomically remembers the first selected target; returns the existing winner on conflict.
+    async fn bind_session_llm_provider(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _node_id: &str,
+        selected_provider_instance_id: &str,
+    ) -> Result<String> {
+        Ok(selected_provider_instance_id.to_owned())
     }
 
     async fn resolve_llm_route(

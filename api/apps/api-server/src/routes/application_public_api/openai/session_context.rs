@@ -4,16 +4,22 @@ use super::*;
 /// A missing session-id uses a stable thread-id when provided. Headerless
 /// continuations inherit the previous authenticated round's sealed identity.
 pub(super) fn bind_responses_session_context(
-    context: &mut Option<ProtocolContextEnvelope>,
+    request: &mut control_plane::application_public_api::native::NativeRunRequest,
     principal: &interface_runtime::ApplicationPrincipal,
     headers: &HeaderMap,
     inherited_identity: Option<&str>,
 ) -> Result<(), OpenAiRouteError> {
     let identity = responses_session_identity(principal, headers, inherited_identity)?;
-    let envelope = context.get_or_insert_with(|| ProtocolContextEnvelope {
-        source_protocol: "openai_responses".into(),
-        ..Default::default()
-    });
+    request
+        .metadata
+        .set_provider_session_identity(Some(identity.clone()));
+    let envelope =
+        request
+            .client_protocol_envelope
+            .get_or_insert_with(|| ProtocolContextEnvelope {
+                source_protocol: "openai_responses".into(),
+                ..Default::default()
+            });
     envelope.headers.insert("session-id".into(), vec![identity]);
     Ok(())
 }
@@ -77,6 +83,71 @@ fn client_session_parts(headers: &HeaderMap) -> Result<(String, String), OpenAiR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn principal() -> interface_runtime::ApplicationPrincipal {
+        let workspace = Uuid::now_v7();
+        interface_runtime::ApplicationPrincipal::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            workspace,
+            domain::ActorContext::scoped(Uuid::now_v7(), workspace, "member", []),
+        )
+        .unwrap()
+    }
+
+    fn request() -> control_plane::application_public_api::native::NativeRunRequest {
+        serde_json::from_value(json!({"query": "hello"})).unwrap()
+    }
+
+    #[test]
+    fn responses_session_identity_reaches_native_input_and_headerless_continuation() {
+        use control_plane::application_public_api::{
+            mapping::ApplicationApiMappingConfig, native::NativeInputMapper,
+        };
+        let principal = principal();
+        let mut headers = HeaderMap::new();
+        headers.insert("session-id", "session-A".parse().unwrap());
+        let mut first = request();
+        bind_responses_session_context(&mut first, &principal, &headers, None).unwrap();
+        let identity = first
+            .metadata
+            .provider_session_identity()
+            .unwrap()
+            .to_owned();
+        assert_eq!(
+            first.client_protocol_envelope.as_ref().unwrap().headers["session-id"],
+            vec![identity.clone()]
+        );
+        // Removing protocol context simulates an LLM node which does not mount it.
+        first.client_protocol_envelope = None;
+        let mapped =
+            NativeInputMapper::map(&first, &ApplicationApiMappingConfig::default_native()).unwrap();
+        assert_eq!(
+            mapped.node_input_payload["sys"]["provider_session_identity"],
+            json!(identity)
+        );
+        let mut continuation = request();
+        bind_responses_session_context(
+            &mut continuation,
+            &principal,
+            &HeaderMap::new(),
+            Some(&identity),
+        )
+        .unwrap();
+        assert_eq!(
+            continuation.metadata.provider_session_identity(),
+            Some(identity.as_str())
+        );
+        let mut independent = request();
+        let mut other = request();
+        bind_responses_session_context(&mut independent, &principal, &HeaderMap::new(), None)
+            .unwrap();
+        bind_responses_session_context(&mut other, &principal, &HeaderMap::new(), None).unwrap();
+        assert_ne!(
+            independent.metadata.provider_session_identity(),
+            other.metadata.provider_session_identity()
+        );
+    }
 
     #[test]
     fn thread_id_is_stable_fallback_but_headerless_requests_remain_isolated() {

@@ -8,6 +8,7 @@ where
     pub(super) async fn resolve_current_main_llm_routing(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        node_id: &str,
     ) -> Result<orchestration_runtime::execution_engine::ResolvedMainLlmRouting> {
         let main_instance = self
             .repository
@@ -32,6 +33,38 @@ where
                     .collect::<std::collections::BTreeSet<_>>()
             })
             .unwrap_or_default();
+        // A durable owner is checked before eligibility filtering or error suppression.
+        if distribution_rule == orchestration_runtime::compiled_plan::LlmDistributionRule::None {
+            if let Some(owner) = self.session_provider_owner(runtime, node_id).await? {
+                let owner = Uuid::parse_str(&owner)
+                    .map_err(|_| ControlPlaneError::InvalidInput("provider_instance_id"))?;
+                let instance = self
+                    .repository
+                    .get_instance(self.workspace_id, owner)
+                    .await?
+                    .ok_or(ControlPlaneError::NotFound("model_provider_instance"))?;
+                let selected_runtime = resolved_main_runtime(
+                    runtime,
+                    &instance,
+                    main_instance.as_ref().map(|main| main.revision),
+                    distribution_rule.clone(),
+                );
+                // Resolve the precise instance first so status/plugin errors keep their original cause.
+                let route = self.resolve_registered_llm_route(&selected_runtime).await?;
+                if !main_candidate_matches(&instance, runtime, &excluded) {
+                    return Err(
+                        ControlPlaneError::Conflict("provider_session_owner_ineligible").into(),
+                    );
+                }
+                return Ok(orchestration_runtime::execution_engine::ResolvedMainLlmRouting {
+                    candidates: vec![orchestration_runtime::execution_engine::ResolvedMainLlmRouteCandidate {
+                        runtime: selected_runtime, route,
+                    }],
+                    distribution_rule,
+                    distribution_key: None,
+                });
+            }
+        }
         let positions = routing_policy
             .map(|policy| {
                 policy

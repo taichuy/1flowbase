@@ -91,6 +91,7 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
+        provider_session_scope: None,
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: Some(
@@ -239,6 +240,7 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
+        provider_session_scope: None,
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,

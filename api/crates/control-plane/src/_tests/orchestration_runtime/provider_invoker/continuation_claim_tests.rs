@@ -158,6 +158,7 @@ fn issue_1743_invoker(
         active_node_run_id: None,
         api_node_id: None,
         provider_install_root: None,
+        provider_session_scope: None,
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,

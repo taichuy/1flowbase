@@ -48,6 +48,7 @@ struct InMemoryOrchestrationRuntimeState {
     assignments_by_workspace: HashMap<Uuid, Vec<domain::PluginAssignmentRecord>>,
     node_contributions_by_workspace: HashMap<Uuid, Vec<domain::NodeContributionRegistryEntry>>,
     instances_by_id: HashMap<Uuid, domain::ModelProviderInstanceRecord>,
+    provider_session_bindings: HashMap<(Uuid, String), Uuid>,
     caches_by_instance_id: HashMap<Uuid, domain::ModelProviderCatalogCacheRecord>,
     catalog_entries_by_instance_id: HashMap<Uuid, Vec<domain::ModelProviderCatalogEntryRecord>>,
     model_failover_attempts_by_flow_run_id:

@@ -378,6 +378,25 @@ fn claude_code_session_header_fills_missing_metadata_session_id() {
         request["metadata"]["session_id"],
         json!("header-session-123")
     );
+    let mut translated = translate_messages_request_with_context_window(request, None)
+        .unwrap()
+        .request;
+    let workspace = Uuid::now_v7();
+    let principal = interface_runtime::ApplicationPrincipal::new(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        workspace,
+        domain::ActorContext::scoped(Uuid::now_v7(), workspace, "member", []),
+    )
+    .unwrap();
+    super::super::provider_session::bind_messages(&mut translated, &principal);
+    let mapped = control_plane::application_public_api::native::NativeInputMapper::map(
+        &translated, &control_plane::application_public_api::mapping::ApplicationApiMappingConfig::default_native()).unwrap();
+    assert!(mapped
+        .node_input_payload
+        .pointer("/sys/provider_session_identity")
+        .and_then(Value::as_str)
+        .is_some());
 }
 
 #[test]

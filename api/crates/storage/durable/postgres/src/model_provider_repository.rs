@@ -27,6 +27,7 @@ use crate::{
 };
 
 mod row_mappers;
+mod session_affinity;
 
 use crate::secret_crypto::{decrypt_secret_json, encrypt_secret_json};
 use row_mappers::{
@@ -75,6 +76,29 @@ async fn list_main_model_routing_policies(
 
 #[async_trait]
 impl ModelProviderRepository for PgControlPlaneStore {
+    async fn get_model_provider_session_binding(
+        &self,
+        workspace_id: Uuid,
+        scope_digest: &str,
+    ) -> Result<Option<Uuid>> {
+        session_affinity::get_binding(self.pool(), workspace_id, scope_digest).await
+    }
+
+    async fn bind_model_provider_session(
+        &self,
+        workspace_id: Uuid,
+        scope_digest: &str,
+        provider_instance_id: Uuid,
+    ) -> Result<Uuid> {
+        session_affinity::bind_session(
+            self.pool(),
+            workspace_id,
+            scope_digest,
+            provider_instance_id,
+        )
+        .await
+    }
+
     async fn create_instance(
         &self,
         input: &CreateModelProviderInstanceInput,

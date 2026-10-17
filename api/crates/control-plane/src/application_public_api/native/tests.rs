@@ -287,3 +287,41 @@ fn mapper_rebuilds_history_without_unknown_raw_fields() {
 
 #[path = "_tests/tool_mounting.rs"]
 mod tool_mounting;
+
+#[test]
+fn provider_session_identity_cannot_be_overwritten_by_public_inputs_or_mapping() {
+    let mut request: NativeRunRequest = serde_json::from_value(json!({
+        "query": "hello", "inputs": {"provider_session_identity": "client-forged"}
+    }))
+    .unwrap();
+    request
+        .metadata
+        .set_provider_session_identity(Some("host-sealed".into()));
+    let mut mapping = ApplicationApiMappingConfig::default_native();
+    let mapped = NativeInputMapper::map(&request, &mapping).unwrap();
+    assert_eq!(
+        mapped.node_input_payload["sys"]["provider_session_identity"],
+        json!("host-sealed")
+    );
+    assert!(mapped.metadata.get("provider_session_identity").is_none());
+    mapping.input.inputs_target = Some("sys".into());
+    assert_eq!(
+        NativeInputMapper::map(&request, &mapping).unwrap_err(),
+        NativeInputMappingError::SelectorCollision {
+            selector: "sys.provider_session_identity".into()
+        }
+    );
+    request.metadata.set_provider_session_identity(None);
+    assert_eq!(
+        NativeInputMapper::map(&request, &mapping).unwrap_err(),
+        NativeInputMappingError::SelectorCollision {
+            selector: "sys.provider_session_identity".into()
+        }
+    );
+    let mapped =
+        NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native()).unwrap();
+    assert!(mapped
+        .node_input_payload
+        .pointer("/sys/provider_session_identity")
+        .is_none());
+}
