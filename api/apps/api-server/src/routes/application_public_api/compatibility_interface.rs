@@ -322,12 +322,6 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
             let operation = provider_transport
                 .as_ref()
                 .map(|transport| transport.operation);
-            validate_provider_transport_size(
-                provider_transport
-                    .as_ref()
-                    .and_then(|transport| transport.payload.as_ref()),
-            )
-            .map_err(CompatibilityBlockingTargetError)?;
             let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
                 .with_last_used_cache(dependencies.native.cache_store.clone())
                 .create_native_run_for_actor(actor.clone(), request, protocol)
@@ -401,12 +395,6 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     let operation = provider_transport
                         .as_ref()
                         .map(|transport| transport.operation);
-                    validate_provider_transport_size(
-                        provider_transport
-                            .as_ref()
-                            .and_then(|transport| transport.payload.as_ref()),
-                    )
-                    .map_err(CompatibilityBlockingTargetError)?;
                     let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
                         .with_last_used_cache(dependencies.native.cache_store.clone())
                         .create_native_run_for_actor(actor.clone(), request, protocol)
@@ -1249,19 +1237,6 @@ fn invocation_error(error: interface_runtime::InterfaceInvocationError) -> Nativ
     }
 }
 
-fn validate_provider_transport_size(
-    payload: Option<&ProviderTransportPayload>,
-) -> Result<(), NativeApiError> {
-    if payload.is_some_and(|payload| payload.size_bytes() > crate::RESPONSES_REQUEST_MAX_BYTES) {
-        return Err(NativeApiError::new(
-            axum::http::StatusCode::PAYLOAD_TOO_LARGE,
-            "provider_transport_payload_too_large",
-            "Responses request exceeds the maximum size",
-        ));
-    }
-    Ok(())
-}
-
 async fn stage_provider_transport(
     store: &dyn ProviderTransportStore,
     flow_run_id: uuid::Uuid,
@@ -1274,7 +1249,6 @@ async fn stage_provider_transport(
     let Some(payload) = payload else {
         return Ok(None);
     };
-    validate_provider_transport_size(Some(&payload))?;
     let payload_bytes = payload.size_bytes();
     let slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
     store.put(slot, payload).await.map_err(|error| {

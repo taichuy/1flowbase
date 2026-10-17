@@ -33,7 +33,12 @@ impl<S: Send + Sync> FromRequestParts<S> for WebSocketUpgrade {
         // Its successful extractor consumes the OnUpgrade extension; retain a handle
         // before validation, without starting another reader of that connection.
         let upgrade = parts.extensions.get::<hyper::upgrade::OnUpgrade>().cloned();
-        let validated = AxumUpgrade::from_request_parts(parts, state).await?;
+        // Axum's extended-CONNECT path has usize-only setters. Use the type's
+        // natural bound so it does not impose a separate Responses size policy.
+        let validated = AxumUpgrade::from_request_parts(parts, state)
+            .await?
+            .max_message_size(usize::MAX)
+            .max_frame_size(usize::MAX);
         let mut headers = HeaderMap::new();
         for name in [
             header::CONNECTION,
@@ -47,6 +52,8 @@ impl<S: Send + Sync> FromRequestParts<S> for WebSocketUpgrade {
             }
         }
         let mut config = WebSocketConfig::default();
+        config.max_message_size = None;
+        config.max_frame_size = None;
         config.extensions.permessage_deflate = Some(DeflateConfig::default());
         Ok(Self {
             validated,
@@ -74,18 +81,6 @@ impl Callback for CaptureHandshake<'_> {
 }
 
 impl WebSocketUpgrade {
-    pub(crate) fn max_message_size(mut self, size: usize) -> Self {
-        self.config.max_message_size = Some(size);
-        self.validated = self.validated.max_message_size(size);
-        self
-    }
-
-    pub(crate) fn max_frame_size(mut self, size: usize) -> Self {
-        self.config.max_frame_size = Some(size);
-        self.validated = self.validated.max_frame_size(size);
-        self
-    }
-
     pub(crate) async fn on_upgrade<C, Fut>(self, callback: C) -> Response
     where
         C: FnOnce(Socket) -> Fut + Send + 'static,

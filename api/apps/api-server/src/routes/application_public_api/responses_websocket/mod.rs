@@ -60,8 +60,6 @@ pub(crate) async fn upgrade(
     };
 
     Ok(websocket
-        .max_message_size(crate::RESPONSES_REQUEST_MAX_BYTES)
-        .max_frame_size(crate::RESPONSES_REQUEST_MAX_BYTES)
         .on_upgrade(move |socket| async move {
             actor::run_connection(socket, state, Arc::new(authorization)).await;
         })

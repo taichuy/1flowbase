@@ -27,7 +27,6 @@ const PROVIDER_REQUEST_LOG_QUEUE: &str = "provider-request-logs";
 const PROVIDER_REQUEST_LOG_QUEUE_CAPACITY: usize = 10_000;
 const LOCAL_CACHE_MAX_CAPACITY: u64 = 10_000;
 const PROVIDER_TRANSPORT_RETENTION: Duration = Duration::minutes(15);
-const PROVIDER_TRANSPORT_MAX_PAYLOAD_BYTES: usize = crate::RESPONSES_REQUEST_MAX_BYTES;
 const LOCAL_INFRASTRUCTURE_CONTRACTS: &[&str] = &[
     "storage-ephemeral",
     "session-store",
@@ -154,7 +153,6 @@ fn install_legacy_local_infrastructure_services(registry: &mut HostInfrastructur
     )) as Arc<dyn SessionStore>);
     registry.set_provider_transport_store(Arc::new(MemoryProviderTransportStore::new(
         PROVIDER_TRANSPORT_RETENTION,
-        PROVIDER_TRANSPORT_MAX_PAYLOAD_BYTES,
     )) as Arc<dyn ProviderTransportStore>);
     registry.set_distributed_lock(
         Arc::new(MemoryDistributedLock::new(LOCK_NAMESPACE)) as Arc<dyn DistributedLock>

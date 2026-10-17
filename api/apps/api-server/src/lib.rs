@@ -89,9 +89,6 @@ use crate::{
 };
 
 pub const DEFAULT_API_SERVER_ADDR: &str = "0.0.0.0:7800";
-/// One bounded Responses turn across HTTP, WebSocket, and transient provider handoff.
-/// The diagnostic sidecar retains its own budget; durable capsules preserve admitted context/history.
-pub(crate) const RESPONSES_REQUEST_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 /// API composition root for state-free runtime MCP tool invokers.
 pub(crate) async fn runtime_internal_tool_invoker_factory(

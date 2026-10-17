@@ -29,7 +29,7 @@ fn local_infra_host_provides_required_defaults() {
 }
 
 #[tokio::test]
-async fn responses_transport_handoff_accepts_a_valid_payload_larger_than_two_mebibytes() {
+async fn responses_transport_handoff_accepts_a_valid_payload_larger_than_sixteen_mebibytes() {
     use control_plane::ports::{ProviderTransportPayload, ProviderTransportSlotId};
 
     let registry = crate::host_infrastructure::build_local_host_infrastructure();
@@ -37,10 +37,10 @@ async fn responses_transport_handoff_accepts_a_valid_payload_larger_than_two_meb
     let slot = ProviderTransportSlotId::for_flow_run(uuid::Uuid::now_v7());
     let payload = ProviderTransportPayload::openai_responses(serde_json::json!({
         "model": "gpt-test",
-        "input": "x".repeat(2 * 1024 * 1024 + 1024)
+        "input": "x".repeat(16 * 1024 * 1024 + 1024)
     }))
     .unwrap();
-    assert!(payload.size_bytes() > 2 * 1024 * 1024);
+    assert!(payload.size_bytes() > 16 * 1024 * 1024);
 
     store.put(slot, payload.clone()).await.unwrap();
     assert_eq!(store.consume(slot).await.unwrap(), payload);

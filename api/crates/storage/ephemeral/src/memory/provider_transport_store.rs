@@ -20,7 +20,6 @@ const MAX_PROTOCOL_CONTEXT_SLOTS_PER_FLOW_RUN: usize = 16;
 #[derive(Clone)]
 pub struct MemoryProviderTransportStore {
     retention: Duration,
-    max_payload_bytes: usize,
     entries: Arc<RwLock<HashMap<ProviderTransportSlotId, TransportEntry>>>,
     protocol_contexts: Arc<RwLock<HashMap<ProviderProtocolContextSlotId, ProtocolContextEntry>>>,
     continuations: Arc<RwLock<HashMap<ProviderContinuationSlotId, ContinuationEntry>>>,
@@ -47,11 +46,10 @@ struct ProtocolContextEntry {
 }
 
 impl MemoryProviderTransportStore {
-    pub fn new(retention: Duration, max_payload_bytes: usize) -> Self {
+    pub fn new(retention: Duration) -> Self {
         let (maintenance_revision, _) = watch::channel(0);
         Self {
             retention,
-            max_payload_bytes,
             entries: Arc::new(RwLock::new(HashMap::new())),
             protocol_contexts: Arc::new(RwLock::new(HashMap::new())),
             continuations: Arc::new(RwLock::new(HashMap::new())),
@@ -185,7 +183,7 @@ impl MemoryProviderTransportStore {
 
     fn validate_policy(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.retention > Duration::ZERO && self.max_payload_bytes > 0,
+            self.retention > Duration::ZERO,
             "provider_transport_policy_invalid"
         );
         Ok(())
@@ -212,10 +210,6 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         payload: ProviderTransportPayload,
     ) -> anyhow::Result<()> {
         self.validate_policy()?;
-        anyhow::ensure!(
-            payload.size_bytes() <= self.max_payload_bytes,
-            "provider_transport_payload_too_large"
-        );
         self.entries.write().await.insert(
             slot_id,
             TransportEntry {
@@ -262,10 +256,6 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         value: ProviderProtocolContextValue,
     ) -> anyhow::Result<()> {
         self.validate_policy()?;
-        anyhow::ensure!(
-            value.size_bytes() <= self.max_payload_bytes,
-            "ephemeral_protocol_context_too_large"
-        );
         let mut contexts = self.protocol_contexts.write().await;
         let flow_run_id = slot_id.flow_run_id();
         let owned_slot_count = contexts

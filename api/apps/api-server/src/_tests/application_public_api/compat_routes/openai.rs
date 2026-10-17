@@ -137,12 +137,12 @@ fn openai_responses_accepts_blocking_text_input() {
 }
 
 #[test]
-fn responses_http_admits_a_request_larger_than_two_mebibytes_for_protocol_validation() {
+fn responses_http_admits_a_request_larger_than_sixteen_mebibytes_for_protocol_validation() {
     run_compat_route_test(|| async {
         let app = test_app().await;
         let token = setup_published_app(&app, "Large Responses Request App").await;
         let mut body = responses_body(false);
-        body["input"] = json!("x".repeat(2 * 1024 * 1024 + 1024));
+        body["input"] = json!("x".repeat(16 * 1024 * 1024 + 1024));
         body["model"] = Value::Null;
 
         let response = post_json(

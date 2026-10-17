@@ -102,14 +102,13 @@ async fn roundtrip(compression: bool, declined_offer: bool) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let text = image_request();
-    let limit = text.len() + 1024;
     let expected = text.clone();
     let (observed_tx, observed_rx) = tokio::sync::oneshot::channel();
     let observed_tx = Arc::new(Mutex::new(Some(observed_tx)));
     let router = Router::new().route("/ws", get(move |upgrade: WebSocketUpgrade| {
         let expected = expected.clone();
         let observed_tx = observed_tx.clone();
-        async move { upgrade.max_message_size(limit).max_frame_size(limit).on_upgrade(move |mut socket| async move {
+        async move { upgrade.on_upgrade(move |mut socket| async move {
             // Two complete messages exercise takeover state as well as the first frame.
             for _ in 0..2 {
                 let message = socket.next().await.unwrap().unwrap();
@@ -233,62 +232,62 @@ async fn unsupported_deflate_offer_is_declined_without_breaking_plain_messages()
 }
 
 #[tokio::test]
-async fn existing_message_limit_applies_after_decompression() {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let (observed_tx, observed_rx) = tokio::sync::oneshot::channel();
-        let observed_tx = Arc::new(Mutex::new(Some(observed_tx)));
-        let router = Router::new().route(
-            "/ws",
-            get(move |upgrade: WebSocketUpgrade| {
-                let observed_tx = observed_tx.clone();
-                async move {
-                    upgrade
-                        .max_message_size(1024)
-                        .max_frame_size(1024)
-                        .on_upgrade(move |mut socket| async move {
-                            let result = socket.next().await.unwrap();
-                            observed_tx
-                                .lock()
-                                .unwrap()
-                                .take()
-                                .unwrap()
-                                .send(result.is_err())
-                                .unwrap();
-                        })
-                        .await
-                }
-            }),
-        );
-        let _server = Server(tokio::spawn(async move {
-            axum::serve(listener, router).await.unwrap()
-        }));
-        let trace = Trace::default();
-        let io = TracedStream {
-            stream: TcpStream::connect(address).await.unwrap(),
-            trace: trace.clone(),
-        };
-        let mut config = WebSocketConfig::default();
-        config.extensions.permessage_deflate = Some(DeflateConfig::default());
-        let (mut client, response) =
-            client_async_with_config(format!("ws://{address}/ws"), io, Some(config))
-                .await
-                .unwrap();
-        assert!(response.headers().contains_key("sec-websocket-extensions"));
-        trace.written.lock().unwrap().clear();
-        client
-            .send(Message::Text("x".repeat(16 * 1024).into()))
-            .await
-            .unwrap();
-        assert!(
-            trace.written.lock().unwrap().len() < 1024,
-            "compressed frame fits the frame limit"
-        );
-        assert!(
-            observed_rx.await.unwrap(),
-            "decompressed oversized message must not reach the consumer"
-        );
+async fn responses_accepts_plain_and_compressed_messages_larger_than_sixteen_mebibytes() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        for compression in [false, true] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let text = "x".repeat(16 * 1024 * 1024 + 1024);
+            let expected = text.clone();
+            let (observed_tx, observed_rx) = tokio::sync::oneshot::channel();
+            let observed_tx = Arc::new(Mutex::new(Some(observed_tx)));
+            let router = Router::new().route(
+                "/ws",
+                get(move |upgrade: WebSocketUpgrade| {
+                    let observed_tx = observed_tx.clone();
+                    let expected = expected.clone();
+                    async move {
+                        upgrade
+                            .on_upgrade(move |mut socket| async move {
+                                let result = socket.next().await.unwrap();
+                                let intact = matches!(
+                                    result,
+                                    Ok(ServerMessage::Text(text)) if text.as_str() == expected
+                                );
+                                observed_tx
+                                    .lock()
+                                    .unwrap()
+                                    .take()
+                                    .unwrap()
+                                    .send(intact)
+                                    .unwrap();
+                            })
+                            .await
+                    }
+                }),
+            );
+            let _server = Server(tokio::spawn(async move {
+                axum::serve(listener, router).await.unwrap()
+            }));
+            let io = TcpStream::connect(address).await.unwrap();
+            let mut config = WebSocketConfig::default();
+            if compression {
+                config.extensions.permessage_deflate = Some(DeflateConfig::default());
+            }
+            let (mut client, response) =
+                client_async_with_config(format!("ws://{address}/ws"), io, Some(config))
+                    .await
+                    .unwrap();
+            assert_eq!(
+                response.headers().contains_key("sec-websocket-extensions"),
+                compression
+            );
+            client.send(Message::Text(text.into())).await.unwrap();
+            assert!(
+                observed_rx.await.unwrap(),
+                "the complete message must reach the consumer"
+            );
+        }
     })
     .await
     .unwrap();

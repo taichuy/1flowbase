@@ -80,8 +80,7 @@ pub(crate) fn compatible_route_assembly(
         .route(
             "/responses",
             crate::external_route_assembly::post(
-                openai::create_response
-                    .layer(DefaultBodyLimit::max(crate::RESPONSES_REQUEST_MAX_BYTES)),
+                openai::create_response.layer(DefaultBodyLimit::disable()),
             ),
         )
         .route(
@@ -94,16 +93,13 @@ pub(crate) fn compatible_route_assembly(
         )
         .route(
             "/v1/responses",
-            crate::external_route_assembly::get(responses_websocket::upgrade).post(
-                openai::create_response
-                    .layer(DefaultBodyLimit::max(crate::RESPONSES_REQUEST_MAX_BYTES)),
-            ),
+            crate::external_route_assembly::get(responses_websocket::upgrade)
+                .post(openai::create_response.layer(DefaultBodyLimit::disable())),
         )
         .route(
             "/v1/responses/compact",
             crate::external_route_assembly::post(
-                openai::create_response_compact
-                    .layer(DefaultBodyLimit::max(crate::RESPONSES_REQUEST_MAX_BYTES)),
+                openai::create_response_compact.layer(DefaultBodyLimit::disable()),
             ),
         )
         .route(

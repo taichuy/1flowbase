@@ -282,7 +282,6 @@ pub(super) async fn seed_runtime_consumer(
         "fixture-key",
         Arc::new(storage_ephemeral::MemoryProviderTransportStore::new(
             Duration::minutes(5),
-            1024 * 1024,
         )),
         false,
     )

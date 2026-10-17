@@ -36,7 +36,7 @@ fn responses_continuation() -> ProviderContinuation {
 
 #[tokio::test]
 async fn continuation_claim_snapshot_survives_reclaim_and_current_replacement() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let flow = Uuid::now_v7();
     let claim = Uuid::now_v7();
     let current = ProviderContinuationSlotId::for_flow_run(flow);
@@ -70,7 +70,7 @@ async fn continuation_claim_snapshot_survives_reclaim_and_current_replacement() 
 
 #[tokio::test]
 async fn continuation_claim_snapshot_concurrent_claims_capture_current_once() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let flow = Uuid::now_v7();
     store
         .put_continuation(
@@ -105,7 +105,7 @@ async fn continuation_claim_snapshot_concurrent_claims_capture_current_once() {
 
 #[tokio::test]
 async fn continuation_claim_snapshot_concurrent_same_claim_reuses_original() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let flow = Uuid::now_v7();
     let claim = Uuid::now_v7();
     store
@@ -151,7 +151,7 @@ fn d4_ac_027_provider_transport_digest_is_canonical_across_object_key_order() {
 
 #[tokio::test]
 async fn d4_ac_016_provider_transport_store_round_trips_opaque_wire_payload() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
     let payload = responses_payload();
 
@@ -162,7 +162,7 @@ async fn d4_ac_016_provider_transport_store_round_trips_opaque_wire_payload() {
 
 #[tokio::test]
 async fn d4_ac_027_provider_transport_store_deletes_payload_after_handoff() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
     store.put(slot, responses_payload()).await.unwrap();
 
@@ -172,7 +172,7 @@ async fn d4_ac_027_provider_transport_store_deletes_payload_after_handoff() {
 
 #[tokio::test]
 async fn d4_ac_027_provider_transport_store_expires_payload_without_durable_fallback() {
-    let store = MemoryProviderTransportStore::new(Duration::milliseconds(20), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::milliseconds(20));
     let slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
     store.put(slot, responses_payload()).await.unwrap();
 
@@ -182,24 +182,24 @@ async fn d4_ac_027_provider_transport_store_expires_payload_without_durable_fall
 }
 
 #[tokio::test]
-async fn d4_ac_027_provider_transport_store_rejects_payload_over_its_bound() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 32);
+async fn provider_transport_store_preserves_payload_larger_than_sixteen_mebibytes() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
-    let error = store
-        .put(slot, responses_payload())
-        .await
-        .expect_err("oversized wire payload must be rejected");
+    let payload = ProviderTransportPayload::openai_responses(json!({
+        "input": "x".repeat(16 * 1024 * 1024 + 1024)
+    }))
+    .unwrap();
 
-    assert!(error
-        .to_string()
-        .contains("provider_transport_payload_too_large"));
-    assert_eq!(store.get(slot).await.unwrap(), None);
+    store.put(slot, payload.clone()).await.unwrap();
+
+    assert_eq!(store.consume(slot).await.unwrap(), payload);
+    assert!(store.get(slot).await.unwrap().is_none());
 }
 
 #[tokio::test]
 async fn wp_d1c_protocol_context_round_trips_only_through_its_ephemeral_locator() {
     const CANARY: &str = "WP-D1C-RAW-CONTEXT-CANARY";
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let flow_run_id = Uuid::now_v7();
     let value = protocol_context_value(CANARY);
     let locator = value.original_locator();
@@ -228,21 +228,18 @@ async fn wp_d1c_protocol_context_round_trips_only_through_its_ephemeral_locator(
 }
 
 #[tokio::test]
-async fn wp_d1c_protocol_context_slot_is_size_bounded_and_ttl_bounded() {
+async fn protocol_context_preserves_large_values_with_slot_and_ttl_lifecycle() {
     let flow_run_id = Uuid::now_v7();
-    let oversized_store = MemoryProviderTransportStore::new(Duration::minutes(5), 16);
-    let oversized_value = protocol_context_value("oversized-context");
-    let oversized_slot = ProviderProtocolContextSlotId::for_original_flow_run(flow_run_id);
-    assert_eq!(
-        oversized_store
-            .put_protocol_context(oversized_slot, oversized_value)
-            .await
-            .unwrap_err()
-            .to_string(),
-        "ephemeral_protocol_context_too_large"
-    );
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
+    let value = protocol_context_value(&"x".repeat(16 * 1024 * 1024 + 1024));
+    let slot = ProviderProtocolContextSlotId::for_original_flow_run(flow_run_id);
+    store
+        .put_protocol_context(slot, value.clone())
+        .await
+        .unwrap();
+    assert_eq!(store.get_protocol_context(slot).await.unwrap(), Some(value));
 
-    let slot_bounded_store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let slot_bounded_store = MemoryProviderTransportStore::new(Duration::minutes(5));
     for index in 0..16 {
         let value = ProviderProtocolContextValue::new(json!({"selected": index})).unwrap();
         let locator = value.derived_locator();
@@ -268,7 +265,7 @@ async fn wp_d1c_protocol_context_slot_is_size_bounded_and_ttl_bounded() {
         "ephemeral_protocol_context_slot_limit_exceeded"
     );
 
-    let expiring_store = MemoryProviderTransportStore::new(Duration::milliseconds(20), 64 * 1024);
+    let expiring_store = MemoryProviderTransportStore::new(Duration::milliseconds(20));
     let value = protocol_context_value("expiring-context");
     let locator = value.derived_locator();
     let slot = ProviderProtocolContextSlotId::for_locator(flow_run_id, &locator);
@@ -286,7 +283,7 @@ async fn wp_d1c_protocol_context_slot_is_size_bounded_and_ttl_bounded() {
 
 #[tokio::test]
 async fn d3_p3_provider_continuation_restores_opaque_id_and_affinity_only_in_ephemeral_memory() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let previous_run_id = Uuid::now_v7();
     let slot = ProviderContinuationSlotId::for_flow_run(previous_run_id);
     let continuation = responses_continuation();
@@ -316,7 +313,7 @@ async fn d3_p3_provider_continuation_restores_opaque_id_and_affinity_only_in_eph
 
 #[tokio::test]
 async fn issue_1743_ttl_and_terminal_cleanup_preserve_flow_owned_lifecycle() {
-    let terminal_store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let terminal_store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let terminal_flow_run_id = Uuid::now_v7();
     let terminal_slot = ProviderContinuationSlotId::for_flow_run(terminal_flow_run_id);
     terminal_store
@@ -338,7 +335,7 @@ async fn issue_1743_ttl_and_terminal_cleanup_preserve_flow_owned_lifecycle() {
         "ephemeral_continuation_missing"
     );
 
-    let expiring_store = MemoryProviderTransportStore::new(Duration::milliseconds(20), 64 * 1024);
+    let expiring_store = MemoryProviderTransportStore::new(Duration::milliseconds(20));
     let expiring_slot = ProviderContinuationSlotId::for_flow_run(Uuid::now_v7());
     expiring_store
         .put_continuation(expiring_slot, responses_continuation())
@@ -358,7 +355,7 @@ async fn issue_1743_ttl_and_terminal_cleanup_preserve_flow_owned_lifecycle() {
 
 #[tokio::test]
 async fn wp12_sealed_request_and_continuation_are_consumed_once() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let flow_run_id = Uuid::now_v7();
     let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
     let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
@@ -387,7 +384,7 @@ async fn wp12_sealed_request_and_continuation_are_consumed_once() {
 
 #[tokio::test]
 async fn wp12_consumed_request_remains_owned_by_the_invocation_for_retries() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
     store.put(slot, responses_payload()).await.unwrap();
 
@@ -400,7 +397,7 @@ async fn wp12_consumed_request_remains_owned_by_the_invocation_for_retries() {
 
 #[tokio::test]
 async fn wp12_terminal_or_confirmed_no_retry_clears_all_flow_run_secrets() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let flow_run_id = Uuid::now_v7();
     let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
     let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
@@ -432,7 +429,7 @@ async fn wp12_terminal_or_confirmed_no_retry_clears_all_flow_run_secrets() {
 
 #[tokio::test]
 async fn wp_d1c_terminal_cleanup_removes_only_the_owned_protocol_context_lineage() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let terminal_run_id = Uuid::now_v7();
     let other_run_id = Uuid::now_v7();
     let original = protocol_context_value("terminal-original");
@@ -487,7 +484,7 @@ async fn wp_d1c_terminal_cleanup_removes_only_the_owned_protocol_context_lineage
 
 #[tokio::test]
 async fn wp12_expiry_eagerly_clears_request_and_continuation() {
-    let store = MemoryProviderTransportStore::new(Duration::milliseconds(20), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::milliseconds(20));
     let flow_run_id = Uuid::now_v7();
     let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
     let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
@@ -521,7 +518,7 @@ async fn wp12_expiry_eagerly_clears_request_and_continuation() {
 
 #[tokio::test]
 async fn expired_slots_release_storage_without_another_lookup() {
-    let store = MemoryProviderTransportStore::new(Duration::milliseconds(40), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::milliseconds(40));
     let flow_run_id = Uuid::now_v7();
     let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
     let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
@@ -553,7 +550,7 @@ async fn expired_slots_release_storage_without_another_lookup() {
 
 #[tokio::test]
 async fn near_zero_retention_reclaims_without_repeated_access() {
-    let store = MemoryProviderTransportStore::new(Duration::nanoseconds(1), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::nanoseconds(1));
     store
         .put(
             ProviderTransportSlotId::for_flow_run(Uuid::now_v7()),
@@ -574,7 +571,7 @@ async fn near_zero_retention_reclaims_without_repeated_access() {
 
 #[tokio::test]
 async fn expiry_maintenance_keeps_a_replaced_slot_until_its_new_deadline() {
-    let store = MemoryProviderTransportStore::new(Duration::milliseconds(500), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::milliseconds(500));
     let request_slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
     store.put(request_slot, responses_payload()).await.unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -603,7 +600,7 @@ async fn expiry_maintenance_keeps_a_replaced_slot_until_its_new_deadline() {
 
 #[tokio::test]
 async fn wp12_early_loss_is_an_explicit_failure() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let flow_run_id = Uuid::now_v7();
     let request_slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
     let continuation_slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
@@ -630,7 +627,7 @@ async fn wp12_early_loss_is_an_explicit_failure() {
 
 #[tokio::test]
 async fn wp12_sealed_body_and_token_do_not_enter_debug_or_error_text() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let request_slot = ProviderTransportSlotId::for_flow_run(Uuid::now_v7());
     let continuation_slot = ProviderContinuationSlotId::for_flow_run(Uuid::now_v7());
 
@@ -651,7 +648,7 @@ async fn wp12_sealed_body_and_token_do_not_enter_debug_or_error_text() {
 // #2036 AC-003/008: public first-round identity must not alias mutable flow continuation.
 #[tokio::test]
 async fn native_response_round_slots_survive_resume_and_are_cleared_with_owner() {
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let run = Uuid::now_v7();
     let current = ProviderContinuationSlotId::for_flow_run(run);
     let first = ProviderContinuationSlotId::for_response_round(run, run);

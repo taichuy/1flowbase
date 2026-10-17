@@ -338,7 +338,7 @@ fn issue_2062_native_callback_restores_stale_gateway_ids_before_provider_transpo
 #[tokio::test]
 async fn wp_d1c_compatible_ingress_stages_raw_protocol_context_outside_the_run_payload() {
     const CANARY: &str = "WP-D1C-INGRESS-RAW-CANARY";
-    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5));
     let mut run = blocking_run(NativeRunStatus::Queued);
     run.id = Uuid::now_v7();
     let protocol_context = ProtocolContextEnvelope {
