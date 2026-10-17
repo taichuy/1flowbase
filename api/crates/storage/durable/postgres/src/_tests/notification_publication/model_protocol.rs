@@ -109,10 +109,11 @@ async fn model_protocol_one_preserves_exact_original_topic_and_fact_body() {
     .await
     .unwrap();
     assert_eq!(receipt, Some(sequence));
-    let tombstone:(String,Option<String>,Vec<u8>)=sqlx::query_as("select disposition,payload,payload_digest from legacy_event_recovery_ledger where sequence=$1").bind(sequence).fetch_one(store.pool()).await.unwrap();
-    assert_eq!(tombstone.0, "taken");
-    assert!(tombstone.1.is_none());
-    assert_eq!(tombstone.2.len(), 32);
+    let snapshot:(String,Option<String>,Vec<u8>)=sqlx::query_as("select disposition,payload,payload_digest from legacy_event_recovery_ledger where sequence=$1").bind(sequence).fetch_one(store.pool()).await.unwrap();
+    // Publication transfers recovery responsibility; only explicit take releases the body.
+    assert_eq!(snapshot.0, "pending");
+    assert_eq!(snapshot.1.as_deref(), Some(original_payload.as_str()));
+    assert_eq!(snapshot.2.len(), 32);
 
     let after: Value = sqlx::query_scalar(
         "select to_jsonb(t)-'legacy_handoff_sequence' from lifecycle_outbox t where event_id=$1",
