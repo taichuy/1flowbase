@@ -248,8 +248,9 @@ impl OptionalNotificationPublicationPort for PgControlPlaneStore {
 
 /// The original money transaction owns this publication. Optional-zero produces
 /// no transport row; the account/session/ledger already hold monetary facts.
-/// Rejections have no monetary ledger, so retain their original source fact with
-/// an explicit publication timestamp even when no asynchronous target exists.
+/// Rejections have no monetary ledger, so always retain their original source
+/// fact independently of the temporary notification transport. Its timestamp
+/// records that no legacy handoff is required, never a subscriber business ACK.
 pub(crate) async fn record_credit_notification_in_transaction(
     store: &PgControlPlaneStore,
     tx: &mut Transaction<'_, Postgres>,
@@ -278,7 +279,7 @@ pub(crate) async fn record_credit_notification_in_transaction(
             payload: payload.clone(),
         },
     );
-    let (outcome, lifetime) = store
+    let (_, lifetime) = store
         .publish_optional_notification_in_transaction(
             tx,
             &PublishOptionalNotificationInput {
@@ -294,9 +295,7 @@ pub(crate) async fn record_credit_notification_in_transaction(
     if let Some(lifetime) = lifetime {
         lifetimes.push(lifetime);
     }
-    if outcome == OptionalNotificationPublicationOutcome::NoTargets
-        && event_type == CreditNotificationEventType::CreditCommandRejected
-    {
+    if event_type == CreditNotificationEventType::CreditCommandRejected {
         sqlx::query("insert into credit_event_outbox(event_id,workspace_id,account_id,event_type,payload,created_at,published_at) values($1,$2,$3,'CreditCommandRejected',$4,$5,$5)")
             .bind(source_event_id).bind(workspace_id).bind(account_id).bind(payload).bind(occurred_at)
             .execute(&mut **tx).await?;

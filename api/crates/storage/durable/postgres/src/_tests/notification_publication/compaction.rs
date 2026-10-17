@@ -4,6 +4,85 @@ use control_plane_contracts::ports::{
 };
 use time::Duration;
 
+#[tokio::test]
+async fn rejected_command_fact_survives_zero_targets_and_completed_target_transport() {
+    use control_plane_contracts::ports::{BillingRepository, CreditEventHandoff};
+    for targeted in [false, true] {
+        let store = fixture()
+            .await
+            .with_lifecycle_publication_catalog(if targeted {
+                catalog()
+            } else {
+                LifecyclePublicationCatalog::default()
+            });
+        let tenant = store.upsert_root_tenant().await.unwrap();
+        let workspace = Uuid::now_v7();
+        sqlx::query(
+            "insert into workspaces(id,tenant_id,name) values($1,$2,'Rejected fact fixture')",
+        )
+        .bind(workspace)
+        .bind(tenant.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        store
+            .record_credit_command_rejected(
+                workspace,
+                "fixture.rejected-plugin",
+                "charge",
+                "保留拒绝原因",
+                "reject:targets",
+            )
+            .await
+            .unwrap();
+        let original:(Uuid,serde_json::Value,OffsetDateTime,Option<OffsetDateTime>) = sqlx::query_as(
+            "select event_id,payload,created_at,published_at from credit_event_outbox where workspace_id=$1 and event_type='CreditCommandRejected' and account_id is null")
+            .bind(workspace).fetch_one(store.pool()).await.unwrap();
+        assert_eq!(
+            original.1,
+            serde_json::json!({"actor_plugin_id":"fixture.rejected-plugin","command":"charge","reason":"保留拒绝原因","idempotency_key":"reject:targets"})
+        );
+        assert_eq!(original.3, Some(original.2));
+        let facts:Vec<(Uuid,Vec<u8>)> = sqlx::query_as("select event_id,canonical_payload from lifecycle_outbox where contract_id='credit.integration_notification'")
+            .fetch_all(store.pool()).await.unwrap();
+        assert_eq!(facts.len(), if targeted { 1 } else { 0 });
+        if let Some((event, payload)) = facts.first() {
+            let fact: AfterCommitFact<CreditNotificationFact> =
+                serde_json::from_slice(payload).unwrap();
+            assert_eq!(fact.fact_id().as_str(), original.0.to_string());
+            assert_eq!(fact.payload().payload, original.1);
+            let claims = store
+                .claim_lifecycle_facts(Uuid::now_v7(), 10, Duration::seconds(30))
+                .await
+                .unwrap();
+            assert_eq!(claims.len(), 2);
+            ack(&store, &claims[0]).await;
+            assert!(!body(&store, *event).await.0.is_empty());
+            ack(&store, &claims[1]).await;
+            let compacted = body(&store, *event).await;
+            assert!(compacted.0.is_empty());
+            assert_eq!(compacted.1.unwrap().len(), 32);
+        }
+        let retained:(Uuid,serde_json::Value,OffsetDateTime,Option<OffsetDateTime>)=sqlx::query_as(
+            "select event_id,payload,created_at,published_at from credit_event_outbox where event_id=$1")
+            .bind(original.0).fetch_one(store.pool()).await.unwrap();
+        assert_eq!(
+            retained, original,
+            "transport completion cannot discard the independent rejected fact"
+        );
+        assert_eq!(
+            crate::PgEventBus::new(store.pool().clone())
+                .handoff_credit_events(50)
+                .await
+                .unwrap(),
+            0
+        );
+        let queue:(i64,i64,i64)=sqlx::query_as("select (select count(*) from host_event_bus_pending),(select count(*) from credit_event_handoffs),(select last_sequence from host_event_bus_counter)")
+            .fetch_one(store.pool()).await.unwrap();
+        assert_eq!(queue, (0, 0, 0));
+    }
+}
+
 async fn publish(store: &PgControlPlaneStore, input: &PublishOptionalNotificationInput) -> Uuid {
     match store.publish_optional_notification(input).await.unwrap() {
         OptionalNotificationPublicationOutcome::Enqueued {
