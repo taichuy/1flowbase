@@ -1,5 +1,5 @@
-import { createHash, webcrypto } from 'node:crypto';
-import { describe, expect, test, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createNativeReactModuleRegistry } from '@1flowbase/page-runtime/browser';
 import type { ConsolePluginSettingsCodeModule } from '@1flowbase/api-client';
 import { createFetchedNativeReactModuleRegistry } from '../registry';
@@ -42,7 +42,6 @@ const make = (
     hostRegistryFactory: createNativeReactModuleRegistry,
     fetchAsset: async (asset) =>
       bytes(asset.role === 'browser_module' ? js : css),
-    digest: async (value) => webcrypto.subtle.digest('SHA-256', value),
     createObjectURL: () => 'blob:verified',
     revokeObjectURL,
     importModule,
@@ -52,6 +51,22 @@ const make = (
 };
 
 describe('settings page fetched native modules', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('loads verified JS and CSS on HTTP origins without Web Crypto', async () => {
+    vi.stubGlobal('crypto', { subtle: undefined });
+    const loader = make();
+    try {
+      expect((await loader.registry.load(module.source)).answer).toBeTypeOf(
+        'function'
+      );
+      const assets = await loader.registry.resolveModuleAssets([module.source]);
+      expect(new TextDecoder().decode(assets[0]!.bytes)).toBe(css);
+    } finally {
+      loader.dispose();
+    }
+  });
+
   test('verified JS loads through the canonical registry and CSS uses its shadow asset path', async () => {
     const loader = make();
     expect((await loader.registry.load(module.source)).answer).toBeTypeOf(
@@ -84,6 +99,7 @@ describe('settings page fetched native modules', () => {
   test.each(['browser_module', 'shadow_style'])(
     'tampered %s prevents any module evaluation',
     async (role) => {
+      vi.stubGlobal('crypto', { subtle: undefined });
       const loader = make({
         fetchAsset: async (asset) =>
           bytes(

@@ -1,7 +1,8 @@
 import type { ConsolePluginSettingsCodeModule } from '@1flowbase/api-client';
-import type {
-  NativeReactFrontendModuleRegistration,
-  NativeReactModuleRegistry
+import {
+  sha256Bytes,
+  type NativeReactFrontendModuleRegistration,
+  type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime/browser';
 
 type Asset = ConsolePluginSettingsCodeModule['assets'][number];
@@ -12,7 +13,6 @@ export function createFetchedNativeReactModuleRegistry({
   hostRegistryFactory,
   fetchAsset,
   importModule = (url) => import(/* @vite-ignore */ url),
-  digest = (bytes) => crypto.subtle.digest('SHA-256', bytes),
   createObjectURL = (blob) => URL.createObjectURL(blob),
   revokeObjectURL = (url) => URL.revokeObjectURL(url)
 }: {
@@ -22,7 +22,6 @@ export function createFetchedNativeReactModuleRegistry({
   ) => NativeReactModuleRegistry;
   fetchAsset: (asset: Asset, signal: AbortSignal) => Promise<ArrayBuffer>;
   importModule?: (url: string) => Promise<Record<string, unknown>>;
-  digest?: (bytes: ArrayBuffer) => Promise<ArrayBuffer>;
   createObjectURL?: (blob: Blob) => string;
   revokeObjectURL?: (url: string) => void;
 }): { registry: NativeReactModuleRegistry; dispose(): void } {
@@ -38,9 +37,9 @@ export function createFetchedNativeReactModuleRegistry({
     assertCurrent();
     const bytes = await fetchAsset(asset, controller.signal);
     assertCurrent();
-    const actual = Array.from(new Uint8Array(await digest(bytes)), (byte) =>
-      byte.toString(16).padStart(2, '0')
-    ).join('');
+    // HTTP LAN/IP deployments have no Web Crypto subtle API. Use the shared
+    // byte-level primitive so integrity checks apply on every supported origin.
+    const actual = sha256Bytes(new Uint8Array(bytes));
     if (actual !== asset.sha256)
       throw new Error('Frontend module SHA-256 mismatch.');
     assertCurrent();
