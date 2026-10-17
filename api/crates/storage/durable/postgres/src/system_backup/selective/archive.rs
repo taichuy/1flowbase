@@ -9,6 +9,7 @@ use flate2::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{io::Write, path::PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
@@ -47,6 +48,8 @@ pub(super) struct SchemaDependency {
 pub(super) struct Header {
     #[serde(skip)]
     pub legacy_lifecycle_protocol: bool,
+    #[serde(skip)]
+    pub legacy_notification_digest: bool,
     pub format: String,
     pub selection: Vec<SelectiveBackupSelection>,
     pub tables: Vec<Table>,
@@ -56,8 +59,50 @@ pub(super) struct Header {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Record {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notification_receipts: Option<NotificationReceiptManifest>,
     pub table: String,
     pub row: Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct NotificationReceiptManifest {
+    pub target_count: u64,
+    pub target_identity_digest: String,
+}
+pub(super) fn hash_receipt_identity(
+    hash: &mut Sha256,
+    subscriber: &str,
+    handler: &str,
+    version: &str,
+) {
+    for value in [subscriber, handler, version] {
+        hash.update((value.len() as u64).to_be_bytes());
+        hash.update(value.as_bytes());
+    }
+}
+pub(super) fn finish_receipt_manifest(
+    target_count: u64,
+    hash: Sha256,
+) -> NotificationReceiptManifest {
+    NotificationReceiptManifest {
+        target_count,
+        target_identity_digest: hash
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    }
+}
+pub(super) fn receipt_manifest(
+    targets: &[(String, String, String)],
+) -> NotificationReceiptManifest {
+    let mut hash = Sha256::new();
+    for (subscriber, handler, version) in targets {
+        hash_receipt_identity(&mut hash, subscriber, handler, version);
+    }
+    finish_receipt_manifest(targets.len() as u64, hash)
 }
 
 /// The scratch file is private and removed on every exit, including transaction failure.
@@ -143,6 +188,14 @@ pub(super) async fn header(reader: &mut BufReader<tokio::fs::File>) -> Result<He
                 .iter()
                 .any(|c| c.name == "legacy_handoff_sequence");
             ensure!(version == receipt, "partial lifecycle publication schema");
+            let digest = table
+                .columns
+                .iter()
+                .any(|c| c.name == "notification_payload_digest");
+            ensure!(
+                version || !digest,
+                "invalid historical lifecycle publication schema"
+            );
             if !version {
                 header.legacy_lifecycle_protocol = true;
                 // Only this exact additive historical schema is supported. The normal
@@ -160,12 +213,26 @@ pub(super) async fn header(reader: &mut BufReader<tokio::fs::File>) -> Result<He
                     });
                 }
             }
+            if !digest {
+                header.legacy_notification_digest = true;
+                table.columns.push(Column {
+                    name: "notification_payload_digest".into(),
+                    sql_type: "bytea".into(),
+                    nullable: true,
+                    generated: false,
+                    generated_expression: None,
+                });
+            }
         }
     }
     Ok(header)
 }
 
-pub(super) fn normalize_publication(record: &mut Record, historical: bool) -> Result<()> {
+pub(super) fn normalize_publication(
+    record: &mut Record,
+    historical: bool,
+    historical_digest: bool,
+) -> Result<()> {
     if record.table != "lifecycle_outbox" {
         return Ok(());
     }
@@ -173,6 +240,13 @@ pub(super) fn normalize_publication(record: &mut Record, historical: bool) -> Re
         .row
         .as_object_mut()
         .context("archive row is not an object")?;
+    if !row.contains_key("notification_payload_digest") {
+        ensure!(
+            historical_digest,
+            "notification digest missing from current archive"
+        );
+        row.insert("notification_payload_digest".into(), Value::Null);
+    }
     let version = row.get("native_publication_version");
     let receipt = row.get("legacy_handoff_sequence");
     if version.is_none() && receipt.is_none() {

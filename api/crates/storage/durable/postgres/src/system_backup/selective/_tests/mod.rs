@@ -1,5 +1,6 @@
 mod fixes;
 mod native_storage;
+mod notification_compaction;
 mod notifications;
 mod oauth;
 mod plugin_credentials;

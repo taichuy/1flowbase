@@ -24,6 +24,7 @@ fn historical(bytes: &[u8]) -> Vec<u8> {
                     table["columns"].as_array_mut().unwrap().retain(|column| {
                         column["name"] != "native_publication_version"
                             && column["name"] != "legacy_handoff_sequence"
+                            && column["name"] != "notification_payload_digest"
                     });
                 }
             }
@@ -31,6 +32,7 @@ fn historical(bytes: &[u8]) -> Vec<u8> {
             let row = value["row"].as_object_mut().unwrap();
             row.remove("native_publication_version");
             row.remove("legacy_handoff_sequence");
+            row.remove("notification_payload_digest");
         }
     })
 }

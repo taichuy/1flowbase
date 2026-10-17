@@ -118,6 +118,7 @@ impl PgSelectiveBackupRepository {
         }
         let header = Header {
             legacy_lifecycle_protocol: false,
+            legacy_notification_digest: false,
             format: archive::FORMAT.into(),
             selection: selection.to_vec(),
             tables,
@@ -131,7 +132,16 @@ impl PgSelectiveBackupRepository {
             let order = table
                 .primary_key
                 .iter()
-                .map(|c| schema::quote(c))
+                .map(|c| {
+                    let quoted = schema::quote(c)?;
+                    Ok(
+                        if table.name == "lifecycle_outbox_deliveries" && c == "subscriber_id" {
+                            format!("{quoted} collate \"C\"")
+                        } else {
+                            quoted
+                        },
+                    )
+                })
                 .collect::<Result<Vec<_>>>()?
                 .join(",");
             let filter = if table.prerequisite {
@@ -139,7 +149,14 @@ impl PgSelectiveBackupRepository {
             } else {
                 ""
             };
-            let sql = format!("select to_jsonb(t) as row from {name} t{filter} order by {order}");
+            let receipt_projection = if table.name == "lifecycle_outbox" {
+                ",case when octet_length(t.canonical_payload)=0 then (select coalesce(jsonb_agg(jsonb_build_array(d.subscriber_id,d.handler_id,d.handler_version) order by d.subscriber_id collate \"C\",d.handler_id collate \"C\",d.handler_version collate \"C\"),'[]'::jsonb) from lifecycle_outbox_deliveries d where d.event_id=t.event_id) else null end as notification_receipt_targets"
+            } else {
+                ""
+            };
+            let sql = format!(
+                "select to_jsonb(t) as row{receipt_projection} from {name} t{filter} order by {order}"
+            );
             let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
             if table.prerequisite {
                 query = query.bind(identity_ids.iter().copied().collect::<Vec<_>>());
@@ -148,6 +165,19 @@ impl PgSelectiveBackupRepository {
             while let Some(row) = stream.try_next().await? {
                 encoder
                     .write(&Record {
+                        notification_receipts: if table.name == "lifecycle_outbox" {
+                            row.try_get::<Option<serde_json::Value>, _>(
+                                "notification_receipt_targets",
+                            )?
+                            .map(|value| -> Result<_> {
+                                let targets: Vec<(String, String, String)> =
+                                    serde_json::from_value(value)?;
+                                Ok(archive::receipt_manifest(&targets))
+                            })
+                            .transpose()?
+                        } else {
+                            None
+                        },
                         table: table.name.clone(),
                         row: {
                             let value = row.try_get("row")?;
@@ -340,11 +370,21 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
             let mut deferred = 0u64;
             while let Some(bytes) = archive::line(&mut reader).await? {
                 let mut record: Record = serde_json::from_slice(&bytes)?;
-                archive::normalize_publication(&mut record, header.legacy_lifecycle_protocol)?;
+                archive::normalize_publication(
+                    &mut record,
+                    header.legacy_lifecycle_protocol,
+                    header.legacy_notification_digest,
+                )?;
                 if record.table == "lifecycle_outbox" {
                     ensure!(
                         !validation::publication_conflict(&mut tx, &record.row).await?,
                         "immutable lifecycle publication conflict: lifecycle_outbox"
+                    );
+                }
+                if record.table == "lifecycle_outbox_deliveries" {
+                    ensure!(
+                        !validation::delivery_conflict(&mut tx, &record.row).await?,
+                        "immutable lifecycle target conflict: lifecycle_outbox_deliveries"
                     );
                 }
                 validation::rekey(

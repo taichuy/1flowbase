@@ -5,6 +5,7 @@ use control_plane_contracts::ports::{
     LifecycleOutboxRepository, LifecycleOutboxStatus, RecordLifecycleFactInput,
 };
 use futures_util::TryStreamExt;
+use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Row, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -21,13 +22,15 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
 ) -> Result<LifecycleOutboxRecord> {
     validate_input(input)?;
     let occurred_at = postgres_timestamp_precision(input.occurred_at)?;
+    let notification_digest = notification_digest(input);
     let inserted = sqlx::query(
         r#"
         insert into lifecycle_outbox (
             event_id, transaction_id, contract_id, contract_version,
-            canonical_payload, occurred_at, graph_fingerprint, native_publication_version
+            canonical_payload, occurred_at, graph_fingerprint, native_publication_version,
+            notification_payload_digest
         ) values ($1, $2, $3, $4, $5, $6, $7,
-            case when $3 = 'model_definition.committed' then 2 else 1 end)
+            case when $3 = 'model_definition.committed' then 2 else 1 end, $8)
         on conflict (event_id) do nothing
         "#,
     )
@@ -38,6 +41,7 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
     .bind(&input.canonical_payload)
     .bind(occurred_at)
     .bind(&input.publication.graph_fingerprint)
+    .bind(&notification_digest)
     .execute(&mut **transaction)
     .await?
     .rows_affected()
@@ -100,16 +104,41 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
     let record = find_delivery(&mut **transaction, input.event_id, &first.subscriber_id)
         .await?
         .ok_or_else(|| anyhow!("lifecycle outbox delivery was not persisted"))?;
+    let (stored_digest, all_delivered): (Option<Vec<u8>>, bool) = sqlx::query_as(
+        "select notification_payload_digest, status='delivered' and not exists(select 1 from lifecycle_outbox_deliveries where event_id=$1 and status<>'delivered') from lifecycle_outbox where event_id=$1",
+    ).bind(input.event_id).fetch_one(&mut **transaction).await?;
+    // A compacted transport retains the complete immutable identity and target receipts.
+    // A digest alone cannot authorize a changed transaction/time/graph/target publication.
+    let compacted_match = notification_digest.is_some()
+        && record.status == LifecycleOutboxStatus::Delivered
+        && all_delivered
+        && record.canonical_payload.is_empty()
+        && stored_digest == notification_digest;
+    if stored_digest.is_some() && stored_digest != notification_digest {
+        bail!("lifecycle outbox event ID conflicts with a different notification digest");
+    }
     if record.transaction_id != input.transaction_id
         || record.contract_id != input.contract_id
         || record.contract_version != input.contract_version
-        || record.canonical_payload != input.canonical_payload
+        || (record.canonical_payload != input.canonical_payload && !compacted_match)
         || record.occurred_at != occurred_at
         || record.graph_fingerprint != input.publication.graph_fingerprint
     {
         bail!("lifecycle outbox event ID conflicts with a different fact");
     }
     Ok(record)
+}
+
+fn is_optional_notification(input: &RecordLifecycleFactInput) -> bool {
+    control_plane_contracts::ports::validate_optional_notification_contract(
+        &input.contract_id,
+        &input.contract_version,
+    )
+    .is_ok()
+}
+
+fn notification_digest(input: &RecordLifecycleFactInput) -> Option<Vec<u8>> {
+    is_optional_notification(input).then(|| Sha256::digest(&input.canonical_payload).to_vec())
 }
 
 fn postgres_timestamp_precision(value: OffsetDateTime) -> Result<OffsetDateTime> {
@@ -317,7 +346,7 @@ async fn update_claim(
         return Err(LifecycleClaimLost.into());
     }
     if target_status == "delivered" {
-        sqlx::query("update lifecycle_outbox set status = 'delivered', delivered_at = now() where event_id = $1 and not exists (select 1 from lifecycle_outbox_deliveries where event_id = $1 and status <> 'delivered')").bind(event_id).execute(&mut *transaction).await?;
+        sqlx::query("update lifecycle_outbox set status = 'delivered', delivered_at = now(), canonical_payload = case when contract_version='v1' and contract_id in ('credit.integration_notification','model_definition.integration_notification') and notification_payload_digest is not null then ''::bytea else canonical_payload end where event_id = $1 and not exists (select 1 from lifecycle_outbox_deliveries where event_id = $1 and status <> 'delivered')").bind(event_id).execute(&mut *transaction).await?;
     }
     let record = find_delivery(&mut *transaction, event_id, subscriber_id)
         .await?
@@ -362,8 +391,11 @@ fn validate_input(input: &RecordLifecycleFactInput) -> Result<()> {
     if input.contract_version.is_empty() || input.contract_version.len() > MAX_CONTRACT_ID_BYTES {
         bail!("lifecycle contract version must contain 1 to {MAX_CONTRACT_ID_BYTES} bytes");
     }
-    if input.canonical_payload.len() > MAX_PAYLOAD_BYTES {
+    if !is_optional_notification(input) && input.canonical_payload.len() > MAX_PAYLOAD_BYTES {
         bail!("lifecycle payload exceeds {MAX_PAYLOAD_BYTES} bytes");
+    }
+    if is_optional_notification(input) && input.canonical_payload.is_empty() {
+        bail!("optional notification publication requires its complete canonical body");
     }
     if input.publication.graph_fingerprint.is_empty() {
         bail!("lifecycle graph fingerprint must not be empty");
@@ -459,7 +491,7 @@ pub(crate) async fn record_derived_lifecycle_fact_in_transaction(
     let targets = sqlx::query("select subscriber_id, handler_id, handler_version from lifecycle_outbox_deliveries where event_id = $1 order by subscriber_id")
             .bind(input.event_id).fetch_all(&mut **transaction).await?;
     let mut frozen = input.clone();
-    if let Some(first) = targets.first() {
+    if let Some(first) = targets.first().filter(|_| !is_optional_notification(input)) {
         let subscriber_id: String = first.try_get("subscriber_id")?;
         let stored = find_delivery(&mut **transaction, input.event_id, &subscriber_id)
             .await?

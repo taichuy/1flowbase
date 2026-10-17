@@ -9,6 +9,7 @@ use crate::secret_crypto::{
 use anyhow::{Context, Result, ensure};
 use control_plane_contracts::system_backup::selective::SelectiveBackupPreview;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Row};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -226,15 +227,136 @@ fn failure(preview: &mut SelectiveBackupPreview, message: String) {
     }
 }
 
-/// Compare only the immutable source fact and durable publication identity.
-/// Mutable dispatch status continues to use the existing restore semantics.
+fn typed_notification(row: &Value) -> bool {
+    matches!(
+        row["contract_id"].as_str(),
+        Some("credit.integration_notification" | "model_definition.integration_notification")
+    ) && row["contract_version"] == "v1"
+}
+
+fn bytea(value: &Value) -> Result<Vec<u8>> {
+    let hex = value
+        .as_str()
+        .and_then(|s| s.strip_prefix("\\x"))
+        .context("invalid notification bytea")?;
+    ensure!(hex.len() % 2 == 0, "invalid notification bytea length");
+    hex.as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let digit = |b: u8| {
+                (b as char)
+                    .to_digit(16)
+                    .context("invalid notification bytea digit")
+            };
+            Ok(((digit(pair[0])? << 4) | digit(pair[1])?) as u8)
+        })
+        .collect()
+}
+
+fn compact(row: &Value) -> bool {
+    row["canonical_payload"] == "\\x"
+}
+
+fn notification_digest(row: &Value) -> Result<[u8; 32]> {
+    let body = bytea(&row["canonical_payload"])?;
+    let supplied = if row["notification_payload_digest"].is_null() {
+        None
+    } else {
+        let digest = bytea(&row["notification_payload_digest"])?;
+        Some(
+            <[u8; 32]>::try_from(digest)
+                .map_err(|_| anyhow::anyhow!("notification digest must be 32 bytes"))?,
+        )
+    };
+    if body.is_empty() {
+        ensure!(
+            typed_notification(row) && row["status"] == "delivered",
+            "only completed typed notifications may compact"
+        );
+        return supplied.context("compact notification missing digest");
+    }
+    let computed: [u8; 32] = Sha256::digest(&body).into();
+    ensure!(
+        supplied.is_none_or(|digest| digest == computed),
+        "notification payload digest mismatch"
+    );
+    Ok(computed)
+}
+
+/// Full and compact representations share identity only after checksum validation.
 pub(super) async fn publication_conflict(
     connection: &mut PgConnection,
     row: &Value,
 ) -> Result<bool> {
-    Ok(sqlx::query_scalar(
-                "select exists(select 1 from lifecycle_outbox t cross join jsonb_populate_record(null::lifecycle_outbox,$1) r where t.event_id=r.event_id and ((t.transaction_id,t.contract_id,t.contract_version,t.canonical_payload,t.occurred_at,t.created_at,t.native_publication_version) is distinct from (r.transaction_id,r.contract_id,r.contract_version,r.canonical_payload,r.occurred_at,r.created_at,r.native_publication_version) or (t.legacy_handoff_sequence is not null and r.legacy_handoff_sequence is not null and t.legacy_handoff_sequence <> r.legacy_handoff_sequence)))"
-            ).bind(row).fetch_one(connection).await?)
+    let incoming: Value = sqlx::query_scalar(
+        "select to_jsonb(r) from jsonb_populate_record(null::lifecycle_outbox,$1) r",
+    )
+    .bind(row)
+    .fetch_one(&mut *connection)
+    .await?;
+    let digest = notification_digest(&incoming)?;
+    let existing: Option<Value> = sqlx::query_scalar(
+        "select to_jsonb(t) from lifecycle_outbox t where event_id=($1->>'event_id')::uuid",
+    )
+    .bind(row)
+    .fetch_optional(connection)
+    .await?;
+    let Some(existing) = existing else {
+        return Ok(false);
+    };
+    let existing_digest = notification_digest(&existing)?;
+    for field in [
+        "transaction_id",
+        "contract_id",
+        "contract_version",
+        "occurred_at",
+        "created_at",
+        "native_publication_version",
+        "graph_fingerprint",
+    ] {
+        if existing[field] != incoming[field] {
+            return Ok(true);
+        }
+    }
+    if !existing["legacy_handoff_sequence"].is_null()
+        && !incoming["legacy_handoff_sequence"].is_null()
+        && existing["legacy_handoff_sequence"] != incoming["legacy_handoff_sequence"]
+    {
+        return Ok(true);
+    }
+    if digest != existing_digest {
+        return Ok(true);
+    }
+    if existing["canonical_payload"] == incoming["canonical_payload"] {
+        return Ok(false);
+    }
+    Ok(!typed_notification(&incoming)
+        || digest != existing_digest
+        || !(compact(&existing) || compact(&incoming)))
+}
+
+pub(super) async fn delivery_conflict(connection: &mut PgConnection, row: &Value) -> Result<bool> {
+    Ok(sqlx::query_scalar("select exists(select 1 from lifecycle_outbox_deliveries t cross join jsonb_populate_record(null::lifecycle_outbox_deliveries,$1) r where t.event_id=r.event_id and t.subscriber_id=r.subscriber_id and (t.handler_id,t.handler_version) is distinct from (r.handler_id,r.handler_version))")
+        .bind(row).fetch_one(connection).await?)
+}
+
+fn index_receipt_manifest(
+    keys: &mut super::key_index::KeyIndex,
+    event: &str,
+    count: u64,
+    hash: Sha256,
+) -> Result<()> {
+    let manifest = archive::finish_receipt_manifest(count, hash);
+    let row = serde_json::json!({"event_id":event,"target_count":manifest.target_count,"target_identity_digest":manifest.target_identity_digest});
+    keys.insert(
+        "notification_receipt_manifest",
+        &[
+            "event_id".into(),
+            "target_count".into(),
+            "target_identity_digest".into(),
+        ],
+        &row,
+    )
 }
 
 pub(super) async fn validate(
@@ -373,14 +495,81 @@ pub(super) async fn validate(
     let mut keys = super::key_index::KeyIndex::new()?;
     let mut index_reader = scratch.reader().await?;
     let _ = archive::header(&mut index_reader).await?;
+    let mut has_compact = false;
+    let mut target_ordered = true;
+    let mut target_event: Option<String> = None;
+    let mut target_subscriber: Option<String> = None;
+    let mut target_count = 0u64;
+    let mut target_hash = Sha256::new();
     while let Some(bytes) = archive::line(&mut index_reader).await? {
         let record: Record = serde_json::from_slice(&bytes)?;
+        if record.table == "lifecycle_outbox"
+            && (compact(&record.row) || record.row["canonical_payload"] == "")
+        {
+            has_compact = true;
+        }
+        let event_key = vec!["event_id".to_owned()];
+        if record.table == "lifecycle_outbox_deliveries" {
+            let event = record.row["event_id"]
+                .as_str()
+                .context("invalid archive target event identity")?;
+            let subscriber = record.row["subscriber_id"]
+                .as_str()
+                .context("invalid archive subscriber identity")?;
+            let handler = record.row["handler_id"]
+                .as_str()
+                .context("invalid archive handler identity")?;
+            let version = record.row["handler_version"]
+                .as_str()
+                .context("invalid archive handler version")?;
+            if target_event.as_deref() != Some(event) {
+                if let Some(previous) = target_event.take() {
+                    target_ordered &= previous.as_str() < event;
+                    index_receipt_manifest(
+                        &mut keys,
+                        &previous,
+                        target_count,
+                        std::mem::take(&mut target_hash),
+                    )?;
+                }
+                target_event = Some(event.to_owned());
+                target_subscriber = None;
+                target_count = 0;
+            }
+            if let Some(previous) = &target_subscriber {
+                target_ordered &= previous.as_str() < subscriber;
+            }
+            target_subscriber = Some(subscriber.to_owned());
+            target_count += 1;
+            archive::hash_receipt_identity(&mut target_hash, subscriber, handler, version);
+            keys.insert("notification_target_parent", &event_key, &record.row)?;
+            keys.insert(
+                "notification_frozen_target",
+                &[
+                    "event_id".into(),
+                    "subscriber_id".into(),
+                    "handler_id".into(),
+                    "handler_version".into(),
+                ],
+                &record.row,
+            )?;
+            if record.row["status"] != "delivered" {
+                keys.insert("notification_unfinished_target", &event_key, &record.row)?;
+            }
+        }
         if let Some(column_sets) = parent_keys.get(&record.table) {
             for columns in column_sets {
                 keys.insert(&record.table, columns, &record.row)?;
             }
         }
     }
+    if let Some(event) = target_event {
+        index_receipt_manifest(&mut keys, &event, target_count, target_hash)?;
+    }
+    ensure!(
+        !has_compact || target_ordered,
+        "compact archive targets must have unique sorted event/subscriber identities"
+    );
     keys.finish()?;
     while let Some(bytes) = archive::line(&mut reader).await? {
         let mut record: Record = serde_json::from_slice(&bytes)?;
@@ -389,9 +578,11 @@ pub(super) async fn validate(
             "row references unknown archive table"
         );
         preview.row_count += 1;
-        if let Err(error) =
-            archive::normalize_publication(&mut record, header.legacy_lifecycle_protocol)
-        {
+        if let Err(error) = archive::normalize_publication(
+            &mut record,
+            header.legacy_lifecycle_protocol,
+            header.legacy_notification_digest,
+        ) {
             failure(
                 &mut preview,
                 format!("lifecycle publication metadata: {error}"),
@@ -482,6 +673,109 @@ pub(super) async fn validate(
             .bind(&record.row)
             .fetch_one(&mut *connection)
             .await?;
+        if record.notification_receipts.is_some()
+            && !(table.name == "lifecycle_outbox" && compact(&normalized))
+        {
+            failure(
+                &mut preview,
+                "notification receipt manifest only allowed on compact facts".into(),
+            );
+        }
+        if table.name == "lifecycle_outbox" {
+            if compact(&normalized) {
+                if let Some(manifest) = &record.notification_receipts {
+                    let manifest_row = serde_json::json!({"event_id":normalized["event_id"],"target_count":manifest.target_count,"target_identity_digest":manifest.target_identity_digest});
+                    let columns = vec![
+                        "event_id".into(),
+                        "target_count".into(),
+                        "target_identity_digest".into(),
+                    ];
+                    if manifest.target_count == 0
+                        || !keys.contains(
+                            "notification_receipt_manifest",
+                            &columns,
+                            &columns,
+                            &manifest_row,
+                        )?
+                    {
+                        failure(
+                            &mut preview,
+                            "compact notification receipt manifest mismatch".into(),
+                        );
+                    }
+                } else {
+                    failure(
+                        &mut preview,
+                        "compact notification receipt manifest missing".into(),
+                    );
+                }
+            }
+            if let Err(error) = notification_digest(&normalized) {
+                failure(&mut preview, format!("notification payload: {error}"));
+                continue;
+            }
+            let event_key = vec!["event_id".to_owned()];
+            if compact(&normalized)
+                && (!keys.contains(
+                    "notification_target_parent",
+                    &event_key,
+                    &event_key,
+                    &normalized,
+                )? || keys.contains(
+                    "notification_unfinished_target",
+                    &event_key,
+                    &event_key,
+                    &normalized,
+                )?)
+            {
+                failure(
+                    &mut preview,
+                    "compact notification requires all frozen target receipts delivered".into(),
+                );
+            }
+            // Existing frozen targets may neither disappear nor be retargeted by a restore.
+            if typed_notification(&normalized) {
+                let targets: Vec<Value> = sqlx::query_scalar("select to_jsonb(t) from lifecycle_outbox_deliveries t where event_id=($1->>'event_id')::uuid")
+                    .bind(&normalized).fetch_all(&mut *connection).await?;
+                let target_key = vec![
+                    "event_id".into(),
+                    "subscriber_id".into(),
+                    "handler_id".into(),
+                    "handler_version".into(),
+                ];
+                for target in targets {
+                    if !keys.contains(
+                        "notification_frozen_target",
+                        &target_key,
+                        &target_key,
+                        &target,
+                    )? {
+                        failure(
+                            &mut preview,
+                            "immutable lifecycle frozen target set conflict".into(),
+                        );
+                    }
+                }
+            }
+        }
+        if table.name == "lifecycle_outbox_deliveries"
+            && delivery_conflict(connection, &normalized).await?
+        {
+            failure(
+                &mut preview,
+                "immutable lifecycle target conflict: lifecycle_outbox_deliveries".into(),
+            );
+        }
+        if table.name == "lifecycle_outbox_deliveries" {
+            let extra: bool = sqlx::query_scalar("select exists(select 1 from lifecycle_outbox p cross join jsonb_populate_record(null::lifecycle_outbox_deliveries,$1) r where p.event_id=r.event_id and p.contract_version='v1' and p.contract_id in ('credit.integration_notification','model_definition.integration_notification') and exists(select 1 from lifecycle_outbox_deliveries d where d.event_id=p.event_id) and not exists(select 1 from lifecycle_outbox_deliveries d where d.event_id=r.event_id and d.subscriber_id=r.subscriber_id))")
+                .bind(&normalized).fetch_one(&mut *connection).await?;
+            if extra {
+                failure(
+                    &mut preview,
+                    "immutable lifecycle frozen target set conflict".into(),
+                );
+            }
+        }
         if table.columns.iter().any(|c| {
             !c.nullable && !c.generated && normalized.get(&c.name).is_none_or(Value::is_null)
         }) {

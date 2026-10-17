@@ -333,6 +333,10 @@ impl Fixture {
         sqlx::query_as("select subscriber_id,payload from notification_fixture_effects where source_event_id=$1 order by subscriber_id")
             .bind(self.input.source_event_id).fetch_all(self.store.pool()).await.unwrap()
     }
+    async fn transport_body(&self) -> (Vec<u8>, Option<Vec<u8>>) {
+        sqlx::query_as("select canonical_payload,notification_payload_digest from lifecycle_outbox where event_id=$1")
+            .bind(self.event_id).fetch_one(self.store.pool()).await.unwrap()
+    }
     async fn assert_final_effects_without_new_charge(&self) {
         let expected: AfterCommitFact<CreditNotificationFact> =
             serde_json::from_slice(&self.input.canonical_payload).unwrap();
@@ -363,6 +367,39 @@ impl Fixture {
                 .await
                 .unwrap();
         assert_eq!(bodies, 1);
+        let (body, digest) = self.transport_body().await;
+        assert!(
+            body.is_empty(),
+            "last fenced target ACK must release transport body"
+        );
+        assert_eq!(
+            digest.unwrap().len(),
+            32,
+            "replay receipt retains immutable body digest"
+        );
+        assert_eq!(
+            self.store
+                .publish_optional_notification(&self.input)
+                .await
+                .unwrap(),
+            OptionalNotificationPublicationOutcome::Enqueued {
+                event_id: self.event_id,
+                target_count: 2
+            }
+        );
+        let mut conflict = self.input.clone();
+        conflict.canonical_payload.push(b' '); // Valid JSON but a different canonical body.
+        assert!(
+            self.store
+                .publish_optional_notification(&conflict)
+                .await
+                .is_err()
+        );
+        assert!(self.transport_body().await.0.is_empty());
+        assert_eq!(
+            monetary_snapshot(self.store.pool()).await,
+            self.monetary_before
+        );
         let legacy_bodies: i64 = sqlx::query_scalar("select count(*) from host_event_bus_pending")
             .fetch_one(self.store.pool())
             .await
@@ -386,6 +423,11 @@ async fn typed_credit_notification_a_success_b_failure_retries_only_b_without_ne
             ("a".into(), "delivered".into(), 1),
             ("b".into(), "pending".into(), 1)
         ]
+    );
+    assert_eq!(
+        fixture.transport_body().await.0,
+        fixture.input.canonical_payload,
+        "failed B target keeps complete recoverable body after A ACK"
     );
     assert_eq!(fixture.effects().await.len(), 1);
     assert_eq!(fixture.effects().await[0].0, "a");
@@ -434,6 +476,11 @@ async fn typed_credit_notification_effect_before_ack_loss_retries_idempotently_w
             ("a".into(), "delivered".into(), 1),
             ("b".into(), "claimed".into(), 1)
         ]
+    );
+    assert_eq!(
+        fixture.transport_body().await.0,
+        fixture.input.canonical_payload,
+        "effect without fenced ACK cannot release transport body"
     );
     let old_claim: Uuid = sqlx::query_scalar(
         "select claim_id from lifecycle_outbox_deliveries where event_id=$1 and subscriber_id='b'",

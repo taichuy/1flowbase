@@ -7,14 +7,14 @@ use extension_contracts::{
     AfterCommitFact, LifecycleContract, LifecycleFactId, LifecycleTransactionId,
 };
 use plugin_framework::extension_bus::{
-    compile_extension_graph, compile_lifecycle_handler_registry, compile_lifecycle_subscriber_plan,
     Cardinality, ContractDescriptor, ContractVersion, ContributionDescriptor, ContributionId,
     ContributionMode, ContributionOrdering, DeliverySemantics, ExtensionBusVersion,
     ExtensionPointDescriptor, ExtensionPointId, ExtensionPointKind, FailureSemantics,
     LifecycleHandlerBinding, LifecycleHandlerError, LifecycleHandlerFuture, LifecycleSemantics,
     LifecycleSubscriberBinding, LifecycleSubscriberPlanError, ModuleActivationDeclaration,
     ModuleDescriptor, ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy,
-    ScopeSemantics, TypedLifecycleSubscriberHandler,
+    ScopeSemantics, TypedLifecycleSubscriberHandler, compile_extension_graph,
+    compile_lifecycle_handler_registry, compile_lifecycle_subscriber_plan,
 };
 use serde::{Deserialize, Serialize};
 
@@ -107,6 +107,59 @@ async fn activated_typed_plugin_handler_receives_only_its_frozen_contract() {
         .await
         .unwrap_err();
     assert!(error.to_string().contains("does not match frozen handler"));
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WrongVersionFact;
+impl LifecycleContract for WrongVersionFact {
+    const CONTRACT_ID: &'static str = "fixture.committed";
+    const CONTRACT_VERSION: &'static str = "v2";
+}
+struct UnreachableWrongVersionHandler;
+impl TypedLifecycleSubscriberHandler<WrongVersionFact> for UnreachableWrongVersionHandler {
+    fn handle<'a>(
+        &'a self,
+        _: &'a AfterCommitFact<WrongVersionFact>,
+    ) -> LifecycleHandlerFuture<'a> {
+        Box::pin(async { panic!("mismatched handler must never activate") })
+    }
+}
+
+#[test]
+fn lifecycle_registry_rejects_missing_duplicate_and_mismatched_required_bindings() {
+    use plugin_framework::extension_bus::LifecycleHandlerRegistryError;
+    let plan = plan(ModuleKind::TrustedHost, LifecycleSemantics::Invocation).unwrap();
+    let binding = |version| {
+        LifecycleHandlerBinding::typed::<FixtureCommittedFact, _>(
+            "acme.lifecycle-handler",
+            version,
+            Arc::new(RecordingPluginHandler {
+                received: Arc::new(Mutex::new(Vec::new())),
+                fail: false,
+            }),
+        )
+    };
+    assert!(matches!(
+        compile_lifecycle_handler_registry(&plan, vec![]),
+        Err(LifecycleHandlerRegistryError::MissingBinding { .. })
+    ));
+    assert!(matches!(
+        compile_lifecycle_handler_registry(&plan, vec![binding("v1"), binding("v1")]),
+        Err(LifecycleHandlerRegistryError::DuplicateBinding { .. })
+    ));
+    assert!(matches!(
+        compile_lifecycle_handler_registry(&plan, vec![binding("v2")]),
+        Err(LifecycleHandlerRegistryError::MissingBinding { .. })
+    ));
+    let wrong_contract = LifecycleHandlerBinding::typed::<WrongVersionFact, _>(
+        "acme.lifecycle-handler",
+        "v1",
+        Arc::new(UnreachableWrongVersionHandler),
+    );
+    assert!(matches!(
+        compile_lifecycle_handler_registry(&plan, vec![wrong_contract]),
+        Err(LifecycleHandlerRegistryError::ContractMismatch { .. })
+    ));
 }
 
 #[test]

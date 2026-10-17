@@ -63,10 +63,10 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
                     "transaction_id"
                         | "contract_id"
                         | "contract_version"
-                        | "canonical_payload"
                         | "occurred_at"
                         | "created_at"
                         | "native_publication_version"
+                        | "graph_fingerprint"
                 )
         })
         .map(|c| quote(&c.name))
@@ -79,7 +79,9 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
             writable
                 .iter()
                 .map(|c| {
-                    if table.name == "lifecycle_outbox" && c == "\"legacy_handoff_sequence\"" {
+                    if table.name == "lifecycle_outbox" && c == "\"canonical_payload\"" {
+                        format!("{c}=case when octet_length(excluded.{c})=0 then excluded.{c} else target.{c} end")
+                    } else if table.name == "lifecycle_outbox" && matches!(c.as_str(), "\"legacy_handoff_sequence\"" | "\"notification_payload_digest\"") {
                         format!("{c}=coalesce(target.{c},excluded.{c})")
                     } else {
                         format!("{c}=excluded.{c}")
@@ -98,6 +100,17 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
                 .collect::<Vec<_>>()
                 .join(",")
         )
+    };
+    let action = if table.name == "lifecycle_outbox" {
+        format!(
+            "{action} and not (target.status='delivered' and octet_length(target.canonical_payload)=0 and target.notification_payload_digest is not null and target.contract_version='v1' and target.contract_id in ('credit.integration_notification','model_definition.integration_notification'))"
+        )
+    } else if table.name == "lifecycle_outbox_deliveries" {
+        format!(
+            "{action} and not (target.status='delivered' and exists(select 1 from lifecycle_outbox p where p.event_id=target.event_id and p.status='delivered' and octet_length(p.canonical_payload)=0 and p.notification_payload_digest is not null and p.contract_version='v1' and p.contract_id in ('credit.integration_notification','model_definition.integration_notification')))"
+        )
+    } else {
+        action
     };
     let name = quote(&table.name)?;
     Ok(format!(

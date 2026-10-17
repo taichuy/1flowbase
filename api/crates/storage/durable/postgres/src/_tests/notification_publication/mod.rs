@@ -1,3 +1,4 @@
+mod compaction;
 mod model_protocol;
 
 use super::*;
