@@ -1,8 +1,8 @@
 use super::*;
+use plugin_framework::PluginFrameworkError;
 use plugin_framework::provider_contract::{
     ProviderOutputProtocolFailure, ProviderRuntimeError, ProviderUsage,
 };
-use plugin_framework::PluginFrameworkError;
 
 fn billing_flow_execution_context(
     flow_run_id: Uuid,
@@ -309,10 +309,12 @@ async fn billing_no_usage_with_output_protocol_failure_returns_output_for_classi
     .await
     .expect("protocol failure must reach executor classification");
 
-    assert!(output
-        .events
-        .iter()
-        .any(|event| { matches!(event, ProviderStreamEvent::OutputProtocolFailure { .. }) }));
+    assert!(
+        output
+            .events
+            .iter()
+            .any(|event| { matches!(event, ProviderStreamEvent::OutputProtocolFailure { .. }) })
+    );
     assert!(repository_probe.model_billing_credit_releases().is_empty());
     assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
@@ -349,10 +351,10 @@ async fn billing_no_usage_empty_stream_returns_output_for_classification() {
     assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
 
-// Missing provider usage defaults to a searchable zero-value reconciliation record without
-// blocking a completed provider invocation.
+// Missing provider usage remains unknown in searchable observation records; successful
+// output is preserved without fabricating zero usage or zero cost.
 #[tokio::test]
-async fn billing_no_usage_with_billable_output_records_zero_and_succeeds_by_default() {
+async fn billing_no_usage_with_billable_output_preserves_unknown_usage_and_succeeds_by_default() {
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
     repository.enable_model_billing();
@@ -377,18 +379,18 @@ async fn billing_no_usage_with_billable_output_records_zero_and_succeeds_by_defa
     )
     .await
     .expect("missing usage must fail open by default");
-    assert_eq!(output.result.usage.input_tokens, Some(0));
-    assert_eq!(output.result.usage.output_tokens, Some(0));
+    assert_eq!(output.result.usage.input_tokens, None);
+    assert_eq!(output.result.usage.output_tokens, None);
     let provider_metadata = &output.result.provider_metadata;
     assert_eq!(
         provider_metadata["_1flowbase_upstream_provider_metadata"]["_1flowbase_user_account"],
         "billing-user"
     );
-    let details = &provider_metadata["_1flowbase_upstream_provider_metadata"]
-        ["_1flowbase_upstream_provider_metadata"]["_1flowbase_billing"];
+    let details = &provider_metadata["_1flowbase_upstream_provider_metadata"]["_1flowbase_upstream_provider_metadata"]
+        ["_1flowbase_billing"];
     assert_eq!(details["billing_status"], "reconciliation_failed");
     assert_eq!(details["billing_error_code"], "provider_usage_unavailable");
-    assert_eq!(details["total_cost"], "0");
+    assert_eq!(details.get("total_cost"), Some(&serde_json::Value::Null));
     assert!(repository_probe.model_billing_credit_releases().is_empty());
     assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
     let usage = repository_probe.model_billing_usage_ledger(invoker.flow_run_id.unwrap());
@@ -397,11 +399,19 @@ async fn billing_no_usage_with_billable_output_records_zero_and_succeeds_by_defa
         usage[0].usage_status,
         domain::UsageLedgerStatus::UnavailableError
     );
-    assert_eq!(usage[0].total_tokens, Some(0));
+    assert_eq!(usage[0].total_tokens, None);
+    assert_eq!(usage[0].cost_snapshot, None);
+    assert_eq!(
+        usage[0].raw_usage,
+        serde_json::to_value(ProviderUsage::default()).unwrap()
+    );
     let costs = repository_probe.model_billing_cost_ledger(invoker.flow_run_id.unwrap());
     assert_eq!(costs.len(), 1);
-    assert_eq!(costs[0].normalized_cost.as_deref(), Some("0"));
-    assert_eq!(costs[0].cost_status, "reconciliation_failed_zero");
+    assert_eq!(costs[0].normalized_cost, None);
+    assert_eq!(costs[0].raw_cost, None);
+    assert_eq!(costs[0].usage_ledger_id, Some(usage[0].id));
+    assert_eq!(costs[0].cost_status, "unavailable");
+    assert_eq!(costs[0].cost_source, "provider_usage_unavailable");
 }
 
 #[tokio::test]
@@ -465,8 +475,31 @@ async fn billing_exempt_user_missing_usage_succeeds_even_in_strict_mode() {
     )
     .await
     .expect("billing-exempt user must bypass strict missing-usage failure");
-    assert_eq!(output.result.usage.total_tokens, Some(0));
-    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
+    assert_eq!(output.result.usage.total_tokens, None);
+    assert_eq!(repository_probe.model_billing_reserved_session_count(), 0);
+    assert_eq!(repository_probe.model_billing_heartbeat_count(), 0);
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    let usage = repository_probe.model_billing_usage_ledger(invoker.flow_run_id.unwrap());
+    assert_eq!(usage.len(), 1);
+    assert_eq!(
+        usage[0].usage_status,
+        domain::UsageLedgerStatus::UnavailableError
+    );
+    assert_eq!(usage[0].total_tokens, None);
+    assert_eq!(usage[0].cost_snapshot, None);
+    assert_eq!(
+        usage[0].raw_usage,
+        serde_json::to_value(ProviderUsage::default()).unwrap()
+    );
+    let costs = repository_probe.model_billing_cost_ledger(invoker.flow_run_id.unwrap());
+    assert_eq!(costs.len(), 1);
+    assert_eq!(costs[0].usage_ledger_id, Some(usage[0].id));
+    assert_eq!(costs[0].billing_session_id, None);
+    assert_eq!(costs[0].normalized_cost, None);
+    assert_eq!(costs[0].raw_cost, None);
+    assert_eq!(costs[0].cost_status, "unavailable");
+    assert_eq!(costs[0].cost_source, "provider_usage_unavailable");
 }
 
 // AC4: reported usage reaches settlement; a failed settlement releases the reservation

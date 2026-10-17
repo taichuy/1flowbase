@@ -108,7 +108,7 @@ async fn retirement_migration_preserves_exact_obligations_and_foreign_key() {
         .unwrap_err();
     assert_eq!(
         error.as_database_error().unwrap().code().as_deref(),
-        Some("23503")
+        Some("23001")
     );
     let error = sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,credit_event_id,payload,value_size_bytes) values(9002,'credit.events',$1,'{}',2)")
         .bind(Uuid::now_v7()).execute(&pool).await.unwrap_err();
