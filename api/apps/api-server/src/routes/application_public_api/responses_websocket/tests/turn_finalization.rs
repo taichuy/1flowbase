@@ -878,3 +878,152 @@ async fn issue_2079_sse_writer_settles_tool_delivery_from_the_real_write() {
         drop(publisher);
     }
 }
+
+async fn peer_close_ack_roundtrip(active: bool, codec: bool, compression: bool) {
+    use super::super::{actor::run_connection_loop, transport};
+    use axum::{routing::get, Router};
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite_deflate::{
+        client_async_with_config,
+        tungstenite::{
+            extensions::compression::deflate::DeflateConfig,
+            protocol::{frame::coding::CloseCode, CloseFrame, WebSocketConfig},
+            Message,
+        },
+    };
+
+    // Reuse the existing actor handshake test's bounded fixture window. No new
+    // production timer or close policy is involved.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let (started, mut started_rx) = mpsc::unbounded_channel();
+        let (finished, mut finished_rx) = mpsc::unbounded_channel();
+        let (closed, mut closed_rx) = mpsc::unbounded_channel();
+        let release = Arc::new(tokio::sync::Notify::new());
+        let task_release = release.clone();
+        let run_socket = move |socket: transport::Socket| {
+            let started = started.clone();
+            let finished = finished.clone();
+            let closed = closed.clone();
+            let release = task_release.clone();
+            async move {
+                run_connection_loop(socket, move |_, _frames| {
+                    let started = started.clone();
+                    let finished = finished.clone();
+                    let release = release.clone();
+                    async move {
+                        started.send(()).unwrap();
+                        release.notified().await;
+                        finished.send(()).unwrap();
+                        Ok(())
+                    }
+                })
+                .await;
+                closed.send(()).unwrap();
+            }
+        };
+        let router = if codec {
+            Router::new().route(
+                "/ws",
+                get(move |upgrade: transport::WebSocketUpgrade| {
+                    let run = run_socket.clone();
+                    async move { upgrade.on_upgrade(run).await }
+                }),
+            )
+        } else {
+            Router::new().route(
+                "/ws",
+                get(move |upgrade: axum::extract::ws::WebSocketUpgrade| {
+                    let run = run_socket.clone();
+                    async move { upgrade.on_upgrade(move |socket| run(socket.into())) }
+                }),
+            )
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let mut config = WebSocketConfig::default();
+        if compression {
+            config.extensions.permessage_deflate = Some(DeflateConfig::default());
+        }
+        let (mut socket, response) = client_async_with_config(
+            format!("ws://{address}/ws"),
+            tokio::net::TcpStream::connect(address).await.unwrap(),
+            Some(config),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            response.headers().contains_key("sec-websocket-extensions"),
+            compression
+        );
+        if active {
+            socket
+                .send(Message::Text(
+                    json!({"type":"response.create","model":"fixture","input":[]})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            started_rx
+                .recv()
+                .await
+                .expect("the actor must have an active turn before Close");
+        }
+        socket
+            .close(Some(CloseFrame {
+                code: CloseCode::Normal,
+                reason: "正常完成".into(),
+            }))
+            .await
+            .unwrap();
+        let reply = socket
+            .next()
+            .await
+            .expect("Close ACK must arrive before EOF")
+            .expect("Close ACK must not be a reset/1006");
+        let Message::Close(Some(frame)) = reply else {
+            panic!("expected peer Close ACK, got {reply:?}");
+        };
+        assert_eq!(frame.code, CloseCode::Normal);
+        assert_eq!(frame.reason.as_str(), "正常完成");
+        closed_rx
+            .recv()
+            .await
+            .expect("the actor must finish after flushing the ACK");
+        if active {
+            // Peer Close must not turn the existing detached execution lifetime
+            // into an abort. Release it explicitly and observe normal completion.
+            assert!(finished_rx.try_recv().is_err());
+            release.notify_one();
+            finished_rx
+                .recv()
+                .await
+                .expect("active execution remains alive until explicitly released");
+        } else {
+            assert!(
+                started_rx.try_recv().is_err(),
+                "idle close must not start a turn"
+            );
+        }
+        server.abort();
+    })
+    .await
+    .expect("peer Close ACK and actor cleanup must finish within the existing fixture window");
+}
+
+#[tokio::test]
+async fn peer_close_flushes_queued_ack_while_idle() {
+    for (codec, compression) in [(false, false), (true, false), (true, true)] {
+        peer_close_ack_roundtrip(false, codec, compression).await;
+    }
+}
+
+#[tokio::test]
+async fn peer_close_flushes_queued_ack_while_active() {
+    for (codec, compression) in [(false, false), (true, false), (true, true)] {
+        peer_close_ack_roundtrip(true, codec, compression).await;
+    }
+}

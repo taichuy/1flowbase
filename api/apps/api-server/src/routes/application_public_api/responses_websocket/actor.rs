@@ -323,12 +323,14 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                             active = Some((turn, task, frames));
                         }
                         Message::Pong(_) => active = Some((turn, task, frames)),
-                        Message::Close(frame) => {
+                        Message::Close(_) => {
                             let action = actor.begin_close();
                             if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                 let _ = actor.complete_turn(turn);
                             }
-                            let _ = sender.send(Message::Close(frame)).await;
+                            // Receiving Close already queues the protocol ACK. A new
+                            // send is rejected in closing state before it can flush.
+                            let _ = sender.flush().await;
                             break;
                         }
                         message => {
@@ -427,9 +429,10 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                 }
             }
             Message::Pong(_) => {}
-            Message::Close(frame) => {
+            Message::Close(_) => {
                 actor.begin_close();
-                let _ = sender.send(Message::Close(frame)).await;
+                // Both transport engines own the queued peer Close ACK.
+                let _ = sender.flush().await;
                 break;
             }
             message => match decode_client_message(message) {
