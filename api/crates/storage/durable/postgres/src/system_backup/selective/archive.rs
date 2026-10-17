@@ -53,8 +53,6 @@ pub(super) struct Header {
     #[serde(skip)]
     pub declared_tables: BTreeMap<String, String>,
     #[serde(skip)]
-    pub legacy_lifecycle_protocol: bool,
-    #[serde(skip)]
     pub legacy_notification_digest: bool,
     pub format: String,
     pub selection: Vec<SelectiveBackupSelection>,
@@ -111,24 +109,11 @@ pub(super) fn receipt_manifest(
     finish_receipt_manifest(targets.len() as u64, hash)
 }
 
-// Only archive relation identifiers are translated; row fields and PostgreSQL SQL are canonical.
-fn canonical_table(name: &str) -> &str {
-    match name {
-        // @field-contract-compat source=1flowbase.settings-rows/v1:host_event_bus_pending alias=legacy_event_recovery_pending remove_by=2027-04-17
-        "host_event_bus_pending" => "legacy_event_recovery_pending",
-        // @field-contract-compat source=1flowbase.settings-rows/v1:credit_event_handoffs alias=legacy_credit_handoff_receipts remove_by=2027-04-17
-        "credit_event_handoffs" => "legacy_credit_handoff_receipts",
-        // @field-contract-compat source=1flowbase.settings-rows/v1:host_event_bus_counter alias=legacy_event_recovery_state remove_by=2027-04-17
-        "host_event_bus_counter" => "legacy_event_recovery_state",
-        _ => name,
-    }
-}
-
 pub(super) fn normalize_record(record: &mut Record, header: &Header) -> Result<()> {
     record.table = header
         .declared_tables
         .get(&record.table)
-        .context("row references undeclared archive table or alias")?
+        .context("row references undeclared archive table")?
         .clone();
     Ok(())
 }
@@ -206,71 +191,35 @@ pub(super) async fn header(reader: &mut BufReader<tokio::fs::File>) -> Result<He
         "too many settings tables"
     );
     let mut names = BTreeSet::new();
-    for table in &mut header.tables {
+    for table in &header.tables {
         let original = table.name.clone();
-        table.name = canonical_table(&original).to_owned();
-        ensure!(
-            names.insert(table.name.clone()),
-            "duplicate archive table or alias"
-        );
+        ensure!(names.insert(table.name.clone()), "duplicate archive table");
         header.declared_tables.insert(original, table.name.clone());
         let mut prerequisites = BTreeSet::new();
-        for prerequisite in &mut table.prerequisites {
-            *prerequisite = canonical_table(prerequisite).to_owned();
+        for prerequisite in &table.prerequisites {
             ensure!(
                 prerequisites.insert(prerequisite.clone()),
-                "duplicate archive prerequisite or alias"
+                "duplicate archive prerequisite"
             );
         }
     }
     let mut dependencies = BTreeSet::new();
-    for dependency in &mut header.schema_dependencies {
-        dependency.name = canonical_table(&dependency.name).to_owned();
+    for dependency in &header.schema_dependencies {
         ensure!(
             dependencies.insert(dependency.name.clone()),
-            "duplicate schema dependency or alias"
+            "duplicate schema dependency"
         );
         ensure!(
             !names.contains(&dependency.name),
-            "schema dependency duplicates archive table or alias"
+            "schema dependency duplicates archive table"
         );
     }
     for table in &mut header.tables {
         if table.name == "lifecycle_outbox" {
-            let version = table
-                .columns
-                .iter()
-                .any(|c| c.name == "native_publication_version");
-            let receipt = table
-                .columns
-                .iter()
-                .any(|c| c.name == "legacy_handoff_sequence");
-            ensure!(version == receipt, "partial lifecycle publication schema");
             let digest = table
                 .columns
                 .iter()
                 .any(|c| c.name == "notification_payload_digest");
-            ensure!(
-                version || !digest,
-                "invalid historical lifecycle publication schema"
-            );
-            if !version {
-                header.legacy_lifecycle_protocol = true;
-                // Only this exact additive historical schema is supported. The normal
-                // catalog equality check still rejects every other schema difference.
-                for (name, sql_type, nullable) in [
-                    ("native_publication_version", "smallint", false),
-                    ("legacy_handoff_sequence", "bigint", true),
-                ] {
-                    table.columns.push(Column {
-                        name: name.into(),
-                        sql_type: sql_type.into(),
-                        nullable,
-                        generated: false,
-                        generated_expression: None,
-                    });
-                }
-            }
             if !digest {
                 header.legacy_notification_digest = true;
                 table.columns.push(Column {
@@ -286,11 +235,7 @@ pub(super) async fn header(reader: &mut BufReader<tokio::fs::File>) -> Result<He
     Ok(header)
 }
 
-pub(super) fn normalize_publication(
-    record: &mut Record,
-    historical: bool,
-    historical_digest: bool,
-) -> Result<()> {
+pub(super) fn normalize_publication(record: &mut Record, historical_digest: bool) -> Result<()> {
     if record.table != "lifecycle_outbox" {
         return Ok(());
     }
@@ -305,27 +250,9 @@ pub(super) fn normalize_publication(
         );
         row.insert("notification_payload_digest".into(), Value::Null);
     }
-    let version = row.get("native_publication_version");
-    let receipt = row.get("legacy_handoff_sequence");
-    if version.is_none() && receipt.is_none() {
-        ensure!(
-            historical,
-            "lifecycle publication metadata missing from current archive"
-        );
-        row.insert("native_publication_version".into(), Value::from(1));
-        row.insert("legacy_handoff_sequence".into(), Value::Null);
-        return Ok(());
-    }
-    ensure!(
-        matches!(version.and_then(Value::as_i64), Some(1 | 2)),
-        "invalid lifecycle native publication version"
-    );
-    ensure!(
-        receipt.is_some_and(|r| r.is_null() || r.as_i64().is_some_and(|s| s > 0)),
-        "invalid lifecycle handoff sequence"
-    );
     Ok(())
 }
+
 pub(super) struct Encoder {
     gzip: GzEncoder<Vec<u8>>,
     writer: BackupComponentWriter,

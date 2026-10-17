@@ -6,8 +6,6 @@ pub mod application_public_api_repository;
 pub mod application_repository;
 pub mod auth_repository;
 pub mod billing_repository;
-mod legacy_event_recovery;
-pub use legacy_event_recovery::PgLegacyEventRecovery;
 mod connection;
 pub mod data_source_repository;
 pub mod extension_installation_repository;

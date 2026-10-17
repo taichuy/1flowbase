@@ -93,10 +93,6 @@ pub struct PublishOptionalNotificationInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OptionalNotificationPublicationOutcome {
     NoTargets,
-    /// Exact original v1 forwarding obligation, now retained for explicit recovery.
-    LegacyRecoveryHandoff {
-        sequence: i64,
-    },
     /// Durable stage handoff only; target business effects remain independently pending.
     Enqueued {
         event_id: Uuid,

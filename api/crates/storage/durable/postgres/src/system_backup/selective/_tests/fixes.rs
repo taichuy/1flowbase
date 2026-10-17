@@ -46,7 +46,6 @@ async fn selective_runtime_roundtrip_preserves_retirement_archive_without_replay
     for table in [
         "system_default_upgrade_runs",
         "system_default_upgrade_items",
-        "legacy_event_recovery_ledger",
     ] {
         assert!(
             runtime.data_tables.iter().any(|name| name == table),
@@ -71,13 +70,11 @@ async fn selective_runtime_roundtrip_preserves_retirement_archive_without_replay
                 && entry["row"]["id"] == json!(run)
                 && entry["row"]["summary_json"] == original_summary)
     );
-    for table in ["legacy_event_recovery_ledger"] {
-        assert!(
-            tables
-                .iter()
-                .any(|entry| entry["name"] == table && entry["data"] == true)
-        );
-    }
+    assert!(
+        !tables
+            .iter()
+            .any(|entry| entry["name"] == "legacy_event_recovery_ledger")
+    );
     let retired_after_export: Vec<Value> = sqlx::query_scalar("select to_jsonb(retired) from retired_host_infrastructure_settings retired order by source_table,record::text")
         .fetch_all(&db).await.unwrap();
     assert_eq!(retired_after_export, retired_before);

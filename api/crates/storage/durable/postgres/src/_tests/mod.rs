@@ -11,6 +11,7 @@ mod frontend_block_catalog_repository_tests;
 mod frontstage;
 mod i18n_global_key_migration_tests;
 mod identity;
+mod legacy_retirement;
 mod lifecycle_outbox_repository_tests;
 mod max_output_tokens_migration_tests;
 mod mcp_result_receipt_repository_tests;

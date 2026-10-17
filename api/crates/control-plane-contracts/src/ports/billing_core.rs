@@ -288,10 +288,3 @@ pub trait BillingRepository: Send + Sync {
         limit: i64,
     ) -> anyhow::Result<usize>;
 }
-
-/// Transactional transfer of credit notifications into the active provider's durable queue.
-/// Success acknowledges durable reception only, never a consumer business effect.
-#[async_trait]
-pub trait CreditEventHandoff: Send + Sync {
-    async fn handoff_credit_events(&self, limit: i64) -> anyhow::Result<usize>;
-}

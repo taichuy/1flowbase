@@ -683,30 +683,3 @@ fn explicit_rating_time_applies_date_and_utc_window() {
         );
     }
 }
-
-#[tokio::test]
-async fn legacy_credit_recovery_requires_an_explicit_durable_capability() {
-    use crate::ports::CreditEventHandoff;
-    struct ActiveBus;
-    #[async_trait]
-    impl CreditEventHandoff for ActiveBus {
-        async fn handoff_credit_events(&self, limit: i64) -> anyhow::Result<usize> {
-            assert_eq!(limit, 50);
-            Ok(7)
-        }
-    }
-    assert_eq!(
-        crate::billing::handoff_legacy_credit_events(Some(&ActiveBus), 50)
-            .await
-            .unwrap(),
-        7
-    );
-    let error = crate::billing::handoff_legacy_credit_events(None, 50)
-        .await
-        .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("legacy credit recovery capability is unavailable")
-    );
-}

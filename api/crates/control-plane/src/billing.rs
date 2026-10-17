@@ -222,18 +222,6 @@ impl<R: BillingRepository> CreditCommandService<R> {
     }
 }
 
-/// Explicit legacy recovery only. Live notifications use frozen lifecycle publications.
-/// Calling this never proves a business effect; it only preserves the old durable handoff.
-pub async fn handoff_legacy_credit_events(
-    capability: Option<&dyn crate::ports::CreditEventHandoff>,
-    limit: i64,
-) -> Result<usize> {
-    capability
-        .ok_or_else(|| anyhow!("legacy credit recovery capability is unavailable"))?
-        .handoff_credit_events(limit)
-        .await
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct TokenRate {
     pub unit_size: i64,

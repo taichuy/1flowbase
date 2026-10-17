@@ -209,15 +209,6 @@ async fn selective_notification_compaction_old_full_restore_and_replay_cannot_re
         );
     }
     assert_eq!(snapshot(&store, id).await, expected);
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>(
-            "select count(*) from legacy_event_recovery_ledger where disposition='pending'"
-        )
-        .fetch_one(store.pool())
-        .await
-        .unwrap(),
-        0
-    );
 }
 
 #[tokio::test]
@@ -367,7 +358,6 @@ async fn selective_notification_compaction_digest_does_not_override_identity_gra
         ("transaction_id", json!(Uuid::now_v7())),
         ("occurred_at", json!("2000-01-01T00:00:00+00:00")),
         ("graph_fingerprint", json!("new-graph")),
-        ("native_publication_version", json!(2)),
     ] {
         denied(
             &repo,
@@ -437,4 +427,80 @@ async fn selective_notification_compaction_supports_exact_intermediate_header_wi
         }),
     )
     .await;
+}
+
+#[tokio::test]
+async fn current_backup_roundtrip_excludes_retired_ledger_and_preserves_model_source_and_receipts()
+{
+    let (repo, store, _, typed_event) = notification().await;
+    let source = Uuid::now_v7();
+    let transaction = Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    let original = AfterCommitFact::new(
+        LifecycleFactId::new(source.to_string()).unwrap(),
+        LifecycleTransactionId::new(transaction.to_string()).unwrap(),
+        (now.unix_timestamp_nanos() / 1_000_000) as i64,
+        ModelDefinitionCommittedFact {
+            model_definition_id: Uuid::now_v7(),
+            scope_kind: domain::DataModelScopeKind::Workspace,
+            scope_id: Uuid::now_v7(),
+        },
+    );
+    let original_body = serde_json::to_vec(&original).unwrap();
+    sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,status,delivered_at,graph_fingerprint) values($1,$2,'model_definition.committed','v1',$3,$4,'delivered',$4,'original-model-snapshot')")
+        .bind(source).bind(transaction).bind(&original_body).bind(now).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version,status,delivered_at) values($1,'source-owner','source-owner.handler','v1','delivered',now())")
+        .bind(source).execute(store.pool()).await.unwrap();
+    let source_before = snapshot(&store, source).await;
+    let typed_before = snapshot(&store, typed_event).await;
+    let mut selection = select("extension-center", true, true);
+    selection.extend(select("system-runtime", true, true));
+    let bytes = capture(&repo, selection).await;
+    let mut text = String::new();
+    flate2::read::GzDecoder::new(bytes.as_slice())
+        .read_to_string(&mut text)
+        .unwrap();
+    let header: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
+    assert!(
+        !header["tables"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|table| table["name"] == "legacy_event_recovery_ledger")
+    );
+    let lifecycle = header["tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|table| table["name"] == "lifecycle_outbox")
+        .unwrap();
+    assert!(
+        !lifecycle["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|column| column["name"] == "native_publication_version"
+                || column["name"] == "legacy_handoff_sequence")
+    );
+    let preview = repo
+        .preflight(reader(bytes.clone()), "key", "key")
+        .await
+        .unwrap();
+    assert!(preview.failures.is_empty(), "{:?}", preview.failures);
+    sqlx::query("delete from lifecycle_outbox")
+        .execute(store.pool())
+        .await
+        .unwrap();
+    repo.restore(reader(bytes), "key", "key", true)
+        .await
+        .unwrap();
+    assert_eq!(snapshot(&store, source).await, source_before);
+    assert_eq!(snapshot(&store, typed_event).await, typed_before);
+    let restored_body: Vec<u8> =
+        sqlx::query_scalar("select canonical_payload from lifecycle_outbox where event_id=$1")
+            .bind(source)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(restored_body, original_body);
 }

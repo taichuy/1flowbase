@@ -3,7 +3,6 @@ mod archive;
 mod inventory;
 mod key_index;
 mod plugin_identity;
-mod recovery_archive;
 mod schema;
 mod validation;
 
@@ -119,7 +118,6 @@ impl PgSelectiveBackupRepository {
         }
         let header = Header {
             declared_tables: BTreeMap::new(),
-            legacy_lifecycle_protocol: false,
             legacy_notification_digest: false,
             format: archive::FORMAT.into(),
             selection: selection.to_vec(),
@@ -302,7 +300,6 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
         sqlx::query("set transaction isolation level repeatable read read only")
             .execute(&mut *tx)
             .await?;
-        let scratch = recovery_archive::normalize(scratch, &mut tx).await?;
         let (_, preview) =
             validation::validate(&mut tx, &scratch, source_master_key, target_master_key).await?;
         tx.rollback().await?;
@@ -321,17 +318,6 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
         sqlx::query("set transaction isolation level serializable")
             .execute(&mut *tx)
             .await?;
-        let scratch = recovery_archive::normalize(scratch, &mut tx).await?;
-        // Queue restore follows the same counter -> receipt/pending lock order
-        // as publication/handoff. Hold the lock through the prepared transaction's commit.
-        let incoming = archive::header(&mut scratch.reader().await?).await?;
-        if incoming
-            .tables
-            .iter()
-            .any(|table| matches!(table.name.as_str(), "legacy_event_recovery_ledger"))
-        {
-            crate::PgLegacyEventRecovery::lock_queue(&mut tx).await?;
-        }
         let (header, preview) =
             validation::validate(&mut tx, &scratch, source_master_key, target_master_key).await?;
         ensure!(
@@ -374,11 +360,7 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
             while let Some(bytes) = archive::line(&mut reader).await? {
                 let mut record: Record = serde_json::from_slice(&bytes)?;
                 archive::normalize_record(&mut record, &archive_header)?;
-                archive::normalize_publication(
-                    &mut record,
-                    header.legacy_lifecycle_protocol,
-                    header.legacy_notification_digest,
-                )?;
+                archive::normalize_publication(&mut record, header.legacy_notification_digest)?;
                 if record.table == "lifecycle_outbox" {
                     ensure!(
                         !validation::publication_conflict(&mut tx, &record.row).await?,

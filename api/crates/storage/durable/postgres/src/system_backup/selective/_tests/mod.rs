@@ -1,12 +1,10 @@
 mod fixes;
-mod legacy_recovery;
 mod native_storage;
 mod notification_compaction;
 mod notifications;
 mod oauth;
 mod plugin_credentials;
 mod provider_sessions;
-mod publication_protocol;
 mod raw_storage;
 
 use super::*;

@@ -27,10 +27,9 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
         r#"
         insert into lifecycle_outbox (
             event_id, transaction_id, contract_id, contract_version,
-            canonical_payload, occurred_at, graph_fingerprint, native_publication_version,
+            canonical_payload, occurred_at, graph_fingerprint,
             notification_payload_digest
-        ) values ($1, $2, $3, $4, $5, $6, $7,
-            case when $3 = 'model_definition.committed' then 2 else 1 end, $8)
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8)
         on conflict (event_id) do nothing
         "#,
     )

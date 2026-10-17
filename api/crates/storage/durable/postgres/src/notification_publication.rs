@@ -78,9 +78,7 @@ impl PgControlPlaneStore {
             }
         }
         if input.contract == OptionalNotificationContract::ModelDefinition {
-            if let Some(outcome) = self.publish_original_model_handoff(tx, input).await? {
-                return Ok((outcome, None));
-            }
+            self.validate_original_model_source(tx, input).await?;
         }
         let event_id = publication_id(input);
         // Same lock identity as the existing derived-publication helper. Resolve old
@@ -152,27 +150,14 @@ impl PgControlPlaneStore {
             Some(publication),
         ))
     }
-    async fn publish_original_model_handoff(
+    async fn validate_original_model_source(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         input: &PublishOptionalNotificationInput,
-    ) -> Result<Option<OptionalNotificationPublicationOutcome>> {
-        // No timestamp guesses: the protocol was frozen on this exact source fact.
-        let version: i16 = sqlx::query_scalar("select native_publication_version from lifecycle_outbox where event_id=$1 and contract_id='model_definition.committed' and contract_version='v1'")
+    ) -> Result<()> {
+        // The original committed fact remains authoritative for identity and scope.
+        let row = sqlx::query("select transaction_id,canonical_payload from lifecycle_outbox where event_id=$1 and contract_id='model_definition.committed' and contract_version='v1' for update")
             .bind(input.source_event_id).fetch_one(&mut **tx).await?;
-        ensure!(
-            matches!(version, 1 | 2),
-            "unsupported native publication version"
-        );
-        if version == 1 {
-            crate::PgLegacyEventRecovery::lock_queue(tx).await?;
-        }
-        let row=sqlx::query("select transaction_id,canonical_payload,native_publication_version,legacy_handoff_sequence from lifecycle_outbox where event_id=$1 and contract_id='model_definition.committed' and contract_version='v1' for update")
-            .bind(input.source_event_id).fetch_one(&mut **tx).await?;
-        ensure!(
-            row.try_get::<i16, _>("native_publication_version")? == version,
-            "source publication protocol changed"
-        );
         ensure!(
             row.try_get::<Uuid, _>("transaction_id")? == input.transaction_id,
             "model source transaction mismatch"
@@ -204,29 +189,7 @@ impl PgControlPlaneStore {
             original_value["occurred_at_unix_ms"] == proposed_value["occurred_at_unix_ms"],
             "model source time mismatch"
         );
-        if version == 2 {
-            return Ok(None);
-        }
-        if let Some(sequence) = row.try_get::<Option<i64>, _>("legacy_handoff_sequence")? {
-            return Ok(Some(
-                OptionalNotificationPublicationOutcome::LegacyRecoveryHandoff { sequence },
-            ));
-        }
-        // Preserve the exact original topic and fact shape. The source-row receipt
-        // and snapshot commit together; lost lifecycle ACK can only reuse this ID.
-        let payload = serde_json::to_string(&original_value)?;
-        let sequence = crate::PgLegacyEventRecovery::next_sequence(tx).await?;
-        sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,payload,payload_digest,value_size_bytes) values($1,'pending',$2,$3,sha256(convert_to($3,'UTF8')),$4)")
-            .bind(sequence).bind(b"official.plugin-host.lifecycle.model-definition-committed".as_slice())
-            .bind(&payload).bind(payload.len() as i64).execute(&mut **tx).await?;
-        sqlx::query("update lifecycle_outbox set legacy_handoff_sequence=$2 where event_id=$1")
-            .bind(input.source_event_id)
-            .bind(sequence)
-            .execute(&mut **tx)
-            .await?;
-        Ok(Some(
-            OptionalNotificationPublicationOutcome::LegacyRecoveryHandoff { sequence },
-        ))
+        Ok(())
     }
 }
 
@@ -250,7 +213,7 @@ impl OptionalNotificationPublicationPort for PgControlPlaneStore {
 /// no transport row; the account/session/ledger already hold monetary facts.
 /// Rejections have no monetary ledger, so always retain their original source
 /// fact independently of the temporary notification transport. Its timestamp
-/// records that no legacy handoff is required, never a subscriber business ACK.
+/// records completion of source publication, never a subscriber business ACK.
 pub(crate) async fn record_credit_notification_in_transaction(
     store: &PgControlPlaneStore,
     tx: &mut Transaction<'_, Postgres>,

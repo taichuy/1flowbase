@@ -70,9 +70,6 @@ async fn rejected_command_fact_survives_zero_targets_and_completed_target_transp
             retained, original,
             "transport completion cannot discard the independent rejected fact"
         );
-        let queue:(i64,i64,i64)=sqlx::query_as("select (select count(*) from legacy_event_recovery_ledger where disposition='pending'),(select count(*) from legacy_event_recovery_ledger where credit_event_id is not null),(select last_sequence from legacy_event_recovery_ledger where sequence=0)")
-            .fetch_one(store.pool()).await.unwrap();
-        assert_eq!(queue, (0, 0, 0));
     }
 }
 
@@ -404,7 +401,7 @@ async fn model_integration_stage_compacts_without_releasing_original_model_fact(
     )])
     .unwrap();
     let store = fixture().await.with_lifecycle_publication_catalog(catalog);
-    sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,graph_fingerprint,native_publication_version) values($1,$2,'model_definition.committed','v1',$3,$4,'original-model-graph',2)")
+    sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,graph_fingerprint) values($1,$2,'model_definition.committed','v1',$3,$4,'original-model-graph')")
         .bind(source_id).bind(input.transaction_id).bind(&original_body).bind(input.occurred_at)
         .execute(store.pool()).await.unwrap();
     let event = publish(&store, &input).await;
