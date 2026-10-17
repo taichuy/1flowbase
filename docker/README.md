@@ -136,10 +136,13 @@ API_COOKIE_SECURE=false
 - `api/plugins/packages/`: 插件包缓存
 - `api/plugins/installed/`: 插件安装产物
 - `api/plugins/host-extension/dropins/`: HostExtension drop-in 目录
-- `web/nginx.conf`: web 镜像的 nginx 覆盖配置
+- `web/nginx/nginx.default.conf`: 启动时自动导出的当前镜像默认模板（每次启动刷新）
+- `web/nginx/nginx.conf`: 可选的持久化 nginx 覆盖配置（升级不覆盖）
 - `web/external-npm/`: 当前 External npm Pack 的唯一只读挂载目录
 
 注意：不要把整个 `api/plugins` 挂载到容器里；镜像内置的 `api/plugins/host-extensions` 和 `api/plugins/sets` 是启动所需的官方插件工作区，只挂载上面的可写子目录。
+
+Nginx 配置统一挂载整个 `web/nginx/` 目录，空目录可直接启动；没有自定义覆盖时自动使用新版镜像默认配置。自定义、检查与旧文件挂载的迁移步骤见 [Nginx 配置与升级](deployment/README_CN.md#nginx-配置与升级)。
 
 ### API 进程的 glibc 内存保留
 

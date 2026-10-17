@@ -29,6 +29,56 @@ docker compose up -d
 本配置用于内置 PostgreSQL 的全新部署。已有部署、外部 PostgreSQL 和便携备份恢复
 继续使用 [Docker 指南](../README.md) 中的部署脚本与配置。
 
+## Nginx 配置与升级
+
+Web 镜像启动时通过目录挂载 `./web/nginx:/config/nginx` 自动导出配置，不需要先创建配置文件：
+
+- `web/nginx/nginx.default.conf`：当前镜像的默认模板，每次启动刷新，包含 `/api/` 与 `/v1/` 的 WebSocket 转发。不要直接编辑此文件。
+- `web/nginx/nginx.conf`：可选的完整自定义配置，默认不创建；存在时优先使用，重启、重建及升级均不覆盖。升级后需与默认模板比较。
+
+不创建自定义文件时，镜像升级自动应用新的默认配置。需要自定义时，在部署目录执行：
+
+```bash
+sudo cp web/nginx/nginx.default.conf web/nginx/nginx.conf
+# 使用 sudo 编辑 web/nginx/nginx.conf，然后检查并重建 Web
+docker compose run --rm --no-deps web nginx -t &&
+docker compose up -d --no-deps --force-recreate web
+```
+
+Web 启动时会验证 Nginx 配置，错误会写入 `docker compose logs web` 并阻止启动。
+移走自定义 `web/nginx/nginx.conf` 后重建 Web，即恢复当前镜像默认配置；不用删除整个配置目录。
+
+### 从旧部署迁移
+
+此机制需要包含 `40-flowbase-nginx.sh` 的新版 Web 镜像；仅更新 Compose 而保留旧镜像不会导出模板。
+升级 Web 镜像时同步更新 Compose。若原配置包含
+`./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro`，将该条替换为
+`./web/nginx:/config/nginx`，保留 external-npm 等其他挂载。
+确有自定义规则时，先确认旧路径是普通文件，再将它复制到 `web/nginx/nginx.conf`；
+没有自定义规则则直接使用镜像默认配置。旧路径若被 Docker 误建成目录，先移走备份，不要把目录当配置复制。
+
+新镜像仍支持旧的直接文件挂载，并在日志提示迁移，但旧挂载会覆盖镜像的新默认配置。
+本次 SSH WebSocket 修复不会自动进入用户自定义配置：需补齐 `/api/` 内的
+`proxy_set_header Upgrade $http_upgrade;` 与
+`proxy_set_header Connection $connection_upgrade;`，或移除自定义覆盖以使用新默认值。
+
+### 公网静态站点与 FRP
+
+若公网服务器单独托管前端编译包，仅将 API 经 FRP 转发到 Docker 的 `3100`，公网 Nginx 也必须配置页面路由回退：
+
+```nginx
+location / {
+    try_files $uri $uri/ /index.html;
+}
+```
+
+该规则放在公网域名的 `server` 内，`root` 指向实际包含 `index.html` 的编译包目录；已有 `location /` 时修改原规则，不重复添加。
+`/settings/...` 和 `/mcp/authorize` 是前端路由，不能按静态文件查找或误代理到业务 API。
+Docker 内的回退规则无法修复公网静态站点的 404。
+公网 API 代理也须保留原请求路径、Host、HTTPS 协议信息及 WebSocket 升级头；
+MCP 使用的 `/.well-known/oauth-*` 发现路径需要转发，不能只由公网证书验证目录处理。
+公网编译包与 Docker Web 镜像应保持版本一致，避免两份前端资源不一致。
+
 ## 自动同步国内镜像
 
 `aliyun image sync` 是独立的 GitHub Actions 工作流。它监听 `latest` 分支的

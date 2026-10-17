@@ -178,6 +178,12 @@ jobs:
         with:
           node-version: 24
 
+      - name: Verify Docker nginx configuration lifecycle
+        run: |
+          node --test docker/web/_tests/*.test.cjs scripts/node/docker-deploy/_tests/nginx-websocket.test.js
+          docker build --target runtime-base -f docker/web.Dockerfile -t flowbase-nginx-smoke .
+          FLOWBASE_NGINX_TEST_IMAGE=flowbase-nginx-smoke node docker/web/_tests/container-smoke.cjs
+
       - name: Restore web pnpm store
         uses: actions/cache@v5
         with:

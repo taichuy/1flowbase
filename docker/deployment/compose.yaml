@@ -87,6 +87,7 @@ services:
     - ${WEB_PORT:-3100}:80
     restart: unless-stopped
     volumes:
+    - ./web/nginx:/config/nginx
     - ./web/external-npm:/usr/share/nginx/html/external-npm:ro
   init:
     image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}

@@ -41,6 +41,8 @@ RUN pnpm --dir web --filter @1flowbase/web build
 FROM nginx:alpine AS runtime-base
 
 COPY docker/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/web/nginx.conf /usr/local/share/1flowbase/nginx.conf
+COPY --chmod=755 docker/web/configure-nginx.sh /docker-entrypoint.d/40-flowbase-nginx.sh
 
 EXPOSE 80
 
