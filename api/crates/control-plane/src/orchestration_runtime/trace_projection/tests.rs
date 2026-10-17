@@ -507,6 +507,7 @@ fn builder_projects_linked_agent_tools_as_subagent_llm_nodes() {
     );
     assert!(subagent_content
         .payload
+        .materialize_for_persistence()
         .as_object()
         .expect("subagent content payload should be an object")
         .get("input_payload")

@@ -6,7 +6,7 @@ use crate::secret_crypto::{
     decrypt_secret_json, decrypt_secret_json_with_aad, encrypt_secret_json,
     encrypt_secret_json_with_aad,
 };
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use control_plane_contracts::system_backup::selective::SelectiveBackupPreview;
 use serde_json::Value;
 use sqlx::{PgConnection, Row};
@@ -155,7 +155,11 @@ async fn missing_parent(
         })
         .collect::<Result<Vec<_>>>()?
         .join(" and ");
-    let sql=format!("select exists(select 1 from {} p cross join jsonb_populate_record(null::{},$1) s where {conditions})",schema::quote(&fk.parent)?,schema::quote(&table.name)?);
+    let sql = format!(
+        "select exists(select 1 from {} p cross join jsonb_populate_record(null::{},$1) s where {conditions})",
+        schema::quote(&fk.parent)?,
+        schema::quote(&table.name)?
+    );
     // SQL safety: Names are schema::quote output; index expressions/predicates come from the target PostgreSQL catalog.
     if sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(row)
@@ -209,7 +213,9 @@ async fn unique_queries(
             .try_get::<Option<String>, _>("predicate")?
             .unwrap_or_else(|| "true".into());
         let name = schema::quote(&table.name)?;
-        let sql=format!("select exists(select 1 from (select to_jsonb(t) as record,{projection} from {name} t where {predicate}) old cross join (select {projection} from jsonb_populate_record(null::{name},$1) t where {predicate}) new where {equality} and not ({same_pk}))");
+        let sql = format!(
+            "select exists(select 1 from (select to_jsonb(t) as record,{projection} from {name} t where {predicate}) old cross join (select {projection} from jsonb_populate_record(null::{name},$1) t where {predicate}) new where {equality} and not ({same_pk}))"
+        );
         result.push((index.try_get("name")?, sql));
     }
     Ok(result)
@@ -493,7 +499,9 @@ pub(super) async fn validate(
         }
         if matches!(
             table.name.as_str(),
-            "runtime_canonical_contents"
+            "host_event_bus_pending"
+                | "credit_event_handoffs"
+                | "runtime_canonical_contents"
                 | "runtime_native_snapshot_items"
                 | "runtime_native_snapshot_manifests"
                 | "runtime_native_snapshot_references"
@@ -506,7 +514,11 @@ pub(super) async fn validate(
                 .map(|pk| Ok(format!("t.{}=r.{}", schema::quote(pk)?, schema::quote(pk)?)))
                 .collect::<Result<Vec<_>>>()?
                 .join(" and ");
-            let sql=format!("select exists(select 1 from {} t cross join jsonb_populate_record(null::{},$1) r where {condition} and to_jsonb(t) is distinct from to_jsonb(r))",schema::quote(&table.name)?,schema::quote(&table.name)?);
+            let sql = format!(
+                "select exists(select 1 from {} t cross join jsonb_populate_record(null::{},$1) r where {condition} and to_jsonb(t) is distinct from to_jsonb(r))",
+                schema::quote(&table.name)?,
+                schema::quote(&table.name)?
+            );
             // The table and primary-key names above are quoted; the archive row remains bound.
             if sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(&record.row)

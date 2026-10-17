@@ -107,3 +107,7 @@ uuid.workspace = true
 [[test]]
 name = "notifications_integration"
 path = "tests/notifications/mod.rs"
+
+[[test]]
+name = "durable_event_bus"
+path = "tests/event_bus/mod.rs"

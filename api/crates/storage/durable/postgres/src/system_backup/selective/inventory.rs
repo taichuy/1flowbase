@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use control_plane_contracts::system_backup::selective::{
     SelectiveBackupCategory, SelectiveBackupSelection,
 };
@@ -9,24 +9,87 @@ use std::collections::{BTreeMap, BTreeSet};
 // Native projection progress also retains observed conflict keys; include it with execution data.
 // Organization trees and their member/role bindings are persisted member configuration.
 const GROUPS: &[(&str, &str, &str)] = &[
-("applications", "applications application_tags application_tag_bindings flows flow_drafts flow_versions flow_compiled_plans application_environment_variables application_api_mappings application_publication_versions workflow_schedule_triggers workflow_extension_triggers application_extension_sources application_js_dependency_selections", "flow_runs node_runs node_run_details flow_run_checkpoints flow_run_events flow_run_tool_callback_inbox flow_run_callback_tasks flow_run_callback_resume_attempts flow_run_resume_claims flow_run_recovery_history runtime_spans runtime_events runtime_items runtime_context_projections runtime_usage_ledger runtime_artifacts runtime_audit_hashes runtime_canonical_contents runtime_observation_body_ownership runtime_native_snapshot_items runtime_native_snapshot_manifests runtime_native_snapshot_references runtime_invocation_context_bindings runtime_debug_artifacts runtime_legacy_shadow_batches runtime_legacy_shadow_rows application_conversations application_conversation_messages application_public_conversations application_run_conversation_message_items application_run_native_projection_progress application_run_log_summaries application_run_log_tasks application_log_upload_receipts application_log_deletion_jobs application_log_deletion_records application_log_deletion_stop_requests application_run_trace_projection_statuses application_run_trace_nodes application_run_trace_node_contents application_run_trace_refresh_queue external_agent_sessions external_agent_telemetry_events gateway_log_conversations gateway_log_turns gateway_log_invocations gateway_log_output_items gateway_log_tool_results provider_protocol_capsules provider_protocol_trajectory_events provider_semantic_trajectory_steps native_trajectory_integrity client_trajectory_archive_heads client_trajectory_archive_blocks client_trajectory_archive_segments client_trajectory_archive_parts client_trajectory_captures client_trajectory_steps client_trajectory_sections client_trajectory_node_links assistant_conversations run_archive_upload_sessions run_archive_upload_chunks run_archive_import_jobs run_archive_import_mappings capability_invocations debug_variable_cache_entries"),
-("auth-center", "authentication_connections login_entries", ""),
-("api-key-authentication", "api_keys api_key_data_model_permissions", ""),
-("data-models", "model_definitions model_fields model_definition_versions scope_data_model_grants data_source_instances data_source_secrets main_source_defaults", "model_change_logs data_source_catalog_caches data_source_preview_sessions data_model_side_effect_receipts"),
-("files", "file_storages file_tables", "attachments"),
-("model-providers", "model_provider_instances model_provider_instance_secrets model_provider_main_instances model_provider_main_model_distribution_rules provider_account_pools model_pricing_rules workspace_billing_settings model_failover_queue_templates model_failover_queue_items model_provider_catalog_sources model_provider_catalog_entries", "model_provider_session_bindings model_provider_request_logs provider_instance_model_catalog_cache model_catalog_sync_runs model_failover_queue_snapshots model_failover_attempt_ledger model_provider_preview_sessions runtime_cost_ledger billing_sessions"),
-// Channel configuration is separate from recipient inbox and durable send history.
-("notifications", "notification_instances", "system_notifications notification_send_logs"),
-("network-center", "network_egress_providers network_egress_provider_secrets network_egress_pools network_egress_pool_members network_egress_routes network_egress_route_pool_members", "network_egress_projections"),
-// OAuth state includes durable client registrations as well as token lifecycle facts.
-// Keep the complete persisted family in data backups, not structure-only configuration.
-("mcp-management", "mcp_instances mcp_groups mcp_tools mcp_tool_bindings mcp_meta_tool_configs mcp_instance_discovery_policies mcp_upstream_connections mcp_upstream_connection_secrets mcp_upstream_tool_sources mcp_client_credentials mcp_extension_bundle_imports", "mcp_oauth_state mcp_oauth_grants mcp_oauth_refresh_tokens"),
-("members", "tenants workspaces users workspace_memberships user_auth_identities user_role_bindings departments department_role_bindings user_department_bindings", "user_credit_accounts runtime_credit_ledger credit_event_outbox audit_logs"),
-("roles", "roles permission_definitions role_permissions role_data_policies role_data_model_policies role_console_group_policies role_console_operation_policies console_permission_catalog_sync console_permission_catalog_groups console_permission_catalog_operations", "role_console_policy_migration_runs role_console_policy_migration_role_previews role_console_group_policy_snapshots role_console_operation_policy_snapshots role_console_policy_migration_run_artifacts role_console_policy_migration_actor_previews role_console_policy_migration_cutover_state role_console_policy_migration_ledger"),
-("i18n-catalog", "i18n_catalog_releases i18n_catalog_release_files i18n_catalog_release_messages i18n_catalog_release_translations workspace_i18n_catalog_states workspace_i18n_catalog_overrides workspace_i18n_catalog_custom_translations workspace_i18n_catalog_obsolete_messages", ""),
-("ui-management", "frontstage_pages frontstage_page_tabs frontstage_page_visibility_rules frontstage_block_nodes frontstage_page_schemas frontstage_block_codes frontend_block_catalog ui_code_templates ui_code_template_revisions ui_code_template_defaults ui_component_records ui_component_overrides ui_component_contract_revisions js_dependency_registry workspace_console_settings_orders workspace_console_settings_order_items", "frontstage_executable_upgrade_markers frontstage_executable_upgrade_runs"),
-("extension-center", "extension_installations plugin_assignments plugin_contribution_authorizations plugin_contribution_authorization_revisions plugin_settings_template_defaults plugin_settings_template_applications node_contribution_registry plugin_schema_ownership plugin_schema_version_objects plugin_credentials", "plugin_schema_reconcile_receipts plugin_data_idempotency_receipts lifecycle_outbox lifecycle_outbox_deliveries native_plugin_application_requests native_plugin_targets"),
-    ("docs", "", ""), ("backups", "", "portable_template_identities application_template_releases application_template_resource_baselines"), ("memory-observation", "", ""), ("system-runtime", "host_infrastructure_provider_configs retired_host_infrastructure_settings", "system_default_upgrade_runs system_default_upgrade_items"),
+    (
+        "applications",
+        "applications application_tags application_tag_bindings flows flow_drafts flow_versions flow_compiled_plans application_environment_variables application_api_mappings application_publication_versions workflow_schedule_triggers workflow_extension_triggers application_extension_sources application_js_dependency_selections",
+        "flow_runs node_runs node_run_details flow_run_checkpoints flow_run_events flow_run_tool_callback_inbox flow_run_callback_tasks flow_run_callback_resume_attempts flow_run_resume_claims flow_run_recovery_history runtime_spans runtime_events runtime_items runtime_context_projections runtime_usage_ledger runtime_artifacts runtime_audit_hashes runtime_canonical_contents runtime_observation_body_ownership runtime_native_snapshot_items runtime_native_snapshot_manifests runtime_native_snapshot_references runtime_invocation_context_bindings runtime_debug_artifacts runtime_legacy_shadow_batches runtime_legacy_shadow_rows application_conversations application_conversation_messages application_public_conversations application_run_conversation_message_items application_run_native_projection_progress application_run_log_summaries application_run_log_tasks application_log_upload_receipts application_log_deletion_jobs application_log_deletion_records application_log_deletion_stop_requests application_run_trace_projection_statuses application_run_trace_nodes application_run_trace_node_contents application_run_trace_refresh_queue external_agent_sessions external_agent_telemetry_events gateway_log_conversations gateway_log_turns gateway_log_invocations gateway_log_output_items gateway_log_tool_results provider_protocol_capsules provider_protocol_trajectory_events provider_semantic_trajectory_steps native_trajectory_integrity client_trajectory_archive_heads client_trajectory_archive_blocks client_trajectory_archive_segments client_trajectory_archive_parts client_trajectory_captures client_trajectory_steps client_trajectory_sections client_trajectory_node_links assistant_conversations run_archive_upload_sessions run_archive_upload_chunks run_archive_import_jobs run_archive_import_mappings capability_invocations debug_variable_cache_entries",
+    ),
+    (
+        "auth-center",
+        "authentication_connections login_entries",
+        "",
+    ),
+    (
+        "api-key-authentication",
+        "api_keys api_key_data_model_permissions",
+        "",
+    ),
+    (
+        "data-models",
+        "model_definitions model_fields model_definition_versions scope_data_model_grants data_source_instances data_source_secrets main_source_defaults",
+        "model_change_logs data_source_catalog_caches data_source_preview_sessions data_model_side_effect_receipts",
+    ),
+    ("files", "file_storages file_tables", "attachments"),
+    (
+        "model-providers",
+        "model_provider_instances model_provider_instance_secrets model_provider_main_instances model_provider_main_model_distribution_rules provider_account_pools model_pricing_rules workspace_billing_settings model_failover_queue_templates model_failover_queue_items model_provider_catalog_sources model_provider_catalog_entries",
+        "model_provider_session_bindings model_provider_request_logs provider_instance_model_catalog_cache model_catalog_sync_runs model_failover_queue_snapshots model_failover_attempt_ledger model_provider_preview_sessions runtime_cost_ledger billing_sessions",
+    ),
+    // Channel configuration is separate from recipient inbox and durable send history.
+    (
+        "notifications",
+        "notification_instances",
+        "system_notifications notification_send_logs",
+    ),
+    (
+        "network-center",
+        "network_egress_providers network_egress_provider_secrets network_egress_pools network_egress_pool_members network_egress_routes network_egress_route_pool_members",
+        "network_egress_projections",
+    ),
+    // OAuth state includes durable client registrations as well as token lifecycle facts.
+    // Keep the complete persisted family in data backups, not structure-only configuration.
+    (
+        "mcp-management",
+        "mcp_instances mcp_groups mcp_tools mcp_tool_bindings mcp_meta_tool_configs mcp_instance_discovery_policies mcp_upstream_connections mcp_upstream_connection_secrets mcp_upstream_tool_sources mcp_client_credentials mcp_extension_bundle_imports",
+        "mcp_oauth_state mcp_oauth_grants mcp_oauth_refresh_tokens",
+    ),
+    (
+        "members",
+        "tenants workspaces users workspace_memberships user_auth_identities user_role_bindings departments department_role_bindings user_department_bindings",
+        "user_credit_accounts runtime_credit_ledger credit_event_outbox audit_logs",
+    ),
+    (
+        "roles",
+        "roles permission_definitions role_permissions role_data_policies role_data_model_policies role_console_group_policies role_console_operation_policies console_permission_catalog_sync console_permission_catalog_groups console_permission_catalog_operations",
+        "role_console_policy_migration_runs role_console_policy_migration_role_previews role_console_group_policy_snapshots role_console_operation_policy_snapshots role_console_policy_migration_run_artifacts role_console_policy_migration_actor_previews role_console_policy_migration_cutover_state role_console_policy_migration_ledger",
+    ),
+    (
+        "i18n-catalog",
+        "i18n_catalog_releases i18n_catalog_release_files i18n_catalog_release_messages i18n_catalog_release_translations workspace_i18n_catalog_states workspace_i18n_catalog_overrides workspace_i18n_catalog_custom_translations workspace_i18n_catalog_obsolete_messages",
+        "",
+    ),
+    (
+        "ui-management",
+        "frontstage_pages frontstage_page_tabs frontstage_page_visibility_rules frontstage_block_nodes frontstage_page_schemas frontstage_block_codes frontend_block_catalog ui_code_templates ui_code_template_revisions ui_code_template_defaults ui_component_records ui_component_overrides ui_component_contract_revisions js_dependency_registry workspace_console_settings_orders workspace_console_settings_order_items",
+        "frontstage_executable_upgrade_markers frontstage_executable_upgrade_runs",
+    ),
+    (
+        "extension-center",
+        "extension_installations plugin_assignments plugin_contribution_authorizations plugin_contribution_authorization_revisions plugin_settings_template_defaults plugin_settings_template_applications node_contribution_registry plugin_schema_ownership plugin_schema_version_objects plugin_credentials",
+        "plugin_schema_reconcile_receipts plugin_data_idempotency_receipts lifecycle_outbox lifecycle_outbox_deliveries native_plugin_application_requests native_plugin_targets",
+    ),
+    ("docs", "", ""),
+    (
+        "backups",
+        "",
+        "portable_template_identities application_template_releases application_template_resource_baselines",
+    ),
+    ("memory-observation", "", ""),
+    (
+        "system-runtime",
+        "host_infrastructure_provider_configs",
+        "system_default_upgrade_runs system_default_upgrade_items host_event_bus_counter host_event_bus_pending credit_event_handoffs",
+    ),
 ];
 
 pub(super) fn static_owner(table: &str) -> Option<(String, bool)> {
@@ -41,9 +104,13 @@ pub(super) fn static_owner(table: &str) -> Option<(String, bool)> {
     })
 }
 pub(super) fn excluded(table: &str) -> bool {
+    // The retirement migration keeps original configs/policies solely for recovery,
+    // not application replay. Full-database logical backup retains this archive;
+    // selective settings restore must not treat it as active configuration.
     matches!(
         table,
         "_sqlx_migrations"
+            | "retired_host_infrastructure_settings"
             | "extension_installation_node_inventory"
             | "extension_artifact_instances"
             | "plugin_artifact_instances"

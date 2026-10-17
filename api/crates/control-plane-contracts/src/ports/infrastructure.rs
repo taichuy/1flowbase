@@ -97,6 +97,8 @@ pub struct CacheEntryValueSnapshot {
     pub value: serde_json::Value,
 }
 pub struct EphemeralInspectionCapabilities {
+    /// The provider's actual medium; value sizes remain logical JSON sizes, not heap usage.
+    pub storage_medium: Option<&'static str>,
     pub list_entries: bool,
     pub list_tree: bool,
     pub search_entries: bool,
@@ -114,6 +116,7 @@ pub struct EphemeralInspectionCapabilities {
 impl EphemeralInspectionCapabilities {
     pub const fn unsupported() -> Self {
         Self {
+            storage_medium: None,
             list_entries: false,
             list_tree: false,
             search_entries: false,
@@ -131,6 +134,7 @@ impl EphemeralInspectionCapabilities {
 
     pub const fn supported() -> Self {
         Self {
+            storage_medium: None,
             list_entries: true,
             list_tree: true,
             search_entries: true,
@@ -148,6 +152,7 @@ impl EphemeralInspectionCapabilities {
 
     pub const fn metadata_only() -> Self {
         Self {
+            storage_medium: None,
             list_entries: true,
             list_tree: true,
             search_entries: true,
@@ -963,6 +968,11 @@ pub trait DistributedLock: Send + Sync {
 
 #[async_trait]
 pub trait EventBus: Send + Sync {
+    /// Optional durable capability belonging to this exact active provider.
+    fn credit_event_handoff(&self) -> Option<&dyn super::CreditEventHandoff> {
+        None
+    }
+
     async fn publish(&self, topic: &str, payload: serde_json::Value) -> anyhow::Result<()>;
 
     async fn poll(&self, topic: &str) -> anyhow::Result<Option<serde_json::Value>>;

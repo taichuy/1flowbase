@@ -1,12 +1,13 @@
 mod cache_store_activation;
 mod contracts;
+mod event_bus_activation;
 mod local;
 mod local_runtime_event_stream;
 mod provider_transport_store;
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use control_plane::ports::SessionStore;
 use control_plane::ports::{PublishedPlanCache, PublishedPublicationCache};
 
@@ -19,7 +20,8 @@ pub use contracts::{
 #[cfg(test)]
 pub(crate) use local::build_local_host_infrastructure_from_host_extensions_with_cache_factories;
 pub use local::{
-    build_local_host_infrastructure, build_local_host_infrastructure_from_host_extensions,
+    build_host_infrastructure_from_host_extensions, build_local_host_infrastructure,
+    build_local_host_infrastructure_from_host_extensions,
 };
 pub use local_runtime_event_stream::LocalRuntimeEventStream;
 pub use provider_transport_store::LayeredProviderTransportStore;

@@ -1,9 +1,9 @@
 use crate::{
-    billing::{rate_token_usage, CreditCommandService, PricingRule, TokenUsage},
+    billing::{CreditCommandService, PricingRule, TokenUsage, rate_token_usage},
     ports::{
-        BillingRepository, CreditAccountRecord, CreditCommandInput, CreditOutboxEvent,
-        CreditReservation, CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput,
-        PricingRulesPage, ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
+        BillingRepository, CreditAccountRecord, CreditCommandInput, CreditReservation,
+        CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput, PricingRulesPage,
+        ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
     },
 };
 use async_trait::async_trait;
@@ -14,8 +14,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use time::{
-    macros::{datetime, time},
     OffsetDateTime, Weekday,
+    macros::{datetime, time},
 };
 use uuid::Uuid;
 
@@ -284,32 +284,6 @@ impl BillingRepository for RecordingBillingRepository {
         unreachable!("credit command service fixture does not list ledger entries")
     }
 
-    async fn claim_credit_outbox_events(
-        &self,
-        _worker_id: &str,
-        _limit: i64,
-        _locked_until: OffsetDateTime,
-    ) -> anyhow::Result<Vec<CreditOutboxEvent>> {
-        unreachable!("credit command service fixture does not claim outbox events")
-    }
-
-    async fn complete_credit_outbox_event(
-        &self,
-        _event_id: Uuid,
-        _worker_id: &str,
-    ) -> anyhow::Result<bool> {
-        unreachable!("credit command service fixture does not complete outbox events")
-    }
-
-    async fn fail_credit_outbox_event(
-        &self,
-        _event_id: Uuid,
-        _worker_id: &str,
-        _error: &str,
-    ) -> anyhow::Result<bool> {
-        unreachable!("credit command service fixture does not fail outbox events")
-    }
-
     async fn recover_expired_credit_reservations(
         &self,
         _now: OffsetDateTime,
@@ -378,9 +352,11 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
         .execute_plugin_command("checkin-plugin", &BTreeSet::new(), command.clone())
         .await
         .unwrap_err();
-    assert!(denied
-        .to_string()
-        .contains("credit_command_permission_denied"));
+    assert!(
+        denied
+            .to_string()
+            .contains("credit_command_permission_denied")
+    );
 
     let permissions = BTreeSet::from(["credit.grant".to_string()]);
     let first = service
@@ -400,9 +376,11 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
         .execute_plugin_command("checkin-plugin", &permissions, conflicting.clone())
         .await
         .unwrap_err();
-    assert!(conflict
-        .to_string()
-        .contains("credit_idempotency_payload_mismatch"));
+    assert!(
+        conflict
+            .to_string()
+            .contains("credit_idempotency_payload_mismatch")
+    );
 
     let mut accepted_write = RecordedCreditCommand::from(&command);
     accepted_write.actor_plugin_id = Some("checkin-plugin".into());
@@ -492,16 +470,17 @@ fn daily_window_can_end_at_midnight_without_a_pricing_gap() {
     let mut wrapping = rule();
     wrapping.local_time_start = Some(time!(10:00));
     wrapping.local_time_end = Some(time!(00:00));
-    assert!(crate::billing::rule_matches_local_window(
-        &wrapping,
-        datetime!(2026-08-18 23:59:59.999_999_999 UTC)
-    )
-    .unwrap());
-    assert!(!crate::billing::rule_matches_local_window(
-        &wrapping,
-        datetime!(2026-08-18 09:59:59 UTC)
-    )
-    .unwrap());
+    assert!(
+        crate::billing::rule_matches_local_window(
+            &wrapping,
+            datetime!(2026-08-18 23:59:59.999_999_999 UTC)
+        )
+        .unwrap()
+    );
+    assert!(
+        !crate::billing::rule_matches_local_window(&wrapping, datetime!(2026-08-18 09:59:59 UTC))
+            .unwrap()
+    );
 
     wrapping.weekday_mask = 0b000_1111;
     assert_eq!(
@@ -666,14 +645,16 @@ fn ttl_buckets_sparse_order_and_invalid_usage() {
             / Decimal::from(pricing.input_token_unit_size)
     );
     pricing.input_token_unit_price = Decimal::MAX;
-    assert!(rate_token_usage(
-        &pricing,
-        &TokenUsage {
-            input_tokens: i64::MAX,
-            ..Default::default()
-        }
-    )
-    .is_err());
+    assert!(
+        rate_token_usage(
+            &pricing,
+            &TokenUsage {
+                input_tokens: i64::MAX,
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -701,4 +682,53 @@ fn explicit_rating_time_applies_date_and_utc_window() {
             Decimal::from(price)
         );
     }
+}
+
+#[tokio::test]
+async fn credit_dispatch_requires_the_actual_active_providers_durable_capability() {
+    use crate::ports::{CreditEventHandoff, EventBus};
+    struct ActiveBus;
+    #[async_trait]
+    impl EventBus for ActiveBus {
+        fn credit_event_handoff(&self) -> Option<&dyn CreditEventHandoff> {
+            Some(self)
+        }
+        async fn publish(&self, _: &str, _: serde_json::Value) -> anyhow::Result<()> {
+            panic!("credit must use transactional handoff, not memory publish")
+        }
+        async fn poll(&self, _: &str) -> anyhow::Result<Option<serde_json::Value>> {
+            panic!("dispatch is not a fake business consumer")
+        }
+    }
+    #[async_trait]
+    impl CreditEventHandoff for ActiveBus {
+        async fn handoff_credit_events(&self, limit: i64) -> anyhow::Result<usize> {
+            assert_eq!(limit, 50);
+            Ok(7)
+        }
+    }
+    struct UnsupportedBus;
+    #[async_trait]
+    impl EventBus for UnsupportedBus {
+        async fn publish(&self, _: &str, _: serde_json::Value) -> anyhow::Result<()> {
+            panic!("must not silently fall back to a non-durable provider")
+        }
+        async fn poll(&self, _: &str) -> anyhow::Result<Option<serde_json::Value>> {
+            Ok(None)
+        }
+    }
+    assert_eq!(
+        crate::billing::dispatch_credit_events(&ActiveBus, 50)
+            .await
+            .unwrap(),
+        7
+    );
+    let error = crate::billing::dispatch_credit_events(&UnsupportedBus, 50)
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("active event-bus provider has no durable credit handoff")
+    );
 }

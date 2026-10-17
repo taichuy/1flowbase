@@ -247,7 +247,7 @@ pub trait BillingRepository: Send + Sync {
         idempotency_key: &str,
     ) -> anyhow::Result<()>;
     async fn reserve_credit(&self, input: &ReserveCreditInput)
-        -> anyhow::Result<CreditReservation>;
+    -> anyhow::Result<CreditReservation>;
     async fn settle_credit(
         &self,
         input: &SettleCreditInput,
@@ -266,26 +266,16 @@ pub trait BillingRepository: Send + Sync {
         &self,
         input: &ListCreditLedgerInput,
     ) -> anyhow::Result<Vec<CreditTransactionRecord>>;
-    async fn claim_credit_outbox_events(
-        &self,
-        worker_id: &str,
-        limit: i64,
-        locked_until: OffsetDateTime,
-    ) -> anyhow::Result<Vec<CreditOutboxEvent>>;
-    async fn complete_credit_outbox_event(
-        &self,
-        event_id: Uuid,
-        worker_id: &str,
-    ) -> anyhow::Result<bool>;
-    async fn fail_credit_outbox_event(
-        &self,
-        event_id: Uuid,
-        worker_id: &str,
-        error: &str,
-    ) -> anyhow::Result<bool>;
     async fn recover_expired_credit_reservations(
         &self,
         now: OffsetDateTime,
         limit: i64,
     ) -> anyhow::Result<usize>;
+}
+
+/// Transactional transfer of credit notifications into the active provider's durable queue.
+/// Success acknowledges durable reception only, never a consumer business effect.
+#[async_trait]
+pub trait CreditEventHandoff: Send + Sync {
+    async fn handoff_credit_events(&self, limit: i64) -> anyhow::Result<usize>;
 }

@@ -187,32 +187,6 @@ impl crate::ports::BillingRepository for InMemoryOrchestrationRuntimeRepository 
         Ok(Vec::new())
     }
 
-    async fn claim_credit_outbox_events(
-        &self,
-        _worker_id: &str,
-        _limit: i64,
-        _locked_until: OffsetDateTime,
-    ) -> Result<Vec<crate::ports::CreditOutboxEvent>> {
-        Ok(Vec::new())
-    }
-
-    async fn complete_credit_outbox_event(
-        &self,
-        _event_id: Uuid,
-        _worker_id: &str,
-    ) -> Result<bool> {
-        Ok(false)
-    }
-
-    async fn fail_credit_outbox_event(
-        &self,
-        _event_id: Uuid,
-        _worker_id: &str,
-        _error: &str,
-    ) -> Result<bool> {
-        Ok(false)
-    }
-
     async fn recover_expired_credit_reservations(
         &self,
         _now: OffsetDateTime,

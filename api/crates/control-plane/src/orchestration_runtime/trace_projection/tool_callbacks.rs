@@ -550,7 +550,7 @@ pub(super) fn tool_callback_content_payload(
     tool_call: &serde_json::Value,
     tool_result: Option<&serde_json::Value>,
     route_trace: Option<&serde_json::Value>,
-) -> serde_json::Value {
+) -> TraceProjectionWritePayload {
     let call_usage = tool_callback_call_usage_payload(tool_call, tool_result, route_trace).cloned();
     let result_context_usage = tool_result
         .and_then(|result| result.get("result_context_usage"))
@@ -563,7 +563,7 @@ pub(super) fn tool_callback_content_payload(
         }
     });
 
-    serde_json::json!({
+    let mut payload = TraceProjectionWritePayload::from(serde_json::json!({
         "id": tool_call_id,
         "name": tool_name,
         "callback_task_id": task.map(|task| task.id),
@@ -571,16 +571,17 @@ pub(super) fn tool_callback_content_payload(
         "callback_status": callback_status,
         "execution_status": route_trace_execution_status(route_trace)
             .or_else(|| tool_result_execution_status(tool_result)),
-        "request_payload": tool_call,
-        "callback_payload": tool_result,
-        "parsed_result": tool_result,
         "call_usage": call_usage,
         "result_context_usage": result_context_usage,
         "duration_ms": task.and_then(|task| trace_node_duration_ms(task.created_at, task.completed_at)),
         "route_trace": route_trace,
-        "tool_call": tool_call,
-        "tool_result": tool_result,
-    })
+    }));
+    payload.set_shared_fields(&["request_payload", "tool_call"], tool_call.clone());
+    payload.set_shared_fields(
+        &["callback_payload", "parsed_result", "tool_result"],
+        tool_result.cloned().unwrap_or(serde_json::Value::Null),
+    );
+    payload
 }
 
 pub(super) fn callback_task_trace_node_status(task: &domain::CallbackTaskRecord) -> String {
@@ -697,7 +698,7 @@ pub(super) fn node_run_group_content(
     Ok(ApplicationRunTraceNodeContentProjectionInput {
         trace_node_id,
         content_kind: "node_run".to_string(),
-        payload: serde_json::json!({
+        payload: (serde_json::json!({
             "payload_index": {
                 "node_run_count": node_runs.len(),
                 "checkpoint_count": checkpoint_count,
@@ -707,7 +708,8 @@ pub(super) fn node_run_group_content(
             "source_refs": source_ref_values,
             "detail_refs": detail_refs,
             "node_run_refs": node_run_refs
-        }),
+        }))
+        .into(),
         source_refs: serde_json::Value::Array(source_refs),
     })
 }

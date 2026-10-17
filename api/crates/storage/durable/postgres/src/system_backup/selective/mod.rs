@@ -6,13 +6,13 @@ mod plugin_identity;
 mod schema;
 mod validation;
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use archive::{Header, Record, Table};
 use async_trait::async_trait;
 use control_plane_contracts::{
     ports::{BackupComponentReader, BackupComponentWriter},
     system_backup::{
-        selective::*, BackupComponentDescriptor, BackupComponentSource, BackupSourceError,
+        BackupComponentDescriptor, BackupComponentSource, BackupSourceError, selective::*,
     },
 };
 use domain::{
@@ -287,6 +287,17 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
         sqlx::query("set transaction isolation level serializable")
             .execute(&mut *tx)
             .await?;
+        // Queue restore follows the same counter -> receipt/pending lock order
+        // as publication/handoff. Hold the lock through the prepared transaction's commit.
+        let incoming = archive::header(&mut scratch.reader().await?).await?;
+        if incoming.tables.iter().any(|table| {
+            matches!(
+                table.name.as_str(),
+                "host_event_bus_counter" | "host_event_bus_pending" | "credit_event_handoffs"
+            )
+        }) {
+            crate::PgEventBus::lock_queue(&mut tx).await?;
+        }
         let (header, preview) =
             validation::validate(&mut tx, &scratch, source_master_key, target_master_key).await?;
         ensure!(

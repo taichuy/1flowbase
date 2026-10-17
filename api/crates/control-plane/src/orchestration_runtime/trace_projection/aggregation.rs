@@ -475,7 +475,7 @@ pub(super) fn subagent_flow_run_fallback_content(
     Ok(ApplicationRunTraceNodeContentProjectionInput {
         trace_node_id,
         content_kind: "node_run".to_string(),
-        payload: serde_json::json!({
+        payload: (serde_json::json!({
             "payload_index": {
                 "node_run_count": 0,
                 "checkpoint_count": 0,
@@ -493,7 +493,8 @@ pub(super) fn subagent_flow_run_fallback_content(
                 subagent_trace,
                 parent_tool_call_description
             )
-        }),
+        }))
+        .into(),
         source_refs,
     })
 }
@@ -559,7 +560,7 @@ pub(super) fn subagent_node_run_group_content(
     Ok(ApplicationRunTraceNodeContentProjectionInput {
         trace_node_id,
         content_kind: "node_run".to_string(),
-        payload: serde_json::json!({
+        payload: (serde_json::json!({
             "payload_index": {
                 "node_run_count": node_runs.len(),
                 "checkpoint_count": 0,
@@ -574,7 +575,8 @@ pub(super) fn subagent_node_run_group_content(
                 parent_tool_call_description
             ),
             "node_run_refs": node_run_refs
-        }),
+        }))
+        .into(),
         source_refs: serde_json::Value::Array(source_ref_values),
     })
 }
@@ -651,7 +653,7 @@ pub(super) fn stitched_node_run_group_content(
     Ok(ApplicationRunTraceNodeContentProjectionInput {
         trace_node_id,
         content_kind: "node_run".to_string(),
-        payload: serde_json::json!({
+        payload: (serde_json::json!({
             "payload_index": {
                 "node_run_count": node_runs.len(),
                 "checkpoint_count": 0,
@@ -662,7 +664,8 @@ pub(super) fn stitched_node_run_group_content(
             "source_refs": source_refs.clone(),
             "detail_refs": detail_refs,
             "node_run_refs": node_run_refs
-        }),
+        }))
+        .into(),
         source_refs: serde_json::Value::Array(source_refs),
     })
 }

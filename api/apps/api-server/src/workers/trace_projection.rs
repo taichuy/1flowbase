@@ -5,8 +5,8 @@ use crate::{
 };
 use control_plane::{
     orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection_from_source,
         APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+        build_application_run_trace_projection_from_source,
     },
     ports::{OrchestrationRuntimeRepository, UpsertApplicationRunTraceProjectionStatusInput},
     system_recovery::SystemWriteOwner,
@@ -89,15 +89,20 @@ pub(crate) async fn rebuild_trace_projection(
     application_id: uuid::Uuid,
     flow_run_id: uuid::Uuid,
 ) -> anyhow::Result<()> {
-    let source = store
-        .get_application_run_trace_projection_source(application_id, flow_run_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("trace projection source disappeared"))?;
-    let events = store.list_trace_enrichment_events(flow_run_id).await?;
-    let source = enrich_application_run_trace_projection_source_visible_internal_llm_route_traces(
-        source, &events,
-    );
-    let projection = build_application_run_trace_projection_from_source(&source)?;
+    let projection = {
+        let source = store
+            .get_application_run_trace_projection_source(application_id, flow_run_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("trace projection source disappeared"))?;
+        let source = {
+            let events = store.list_trace_enrichment_events(flow_run_id).await?;
+            enrich_application_run_trace_projection_source_visible_internal_llm_route_traces(
+                source, &events,
+            )
+        };
+        build_application_run_trace_projection_from_source(&source)?
+    };
+    // Only the owned projection crosses the persistence await, not its source/events.
     store
         .replace_application_run_trace_projection(&projection)
         .await?;

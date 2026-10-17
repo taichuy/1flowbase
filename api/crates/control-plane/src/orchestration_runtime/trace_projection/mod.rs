@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::ports::{
     ApplicationRunTraceNodeContentProjectionInput, ApplicationRunTraceNodeProjectionInput,
-    ReplaceApplicationRunTraceProjectionInput,
+    ReplaceApplicationRunTraceProjectionInput, TraceProjectionWritePayload,
 };
 
 pub use control_plane_contracts::persistence_projection::{
@@ -1018,7 +1018,7 @@ impl TraceProjectionBuilder {
             .push(ApplicationRunTraceNodeContentProjectionInput {
                 trace_node_id,
                 content_kind: node_kind,
-                payload: route_trace.clone(),
+                payload: (route_trace.clone()).into(),
                 source_refs: serde_json::json!([{
                     "source_kind": "visible_internal_llm_tool_trace",
                     "source_locator": locator_component
@@ -1090,7 +1090,7 @@ impl TraceProjectionBuilder {
             .push(ApplicationRunTraceNodeContentProjectionInput {
                 trace_node_id,
                 content_kind: "branch".to_string(),
-                payload: branch_trace.clone(),
+                payload: (branch_trace.clone()).into(),
                 source_refs: serde_json::json!([{
                     "source_kind": "visible_internal_llm_tool_branch",
                     "source_locator": locator_component
@@ -1141,7 +1141,7 @@ impl TraceProjectionBuilder {
             .push(ApplicationRunTraceNodeContentProjectionInput {
                 trace_node_id,
                 content_kind: "callback_task".to_string(),
-                payload: serde_json::to_value(task)?,
+                payload: (serde_json::to_value(task)?).into(),
                 source_refs: serde_json::json!([{
                     "source_kind": "callback_task",
                     "source_locator": task.id
@@ -1458,3 +1458,7 @@ mod native_callback_tests;
 #[cfg(test)]
 #[path = "_tests/node_run_identity.rs"]
 mod node_run_identity_tests;
+
+#[cfg(test)]
+#[path = "_tests/shared_ownership.rs"]
+mod shared_ownership_tests;

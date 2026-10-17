@@ -52,9 +52,9 @@ pub mod workers;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, Result};
-use argon2::{password_hash::PasswordHasher, Argon2};
-use axum::{middleware as axum_middleware, routing::get, Json, Router};
+use anyhow::{Result, anyhow};
+use argon2::{Argon2, password_hash::PasswordHasher};
+use axum::{Json, Router, middleware as axum_middleware, routing::get};
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
     plugin_management::ready_current_node_plugin_installation,
@@ -66,12 +66,12 @@ use tower_http::{
     cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::{build_official_i18n_catalog_update_service, ApiState},
+    app_state::{ApiState, build_official_i18n_catalog_update_service},
     config::{ApiConfig, ApiEnvironment},
     host_extension_loader::{
         activate_prepared_host_extensions, prepare_host_extensions_at_startup,
@@ -79,7 +79,7 @@ use crate::{
     host_extensions::console::{
         linked_host_console_route_sources, resolve_linked_host_extension_console_contribution,
     },
-    host_infrastructure::build_local_host_infrastructure_from_host_extensions,
+    host_infrastructure::build_host_infrastructure_from_host_extensions,
     official_mcp_bundles::OfficialMcpBundleSourcePort,
     provider_runtime::{
         ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeArtifactResolver,
@@ -539,9 +539,10 @@ async fn app_and_runtime_host_from_config(
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
             &active_host_extensions,
         )?;
-    let mut infrastructure = build_local_host_infrastructure_from_host_extensions(
+    let mut infrastructure = build_host_infrastructure_from_host_extensions(
         &host_extension_registry,
         &extension_graph,
+        store.pool().clone(),
     )?;
     let capsule_store = storage_durable_postgres::PgProviderProtocolCapsuleStore::new(
         store.pool().clone(),
@@ -1156,7 +1157,7 @@ pub fn init_tracing() {
 #[cfg(test)]
 mod tests {
     use super::{
-        api_workspace_root, parse_bind_addr, resolve_system_backup_startup, DEFAULT_API_SERVER_ADDR,
+        DEFAULT_API_SERVER_ADDR, api_workspace_root, parse_bind_addr, resolve_system_backup_startup,
     };
 
     #[test]

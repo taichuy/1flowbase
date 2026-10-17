@@ -4,12 +4,12 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::billing::PricingRule;
 use control_plane_contracts::{
-    ports::{
-        BillingRepository, CreditAccountRecord, CreditCommandInput, CreditOutboxEvent,
-        CreditReservation, CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput,
-        PricingRulesPage, ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
-    },
     ControlPlaneContractError as ControlPlaneError,
+    ports::{
+        BillingRepository, CreditAccountRecord, CreditCommandInput, CreditReservation,
+        CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput, PricingRulesPage,
+        ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
+    },
 };
 use sqlx::{Postgres, QueryBuilder, Row, Transaction};
 use time::OffsetDateTime;
@@ -951,61 +951,6 @@ impl BillingRepository for PgControlPlaneStore {
             .push_bind(input.limit.clamp(1, 200));
         let rows = query.build().fetch_all(self.pool()).await?;
         rows.iter().map(transaction_record).collect()
-    }
-
-    async fn claim_credit_outbox_events(
-        &self,
-        worker_id: &str,
-        limit: i64,
-        locked_until: OffsetDateTime,
-    ) -> Result<Vec<CreditOutboxEvent>> {
-        let rows = sqlx::query(
-            r#"with candidates as (
-                select event_id from credit_event_outbox
-                where published_at is null and (locked_until is null or locked_until < now())
-                order by created_at, event_id
-                for update skip locked
-                limit $1
-            )
-            update credit_event_outbox events
-            set locked_by=$2, locked_until=$3, delivery_attempts=delivery_attempts+1
-            from candidates where events.event_id=candidates.event_id
-            returning events.event_id,events.workspace_id,events.account_id,events.event_type,
-                      events.payload,events.created_at,events.delivery_attempts"#,
-        )
-        .bind(limit.clamp(1, 100))
-        .bind(worker_id)
-        .bind(locked_until)
-        .fetch_all(self.pool())
-        .await?;
-        rows.into_iter()
-            .map(|row| {
-                Ok(CreditOutboxEvent {
-                    event_id: row.try_get("event_id")?,
-                    workspace_id: row.try_get("workspace_id")?,
-                    account_id: row.try_get("account_id")?,
-                    event_type: row.try_get("event_type")?,
-                    payload: row.try_get("payload")?,
-                    created_at: row.try_get("created_at")?,
-                    delivery_attempts: row.try_get("delivery_attempts")?,
-                })
-            })
-            .collect()
-    }
-
-    async fn complete_credit_outbox_event(&self, event_id: Uuid, worker_id: &str) -> Result<bool> {
-        Ok(sqlx::query("update credit_event_outbox set published_at=now(),locked_by=null,locked_until=null,last_error=null where event_id=$1 and locked_by=$2 and published_at is null")
-            .bind(event_id).bind(worker_id).execute(self.pool()).await?.rows_affected()==1)
-    }
-
-    async fn fail_credit_outbox_event(
-        &self,
-        event_id: Uuid,
-        worker_id: &str,
-        error: &str,
-    ) -> Result<bool> {
-        Ok(sqlx::query("update credit_event_outbox set locked_by=null,locked_until=null,last_error=$3 where event_id=$1 and locked_by=$2 and published_at is null")
-            .bind(event_id).bind(worker_id).bind(error).execute(self.pool()).await?.rows_affected()==1)
     }
 
     async fn recover_expired_credit_reservations(

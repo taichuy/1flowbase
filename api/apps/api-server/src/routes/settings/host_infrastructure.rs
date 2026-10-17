@@ -2,20 +2,20 @@ use std::sync::Arc;
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    Json, Router,
 };
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        paginate_ephemeral_entries, paginate_ephemeral_tree, search_ephemeral_entries,
         CacheDomainSnapshot, CacheEntrySnapshot, CacheInspectionCapabilities, CacheStore,
         DistributedLock, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
         EphemeralInspectionCapabilities, EphemeralInspectionEntryPage,
         EphemeralInspectionPageRequest, EphemeralInspectionSummarySnapshot,
         EphemeralInspectionTreeNodeSnapshot, EphemeralInspectionTreePage, EphemeralValueRevealMode,
         EventBus, RateLimitStore, RuntimeEventStream, SessionStore, TaskQueue,
+        paginate_ephemeral_entries, paginate_ephemeral_tree, search_ephemeral_entries,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
 };
 
 pub(crate) mod interface_cache_inspection;
@@ -34,7 +34,7 @@ pub mod interface_operation;
 mod memory_support;
 mod provider_transport_session_observation;
 
-use memory_support::{memory_contract_definitions, MemoryInspectionDependencies};
+use memory_support::{MemoryInspectionDependencies, memory_contract_definitions};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CacheInspectionCapabilitiesResponse {
@@ -101,6 +101,9 @@ pub struct ClearCacheDomainResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MemoryInspectionCapabilitiesResponse {
+    /// Actual backing medium. Value byte counts are serialized logical contents, not heap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage_medium: Option<String>,
     pub list_entries: bool,
     pub list_tree: bool,
     pub search_entries: bool,
@@ -722,6 +725,7 @@ pub(super) fn has_registered_simple_operations(
 impl From<EphemeralInspectionCapabilities> for MemoryInspectionCapabilitiesResponse {
     fn from(capabilities: EphemeralInspectionCapabilities) -> Self {
         Self {
+            storage_medium: capabilities.storage_medium.map(str::to_string),
             list_entries: capabilities.list_entries,
             list_tree: capabilities.list_tree,
             search_entries: capabilities.search_entries,

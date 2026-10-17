@@ -5,9 +5,9 @@ use std::{
 
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
-    ensure_ephemeral_payload_size, ephemeral_metadata_size_bytes, EphemeralEntrySnapshot,
-    EphemeralEntryValueSnapshot, EphemeralInspectionCapabilities, EphemeralValueRevealMode,
-    EventBus,
+    EphemeralEntrySnapshot, EphemeralEntryValueSnapshot, EphemeralInspectionCapabilities,
+    EphemeralValueRevealMode, EventBus, ensure_ephemeral_payload_size,
+    ephemeral_metadata_size_bytes,
 };
 use tokio::sync::Mutex;
 
@@ -85,14 +85,20 @@ impl EventBus for MemoryEventBus {
     }
 
     async fn poll(&self, topic: &str) -> anyhow::Result<Option<serde_json::Value>> {
-        Ok(self
-            .inner
-            .lock()
-            .await
-            .topics
-            .get_mut(topic)
-            .and_then(VecDeque::pop_front)
-            .map(|entry| entry.payload))
+        let mut state = self.inner.lock().await;
+        let Some(queue) = state.topics.get_mut(topic) else {
+            return Ok(None);
+        };
+        let entry = queue.pop_front();
+        if queue.is_empty() {
+            // Remove under the same lock as pop: a concurrent publish must not be lost.
+            state.topics.remove(topic);
+            if state.topics.is_empty() {
+                // Release the topic index high-water allocation as well as the deque.
+                state.topics = HashMap::new();
+            }
+        }
+        Ok(entry.map(|entry| entry.payload))
     }
 
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
@@ -143,3 +149,7 @@ impl EventBus for MemoryEventBus {
         )))
     }
 }
+
+#[cfg(test)]
+#[path = "../_tests/memory_event_bus_tests.rs"]
+mod tests;

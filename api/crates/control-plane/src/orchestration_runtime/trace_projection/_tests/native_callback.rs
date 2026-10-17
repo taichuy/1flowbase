@@ -114,6 +114,14 @@ fn ac_010_native_request_overlay_preserves_completed_callback_truth() {
         .iter()
         .find(|node| node.trace_node_id == content.trace_node_id)
         .unwrap();
+    assert!(std::ptr::eq(
+        content.payload.get("request_payload").unwrap(),
+        content.payload.get("tool_call").unwrap()
+    ));
+    assert!(std::ptr::eq(
+        content.payload.get("callback_payload").unwrap(),
+        content.payload.get("tool_result").unwrap()
+    ));
     assert_eq!(content.payload["request_payload"], item);
     assert_eq!(content.payload["tool_call"], item);
     for field in [
@@ -139,12 +147,14 @@ fn ac_010_native_request_overlay_preserves_completed_callback_truth() {
     for source in original.source_refs.as_array().unwrap() {
         assert!(content.source_refs.as_array().unwrap().contains(source));
     }
-    assert!(content
-        .source_refs
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|source| source["source_kind"] == "application_run_conversation_message_items"));
+    assert!(
+        content
+            .source_refs
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|source| source["source_kind"] == "application_run_conversation_message_items")
+    );
 }
 
 fn flow_run(flow_run_id: Uuid, now: OffsetDateTime) -> domain::FlowRunRecord {

@@ -11,6 +11,104 @@ fn archive_lines(bytes: &[u8]) -> Vec<Value> {
         .map(|line| serde_json::from_str(line).unwrap())
         .collect()
 }
+
+#[tokio::test]
+async fn selective_runtime_roundtrip_preserves_retirement_archive_without_replaying_it() {
+    const RETIRED: &str = "retired_host_infrastructure_settings";
+    let (db, _) = fixture().await;
+    let repo = PgSelectiveBackupRepository::new(db.clone());
+    let historical = json!({"original_config": {"provider": "retired"}, "policy": [true, null]});
+    sqlx::query("insert into retired_host_infrastructure_settings(source_table,record) values ('fixture:retirement',$1)")
+        .bind(&historical).execute(&db).await.unwrap();
+    let retired_before: Vec<Value> = sqlx::query_scalar("select to_jsonb(retired) from retired_host_infrastructure_settings retired order by source_table,record::text")
+        .fetch_all(&db).await.unwrap();
+    let mut connection = db.acquire().await.unwrap();
+    assert!(schema::primary_key(&mut connection, RETIRED)
+        .await
+        .unwrap()
+        .is_empty());
+    drop(connection);
+
+    let categories = repo.catalog().await.unwrap();
+    assert!(categories.iter().all(|category| !category
+        .structure_tables
+        .iter()
+        .chain(&category.data_tables)
+        .any(|table| table == RETIRED)));
+    let runtime = categories
+        .iter()
+        .find(|category| category.feature_id == "system.system-runtime")
+        .unwrap();
+    for table in [
+        "system_default_upgrade_runs",
+        "system_default_upgrade_items",
+        "host_event_bus_counter",
+        "host_event_bus_pending",
+        "credit_event_handoffs",
+    ] {
+        assert!(
+            runtime.data_tables.iter().any(|name| name == table),
+            "missing active runtime table {table}"
+        );
+        assert!(!inventory::excluded(table));
+    }
+    let run = Uuid::now_v7();
+    let original_summary = json!({"fixture": "original runtime fact"});
+    sqlx::query("insert into system_default_upgrade_runs(id,system_version,status,summary_json) values ($1,'fixture:retirement','succeeded',$2)")
+        .bind(run).bind(&original_summary).execute(&db).await.unwrap();
+    let bytes = capture(&repo, select("system-runtime", false, true)).await;
+    let lines = archive_lines(&bytes);
+    let tables = lines[0]["tables"].as_array().unwrap();
+    assert!(!tables.iter().any(|entry| entry["name"] == RETIRED));
+    assert!(!lines.iter().skip(1).any(|entry| entry["table"] == RETIRED));
+    assert!(lines
+        .iter()
+        .skip(1)
+        .any(|entry| entry["table"] == "system_default_upgrade_runs"
+            && entry["row"]["id"] == json!(run)
+            && entry["row"]["summary_json"] == original_summary));
+    for table in [
+        "host_event_bus_counter",
+        "host_event_bus_pending",
+        "credit_event_handoffs",
+    ] {
+        assert!(tables
+            .iter()
+            .any(|entry| entry["name"] == table && entry["data"] == true));
+    }
+    let retired_after_export: Vec<Value> = sqlx::query_scalar("select to_jsonb(retired) from retired_host_infrastructure_settings retired order by source_table,record::text")
+        .fetch_all(&db).await.unwrap();
+    assert_eq!(retired_after_export, retired_before);
+
+    // Restore changes selected active facts, preserving both historical source
+    // rows and target-only retirement history outside application row replay.
+    sqlx::query("update system_default_upgrade_runs set summary_json='{}'::jsonb where id=$1")
+        .bind(run)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("insert into retired_host_infrastructure_settings(source_table,record) values ('fixture:target-only',$1)")
+        .bind(json!({"target_only":true})).execute(&db).await.unwrap();
+    let retired_target: Vec<Value> = sqlx::query_scalar("select to_jsonb(retired) from retired_host_infrastructure_settings retired order by source_table,record::text")
+        .fetch_all(&db).await.unwrap();
+    let preview = repo
+        .restore(reader(bytes), "key", "key", true)
+        .await
+        .unwrap();
+    assert!(preview.failures.is_empty(), "{:?}", preview.failures);
+    assert!(!preview.selected_tables.iter().any(|name| name == RETIRED));
+    let restored: Value =
+        sqlx::query_scalar("select summary_json from system_default_upgrade_runs where id=$1")
+            .bind(run)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(restored, original_summary);
+    let retired_after_restore: Vec<Value> = sqlx::query_scalar("select to_jsonb(retired) from retired_host_infrastructure_settings retired order by source_table,record::text")
+        .fetch_all(&db).await.unwrap();
+    assert_eq!(retired_after_restore, retired_target);
+}
+
 async fn model_fixture(db: &PgPool, actor: Uuid) -> domain::ModelDefinitionRecord {
     use control_plane_contracts::ports::{CreateModelDefinitionInput, ModelDefinitionRepository};
     let tenant = Uuid::now_v7();

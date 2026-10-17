@@ -6,6 +6,8 @@ pub mod application_public_api_repository;
 pub mod application_repository;
 pub mod auth_repository;
 pub mod billing_repository;
+mod event_bus;
+pub use event_bus::PgEventBus;
 mod connection;
 pub mod data_source_repository;
 pub mod extension_installation_repository;
@@ -49,7 +51,7 @@ pub mod ui_management_repository;
 pub mod workspace_repository;
 
 pub use connection::{
-    connect, connect_with_max_connections, connect_with_pool_settings, PgPoolSettings,
+    PgPoolSettings, connect, connect_with_max_connections, connect_with_pool_settings,
 };
 pub use model_definition_repository::RuntimeTableNamePolicy;
 pub use native_sql::execute_native_sql;
@@ -57,8 +59,9 @@ pub use orchestration_runtime_repository::RuntimeStorageCompactionReceipt;
 pub use provider_protocol_capsule_store::PgProviderProtocolCapsuleStore;
 pub use repositories::PgControlPlaneStore;
 pub use runtime::{
-    build_main_durable_postgres, build_main_durable_postgres_with_max_connections,
-    build_main_durable_postgres_with_pool_settings, MainDurableRuntime, MainDurableStore,
+    MainDurableRuntime, MainDurableStore, build_main_durable_postgres,
+    build_main_durable_postgres_with_max_connections,
+    build_main_durable_postgres_with_pool_settings,
 };
 pub use system_backup::*;
 pub use system_recovery::PostgreSqlRecoveryTarget;

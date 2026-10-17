@@ -1,4 +1,6 @@
 use super::*;
+mod write_payload;
+pub use write_payload::TraceProjectionWritePayload;
 
 #[derive(Debug, Clone)]
 pub struct CreateCheckpointInput {
@@ -76,7 +78,7 @@ pub struct ApplicationRunTraceNodeProjectionInput {
 pub struct ApplicationRunTraceNodeContentProjectionInput {
     pub trace_node_id: Uuid,
     pub content_kind: String,
-    pub payload: serde_json::Value,
+    pub payload: TraceProjectionWritePayload,
     pub source_refs: serde_json::Value,
 }
 

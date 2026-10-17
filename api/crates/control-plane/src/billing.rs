@@ -2,11 +2,10 @@ mod rating;
 use std::collections::BTreeMap;
 
 use crate::ports::{
-    BillingRepository, CreditCommandInput, CreditOutboxEvent, CreditTransactionRecord,
-    PluginCreditCommandRequest, PluginCreditCommandResult, ReserveCreditInput, SettleCreditInput,
+    BillingRepository, CreditCommandInput, CreditTransactionRecord, PluginCreditCommandRequest,
+    PluginCreditCommandResult, ReserveCreditInput, SettleCreditInput,
 };
-use anyhow::{anyhow, Result};
-use async_trait::async_trait;
+use anyhow::{Result, anyhow};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -14,7 +13,7 @@ use time::{OffsetDateTime, Weekday};
 use uuid::Uuid;
 
 pub use control_plane_contracts::billing::{
-    PricingRule, CREDIT_UNIT_USD, GLOBAL_ZERO_MODEL_ID, GLOBAL_ZERO_PROVIDER_CODE,
+    CREDIT_UNIT_USD, GLOBAL_ZERO_MODEL_ID, GLOBAL_ZERO_PROVIDER_CODE, PricingRule,
 };
 
 pub fn pricing_rules_cache_key(provider_code: &str, upstream_model_id: &str) -> String {
@@ -223,41 +222,14 @@ impl<R: BillingRepository> CreditCommandService<R> {
     }
 }
 
-#[async_trait]
-pub trait CreditEventPublisher: Send + Sync {
-    async fn publish(&self, event: &CreditOutboxEvent) -> Result<()>;
-}
-
-pub async fn dispatch_credit_events<R: BillingRepository, P: CreditEventPublisher>(
-    repository: &R,
-    publisher: &P,
-    worker_id: &str,
-    limit: i64,
-) -> Result<usize> {
-    let events = repository
-        .claim_credit_outbox_events(
-            worker_id,
-            limit,
-            OffsetDateTime::now_utc() + time::Duration::seconds(30),
-        )
-        .await?;
-    let mut published = 0;
-    for event in events {
-        match publisher.publish(&event).await {
-            Ok(()) => {
-                repository
-                    .complete_credit_outbox_event(event.event_id, worker_id)
-                    .await?;
-                published += 1;
-            }
-            Err(error) => {
-                repository
-                    .fail_credit_outbox_event(event.event_id, worker_id, &error.to_string())
-                    .await?;
-            }
-        }
-    }
-    Ok(published)
+/// Dispatch only through the capability of the actual active EventBus provider.
+pub async fn dispatch_credit_events(bus: &dyn crate::ports::EventBus, limit: i64) -> Result<usize> {
+    bus.credit_event_handoff()
+        .ok_or_else(|| {
+            anyhow!("active event-bus provider has no durable credit handoff capability")
+        })?
+        .handoff_credit_events(limit)
+        .await
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -347,7 +319,7 @@ pub fn weekday_bit(weekday: Weekday) -> i16 {
 }
 
 pub fn rule_matches_local_window(rule: &PricingRule, at: OffsetDateTime) -> Result<bool> {
-    use time_tz::{timezones, OffsetDateTimeExt};
+    use time_tz::{OffsetDateTimeExt, timezones};
     if !rule.enabled || at < rule.effective_from || rule.effective_to.is_some_and(|end| at >= end) {
         return Ok(false);
     }

@@ -23,6 +23,7 @@ members = [
   "crates/observability",
   "crates/postgres-test-support"
 ]
+exclude = ["vendor/tungstenite-0.27.0-openai-memory", "vendor/tungstenite-0.29.0-memory"]
 resolver = "2"
 
 [workspace.package]
@@ -107,3 +108,10 @@ debug = 1
 # optimized production hashing even when the rest of the test binary is debug.
 [profile.test.package.sha2]
 opt-level = 3
+
+# Preserve both production protocol implementations; only frame buffer owners differ.
+[patch."https://github.com/openai-oss-forks/tungstenite-rs"]
+tungstenite = { path = "vendor/tungstenite-0.27.0-openai-memory" }
+
+[patch.crates-io]
+tungstenite = { path = "vendor/tungstenite-0.29.0-memory" }

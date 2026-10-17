@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use control_plane::ports::SessionStore;
-use plugin_framework::{extension_bus::EffectiveExtensionGraph, HostExtensionRegistry};
+use plugin_framework::{HostExtensionRegistry, extension_bus::EffectiveExtensionGraph};
 use storage_ephemeral::{
     MemoryDistributedLock, MemoryEventBus, MemoryProviderTransportStore, MemoryTaskQueue,
     MokaRateLimitStore, MokaSessionStore,
@@ -12,12 +12,12 @@ use time::Duration;
 use crate::extension_bus::CACHE_STORE_CONTRACT_ID;
 
 use super::{
-    cache_store_activation::{
-        build_local_cache_store, builtin_cache_store_activation_factories,
-        CacheStoreActivationFactoryRegistry, LOCAL_PROVIDER_CODE, LOCAL_PROVIDER_SOURCE,
-    },
     DistributedLock, EventBus, HostInfrastructureRegistry, LocalRuntimeEventStream,
-    ProviderTransportStore, RateLimitStore, RuntimeEventStream, TaskQueue, SESSION_STORE_NAMESPACE,
+    ProviderTransportStore, RateLimitStore, RuntimeEventStream, SESSION_STORE_NAMESPACE, TaskQueue,
+    cache_store_activation::{
+        CacheStoreActivationFactoryRegistry, LOCAL_PROVIDER_CODE, LOCAL_PROVIDER_SOURCE,
+        build_local_cache_store, builtin_cache_store_activation_factories,
+    },
 };
 
 const RATE_LIMIT_STORE_NAMESPACE: &str = "flowbase:rate-limit";
@@ -64,7 +64,44 @@ pub fn build_local_host_infrastructure_from_host_extensions(
     )
 }
 
+/// Production assembly: the official declared provider uses the shared durable spool.
+pub fn build_host_infrastructure_from_host_extensions(
+    host_extensions: &HostExtensionRegistry,
+    graph: &Arc<EffectiveExtensionGraph>,
+    pool: sqlx::PgPool,
+) -> Result<HostInfrastructureRegistry> {
+    let cache_factories = builtin_cache_store_activation_factories()?;
+    let event_factories = super::event_bus_activation::builtin_event_bus_factories()?;
+    let mut registry =
+        build_services_from_host_extensions(host_extensions, graph, &cache_factories)?;
+    event_factories.activate(host_extensions, pool, &mut registry)?;
+    Ok(registry)
+}
+
 pub(crate) fn build_local_host_infrastructure_from_host_extensions_with_cache_factories(
+    host_extensions: &HostExtensionRegistry,
+    graph: &Arc<EffectiveExtensionGraph>,
+    cache_store_factories: &CacheStoreActivationFactoryRegistry,
+) -> Result<HostInfrastructureRegistry> {
+    let mut registry =
+        build_services_from_host_extensions(host_extensions, graph, cache_store_factories)?;
+    // Explicit memory assembly retained for in-process tests, not production boot.
+    let provider = host_extensions
+        .infrastructure_provider("event-bus", LOCAL_PROVIDER_CODE)
+        .filter(|provider| provider.extension_id == LOCAL_PROVIDER_SOURCE)
+        .ok_or_else(|| {
+            anyhow!("explicit memory event-bus assembly requires the official local provider")
+        })?;
+    registry.register_default_provider(
+        "event-bus",
+        &provider.provider_code,
+        &provider.extension_id,
+    )?;
+    registry.set_event_bus(Arc::new(MemoryEventBus::new()));
+    Ok(registry)
+}
+
+fn build_services_from_host_extensions(
     host_extensions: &HostExtensionRegistry,
     graph: &Arc<EffectiveExtensionGraph>,
     cache_store_factories: &CacheStoreActivationFactoryRegistry,
@@ -72,7 +109,7 @@ pub(crate) fn build_local_host_infrastructure_from_host_extensions_with_cache_fa
     let activated_cache_store = cache_store_factories.activate(graph.as_ref(), host_extensions)?;
     let mut registry = HostInfrastructureRegistry::default();
     for contract in LOCAL_INFRASTRUCTURE_CONTRACTS {
-        if *contract == CACHE_STORE_CONTRACT_ID {
+        if *contract == CACHE_STORE_CONTRACT_ID || *contract == "event-bus" {
             continue;
         }
         let provider = host_extensions
@@ -103,6 +140,7 @@ pub(crate) fn build_local_host_infrastructure_from_host_extensions_with_cache_fa
 
 fn install_compatibility_local_infrastructure_services(registry: &mut HostInfrastructureRegistry) {
     install_legacy_local_infrastructure_services(registry);
+    registry.set_event_bus(Arc::new(MemoryEventBus::new()) as Arc<dyn EventBus>);
     registry.set_cache_store(build_local_cache_store());
 }
 
@@ -121,7 +159,6 @@ fn install_legacy_local_infrastructure_services(registry: &mut HostInfrastructur
     registry.set_distributed_lock(
         Arc::new(MemoryDistributedLock::new(LOCK_NAMESPACE)) as Arc<dyn DistributedLock>
     );
-    registry.set_event_bus(Arc::new(MemoryEventBus::new()) as Arc<dyn EventBus>);
     registry.set_task_queue(Arc::new(
         MemoryTaskQueue::new(TASK_QUEUE_NAMESPACE).with_queue_capacity(
             PROVIDER_REQUEST_LOG_QUEUE,
@@ -147,7 +184,9 @@ fn install_legacy_local_infrastructure_services(registry: &mut HostInfrastructur
     if let Ok(value) = std::env::var("API_RUNTIME_REPLAY_RECOVERABLE_MAX_BYTES") {
         match value.parse::<usize>() {
             Ok(bytes) => event_stream = event_stream.with_recoverable_byte_budget(bytes),
-            Err(_) => tracing::warn!("invalid API_RUNTIME_REPLAY_RECOVERABLE_MAX_BYTES; leaving recoverable cache budget unset"),
+            Err(_) => tracing::warn!(
+                "invalid API_RUNTIME_REPLAY_RECOVERABLE_MAX_BYTES; leaving recoverable cache budget unset"
+            ),
         }
     }
     registry.set_runtime_event_stream(Arc::new(event_stream) as Arc<dyn RuntimeEventStream>);

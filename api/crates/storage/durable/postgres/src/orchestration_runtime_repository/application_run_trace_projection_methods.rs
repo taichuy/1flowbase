@@ -407,6 +407,12 @@ impl PgControlPlaneStore {
         }
 
         for content in &input.contents {
+            // Expand this content only, then drop its temporary Value before SQL awaits.
+            // Preserve the existing NUL/key escaping and raw-original sidecar codec.
+            let payload_parameter = {
+                let payload = content.payload.materialize_for_persistence();
+                lossless_json_parameter(&payload.as_ref())
+            };
             sqlx::query(
                 r#"
                 insert into application_run_trace_node_contents (
@@ -425,7 +431,7 @@ impl PgControlPlaneStore {
             .bind(scope_id)
             .bind(content.trace_node_id)
             .bind(&content.content_kind)
-            .bind(lossless_json_parameter(&(&content.payload)))
+            .bind(payload_parameter)
             .bind(lossless_json_parameter(&(&content.source_refs)))
             .execute(&mut *tx)
             .await?;

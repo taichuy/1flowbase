@@ -1,5 +1,5 @@
 use super::archive::{Column, Table};
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use sqlx::{PgConnection, Row};
 pub(super) fn quote(name: &str) -> Result<String> {
     ensure!(
@@ -32,6 +32,11 @@ pub(super) async fn prerequisites(
     Ok(sqlx::query_scalar("select distinct parent.relname::text from pg_constraint f join pg_class child on child.oid=f.conrelid join pg_class parent on parent.oid=f.confrelid join pg_namespace n on n.oid=child.relnamespace where n.nspname=current_schema() and child.relname=$1 and f.contype='f' order by 1").bind(table).fetch_all(connection).await?)
 }
 pub(super) fn upsert_sql(table: &Table) -> Result<String> {
+    if table.name == "host_event_bus_counter" {
+        // Selective restore merges into a live identity space; never rewind its counter
+        // or replace the target's cutover identity. Receipt cutover provenance is preserved.
+        return Ok("insert into host_event_bus_counter as target(singleton,last_sequence,cutover_id,created_at) select singleton,last_sequence,cutover_id,created_at from jsonb_populate_record(null::host_event_bus_counter,$1) on conflict(singleton) do update set last_sequence=greatest(target.last_sequence,excluded.last_sequence)".into());
+    }
     if table.name == "extension_installations" {
         return super::plugin_identity::insert_sql();
     }
@@ -76,7 +81,12 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
         )
     };
     let name = quote(&table.name)?;
-    Ok(format!("insert into {name} as target ({}) overriding system value select {} from jsonb_populate_record(null::{name},$1) where true on conflict ({}) {action}",names.join(","),names.join(","),pk.join(",")))
+    Ok(format!(
+        "insert into {name} as target ({}) overriding system value select {} from jsonb_populate_record(null::{name},$1) where true on conflict ({}) {action}",
+        names.join(","),
+        names.join(","),
+        pk.join(",")
+    ))
 }
 
 /// Definitions are rows, but their referenced physical schema must already exist on the target.

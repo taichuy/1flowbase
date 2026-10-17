@@ -23,7 +23,6 @@ impl TraceProjectionBuilder {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or(call_id);
             let result = message.get("tool_result").filter(|value| !value.is_null());
-            let payload = tool_callback_content_payload(None, call_id, name, item, result, None);
             let existing = self.contents.iter().position(|content| {
                 content.content_kind == "tool_callback"
                     && content
@@ -45,10 +44,12 @@ impl TraceProjectionBuilder {
                             .is_some_and(|value| !value.is_null())
                     });
                 if has_callback_truth {
-                    content.payload["request_payload"] = item.clone();
-                    content.payload["tool_call"] = item.clone();
+                    content
+                        .payload
+                        .set_shared_fields(&["request_payload", "tool_call"], item.clone());
                 } else {
-                    content.payload = payload;
+                    content.payload =
+                        tool_callback_content_payload(None, call_id, name, item, result, None);
                     // A client result proves receipt, not verified execution.
                     if let Some(node) = self
                         .nodes
@@ -73,6 +74,7 @@ impl TraceProjectionBuilder {
                 }
                 continue;
             }
+            let payload = tool_callback_content_payload(None, call_id, name, item, result, None);
             // If the legacy node payload has no tool entry, add the formal tool
             // using the existing trace node/content contract, not another tree.
             let stable_locator = format!("run:{}/tool:{call_id}", self.flow_run_id);
