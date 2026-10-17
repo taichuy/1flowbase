@@ -36,7 +36,7 @@ impl PgLegacyEventRecovery {
         // Project scalar metadata only. Never load all pending JSON to serve inspection.
         // The legacy Vec contract still has O(entry count) transient metadata cost.
         let rows = sqlx::query(
-            "select sequence,topic,value_size_bytes from legacy_event_recovery_pending",
+            "select sequence,topic,value_size_bytes from legacy_event_recovery_ledger where disposition='pending'",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -62,7 +62,7 @@ impl PgLegacyEventRecovery {
             .execute(&mut *tx)
             .await?;
         let row = sqlx::query(
-            "select sequence,topic,value_size_bytes from legacy_event_recovery_pending where sequence=$1",
+            "select sequence,topic,value_size_bytes from legacy_event_recovery_ledger where disposition='pending' and sequence=$1",
         )
         .bind(sequence)
         .fetch_optional(&mut *tx)
@@ -86,7 +86,7 @@ impl PgLegacyEventRecovery {
             }));
         }
         let row =
-            sqlx::query("select payload from legacy_event_recovery_pending where sequence=$1")
+            sqlx::query("select payload from legacy_event_recovery_ledger where disposition='pending' and sequence=$1")
                 .bind(sequence)
                 .fetch_one(&mut *tx)
                 .await?;

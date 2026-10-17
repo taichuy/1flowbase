@@ -3,6 +3,7 @@ mod archive;
 mod inventory;
 mod key_index;
 mod plugin_identity;
+mod recovery_archive;
 mod schema;
 mod validation;
 
@@ -301,6 +302,7 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
         sqlx::query("set transaction isolation level repeatable read read only")
             .execute(&mut *tx)
             .await?;
+        let scratch = recovery_archive::normalize(scratch, &mut tx).await?;
         let (_, preview) =
             validation::validate(&mut tx, &scratch, source_master_key, target_master_key).await?;
         tx.rollback().await?;
@@ -319,17 +321,15 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
         sqlx::query("set transaction isolation level serializable")
             .execute(&mut *tx)
             .await?;
+        let scratch = recovery_archive::normalize(scratch, &mut tx).await?;
         // Queue restore follows the same counter -> receipt/pending lock order
         // as publication/handoff. Hold the lock through the prepared transaction's commit.
         let incoming = archive::header(&mut scratch.reader().await?).await?;
-        if incoming.tables.iter().any(|table| {
-            matches!(
-                table.name.as_str(),
-                "legacy_event_recovery_state"
-                    | "legacy_event_recovery_pending"
-                    | "legacy_credit_handoff_receipts"
-            )
-        }) {
+        if incoming
+            .tables
+            .iter()
+            .any(|table| matches!(table.name.as_str(), "legacy_event_recovery_ledger"))
+        {
             crate::PgLegacyEventRecovery::lock_queue(&mut tx).await?;
         }
         let (header, preview) =

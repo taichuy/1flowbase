@@ -1,5 +1,5 @@
 use super::*;
-use control_plane_contracts::ports::{EventBus, ModelDefinitionCommittedFact};
+use control_plane_contracts::ports::ModelDefinitionCommittedFact;
 use serde_json::Value;
 
 const ORIGINAL_TOPIC: &str = "official.plugin-host.lifecycle.model-definition-committed";
@@ -59,7 +59,7 @@ async fn seed_source(
 }
 
 async fn transport_counts(store: &PgControlPlaneStore) -> (i64, i64, i64) {
-    sqlx::query_as("select (select count(*) from lifecycle_outbox),(select count(*) from lifecycle_outbox_deliveries),(select count(*) from legacy_event_recovery_pending)")
+    sqlx::query_as("select (select count(*) from lifecycle_outbox),(select count(*) from lifecycle_outbox_deliveries),(select count(*) from legacy_event_recovery_ledger where disposition='pending')")
         .fetch_one(store.pool()).await.unwrap()
 }
 
@@ -81,7 +81,7 @@ async fn model_protocol_one_preserves_exact_original_topic_and_fact_body() {
     };
     assert!(sequence > 0);
     let pending: (i64, Vec<u8>, String, i64) = sqlx::query_as(
-        "select sequence,topic,payload,value_size_bytes from legacy_event_recovery_pending",
+        "select sequence,topic,payload,value_size_bytes from legacy_event_recovery_ledger where disposition='pending'",
     )
     .fetch_one(store.pool())
     .await
@@ -109,6 +109,11 @@ async fn model_protocol_one_preserves_exact_original_topic_and_fact_body() {
     .await
     .unwrap();
     assert_eq!(receipt, Some(sequence));
+    let tombstone:(String,Option<String>,Vec<u8>)=sqlx::query_as("select disposition,payload,payload_digest from legacy_event_recovery_ledger where sequence=$1").bind(sequence).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(tombstone.0, "taken");
+    assert!(tombstone.1.is_none());
+    assert_eq!(tombstone.2.len(), 32);
+
     let after: Value = sqlx::query_scalar(
         "select to_jsonb(t)-'legacy_handoff_sequence' from lifecycle_outbox t where event_id=$1",
     )
@@ -158,15 +163,53 @@ async fn model_protocol_one_lost_ack_reuses_sequence_and_polled_receipt_never_re
     .await
     .unwrap();
     assert_eq!(receipt, Some(sequence));
-    let counter: i64 =
-        sqlx::query_scalar("select last_sequence from legacy_event_recovery_state where singleton")
-            .fetch_one(store.pool())
-            .await
-            .unwrap();
+    let tombstone:(String,Option<String>,Vec<u8>)=sqlx::query_as("select disposition,payload,payload_digest from legacy_event_recovery_ledger where sequence=$1").bind(sequence).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(tombstone.0, "taken");
+    assert!(tombstone.1.is_none());
+    assert_eq!(tombstone.2.len(), 32);
+
+    let counter: i64 = sqlx::query_scalar(
+        "select last_sequence from legacy_event_recovery_ledger where sequence=0",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
     assert_eq!(
         counter, sequence,
         "retry must not allocate a new transport identity"
     );
+}
+
+#[tokio::test]
+async fn model_protocol_one_old_source_receipt_without_pending_keeps_its_original_identity() {
+    let store = fixture().await;
+    let (input, original) = model_input(domain::DataModelScopeKind::Workspace);
+    seed_source(&store, &input, &original, 1).await;
+    // Pre-ledger takes have a source receipt but no retained generic identity or
+    // original serialized digest. Do not manufacture either or allocate anew.
+    sqlx::query("update lifecycle_outbox set legacy_handoff_sequence=19 where event_id=$1")
+        .bind(input.source_event_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query("update legacy_event_recovery_ledger set last_sequence=9001 where sequence=0")
+        .execute(store.pool())
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        assert_eq!(
+            store.publish_optional_notification(&input).await.unwrap(),
+            OptionalNotificationPublicationOutcome::LegacyRecoveryHandoff { sequence: 19 }
+        );
+    }
+    assert_eq!(transport_counts(&store).await, (1, 0, 0));
+    let high: i64 = sqlx::query_scalar(
+        "select last_sequence from legacy_event_recovery_ledger where sequence=0",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(high, 9001);
 }
 
 #[tokio::test]
@@ -192,11 +235,12 @@ async fn model_protocol_two_optional_zero_creates_no_pending_or_derived_transpor
             .bind(input.source_event_id).fetch_one(store.pool()).await.unwrap();
         assert_eq!(retained, (2, None, original));
     }
-    let counter: i64 =
-        sqlx::query_scalar("select last_sequence from legacy_event_recovery_state where singleton")
-            .fetch_one(store.pool())
-            .await
-            .unwrap();
+    let counter: i64 = sqlx::query_scalar(
+        "select last_sequence from legacy_event_recovery_ledger where sequence=0",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
     assert_eq!(counter, 0);
 }
 

@@ -9,9 +9,9 @@ async fn generic_roundtrip_inspection_and_reopen_preserve_pending_fifo() {
         json!({"a":{"b":[1,2]},"empty":{}}),
     ];
     for value in &values {
-        bus.publish("first", value.clone()).await.unwrap();
+        bus.fixture_import("first", value.clone()).await.unwrap();
     }
-    bus.publish("second", json!({"retained":true}))
+    bus.fixture_import("second", json!({"retained":true}))
         .await
         .unwrap();
     let reopened = PgLegacyEventRecovery::new(bus.pool.clone());
@@ -59,13 +59,15 @@ async fn generic_roundtrip_inspection_and_reopen_preserve_pending_fifo() {
             .unwrap()
             .is_none()
     );
-    bus.publish("first", json!("after drain")).await.unwrap();
+    bus.fixture_import("first", json!("after drain"))
+        .await
+        .unwrap();
     assert_eq!(
         bus.list_ephemeral_entries().await.unwrap()[0].entry_ref,
         "5"
     );
     assert!(
-        bus.publish("large", json!("x".repeat(2 * 1024 * 1024)))
+        bus.fixture_import("large", json!("x".repeat(2 * 1024 * 1024)))
             .await
             .is_err()
     );
@@ -77,10 +79,11 @@ async fn publication_counter_and_poll_head_wait_for_transaction_commit() {
     let mut tx = bus.pool.begin().await.unwrap();
     PgLegacyEventRecovery::lock_queue(&mut tx).await.unwrap();
     let sequence = PgLegacyEventRecovery::next_sequence(&mut tx).await.unwrap();
-    sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,payload,value_size_bytes) values ($1,'ordered','1',1)")
+    sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,payload,payload_digest,value_size_bytes) values ($1,'pending','ordered','1',sha256(convert_to('1','UTF8')),1)")
         .bind(sequence).execute(&mut *tx).await.unwrap();
     let producer = bus.clone();
-    let mut publish = tokio::spawn(async move { producer.publish("ordered", json!(2)).await });
+    let mut publish =
+        tokio::spawn(async move { producer.fixture_import("ordered", json!(2)).await });
     assert!(
         tokio::time::timeout(std::time::Duration::from_millis(50), &mut publish)
             .await
@@ -92,7 +95,7 @@ async fn publication_counter_and_poll_head_wait_for_transaction_commit() {
 
     let mut tx = bus.pool.begin().await.unwrap();
     PgLegacyEventRecovery::lock_queue(&mut tx).await.unwrap();
-    let first: String = sqlx::query_scalar("delete from legacy_event_recovery_pending where sequence=(select min(sequence) from legacy_event_recovery_pending where topic='ordered') returning payload")
+    let first: String = sqlx::query_scalar("with head as (select sequence,payload from legacy_event_recovery_ledger where topic='ordered' and disposition='pending' order by sequence limit 1) update legacy_event_recovery_ledger t set disposition='taken',payload=null from head where t.sequence=head.sequence returning head.payload")
         .fetch_one(&mut *tx).await.unwrap();
     assert_eq!(serde_json::from_str::<Value>(&first).unwrap(), json!(1));
     let consumer = bus.clone();
@@ -116,7 +119,7 @@ async fn multiple_producers_share_unique_sequence_and_two_polls_do_not_duplicate
         let bus = bus.clone();
         producers.push(tokio::spawn(async move {
             for offset in 0..4 {
-                bus.publish(&format!("topic-{id}"), json!([id, offset]))
+                bus.fixture_import(&format!("topic-{id}"), json!([id, offset]))
                     .await
                     .unwrap();
             }
@@ -139,8 +142,8 @@ async fn multiple_producers_share_unique_sequence_and_two_polls_do_not_duplicate
             );
         }
     }
-    bus.publish("race", json!(1)).await.unwrap();
-    bus.publish("race", json!(2)).await.unwrap();
+    bus.fixture_import("race", json!(1)).await.unwrap();
+    bus.fixture_import("race", json!(2)).await.unwrap();
     let (a, b) = tokio::join!(bus.poll("race"), bus.poll("race"));
     let mut values = vec![
         a.unwrap().unwrap().as_i64().unwrap(),
@@ -173,7 +176,9 @@ async fn generic_snapshot_text_roundtrips_every_supported_json_shape_without_jso
         json!({"ordinary":[true,false,{"key":"\\"}]}),
     ];
     for value in &values {
-        bus.publish("lossless\0topic", value.clone()).await.unwrap();
+        bus.fixture_import("lossless\0topic", value.clone())
+            .await
+            .unwrap();
     }
     let reopened = PgLegacyEventRecovery::new(bus.pool.clone());
     let entries = reopened.list_ephemeral_entries().await.unwrap();
@@ -184,7 +189,7 @@ async fn generic_snapshot_text_roundtrips_every_supported_json_shape_without_jso
             .find(|entry| entry.entry_ref == (index + 1).to_string())
             .unwrap();
         let text: String = sqlx::query_scalar(
-            "select payload from legacy_event_recovery_pending where sequence=$1",
+            "select payload from legacy_event_recovery_ledger where sequence=$1",
         )
         .bind((index + 1) as i64)
         .fetch_one(&bus.pool)

@@ -1,7 +1,7 @@
 //! Service + real PostgreSQL handoff and selective backup/restore acceptance.
 use control_plane::billing::handoff_legacy_credit_events;
 use control_plane_contracts::{
-    ports::{BillingRepository, EphemeralValueRevealMode, EventBus},
+    ports::{BillingRepository, EphemeralValueRevealMode},
     system_backup::selective::{SelectiveBackupRepository, SelectiveBackupSelection},
 };
 use serde_json::json;
@@ -21,6 +21,26 @@ async fn pool() -> sqlx::PgPool {
         .await
         .unwrap();
     pool
+}
+
+async fn fixture_import(
+    pool: &sqlx::PgPool,
+    topic: &str,
+    value: serde_json::Value,
+) -> Result<(), sqlx::Error> {
+    let payload = serde_json::to_string(&value).unwrap();
+    let mut tx = pool.begin().await?;
+    sqlx::query("select sequence from legacy_event_recovery_ledger where sequence=0 for update")
+        .fetch_one(&mut *tx)
+        .await?;
+    let sequence:i64=sqlx::query_scalar("update legacy_event_recovery_ledger set last_sequence=greatest(last_sequence,(select max(sequence) from legacy_event_recovery_ledger))+1 where sequence=0 returning last_sequence").fetch_one(&mut *tx).await?;
+    sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,payload,payload_digest,value_size_bytes) values($1,'pending',$2,$3,sha256(convert_to($3,'UTF8')),$4)")
+        .bind(sequence).bind(topic.as_bytes()).bind(&payload).bind(payload.len() as i64).execute(&mut *tx).await?;
+    tx.commit().await
+}
+async fn import_fixture_sources(pool: &sqlx::PgPool, recovery: &PgLegacyEventRecovery) -> usize {
+    let ids:Vec<uuid::Uuid>=sqlx::query_scalar("select event_id from credit_event_outbox where published_at is null order by created_at,event_id").fetch_all(pool).await.unwrap();
+    recovery.import_legacy_credit_events(&ids).await.unwrap()
 }
 
 async fn rejected_credit(pool: &sqlx::PgPool) -> uuid::Uuid {
@@ -66,11 +86,7 @@ async fn archive(pool: &sqlx::PgPool, features: &[&str]) -> Vec<u8> {
         .iter()
         .find(|category| category.feature_id == "system.system-runtime")
         .unwrap();
-    for name in [
-        "legacy_event_recovery_state",
-        "legacy_event_recovery_pending",
-        "legacy_credit_handoff_receipts",
-    ] {
+    for name in ["legacy_event_recovery_ledger"] {
         assert!(runtime.data_tables.iter().any(|table| table == name));
     }
     let source = repository
@@ -106,13 +122,10 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
             .await
             .unwrap();
     assert_eq!(unpublished, 1);
-    assert_eq!(
-        handoff_legacy_credit_events(Some(&bus), 50).await.unwrap(),
-        1
-    );
+    assert_eq!(import_fixture_sources(&original, &bus).await, 1);
     let generic = json!({"nul\0key":["before\0after","literal\\u0000",null],
         "nul\\u0000key":"distinct", "array":[i64::MIN,u64::MAX,1.25,1e100]});
-    bus.publish("generic\0events", generic.clone())
+    fixture_import(&original, "generic\0events", generic.clone())
         .await
         .unwrap();
     let entries = bus.list_ephemeral_entries().await.unwrap();
@@ -134,7 +147,7 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
         json!({"actor_plugin_id":"fixture.plugin","command":"grant","reason":"permission_denied","idempotency_key":"fixture:rejected"})
     );
     let snapshots: Vec<(i64, String)> = sqlx::query_as(
-        "select sequence,payload from legacy_event_recovery_pending order by sequence",
+        "select sequence,payload from legacy_event_recovery_ledger where disposition='pending' order by sequence",
     )
     .fetch_all(&original)
     .await
@@ -153,7 +166,7 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
         .unwrap();
     assert!(preview.failures.is_empty());
     let restored_snapshots: Vec<(i64, String)> = sqlx::query_as(
-        "select sequence,payload from legacy_event_recovery_pending order by sequence",
+        "select sequence,payload from legacy_event_recovery_ledger where disposition='pending' order by sequence",
     )
     .fetch_all(&target)
     .await
@@ -171,14 +184,29 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
         restored.poll("generic\0events").await.unwrap(),
         Some(generic)
     );
-    assert_eq!(
-        handoff_legacy_credit_events(Some(&restored), 50)
-            .await
-            .unwrap(),
-        0
-    );
+    assert_eq!(import_fixture_sources(&target, &restored).await, 0);
     assert!(restored.list_ephemeral_entries().await.unwrap().is_empty());
-    restored.publish("new", json!("later")).await.unwrap();
+    repository
+        .restore(
+            Box::pin(std::io::Cursor::new(bytes.clone())),
+            "fixture-key",
+            "fixture-key",
+            false,
+        )
+        .await
+        .unwrap();
+    assert!(
+        PgLegacyEventRecovery::new(target.clone())
+            .list_ephemeral_entries()
+            .await
+            .unwrap()
+            .is_empty(),
+        "old snapshot resurrected taken generic or credit work"
+    );
+
+    fixture_import(&target, "new", json!("later"))
+        .await
+        .unwrap();
     assert_eq!(
         restored.list_ephemeral_entries().await.unwrap()[0].entry_ref,
         "3"
@@ -187,8 +215,7 @@ async fn explicit_legacy_handoff_preserves_rejection_and_survives_backup_restore
     // A restore must not replace a different target event with the same sequence.
     let conflict_pool = pool().await;
     let conflict = PgLegacyEventRecovery::new(conflict_pool.clone());
-    conflict
-        .publish("occupied", json!({"must":"survive"}))
+    fixture_import(&conflict_pool, "occupied", json!({"must":"survive"}))
         .await
         .unwrap();
     let repository = PgSelectiveBackupRepository::new(conflict_pool);
@@ -214,11 +241,9 @@ async fn backup_selection_keeps_business_sources_separate_from_durable_runtime_e
     let original = pool().await;
     rejected_credit(&original).await;
     let bus = PgLegacyEventRecovery::new(original.clone());
-    assert_eq!(
-        handoff_legacy_credit_events(Some(&bus), 50).await.unwrap(),
-        1
-    );
-    bus.publish(
+    assert_eq!(import_fixture_sources(&original, &bus).await, 1);
+    fixture_import(
+        &original,
         "unrelated-runtime-topic",
         json!({"must":"not enter members-only backup"}),
     )
@@ -241,11 +266,7 @@ async fn backup_selection_keeps_business_sources_separate_from_durable_runtime_e
             .iter()
             .any(|name| name == "credit_event_outbox")
     );
-    for table in [
-        "legacy_event_recovery_state",
-        "legacy_event_recovery_pending",
-        "legacy_credit_handoff_receipts",
-    ] {
+    for table in ["legacy_event_recovery_ledger"] {
         assert!(!preview.selected_tables.iter().any(|name| name == table));
     }
     let runtime = archive(&original, &["system.system-runtime"]).await;
@@ -264,11 +285,7 @@ async fn backup_selection_keeps_business_sources_separate_from_durable_runtime_e
             .iter()
             .any(|name| name == "credit_event_outbox")
     );
-    for table in [
-        "legacy_event_recovery_state",
-        "legacy_event_recovery_pending",
-        "legacy_credit_handoff_receipts",
-    ] {
+    for table in ["legacy_event_recovery_ledger"] {
         assert!(preview.selected_tables.iter().any(|name| name == table));
     }
 }
@@ -278,10 +295,7 @@ async fn source_independent_snapshot_and_receipt_restore_after_workspace_cascade
     let original = pool().await;
     let workspace = rejected_credit(&original).await;
     let bus = PgLegacyEventRecovery::new(original.clone());
-    assert_eq!(
-        handoff_legacy_credit_events(Some(&bus), 50).await.unwrap(),
-        1
-    );
+    assert_eq!(import_fixture_sources(&original, &bus).await, 1);
     let entry = bus.list_ephemeral_entries().await.unwrap().remove(0);
     let expected = bus
         .reveal_ephemeral_entry(&entry.entry_ref, EphemeralValueRevealMode::Full)
@@ -362,8 +376,7 @@ async fn source_independent_snapshot_and_receipt_restore_after_workspace_cascade
         0
     );
     assert!(receipts_only.poll("credit.events").await.unwrap().is_none());
-    receipts_only
-        .publish("later", json!("after restore"))
+    fixture_import(&third, "later", json!("after restore"))
         .await
         .unwrap();
     assert_eq!(

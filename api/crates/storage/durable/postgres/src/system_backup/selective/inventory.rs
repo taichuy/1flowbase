@@ -88,7 +88,7 @@ const GROUPS: &[(&str, &str, &str)] = &[
     (
         "system-runtime",
         "host_infrastructure_provider_configs",
-        "system_default_upgrade_runs system_default_upgrade_items legacy_event_recovery_state legacy_event_recovery_pending legacy_credit_handoff_receipts",
+        "system_default_upgrade_runs system_default_upgrade_items legacy_event_recovery_ledger",
     ),
 ];
 

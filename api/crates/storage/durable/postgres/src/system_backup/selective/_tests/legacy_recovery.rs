@@ -2,12 +2,12 @@ use super::*;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 
+const LEDGER: &str = "legacy_event_recovery_ledger";
 const NAMES: [(&str, &str); 3] = [
     ("legacy_event_recovery_pending", "host_event_bus_pending"),
     ("legacy_credit_handoff_receipts", "credit_event_handoffs"),
     ("legacy_event_recovery_state", "host_event_bus_counter"),
 ];
-
 fn lines(bytes: &[u8]) -> Vec<Value> {
     let mut text = String::new();
     flate2::read::GzDecoder::new(bytes)
@@ -24,49 +24,80 @@ fn encode(lines: &[Value]) -> Vec<u8> {
     }
     writer.finish().unwrap()
 }
-fn old_name(value: &mut Value) {
-    if let Some((_, old)) = NAMES.iter().find(|(new, _)| value.as_str() == Some(*new)) {
-        *value = json!(old);
+fn historical(bytes: &[u8], original: bool) -> Vec<Value> {
+    let canonical = lines(bytes);
+    let mut header = canonical[0].clone();
+    header["tables"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|t| t["name"] != LEDGER);
+    let mut output = vec![];
+    for (new, old) in NAMES {
+        let name = if original { old } else { new };
+        let pk = if new.ends_with("pending") {
+            "sequence"
+        } else if new.ends_with("receipts") {
+            "event_id"
+        } else {
+            "singleton"
+        };
+        let prerequisites = if new.ends_with("pending") {
+            vec![if original {
+                "credit_event_handoffs"
+            } else {
+                "legacy_credit_handoff_receipts"
+            }]
+        } else {
+            vec![]
+        };
+        header["tables"].as_array_mut().unwrap().push(json!({"name":name,"feature_id":"system.system-runtime","data":true,"prerequisite":false,"columns":super::super::recovery_archive::columns(new),"primary_key":[pk],"plugin_owners":[],"prerequisites":prerequisites}));
     }
-}
-fn historical(bytes: &[u8]) -> Vec<Value> {
-    let mut rows = lines(bytes);
-    for table in rows[0]["tables"].as_array_mut().unwrap() {
-        old_name(&mut table["name"]);
-        for name in table["prerequisites"].as_array_mut().unwrap() {
-            old_name(name);
+    output.push(header);
+    for record in canonical.into_iter().skip(1) {
+        if record["table"] != LEDGER {
+            output.push(record);
+            continue;
+        }
+        let row = &record["row"];
+        let name = |index: usize| {
+            if original {
+                NAMES[index].1
+            } else {
+                NAMES[index].0
+            }
+        };
+        if row["sequence"] == 0 {
+            output.push(json!({"table":name(2),"row":{"singleton":true,"last_sequence":row["last_sequence"],"cutover_id":row["cutover_id"],"created_at":row["created_at"]}}));
+            continue;
+        }
+        if row["disposition"] == "pending" {
+            output.push(json!({"table":name(0),"row":{"sequence":row["sequence"],"topic":row["topic"],"payload":row["payload"],"credit_event_id":row["credit_event_id"],"value_size_bytes":row["value_size_bytes"]}}));
+        }
+        if !row["credit_event_id"].is_null() {
+            output.push(json!({"table":name(1),"row":{"event_id":row["credit_event_id"],"sequence":row["sequence"],"cutover_id":row["cutover_id"],"origin":row["origin"],"handed_off_at":row["handed_off_at"]}}));
         }
     }
-    for dependency in rows[0]["schema_dependencies"].as_array_mut().unwrap() {
-        old_name(&mut dependency["name"]);
-    }
-    for row in rows.iter_mut().skip(1) {
-        old_name(&mut row["table"]);
-    }
-    rows
+    output
 }
 async fn seed(db: &PgPool) {
-    // One receipt remains after an explicit take; another has an outstanding obligation.
-    for sequence in [11i64, 12] {
-        sqlx::query("insert into legacy_credit_handoff_receipts(event_id,sequence,cutover_id,origin) select $1,$2,cutover_id,'legacy_snapshot' from legacy_event_recovery_state")
-            .bind(Uuid::now_v7()).bind(sequence).execute(db).await.unwrap();
-    }
-    sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,payload,credit_event_id,value_size_bytes) select sequence,$1,$2,event_id,7 from legacy_credit_handoff_receipts where sequence=12")
-        .bind(b"unknown\0topic".as_slice()).bind("{\"a\":1}").execute(db).await.unwrap();
+    sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,credit_event_id,cutover_id,origin,handed_off_at) select 11,'taken',$1,cutover_id,'legacy_snapshot',now() from legacy_event_recovery_ledger where sequence=0")
+        .bind(Uuid::now_v7()).execute(db).await.unwrap();
+    sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,payload,payload_digest,value_size_bytes,credit_event_id,cutover_id,origin,handed_off_at) select 12,'pending',$1,$2,sha256(convert_to($2,'UTF8')),7,$3,cutover_id,'legacy_snapshot',now() from legacy_event_recovery_ledger where sequence=0")
+        .bind(b"unknown\0topic".as_slice()).bind("{\"a\":1}").bind(Uuid::now_v7()).execute(db).await.unwrap();
+    let payload = "{\"escaped\":\"\\u0000\", \"number\": 1e+09}";
+    sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,payload,payload_digest,value_size_bytes) values(13,'pending',$1,$2,sha256(convert_to($2,'UTF8')),$3)")
+        .bind(b"generic\0topic".as_slice()).bind(payload).bind(payload.len() as i64).execute(db).await.unwrap();
     sqlx::query("insert into system_default_upgrade_runs(id,system_version,status,summary_json) values($1,'recovery-fixture','succeeded','{\"source\":true}'::jsonb)")
         .bind(Uuid::now_v7()).execute(db).await.unwrap();
-    sqlx::query("update legacy_event_recovery_state set last_sequence=90")
+    sqlx::query("update legacy_event_recovery_ledger set last_sequence=90 where sequence=0")
         .execute(db)
         .await
         .unwrap();
 }
 async fn snapshot(db: &PgPool) -> Vec<Vec<Value>> {
     let mut result = Vec::new();
-    // Static SQL only: these are the canonical production relations.
     for sql in [
-        "select to_jsonb(t) from legacy_event_recovery_pending t order by sequence",
-        "select to_jsonb(t) from legacy_credit_handoff_receipts t order by sequence",
-        "select to_jsonb(t) from legacy_event_recovery_state t",
+        "select to_jsonb(t) from legacy_event_recovery_ledger t order by sequence",
         "select to_jsonb(t) from system_default_upgrade_runs t order by id",
     ] {
         result.push(sqlx::query_scalar(sql).fetch_all(db).await.unwrap());
@@ -74,7 +105,6 @@ async fn snapshot(db: &PgPool) -> Vec<Vec<Value>> {
     result
 }
 async fn denied_unchanged(repo: &PgSelectiveBackupRepository, db: &PgPool, rows: &[Value]) {
-    // A mutable fact differs from the archive, proving rejected restore writes no earlier rows.
     sqlx::query("update system_default_upgrade_runs set summary_json='{\"target\":true}'::jsonb")
         .execute(db)
         .await
@@ -95,201 +125,137 @@ async fn denied_unchanged(repo: &PgSelectiveBackupRepository, db: &PgPool, rows:
     assert_eq!(
         snapshot(db).await,
         before,
-        "rejected archive mutated recovery state"
+        "rejected archive partially mutated target"
     );
 }
-
 #[tokio::test]
-async fn selective_legacy_recovery_canonical_catalog_and_old_archive_exact_roundtrip() {
+async fn selective_legacy_recovery_canonical_catalog_and_both_historical_schemas_roundtrip() {
     let (db, _) = fixture().await;
     seed(&db).await;
     let repo = PgSelectiveBackupRepository::new(db.clone());
-    let catalog = repo.catalog().await.unwrap();
-    let runtime = catalog
+    let categories = repo.catalog().await.unwrap();
+    let runtime = categories
         .iter()
-        .find(|category| category.feature_id == "system.system-runtime")
+        .find(|c| c.feature_id == "system.system-runtime")
         .unwrap();
+    assert!(runtime.data_tables.iter().any(|t| t == LEDGER));
     for (new, old) in NAMES {
-        assert!(runtime.data_tables.iter().any(|table| table == new));
-        assert!(!runtime.data_tables.iter().any(|table| table == old));
+        assert!(!runtime.data_tables.iter().any(|t| t == new || t == old));
     }
     let bytes = capture(&repo, select("system-runtime", true, true)).await;
     let canonical = lines(&bytes);
-    for (new, old) in NAMES {
-        assert!(
-            canonical[0]["tables"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|table| table["name"] == new)
-        );
-        assert!(
-            !canonical[0]["tables"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|table| table["name"] == old)
-        );
-    }
-    let expected = snapshot(&db).await;
-    let historical = historical(&bytes);
-    let mut with_dependency = historical.clone();
-    let tables = with_dependency[0]["tables"].as_array_mut().unwrap();
-    let state = tables.remove(
-        tables
-            .iter()
-            .position(|table| table["name"] == "host_event_bus_counter")
-            .unwrap(),
-    );
-    with_dependency[0]["schema_dependencies"].as_array_mut().unwrap().push(json!({
-        "name":"host_event_bus_counter", "columns":state["columns"], "primary_key":state["primary_key"]
-    }));
-    with_dependency.retain(|row| row["table"] != "host_event_bus_counter");
-    let dependency_bytes = encode(&with_dependency);
-    let scratch = archive::unpack(reader(dependency_bytes.clone()))
-        .await
-        .unwrap();
-    let header = archive::header(&mut scratch.reader().await.unwrap())
-        .await
-        .unwrap();
     assert!(
-        header
-            .schema_dependencies
-            .iter()
-            .any(|dependency| dependency.name == "legacy_event_recovery_state")
-    );
-    assert!(
-        header
-            .tables
-            .iter()
-            .find(|table| table.name == "legacy_event_recovery_pending")
+        canonical[0]["tables"]
+            .as_array()
             .unwrap()
-            .prerequisites
             .iter()
-            .any(|name| name == "legacy_credit_handoff_receipts")
+            .any(|t| t["name"] == LEDGER)
     );
-    assert!(
-        repo.preflight(reader(dependency_bytes), "key", "key")
+    for rows in [
+        canonical,
+        historical(&bytes, true),
+        historical(&bytes, false),
+    ] {
+        let (target, _) = fixture().await;
+        let target_repo = PgSelectiveBackupRepository::new(target.clone());
+        let archive = encode(&rows);
+        let preview = target_repo
+            .preflight(reader(archive.clone()), "key", "key")
             .await
-            .unwrap()
-            .failures
-            .is_empty()
-    );
-
-    sqlx::query("delete from legacy_event_recovery_pending")
-        .execute(&db)
-        .await
-        .unwrap();
-    sqlx::query("delete from legacy_credit_handoff_receipts")
-        .execute(&db)
-        .await
-        .unwrap();
-    sqlx::query("update legacy_event_recovery_state set last_sequence=0")
-        .execute(&db)
-        .await
-        .unwrap();
-    let bytes = encode(&historical);
-    let preview = repo
-        .preflight(reader(bytes.clone()), "key", "key")
-        .await
-        .unwrap();
-    assert!(preview.failures.is_empty(), "{:?}", preview.failures);
-    repo.restore(reader(bytes.clone()), "key", "key", true)
-        .await
-        .unwrap();
-    repo.restore(reader(bytes), "key", "key", true)
-        .await
-        .unwrap();
-    assert_eq!(snapshot(&db).await, expected);
-    // This proves exact retained receipts, including the receipt with no pending row.
-    // It does not claim consumer ACK or suppression of a taken row from older backups.
+            .unwrap();
+        assert!(preview.failures.is_empty(), "{:?}", preview.failures);
+        for _ in 0..2 {
+            target_repo
+                .restore(reader(archive.clone()), "key", "key", true)
+                .await
+                .unwrap();
+        }
+        assert_eq!(snapshot(&target).await, snapshot(&db).await);
+    }
 }
-
 #[tokio::test]
 async fn selective_legacy_recovery_rejects_alias_duplicates_undeclared_alias_and_duplicate_rows() {
     let (db, _) = fixture().await;
     seed(&db).await;
     let repo = PgSelectiveBackupRepository::new(db.clone());
     let bytes = capture(&repo, select("system-runtime", true, true)).await;
-    let old = historical(&bytes);
-    let mut duplicate = old.clone();
-    let mut table = duplicate[0]["tables"]
+    let old = historical(&bytes, true);
+    let mut bad = old.clone();
+    let mut table = bad[0]["tables"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|table| table["name"] == "host_event_bus_pending")
+        .find(|t| t["name"] == "host_event_bus_pending")
         .unwrap()
         .clone();
     table["name"] = json!("legacy_event_recovery_pending");
-    duplicate[0]["tables"].as_array_mut().unwrap().push(table);
-    denied_unchanged(&repo, &db, &duplicate).await;
-
-    let mut undeclared = old.clone();
-    let row = undeclared
-        .iter_mut()
+    bad[0]["tables"].as_array_mut().unwrap().push(table);
+    denied_unchanged(&repo, &db, &bad).await;
+    let mut bad = old.clone();
+    bad.iter_mut()
         .skip(1)
-        .find(|row| row["table"] == "host_event_bus_pending")
-        .unwrap();
-    row["table"] = json!("legacy_event_recovery_pending");
-    denied_unchanged(&repo, &db, &undeclared).await;
-    let mut duplicate = old.clone();
-    let row = duplicate
-        .iter()
-        .skip(1)
-        .find(|row| row["table"] == "host_event_bus_pending")
-        .unwrap()
-        .clone();
-    duplicate.push(row);
-    denied_unchanged(&repo, &db, &duplicate).await;
-
-    let mut duplicate = old.clone();
-    let table = duplicate[0]["tables"]
+        .find(|r| r["table"] == "host_event_bus_pending")
+        .unwrap()["table"] = json!("legacy_event_recovery_pending");
+    denied_unchanged(&repo, &db, &bad).await;
+    for name in [
+        "host_event_bus_pending",
+        "credit_event_handoffs",
+        "host_event_bus_counter",
+    ] {
+        let mut bad = old.clone();
+        let row = bad
+            .iter()
+            .skip(1)
+            .find(|r| r["table"] == name)
+            .unwrap()
+            .clone();
+        bad.push(row);
+        denied_unchanged(&repo, &db, &bad).await;
+    }
+    let mut bad = old.clone();
+    bad[0]["tables"]
         .as_array_mut()
         .unwrap()
         .iter_mut()
-        .find(|table| table["name"] == "host_event_bus_pending")
-        .unwrap();
-    table["prerequisites"] = json!(["credit_event_handoffs", "legacy_credit_handoff_receipts"]);
-    denied_unchanged(&repo, &db, &duplicate).await;
-
-    let mut duplicate = old;
-    let state = duplicate[0]["tables"]
+        .find(|t| t["name"] == "host_event_bus_pending")
+        .unwrap()["prerequisites"] =
+        json!(["credit_event_handoffs", "legacy_credit_handoff_receipts"]);
+    denied_unchanged(&repo, &db, &bad).await;
+    let mut bad = old.clone();
+    let state = bad[0]["tables"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|table| table["name"] == "host_event_bus_counter")
-        .unwrap();
-    let dependency = json!({"name":"legacy_event_recovery_state","columns":state["columns"],"primary_key":state["primary_key"]});
-    duplicate[0]["schema_dependencies"]
-        .as_array_mut()
-        .unwrap()
-        .push(dependency);
-    denied_unchanged(&repo, &db, &duplicate).await;
-    // A dependency-only declaration also rejects old/new aliases of the same relation.
-    let tables = duplicate[0]["tables"].as_array_mut().unwrap();
-    tables.retain(|table| table["name"] != "host_event_bus_counter");
-    duplicate.retain(|row| row["table"] != "host_event_bus_counter");
-    let mut dependency = duplicate[0]["schema_dependencies"]
-        .as_array()
-        .unwrap()
-        .last()
+        .find(|t| t["name"] == "host_event_bus_counter")
         .unwrap()
         .clone();
-    dependency["name"] = json!("host_event_bus_counter");
-    duplicate[0]["schema_dependencies"]
+    bad[0]["schema_dependencies"].as_array_mut().unwrap().push(json!({"name":"legacy_event_recovery_state","columns":state["columns"],"primary_key":state["primary_key"]}));
+    denied_unchanged(&repo, &db, &bad).await;
+    let mut bad = old.clone();
+    bad[0]["tables"]
         .as_array_mut()
         .unwrap()
-        .push(dependency);
-    denied_unchanged(&repo, &db, &duplicate).await;
+        .retain(|t| t["name"] != "credit_event_handoffs");
+    bad.retain(|r| r["table"] != "credit_event_handoffs");
+    denied_unchanged(&repo, &db, &bad).await;
+    let mut bad = old;
+    let table = lines(&bytes)[0]["tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == LEDGER)
+        .unwrap()
+        .clone();
+    bad[0]["tables"].as_array_mut().unwrap().push(table);
+    denied_unchanged(&repo, &db, &bad).await;
 }
-
 #[tokio::test]
-async fn selective_legacy_recovery_old_archive_preserves_immutable_rows_and_target_highwater() {
+async fn selective_legacy_recovery_missing_receipt_or_changed_identity_and_body_fail_atomically() {
     let (db, _) = fixture().await;
     seed(&db).await;
     let repo = PgSelectiveBackupRepository::new(db.clone());
     let bytes = capture(&repo, select("system-runtime", true, true)).await;
-    let old = historical(&bytes);
+    let old = historical(&bytes, true);
     for (table, field, changed) in [
         (
             "host_event_bus_pending",
@@ -299,27 +265,93 @@ async fn selective_legacy_recovery_old_archive_preserves_immutable_rows_and_targ
         ("host_event_bus_pending", "value_size_bytes", json!(99)),
         ("credit_event_handoffs", "origin", json!("live")),
         ("credit_event_handoffs", "cutover_id", json!(Uuid::now_v7())),
+        ("credit_event_handoffs", "event_id", json!(Uuid::now_v7())),
     ] {
-        let mut conflict = old.clone();
-        conflict
-            .iter_mut()
+        let mut bad = old.clone();
+        bad.iter_mut()
             .skip(1)
-            .find(|row| row["table"] == table)
+            .find(|r| r["table"] == table && r["row"]["sequence"] == 12)
             .unwrap()["row"][field] = changed;
-        denied_unchanged(&repo, &db, &conflict).await;
+        denied_unchanged(&repo, &db, &bad).await;
     }
-    sqlx::query("update legacy_event_recovery_state set last_sequence=999,cutover_id=$1")
-        .bind(Uuid::now_v7())
+    let mut bad = old.clone();
+    bad.retain(|r| !(r["table"] == "credit_event_handoffs" && r["row"]["sequence"] == 12));
+    denied_unchanged(&repo, &db, &bad).await;
+    let mut bad = lines(&bytes);
+    bad.iter_mut()
+        .skip(1)
+        .find(|r| r["table"] == LEDGER && r["row"]["sequence"] == 12)
+        .unwrap()["row"]["payload_digest"] = json!(format!("\\x{}", "00".repeat(32)));
+    denied_unchanged(&repo, &db, &bad).await;
+    let mut bad = lines(&bytes);
+    bad.retain(|r| !(r["table"] == LEDGER && r["row"]["sequence"] == 0));
+    denied_unchanged(&repo, &db, &bad).await;
+}
+#[tokio::test]
+async fn selective_legacy_recovery_taken_tombstones_survive_restart_and_old_backups_never_refill() {
+    let (db, _) = fixture().await;
+    seed(&db).await;
+    let repo = PgSelectiveBackupRepository::new(db.clone());
+    let bytes = capture(&repo, select("system-runtime", true, true)).await;
+    let recovery = crate::PgLegacyEventRecovery::new(db.clone());
+    assert_eq!(
+        recovery.poll("unknown\0topic").await.unwrap(),
+        Some(json!({"a":1}))
+    );
+    assert_eq!(
+        recovery.poll("generic\0topic").await.unwrap(),
+        Some(json!({"escaped":"\0","number":1e9}))
+    );
+    let before = snapshot(&db).await;
+    for rows in [
+        lines(&bytes),
+        historical(&bytes, true),
+        historical(&bytes, false),
+    ] {
+        repo.restore(reader(encode(&rows)), "key", "key", true)
+            .await
+            .unwrap();
+        assert_eq!(snapshot(&db).await[0], before[0]);
+        let reopened = crate::PgLegacyEventRecovery::new(db.clone());
+        assert!(reopened.list_ephemeral_entries().await.unwrap().is_empty());
+        assert!(reopened.poll("generic\0topic").await.unwrap().is_none());
+    }
+    let (target, _) = fixture().await;
+    let taken = capture(&repo, select("system-runtime", true, true)).await;
+    PgSelectiveBackupRepository::new(target.clone())
+        .restore(reader(taken), "key", "key", true)
+        .await
+        .unwrap();
+    assert_eq!(snapshot(&target).await[0], before[0]);
+    // Pre-ledger generic takes had no receipt: absence below high-water cannot
+    // distinguish an old take from a missing entry, so reject instead of revive.
+    sqlx::query("delete from legacy_event_recovery_ledger where sequence=13")
         .execute(&db)
         .await
         .unwrap();
+    denied_unchanged(&repo, &db, &historical(&bytes, true)).await;
+}
+#[tokio::test]
+async fn selective_legacy_recovery_state_merge_preserves_target_highwater_and_cutover() {
+    let (db, _) = fixture().await;
+    seed(&db).await;
+    let repo = PgSelectiveBackupRepository::new(db.clone());
+    let bytes = capture(&repo, select("system-runtime", true, true)).await;
+    sqlx::query(
+        "update legacy_event_recovery_ledger set last_sequence=999,cutover_id=$1 where sequence=0",
+    )
+    .bind(Uuid::now_v7())
+    .execute(&db)
+    .await
+    .unwrap();
     let expected = snapshot(&db).await;
-    repo.restore(reader(encode(&old)), "key", "key", true)
-        .await
-        .unwrap();
-    assert_eq!(
-        snapshot(&db).await[..3],
-        expected[..3],
-        "restore rewound highwater or target cutover provenance"
-    );
+    repo.restore(
+        reader(encode(&historical(&bytes, true))),
+        "key",
+        "key",
+        true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(snapshot(&db).await[0], expected[0]);
 }

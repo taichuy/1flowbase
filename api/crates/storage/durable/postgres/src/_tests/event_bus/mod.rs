@@ -1,5 +1,5 @@
 use super::*;
-use control_plane_contracts::ports::{CreditEventHandoff, EphemeralValueRevealMode};
+use control_plane_contracts::ports::EphemeralValueRevealMode;
 use serde_json::json;
 
 mod credit;
@@ -35,14 +35,45 @@ async fn source(bus: &PgLegacyEventRecovery, workspace: Uuid, published: bool) -
 
 async fn count(bus: &PgLegacyEventRecovery, table: &str) -> i64 {
     match table {
-        "pending" => sqlx::query_scalar("select count(*) from legacy_event_recovery_pending")
-            .fetch_one(&bus.pool)
-            .await
-            .unwrap(),
-        "receipts" => sqlx::query_scalar("select count(*) from legacy_credit_handoff_receipts")
-            .fetch_one(&bus.pool)
-            .await
-            .unwrap(),
+        "pending" => sqlx::query_scalar(
+            "select count(*) from legacy_event_recovery_ledger where disposition='pending'",
+        )
+        .fetch_one(&bus.pool)
+        .await
+        .unwrap(),
+        "receipts" => sqlx::query_scalar(
+            "select count(*) from legacy_event_recovery_ledger where credit_event_id is not null",
+        )
+        .fetch_one(&bus.pool)
+        .await
+        .unwrap(),
         _ => panic!("unknown fixture counter"),
+    }
+}
+
+// Fixture-only historical writes. Production recovery exposes no generic publish
+// or live handoff trait; these tests deliberately construct pre-cutover entries.
+impl PgLegacyEventRecovery {
+    async fn fixture_import(&self, topic: &str, value: Value) -> Result<()> {
+        let payload = Self::serialize_payload(value)?;
+        let mut tx = self.pool.begin().await?;
+        Self::lock_queue(&mut tx).await?;
+        let seq = Self::next_sequence(&mut tx).await?;
+        sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,payload,payload_digest,value_size_bytes) values($1,'pending',$2,$3,sha256(convert_to($3,'UTF8')),$4)")
+            .bind(seq).bind(topic.as_bytes()).bind(&payload).bind(payload.len() as i64).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+    async fn fixture_handoff(&self, limit: i64) -> Result<usize> {
+        let mut tx = self.pool.begin().await?;
+        Self::lock_queue(&mut tx).await?;
+        let ids: Vec<Uuid> = sqlx::query_scalar("select event_id from credit_event_outbox where published_at is null and (locked_until is null or locked_until<now()) order by created_at,event_id limit $1 for update")
+            .bind(limit).fetch_all(&mut *tx).await?;
+        let mut inserted = 0;
+        for id in ids {
+            inserted += usize::from(Self::handoff_one(&mut tx, id, "live").await?);
+        }
+        tx.commit().await?;
+        Ok(inserted)
     }
 }

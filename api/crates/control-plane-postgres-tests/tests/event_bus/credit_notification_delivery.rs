@@ -400,11 +400,12 @@ impl Fixture {
             monetary_snapshot(self.store.pool()).await,
             self.monetary_before
         );
-        let legacy_bodies: i64 =
-            sqlx::query_scalar("select count(*) from legacy_event_recovery_pending")
-                .fetch_one(self.store.pool())
-                .await
-                .unwrap();
+        let legacy_bodies: i64 = sqlx::query_scalar(
+            "select count(*) from legacy_event_recovery_ledger where disposition='pending'",
+        )
+        .fetch_one(self.store.pool())
+        .await
+        .unwrap();
         assert_eq!(legacy_bodies, 0);
     }
 }

@@ -7,7 +7,6 @@ use control_plane_contracts::ports::{
 };
 use recovery_event_bus::RecoveryEventBus;
 use serde_json::json;
-use storage_durable_postgres::PgLegacyEventRecovery;
 
 #[tokio::test]
 async fn new_live_publication_does_not_require_a_durable_connection() {
@@ -34,14 +33,24 @@ async fn legacy_recovery_is_visible_lossless_and_precedes_live_without_new_durab
         .await
         .unwrap();
     let old = json!({"nul\u{0}key":[u64::MAX,"before\u{0}after",null]});
-    PgLegacyEventRecovery::new(pool.clone())
-        .publish("same", old.clone())
+    // Explicit pre-cutover fixture import; production recovery has no publish API.
+    let payload = serde_json::to_string(&old).unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("select sequence from legacy_event_recovery_ledger where sequence=0 for update")
+        .fetch_one(&mut *tx)
         .await
         .unwrap();
+    sqlx::query("update legacy_event_recovery_ledger set last_sequence=1 where sequence=0")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,payload,payload_digest,value_size_bytes) values(1,'pending','same',$1,sha256(convert_to($1,'UTF8')),$2)")
+        .bind(&payload).bind(payload.len() as i64).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
     let bus = RecoveryEventBus::new(pool.clone());
     let live = json!({"new":"完整正文"});
     bus.publish("same", live.clone()).await.unwrap();
-    let counts: (i64,i64) = sqlx::query_as("select (select count(*) from legacy_event_recovery_pending),(select last_sequence from legacy_event_recovery_state)")
+    let counts: (i64,i64) = sqlx::query_as("select (select count(*) from legacy_event_recovery_ledger where disposition='pending'),(select last_sequence from legacy_event_recovery_ledger where sequence=0)")
         .fetch_one(&pool).await.unwrap();
     assert_eq!(counts, (1, 1));
     let entries = bus.list_ephemeral_entries().await.unwrap();
@@ -72,10 +81,12 @@ async fn legacy_recovery_is_visible_lossless_and_precedes_live_without_new_durab
     assert_eq!(bus.poll("same").await.unwrap(), Some(live));
     assert!(bus.poll("same").await.unwrap().is_none());
     assert!(bus.list_ephemeral_entries().await.unwrap().is_empty());
-    let sequence: i64 = sqlx::query_scalar("select last_sequence from legacy_event_recovery_state")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let sequence: i64 = sqlx::query_scalar(
+        "select last_sequence from legacy_event_recovery_ledger where sequence=0",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(sequence, 1);
     // Switching provider must not introduce the legacy MemoryEventBus 1 MiB cap.
     let large = json!({"nul\u{0}key":[u64::MAX,"原文\u{0}".repeat(200_000),null]});
@@ -87,7 +98,11 @@ async fn legacy_recovery_is_visible_lossless_and_precedes_live_without_new_durab
     );
     bus.publish("large", large.clone()).await.unwrap();
     assert_eq!(bus.poll("large").await.unwrap(), Some(large));
-    let durable:(i64,i64)=sqlx::query_as("select (select count(*) from legacy_event_recovery_pending),(select last_sequence from legacy_event_recovery_state)")
+    let durable:(i64,i64)=sqlx::query_as("select (select count(*) from legacy_event_recovery_ledger where disposition='pending'),(select last_sequence from legacy_event_recovery_ledger where sequence=0)")
         .fetch_one(&pool).await.unwrap();
     assert_eq!(durable, (0, 1));
+    let tombstone:(String,Option<String>,Vec<u8>)=sqlx::query_as("select disposition,payload,payload_digest from legacy_event_recovery_ledger where sequence=1").fetch_one(&pool).await.unwrap();
+    assert_eq!(tombstone.0, "taken");
+    assert!(tombstone.1.is_none());
+    assert_eq!(tombstone.2.len(), 32);
 }

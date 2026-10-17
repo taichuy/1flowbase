@@ -9,8 +9,7 @@ mod handoff;
 mod inspection;
 
 use anyhow::Result;
-use async_trait::async_trait;
-use control_plane_contracts::ports::{CreditOutboxEvent, EPHEMERAL_PAYLOAD_MAX_BYTES, EventBus};
+use control_plane_contracts::ports::{CreditOutboxEvent, EPHEMERAL_PAYLOAD_MAX_BYTES};
 use serde_json::Value;
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use time::OffsetDateTime;
@@ -31,16 +30,18 @@ impl PgLegacyEventRecovery {
     // Every mutation takes this lock FIRST. It is held until commit, so allocation order
     // is publication visibility order, and concurrent polls cannot skip a locked head.
     pub(crate) async fn lock_queue(tx: &mut Transaction<'_, Postgres>) -> Result<()> {
-        sqlx::query("select singleton from legacy_event_recovery_state where singleton for update")
-            .fetch_one(&mut **tx)
-            .await?;
+        sqlx::query(
+            "select sequence from legacy_event_recovery_ledger where sequence=0 for update",
+        )
+        .fetch_one(&mut **tx)
+        .await?;
         Ok(())
     }
 
     pub(crate) async fn next_sequence(tx: &mut Transaction<'_, Postgres>) -> Result<i64> {
         // Restored rows may have larger identities than a target's current counter.
         // Never allocate an entry_ref already used by pending entries or handoff receipts.
-        Ok(sqlx::query_scalar("update legacy_event_recovery_state set last_sequence = greatest(last_sequence, (select coalesce(max(sequence),0) from legacy_event_recovery_pending), (select coalesce(max(sequence),0) from legacy_credit_handoff_receipts)) + 1 where singleton returning last_sequence")
+        Ok(sqlx::query_scalar("update legacy_event_recovery_ledger set last_sequence = greatest(last_sequence, (select max(sequence) from legacy_event_recovery_ledger)) + 1 where sequence=0 returning last_sequence")
             .fetch_one(&mut **tx).await?)
     }
 
@@ -79,34 +80,26 @@ impl PgLegacyEventRecovery {
     }
 }
 
-#[async_trait]
-impl EventBus for PgLegacyEventRecovery {
-    async fn publish(&self, topic: &str, payload: Value) -> Result<()> {
-        let payload = Self::serialize_payload(payload)?;
-        let bytes = payload.len() as i64;
+impl PgLegacyEventRecovery {
+    pub async fn poll(&self, topic: &str) -> Result<Option<Value>> {
         let mut tx = self.pool.begin().await?;
         Self::lock_queue(&mut tx).await?;
-        let sequence = Self::next_sequence(&mut tx).await?;
-        sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,payload,value_size_bytes) values ($1,$2,$3,$4)")
-            .bind(sequence).bind(topic.as_bytes()).bind(payload).bind(bytes).execute(&mut *tx).await?;
-        tx.commit().await?;
-        Ok(())
-    }
-
-    async fn poll(&self, topic: &str) -> Result<Option<Value>> {
-        let mut tx = self.pool.begin().await?;
-        Self::lock_queue(&mut tx).await?;
-        let row = sqlx::query("delete from legacy_event_recovery_pending where sequence=(select sequence from legacy_event_recovery_pending where topic=$1 order by sequence limit 1) returning payload")
+        let row = sqlx::query("select sequence,payload from legacy_event_recovery_ledger where disposition='pending' and topic=$1 order by sequence limit 1")
             .bind(topic.as_bytes()).fetch_optional(&mut *tx).await?;
         let value = match row {
-            Some(row) => Some(Self::payload(&row)?),
+            Some(row) => {
+                let payload = Self::payload(&row)?;
+                sqlx::query("update legacy_event_recovery_ledger set disposition='taken',payload=null where sequence=$1")
+                    .bind(row.try_get::<i64, _>("sequence")?).execute(&mut *tx).await?;
+                Some(payload)
+            }
             None => None,
         };
         tx.commit().await?;
         Ok(value)
     }
 
-    fn ephemeral_inspection_capabilities(
+    pub fn ephemeral_inspection_capabilities(
         &self,
     ) -> control_plane_contracts::ports::EphemeralInspectionCapabilities {
         let mut capabilities =
@@ -115,13 +108,13 @@ impl EventBus for PgLegacyEventRecovery {
         capabilities
     }
 
-    async fn list_ephemeral_entries(
+    pub async fn list_ephemeral_entries(
         &self,
     ) -> Result<Vec<control_plane_contracts::ports::EphemeralEntrySnapshot>> {
         self.list_metadata().await
     }
 
-    async fn reveal_ephemeral_entry(
+    pub async fn reveal_ephemeral_entry(
         &self,
         entry_ref: &str,
         mode: control_plane_contracts::ports::EphemeralValueRevealMode,

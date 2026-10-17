@@ -210,10 +210,12 @@ async fn selective_notification_compaction_old_full_restore_and_replay_cannot_re
     }
     assert_eq!(snapshot(&store, id).await, expected);
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("select count(*) from legacy_event_recovery_pending")
-            .fetch_one(store.pool())
-            .await
-            .unwrap(),
+        sqlx::query_scalar::<_, i64>(
+            "select count(*) from legacy_event_recovery_ledger where disposition='pending'"
+        )
+        .fetch_one(store.pool())
+        .await
+        .unwrap(),
         0
     );
 }

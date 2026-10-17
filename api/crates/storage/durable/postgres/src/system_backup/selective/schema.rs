@@ -32,10 +32,11 @@ pub(super) async fn prerequisites(
     Ok(sqlx::query_scalar("select distinct parent.relname::text from pg_constraint f join pg_class child on child.oid=f.conrelid join pg_class parent on parent.oid=f.confrelid join pg_namespace n on n.oid=child.relnamespace where n.nspname=current_schema() and child.relname=$1 and f.contype='f' order by 1").bind(table).fetch_all(connection).await?)
 }
 pub(super) fn upsert_sql(table: &Table) -> Result<String> {
-    if table.name == "legacy_event_recovery_state" {
-        // Selective restore merges into a live identity space; never rewind its counter
-        // or replace the target's cutover identity. Receipt cutover provenance is preserved.
-        return Ok("insert into legacy_event_recovery_state as target(singleton,last_sequence,cutover_id,created_at) select singleton,last_sequence,cutover_id,created_at from jsonb_populate_record(null::legacy_event_recovery_state,$1) on conflict(singleton) do update set last_sequence=greatest(target.last_sequence,excluded.last_sequence)".into());
+    if table.name == "legacy_event_recovery_ledger" {
+        // Keep existing entry identities, and let explicit-take state dominate any
+        // older pending snapshot. State merges high-water without replacing a live
+        // target cutover; a pristine target adopts the original state provenance.
+        return Ok("insert into legacy_event_recovery_ledger as target select r.* from jsonb_populate_record(null::legacy_event_recovery_ledger,$1) r where true on conflict(sequence) do update set last_sequence=case when target.sequence=0 then greatest(target.last_sequence,excluded.last_sequence) else null end,cutover_id=case when target.sequence=0 and target.last_sequence=0 and not exists(select 1 from legacy_event_recovery_ledger where sequence>0) then excluded.cutover_id else target.cutover_id end,created_at=case when target.sequence=0 and target.last_sequence=0 and not exists(select 1 from legacy_event_recovery_ledger where sequence>0) then excluded.created_at else target.created_at end,disposition=case when target.disposition='taken' or excluded.disposition='taken' then 'taken' else target.disposition end,payload=case when target.disposition='taken' or excluded.disposition='taken' then null else target.payload end".into());
     }
     if table.name == "extension_installations" {
         return super::plugin_identity::insert_sql();

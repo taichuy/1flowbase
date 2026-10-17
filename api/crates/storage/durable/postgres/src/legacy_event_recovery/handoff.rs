@@ -1,6 +1,5 @@
 use super::*;
 use anyhow::ensure;
-use control_plane_contracts::ports::CreditEventHandoff;
 
 impl PgLegacyEventRecovery {
     /// Root-only migration primitive: exact observed IDs, never a historical scan.
@@ -18,7 +17,7 @@ impl PgLegacyEventRecovery {
         let mut pending_ids = Vec::new();
         for id in ids {
             let received: bool = sqlx::query_scalar(
-                "select exists(select 1 from legacy_credit_handoff_receipts where event_id=$1)",
+                "select exists(select 1 from legacy_event_recovery_ledger where credit_event_id=$1)",
             )
             .bind(id)
             .fetch_one(&mut *tx)
@@ -48,13 +47,13 @@ impl PgLegacyEventRecovery {
         Ok(inserted)
     }
 
-    async fn handoff_one(
+    pub(super) async fn handoff_one(
         tx: &mut Transaction<'_, Postgres>,
         event_id: Uuid,
         origin: &str,
     ) -> Result<bool> {
         let received: bool = sqlx::query_scalar(
-            "select exists(select 1 from legacy_credit_handoff_receipts where event_id=$1)",
+            "select exists(select 1 from legacy_event_recovery_ledger where credit_event_id=$1)",
         )
         .bind(event_id)
         .fetch_one(&mut **tx)
@@ -72,10 +71,8 @@ impl PgLegacyEventRecovery {
         };
         let bytes = payload.len() as i64;
         let sequence = Self::next_sequence(tx).await?;
-        sqlx::query("insert into legacy_credit_handoff_receipts(event_id,sequence,cutover_id,origin) select $1,$2,cutover_id,$3 from legacy_event_recovery_state where singleton")
-            .bind(event_id).bind(sequence).bind(origin).execute(&mut **tx).await?;
-        sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,credit_event_id,payload,value_size_bytes) values ($1,'credit.events',$2,$3,$4)")
-            .bind(sequence).bind(event_id).bind(payload).bind(bytes).execute(&mut **tx).await?;
+        sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,credit_event_id,payload,payload_digest,value_size_bytes,cutover_id,origin,handed_off_at) select $1,'pending','credit.events',$2,$3,sha256(convert_to($3,'UTF8')),$4,cutover_id,$5,now() from legacy_event_recovery_ledger where sequence=0")
+            .bind(sequence).bind(event_id).bind(payload).bind(bytes).bind(origin).execute(&mut **tx).await?;
         let confirmed = sqlx::query("update credit_event_outbox set published_at=coalesce(published_at,now()),locked_by=null,locked_until=null,last_error=null,delivery_attempts=delivery_attempts+1 where event_id=$1")
             .bind(event_id).execute(&mut **tx).await?.rows_affected();
         ensure!(
@@ -83,21 +80,5 @@ impl PgLegacyEventRecovery {
             "credit source confirmation lost its locked row"
         );
         Ok(true)
-    }
-}
-
-#[async_trait]
-impl CreditEventHandoff for PgLegacyEventRecovery {
-    async fn handoff_credit_events(&self, limit: i64) -> Result<usize> {
-        let mut tx = self.pool.begin().await?;
-        Self::lock_queue(&mut tx).await?;
-        let ids: Vec<Uuid> = sqlx::query_scalar("select event_id from credit_event_outbox where published_at is null and (locked_until is null or locked_until < now()) order by created_at,event_id limit $1 for update")
-            .bind(limit.clamp(1,100)).fetch_all(&mut *tx).await?;
-        let mut inserted = 0;
-        for id in ids {
-            inserted += usize::from(Self::handoff_one(&mut tx, id, "live").await?);
-        }
-        tx.commit().await?;
-        Ok(inserted)
     }
 }

@@ -496,6 +496,7 @@ pub(super) async fn validate(
     let mut recovery_rows = super::key_index::KeyIndex::new()?;
     let mut index_reader = scratch.reader().await?;
     let _ = archive::header(&mut index_reader).await?;
+    let mut recovery_state_seen = false;
     let mut has_compact = false;
     let mut target_ordered = true;
     let mut target_event: Option<String> = None;
@@ -505,18 +506,26 @@ pub(super) async fn validate(
     while let Some(bytes) = archive::line(&mut index_reader).await? {
         let mut record: Record = serde_json::from_slice(&bytes)?;
         archive::normalize_record(&mut record, &header)?;
-        if matches!(
-            record.table.as_str(),
-            "legacy_event_recovery_pending"
-                | "legacy_credit_handoff_receipts"
-                | "legacy_event_recovery_state"
-        ) {
+        if matches!(record.table.as_str(), "legacy_event_recovery_ledger") {
             let table = header
                 .tables
                 .iter()
                 .find(|table| table.name == record.table)
                 .context("unknown recovery archive table")?;
+            if record.row["sequence"] == 0 {
+                recovery_state_seen = true;
+            } else {
+                ensure!(
+                    recovery_state_seen,
+                    "recovery state must precede entry rows"
+                );
+            }
             recovery_rows.insert(&record.table, &table.primary_key, &record.row)?;
+            recovery_rows.insert(
+                "recovery_credit_identity",
+                &["credit_event_id".into()],
+                &record.row,
+            )?;
         }
         if record.table == "lifecycle_outbox"
             && (compact(&record.row) || record.row["canonical_payload"] == "")
@@ -584,6 +593,14 @@ pub(super) async fn validate(
     ensure!(
         !has_compact || target_ordered,
         "compact archive targets must have unique sorted event/subscriber identities"
+    );
+    ensure!(
+        !header
+            .tables
+            .iter()
+            .any(|t| t.name == super::recovery_archive::LEDGER)
+            || recovery_state_seen,
+        "missing recovery ledger state"
     );
     recovery_rows.finish_unique()?;
     keys.finish()?;
@@ -828,6 +845,11 @@ pub(super) async fn validate(
                 );
             }
         }
+        if table.name == super::recovery_archive::LEDGER {
+            if let Err(error) = super::recovery_archive::validate(connection, &normalized).await {
+                failure(&mut preview, format!("recovery ledger: {error}"));
+            }
+        }
         if table.name == "lifecycle_outbox" {
             let conflict = publication_conflict(connection, &record.row).await?;
             if conflict {
@@ -839,9 +861,7 @@ pub(super) async fn validate(
         }
         if matches!(
             table.name.as_str(),
-            "legacy_event_recovery_pending"
-                | "legacy_credit_handoff_receipts"
-                | "runtime_canonical_contents"
+            "runtime_canonical_contents"
                 | "runtime_native_snapshot_items"
                 | "runtime_native_snapshot_manifests"
                 | "runtime_native_snapshot_references"

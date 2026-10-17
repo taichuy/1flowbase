@@ -1,5 +1,5 @@
 use super::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn archive_lines(bytes: &[u8]) -> Vec<Value> {
     use std::io::Read;
@@ -23,18 +23,22 @@ async fn selective_runtime_roundtrip_preserves_retirement_archive_without_replay
     let retired_before: Vec<Value> = sqlx::query_scalar("select to_jsonb(retired) from retired_host_infrastructure_settings retired order by source_table,record::text")
         .fetch_all(&db).await.unwrap();
     let mut connection = db.acquire().await.unwrap();
-    assert!(schema::primary_key(&mut connection, RETIRED)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        schema::primary_key(&mut connection, RETIRED)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     drop(connection);
 
     let categories = repo.catalog().await.unwrap();
-    assert!(categories.iter().all(|category| !category
-        .structure_tables
-        .iter()
-        .chain(&category.data_tables)
-        .any(|table| table == RETIRED)));
+    assert!(categories.iter().all(|category| {
+        !category
+            .structure_tables
+            .iter()
+            .chain(&category.data_tables)
+            .any(|table| table == RETIRED)
+    }));
     let runtime = categories
         .iter()
         .find(|category| category.feature_id == "system.system-runtime")
@@ -42,9 +46,7 @@ async fn selective_runtime_roundtrip_preserves_retirement_archive_without_replay
     for table in [
         "system_default_upgrade_runs",
         "system_default_upgrade_items",
-        "legacy_event_recovery_state",
-        "legacy_event_recovery_pending",
-        "legacy_credit_handoff_receipts",
+        "legacy_event_recovery_ledger",
     ] {
         assert!(
             runtime.data_tables.iter().any(|name| name == table),
@@ -61,20 +63,20 @@ async fn selective_runtime_roundtrip_preserves_retirement_archive_without_replay
     let tables = lines[0]["tables"].as_array().unwrap();
     assert!(!tables.iter().any(|entry| entry["name"] == RETIRED));
     assert!(!lines.iter().skip(1).any(|entry| entry["table"] == RETIRED));
-    assert!(lines
-        .iter()
-        .skip(1)
-        .any(|entry| entry["table"] == "system_default_upgrade_runs"
-            && entry["row"]["id"] == json!(run)
-            && entry["row"]["summary_json"] == original_summary));
-    for table in [
-        "legacy_event_recovery_state",
-        "legacy_event_recovery_pending",
-        "legacy_credit_handoff_receipts",
-    ] {
-        assert!(tables
+    assert!(
+        lines
             .iter()
-            .any(|entry| entry["name"] == table && entry["data"] == true));
+            .skip(1)
+            .any(|entry| entry["table"] == "system_default_upgrade_runs"
+                && entry["row"]["id"] == json!(run)
+                && entry["row"]["summary_json"] == original_summary)
+    );
+    for table in ["legacy_event_recovery_ledger"] {
+        assert!(
+            tables
+                .iter()
+                .any(|entry| entry["name"] == table && entry["data"] == true)
+        );
     }
     let retired_after_export: Vec<Value> = sqlx::query_scalar("select to_jsonb(retired) from retired_host_infrastructure_settings retired order by source_table,record::text")
         .fetch_all(&db).await.unwrap();
@@ -158,15 +160,19 @@ async fn structure_only_validates_physical_schema_without_exporting_or_creating_
     let model = model_fixture(&db, actor).await;
     let bytes = capture(&repo, select("data-models", true, false)).await;
     let lines = archive_lines(&bytes);
-    assert!(lines[0]["schema_dependencies"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|t| t["name"] == model.physical_table_name));
-    assert!(!lines
-        .iter()
-        .skip(1)
-        .any(|r| r["table"] == model.physical_table_name));
+    assert!(
+        lines[0]["schema_dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["name"] == model.physical_table_name)
+    );
+    assert!(
+        !lines
+            .iter()
+            .skip(1)
+            .any(|r| r["table"] == model.physical_table_name)
+    );
     sqlx::query("update model_definitions set title='Target definition' where id=$1")
         .bind(model.id)
         .execute(&db)
@@ -192,10 +198,11 @@ async fn structure_only_validates_physical_schema_without_exporting_or_creating_
         "{:?}",
         preview.failures
     );
-    assert!(repo
-        .restore(reader(bytes.clone()), "key", "key", true)
-        .await
-        .is_err());
+    assert!(
+        repo.restore(reader(bytes.clone()), "key", "key", true)
+            .await
+            .is_err()
+    );
     sqlx::query(sqlx::AssertSqlSafe(format!("drop table {table}")))
         .execute(&db)
         .await
@@ -213,10 +220,11 @@ async fn structure_only_validates_physical_schema_without_exporting_or_creating_
         "{:?}",
         preview.failures
     );
-    assert!(repo
-        .restore(reader(bytes), "key", "key", true)
-        .await
-        .is_err());
+    assert!(
+        repo.restore(reader(bytes), "key", "key", true)
+            .await
+            .is_err()
+    );
     assert!(
         sqlx::query_scalar::<_, Option<String>>("select to_regclass($1)::text")
             .bind(&model.physical_table_name)
@@ -255,15 +263,17 @@ async fn generated_expression_difference_blocks_before_restoring_any_rows() {
         .iter()
         .find(|t| t["name"] == "selective_generated_fixture")
         .unwrap();
-    assert!(table["columns"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|c| c["name"] == "calculated")
-        .unwrap()["generated_expression"]
-        .as_str()
-        .unwrap()
-        .contains("2"));
+    assert!(
+        table["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == "calculated")
+            .unwrap()["generated_expression"]
+            .as_str()
+            .unwrap()
+            .contains("2")
+    );
     sqlx::query("alter table selective_generated_fixture drop column calculated")
         .execute(&db)
         .await
@@ -285,10 +295,11 @@ async fn generated_expression_difference_blocks_before_restoring_any_rows() {
         "{:?}",
         preview.failures
     );
-    assert!(repo
-        .restore(reader(bytes), "key", "key", true)
-        .await
-        .is_err());
+    assert!(
+        repo.restore(reader(bytes), "key", "key", true)
+            .await
+            .is_err()
+    );
     assert_eq!(
         sqlx::query_scalar::<_, i32>("select calculated from selective_generated_fixture")
             .fetch_one(&db)

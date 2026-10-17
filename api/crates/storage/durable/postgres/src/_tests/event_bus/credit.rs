@@ -4,8 +4,8 @@ use super::*;
 async fn credit_handoff_is_atomic_snapshot_and_does_not_replay_after_poll() {
     let (bus, _, workspace) = fixture().await;
     let (id, expected) = source(&bus, workspace, false).await;
-    assert_eq!(bus.handoff_credit_events(50).await.unwrap(), 1);
-    let row = sqlx::query("select p.payload,p.credit_event_id,h.origin,h.cutover_id,c.published_at from legacy_event_recovery_pending p join legacy_credit_handoff_receipts h on h.event_id=p.credit_event_id join credit_event_outbox c on c.event_id=h.event_id")
+    assert_eq!(bus.fixture_handoff(50).await.unwrap(), 1);
+    let row = sqlx::query("select p.payload,p.credit_event_id,p.origin,p.cutover_id,c.published_at from legacy_event_recovery_ledger p join credit_event_outbox c on c.event_id=p.credit_event_id")
         .fetch_one(&bus.pool).await.unwrap();
     assert_eq!(
         serde_json::from_str::<Value>(&row.get::<String, _>("payload")).unwrap(),
@@ -31,7 +31,7 @@ async fn credit_handoff_is_atomic_snapshot_and_does_not_replay_after_poll() {
         Some(expected.clone())
     );
     assert_eq!(bus.poll("credit.events").await.unwrap(), Some(expected));
-    assert_eq!(bus.handoff_credit_events(50).await.unwrap(), 0);
+    assert_eq!(bus.fixture_handoff(50).await.unwrap(), 0);
     assert_eq!(bus.import_legacy_credit_events(&[id, id]).await.unwrap(), 0);
     assert_eq!(count(&bus, "pending").await, 0);
     assert_eq!(count(&bus, "receipts").await, 1);
@@ -49,7 +49,7 @@ async fn legacy_is_not_scanned_and_exact_import_preserves_old_timestamp_and_rece
     let (bus, _, workspace) = fixture().await;
     let (legacy, expected) = source(&bus, workspace, true).await;
     let (other, _) = source(&bus, workspace, true).await;
-    assert_eq!(bus.handoff_credit_events(50).await.unwrap(), 0);
+    assert_eq!(bus.fixture_handoff(50).await.unwrap(), 0);
     assert_eq!(count(&bus, "pending").await, 0);
     assert!(
         bus.import_legacy_credit_events(&[legacy, Uuid::now_v7()])
@@ -74,7 +74,7 @@ async fn legacy_is_not_scanned_and_exact_import_preserves_old_timestamp_and_rece
         OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap()
     );
     let ids: Vec<Uuid> = sqlx::query_scalar(
-        "select event_id from legacy_credit_handoff_receipts where origin='legacy_snapshot'",
+        "select credit_event_id from legacy_event_recovery_ledger where origin='legacy_snapshot'",
     )
     .fetch_all(&bus.pool)
     .await
@@ -94,7 +94,7 @@ async fn source_confirmation_failure_rolls_back_spool_receipt_and_counter() {
         .execute(&bus.pool).await.unwrap();
     sqlx::query("create trigger reject_credit_confirmation before update on credit_event_outbox for each row execute function reject_credit_confirmation()")
         .execute(&bus.pool).await.unwrap();
-    assert!(bus.handoff_credit_events(50).await.is_err());
+    assert!(bus.fixture_handoff(50).await.is_err());
     assert_eq!(count(&bus, "pending").await, 0);
     assert_eq!(count(&bus, "receipts").await, 0);
     let published: Option<OffsetDateTime> =
@@ -104,16 +104,18 @@ async fn source_confirmation_failure_rolls_back_spool_receipt_and_counter() {
             .await
             .unwrap();
     assert!(published.is_none());
-    let counter: i64 = sqlx::query_scalar("select last_sequence from legacy_event_recovery_state")
-        .fetch_one(&bus.pool)
-        .await
-        .unwrap();
+    let counter: i64 = sqlx::query_scalar(
+        "select last_sequence from legacy_event_recovery_ledger where sequence=0",
+    )
+    .fetch_one(&bus.pool)
+    .await
+    .unwrap();
     assert_eq!(counter, 0);
     sqlx::query("drop trigger reject_credit_confirmation on credit_event_outbox")
         .execute(&bus.pool)
         .await
         .unwrap();
-    assert_eq!(bus.handoff_credit_events(50).await.unwrap(), 1);
+    assert_eq!(bus.fixture_handoff(50).await.unwrap(), 1);
     let reopened = PgLegacyEventRecovery::new(bus.pool.clone());
     assert!(reopened.poll("credit.events").await.unwrap().is_some());
 }
@@ -174,7 +176,7 @@ async fn grant_envelope_preserves_enqueue_time_account_and_full_original_wire_sh
         "account_id":account,"occurred_at":row.get::<OffsetDateTime,_>("created_at"),
         "payload":row.get::<Value,_>("payload"),
     });
-    assert_eq!(bus.handoff_credit_events(50).await.unwrap(), 1);
+    assert_eq!(bus.fixture_handoff(50).await.unwrap(), 1);
     // Source changes after handoff must not mutate the durable envelope snapshot.
     sqlx::query(r#"update credit_event_outbox set account_id=null,payload='{"mutated":true}'::jsonb,event_type='mutated' where event_id=$1"#)
         .bind(id)
@@ -190,14 +192,20 @@ async fn missing_credit_receipt_cannot_commit_an_orphan_queue_entry() {
     let mut tx = bus.pool.begin().await.unwrap();
     PgLegacyEventRecovery::lock_queue(&mut tx).await.unwrap();
     let sequence = PgLegacyEventRecovery::next_sequence(&mut tx).await.unwrap();
-    sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,credit_event_id,payload,value_size_bytes) values ($1,'credit.events',$2,'{}',2)")
-        .bind(sequence).bind(Uuid::now_v7()).execute(&mut *tx).await.unwrap();
-    assert!(tx.commit().await.is_err());
+    let error = sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,credit_event_id,payload,payload_digest,value_size_bytes) values ($1,'pending','credit.events',$2,'{}',sha256(convert_to('{}','UTF8')),2)")
+        .bind(sequence).bind(Uuid::now_v7()).execute(&mut *tx).await.unwrap_err();
+    assert_eq!(
+        error.as_database_error().unwrap().code().as_deref(),
+        Some("23514")
+    );
+    tx.rollback().await.unwrap();
     assert_eq!(count(&bus, "pending").await, 0);
-    let counter: i64 = sqlx::query_scalar("select last_sequence from legacy_event_recovery_state")
-        .fetch_one(&bus.pool)
-        .await
-        .unwrap();
+    let counter: i64 = sqlx::query_scalar(
+        "select last_sequence from legacy_event_recovery_ledger where sequence=0",
+    )
+    .fetch_one(&bus.pool)
+    .await
+    .unwrap();
     assert_eq!(counter, 0);
 }
 
@@ -216,7 +224,7 @@ async fn queued_credit_snapshot_survives_the_original_workspace_cascade() {
         .unwrap();
     assert_eq!(inserted.rows_affected(), 1);
     let (id, expected) = source(&bus, workspace, false).await;
-    assert_eq!(bus.handoff_credit_events(50).await.unwrap(), 1);
+    assert_eq!(bus.fixture_handoff(50).await.unwrap(), 1);
     let entry_ref = bus.list_ephemeral_entries().await.unwrap()[0]
         .entry_ref
         .clone();

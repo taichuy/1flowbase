@@ -75,7 +75,7 @@ async fn optional_zero_creates_no_transport_body_and_rejects_malformed_identity(
         store.publish_optional_notification(&input).await.unwrap(),
         OptionalNotificationPublicationOutcome::NoTargets
     );
-    let counts:(i64,i64,i64,i64)=sqlx::query_as("select (select count(*) from lifecycle_outbox),(select count(*) from lifecycle_outbox_deliveries),(select count(*) from legacy_event_recovery_pending),(select count(*) from credit_event_outbox)").fetch_one(store.pool()).await.unwrap();
+    let counts:(i64,i64,i64,i64)=sqlx::query_as("select (select count(*) from lifecycle_outbox),(select count(*) from lifecycle_outbox_deliveries),(select count(*) from legacy_event_recovery_ledger where disposition='pending'),(select count(*) from credit_event_outbox)").fetch_one(store.pool()).await.unwrap();
     assert_eq!(counts, (0, 0, 0, 0));
     let mut malformed = input.clone();
     malformed.source_event_id = Uuid::now_v7();
@@ -132,10 +132,12 @@ async fn optional_publication_freezes_targets_and_body_across_upgrade_and_zero_c
             .await
             .is_err()
     );
-    let duplicates: i64 = sqlx::query_scalar("select count(*) from legacy_event_recovery_pending")
-        .fetch_one(store.pool())
-        .await
-        .unwrap();
+    let duplicates: i64 = sqlx::query_scalar(
+        "select count(*) from legacy_event_recovery_ledger where disposition='pending'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
     assert_eq!(duplicates, 0);
 }
 

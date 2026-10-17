@@ -216,7 +216,7 @@ impl PgControlPlaneStore {
         // and snapshot commit together; lost lifecycle ACK can only reuse this ID.
         let payload = serde_json::to_string(&original_value)?;
         let sequence = crate::PgLegacyEventRecovery::next_sequence(tx).await?;
-        sqlx::query("insert into legacy_event_recovery_pending(sequence,topic,payload,value_size_bytes) values($1,$2,$3,$4)")
+        sqlx::query("insert into legacy_event_recovery_ledger(sequence,disposition,topic,payload,payload_digest,value_size_bytes) values($1,'pending',$2,$3,sha256(convert_to($3,'UTF8')),$4)")
             .bind(sequence).bind(b"official.plugin-host.lifecycle.model-definition-committed".as_slice())
             .bind(&payload).bind(payload.len() as i64).execute(&mut **tx).await?;
         sqlx::query("update lifecycle_outbox set legacy_handoff_sequence=$2 where event_id=$1")

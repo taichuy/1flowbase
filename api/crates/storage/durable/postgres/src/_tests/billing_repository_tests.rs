@@ -84,7 +84,7 @@ async fn credit_command_is_idempotent_and_updates_projection_with_ledger() {
     assert_eq!(ledger.1.parse::<Decimal>().unwrap(), Decimal::new(1025, 2));
     assert_eq!(ledger.2, account.id);
     let transport: (i64,i64,i64,i64) = sqlx::query_as(
-        "select (select count(*) from legacy_event_recovery_pending),(select count(*) from legacy_credit_handoff_receipts),(select count(*) from lifecycle_outbox where contract_id='credit.integration_notification'),(select count(*) from lifecycle_outbox_deliveries d join lifecycle_outbox f using(event_id) where f.contract_id='credit.integration_notification')",
+        "select (select count(*) from legacy_event_recovery_ledger where disposition='pending'),(select count(*) from legacy_event_recovery_ledger where credit_event_id is not null),(select count(*) from lifecycle_outbox where contract_id='credit.integration_notification'),(select count(*) from lifecycle_outbox_deliveries d join lifecycle_outbox f using(event_id) where f.contract_id='credit.integration_notification')",
     ).fetch_one(store.pool()).await.unwrap();
     assert_eq!(transport, (0, 0, 0, 0));
 }
