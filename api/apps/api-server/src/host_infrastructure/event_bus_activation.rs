@@ -66,8 +66,8 @@ impl EventBusActivationFactoryRegistry {
 
 pub(super) fn builtin_event_bus_factories() -> Result<EventBusActivationFactoryRegistry> {
     let mut factories = EventBusActivationFactoryRegistry::default();
-    factories.register(LOCAL_PROVIDER_SOURCE, LOCAL_PROVIDER_CODE, |pool| {
-        Arc::new(super::recovery_event_bus::RecoveryEventBus::new(pool))
+    factories.register(LOCAL_PROVIDER_SOURCE, LOCAL_PROVIDER_CODE, |_pool| {
+        Arc::new(storage_ephemeral::MemoryEventBus::lossless())
     })?;
     Ok(factories)
 }

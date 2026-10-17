@@ -4,7 +4,6 @@ mod event_bus_activation;
 mod local;
 mod local_runtime_event_stream;
 mod provider_transport_store;
-mod recovery_event_bus;
 
 use std::{collections::BTreeMap, sync::Arc};
 

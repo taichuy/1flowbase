@@ -1,4 +1,6 @@
 use super::*;
+use control_plane_contracts::ports::EphemeralValueRevealMode;
+use serde_json::json;
 
 fn declared(source: &str, provider_code: &str) -> HostExtensionRegistry {
     let mut contribution =
@@ -20,10 +22,10 @@ fn declared(source: &str, provider_code: &str) -> HostExtensionRegistry {
     hosts
 }
 
-#[tokio::test]
-async fn official_factory_uses_ephemeral_live_events_and_explicit_legacy_recovery() {
+fn activate_builtin_without_database() -> HostInfrastructureRegistry {
     let hosts = declared(LOCAL_PROVIDER_SOURCE, LOCAL_PROVIDER_CODE);
     let pool = sqlx::postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_millis(100))
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
         .unwrap();
     let mut registry = HostInfrastructureRegistry::default();
@@ -32,12 +34,70 @@ async fn official_factory_uses_ephemeral_live_events_and_explicit_legacy_recover
         .activate(&hosts, pool, &mut registry)
         .unwrap();
     assert_eq!(registry.default_provider("event-bus"), Some("local"));
-    assert_eq!(
-        registry
-            .event_bus()
-            .ephemeral_inspection_capabilities()
-            .storage_medium,
-        Some("memory-and-legacy-postgresql")
+    registry
+}
+
+#[tokio::test]
+async fn builtin_live_events_poll_fifo_per_topic_without_database() {
+    let registry = activate_builtin_without_database();
+    let bus = registry.event_bus();
+    assert_eq!(bus.poll("missing").await.unwrap(), None);
+    for sequence in 0..3 {
+        for topic in ["first", "second"] {
+            bus.publish(topic, json!({"topic": topic, "sequence": sequence}))
+                .await
+                .unwrap();
+        }
+    }
+    // Drain in a different topic order from publication to detect topic mixing.
+    for topic in ["second", "first"] {
+        for sequence in 0..3 {
+            assert_eq!(
+                bus.poll(topic).await.unwrap(),
+                Some(json!({"topic": topic, "sequence": sequence}))
+            );
+        }
+        assert_eq!(bus.poll(topic).await.unwrap(), None);
+    }
+    assert!(bus.list_ephemeral_entries().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn builtin_live_events_preserve_complete_large_json_without_database() {
+    let registry = activate_builtin_without_database();
+    let bus = registry.event_bus();
+    let body = json!({"nul\u{0}key":[u64::MAX,"原文\u{0}".repeat(200_000),null]});
+    assert!(serde_json::to_vec(&body).unwrap().len() > 1024 * 1024);
+    bus.publish("large", body.clone()).await.unwrap();
+    assert_eq!(bus.poll("large").await.unwrap(), Some(body));
+    assert_eq!(bus.poll("large").await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn builtin_live_events_inspect_and_reveal_without_database() {
+    let registry = activate_builtin_without_database();
+    let bus = registry.event_bus();
+    let body = json!({"nul\u{0}key": [u64::MAX, "完整正文\u{0}", null]});
+    bus.publish("inspect", body.clone()).await.unwrap();
+    let entries = bus.list_ephemeral_entries().await.unwrap();
+    assert_eq!(entries.len(), 1);
+    let entry = &entries[0];
+    assert_eq!(entry.group_code.as_deref(), Some("inspect"));
+    let revealed = bus
+        .reveal_ephemeral_entry(&entry.entry_ref, EphemeralValueRevealMode::Full)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(revealed.metadata, *entry);
+    assert_eq!(revealed.value, Some(body.clone()));
+    // Inspection must leave the live queue intact.
+    assert_eq!(bus.poll("inspect").await.unwrap(), Some(body));
+    assert!(bus.list_ephemeral_entries().await.unwrap().is_empty());
+    assert!(
+        bus.reveal_ephemeral_entry(&entry.entry_ref, EphemeralValueRevealMode::Full)
+            .await
+            .unwrap()
+            .is_none()
     );
 }
 
