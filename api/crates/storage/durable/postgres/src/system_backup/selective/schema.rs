@@ -1,5 +1,5 @@
 use super::archive::{Column, Table};
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use sqlx::{PgConnection, Row};
 pub(super) fn quote(name: &str) -> Result<String> {
     ensure!(

@@ -1,7 +1,7 @@
 //! Optional integration publication uses the existing immutable fact/per-target outbox.
 //! It never applies a credit command, nor creates a second general EventBus snapshot.
 use crate::PgControlPlaneStore;
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use async_trait::async_trait;
 use control_plane_contracts::ports::*;
 use extension_contracts::{AfterCommitFact, LifecycleContract};

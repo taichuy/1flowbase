@@ -6,7 +6,7 @@ use crate::secret_crypto::{
     decrypt_secret_json, decrypt_secret_json_with_aad, encrypt_secret_json,
     encrypt_secret_json_with_aad,
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use control_plane_contracts::system_backup::selective::SelectiveBackupPreview;
 use serde_json::Value;
 use sha2::{Digest, Sha256};

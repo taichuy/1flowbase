@@ -1,7 +1,7 @@
 //! Activate the declared EventBus provider; never replace a different host's service.
 use super::cache_store_activation::{LOCAL_PROVIDER_CODE, LOCAL_PROVIDER_SOURCE};
 use super::{EventBus, HostInfrastructureRegistry};
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use plugin_framework::HostExtensionRegistry;
 use sqlx::PgPool;
 use std::{collections::BTreeMap, sync::Arc};

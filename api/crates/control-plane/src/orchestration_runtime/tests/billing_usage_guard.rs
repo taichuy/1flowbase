@@ -1,8 +1,8 @@
 use super::*;
-use plugin_framework::PluginFrameworkError;
 use plugin_framework::provider_contract::{
     ProviderOutputProtocolFailure, ProviderRuntimeError, ProviderUsage,
 };
+use plugin_framework::PluginFrameworkError;
 
 fn billing_flow_execution_context(
     flow_run_id: Uuid,
@@ -309,12 +309,10 @@ async fn billing_no_usage_with_output_protocol_failure_returns_output_for_classi
     .await
     .expect("protocol failure must reach executor classification");
 
-    assert!(
-        output
-            .events
-            .iter()
-            .any(|event| { matches!(event, ProviderStreamEvent::OutputProtocolFailure { .. }) })
-    );
+    assert!(output
+        .events
+        .iter()
+        .any(|event| { matches!(event, ProviderStreamEvent::OutputProtocolFailure { .. }) }));
     assert!(repository_probe.model_billing_credit_releases().is_empty());
     assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
@@ -386,8 +384,8 @@ async fn billing_no_usage_with_billable_output_preserves_unknown_usage_and_succe
         provider_metadata["_1flowbase_upstream_provider_metadata"]["_1flowbase_user_account"],
         "billing-user"
     );
-    let details = &provider_metadata["_1flowbase_upstream_provider_metadata"]["_1flowbase_upstream_provider_metadata"]
-        ["_1flowbase_billing"];
+    let details = &provider_metadata["_1flowbase_upstream_provider_metadata"]
+        ["_1flowbase_upstream_provider_metadata"]["_1flowbase_billing"];
     assert_eq!(details["billing_status"], "reconciliation_failed");
     assert_eq!(details["billing_error_code"], "provider_usage_unavailable");
     assert_eq!(details.get("total_cost"), Some(&serde_json::Value::Null));

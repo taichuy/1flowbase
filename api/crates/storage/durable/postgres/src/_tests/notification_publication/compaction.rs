@@ -119,8 +119,8 @@ fn recorded_input(
 }
 
 #[tokio::test]
-async fn large_optional_body_survives_retry_pause_then_final_ack_compacts_and_replay_stays_complete()
- {
+async fn large_optional_body_survives_retry_pause_then_final_ack_compacts_and_replay_stays_complete(
+) {
     let store = fixture()
         .await
         .with_lifecycle_publication_catalog(catalog());
@@ -194,13 +194,11 @@ async fn large_optional_body_survives_retry_pause_then_final_ack_compacts_and_re
     ack(&store, &final_claim[0]).await;
     assert_eq!(body(&store, event).await, (vec![], Some(expected_digest)));
     assert_eq!(publish(&store, &input).await, event);
-    assert!(
-        store
-            .claim_lifecycle_facts(worker, 10, Duration::seconds(30))
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(store
+        .claim_lifecycle_facts(worker, 10, Duration::seconds(30))
+        .await
+        .unwrap()
+        .is_empty());
 
     let record = recorded_input(event, &input);
     for mutation in [
@@ -240,12 +238,10 @@ async fn large_optional_body_survives_retry_pause_then_final_ack_compacts_and_re
     );
     let mut changed_body = input.clone();
     changed_body.canonical_payload.push(b' '); // Same valid typed JSON, different canonical bytes.
-    assert!(
-        store
-            .publish_optional_notification(&changed_body)
-            .await
-            .is_err()
-    );
+    assert!(store
+        .publish_optional_notification(&changed_body)
+        .await
+        .is_err());
     assert!(body(&store, event).await.0.is_empty());
 }
 
@@ -271,23 +267,19 @@ async fn stale_claim_cannot_compact_optional_body_before_current_fenced_ack() {
         .await
         .unwrap();
     assert_eq!(current.len(), 1);
-    assert!(
-        store
-            .mark_lifecycle_fact_delivered(event, "b", old_worker, old_b.claim_id.unwrap())
-            .await
-            .unwrap_err()
-            .downcast_ref::<LifecycleClaimLost>()
-            .is_some()
-    );
+    assert!(store
+        .mark_lifecycle_fact_delivered(event, "b", old_worker, old_b.claim_id.unwrap())
+        .await
+        .unwrap_err()
+        .downcast_ref::<LifecycleClaimLost>()
+        .is_some());
     assert_eq!(body(&store, event).await.0, input.canonical_payload);
     ack(&store, &current[0]).await;
     assert!(body(&store, event).await.0.is_empty());
-    assert!(
-        store
-            .mark_lifecycle_fact_delivered(event, "b", old_worker, old_b.claim_id.unwrap())
-            .await
-            .is_err()
-    );
+    assert!(store
+        .mark_lifecycle_fact_delivered(event, "b", old_worker, old_b.claim_id.unwrap())
+        .await
+        .is_err());
     assert!(body(&store, event).await.0.is_empty());
 }
 
@@ -314,14 +306,12 @@ async fn original_model_and_other_managed_fact_bodies_keep_existing_retention_an
         );
         record.event_id = Uuid::now_v7();
         record.canonical_payload = vec![b'x'; 1024 * 1024 + 1];
-        assert!(
-            store
-                .record_lifecycle_fact(&record)
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("payload exceeds")
-        );
+        assert!(store
+            .record_lifecycle_fact(&record)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("payload exceeds"));
     }
 }
 

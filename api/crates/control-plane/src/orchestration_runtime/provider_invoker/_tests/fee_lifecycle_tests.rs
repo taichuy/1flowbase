@@ -180,13 +180,11 @@ async fn required_fee_admission_vetoes_before_a_reservation_without_actor() {
             billing_node_id: None,
         })
         .await;
-    assert!(
-        result
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("billing_actor_context_required")
-    );
+    assert!(result
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("billing_actor_context_required"));
     assert_eq!(repository.model_billing_reserved_session_count(), 0);
 }
 
@@ -246,14 +244,12 @@ async fn required_fee_outcome_releases_invalid_usage_and_finalize_failure() {
         let releases = repository.model_billing_credit_releases();
         assert_eq!(releases.len(), 1);
         assert_eq!(releases[0].1, expected_error);
-        assert!(
-            output
-                .unwrap()
-                .result
-                .provider_metadata
-                .get("_1flowbase_billing")
-                .is_none()
-        );
+        assert!(output
+            .unwrap()
+            .result
+            .provider_metadata
+            .get("_1flowbase_billing")
+            .is_none());
     }
 }
 
@@ -345,8 +341,8 @@ async fn invoke_with_metadata_for_actor(
     Repository,
 ) {
     use crate::orchestration_runtime::{
-        RuntimeDataModelExecutionContext, RuntimeFlowExecutionContext,
-        test_support::InMemoryProviderRuntime,
+        test_support::InMemoryProviderRuntime, RuntimeDataModelExecutionContext,
+        RuntimeFlowExecutionContext,
     };
     let repository = Repository::with_permissions(vec![]);
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
@@ -637,8 +633,8 @@ async fn default_free_admission_keeps_output_and_cost_without_a_credit_reservati
     assert_eq!(repository.model_billing_finalize_attempt_count(), 0);
     assert_eq!(repository.model_billing_heartbeat_count(), 0);
     assert!(repository.model_billing_credit_releases().is_empty());
-    let metadata = &output.result.provider_metadata["_1flowbase_upstream_provider_metadata"]["_1flowbase_upstream_provider_metadata"]
-        ["_1flowbase_billing"];
+    let metadata = &output.result.provider_metadata["_1flowbase_upstream_provider_metadata"]
+        ["_1flowbase_upstream_provider_metadata"]["_1flowbase_billing"];
     assert_eq!(metadata["charge_skipped"], true);
     assert!(metadata["billing_session_id"].is_null());
     assert!(metadata["usage_ledger_id"].as_str().is_some());

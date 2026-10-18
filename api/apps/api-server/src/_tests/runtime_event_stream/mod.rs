@@ -1,6 +1,6 @@
 mod lifecycle;
-mod payload_admission;
 mod memory_comparison;
+mod payload_admission;
 mod recoverable;
 
 use std::time::Duration;

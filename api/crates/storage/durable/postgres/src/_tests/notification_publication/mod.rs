@@ -79,12 +79,10 @@ async fn optional_zero_creates_no_transport_body_and_rejects_malformed_identity(
     assert_eq!(counts, (0, 0, 0));
     let mut malformed = input.clone();
     malformed.source_event_id = Uuid::now_v7();
-    assert!(
-        store
-            .publish_optional_notification(&malformed)
-            .await
-            .is_err()
-    );
+    assert!(store
+        .publish_optional_notification(&malformed)
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -126,12 +124,10 @@ async fn optional_publication_freezes_targets_and_body_across_upgrade_and_zero_c
     let mut value: serde_json::Value = serde_json::from_slice(&conflict.canonical_payload).unwrap();
     value["payload"]["payload"]["charged_amount"] = serde_json::json!("9.99");
     conflict.canonical_payload = serde_json::to_vec(&value).unwrap();
-    assert!(
-        changed
-            .publish_optional_notification(&conflict)
-            .await
-            .is_err()
-    );
+    assert!(changed
+        .publish_optional_notification(&conflict)
+        .await
+        .is_err());
 }
 
 struct Unavailable;
@@ -153,12 +149,10 @@ async fn unavailable_publication_source_is_an_error_not_optional_zero() {
         .attach_workspace_source(std::sync::Arc::new(Unavailable))
         .unwrap();
     let store = fixture().await.with_lifecycle_publication_catalog(catalog);
-    assert!(
-        store
-            .publish_optional_notification(&input())
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("source unavailable")
-    );
+    assert!(store
+        .publish_optional_notification(&input())
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("source unavailable"));
 }

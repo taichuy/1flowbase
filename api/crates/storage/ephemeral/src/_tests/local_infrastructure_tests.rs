@@ -9,11 +9,10 @@ use time::Duration;
 async fn memory_distributed_lock_checks_owner() {
     let lock = MemoryDistributedLock::new("flowbase:lock");
 
-    assert!(
-        lock.acquire("install", "owner-a", Duration::seconds(30))
-            .await
-            .unwrap()
-    );
+    assert!(lock
+        .acquire("install", "owner-a", Duration::seconds(30))
+        .await
+        .unwrap());
     assert!(!lock.release("install", "owner-b").await.unwrap());
     assert!(lock.release("install", "owner-a").await.unwrap());
 }
@@ -119,12 +118,10 @@ async fn memory_task_queue_idempotency_claim_ack_and_fail_are_worker_checked() {
     assert_eq!(task.idempotency_key.as_deref(), Some("preview:file:a"));
     assert!(task.claim_expires_at_unix > time::OffsetDateTime::now_utc().unix_timestamp());
     assert!(!queue.ack("preview", &task_id, "worker-b").await.unwrap());
-    assert!(
-        queue
-            .fail("preview", &task_id, "worker-a", "retry")
-            .await
-            .unwrap()
-    );
+    assert!(queue
+        .fail("preview", &task_id, "worker-a", "retry")
+        .await
+        .unwrap());
 
     let reclaimed = queue
         .claim("preview", "worker-b", Duration::seconds(30))
@@ -185,20 +182,16 @@ async fn memory_task_queue_reclaims_after_visibility_timeout() {
         .await
         .unwrap();
 
-    assert!(
-        queue
-            .claim("preview", "worker-a", Duration::milliseconds(30))
-            .await
-            .unwrap()
-            .is_some()
-    );
-    assert!(
-        queue
-            .claim("preview", "worker-b", Duration::seconds(30))
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(queue
+        .claim("preview", "worker-a", Duration::milliseconds(30))
+        .await
+        .unwrap()
+        .is_some());
+    assert!(queue
+        .claim("preview", "worker-b", Duration::seconds(30))
+        .await
+        .unwrap()
+        .is_none());
 
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
 
@@ -245,11 +238,9 @@ async fn memory_task_queue_applies_capacity_per_queue_name() {
         .enqueue("workflow", json!({ "run": 2 }), None)
         .await
         .unwrap();
-    assert!(
-        error
-            .to_string()
-            .contains("task queue `provider-request-logs` reached capacity 1")
-    );
+    assert!(error
+        .to_string()
+        .contains("task queue `provider-request-logs` reached capacity 1"));
     assert_eq!(queue.list_ephemeral_entries().await.unwrap().len(), 3);
 }
 
@@ -269,11 +260,9 @@ async fn memory_task_queue_counts_claimed_tasks_toward_capacity() {
         .enqueue("logs", json!({ "attempt": 2 }), None)
         .await
         .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("task queue `logs` reached capacity 1")
-    );
+    assert!(error
+        .to_string()
+        .contains("task queue `logs` reached capacity 1"));
 }
 
 #[tokio::test]

@@ -3,8 +3,8 @@
 use std::{
     collections::BTreeSet,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     },
 };
 
@@ -18,7 +18,7 @@ use extension_contracts::{
     AfterCommitFact, CompletionOutcome, LifecycleContract, LifecycleFactId, LifecycleTransactionId,
 };
 use plugin_framework::extension_bus::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use storage_durable_postgres::PgControlPlaneStore;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -389,12 +389,11 @@ impl Fixture {
         );
         let mut conflict = self.input.clone();
         conflict.canonical_payload.push(b' '); // Valid JSON but a different canonical body.
-        assert!(
-            self.store
-                .publish_optional_notification(&conflict)
-                .await
-                .is_err()
-        );
+        assert!(self
+            .store
+            .publish_optional_notification(&conflict)
+            .await
+            .is_err());
         assert!(self.transport_body().await.0.is_empty());
         assert_eq!(
             monetary_snapshot(self.store.pool()).await,
@@ -494,17 +493,13 @@ async fn typed_credit_notification_effect_before_ack_loss_retries_idempotently_w
     );
     let completions = fixture.completions.0.lock().unwrap();
     assert_eq!(completions.len(), 3);
-    assert!(
-        completions
-            .iter()
-            .any(|outcome| outcome.payload().claim_id == old_claim)
-    );
-    assert!(
-        completions
-            .iter()
-            .any(|outcome| outcome.payload().attempt_count == 2
-                && outcome.payload().claim_id != old_claim)
-    );
+    assert!(completions
+        .iter()
+        .any(|outcome| outcome.payload().claim_id == old_claim));
+    assert!(completions
+        .iter()
+        .any(|outcome| outcome.payload().attempt_count == 2
+            && outcome.payload().claim_id != old_claim));
     drop(completions);
     fixture.assert_final_effects_without_new_charge().await;
     assert_eq!(fixture.dispatcher.run_once().await.unwrap(), 0);

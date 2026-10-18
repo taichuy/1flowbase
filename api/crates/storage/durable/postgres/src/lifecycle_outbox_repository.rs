@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
     LifecycleClaimLost, LifecycleDeliveryPauseReason, LifecycleOutboxRecord,

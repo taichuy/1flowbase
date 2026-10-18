@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use control_plane_contracts::system_backup::selective::{
     SelectiveBackupCategory, SelectiveBackupSelection,
 };

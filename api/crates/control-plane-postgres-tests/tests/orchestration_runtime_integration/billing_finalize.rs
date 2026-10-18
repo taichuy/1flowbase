@@ -171,11 +171,9 @@ async fn model_billing_finalize_commits_usage_cost_and_credit_atomically() {
         })
         .await
         .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("credit_idempotency_payload_mismatch")
-    );
+    assert!(error
+        .to_string()
+        .contains("credit_idempotency_payload_mismatch"));
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
             "select count(*) from runtime_usage_ledger where flow_run_id = $1"
@@ -286,15 +284,13 @@ async fn model_billing_observation_does_not_create_or_mutate_credit_domain() {
                 .unwrap();
         let mut invalid_cost = cost_input(seeded.workspace_id);
         invalid_cost.normalized_cost = Some("invalid-number".into());
-        assert!(
-            store
-                .record_model_observation(&RecordModelObservationInput {
-                    usage: usage_input(flow.id),
-                    cost: invalid_cost
-                })
-                .await
-                .is_err()
-        );
+        assert!(store
+            .record_model_observation(&RecordModelObservationInput {
+                usage: usage_input(flow.id),
+                cost: invalid_cost
+            })
+            .await
+            .is_err());
         assert_eq!(
             sqlx::query_scalar::<_, i64>(
                 "select count(*) from runtime_usage_ledger where flow_run_id=$1"
@@ -504,24 +500,20 @@ async fn model_billing_charged_snapshot_survives_toggle_and_replays_atomically()
     assert_eq!(account.reserved_amount.parse::<f64>().unwrap(), 0.0);
     let mut changed_usage = input.clone();
     changed_usage.usage.raw_usage = json!({"input_tokens":999});
-    assert!(
-        store
-            .finalize_model_billing(&changed_usage)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("credit_idempotency_payload_mismatch")
-    );
+    assert!(store
+        .finalize_model_billing(&changed_usage)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("credit_idempotency_payload_mismatch"));
     let mut mismatch = input;
     mismatch.settlement.actual_amount = "2".into();
-    assert!(
-        store
-            .finalize_model_billing(&mismatch)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("credit_idempotency_payload_mismatch")
-    );
+    assert!(store
+        .finalize_model_billing(&mismatch)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("credit_idempotency_payload_mismatch"));
     assert_eq!(
         credit_domain_snapshot(&store, seeded.workspace_id).await,
         after
@@ -549,13 +541,11 @@ async fn model_billing_charged_snapshot_survives_toggle_and_replays_atomically()
         .unwrap();
     assert_eq!(release.transaction_type, "release");
     let after_release = credit_domain_snapshot(&store, seeded.workspace_id).await;
-    assert!(
-        store
-            .release_credit(cancel.billing_session_id, "cancelled")
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(store
+        .release_credit(cancel.billing_session_id, "cancelled")
+        .await
+        .unwrap()
+        .is_none());
     assert_eq!(
         credit_domain_snapshot(&store, seeded.workspace_id).await,
         after_release

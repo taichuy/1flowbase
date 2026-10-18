@@ -1,5 +1,5 @@
 use crate::{
-    billing::{CreditCommandService, PricingRule, TokenUsage, rate_token_usage},
+    billing::{rate_token_usage, CreditCommandService, PricingRule, TokenUsage},
     ports::{
         BillingRepository, CreditAccountRecord, CreditCommandInput, CreditReservation,
         CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput, PricingRulesPage,
@@ -14,8 +14,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use time::{
-    OffsetDateTime, Weekday,
     macros::{datetime, time},
+    OffsetDateTime, Weekday,
 };
 use uuid::Uuid;
 
@@ -352,11 +352,9 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
         .execute_plugin_command("checkin-plugin", &BTreeSet::new(), command.clone())
         .await
         .unwrap_err();
-    assert!(
-        denied
-            .to_string()
-            .contains("credit_command_permission_denied")
-    );
+    assert!(denied
+        .to_string()
+        .contains("credit_command_permission_denied"));
 
     let permissions = BTreeSet::from(["credit.grant".to_string()]);
     let first = service
@@ -376,11 +374,9 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
         .execute_plugin_command("checkin-plugin", &permissions, conflicting.clone())
         .await
         .unwrap_err();
-    assert!(
-        conflict
-            .to_string()
-            .contains("credit_idempotency_payload_mismatch")
-    );
+    assert!(conflict
+        .to_string()
+        .contains("credit_idempotency_payload_mismatch"));
 
     let mut accepted_write = RecordedCreditCommand::from(&command);
     accepted_write.actor_plugin_id = Some("checkin-plugin".into());
@@ -470,17 +466,16 @@ fn daily_window_can_end_at_midnight_without_a_pricing_gap() {
     let mut wrapping = rule();
     wrapping.local_time_start = Some(time!(10:00));
     wrapping.local_time_end = Some(time!(00:00));
-    assert!(
-        crate::billing::rule_matches_local_window(
-            &wrapping,
-            datetime!(2026-08-18 23:59:59.999_999_999 UTC)
-        )
-        .unwrap()
-    );
-    assert!(
-        !crate::billing::rule_matches_local_window(&wrapping, datetime!(2026-08-18 09:59:59 UTC))
-            .unwrap()
-    );
+    assert!(crate::billing::rule_matches_local_window(
+        &wrapping,
+        datetime!(2026-08-18 23:59:59.999_999_999 UTC)
+    )
+    .unwrap());
+    assert!(!crate::billing::rule_matches_local_window(
+        &wrapping,
+        datetime!(2026-08-18 09:59:59 UTC)
+    )
+    .unwrap());
 
     wrapping.weekday_mask = 0b000_1111;
     assert_eq!(
@@ -645,16 +640,14 @@ fn ttl_buckets_sparse_order_and_invalid_usage() {
             / Decimal::from(pricing.input_token_unit_size)
     );
     pricing.input_token_unit_price = Decimal::MAX;
-    assert!(
-        rate_token_usage(
-            &pricing,
-            &TokenUsage {
-                input_tokens: i64::MAX,
-                ..Default::default()
-            }
-        )
-        .is_err()
-    );
+    assert!(rate_token_usage(
+        &pricing,
+        &TokenUsage {
+            input_tokens: i64::MAX,
+            ..Default::default()
+        }
+    )
+    .is_err());
 }
 
 #[test]

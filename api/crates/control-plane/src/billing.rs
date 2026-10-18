@@ -5,7 +5,7 @@ use crate::ports::{
     BillingRepository, CreditCommandInput, CreditTransactionRecord, PluginCreditCommandRequest,
     PluginCreditCommandResult, ReserveCreditInput, SettleCreditInput,
 };
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -13,7 +13,7 @@ use time::{OffsetDateTime, Weekday};
 use uuid::Uuid;
 
 pub use control_plane_contracts::billing::{
-    CREDIT_UNIT_USD, GLOBAL_ZERO_MODEL_ID, GLOBAL_ZERO_PROVIDER_CODE, PricingRule,
+    PricingRule, CREDIT_UNIT_USD, GLOBAL_ZERO_MODEL_ID, GLOBAL_ZERO_PROVIDER_CODE,
 };
 
 pub fn pricing_rules_cache_key(provider_code: &str, upstream_model_id: &str) -> String {
@@ -309,7 +309,7 @@ pub fn weekday_bit(weekday: Weekday) -> i16 {
 }
 
 pub fn rule_matches_local_window(rule: &PricingRule, at: OffsetDateTime) -> Result<bool> {
-    use time_tz::{OffsetDateTimeExt, timezones};
+    use time_tz::{timezones, OffsetDateTimeExt};
     if !rule.enabled || at < rule.effective_from || rule.effective_to.is_some_and(|end| at >= end) {
         return Ok(false);
     }

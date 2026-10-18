@@ -2,20 +2,20 @@ use std::sync::Arc;
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
+    Json, Router,
 };
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
+        paginate_ephemeral_entries, paginate_ephemeral_tree, search_ephemeral_entries,
         CacheDomainSnapshot, CacheEntrySnapshot, CacheInspectionCapabilities, CacheStore,
         DistributedLock, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
         EphemeralInspectionCapabilities, EphemeralInspectionEntryPage,
         EphemeralInspectionPageRequest, EphemeralInspectionSummarySnapshot,
         EphemeralInspectionTreeNodeSnapshot, EphemeralInspectionTreePage, EphemeralValueRevealMode,
         EventBus, RateLimitStore, RuntimeEventStream, SessionStore, TaskQueue,
-        paginate_ephemeral_entries, paginate_ephemeral_tree, search_ephemeral_entries,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 pub(crate) mod interface_cache_inspection;
@@ -34,7 +34,7 @@ pub mod interface_operation;
 mod memory_support;
 mod provider_transport_session_observation;
 
-use memory_support::{MemoryInspectionDependencies, memory_contract_definitions};
+use memory_support::{memory_contract_definitions, MemoryInspectionDependencies};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CacheInspectionCapabilitiesResponse {

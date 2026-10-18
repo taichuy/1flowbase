@@ -49,7 +49,7 @@ pub mod ui_management_repository;
 pub mod workspace_repository;
 
 pub use connection::{
-    PgPoolSettings, connect, connect_with_max_connections, connect_with_pool_settings,
+    connect, connect_with_max_connections, connect_with_pool_settings, PgPoolSettings,
 };
 pub use model_definition_repository::RuntimeTableNamePolicy;
 pub use native_sql::execute_native_sql;
@@ -57,9 +57,8 @@ pub use orchestration_runtime_repository::RuntimeStorageCompactionReceipt;
 pub use provider_protocol_capsule_store::PgProviderProtocolCapsuleStore;
 pub use repositories::PgControlPlaneStore;
 pub use runtime::{
-    MainDurableRuntime, MainDurableStore, build_main_durable_postgres,
-    build_main_durable_postgres_with_max_connections,
-    build_main_durable_postgres_with_pool_settings,
+    build_main_durable_postgres, build_main_durable_postgres_with_max_connections,
+    build_main_durable_postgres_with_pool_settings, MainDurableRuntime, MainDurableStore,
 };
 pub use system_backup::*;
 pub use system_recovery::PostgreSqlRecoveryTarget;

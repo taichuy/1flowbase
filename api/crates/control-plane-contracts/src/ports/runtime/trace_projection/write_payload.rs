@@ -1,5 +1,5 @@
 //! Trace write-only ownership. Domain reads and stored/wire JSON remain ordinary Value.
-use serde::{Serialize, Serializer, ser::SerializeMap};
+use serde::{ser::SerializeMap, Serialize, Serializer};
 use serde_json::Value;
 use std::{
     borrow::Cow,

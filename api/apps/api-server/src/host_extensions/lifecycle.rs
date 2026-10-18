@@ -9,9 +9,9 @@ use control_plane_contracts::ports::{
     OptionalNotificationPublicationPort, PublishOptionalNotificationInput,
 };
 use plugin_framework::extension_bus::{
-    EffectiveLifecycleHandlerRegistry, EffectiveLifecycleSubscriber,
-    EffectiveLifecycleSubscriberPlan, LifecycleHandlerBinding, LifecycleHandlerError,
-    LifecycleHandlerFuture, TypedLifecycleSubscriberHandler, compile_lifecycle_handler_registry,
+    compile_lifecycle_handler_registry, EffectiveLifecycleHandlerRegistry,
+    EffectiveLifecycleSubscriber, EffectiveLifecycleSubscriberPlan, LifecycleHandlerBinding,
+    LifecycleHandlerError, LifecycleHandlerFuture, TypedLifecycleSubscriberHandler,
 };
 
 use super::lifecycle_activation::HostExtensionLifecycleFactoryCatalog;
@@ -233,8 +233,8 @@ mod tests {
     };
     use extension_contracts::{AfterCommitFact, LifecycleFactId, LifecycleTransactionId};
     use std::sync::{
-        Mutex,
         atomic::{AtomicBool, Ordering},
+        Mutex,
     };
     use time::OffsetDateTime;
     use uuid::Uuid;
@@ -477,13 +477,11 @@ mod tests {
             lifecycle_status(store.pool(), event_id, &subscriber.subscriber_id).await,
             ("pending", "pending")
         );
-        assert!(
-            plugin_handler
-                .received
-                .lock()
-                .expect("received lifecycle facts mutex poisoned")
-                .is_empty()
-        );
+        assert!(plugin_handler
+            .received
+            .lock()
+            .expect("received lifecycle facts mutex poisoned")
+            .is_empty());
 
         plugin_handler.fail.store(false, Ordering::SeqCst);
         sqlx::query(

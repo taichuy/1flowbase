@@ -146,12 +146,11 @@ async fn builtin_live_events_inspect_and_reveal_without_database() {
     assert_eq!(event.body(), &body);
     assert_eq!(bus.event_bus_snapshot().in_flight, 1);
     event.complete();
-    assert!(
-        bus.reveal_ephemeral_entry(&entry.entry_ref, EphemeralValueRevealMode::Full)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(bus
+        .reveal_ephemeral_entry(&entry.entry_ref, EphemeralValueRevealMode::Full)
+        .await
+        .unwrap()
+        .is_none());
     consumer.close();
 }
 
@@ -162,12 +161,10 @@ async fn another_declared_provider_is_not_replaced_by_the_official_factory() {
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
         .unwrap();
     let mut registry = HostInfrastructureRegistry::default();
-    assert!(
-        builtin_event_bus_factories()
-            .unwrap()
-            .activate(&hosts, pool.clone(), &mut registry)
-            .is_err()
-    );
+    assert!(builtin_event_bus_factories()
+        .unwrap()
+        .activate(&hosts, pool.clone(), &mut registry)
+        .is_err());
     assert!(registry.registered_event_bus().is_none());
     assert!(registry.default_provider("event-bus").is_none());
     let mut factories = EventBusActivationFactoryRegistry::default();

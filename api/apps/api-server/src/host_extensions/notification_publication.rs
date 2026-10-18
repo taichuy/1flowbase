@@ -64,23 +64,19 @@ mod tests {
             contract: OptionalNotificationContract::ModelDefinition,
             canonical_payload: Vec::new(),
         };
-        assert!(
-            owner
-                .publish_optional_notification(&input)
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("not activated")
-        );
+        assert!(owner
+            .publish_optional_notification(&input)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("not activated"));
         owner.activate(Arc::new(UnavailablePublication)).unwrap();
-        assert!(
-            owner
-                .publish_optional_notification(&input)
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("source unavailable")
-        );
+        assert!(owner
+            .publish_optional_notification(&input)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("source unavailable"));
         assert!(owner.activate(Arc::new(UnavailablePublication)).is_err());
     }
 }

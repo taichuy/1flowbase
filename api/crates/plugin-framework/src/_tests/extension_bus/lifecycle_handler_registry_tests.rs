@@ -7,14 +7,14 @@ use extension_contracts::{
     AfterCommitFact, LifecycleContract, LifecycleFactId, LifecycleTransactionId,
 };
 use plugin_framework::extension_bus::{
+    compile_extension_graph, compile_lifecycle_handler_registry, compile_lifecycle_subscriber_plan,
     Cardinality, ContractDescriptor, ContractVersion, ContributionDescriptor, ContributionId,
     ContributionMode, ContributionOrdering, DeliverySemantics, ExtensionBusVersion,
     ExtensionPointDescriptor, ExtensionPointId, ExtensionPointKind, FailureSemantics,
     LifecycleHandlerBinding, LifecycleHandlerError, LifecycleHandlerFuture, LifecycleSemantics,
     LifecycleSubscriberBinding, LifecycleSubscriberPlanError, ModuleActivationDeclaration,
     ModuleDescriptor, ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy,
-    ScopeSemantics, TypedLifecycleSubscriberHandler, compile_extension_graph,
-    compile_lifecycle_handler_registry, compile_lifecycle_subscriber_plan,
+    ScopeSemantics, TypedLifecycleSubscriberHandler,
 };
 use serde::{Deserialize, Serialize};
 

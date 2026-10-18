@@ -212,16 +212,14 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         .unwrap();
         let contribution = &parsed.managed.as_ref().unwrap().module.contributions[0];
         let policy = HostContributionGrantPolicy::root_composition();
-        assert!(
-            policy
-                .effective_permissions(
-                    &installed.installation,
-                    actor.current_workspace_id,
-                    contribution,
-                    &authority.query(&actor, id).await.unwrap()
-                )
-                .is_err()
-        );
+        assert!(policy
+            .effective_permissions(
+                &installed.installation,
+                actor.current_workspace_id,
+                contribution,
+                &authority.query(&actor, id).await.unwrap()
+            )
+            .is_err());
         authority
             .grant(&actor, id, grant(name, "event.subscribe"))
             .await
@@ -278,20 +276,16 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         native_plan.subscribers().len() + 1,
         "native subscribers survive managed activation"
     );
-    assert!(
-        source
-            .plan_for_workspace(Uuid::now_v7(), MANAGED_CREATE_EVENT_ID, "v1")
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        source
-            .plan_for_workspace(actor.current_workspace_id, MANAGED_CREATE_EVENT_ID, "wrong")
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(source
+        .plan_for_workspace(Uuid::now_v7(), MANAGED_CREATE_EVENT_ID, "v1")
+        .await
+        .unwrap()
+        .is_none());
+    assert!(source
+        .plan_for_workspace(actor.current_workspace_id, MANAGED_CREATE_EVENT_ID, "wrong")
+        .await
+        .unwrap()
+        .is_none());
     // Actual Create owner freezes the same plan and writes fact + targets in its existing transaction.
     let model = control_plane_contracts::ports::ModelDefinitionRepository::create_model_definition(
         &store,
@@ -458,20 +452,18 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         "frozen graph cannot restore a revoked publication grant"
     );
     // Revoke already paused B and cleared its claim; a stale retry must not reopen it.
-    assert!(
-        store
-            .retry_lifecycle_fact(
-                b_record.event_id,
-                &b_record.subscriber_id,
-                worker,
-                b_record.claim_id.unwrap(),
-                time::OffsetDateTime::now_utc() - time::Duration::seconds(1),
-                "fixture redelivery",
-            )
-            .await
-            .unwrap_err()
-            .is::<control_plane_contracts::ports::LifecycleClaimLost>()
-    );
+    assert!(store
+        .retry_lifecycle_fact(
+            b_record.event_id,
+            &b_record.subscriber_id,
+            worker,
+            b_record.claim_id.unwrap(),
+            time::OffsetDateTime::now_utc() - time::Duration::seconds(1),
+            "fixture redelivery",
+        )
+        .await
+        .unwrap_err()
+        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
     // Persisted disable precedes replacement graph assembly; the frozen binding must still deny.
     control_plane_contracts::ports::PluginRepository::update_desired_state(
         &store,
@@ -493,36 +485,32 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
             .0,
         control_plane_contracts::ports::LifecycleDeliveryPauseReason::InstallationInactive
     );
-    assert!(
-        store
-            .retry_lifecycle_fact(
-                c_record.event_id,
-                &c_record.subscriber_id,
-                worker,
-                c_record.claim_id.unwrap(),
-                time::OffsetDateTime::now_utc() - time::Duration::seconds(1),
-                "fixture disabled delivery",
-            )
-            .await
-            .unwrap_err()
-            .is::<control_plane_contracts::ports::LifecycleClaimLost>()
-    );
+    assert!(store
+        .retry_lifecycle_fact(
+            c_record.event_id,
+            &c_record.subscriber_id,
+            worker,
+            c_record.claim_id.unwrap(),
+            time::OffsetDateTime::now_utc() - time::Duration::seconds(1),
+            "fixture disabled delivery",
+        )
+        .await
+        .unwrap_err()
+        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
     for (record, reason) in [
         (b_record, "authority_revoked"),
         (c_record, "installation_inactive"),
     ] {
-        assert!(
-            store
-                .mark_lifecycle_fact_delivered(
-                    record.event_id,
-                    &record.subscriber_id,
-                    worker,
-                    record.claim_id.unwrap(),
-                )
-                .await
-                .unwrap_err()
-                .is::<control_plane_contracts::ports::LifecycleClaimLost>()
-        );
+        assert!(store
+            .mark_lifecycle_fact_delivered(
+                record.event_id,
+                &record.subscriber_id,
+                worker,
+                record.claim_id.unwrap(),
+            )
+            .await
+            .unwrap_err()
+            .is::<control_plane_contracts::ports::LifecycleClaimLost>());
         let paused_and_unclaimed: bool = sqlx::query_scalar(
             "select status='paused' and pause_reason=$3 and paused_at is not null
                 and claimed_by is null and claimed_at is null and claim_id is null
@@ -591,12 +579,10 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
             frame.execution_identity.workspace_id().as_str(),
             actor.current_workspace_id.to_string()
         );
-        assert!(
-            serde_json::to_value(frame)
-                .unwrap()
-                .get("actor_id")
-                .is_none()
-        );
+        assert!(serde_json::to_value(frame)
+            .unwrap()
+            .get("actor_id")
+            .is_none());
     }
 }
 

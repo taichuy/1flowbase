@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::{
-    Arc,
     atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 struct Lease(Arc<AtomicUsize>);

@@ -232,11 +232,10 @@ async fn infrastructure_contracts_are_object_safe_and_async() {
         cache.get_json("key").await.unwrap(),
         Some(json!({ "ok": true }))
     );
-    assert!(
-        lock.acquire("lock", "owner", Duration::seconds(1))
-            .await
-            .unwrap()
-    );
+    assert!(lock
+        .acquire("lock", "owner", Duration::seconds(1))
+        .await
+        .unwrap());
     assert!(matches!(
         events.open_consumer("topic"),
         Err(EventBusError::NoConsumer)

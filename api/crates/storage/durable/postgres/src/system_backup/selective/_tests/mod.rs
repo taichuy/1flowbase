@@ -71,11 +71,9 @@ async fn selective_roundtrip_preserves_target_only_and_prepare_can_rollback() {
         .await
         .unwrap();
     assert!(preview.failures.is_empty(), "{:?}", preview.failures);
-    assert!(
-        !preview
-            .selected_tables
-            .contains(&"network_egress_projections".into())
-    );
+    assert!(!preview
+        .selected_tables
+        .contains(&"network_egress_projections".into()));
     let pending = repo
         .prepare_restore(reader(bytes.clone()), "source", "target", true)
         .await
@@ -236,13 +234,12 @@ async fn selective_catalog_covers_formal_schema_and_execution_facts() {
         .execute(&db)
         .await
         .unwrap();
-    assert!(
-        repo.catalog()
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("unclassified_persistent_fixture")
-    );
+    assert!(repo
+        .catalog()
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("unclassified_persistent_fixture"));
 }
 
 #[tokio::test]
@@ -270,22 +267,19 @@ async fn selective_preflight_blocks_schema_and_natural_identity_conflicts_withou
         "{:?}",
         preview.failures
     );
-    assert!(
-        repo.restore(reader(bytes.clone()), "key", "key", true)
-            .await
-            .is_err()
-    );
+    assert!(repo
+        .restore(reader(bytes.clone()), "key", "key", true)
+        .await
+        .is_err());
     sqlx::query("alter table network_egress_pool_members add column incompatible_fixture text")
         .execute(&db)
         .await
         .unwrap();
     let preview = repo.preflight(reader(bytes), "key", "key").await.unwrap();
-    assert!(
-        preview
-            .failures
-            .iter()
-            .any(|f| f.contains("incompatible fields: network_egress_pool_members"))
-    );
+    assert!(preview
+        .failures
+        .iter()
+        .any(|f| f.contains("incompatible fields: network_egress_pool_members")));
     assert_eq!(
         sqlx::query_scalar::<_, String>(
             "select display_name from network_egress_pools where id=$1"
@@ -324,11 +318,10 @@ async fn selective_plugin_data_requires_confirmation_and_never_creates_tables() 
         .unwrap();
     assert_eq!(preview.missing_plugins, vec!["fixture.missing"]);
     assert!(preview.failures.is_empty(), "{:?}", preview.failures);
-    assert!(
-        repo.restore(reader(bytes.clone()), "key", "key", false)
-            .await
-            .is_err()
-    );
+    assert!(repo
+        .restore(reader(bytes.clone()), "key", "key", false)
+        .await
+        .is_err());
     repo.restore(reader(bytes.clone()), "key", "key", true)
         .await
         .unwrap();
@@ -347,26 +340,21 @@ async fn selective_plugin_data_requires_confirmation_and_never_creates_tables() 
         .preflight(reader(bytes.clone()), "key", "key")
         .await
         .unwrap();
-    assert!(
-        preview
-            .failures
-            .iter()
-            .any(|f| f.contains("missing table: selective_plugin_records"))
-    );
-    assert!(
-        repo.restore(reader(bytes), "key", "key", true)
-            .await
-            .is_err()
-    );
-    assert!(
-        sqlx::query_scalar::<_, Option<String>>(
-            "select to_regclass('selective_plugin_records')::text"
-        )
-        .fetch_one(&db)
+    assert!(preview
+        .failures
+        .iter()
+        .any(|f| f.contains("missing table: selective_plugin_records")));
+    assert!(repo
+        .restore(reader(bytes), "key", "key", true)
         .await
-        .unwrap()
-        .is_none()
-    );
+        .is_err());
+    assert!(sqlx::query_scalar::<_, Option<String>>(
+        "select to_regclass('selective_plugin_records')::text"
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap()
+    .is_none());
 }
 
 #[test]
@@ -565,11 +553,10 @@ async fn selective_immutable_conflict_blocks_all_selected_changes() {
         "{:?}",
         preview.failures
     );
-    assert!(
-        repo.restore(reader(conflicting), "key", "key", true)
-            .await
-            .is_err()
-    );
+    assert!(repo
+        .restore(reader(conflicting), "key", "key", true)
+        .await
+        .is_err());
     assert_eq!(
         sqlx::query_scalar::<_, String>("select name from applications where id=$1")
             .bind(application.id)
@@ -606,12 +593,10 @@ async fn selective_data_mode_includes_configuration_and_records_effective_scope(
     let header = archive::header(&mut scratch.reader().await.unwrap())
         .await
         .unwrap();
-    assert!(
-        header
-            .tables
-            .iter()
-            .any(|entry| entry.name == "network_egress_projections")
-    );
+    assert!(header
+        .tables
+        .iter()
+        .any(|entry| entry.name == "network_egress_projections"));
     sqlx::query("update network_egress_pools set display_name='Changed' where id=$1")
         .bind(id)
         .execute(&db)

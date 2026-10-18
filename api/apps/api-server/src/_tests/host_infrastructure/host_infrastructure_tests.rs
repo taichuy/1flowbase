@@ -133,12 +133,10 @@ fn missing_cache_factory_fails_before_registry_is_returned() {
     };
 
     assert!(published_snapshot.is_none());
-    assert!(
-        error
-            .unwrap()
-            .to_string()
-            .contains("no cache-store activation factory registered for winner")
-    );
+    assert!(error
+        .unwrap()
+        .to_string()
+        .contains("no cache-store activation factory registered for winner"));
 }
 
 #[test]
@@ -198,13 +196,11 @@ async fn local_infra_host_exposes_operation_contracts() {
         Some(serde_json::json!({ "cached": true }))
     );
 
-    assert!(
-        !registry
-            .distributed_lock()
-            .release("missing", "owner")
-            .await
-            .unwrap()
-    );
+    assert!(!registry
+        .distributed_lock()
+        .release("missing", "owner")
+        .await
+        .unwrap());
 
     let events = registry.event_bus();
     events
