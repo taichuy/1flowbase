@@ -18,6 +18,27 @@
 
 规则自身需要合法反例与违规反例。删除旧断言的依据是当前 contract 和有效替代证据，不能只因为它失败，也不能反过来让产品兼容过期测试。文件压力、兼容标记与动态 i18n key 等第一方 warning 保留 owner 和保留原因，不以清空 warning 换取健康结论。
 
+## 第一方维护告警
+
+告警先按实际源码所有权归因。`repo-hygiene` 的 inventory 也可能包含 `api/vendor/`；这些条目是上游证据，不能把报告总数直接称为第一方问题数。`warningFiles` 是日志文件数，不是 finding 数。第一方 Hook 闭包、重复 React key、废弃组件参数与无效夹具属于可修问题，不能用“上游依赖告警”或“既有债”代替修复。
+
+Hook 依赖调整保留 locale、actor、workspace 与 policy 的实际失效语义；不能为了 lint 删除隔离键，也不能加入不稳定的整个 query/session 对象导致重复连接。React Refresh 的组件边界与纯逻辑分别维护，不以虚假导出或规则排除绕过。运行夹具使用真实 Router context、唯一资源身份和正确的 ShadowRoot；不通过过滤 console 证明告警消失。
+
+以下 i18n 告警有具体消费者或不同语义，继续由 `i18n-hygiene` 暴露；这不是扫描器豁免，也不表示所有未引用 key 都有效：
+
+| Owner / key | 保留依据 |
+| --- | --- |
+| frontstage `auto.interfaces / auto.block_tree / auto.configuration` | `shared/code-block/BlockStudioWorkspace.tsx` 的 section `labelKey` 配置由同组件 renderer 翻译，属于配置驱动引用 |
+| settings `auto.network_center_health_{healthy,not_tested,unhealthy,invalid}` | `settings/network-center/pools/NetworkEgressPoolsPanel.tsx` 从 health 值动态组成 key，筛选与状态标签共用相同语义 |
+| app-shell `auto.subsystem` | `Navigation.tsx` 消费后端 `label_key`；导航测试和 style-boundary 场景包含该配置入口。当前内置导航不发布 embedded-apps，不能据此声称有现行生产菜单；保留为该配置翻译入口的资源 |
+| frontstage `auto.operation / files.actions` | 通用操作与文件表操作拥有不同消费者；中英文翻译向量不同 |
+| frontstage `auto.save / files.save` | 设计器保存与文件编辑器保存属于不同上下文 |
+| frontstage `design.tab_route_segment / files.url` | 页签路由片段与后端文件 URL 是不同对象，不因中文同字合并 |
+| notifications `recipient_count / system_notification_recipients` | 接收人数汇总与接收对象列表是不同语义 |
+| ui-management `default / set_default` | 默认状态与设置默认的命令分别拥有消费者 |
+
+字段兼容告警逐项核对 source、alias、remove_by 和真实读写测试；期限未到不自动说明可以删除，也不等于永久保留。协议负例中的 legacy/obsolete 文字承担说明被拒行为的职责，不通过删除注释消除告警。文件和目录压力提供拆分线索，改动触及的超大模块按真实职责收纳；未实施的全仓结构项在任务 inventory 中明确列出，不能把一轮修复或机械绿灯写成全仓结构债清零。
+
 ## 写入与读取职责
 
 Trace projection 的写入对象由 `control-plane-contracts` 管理。共享 alias 使用 typed object 和 `Arc<Value>`，成员变更按 copy-on-write 隔离；标量和数组可作为普通 JSON 保留，但向其插入对象字段必须显式返回错误并保持原值。业务端传播错误，持久化边界才展开共享 alias，读取 DTO 与 wire JSON 形状保持不变。
