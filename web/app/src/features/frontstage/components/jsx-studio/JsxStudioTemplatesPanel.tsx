@@ -187,7 +187,7 @@ export function JsxStudioTemplatesPanel({
         okButtonProps={{ disabled: !canSaveTemplate }}
         cancelButtonProps={{ disabled: saveTemplate.isPending }}
         closable={!saveTemplate.isPending}
-        maskClosable={!saveTemplate.isPending}
+        mask={{ closable: !saveTemplate.isPending }}
         keyboard={!saveTemplate.isPending}
         onCancel={() => setTemplateDraft(null)}
         onOk={() => form.submit()}

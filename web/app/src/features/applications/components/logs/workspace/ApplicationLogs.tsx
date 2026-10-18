@@ -71,7 +71,7 @@ export function AllAgentFlowLogs({
       <Alert
         type="error"
         showIcon
-        message={t('auto.application_list_load_failed')}
+        title={t('auto.application_list_load_failed')}
         action={
           <Button onClick={() => void applicationsQuery.refetch()}>
             {t('auto.refresh_logs')}

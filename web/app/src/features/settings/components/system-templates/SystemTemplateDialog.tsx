@@ -139,7 +139,7 @@ export function SystemTemplateDialog({
         footer={null}
         width={800}
         closable={!busy}
-        maskClosable={!busy}
+        mask={{ closable: !busy }}
         keyboard={!busy}
         onCancel={() => {
           if (!busy) onClose();

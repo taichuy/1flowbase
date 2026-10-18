@@ -258,7 +258,7 @@ export function PricingCatalogPanel() {
             <Alert
               showIcon
               type="error"
-              message={i18nText(
+              title={i18nText(
                 'settingsBilling',
                 'auto.billing_remote_catalog_unavailable'
               )}
@@ -268,7 +268,7 @@ export function PricingCatalogPanel() {
             <Alert
               showIcon
               type="error"
-              message={i18nText(
+              title={i18nText(
                 'settingsBilling',
                 'auto.billing_catalog_sync_failed'
               )}
@@ -278,7 +278,7 @@ export function PricingCatalogPanel() {
             <Alert
               showIcon
               type="success"
-              message={i18nText(
+              title={i18nText(
                 'settingsBilling',
                 'auto.billing_catalog_sync_complete'
               )}
@@ -293,7 +293,7 @@ export function PricingCatalogPanel() {
             <Alert
               showIcon
               type="success"
-              message={i18nText(
+              title={i18nText(
                 'settingsBilling',
                 'auto.billing_catalog_install_complete'
               )}

@@ -218,7 +218,7 @@ function ExchangeModal({
       title={t('logs.exchange.open')}
       onCancel={onClose}
       closable={!busy}
-      maskClosable={!busy}
+      mask={{ closable: !busy }}
       keyboard={!busy}
       footer={
         <Space>
@@ -303,7 +303,7 @@ function ExchangeModal({
             {operation === 'otlp_export' && missingConversation && (
               <Alert
                 type="warning"
-                message={t('logs.exchange.missing_conversation')}
+                title={t('logs.exchange.missing_conversation')}
               />
             )}
           </>
@@ -337,12 +337,12 @@ function ExchangeModal({
               }}
             />
             {fileError && (
-              <Alert type="error" message={t('logs.exchange.invalid_file')} />
+              <Alert type="error" title={t('logs.exchange.invalid_file')} />
             )}
           </Form.Item>
         )}
       </Form>
-      <Space direction="vertical" style={{ width: '100%' }} aria-live="polite">
+      <Space orientation="vertical" style={{ width: '100%' }} aria-live="polite">
         {receipts.map((receipt) => (
           <div key={receipt.application_id}>
             <Typography.Text strong>
@@ -353,7 +353,7 @@ function ExchangeModal({
               <>
                 <Alert
                   type="error"
-                  message={t('logs.exchange.partial_import')}
+                  title={t('logs.exchange.partial_import')}
                   description={t('logs.exchange.partial_import_retry')}
                 />
                 <Descriptions
@@ -379,17 +379,17 @@ function ExchangeModal({
                 />
               </>
             ) : receipt.kind === 'error' ? (
-              <Alert type="error" message={t('logs.exchange.failed')} />
+              <Alert type="error" title={t('logs.exchange.failed')} />
             ) : receipt.kind === 'download' ? (
               <Alert
                 type="info"
-                message={t('logs.exchange.downloaded', {
+                title={t('logs.exchange.downloaded', {
                   filename: receipt.filename
                 })}
               />
             ) : (
               <>
-                <Alert type="info" message={t('logs.exchange.receipt')} />
+                <Alert type="info" title={t('logs.exchange.receipt')} />
                 <Descriptions
                   column={1}
                   size="small"

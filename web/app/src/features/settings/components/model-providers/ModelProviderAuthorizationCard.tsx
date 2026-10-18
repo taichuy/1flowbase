@@ -88,7 +88,7 @@ export function ModelProviderAuthorizationCard({
             <Alert
               showIcon
               type={authenticationAlert.type}
-              message={authenticationAlert.message}
+              title={authenticationAlert.message}
               description={authenticationAlert.description ?? undefined}
             />
           ) : null}

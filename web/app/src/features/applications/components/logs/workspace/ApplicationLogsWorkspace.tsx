@@ -1069,7 +1069,7 @@ export function ApplicationLogsWorkspace({
       {Object.keys(statisticsFilters).length > 0 && (
         <Alert
           type="info"
-          message={t('statistics.active_filters')}
+          title={t('statistics.active_filters')}
           description={
             <>
               {statisticsFilters.started_from} – {statisticsFilters.started_to}

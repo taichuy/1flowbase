@@ -76,7 +76,7 @@ export function DepartmentManagementPanel({
       {query.error || remove.isError ? (
         <Alert
           type="error"
-          message={i18nText('settings', 'organization.operation_error')}
+          title={i18nText('settings', 'organization.operation_error')}
           action={
             <Button
               onClick={() => {

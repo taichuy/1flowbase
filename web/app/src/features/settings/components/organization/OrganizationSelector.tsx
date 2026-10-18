@@ -153,7 +153,7 @@ export function OrganizationSelector({
       ) : error ? (
         <Alert
           type="error"
-          message={i18nText('settings', 'organization.load_error')}
+          title={i18nText('settings', 'organization.load_error')}
           action={
             <Button
               onClick={() => {
