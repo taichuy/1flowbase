@@ -4,7 +4,7 @@ impl TraceProjectionBuilder {
     pub(super) fn apply_native_messages(
         &mut self,
         detail: &domain::ApplicationRunTraceProjectionSource,
-    ) {
+    ) -> Result<()> {
         for message in &detail.native_messages {
             let Some(item) = message.get("_source_item") else {
                 continue;
@@ -40,13 +40,13 @@ impl TraceProjectionBuilder {
                     .any(|key| {
                         content
                             .payload
-                            .get(*key)
+                            .get(key)
                             .is_some_and(|value| !value.is_null())
                     });
                 if has_callback_truth {
                     content
                         .payload
-                        .set_shared_fields(&["request_payload", "tool_call"], item.clone());
+                        .set_shared_fields(&["request_payload", "tool_call"], item.clone())?;
                 } else {
                     content.payload =
                         tool_callback_content_payload(None, call_id, name, item, result, None);
@@ -113,5 +113,6 @@ impl TraceProjectionBuilder {
             });
             self.contents.push(ApplicationRunTraceNodeContentProjectionInput{trace_node_id,content_kind:"tool_callback".into(),payload,source_refs:serde_json::json!([{"source_kind":"application_run_conversation_message_items","source_locator":call_id}])});
         }
+        Ok(())
     }
 }

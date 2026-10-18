@@ -1,6 +1,8 @@
 use super::*;
 mod write_payload;
-pub use write_payload::TraceProjectionWritePayload;
+pub use write_payload::{
+    TraceProjectionObjectRequired, TraceProjectionSharedObject, TraceProjectionWritePayload,
+};
 
 #[derive(Debug, Clone)]
 pub struct CreateCheckpointInput {

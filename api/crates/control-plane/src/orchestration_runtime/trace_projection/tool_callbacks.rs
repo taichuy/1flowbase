@@ -563,25 +563,41 @@ pub(super) fn tool_callback_content_payload(
         }
     });
 
-    let mut payload = TraceProjectionWritePayload::from(serde_json::json!({
-        "id": tool_call_id,
-        "name": tool_name,
-        "callback_task_id": task.map(|task| task.id),
-        "tool_call_id": tool_call_id,
-        "callback_status": callback_status,
-        "execution_status": route_trace_execution_status(route_trace)
-            .or_else(|| tool_result_execution_status(tool_result)),
-        "call_usage": call_usage,
-        "result_context_usage": result_context_usage,
-        "duration_ms": task.and_then(|task| trace_node_duration_ms(task.created_at, task.completed_at)),
-        "route_trace": route_trace,
-    }));
+    let mut payload = crate::ports::TraceProjectionSharedObject::from_fields([
+        ("id", serde_json::json!(tool_call_id)),
+        ("name", serde_json::json!(tool_name)),
+        (
+            "callback_task_id",
+            serde_json::json!(task.map(|task| task.id)),
+        ),
+        ("tool_call_id", serde_json::json!(tool_call_id)),
+        ("callback_status", serde_json::json!(callback_status)),
+        (
+            "execution_status",
+            serde_json::json!(
+                route_trace_execution_status(route_trace)
+                    .or_else(|| tool_result_execution_status(tool_result))
+            ),
+        ),
+        ("call_usage", serde_json::json!(call_usage)),
+        (
+            "result_context_usage",
+            serde_json::json!(result_context_usage),
+        ),
+        (
+            "duration_ms",
+            serde_json::json!(
+                task.and_then(|task| trace_node_duration_ms(task.created_at, task.completed_at))
+            ),
+        ),
+        ("route_trace", serde_json::json!(route_trace)),
+    ]);
     payload.set_shared_fields(&["request_payload", "tool_call"], tool_call.clone());
     payload.set_shared_fields(
         &["callback_payload", "parsed_result", "tool_result"],
         tool_result.cloned().unwrap_or(serde_json::Value::Null),
     );
-    payload
+    payload.into()
 }
 
 pub(super) fn callback_task_trace_node_status(task: &domain::CallbackTaskRecord) -> String {
