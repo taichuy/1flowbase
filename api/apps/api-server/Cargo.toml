@@ -87,6 +87,6 @@ tikv-jemallocator = { version = "0.7.0", features = ["background_threads"] }
 
 [dev-dependencies]
 tokio-tungstenite = "0.30.0"
-serde_yaml = "0.9.34+deprecated"
+serde_yaml = "0.9.34"
 ed25519-dalek = { version = "3.0.0", features = ["pem"] }
 postgres-test-support = { path = "../../crates/postgres-test-support" }
