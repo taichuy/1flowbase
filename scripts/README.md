@@ -543,10 +543,12 @@ node scripts/node/reset-rust-cache/cli.js
 “启动目标编译完成”只表示第一阶段成功，脚本会自动继续测试预热；请等待最后的全量预热完成提示。
 每阶段输出完成耗时，并通过 `--timings` 在 `api/target/cargo-timings/` 保存 Cargo 构建报告。
 
-预热命令读取 `.1flowbase.verify.local.json` 中的 `backend.cargoJobs` 与
-`backend.incremental`，避免清理、日常构建和测试使用不同的构建身份。任一阶段失败时立即停止；只有输出
+两个阶段均固定设置 `CARGO_BUILD_JOBS=1`，每次预热内部串行编译，避免大型普通库与测试目标同时争用内存，
+为其他 worktree 留出资源。这是单次 Cargo 调用的编译任务限制，不是跨 worktree 的全局队列，也不限制编译器内部线程数。
+预热命令继续读取 `.1flowbase.verify.local.json` 中的 `backend.incremental`。任一阶段失败时立即停止；只有输出
 `Rust 缓存清理与全量预热完成` 才表示全部缓存已经成功生成。
-脚本沿用现有资源配置，不修改构建并发或测试并发。它只生成构建缓存，不会自动启动或重启 API 服务；需要运行服务时再使用 `dev-up`。
+该限制只用于本预热入口，不修改 `.1flowbase.verify.local.json` 的构建或测试并发配置，其他开发命令仍沿用原配置。
+脚本只生成构建缓存，不会自动启动或重启 API 服务；需要运行服务时再使用 `dev-up`。
 
 这个流程会真实删除当前 worktree 的 Rust 缓存并执行完整冷构建，耗时和磁盘写入量都较大。不要把它作为普通开发启动命令；没有清理需求时，继续使用 `dev-up` 或定向 Cargo 命令，让增量缓存自然复用。
 

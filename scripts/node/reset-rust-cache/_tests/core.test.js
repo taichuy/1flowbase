@@ -6,15 +6,15 @@ const {
   runRustCacheReset,
 } = require('../core.js');
 
-test('buildRustWarmupPlan builds the dev-up binary before warming all tests with configured resources', () => {
-  assert.deepEqual(buildRustWarmupPlan({ cargoJobs: 3, incremental: true }), [
+test('buildRustWarmupPlan uses one Cargo job for the runtime build and full test warmup', () => {
+  assert.deepEqual(buildRustWarmupPlan({ incremental: true }), [
     {
       label: 'api-server dev-up target',
       args: [
         'build', '--manifest-path', 'api/Cargo.toml', '-p', 'api-server', '--bin', 'api-server',
         '--features', 'tikv-jemallocator/stats', '--locked', '--timings',
       ],
-      env: { CARGO_BUILD_JOBS: '3', CARGO_INCREMENTAL: '1' },
+      env: { CARGO_BUILD_JOBS: '1', CARGO_INCREMENTAL: '1' },
     },
     {
       label: 'workspace test targets',
@@ -22,7 +22,7 @@ test('buildRustWarmupPlan builds the dev-up binary before warming all tests with
         'test', '--manifest-path', 'api/Cargo.toml', '--workspace', '--all-targets', '--no-run', '--locked', '--timings',
       ],
       env: {
-        CARGO_BUILD_JOBS: '3',
+        CARGO_BUILD_JOBS: '1',
         CARGO_INCREMENTAL: '1',
         CARGO_PROFILE_TEST_DEBUG: '0',
       },
@@ -30,7 +30,7 @@ test('buildRustWarmupPlan builds the dev-up binary before warming all tests with
   ]);
 });
 
-test('runRustCacheReset cleans first and warms every stage in order', async () => {
+test('runRustCacheReset keeps each warmup serial when the shared config allows two jobs', async () => {
   const events = [];
   const status = await runRustCacheReset({
     repoRoot: '/repo',
@@ -49,8 +49,8 @@ test('runRustCacheReset cleans first and warms every stage in order', async () =
   assert.equal(status, 0);
   assert.deepEqual(events, [
     'clean',
-    'api-server dev-up target:2:0',
-    'workspace test targets:2:0',
+    'api-server dev-up target:1:0',
+    'workspace test targets:1:0',
   ]);
 });
 

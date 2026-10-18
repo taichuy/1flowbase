@@ -7,6 +7,7 @@ function usage(writeStdout = (text) => process.stdout.write(text)) {
 
 停止当前 worktree 的 api-server，删除 api/target，先编译 dev-up 使用的
 api-server binary，完成后再预热 workspace 全部测试目标（不运行测试）。
+两个阶段均固定使用 1 个 Cargo 编译任务，为其他 worktree 留出资源。
 `);
 }
 

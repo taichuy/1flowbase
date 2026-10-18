@@ -12,9 +12,10 @@ function getRepoRoot() {
   return path.resolve(__dirname, '..', '..', '..');
 }
 
-function buildCargoEnv({ cargoJobs, incremental, testProfile = false }) {
+function buildCargoEnv({ incremental, testProfile = false }) {
   const env = {
-    CARGO_BUILD_JOBS: String(cargoJobs),
+    // Keep one warmup from consuming the concurrency reserved for other worktrees.
+    CARGO_BUILD_JOBS: '1',
     CARGO_INCREMENTAL: incremental ? '1' : '0',
   };
 
@@ -25,8 +26,8 @@ function buildCargoEnv({ cargoJobs, incremental, testProfile = false }) {
   return env;
 }
 
-function buildRustWarmupPlan({ cargoJobs, incremental }) {
-  const devEnv = buildCargoEnv({ cargoJobs, incremental });
+function buildRustWarmupPlan({ incremental }) {
+  const devEnv = buildCargoEnv({ incremental });
 
   return [
     {
@@ -58,7 +59,7 @@ function buildRustWarmupPlan({ cargoJobs, incremental }) {
         '--locked',
         '--timings',
       ],
-      env: buildCargoEnv({ cargoJobs, incremental, testProfile: true }),
+      env: buildCargoEnv({ incremental, testProfile: true }),
     },
   ];
 }
@@ -102,8 +103,8 @@ async function runRustCacheReset({
   writeStdout = (text) => process.stdout.write(text),
 } = {}) {
   const runtimeConfig = loadRuntimeConfigImpl({ repoRoot });
-  const { cargoJobs, incremental } = runtimeConfig.backend;
-  const plan = buildRustWarmupPlan({ cargoJobs, incremental });
+  const { incremental } = runtimeConfig.backend;
+  const plan = buildRustWarmupPlan({ incremental });
 
   writeStdout('[1flowbase-reset-rust-cache] 清理 api/target 并停止 api-server。\n');
   const cleanupStatus = await cleanupBackendCacheImpl({ repoRoot, writeStdout });
