@@ -1,18 +1,17 @@
-//! Bounded, current-thread worker runner for the versioned multiplex stdio transport.
+//! Current-thread worker runner for the versioned multiplex stdio transport.
 //! Providers may retain borrowed, non-Send state; each call runs as a local Tokio task.
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     future::Future,
-    io::{self, Read, Write},
+    io::{self, Read},
     rc::Rc,
     sync::{Arc, Mutex},
 };
 
 use extension_contracts::{
     MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService, MultiplexWorkerMessage,
-    MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_MAX_FRAME_BYTES, MULTIPLEX_OUTPUT_BUDGET_BYTES,
-    RUNTIME_WORKER_RETENTION_V1,
+    MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_OUTPUT_BUDGET_BYTES, RUNTIME_WORKER_RETENTION_V1,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -32,39 +31,18 @@ struct ActiveCall {
     abort: tokio::task::AbortHandle,
     watcher: JoinHandle<()>,
     live: Rc<Cell<bool>>,
-    input: Option<mpsc::UnboundedSender<(Value, OwnedSemaphorePermit)>>,
+    input: Option<mpsc::UnboundedSender<Value>>,
     ack: Rc<RefCell<HashMap<String, OwnedSemaphorePermit>>>,
     cancelled: Rc<Cell<bool>>,
     event_credit: Arc<Semaphore>,
 }
 
-type PendingCallbacks =
-    Rc<RefCell<HashMap<(String, String), oneshot::Sender<(Value, OwnedSemaphorePermit)>>>>;
+type PendingCallbacks = Rc<RefCell<HashMap<(String, String), oneshot::Sender<Value>>>>;
 
 pub(crate) struct QueuedFrame {
     bytes: Vec<u8>,
     // Held until the writer finishes the write and flush, not merely until enqueue.
-    _permit: OwnedSemaphorePermit,
-}
-
-struct BoundedJson {
-    bytes: Vec<u8>,
-    exceeded: bool,
-}
-
-impl Write for BoundedJson {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if self.bytes.len().saturating_add(bytes.len()) > MULTIPLEX_MAX_FRAME_BYTES {
-            self.exceeded = true;
-            return Err(io::Error::other("multiplex frame too large"));
-        }
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
+    _permit: Option<OwnedSemaphorePermit>,
 }
 
 #[derive(Debug, Error)]
@@ -73,8 +51,6 @@ pub enum MultiplexError {
     Io(#[from] io::Error),
     #[error("invalid multiplex JSON: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("multiplex frame exceeds the byte limit")]
-    FrameTooLarge,
     #[error("unsupported multiplex protocol or control message")]
     Protocol,
     #[error("invalid or duplicate call/callback id")]
@@ -87,7 +63,7 @@ pub enum MultiplexError {
 
 /// Per-call input. Cancellation closes this receiver so the handler can reap its resources.
 pub struct MultiplexInput {
-    receiver: mpsc::UnboundedReceiver<(Value, OwnedSemaphorePermit)>,
+    receiver: mpsc::UnboundedReceiver<Value>,
     live: Rc<Cell<bool>>,
 }
 impl MultiplexInput {
@@ -95,7 +71,7 @@ impl MultiplexInput {
         if !self.live.get() {
             return None;
         }
-        self.receiver.recv().await.map(|(value, _permit)| value)
+        self.receiver.recv().await
     }
 }
 
@@ -196,13 +172,10 @@ impl MultiplexEmitter {
             event_id: Some(event_id.clone()),
         };
         let size = encode_bytes(message.clone())?.len();
-        if size > MULTIPLEX_CALL_EVENT_BUDGET_BYTES {
-            return Err(MultiplexError::FrameTooLarge);
-        }
         let credit = self
             .event_credit
             .clone()
-            .acquire_many_owned(size as u32)
+            .acquire_many_owned(size.min(MULTIPLEX_CALL_EVENT_BUDGET_BYTES) as u32)
             .await
             .map_err(|_| MultiplexError::Correlation)?;
         let frame = encode_wait(message, &self.byte_budget).await?;
@@ -218,7 +191,8 @@ impl MultiplexEmitter {
         Ok(())
     }
 
-    /// Synchronous event production never waits on stdout or blocks the executor.
+    /// Synchronous callbacks cannot wait on the current-thread writer. They retain
+    /// complete events until stdout drains; use `event` for acknowledged async flow control.
     pub fn try_event(&self, event: Value) -> Result<(), MultiplexError> {
         if !self.live.get() {
             return Err(MultiplexError::Correlation);
@@ -277,29 +251,16 @@ impl MultiplexEmitter {
             self.callbacks.borrow_mut().remove(&key);
             return Err(MultiplexError::Backpressure);
         }
-        let result = rx
-            .await
-            .map(|(value, _permit)| value)
-            .map_err(|_| MultiplexError::Correlation);
+        let result = rx.await.map_err(|_| MultiplexError::Correlation);
         self.callbacks.borrow_mut().remove(&key);
         result
     }
 }
 
 fn encode_bytes(message: MultiplexWorkerMessage) -> Result<Vec<u8>, MultiplexError> {
-    let mut buffer = BoundedJson {
-        bytes: Vec::new(),
-        exceeded: false,
-    };
-    if let Err(error) = serde_json::to_writer(&mut buffer, &MultiplexEnvelope::new(message)) {
-        return Err(if buffer.exceeded {
-            MultiplexError::FrameTooLarge
-        } else {
-            MultiplexError::Json(error)
-        });
-    }
-    buffer.bytes.push(b'\n');
-    Ok(buffer.bytes)
+    let mut bytes = serde_json::to_vec(&MultiplexEnvelope::new(message))?;
+    bytes.push(b'\n');
+    Ok(bytes)
 }
 
 pub(crate) fn encode(
@@ -309,8 +270,8 @@ pub(crate) fn encode(
     let bytes = encode_bytes(message)?;
     let permit = budget
         .clone()
-        .try_acquire_many_owned(bytes.len() as u32)
-        .map_err(|_| MultiplexError::Backpressure)?;
+        .try_acquire_many_owned(bytes.len().min(MULTIPLEX_OUTPUT_BUDGET_BYTES) as u32)
+        .ok();
     Ok(QueuedFrame {
         bytes,
         _permit: permit,
@@ -321,17 +282,17 @@ async fn encode_wait(
     message: MultiplexWorkerMessage,
     budget: &Arc<Semaphore>,
 ) -> Result<QueuedFrame, MultiplexError> {
-    // Each outstanding handler owns at most one bounded terminal frame while
-    // waiting; the Host retains that call's memory reservation until terminal.
+    // The window schedules queued writes, not admissible message sizes. A message
+    // larger than the window acquires it exclusively and still makes progress.
     let bytes = encode_bytes(message)?;
     let permit = budget
         .clone()
-        .acquire_many_owned(bytes.len() as u32)
+        .acquire_many_owned(bytes.len().min(MULTIPLEX_OUTPUT_BUDGET_BYTES) as u32)
         .await
         .map_err(|_| MultiplexError::Backpressure)?;
     Ok(QueuedFrame {
         bytes,
-        _permit: permit,
+        _permit: Some(permit),
     })
 }
 
@@ -351,19 +312,10 @@ async fn read_frame<R: AsyncBufRead + Unpin>(
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |index| index + 1);
-        // Only a terminating newline gets the extra byte. An unterminated
-        // MAX+1 frame must fail now, without waiting for another byte or EOF.
-        let terminated = available.get(count - 1) == Some(&b'\n');
-        if bytes.len() + count > MULTIPLEX_MAX_FRAME_BYTES + usize::from(terminated) {
-            return Err(MultiplexError::FrameTooLarge);
-        }
         bytes.extend_from_slice(&available[..count]);
         reader.consume(count);
         if bytes.last() == Some(&b'\n') {
             bytes.pop();
-            if bytes.len() > MULTIPLEX_MAX_FRAME_BYTES {
-                return Err(MultiplexError::FrameTooLarge);
-            }
             let frame: MultiplexEnvelope<MultiplexHostMessage> = serde_json::from_slice(bytes)?;
             if !frame.is_supported() {
                 return Err(MultiplexError::Protocol);
@@ -382,7 +334,8 @@ fn queue_output(
     output: &mpsc::UnboundedSender<QueuedFrame>,
     frame: QueuedFrame,
 ) -> Result<(), MultiplexError> {
-    // The byte permit bounds this queue; a count of tiny messages is not capacity.
+    // Sync provider callbacks cannot await their own current-thread writer. Preserve
+    // accepted frames; async producers use encode_wait and stdout supplies I/O backpressure.
     output.send(frame).map_err(|_| MultiplexError::Backpressure)
 }
 
@@ -614,9 +567,9 @@ where
                     MultiplexHostMessage::Input { call_id, input } => {
                         let Some(call) = active.get(&call_id) else { break Err(MultiplexError::Correlation); };
                         if call.cancelled.get() { continue; }
-                        let size = serde_json::to_vec(&input)?.len();
-                        let permit = match byte_budget.clone().try_acquire_many_owned(size as u32) { Ok(p) => p, Err(_) => break Err(MultiplexError::Backpressure) };
-                        if call.input.as_ref().is_none_or(|tx| tx.send((input, permit)).is_err()) { break Err(MultiplexError::Correlation); }
+                        // Read-side values must not reserve output credit: their consumer may
+                        // need to emit a response before it can consume another input.
+                        if call.input.as_ref().is_none_or(|tx| tx.send(input).is_err()) { break Err(MultiplexError::Correlation); }
                     }
                     MultiplexHostMessage::EventAck { call_id, event_id } => {
                         let Some(call) = active.get(&call_id) else { break Err(MultiplexError::Correlation); };
@@ -645,11 +598,7 @@ where
                     MultiplexHostMessage::CallbackResult { call_id, callback_id, response } => {
                         if !active.contains_key(&call_id) { break Err(MultiplexError::Correlation); }
                         let Some(tx) = callbacks.borrow_mut().remove(&(call_id, callback_id)) else { break Err(MultiplexError::Correlation); };
-                        let response_bytes = match serde_json::to_vec(&response) { Ok(bytes) => bytes.len(), Err(error) => break Err(MultiplexError::Json(error)) };
-                        let permit = match byte_budget.clone().try_acquire_many_owned(response_bytes as u32) {
-                            Ok(permit) => permit, Err(_) => break Err(MultiplexError::Backpressure),
-                        };
-                        let _ = tx.send((response, permit));
+                        let _ = tx.send(response);
                     }
                 }
             }

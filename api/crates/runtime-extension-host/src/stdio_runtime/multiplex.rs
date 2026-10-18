@@ -1,8 +1,7 @@
 use super::*;
 use extension_contracts::{
     MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService, MultiplexWorkerMessage,
-    PluginDataRequest, MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_MAX_FRAME_BYTES,
-    MULTIPLEX_OUTPUT_BUDGET_BYTES, RUNTIME_WORKER_RETENTION_V1,
+    PluginDataRequest, MULTIPLEX_OUTPUT_BUDGET_BYTES, RUNTIME_WORKER_RETENTION_V1,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -10,12 +9,10 @@ use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 
 const QUEUE_CAPACITY: usize = 8;
 const WRITER_BYTES: usize = MULTIPLEX_OUTPUT_BUDGET_BYTES;
-const CALL_EVENT_BYTES: usize = MULTIPLEX_CALL_EVENT_BUDGET_BYTES + 1;
 const CANCEL_GRACE: Duration = Duration::from_secs(2);
 
 struct Delivered {
     message: Result<MultiplexWorkerMessage, String>,
-    _permit: Option<OwnedSemaphorePermit>,
 }
 
 struct WriteFrame {
@@ -64,7 +61,6 @@ enum CommandMessage {
 
 struct ActiveCall {
     events: mpsc::UnboundedSender<Delivered>,
-    event_budget: Arc<Semaphore>,
     host_calls: Option<ProviderHostCallContext>,
     callbacks: HashMap<String, tokio::task::JoinHandle<()>>,
     max_callback_id: u64,
@@ -267,13 +263,10 @@ impl MultiplexProviderWorker {
         }
         let request_bytes = serde_json::to_vec(&request)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
-        if request_bytes.len() + 256 > MULTIPLEX_MAX_FRAME_BYTES {
-            return Err(transport_error("multiplex request frame too large"));
-        }
         let permit = self
             .writer_budget
             .clone()
-            .acquire_many_owned((request_bytes.len() + 256) as u32)
+            .acquire_many_owned(request_bytes.len().saturating_add(256).min(WRITER_BYTES) as u32)
             .await
             .map_err(|_| transport_error("multiplex writer budget closed"))?;
         let request = serde_json::from_slice(&request_bytes)
@@ -313,12 +306,10 @@ impl MultiplexProviderWorker {
             tokio::spawn(async move {
                 let mut input = input.lock().await;
                 while let Some(value) = input.recv().await {
-                    let size = serde_json::to_vec(&value)
-                        .map(|v| v.len() + 256)
-                        .unwrap_or(MULTIPLEX_MAX_FRAME_BYTES + 1);
-                    if size > MULTIPLEX_MAX_FRAME_BYTES {
+                    let Ok(bytes) = serde_json::to_vec(&value) else {
                         break;
-                    }
+                    };
+                    let size = bytes.len().saturating_add(256).min(WRITER_BYTES);
                     let Ok(permit) = budget.clone().acquire_many_owned(size as u32).await else {
                         break;
                     };
@@ -349,7 +340,6 @@ impl MultiplexProviderWorker {
         let _input_task = AbortInput(input_task);
         let mut timeout = ProviderStreamTimeoutState::new();
         let mut output_events = Vec::new();
-        let mut retained_event_permits = Vec::new();
         let mut first_error: Option<ProviderRuntimeError> = None;
         let mut pending_acks = tokio::task::JoinSet::new();
         loop {
@@ -384,7 +374,7 @@ impl MultiplexProviderWorker {
                     prefer_first_error(&first_error, provider_timeout_error(kind, timeout_ms))
                 })?
             };
-            let mut message = received.ok_or_else(|| {
+            let message = received.ok_or_else(|| {
                 prefer_first_error(
                     &first_error,
                     transport_error("multiplex call channel closed"),
@@ -423,9 +413,7 @@ impl MultiplexProviderWorker {
                         }
                         let commands = self.commands.clone();
                         let id = guard.id.clone();
-                        let permit = message._permit.take();
                         pending_acks.spawn(async move {
-                            let _permit = permit;
                             if consumed_rx.await.is_err() {
                                 let _ = commands.send(CommandMessage::Cancel { id }).await;
                                 return false;
@@ -495,11 +483,6 @@ impl MultiplexProviderWorker {
                         .map_err(|error| prefer_first_error(&first_error, error))?;
                     }
                     output_events.push(event);
-                    // Retained output is part of this call's same byte budget;
-                    // dequeuing must not turn bounded buffering into an unbounded Vec.
-                    if let Some(permit) = message._permit.take() {
-                        retained_event_permits.push(permit);
-                    }
                 }
                 MultiplexWorkerMessage::ResourceRetention { .. } => {
                     return Err(transport_error("worker control on invocation lane"))
@@ -577,9 +560,6 @@ fn prefer_first_error(
 fn encode(message: MultiplexHostMessage) -> Result<Vec<u8>, String> {
     let mut bytes =
         serde_json::to_vec(&MultiplexEnvelope::new(message)).map_err(|error| error.to_string())?;
-    if bytes.len() > MULTIPLEX_MAX_FRAME_BYTES {
-        return Err("multiplex frame too large".into());
-    }
     bytes.push(b'\n');
     Ok(bytes)
 }
@@ -601,11 +581,6 @@ async fn read_frame(
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |i| i + 1);
-        // The extra byte is reserved for a newline, not undelimited payload.
-        let terminated = available.get(count - 1) == Some(&b'\n');
-        if bytes.len() + count > MULTIPLEX_MAX_FRAME_BYTES + usize::from(terminated) {
-            return Err("multiplex frame too large".into());
-        }
         bytes.extend_from_slice(&available[..count]);
         reader.consume(count);
         if bytes.last() == Some(&b'\n') {
@@ -686,7 +661,7 @@ async fn run_reader(
     let reason = loop {
         tokio::select! {
             frame = read_frame(&mut reader, &mut pending_frame) => {
-                let (frame, frame_bytes) = match frame { Ok(Some(frame)) => frame, Ok(None) => break "multiplex worker stdout closed".to_string(), Err(error) => break error };
+                let (frame, _frame_bytes) = match frame { Ok(Some(frame)) => frame, Ok(None) => break "multiplex worker stdout closed".to_string(), Err(error) => break error };
                 if let MultiplexWorkerMessage::ResourceRetention { sequence, retained_resources: count } = &frame {
                     if !retention_enabled || *sequence == 0 { break "unsupported worker retention control".to_string(); }
                     if *sequence > retention_sequence {
@@ -722,19 +697,17 @@ async fn run_reader(
                             call.pending_acks.insert(event_id.clone());
                         } else if event_id.is_some() { break "event id requires acknowledgment".to_string(); }
                         if call.cancelling_since.is_some() { continue; }
-                        let permit = call.event_budget.clone().try_acquire_many_owned(frame_bytes as u32);
-                        if let Ok(permit) = permit {
-                            if call.events.send(Delivered { message: Ok(frame), _permit: Some(permit) }).is_ok() { continue; }
+                        // Retained unary output is part of the result, not queued transport
+                        // credit. Duplex producers release their credit only after consumer ACK.
+                        if call.events.send(Delivered { message: Ok(frame) }).is_err() {
+                            request_cancel(&id, call, &controls);
                         }
-                        request_cancel(&id, call, &controls);
                     }
                     MultiplexWorkerMessage::Response { .. } | MultiplexWorkerMessage::Cancelled { .. } => {
                         if matches!(frame, MultiplexWorkerMessage::Cancelled { .. }) && call.cancelling_since.is_none() { break "unsolicited multiplex cancellation".to_string(); }
                         if let Some(call) = active.remove(&id) {
                             call.live.store(false, Ordering::Release);
-                            if let Ok(permit) = call.event_budget.clone().try_acquire_many_owned(frame_bytes as u32) {
-                                let _ = call.events.send(Delivered { message: Ok(frame), _permit: Some(permit) });
-                            }
+                            let _ = call.events.send(Delivered { message: Ok(frame) });
                         }
                     }
                 }
@@ -744,8 +717,8 @@ async fn run_reader(
                     Some(CommandMessage::Call { request, events, host_calls, registered, permit, lease }) => {
                         next_id = match next_id.checked_add(1) { Some(value) => value, None => break "multiplex call id exhausted".to_string() };
                         let id = next_id.to_string();
-                        let bytes = match encode(MultiplexHostMessage::Call { call_id: id.clone(), request }) { Ok(bytes) => bytes, Err(error) => { let _ = events.send(Delivered { message: Err(error), _permit: None }); continue; } };
-                        active.insert(id.clone(), ActiveCall { events, event_budget: Arc::new(Semaphore::new(CALL_EVENT_BYTES)), host_calls: host_calls.map(|context| *context), callbacks: HashMap::new(), max_callback_id: 0, cancelling_since: None, written: false, pending_acks: std::collections::HashSet::new(), max_event_id: 0, live: Arc::new(AtomicBool::new(true)), _lease: lease.map(Arc::new) });
+                        let bytes = match encode(MultiplexHostMessage::Call { call_id: id.clone(), request }) { Ok(bytes) => bytes, Err(error) => { let _ = events.send(Delivered { message: Err(error) }); continue; } };
+                        active.insert(id.clone(), ActiveCall { events, host_calls: host_calls.map(|context| *context), callbacks: HashMap::new(), max_callback_id: 0, cancelling_since: None, written: false, pending_acks: std::collections::HashSet::new(), max_event_id: 0, live: Arc::new(AtomicBool::new(true)), _lease: lease.map(Arc::new) });
                         if writes.send(WriteFrame { bytes, _permit: permit, call_id: Some(id), live: None }).is_err() { break "multiplex writer queue is full or closed".to_string(); }
                         let id = next_id.to_string();
                         if registered.send(id.clone()).is_err() { if let Some(call) = active.get_mut(&id) { request_cancel(&id, call, &controls); } }
@@ -780,9 +753,16 @@ async fn run_reader(
                     Some(CommandMessage::CallbackDone { id, callback_id, response }) => {
                         if let Some(call) = active.get_mut(&id) {
                             if call.cancelling_since.is_none() && call.callbacks.remove(&callback_id).is_some() {
-                                let bytes = match encode(MultiplexHostMessage::CallbackResult { call_id: id.clone(), callback_id, response }) { Ok(bytes) => bytes, Err(_) => { request_cancel(&id, call, &controls); continue; } };
-                                let permit = match writer_budget.clone().try_acquire_many_owned(bytes.len() as u32) { Ok(permit) => permit, Err(_) => { request_cancel(&id, call, &controls); continue; } };
-                                if controls.try_send(ControlFrame { bytes, _permit: Some(permit), live: Some(call.live.clone()) }).is_err() { request_cancel(&id, call, &controls); }
+                                let bytes = match encode(MultiplexHostMessage::CallbackResult { call_id: id.clone(), callback_id: callback_id.clone(), response }) { Ok(bytes) => bytes, Err(_) => { request_cancel(&id, call, &controls); continue; } };
+                                let budget = writer_budget.clone();
+                                let controls = controls.clone();
+                                let live = call.live.clone();
+                                // Waiting inside the shared reader would prevent cancellation and
+                                // ACK progress. The call owns and aborts this pending delivery.
+                                call.callbacks.insert(callback_id, tokio::spawn(async move {
+                                    let Ok(permit) = budget.acquire_many_owned(bytes.len().min(WRITER_BYTES) as u32).await else { return; };
+                                    let _ = controls.send(ControlFrame { bytes, _permit: Some(permit), live: Some(live) }).await;
+                                }));
                             }
                         }
                     }
@@ -808,7 +788,6 @@ async fn run_reader(
     for call in active.values() {
         let _ = call.events.send(Delivered {
             message: Err(reason.clone()),
-            _permit: None,
         });
     }
     let _ = control.terminate().await;
@@ -1071,12 +1050,9 @@ fn exchange_service_response<T: serde::Serialize>(
         Ok(value) => serde_json::json!({"result":value}),
         Err(error) => serde_json::json!({"error":error}),
     };
-    if serde_json::to_vec(&value)
-        .map(|bytes| bytes.len().saturating_add(256) > MULTIPLEX_MAX_FRAME_BYTES)
-        .unwrap_or(true)
-    {
-        serde_json::json!({"error":{"code":"host_service_transport_budget_exceeded"}})
-    } else {
-        value
-    }
+    value
 }
+
+#[cfg(all(test, unix))]
+#[path = "../_tests/multiplex_payloads.rs"]
+mod multiplex_payloads;

@@ -28,3 +28,7 @@ DeepSeek 插件只负责 Native 工具选择到 Chat Completions 的转换：`au
 HTTP / WebSocket 的请求准入由协议适配层拥有；持久化协议上下文与 continuation 原生历史由 `PgProviderProtocolCapsuleStore` 保存完整内容，不能再猜测客户端载荷或宿主资源条件，添加更小的业务容量上限。已移除独立的 2 MiB capsule 拒绝条件，超过旧阈值的上下文和历史仍可加密保存、重启读取和原子消费。物理类型表示、实际数据库 / I/O 失败继续显式传播，不吞错或截断历史。
 
 此次修复保留 flow-run / capsule-kind / slot-key 的 AEAD 身份绑定、digest / size 完整性验证、已有过期策略与调用所属权限；数据容量和生命周期是独立维度。真实 PostgreSQL 回归对超过旧阈值的两种载荷逐值恢复，并检查密文、locator 与唯一消费语义。
+
+## 请求与交接大小
+
+Gateway 的兼容协议、Native HTTP（含文件输入）与 WebSocket 不使用内置的正文、消息或帧字节上限。Host 与共享 SDK 的 stdio 保留完整 NDJSON 消息；写窗口与确认窗口只调度传输，大消息可独占窗口继续推进，不限制累计响应或返回正文。同步供应商事件回调不能等待同一执行线程的 writer，已接纳事件保留至输出完成；这不承诺任意大小请求的内存成本恒定。身份、取消、协议校验及真实 I/O 错误仍由原 owner 负责。

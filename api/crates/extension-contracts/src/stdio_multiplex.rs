@@ -8,10 +8,9 @@ use serde_json::Value;
 pub const RUNTIME_WORKER_RETENTION_V1: &str = "runtime_worker_retention/v1";
 
 pub const STDIO_JSON_MULTIPLEX_V1: &str = "stdio_json_multiplex_v1";
-pub const MULTIPLEX_MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
-/// Shared across queued worker output, pending terminal frames, and callback results.
+/// Cooperative output write window, not a message-size or accumulated-output limit.
 pub const MULTIPLEX_OUTPUT_BUDGET_BYTES: usize = 64 * 1024 * 1024;
-/// Host budget for events waiting on one call; independent of worker transport buffers.
+/// Acknowledged event window. A larger event occupies the window until consumed.
 pub const MULTIPLEX_CALL_EVENT_BUDGET_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

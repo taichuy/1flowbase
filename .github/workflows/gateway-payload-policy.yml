@@ -1,0 +1,87 @@
+name: Gateway payload policy regression
+on:
+  push:
+    branches: [codex/gateway-payload-policy-20261018]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gateway-payload-policy-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_INCREMENTAL: '0'
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: gateway-fixture
+          POSTGRES_DB: gateway_fixture
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gateway_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
+      API_DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: gateway-target-handoff
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Prepare evidence
+        run: |
+          mkdir -p tmp/test-governance/gateway-payload-policy/ci
+          git rev-parse HEAD > tmp/test-governance/gateway-payload-policy/ci/source-sha.txt
+          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+      - name: Old SDK must reject the large-payload regression
+        run: |
+          git show 290b74077:api/crates/runtime-extension-sdk/src/multiplex.rs > api/crates/runtime-extension-sdk/src/multiplex.rs
+          git show 290b74077:api/crates/extension-contracts/src/stdio_multiplex.rs > api/crates/extension-contracts/src/stdio_multiplex.rs
+          set +e
+          cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --lib multiplex_large_request_and_terminal -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/controlled-negative.log 2>&1
+          result=$?
+          set -e
+          git restore api/crates/runtime-extension-sdk/src/multiplex.rs api/crates/extension-contracts/src/stdio_multiplex.rs
+          test "$result" -ne 0
+          grep -q 'test result: FAILED' tmp/test-governance/gateway-payload-policy/ci/controlled-negative.log
+      - name: SDK wire, large messages, cancellation, output and callback regressions
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --lib -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/sdk.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/sdk.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/sdk.log
+      - name: Host process, transport, callback and lifecycle regressions
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-host --lib -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/host.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/host.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/host.log
+      - name: Production Responses transport and gateway admission
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test responses_websocket_transport -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/responses.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/responses.log; exit 1; }
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib payload_admission -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/ingress.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/ingress.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/responses.log
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/ingress.log
+      - name: Build candidate API for isolated development verification
+        run: |
+          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > tmp/test-governance/gateway-payload-policy/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/build.log; exit 1; }
+          cp api/target/debug/api-server tmp/test-governance/gateway-payload-policy/ci/api-server-candidate
+          sha256sum tmp/test-governance/gateway-payload-policy/ci/api-server-candidate > tmp/test-governance/gateway-payload-policy/ci/binary.sha256
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: gateway-payload-policy-${{ github.sha }}
+          path: tmp/test-governance/gateway-payload-policy/ci
+          retention-days: 5

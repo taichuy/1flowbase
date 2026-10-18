@@ -100,3 +100,6 @@ mod file_read_client_tests;
 
 #[path = "_tests/exchange_host_services.rs"]
 mod exchange_host_services;
+
+#[path = "_tests/multiplex/large_payloads.rs"]
+mod large_payloads;

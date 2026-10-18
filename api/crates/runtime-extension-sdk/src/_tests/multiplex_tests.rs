@@ -1,8 +1,6 @@
 use std::{cell::RefCell, future::pending, rc::Rc};
 
-use extension_contracts::{
-    MultiplexEnvelope, MultiplexHostMessage, MultiplexWorkerMessage, MULTIPLEX_MAX_FRAME_BYTES,
-};
+use extension_contracts::{MultiplexEnvelope, MultiplexHostMessage, MultiplexWorkerMessage};
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -146,7 +144,7 @@ async fn multiplex_cancel_waits_for_task_exit_and_emits_only_cancelled() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn multiplex_rejects_duplicate_id_and_oversized_frame() {
+async fn multiplex_rejects_duplicate_id() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let (host, worker) = tokio::io::duplex(4096);
@@ -166,68 +164,6 @@ async fn multiplex_rejects_duplicate_id_and_oversized_frame() {
                 runner.await.unwrap(),
                 Err(MultiplexError::Correlation)
             ));
-
-            let (host, worker) = tokio::io::duplex(4096);
-            let (worker_read, worker_write) = tokio::io::split(worker);
-            let (_, mut host_write) = tokio::io::split(host);
-            let runner =
-                tokio::task::spawn_local(serve_io(worker_read, worker_write, |_, _| async {
-                    Value::Null
-                }));
-            let writer = tokio::task::spawn_local(async move {
-                let _ = host_write
-                    .write_all(&vec![b'x'; MULTIPLEX_MAX_FRAME_BYTES + 1])
-                    .await;
-            });
-            assert!(matches!(
-                runner.await.unwrap(),
-                Err(MultiplexError::FrameTooLarge)
-            ));
-            writer.await.unwrap();
-        })
-        .await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn synchronous_events_report_bounded_backpressure() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let (host, worker) = tokio::io::duplex(64);
-            let (worker_read, worker_write) = tokio::io::split(worker);
-            let (_, mut host_write) = tokio::io::split(host);
-            let (signal_tx, signal_rx) = tokio::sync::oneshot::channel();
-            let signal_tx = Rc::new(RefCell::new(Some(signal_tx)));
-            let runner =
-                tokio::task::spawn_local(serve_io(worker_read, worker_write, move |_, emitter| {
-                    let signal_tx = signal_tx.clone();
-                    async move {
-                        let mut full = false;
-                        for _ in 0..40 {
-                            if matches!(
-                                emitter.try_event(json!("e".repeat(2 * 1024 * 1024))),
-                                Err(MultiplexError::Backpressure)
-                            ) {
-                                full = true;
-                                break;
-                            }
-                        }
-                        signal_tx.borrow_mut().take().unwrap().send(full).unwrap();
-                        Value::Null
-                    }
-                }));
-            host_write
-                .write_all(
-                    line(MultiplexHostMessage::Call {
-                        call_id: "1".into(),
-                        request: Value::Null,
-                    })
-                    .as_bytes(),
-                )
-                .await
-                .unwrap();
-            assert!(signal_rx.await.unwrap());
-            runner.abort();
-            let _ = runner.await;
         })
         .await;
 }

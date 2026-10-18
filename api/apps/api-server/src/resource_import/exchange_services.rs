@@ -64,12 +64,9 @@ async fn safe_api_error(error: crate::error_response::ApiError) -> HostServiceEr
     let response = error.into_response();
     let status = response.status().as_u16();
     // Use the API's established safe projection, retaining partial import receipts.
-    let body = axum::body::to_bytes(
-        response.into_body(),
-        extension_contracts::MULTIPLEX_MAX_FRAME_BYTES,
-    )
-    .await
-    .ok();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .ok();
     let value: serde_json::Value = body
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default();
@@ -145,18 +142,6 @@ async fn http_request(
             .collect::<anyhow::Result<_>>()?;
         let mut body = Vec::new();
         while let Some(chunk) = response.chunk().await? {
-            // Base64+JSON must fit the existing transport budget. Explicit failure, no truncation.
-            if body
-                .len()
-                .saturating_add(chunk.len())
-                .saturating_mul(4)
-                .div_ceil(3)
-                .saturating_add(serde_json::to_vec(&headers)?.len())
-                .saturating_add(1024)
-                > extension_contracts::MULTIPLEX_MAX_FRAME_BYTES
-            {
-                anyhow::bail!("http_egress_transport_budget_exceeded");
-            }
             body.extend_from_slice(&chunk);
         }
         Ok(HttpEgressResponse {
@@ -166,13 +151,10 @@ async fn http_request(
         })
     }
     .await;
-    scope.finish(result).await.map_err(|error| {
-        if error.to_string() == "http_egress_transport_budget_exceeded" {
-            HostServiceError::new("http_egress_transport_budget_exceeded")
-        } else {
-            HostServiceError::new("http_egress_request_failed")
-        }
-    })
+    scope
+        .finish(result)
+        .await
+        .map_err(|_| HostServiceError::new("http_egress_request_failed"))
 }
 
 #[cfg(test)]

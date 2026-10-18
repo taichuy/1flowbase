@@ -145,16 +145,19 @@ async fn exchange_host_services_cancel_and_deadline_drop_active_http_work() {
 }
 
 #[test]
-fn exchange_host_services_reject_transport_overflow_without_truncation() {
+fn exchange_host_services_preserve_large_results_without_truncation() {
     let result = exchange_service_response(Ok(ApplicationLogsResponse::Exported {
-        otlp: serde_json::json!({"complete_fact":"a".repeat(MULTIPLEX_MAX_FRAME_BYTES)}),
+        otlp: serde_json::json!({"complete_fact":"a".repeat(32 * 1024 * 1024 + 1)}),
         record_ids: vec!["r".into()],
         trace_ids: vec!["t".into()],
         exported_spans: 1,
     }));
+    assert!(result.get("error").is_none());
     assert_eq!(
-        result["error"]["code"],
-        "host_service_transport_budget_exceeded"
+        result["result"]["otlp"]["complete_fact"]
+            .as_str()
+            .unwrap()
+            .len(),
+        32 * 1024 * 1024 + 1
     );
-    assert!(result.get("result").is_none());
 }

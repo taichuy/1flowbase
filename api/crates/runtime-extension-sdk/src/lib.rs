@@ -1,6 +1,6 @@
 //! Minimal author-side helpers for versioned RuntimeExtension Host Services.
 //!
-//! This crate contains typed clients and a bounded, versioned stdio dispatcher.
+//! This crate contains typed clients and a versioned stdio dispatcher with cooperative write flow control.
 //! It owns no Host registry, process supervisor, storage or business routing.
 
 mod application_logs;
@@ -41,8 +41,7 @@ pub use extension_contracts::{
 };
 pub use extension_contracts::{
     MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService, MultiplexWorkerMessage,
-    MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_MAX_FRAME_BYTES, MULTIPLEX_OUTPUT_BUDGET_BYTES,
-    STDIO_JSON_MULTIPLEX_V1,
+    MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_OUTPUT_BUDGET_BYTES, STDIO_JSON_MULTIPLEX_V1,
 };
 pub use extension_contracts::{
     NotificationAuthorizationAction, NotificationAuthorizationActionKind,
