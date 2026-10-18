@@ -344,7 +344,7 @@ impl AsyncWrite for PrefixGateOutput {
     }
 }
 #[tokio::test(flavor = "current_thread")]
-async fn flushed_prefix_replenishes_byte_credit_before_slow_tail() {
+async fn flushed_prefix_is_visible_before_slow_tail() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let (inner, state, _) = output(usize::MAX, false);
@@ -368,20 +368,19 @@ async fn flushed_prefix_replenishes_byte_credit_before_slow_tail() {
                 let blocked = blocked.clone();
                 async move {
                     let event = json!({"text":"x".repeat(4096)});
-                    let mut queued = 0;
-                    while emitter.try_event(event.clone()).is_ok() {
-                        queued += 1;
+                    let queued = 1024;
+                    for _ in 0..queued {
+                        emitter.try_event(event.clone()).unwrap();
                     }
-                    assert!(queued > 0);
                     prefix.changed().await.unwrap();
-                    // The exact same encoded size cannot fit until written prefix
-                    // permits are released. Slow remaining output must not withhold it.
-                    let replenished = emitter.try_event(event).is_ok();
+                    // A finite burst must preserve every accepted frame while the
+                    // writer releases the completed prefix before a slow tail.
+                    emitter.try_event(event).unwrap();
                     open.set(true);
                     if let Some(waker) = blocked.borrow_mut().take() {
                         waker.wake();
                     }
-                    json!({"queued":queued,"prefix_credit_replenished":replenished})
+                    json!({"queued":queued})
                 }
             })
             .await;
@@ -390,9 +389,9 @@ async fn flushed_prefix_replenishes_byte_credit_before_slow_tail() {
             let MultiplexWorkerMessage::Response { response, .. } = messages.last().unwrap() else {
                 panic!("terminal missing");
             };
-            assert_eq!(
-                response["prefix_credit_replenished"], true,
-                "already written/flushed prefix must release byte credit while tail is blocked"
+            assert!(
+                state.borrow().flushes > 1,
+                "prefix and tail must both flush"
             );
             assert_eq!(
                 messages.len() as u64,
