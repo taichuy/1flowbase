@@ -24,6 +24,10 @@
 
 Hook 依赖调整保留 locale、actor、workspace 与 policy 的实际失效语义；不能为了 lint 删除隔离键，也不能加入不稳定的整个 query/session 对象导致重复连接。React Refresh 的组件边界与纯逻辑分别维护，不以虚假导出或规则排除绕过。运行夹具使用真实 Router context、唯一资源身份和正确的 ShadowRoot；不通过过滤 console 证明告警消失。
 
+组件模块只承担渲染与资源装配。ECharts 的 `lifecycle.tsx` 保留 Boundary 入口，`lifecycle-context.ts` 管理资源 scope；窗口的 Provider / Window 与 controller、overlay context 分开，避免共享 Hook 变更被组件热更新边界吞掉。壳层 assistant 的工具执行与上下文订阅分别归 `assistant-client-tools/factory.ts` 和 `context.ts`，Provider 只组装当前 workspace、locale 和查询缓存。
+
+编辑器的映射校验、排序算法与工具 DTO 草稿留在纯模块；schema field control renderer 保留返回实际输入控件的语义，让 Form.Item 属性注入和通知字段 cloneElement 继续成立。style-boundary 的场景组件与 HTTP 数据夹具分开，scenario manifest 同时追踪两个 owner；行为测试中的夹具提取不改变产品加载、mock 注册或断言的职责。
+
 根前端 `lint` 入口向所有包的 ESLint 透传 `--max-warnings 0`，防止已清理的代码告警再次静默通过；hygiene 的动态引用、兼容期限和规模提醒仍按各自规则与证据结算，不因此升级或隐藏。
 
 以下 i18n 告警有具体消费者或不同语义，继续由 `i18n-hygiene` 暴露；这不是扫描器豁免，也不表示所有未引用 key 都有效：
