@@ -24,6 +24,8 @@
 
 Hook 依赖调整保留 locale、actor、workspace 与 policy 的实际失效语义；不能为了 lint 删除隔离键，也不能加入不稳定的整个 query/session 对象导致重复连接。React Refresh 的组件边界与纯逻辑分别维护，不以虚假导出或规则排除绕过。运行夹具使用真实 Router context、唯一资源身份和正确的 ShadowRoot；不通过过滤 console 证明告警消失。
 
+根前端 `lint` 入口向所有包的 ESLint 透传 `--max-warnings 0`，防止已清理的代码告警再次静默通过；hygiene 的动态引用、兼容期限和规模提醒仍按各自规则与证据结算，不因此升级或隐藏。
+
 以下 i18n 告警有具体消费者或不同语义，继续由 `i18n-hygiene` 暴露；这不是扫描器豁免，也不表示所有未引用 key 都有效：
 
 | Owner / key | 保留依据 |
