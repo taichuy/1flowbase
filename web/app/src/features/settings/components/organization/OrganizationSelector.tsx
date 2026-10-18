@@ -17,14 +17,15 @@ import type { DepartmentTreeItem } from '../../api/departments';
 import { departmentTree, type DepartmentTreeRow } from './department-tree';
 import { i18nText } from '../../../../shared/i18n/text';
 import './organization-management.css';
-interface OrganizationNode {
+type OrganizationNode = {
   key: string;
-  kind: 'root' | 'department' | 'pagination';
-  departmentId?: string;
   title: ReactNode;
   children?: OrganizationNode[];
   isLeaf?: boolean;
-}
+} & (
+  | { kind: 'department'; departmentId: string }
+  | { kind: 'root' | 'pagination'; departmentId?: never }
+);
 const ORGANIZATION_ROOT_KEY = 'organization-browse-root';
 export function OrganizationSelector({
   departments,
@@ -195,7 +196,7 @@ export function OrganizationSelector({
           onExpand={(keys, { expanded, node }) => {
             if (!searching) setExpandedKeys(keys);
             if (expanded && !searching && node.kind === 'department')
-              void onExpand(node.departmentId!);
+              void onExpand(node.departmentId);
           }}
           selectedKeys={[selected === undefined ? ORGANIZATION_ROOT_KEY : `department:${selected}`]}
           treeData={treeData}
