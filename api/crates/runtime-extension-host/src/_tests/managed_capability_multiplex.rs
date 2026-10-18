@@ -32,7 +32,6 @@ impl Drop for Fixture {
 #[tokio::test]
 #[cfg(unix)]
 async fn managed_capability_multiplex_binds_data_and_rejects_stale_or_foreign_scope() {
-    use std::os::unix::fs::PermissionsExt;
     let root = std::env::temp_dir().join(format!(
         "managed-capability-{}-{}",
         std::process::id(),
@@ -41,7 +40,7 @@ async fn managed_capability_multiplex_binds_data_and_rejects_stale_or_foreign_sc
     std::fs::create_dir_all(&root).unwrap();
     let _cleanup = Fixture(root.clone());
     let executable = root.join("worker.py");
-    std::fs::write(&executable, r#"#!/usr/bin/env python3
+    crate::_tests::write_executable_fixture(&executable, r#"#!/usr/bin/env python3
 import json, sys
 call=json.loads(sys.stdin.readline())
 assert call['request']['method']=='execute'
@@ -50,8 +49,7 @@ print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'callback','call_i
 reply=json.loads(sys.stdin.readline())
 print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'response','call_id':call['call_id'],'response':{'ok':True,'result':reply['response']}}),flush=True)
 sys.stdin.read()
-"#).unwrap();
-    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+"#.as_bytes(), 0o700);
     let identity = ManagedExecutionIdentity::new(
         ManagedInstallationId::new("installation").unwrap(),
         ManagedWorkspaceId::new("system-scope").unwrap(),
@@ -142,7 +140,6 @@ sys.stdin.read()
 
 #[cfg(unix)]
 fn service_fixture() -> (Fixture, PathBuf) {
-    use std::os::unix::fs::PermissionsExt;
     let root = std::env::temp_dir().join(format!(
         "actor-service-{}-{}",
         std::process::id(),
@@ -150,7 +147,7 @@ fn service_fixture() -> (Fixture, PathBuf) {
     ));
     std::fs::create_dir_all(&root).unwrap();
     let executable = root.join("worker.py");
-    std::fs::write(&executable, r#"#!/usr/bin/env python3
+    crate::_tests::write_executable_fixture(&executable, r#"#!/usr/bin/env python3
 import json, os, sys
 value = None
 for line in sys.stdin:
@@ -164,8 +161,7 @@ for line in sys.stdin:
         continue
     if 'set' in body: value = body['set']
     print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'response','call_id':frame['call_id'],'response':{'ok':True,'result':{'pid':os.getpid(),'value':value}}}),flush=True)
-"#).unwrap();
-    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+"#.as_bytes(), 0o700);
     (Fixture(root), executable)
 }
 #[cfg(unix)]
@@ -497,7 +493,7 @@ async fn actor_scope_unmount_reaps_an_active_worker_before_scope_disposal() {
 #[cfg(unix)]
 fn duplex_fixture() -> (Fixture, PathBuf) {
     let (fixture, executable) = service_fixture();
-    std::fs::write(&executable, r#"#!/usr/bin/env python3
+    crate::_tests::write_executable_fixture(&executable, r#"#!/usr/bin/env python3
 import json, os, sys
 counts={}
 def send(kind, cid, **fields):
@@ -515,7 +511,7 @@ for line in sys.stdin:
     elif f['kind']=='input': event(cid,f['input'])
     elif f['kind']=='event_ack': pass
     elif f['kind']=='cancel': send('cancelled',cid)
-"#).unwrap();
+"#.as_bytes(), 0o700);
     (fixture, executable)
 }
 
@@ -660,10 +656,16 @@ async fn managed_duplex_lifetime_ignores_provider_limits_and_retains_explicit_de
         events,
     });
     let stream = tokio::spawn(workers.execute(request).unwrap());
-    let first = tokio::time::timeout(Duration::from_secs(2), output.recv())
+    let first = match tokio::time::timeout(Duration::from_secs(2), output.recv())
         .await
         .unwrap()
-        .unwrap();
+    {
+        Some(event) => event,
+        None => panic!(
+            "duplex closed before its first event; execution result: {:?}",
+            stream.await
+        ),
+    };
     let second = output.recv().await.unwrap();
     first.consumed.send(()).unwrap();
     second.consumed.send(()).unwrap();
@@ -697,10 +699,16 @@ async fn managed_duplex_lifetime_ignores_provider_limits_and_retains_explicit_de
         events,
     });
     let stream = tokio::spawn(workers.execute(request).unwrap());
-    let first = tokio::time::timeout(Duration::from_secs(2), output.recv())
+    let first = match tokio::time::timeout(Duration::from_secs(2), output.recv())
         .await
         .unwrap()
-        .unwrap();
+    {
+        Some(event) => event,
+        None => panic!(
+            "duplex closed before its first event; execution result: {:?}",
+            stream.await
+        ),
+    };
     let second = output.recv().await.unwrap();
     first.consumed.send(()).unwrap();
     second.consumed.send(()).unwrap();
@@ -823,7 +831,6 @@ async fn actor_scope_reset_fences_unpolled_and_active_calls_across_actors_withou
 
 #[cfg(unix)]
 fn retention_fixture() -> (Fixture, PathBuf) {
-    use std::os::unix::fs::PermissionsExt;
     let root = std::env::temp_dir().join(format!(
         "retained-service-{}-{}",
         std::process::id(),
@@ -831,7 +838,7 @@ fn retention_fixture() -> (Fixture, PathBuf) {
     ));
     std::fs::create_dir_all(&root).unwrap();
     let executable = root.join("worker.py");
-    std::fs::write(&executable, r#"#!/usr/bin/env python3
+    crate::_tests::write_executable_fixture(&executable, r#"#!/usr/bin/env python3
 import json, os, sys
 retained = False
 advertised = False
@@ -852,8 +859,7 @@ for line in sys.stdin:
         print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'resource_retention','sequence':3,'retained_resources':0}),flush=True)
         print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'resource_retention','sequence':2,'retained_resources':1}),flush=True)
     print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'response','call_id':frame['call_id'],'response':{'ok':True,'result':{'pid':os.getpid(),'retained':retained,'advertised':advertised}}}),flush=True)
-"#).unwrap();
-    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+"#.as_bytes(), 0o700);
     (Fixture(root), executable)
 }
 #[tokio::test]
