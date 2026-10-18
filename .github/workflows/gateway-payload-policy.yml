@@ -71,6 +71,11 @@ jobs:
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --lib -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/sdk.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/sdk.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/sdk.log
+      - name: Prepare real managed worker fixtures
+        run: |
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker --example managed_event_worker > tmp/test-governance/gateway-payload-policy/ci/worker-fixtures.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/worker-fixtures.log; exit 1; }
+          echo "MANAGED_HOOK_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
+          echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Host process, transport, callback and lifecycle regressions
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-host --lib -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/host.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/host.log; exit 1; }
