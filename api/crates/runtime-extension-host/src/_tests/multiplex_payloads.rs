@@ -1,5 +1,4 @@
 use super::*;
-use futures_util::FutureExt;
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
 
@@ -44,9 +43,12 @@ async fn multiplex_large_request_result_and_cumulative_events_survive_real_stdio
         timeout_ms: Some(120_000),
         ..Default::default()
     };
-    let worker = MultiplexProviderWorker::activate(executable, limits.clone(), 1).unwrap();
-    let result =
-        std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(120), async {
+    let worker =
+        Arc::new(MultiplexProviderWorker::activate(executable, limits.clone(), 1).unwrap());
+    let task_worker = worker.clone();
+    let result = tokio::spawn(async move {
+        let worker = task_worker;
+        tokio::time::timeout(Duration::from_secs(120), async {
             let payload = format!("{}完整🙂", "x".repeat(64 * 1024 * 1024 + 1));
             let (response, events) = worker
                 .call_json(json!({"payload":payload}), &limits, None, None)
@@ -75,9 +77,10 @@ async fn multiplex_large_request_result_and_cumulative_events_survive_real_stdio
                 .await
                 .unwrap();
             assert_eq!(neighbor, "neighbor");
-        }))
-        .catch_unwind()
-        .await;
+        })
+        .await
+    })
+    .await;
     let cleanup = worker.process_control().terminate().await;
     assert!(cleanup.exited);
     result.unwrap().unwrap();

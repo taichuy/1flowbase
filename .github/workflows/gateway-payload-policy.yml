@@ -3,6 +3,11 @@ on:
   push:
     branches: [codex/gateway-payload-policy-20261018]
   workflow_dispatch:
+    inputs:
+      reuse_sdk_evidence:
+        description: Reuse successful SDK evidence when only Host/API fixtures changed
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -50,6 +55,7 @@ jobs:
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Old SDK must reject the large-payload regression
+        if: ${{ !inputs.reuse_sdk_evidence }}
         run: |
           git show 290b74077:api/crates/runtime-extension-sdk/src/multiplex.rs > api/crates/runtime-extension-sdk/src/multiplex.rs
           git show 290b74077:api/crates/extension-contracts/src/stdio_multiplex.rs > api/crates/extension-contracts/src/stdio_multiplex.rs
@@ -61,6 +67,7 @@ jobs:
           test "$result" -ne 0
           grep -q 'test result: FAILED' tmp/test-governance/gateway-payload-policy/ci/controlled-negative.log
       - name: SDK wire, large messages, cancellation, output and callback regressions
+        if: ${{ !inputs.reuse_sdk_evidence }}
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --lib -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/sdk.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/sdk.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/sdk.log
