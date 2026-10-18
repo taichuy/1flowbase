@@ -28,7 +28,7 @@ The AI Gateway retains its protocol mapping → AI Native → provider layers. T
 | Channel | Guarantee and completion boundary | Owner |
 | --- | --- | --- |
 | Request streams | Preserve protocol terminal state, connection handling and Completion; no generic Outbox conversion | AI Native and protocol adapter |
-| Ephemeral EventBus | In-process FIFO per topic, complete JSON and destructive take; no restart recovery or subscriber ACK guarantee | `storage-ephemeral` |
+| Ephemeral EventBus | Consumer-owned, competing FIFO per topic with complete JSON, explicit budgets and backpressure; no restart recovery or subscriber ACK guarantee | `storage-ephemeral` |
 | Reliable business notifications | Atomically commit business changes, facts and frozen targets; deliver and ACK each target independently | Transaction owner and Lifecycle Outbox |
 | Request Hooks | Execute frozen phase permissions; do not stand in for asynchronous subscriber ACKs | Kernel and typed Hook owner |
 
@@ -46,7 +46,21 @@ The current Dispatcher's batch size, lease, deadline and retry budget are schedu
 
 ## Ephemeral data and legacy retirement
 
-The default EventBus directly uses `MemoryEventBus::lossless()`. Publishing, taking and inspecting events do not query a historical PostgreSQL queue. Payload inspection retains its separate reveal contract; inspection budgets do not become business message-size limits.
+The default EventBus starts as an empty `MemoryEventBus::new()`. Startup requires neither a budget nor a consumer. Before first use, the Host explicitly configures one instance-wide resource budget shared across topics, then opens consumer ownership handles. There are no guessed production limits based on the development machine. Unconfigured, missing-consumer, closed and exhausted states produce explicit outcomes instead of accumulating unowned messages.
+
+```text
+Configure shared budget -> open consumer -> reserve -> construct complete body -> send
+                                              |                                  |
+                                  cancellable, deadline-bound wait        competing FIFO receive
+                                                                                 |
+                                                                  processing guard releases quota
+```
+
+The budget covers reservations, buffered and in-flight events, waiters, topics, consumers and topic-name storage. Reservation takes no body: admission precedes construction, and each permit is consumed once. Receive returns a non-Clone delivery guard, so dequeue does not release processing quota early. Serialized JSON bytes are logical accounting, charged at the reserved upper bound throughout processing; this is not an exact heap or RSS limit. A body exceeding its reservation fails atomically without truncation or partial delivery. This does not restore a fixed 1 MiB business message limit. Copies deliberately made by callers are outside the channel's retained-resource accounting.
+
+Closing a consumer closes admission for its topic generation; live consumers can drain accepted messages. Multiple consumers compete for the same FIFO queue, without a guarantee on processing completion order. Losing the last consumer terminates the generation and records abnormal termination. Old permits cannot publish into a replacement generation. Live reservations and processing guards retain their charges until released. Graceful shutdown keeps the consumer alive until draining finishes. This channel provides no reliable ACK, automatic retry or restart recovery; business operations requiring those guarantees use Lifecycle Outbox.
+
+Existing management inspection routes remain available. A non-sensitive `event_bus_resources` metadata entry exposes resource snapshots, while body entries distinguish `buffered` and `in-flight` states. Inspection is non-consuming and body access still requires explicit reveal. Snapshots include current waiter/buffered/in-flight ages and admission rejection, accepted, received, processing-release and buffered-discard counters. A processing release records guard lifetime, not a successful business ACK. Resource budgets and inspection budgets are separate. Cancellation, admission deadlines, processing completion and owner cleanup release the corresponding resources. None of these operations queries a historical PostgreSQL queue.
 
 Published orchestration startup plans that are cheap to rebuild and reused soon use the existing approximately five-minute cache. Long-lived persisted context is fetched by database key or index instead of being copied wholesale into ephemeral storage. Cache eviction budgets and business capacity limits are separate decisions.
 

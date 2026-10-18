@@ -2,7 +2,7 @@ name: Event lifecycle acceptance
 
 on:
   push:
-    branches: [codex/event-lifecycle-20261018]
+    branches: [codex/event-lifecycle-20261018, codex/memory-event-governance-20261018]
     paths:
       - api/**
       - docs/architecture/plugin-lifecycle-contracts*
@@ -85,7 +85,11 @@ jobs:
               failed=1
             fi
           }
-          run_tests memory -p storage-ephemeral --lib memory_event_bus
+          run_tests contracts -p control-plane-contracts
+          run_tests memory -p storage-ephemeral --lib
+          run_tests infrastructure-contracts -p control-plane --lib infrastructure_contracts_are_object_safe_and_async
+          run_tests host-memory -p api-server --lib _tests::host_infrastructure
+          run_tests dependencies -p control-plane-postgres-tests --test dependency_boundaries
           run_tests outbox -p storage-durable-postgres --lib lifecycle_outbox_repository_tests
           run_tests publication -p storage-durable-postgres --lib notification_publication
           run_tests retirement -p storage-durable-postgres --lib legacy_retirement
@@ -106,28 +110,29 @@ jobs:
           export MANAGED_EVENT_WORKER_FIXTURE="$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker"
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::extension_bus::managed_governance_tests::root_2007_ac_009_pause_revoke_retire -- --exact > "$evidence/managed-resume.log" 2>&1 || { tail -c 7000 "$evidence/managed-resume.log"; exit 1; }
           node scripts/node/verify/cargo-test-results.js "$evidence/managed-resume.log"
-      - name: Prove the large-message fixture rejects a bounded replacement
+      - name: Prove processing guards enforce shared admission
         if: inputs.scope != 'managed-resume'
         shell: bash
         run: |
           set -euo pipefail
-          source=api/apps/api-server/src/host_infrastructure/event_bus_activation.rs
+          source=api/crates/storage/ephemeral/src/local/memory_event_bus.rs
           trap 'git restore --source=HEAD -- "$source"' EXIT
-          python3 - <<'PY'
+          python3 - <<'PYMUTATION'
           from pathlib import Path
-          source = Path("api/apps/api-server/src/host_infrastructure/event_bus_activation.rs")
+          source = Path("api/crates/storage/ephemeral/src/local/memory_event_bus.rs")
           content = source.read_text()
-          assert content.count("MemoryEventBus::lossless()") == 1
-          source.write_text(content.replace("MemoryEventBus::lossless()", "MemoryEventBus::new()"))
-          PY
+          condition = "state.entries.len() < limits.max_items\n                    && upper <= limits.max_json_bytes - state.charged_json_bytes"
+          assert content.count(condition) == 1
+          source.write_text(content.replace(condition, "true"))
+          PYMUTATION
           log=tmp/test-governance/event-lifecycle/ci/controlled-negative.log
-          if cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib builtin_live_events_preserve_complete_large_json_without_database > "$log" 2>&1; then
+          if cargo test --locked --manifest-path api/Cargo.toml -p storage-ephemeral --lib shared_item_and_byte_budget_includes_in_flight_and_releases_on_drop -- --nocapture > "$log" 2>&1; then
             echo "Controlled negative unexpectedly passed"
             exit 1
           fi
-          grep -q 'ephemeral_payload_too_large' "$log"
-          grep -q 'builtin_live_events_preserve_complete_large_json_without_database .*FAILED' "$log"
-          echo "The fixture rejected the bounded replacement at payload admission."
+          grep -q 'shared_item_and_byte_budget_includes_in_flight_and_releases_on_drop.*FAILED' "$log"
+          grep -q 'test result: FAILED. 0 passed; 1 failed;' "$log"
+          echo "The fixture rejected admission that ignores live processing charges."
       - name: Build runtime candidate
         run: |
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > tmp/test-governance/event-lifecycle/ci/build.log 2>&1 || { tail -c 7000 tmp/test-governance/event-lifecycle/ci/build.log; exit 1; }

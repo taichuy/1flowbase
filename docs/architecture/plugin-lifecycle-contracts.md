@@ -33,7 +33,7 @@ AI Gateway 保持映射协议层 → AI Native → 供应商。Interface Kernel 
 | 通道 | 保证与完成边界 | owner |
 | --- | --- | --- |
 | 请求流式输出 | 保留协议流终态、连接与 Completion；不转换为通用 Outbox | AI Native 与协议适配器 |
-| 瞬时 EventBus | 进程内每 topic FIFO、完整 JSON、破坏性取出；不保证跨重启恢复或逐订阅者 ACK | `storage-ephemeral` |
+| 瞬时 EventBus | 消费 owner 管理的进程内每 topic FIFO 竞争消费、完整 JSON、显式预算与背压；不保证跨重启恢复或逐订阅者 ACK | `storage-ephemeral` |
 | 可靠业务通知 | 业务、Fact、冻结目标在同事务提交；每目标独立投递与 ACK | 事务 owner 与 Lifecycle Outbox |
 | 请求 Hook | 执行冻结阶段权限；不冒充异步订阅者 ACK | Kernel 与 typed Hook owner |
 
@@ -51,7 +51,21 @@ Outbox 允许至少一次尝试；`SKIP LOCKED`、并发执行与重试不保证
 
 ## 瞬时数据与旧机制退役
 
-默认 EventBus 直接使用 `MemoryEventBus::lossless()`；发布、取出及检查不访问历史 PostgreSQL 队列。检查正文仍遵循独立的 reveal 契约，不将检查预算变成合法消息的业务大小上限。
+默认 EventBus 使用空的 `MemoryEventBus::new()`；没有预算和消费 owner 仍可正常启动。首次使用前由宿主显式配置同一实例跨 topic 共享的资源预算，再创建消费 owner；不根据开发机容量猜测生产默认值。未配置、无消费者、已关闭与预算不足都有明确结果，不成功积存无人负责的消息。
+
+```text
+配置共享预算 → 创建消费 owner → reserve 额度 → 构造完整正文 → send
+                                  ↓                        ↓
+                           可取消／有截止的等待        FIFO 竞争取出
+                                                           ↓
+                                                delivery guard 处理完释放额度
+```
+
+预算覆盖已预留、排队和处理中的事件，以及等待者、topic、consumer 和 topic 名称目录。`reserve` 不接收正文，先准入再构造；返回的 permit 消费一次。接收返回不可 Clone 的 delivery guard，取出不提前释放额度。逻辑 JSON 字节按序列化口径计量，预留上界贯穿处理阶段；这不是精确堆内存或 RSS 限额。实际正文超过预留返回明确错误，不部分投递、不截断，也不对所有业务消息恢复固定的 1 MiB 限制。调用方自行复制正文的成本不属于通道持有预算。
+
+`close` 关闭当前 topic generation 的新接收，已入队事件由仍存活的消费者排空。同 topic 多个 owner 竞争同一个队列，关闭不承诺处理完成顺序。最后 owner 异常退出时终止该 generation 并记录异常；旧 permit 不能投递到新 generation。仍被持有的预留和处理正文继续计量，直到对应 guard 释放。正常关闭需要保留 owner 并完成排空；内存通道不提供可靠 ACK、自动重试或重启恢复，需要这些能力的业务使用 Lifecycle Outbox。
+
+既有管理检查入口保留，资源快照以非敏感 `event_bus_resources` 元数据记录呈现，正文记录区分 `buffered` 与 `in-flight`。检查不消费，正文继续使用显式 reveal 契约。快照提供当前等待者、排队及在途事件的最老年龄，以及拒绝、接收、取出、处理额度释放和未取出正文丢弃计数；处理额度释放不冒充业务成功 ACK。资源预算与检查预算分别定义；生产者取消、截止、处理完成和 owner 回收都应释放对应资源。上述操作不访问历史 PostgreSQL 队列。
 
 可快速重建、近期重复使用的发布编排启动计划使用现有约五分钟缓存；长期持久上下文按数据库主键或索引读取，不整体复制到 ephemeral。缓存淘汰预算与业务容量限制分别定义。
 
