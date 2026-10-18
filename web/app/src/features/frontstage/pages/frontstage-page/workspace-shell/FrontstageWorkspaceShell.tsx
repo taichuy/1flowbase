@@ -1,5 +1,6 @@
+import { FrontstageWorkspaceContext } from './workspace-context';
 import { Typography } from 'antd';
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { i18nText } from '../../../../../shared/i18n/text';
 import { SectionPageLayout } from '../../../../../shared/ui/section-page-layout/SectionPageLayout';
@@ -8,39 +9,12 @@ import { useFrontstageDesignModeStore } from '../../../../../state/frontstage-de
 import { MovePageModal } from '../../../components/page-tree-actions/MovePageModal';
 import { FrontStagePageTreeSidebar } from '../../../components/FrontStagePageTreeSidebar';
 import { useBlockI18n } from '../../../hooks/runtime-i18n/use-block-i18n';
-import { findNodeById, resolveSelectedPageId } from '../../../lib/page-tree';
+import { findNodeById } from '../../../lib/page-tree';
 import { DESIGN_MODE_PERMISSION } from '../page-constants';
 import type { FrontStagePageProps } from '../page-props';
 import { PageTreeFormModal } from '../page-tree-form-modal';
 import { usePageTreeWorkspace } from '../use-page-tree-workspace';
 import './workspace-shell.css';
-
-type Workspace = ReturnType<typeof usePageTreeWorkspace>;
-const FrontstageWorkspaceContext = createContext<Workspace | null>(null);
-
-export function useOptionalFrontstageWorkspace() {
-  return useContext(FrontstageWorkspaceContext);
-}
-
-/** Page identity belongs to each retained body, never to the active shell route. */
-export function useFrontstageWorkspace(pageId?: string) {
-  const workspace = useOptionalFrontstageWorkspace();
-  if (!workspace) throw new Error('Frontstage workspace shell is required');
-  const selectedPageId = pageId
-    ? resolveSelectedPageId({ pageId, pageTree: workspace.pageTree })
-        .selectedPageId
-    : workspace.selectedPageId;
-  const selectedPageNode = selectedPageId
-    ? findNodeById(workspace.pageTree, selectedPageId)
-    : null;
-  return {
-    ...workspace,
-    selectedPageId,
-    selectedPageNode,
-    handlePageTabsEnabledChange: (enabled: boolean) =>
-      workspace.handlePageTabsEnabledChange(enabled, selectedPageNode)
-  };
-}
 
 /** One tree, form and navigation shell outside all retained page bodies. */
 export function FrontstageWorkspaceShell({

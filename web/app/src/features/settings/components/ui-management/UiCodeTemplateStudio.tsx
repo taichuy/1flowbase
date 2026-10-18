@@ -23,7 +23,7 @@ import {
   JsxStudioRunPanel,
   type JsxStudioRunBlockContextInput
 } from '../../../frontstage/components/jsx-studio/JsxStudioRunPanel';
-import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block-react-adapter';
+import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block/unavailable-context';
 import { JsxStudioResourcePanel } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
 import type {
   SettingsUiManagedTemplate,

@@ -36,7 +36,7 @@ import {
 import { FrontstageRuntimeActivityContext } from '../lib/page-canvas/runtime-activity';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
-import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
+import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block/unavailable-context';
 import {
   createFrontstagePageDocument,
   createFrontstageBlockRuntimeDescriptor,
@@ -73,11 +73,8 @@ import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
 import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMenu';
-import {
-  FrontstageWorkspaceShell,
-  useFrontstageWorkspace,
-  useOptionalFrontstageWorkspace
-} from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
+import { FrontstageWorkspaceShell } from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
+import { useFrontstageWorkspace, useOptionalFrontstageWorkspace } from './frontstage-page/workspace-shell/workspace-context';
 import { useFrontstageRetentionProtection } from './frontstage-page/runtime-session/retention-protection';
 import './frontstage-page.css';
 

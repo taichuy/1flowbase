@@ -1,7 +1,7 @@
-import { App as AntdApp, notification as AntdNotification } from 'antd';
-import { useLayoutEffect, type ReactNode } from 'react';
+import { notification as AntdNotification } from 'antd';
+import { useLayoutEffect } from 'react';
 
-import { useNativeBlockSurface } from './native-block-surface-context';
+import { useNativeBlockSurface } from '../native-block-surface-context';
 
 type NotificationHookConfig = Parameters<
   typeof AntdNotification.useNotification
@@ -48,26 +48,3 @@ export const NativeBlockNotification: typeof AntdNotification = {
   useNotification: useNativeBlockNotification,
   warning: () => denyStaticNotification('warning')
 };
-
-export function NativeBlockAntdEffectScope({
-  children
-}: {
-  children: ReactNode;
-}): ReactNode {
-  const surface = useNativeBlockSurface();
-  const { notification } = AntdApp.useApp();
-
-  useLayoutEffect(() => {
-    if (!surface) return;
-    const unregister = surface.registerEffectResource({
-      invalidate: () => notification.destroy(),
-      dispose: () => notification.destroy()
-    });
-    return () => {
-      unregister();
-      notification.destroy();
-    };
-  }, [notification, surface]);
-
-  return children;
-}

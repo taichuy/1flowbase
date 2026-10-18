@@ -25,10 +25,8 @@ import dayjsPackageJson from 'dayjs/package.json';
 import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../../packages/ui/package.json';
 
-import {
-  FrontstageNativeTrustedBlockPortalHost,
-  createFrontstageUnavailableBlockContext
-} from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
+import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block/unavailable-context';
 import {
   createFrontstageNativeReactModuleRegistry,
   createFrontstageNativeTrustedBlockModuleMap,

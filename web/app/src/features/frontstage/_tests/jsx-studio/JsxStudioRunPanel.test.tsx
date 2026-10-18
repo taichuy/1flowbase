@@ -16,7 +16,7 @@ import {
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import type { NativeReactBrowserCompileResult } from '../../../../shared/code-block/native-react-compiler-browser';
 import { JsxStudioRunPanel } from '../../components/jsx-studio/JsxStudioRunPanel';
-import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block-react-adapter';
+import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block/unavailable-context';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
 const block = {

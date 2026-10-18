@@ -11,7 +11,7 @@ import {
   fetchApplications
 } from '../../../api/applications';
 import { useNativeBlockSurface } from '../../../../frontstage/lib/native-modules/native-block-surface-context';
-import { shadowViewerStyles } from '../ApplicationRunLogViewer';
+import { shadowViewerStyles } from '../application-run-viewer-styles';
 import { ApplicationLogsWorkspace } from './ApplicationLogsWorkspace';
 import tableStyles from '../../../../../shared/ui/data-table/data-table.css?inline';
 import columnSettingsStyles from '../../../../../shared/ui/data-table/data-table-column-settings.css?inline';

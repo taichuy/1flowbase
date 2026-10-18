@@ -64,7 +64,7 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     import('./native-anchor-runtime'),
     import('./native-dropdown-runtime'),
     import('./native-message-runtime'),
-    import('./native-notification-runtime'),
+    import('./notification/facade'),
     import('./menu/native-menu-runtime'),
     import('./overlay/native-generic-overlay-runtime'),
     import('./overlay/native-tooltip-popover-runtime')
