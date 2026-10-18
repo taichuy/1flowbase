@@ -326,6 +326,7 @@ export function EmbeddedAgentAssistantPreview({
     settings?.preference.application_id ?? null,
     clientTools
   );
+  const { resumeActiveRun, disconnectSession } = session;
   const activityMessage =
     session.messages.find(
       (message) =>
@@ -344,11 +345,11 @@ export function EmbeddedAgentAssistantPreview({
       return;
     }
     if (open) {
-      session.resumeActiveRun();
+      resumeActiveRun();
     } else {
-      session.disconnectSession();
+      disconnectSession();
     }
-  }, [open, session.disconnectSession, session.resumeActiveRun]);
+  }, [open, disconnectSession, resumeActiveRun]);
 
   useEffect(() => {
     if (open) {

@@ -860,7 +860,6 @@ export function useEmbeddedAssistantSession(
       applicationId,
       cancelActiveStream,
       csrfToken,
-      messages,
       reconcileRunSnapshot,
       setCurrentConversation,
       setCurrentLegacySnapshot,
