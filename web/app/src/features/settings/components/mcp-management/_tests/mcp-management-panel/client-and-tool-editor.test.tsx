@@ -239,7 +239,7 @@ vi.mock('@1flowbase/rich-text', async () => {
           editorRef.current = null;
           editor?.destroy();
         };
-      }, []);
+      }, [outline]);
 
       return React.createElement('div', {
         ref: mountRef,

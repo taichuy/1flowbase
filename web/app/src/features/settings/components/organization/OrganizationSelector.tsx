@@ -131,7 +131,7 @@ export function OrganizationSelector({
         children: roots
       }
     ];
-  }, [departments, search, groups]);
+  }, [departments, groups]);
   return (
     <aside className="organization-sidebar">
       <div className="organization-toolbar">

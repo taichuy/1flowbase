@@ -69,14 +69,23 @@ export function NotificationInstanceDrawer({
       )
     };
   }, [savedInstance, type, t]);
-  const initialValues = useMemo<SchemaFormValues>(
-    () => ({
-      // Persisted configuration is JSON consumed by the plugin form schema.
-      ...(savedInstance?.config_json as SchemaFormValues | undefined),
-      ...draftConfig.current
-    }),
-    [savedInstance, type, t]
-  );
+  const initialValuesScope = useRef<{
+    schema: PluginFormSchema;
+    instance: NotificationInstance | undefined;
+    values: SchemaFormValues;
+  } | null>(null);
+  if (!initialValuesScope.current || initialValuesScope.current.schema !== schema || initialValuesScope.current.instance !== savedInstance) {
+    initialValuesScope.current = {
+      schema,
+      instance: savedInstance,
+      values: {
+        // Refresh the schema baseline on locale/type changes without losing the live draft.
+        ...(savedInstance?.config_json as SchemaFormValues | undefined),
+        ...draftConfig.current
+      }
+    };
+  }
+  const initialValues = initialValuesScope.current.values;
   const unavailable = !!savedInstance && !savedInstance.available;
   const unavailableTitle =
     savedInstance?.unavailable_reason === 'instance_disabled'

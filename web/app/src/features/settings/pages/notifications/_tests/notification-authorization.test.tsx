@@ -333,6 +333,32 @@ test('legacy null authorization preserves schema editing and normal save-and-clo
   ).toBe(false);
 });
 
+test('locale refresh preserves the edited notification config and display name through save', async () => {
+  render(
+    <NotificationInstanceDrawer
+      instance={{ ...instance, authorization: null }}
+      types={[{ ...type, authorization: undefined }]}
+      onClose={vi.fn()}
+      onSaved={saved}
+    />
+  );
+  fireEvent.change(screen.getByRole('textbox', { name: '服务地址' }), {
+    target: { value: 'https://example.com/locale-draft' }
+  });
+  fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+    target: { value: 'Draft across locales' }
+  });
+  await act(async () => { await appI18n.changeLanguage('en_US'); });
+  expect(screen.getByRole('textbox', { name: 'Channel name' })).toHaveValue('Draft across locales');
+  expect(screen.getByDisplayValue('https://example.com/locale-draft')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(saved).toHaveBeenCalledWith());
+  expect(commands[0]?.body).toEqual({
+    display_name: 'Draft across locales',
+    config_json: { endpoint: 'https://example.com/locale-draft' }
+  });
+});
+
 test('authorization errors remain safe and do not claim a backend status change', async () => {
   vi.stubGlobal(
     'fetch',

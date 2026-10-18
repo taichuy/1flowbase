@@ -85,7 +85,7 @@ export function DataSourceResourcesPanel({
   const templatesReady =
     compatibleTemplatesQuery.isSuccess && !compatibleTemplatesQuery.isFetching;
   const compatibleTemplates = templatesReady
-    ? (compatibleTemplatesQuery.data ?? [])
+    ? (compatibleTemplatesQuery.data ?? NO_COMPATIBLE_TEMPLATES)
     : NO_COMPATIBLE_TEMPLATES;
 
   useEffect(() => {
