@@ -35,7 +35,11 @@ async fn gateway_http_large_bodies_preserve_authentication_rejection() {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let value: Value = serde_json::from_slice(&bytes).expect("protocol error must remain JSON");
-        assert!(value.get("error").is_some(), "{path}: {value}");
+        if path.starts_with("/api/agent/") {
+            assert_eq!(value["code"], "not_authenticated", "{path}: {value}");
+        } else {
+            assert!(value.get("error").is_some(), "{path}: {value}");
+        }
     }
 }
 
@@ -61,7 +65,7 @@ async fn gateway_multipart_large_file_reaches_file_table_validation() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let value: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(value["error"]["code"], "file_table_id", "{value}");
+    assert_eq!(value["code"], "file_table_id", "{value}");
 }
 
 struct Server(tokio::task::JoinHandle<()>);
