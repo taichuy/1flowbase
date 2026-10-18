@@ -65,7 +65,7 @@ export function renderRolePermissionPanel(
   );
 }
 
-async function selectDefaultPolicyScope(
+export async function selectDefaultPolicyScope(
   section: HTMLElement,
   actionLabel: string,
   optionLabel: string
@@ -77,7 +77,7 @@ async function selectDefaultPolicyScope(
   fireEvent.click(optionMatches[optionMatches.length - 1]);
 }
 
-async function selectPolicyCombobox(
+export async function selectPolicyCombobox(
   scope: HTMLElement,
   comboboxName: string,
   optionLabel: string

@@ -143,7 +143,7 @@ describe('WorkflowEditor assembly', () => {
     ).not.toBeInTheDocument();
   }, 20_000);
 
-  test('AC-004 hides conversation tooling for workflow editors', () => {
+  test('AC-004 hides conversation tooling for workflow editors', async () => {
     await renderWorkflowScene(
       <WorkflowEditorAssembly
         applicationId="app-1"

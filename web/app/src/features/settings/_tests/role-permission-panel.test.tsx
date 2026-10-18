@@ -62,7 +62,7 @@ vi.mock('../api/roles', () => rolesApi);
 vi.mock('../api/permissions', () => permissionsApi);
 vi.mock('../api/data-models', () => dataModelsApi);
 
-import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
+import { resetAuthStore } from '../../../state/auth-store';
 import {
   appI18n,
   loadApplicationI18nResources
