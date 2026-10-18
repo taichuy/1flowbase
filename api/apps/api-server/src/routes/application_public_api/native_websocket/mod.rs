@@ -61,6 +61,8 @@ pub(crate) async fn upgrade(
     .into_principal();
     let authorization = Arc::new(NativeWebSocketAuthorization { principal });
     Ok(websocket
+        .max_message_size(usize::MAX)
+        .max_frame_size(usize::MAX)
         .protocols([NATIVE_WEBSOCKET_PROTOCOL])
         .on_upgrade(move |socket| async move {
             actor::run_connection(socket, state, authorization).await;

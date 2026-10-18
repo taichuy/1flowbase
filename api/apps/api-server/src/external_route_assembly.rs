@@ -99,6 +99,12 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
         self
     }
 
+    /// Apply an extractor policy without losing the mounted endpoint inventory.
+    pub(crate) fn default_body_limit(mut self, limit: axum::extract::DefaultBodyLimit) -> Self {
+        self.router = self.router.layer(limit);
+        self
+    }
+
     pub(crate) fn nest(mut self, prefix: &str, other: Self) -> Self {
         self.routes
             .extend(other.routes.into_iter().map(|(method, path, binding)| {

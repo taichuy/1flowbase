@@ -21,7 +21,7 @@ pub(crate) mod workflow_extension_interface;
 
 use std::sync::Arc;
 
-use axum::{extract::DefaultBodyLimit, handler::Handler, Router};
+use axum::{extract::DefaultBodyLimit, Router};
 
 use crate::app_state::ApiState;
 
@@ -60,6 +60,7 @@ pub(crate) fn route_assembly(
             "/files",
             crate::external_route_assembly::post(native::upload_native_file),
         )
+        .default_body_limit(DefaultBodyLimit::disable())
 }
 
 pub fn compatible_router() -> Router<Arc<ApiState>> {
@@ -79,9 +80,7 @@ pub(crate) fn compatible_route_assembly(
         )
         .route(
             "/responses",
-            crate::external_route_assembly::post(
-                openai::create_response.layer(DefaultBodyLimit::disable()),
-            ),
+            crate::external_route_assembly::post(openai::create_response),
         )
         .route(
             "/v1/models",
@@ -94,13 +93,11 @@ pub(crate) fn compatible_route_assembly(
         .route(
             "/v1/responses",
             crate::external_route_assembly::get(responses_websocket::upgrade)
-                .post(openai::create_response.layer(DefaultBodyLimit::disable())),
+                .post(openai::create_response),
         )
         .route(
             "/v1/responses/compact",
-            crate::external_route_assembly::post(
-                openai::create_response_compact.layer(DefaultBodyLimit::disable()),
-            ),
+            crate::external_route_assembly::post(openai::create_response_compact),
         )
         .route(
             "/v1/chat/completions/models",
@@ -114,4 +111,5 @@ pub(crate) fn compatible_route_assembly(
             "/v1/messages",
             crate::external_route_assembly::post(anthropic::create_message),
         )
+        .default_body_limit(DefaultBodyLimit::disable())
 }
