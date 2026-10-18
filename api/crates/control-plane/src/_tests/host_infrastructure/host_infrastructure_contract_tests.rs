@@ -3,9 +3,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use control_plane::ports::{
     AppendTerminalIfMissingAndCloseOutcome, CacheStore, ClaimedTask, DistributedLock, EventBus,
-    RateLimitDecision, RateLimitStore, RuntimeEventCloseReason, RuntimeEventEnvelope,
-    RuntimeEventPayload, RuntimeEventSource, RuntimeEventStream, RuntimeEventStreamPolicy,
-    RuntimeEventSubscription, RuntimeEventTrimPolicy, TaskQueue,
+    EventBusError, EventBusLimits, EventBusSnapshot, EventConsumer, EventPermit, RateLimitDecision,
+    RateLimitStore, RuntimeEventCloseReason, RuntimeEventEnvelope, RuntimeEventPayload,
+    RuntimeEventSource, RuntimeEventStream, RuntimeEventStreamPolicy, RuntimeEventSubscription,
+    RuntimeEventTrimPolicy, TaskQueue,
 };
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -74,12 +75,22 @@ impl DistributedLock for FakeInfrastructure {
 
 #[async_trait]
 impl EventBus for FakeInfrastructure {
-    async fn publish(&self, _topic: &str, _payload: serde_json::Value) -> anyhow::Result<()> {
+    fn configure_budget(&self, _limits: EventBusLimits) -> Result<(), EventBusError> {
         Ok(())
     }
-
-    async fn poll(&self, _topic: &str) -> anyhow::Result<Option<serde_json::Value>> {
-        Ok(Some(json!({ "event": true })))
+    fn open_consumer(&self, _topic: &str) -> Result<Box<dyn EventConsumer>, EventBusError> {
+        Err(EventBusError::NoConsumer)
+    }
+    fn event_bus_snapshot(&self) -> EventBusSnapshot {
+        EventBusSnapshot::default()
+    }
+    async fn reserve(
+        &self,
+        _topic: &str,
+        _bytes: u64,
+        _deadline: std::time::Instant,
+    ) -> Result<Box<dyn EventPermit>, EventBusError> {
+        Err(EventBusError::NoConsumer)
     }
 }
 
@@ -221,14 +232,20 @@ async fn infrastructure_contracts_are_object_safe_and_async() {
         cache.get_json("key").await.unwrap(),
         Some(json!({ "ok": true }))
     );
-    assert!(lock
-        .acquire("lock", "owner", Duration::seconds(1))
-        .await
-        .unwrap());
-    assert_eq!(
-        events.poll("topic").await.unwrap(),
-        Some(json!({ "event": true }))
+    assert!(
+        lock.acquire("lock", "owner", Duration::seconds(1))
+            .await
+            .unwrap()
     );
+    assert!(matches!(
+        events.open_consumer("topic"),
+        Err(EventBusError::NoConsumer)
+    ));
+    assert!(matches!(
+        events.reserve("topic", 4, std::time::Instant::now()).await,
+        Err(EventBusError::NoConsumer)
+    ));
+    assert_eq!(events.event_bus_snapshot(), EventBusSnapshot::default());
     assert_eq!(
         queue
             .claim("queue", "worker-1", Duration::seconds(1))

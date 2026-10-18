@@ -966,68 +966,9 @@ pub trait DistributedLock: Send + Sync {
     }
 }
 
-#[async_trait]
-pub trait EventBus: Send + Sync {
-    async fn publish(&self, topic: &str, payload: serde_json::Value) -> anyhow::Result<()>;
-
-    async fn poll(&self, topic: &str) -> anyhow::Result<Option<serde_json::Value>>;
-
-    fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
-        EphemeralInspectionCapabilities::unsupported()
-    }
-
-    async fn list_ephemeral_entries(&self) -> anyhow::Result<Vec<EphemeralEntrySnapshot>> {
-        Ok(Vec::new())
-    }
-
-    async fn summarize_ephemeral_entries(
-        &self,
-    ) -> anyhow::Result<EphemeralInspectionSummarySnapshot> {
-        Ok(summarize_ephemeral_entries(
-            &self.list_ephemeral_entries().await?,
-        ))
-    }
-
-    async fn list_ephemeral_tree(
-        &self,
-        request: EphemeralInspectionPageRequest,
-    ) -> anyhow::Result<EphemeralInspectionTreePage> {
-        Ok(paginate_ephemeral_tree(
-            self.list_ephemeral_entries().await?,
-            request,
-        ))
-    }
-
-    async fn list_ephemeral_entry_page(
-        &self,
-        request: EphemeralInspectionPageRequest,
-    ) -> anyhow::Result<EphemeralInspectionEntryPage> {
-        Ok(paginate_ephemeral_entries(
-            self.list_ephemeral_entries().await?,
-            request,
-        ))
-    }
-
-    async fn search_ephemeral_entry_page(
-        &self,
-        query: &str,
-        request: EphemeralInspectionPageRequest,
-    ) -> anyhow::Result<EphemeralInspectionEntryPage> {
-        Ok(search_ephemeral_entries(
-            self.list_ephemeral_entries().await?,
-            query,
-            request,
-        ))
-    }
-
-    async fn reveal_ephemeral_entry(
-        &self,
-        _entry_ref: &str,
-        _reveal_mode: EphemeralValueRevealMode,
-    ) -> anyhow::Result<Option<EphemeralEntryValueSnapshot>> {
-        Ok(None)
-    }
-}
+#[path = "infrastructure/event_bus.rs"]
+mod event_bus;
+pub use event_bus::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClaimedTask {

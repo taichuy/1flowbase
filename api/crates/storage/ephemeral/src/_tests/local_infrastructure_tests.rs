@@ -9,10 +9,11 @@ use time::Duration;
 async fn memory_distributed_lock_checks_owner() {
     let lock = MemoryDistributedLock::new("flowbase:lock");
 
-    assert!(lock
-        .acquire("install", "owner-a", Duration::seconds(30))
-        .await
-        .unwrap());
+    assert!(
+        lock.acquire("install", "owner-a", Duration::seconds(30))
+            .await
+            .unwrap()
+    );
     assert!(!lock.release("install", "owner-b").await.unwrap());
     assert!(lock.release("install", "owner-a").await.unwrap());
 }
@@ -42,71 +43,56 @@ async fn memory_distributed_lock_exposes_ephemeral_inspection_snapshots() {
 }
 
 #[tokio::test]
-async fn memory_event_bus_delivers_by_topic_in_fifo_order() {
+async fn memory_event_bus_explicit_lifecycle_preserves_inspection_and_fifo() {
+    use control_plane_contracts::ports::EventBusLimits;
+    use std::time::{Duration as StdDuration, Instant};
     let bus = MemoryEventBus::new();
-
-    bus.publish("plugin.install", json!({ "id": 1 }))
+    bus.configure_budget(EventBusLimits {
+        max_items: 2,
+        max_json_bytes: 128,
+        max_waiters: 2,
+        max_topics: 1,
+        max_consumers: 1,
+        max_topic_name_bytes: 64,
+    })
+    .unwrap();
+    let consumer = bus.open_consumer("plugin.install").unwrap();
+    for id in [1, 2] {
+        bus.reserve(
+            "plugin.install",
+            32,
+            Instant::now() + StdDuration::from_secs(1),
+        )
         .await
+        .unwrap()
+        .send(json!({"id": id}))
         .unwrap();
-    bus.publish("plugin.install", json!({ "id": 2 }))
+    }
+    let entries: Vec<_> = bus
+        .list_ephemeral_entries()
         .await
-        .unwrap();
-    bus.publish("runtime.debug", json!({ "id": 3 }))
-        .await
-        .unwrap();
-
-    assert_eq!(bus.poll("other").await.unwrap(), None);
-    assert_eq!(
-        bus.poll("plugin.install").await.unwrap(),
-        Some(json!({ "id": 1 }))
-    );
-    assert_eq!(
-        bus.poll("plugin.install").await.unwrap(),
-        Some(json!({ "id": 2 }))
-    );
-    assert_eq!(
-        bus.poll("runtime.debug").await.unwrap(),
-        Some(json!({ "id": 3 }))
-    );
-}
-
-#[tokio::test]
-async fn memory_event_bus_exposes_ephemeral_inspection_snapshots_without_polling() {
-    let bus = MemoryEventBus::new();
-
-    bus.publish("plugin.install", json!({ "id": 1 }))
-        .await
-        .unwrap();
-
-    let entries = bus.list_ephemeral_entries().await.unwrap();
-    assert_eq!(entries.len(), 1);
+        .unwrap()
+        .into_iter()
+        .filter(|entry| entry.entry_kind == "event")
+        .collect();
+    assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].contract_code, "event-bus");
     assert_eq!(entries[0].group_code.as_deref(), Some("plugin.install"));
-    assert_eq!(entries[0].key, "plugin.install:1");
-    assert!(entries[0].sensitive);
-
+    assert_eq!(entries[0].status, "buffered");
     let revealed = bus
         .reveal_ephemeral_entry(&entries[0].entry_ref, EphemeralValueRevealMode::Full)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(revealed.value.unwrap(), json!({ "id": 1 }));
-    assert_eq!(
-        bus.poll("plugin.install").await.unwrap(),
-        Some(json!({ "id": 1 }))
-    );
-}
-
-#[tokio::test]
-async fn memory_event_bus_rejects_oversized_payloads() {
-    let bus = MemoryEventBus::new();
-
-    let result = bus
-        .publish("large", json!({ "blob": "x".repeat(2 * 1024 * 1024) }))
-        .await;
-
-    assert!(result.is_err());
-    assert_eq!(bus.list_ephemeral_entries().await.unwrap(), Vec::new());
+    assert_eq!(revealed.value, Some(json!({"id": 1})));
+    consumer.close();
+    for id in [1, 2] {
+        let delivery = consumer.recv().await.unwrap().unwrap();
+        assert_eq!(delivery.body(), &json!({"id": id}));
+    }
+    assert!(consumer.recv().await.unwrap().is_none());
+    drop(consumer);
+    assert_eq!(bus.event_bus_snapshot().topics, 0);
 }
 
 #[tokio::test]
@@ -133,10 +119,12 @@ async fn memory_task_queue_idempotency_claim_ack_and_fail_are_worker_checked() {
     assert_eq!(task.idempotency_key.as_deref(), Some("preview:file:a"));
     assert!(task.claim_expires_at_unix > time::OffsetDateTime::now_utc().unix_timestamp());
     assert!(!queue.ack("preview", &task_id, "worker-b").await.unwrap());
-    assert!(queue
-        .fail("preview", &task_id, "worker-a", "retry")
-        .await
-        .unwrap());
+    assert!(
+        queue
+            .fail("preview", &task_id, "worker-a", "retry")
+            .await
+            .unwrap()
+    );
 
     let reclaimed = queue
         .claim("preview", "worker-b", Duration::seconds(30))
@@ -197,16 +185,20 @@ async fn memory_task_queue_reclaims_after_visibility_timeout() {
         .await
         .unwrap();
 
-    assert!(queue
-        .claim("preview", "worker-a", Duration::milliseconds(30))
-        .await
-        .unwrap()
-        .is_some());
-    assert!(queue
-        .claim("preview", "worker-b", Duration::seconds(30))
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        queue
+            .claim("preview", "worker-a", Duration::milliseconds(30))
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        queue
+            .claim("preview", "worker-b", Duration::seconds(30))
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
 
@@ -253,9 +245,11 @@ async fn memory_task_queue_applies_capacity_per_queue_name() {
         .enqueue("workflow", json!({ "run": 2 }), None)
         .await
         .unwrap();
-    assert!(error
-        .to_string()
-        .contains("task queue `provider-request-logs` reached capacity 1"));
+    assert!(
+        error
+            .to_string()
+            .contains("task queue `provider-request-logs` reached capacity 1")
+    );
     assert_eq!(queue.list_ephemeral_entries().await.unwrap().len(), 3);
 }
 
@@ -275,9 +269,11 @@ async fn memory_task_queue_counts_claimed_tasks_toward_capacity() {
         .enqueue("logs", json!({ "attempt": 2 }), None)
         .await
         .unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("task queue `logs` reached capacity 1"));
+    assert!(
+        error
+            .to_string()
+            .contains("task queue `logs` reached capacity 1")
+    );
 }
 
 #[tokio::test]

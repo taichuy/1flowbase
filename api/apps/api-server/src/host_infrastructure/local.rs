@@ -63,7 +63,7 @@ pub fn build_local_host_infrastructure_from_host_extensions(
     )
 }
 
-/// Production assembly: ephemeral live events plus retained pre-cutover recovery snapshots.
+/// Production assembly: an empty, consumer-owned EventBus; owners inject explicit budgets.
 pub fn build_host_infrastructure_from_host_extensions(
     host_extensions: &HostExtensionRegistry,
     graph: &Arc<EffectiveExtensionGraph>,
