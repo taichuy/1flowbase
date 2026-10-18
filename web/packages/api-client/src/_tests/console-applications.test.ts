@@ -52,6 +52,7 @@ describe('console application management client', () => {
           collector_code: 'codex-logs-collector',
           source_client: 'codex',
           display_name: 'Codex',
+          icon: null,
           description: 'Collect local sessions',
           version: '0.2.0',
           execution_target: 'client',

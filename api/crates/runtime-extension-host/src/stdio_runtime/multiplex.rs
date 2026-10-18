@@ -1,11 +1,11 @@
 use super::*;
 use extension_contracts::{
-    MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService, MultiplexWorkerMessage,
-    PluginDataRequest, MULTIPLEX_OUTPUT_BUDGET_BYTES, RUNTIME_WORKER_RETENTION_V1,
+    MULTIPLEX_OUTPUT_BUDGET_BYTES, MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService,
+    MultiplexWorkerMessage, PluginDataRequest, RUNTIME_WORKER_RETENTION_V1,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
 
 const QUEUE_CAPACITY: usize = 8;
 const WRITER_BYTES: usize = MULTIPLEX_OUTPUT_BUDGET_BYTES;
@@ -485,7 +485,7 @@ impl MultiplexProviderWorker {
                     output_events.push(event);
                 }
                 MultiplexWorkerMessage::ResourceRetention { .. } => {
-                    return Err(transport_error("worker control on invocation lane"))
+                    return Err(transport_error("worker control on invocation lane"));
                 }
                 MultiplexWorkerMessage::Response { response, .. } => {
                     guard.armed = false;
@@ -1046,11 +1046,10 @@ mod exchange_host_services;
 fn exchange_service_response<T: serde::Serialize>(
     result: Result<T, extension_contracts::HostServiceError>,
 ) -> Value {
-    let value = match result {
+    match result {
         Ok(value) => serde_json::json!({"result":value}),
         Err(error) => serde_json::json!({"error":error}),
-    };
-    value
+    }
 }
 
 #[cfg(all(test, unix))]

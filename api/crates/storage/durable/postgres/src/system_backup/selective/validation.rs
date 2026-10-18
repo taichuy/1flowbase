@@ -6,7 +6,7 @@ use crate::secret_crypto::{
     decrypt_secret_json, decrypt_secret_json_with_aad, encrypt_secret_json,
     encrypt_secret_json_with_aad,
 };
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use control_plane_contracts::system_backup::selective::SelectiveBackupPreview;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -240,17 +240,9 @@ fn bytea(value: &Value) -> Result<Vec<u8>> {
         .and_then(|s| s.strip_prefix("\\x"))
         .context("invalid notification bytea")?;
     ensure!(hex.len() % 2 == 0, "invalid notification bytea length");
-    hex.as_bytes()
-        .chunks_exact(2)
-        .map(|pair| {
-            let digit = |b: u8| {
-                (b as char)
-                    .to_digit(16)
-                    .context("invalid notification bytea digit")
-            };
-            Ok(((digit(pair[0])? << 4) | digit(pair[1])?) as u8)
-        })
-        .collect()
+    let mut bytes = vec![0; hex.len() / 2];
+    base16ct::mixed::decode(hex, &mut bytes).context("invalid notification bytea digit")?;
+    Ok(bytes)
 }
 
 fn compact(row: &Value) -> bool {
@@ -848,3 +840,7 @@ pub(super) async fn validate(
     }
     Ok((header, preview))
 }
+
+#[cfg(test)]
+#[path = "_tests/notification_bytea.rs"]
+mod notification_bytea_tests;
