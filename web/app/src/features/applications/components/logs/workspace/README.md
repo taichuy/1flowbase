@@ -20,3 +20,5 @@ export default function AllApplicationLogsBlock({ ctx }) {
 ```
 
 总日志的批量导出按 `application_id` 分组下载归档；导入需确认目标应用，并保留该应用的导入任务恢复信息。后端负责跨应用筛选、排序及分页；前端不合并各应用的分页结果。
+
+`archive-import-persistence.ts` 独占浏览器中按应用保存的导入任务恢复信息，保留既有存储键与 JSON 形状；`ApplicationLogsWorkspace` 负责恢复时机、任务状态和界面，不在存储模块发起请求或判断导入结果。
