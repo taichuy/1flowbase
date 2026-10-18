@@ -7,6 +7,7 @@ import {
   within
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { createTestMemoryRouter } from '../../../test/renderers/create-test-memory-router';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const billingApi = vi.hoisted(() => ({
@@ -76,8 +77,8 @@ function authenticate() {
   });
 }
 
-function renderWithProviders(node: ReactNode) {
-  return render(<AppProviders>{node}</AppProviders>);
+async function renderWithProviders(node: ReactNode) {
+  return render(<AppProviders>{await createTestMemoryRouter(node)}</AppProviders>);
 }
 
 describe('billing settings panels', () => {
@@ -208,7 +209,7 @@ describe('billing settings panels', () => {
         ]
       }))
     });
-    renderWithProviders(<PricingRulesPanel canManage />);
+    await renderWithProviders(<PricingRulesPanel canManage />);
     expect(await screen.findByText('gpt-test')).toBeInTheDocument();
     for (const rate of [
       '1K / 0$',
@@ -232,7 +233,7 @@ describe('billing settings panels', () => {
       ...page,
       items: [{ ...page.items[0]!, rules }]
     });
-    renderWithProviders(<PricingRulesPanel canManage />);
+    await renderWithProviders(<PricingRulesPanel canManage />);
     await screen.findByText('gpt-test');
     fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
     const dialog = await screen.findByRole('dialog');
@@ -274,7 +275,7 @@ describe('billing settings panels', () => {
   test.each(['{}', 'null', '{broken'])(
     'AC5 rejects non-array or malformed rules: %s',
     async (value) => {
-      renderWithProviders(<PricingRulesPanel canManage />);
+      await renderWithProviders(<PricingRulesPanel canManage />);
       await screen.findByText('gpt-test');
       fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
       const dialog = await screen.findByRole('dialog');
@@ -292,7 +293,7 @@ describe('billing settings panels', () => {
   );
 
   test('shows fixed pricing columns and opens the validated rule editor', async () => {
-    renderWithProviders(<PricingRulesPanel canManage />);
+    await renderWithProviders(<PricingRulesPanel canManage />);
     expect(await screen.findByText('gpt-test')).toBeInTheDocument();
     expect(screen.getByText('1K / 0$')).toBeInTheDocument();
     expect(screen.getByText('1M / 5.00$')).toBeInTheDocument();
@@ -342,7 +343,7 @@ describe('billing settings panels', () => {
   });
 
   test('submits pricing filters through the shared server-paginated table', async () => {
-    renderWithProviders(<PricingRulesPanel canManage />);
+    await renderWithProviders(<PricingRulesPanel canManage />);
     await screen.findByText('gpt-test');
     fireEvent.change(screen.getByLabelText('上游模型 ID'), {
       target: { value: 'gpt-5' }
@@ -360,7 +361,7 @@ describe('billing settings panels', () => {
   });
 
   test('loads, refreshes, and installs the remote official catalog without update semantics', async () => {
-    renderWithProviders(<PricingCatalogPanel />);
+    await renderWithProviders(<PricingCatalogPanel />);
     expect(await screen.findByText('zero')).toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: '缓存写入单价' })
@@ -405,7 +406,7 @@ describe('billing settings panels', () => {
     });
 
     try {
-      renderWithProviders(<CreditManagementPanel canManage />);
+      await renderWithProviders(<CreditManagementPanel canManage />);
       expect(await screen.findByText('$4.00')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '增加额度' }));
       const dialog = await screen.findByRole('dialog');
@@ -440,7 +441,7 @@ describe('billing settings panels', () => {
     billingApi.executeSettingsCreditCommand.mockRejectedValueOnce(
       new Error('backend rejected')
     );
-    renderWithProviders(<CreditManagementPanel canManage />);
+    await renderWithProviders(<CreditManagementPanel canManage />);
     expect(await screen.findByText('$4.00')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '调整余额' }));
     const dialog = await screen.findByRole('dialog');
@@ -462,11 +463,7 @@ describe('billing settings panels', () => {
       unchanged: 1,
       retired: 0
     });
-    render(
-      <AppProviders>
-        <PricingCatalogPanel />
-      </AppProviders>
-    );
+    await renderWithProviders(<PricingCatalogPanel />);
     fireEvent.click(await screen.findByRole('button', { name: /^同\s*步$/ }));
     expect(await screen.findByText('模型价格同步完成')).toBeInTheDocument();
     expect(
@@ -477,7 +474,7 @@ describe('billing settings panels', () => {
     );
   });
   test('credit users are queried without passing the React Query context as a department filter', async () => {
-    renderWithProviders(<CreditManagementPanel canManage={false} />);
+    await renderWithProviders(<CreditManagementPanel canManage={false} />);
     await screen.findByText('Member One');
     expect(membersApi.fetchSettingsMembers).toHaveBeenCalledWith();
   });
