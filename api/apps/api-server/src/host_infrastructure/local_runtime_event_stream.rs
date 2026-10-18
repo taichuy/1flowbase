@@ -197,7 +197,7 @@ struct LiveBackfill {
 // using the typed envelope; replay and inspection decode only when requested.
 struct RetainedRuntimeEvent {
     sequence: i64,
-    durability: RuntimeEventDurability,
+    required_delivery: bool,
     terminal_reason: Option<RuntimeEventCloseReason>,
     wire: Box<[u8]>,
 }
@@ -206,7 +206,7 @@ impl RetainedRuntimeEvent {
     fn encode(event: &RuntimeEventEnvelope) -> Result<Self> {
         Ok(Self {
             sequence: event.sequence,
-            durability: event.durability,
+            required_delivery: is_required_delivery_event(event),
             terminal_reason: RuntimeEventCloseReason::from_terminal_event_type(&event.event_type),
             wire: serde_json::to_vec(event)?.into_boxed_slice(),
         })
@@ -217,7 +217,7 @@ impl RetainedRuntimeEvent {
     }
 
     fn is_required(&self) -> bool {
-        is_required_durability(self.durability)
+        self.required_delivery
     }
 }
 
@@ -523,7 +523,7 @@ impl LocalRunEventStream {
             .ok_or_else(|| {
                 anyhow!("runtime event stream terminal append requires a terminal event")
             })?;
-        ensure_ephemeral_payload_size(&event.payload)?;
+        // A terminal must reach its subscribers regardless of diagnostic budgets.
         let run = self;
 
         let outcome = {
@@ -558,7 +558,7 @@ impl LocalRunEventStream {
                 let envelope = RuntimeEventEnvelope::new(run_id, sequence, event);
                 let retained = RetainedRuntimeEvent::encode(&envelope)?;
                 let retained_bytes = retained.wire.len();
-                run.make_room_for(&mut ring, retained_bytes)?;
+                run.make_room_for(&mut ring, retained_bytes, retained.is_required())?;
                 run.next_sequence.store(sequence + 1, Ordering::SeqCst);
                 *run.last_event_at
                     .lock()
@@ -857,7 +857,12 @@ impl LocalRunEventStream {
         Ok(())
     }
 
-    fn make_room_for(&self, ring: &mut RetainedRuntimeEvents, incoming_bytes: usize) -> Result<()> {
+    fn make_room_for(
+        &self,
+        ring: &mut RetainedRuntimeEvents,
+        incoming_bytes: usize,
+        required_delivery: bool,
+    ) -> Result<()> {
         match self.policy.overflow_behavior {
             RuntimeEventOverflowBehavior::DropOldEphemeralKeepRequired => {
                 while ring.events.len() >= self.policy.max_events
@@ -865,6 +870,11 @@ impl LocalRunEventStream {
                 {
                     let Some(index) = ring.events.iter().position(|event| !event.is_required())
                     else {
+                        // These budgets trim diagnostics. Required delivery is governed by
+                        // live-lane backpressure and generation reclamation, not body size.
+                        if required_delivery {
+                            break;
+                        }
                         let capacity = if ring.events.len() >= self.policy.max_events {
                             "event"
                         } else {
@@ -890,10 +900,6 @@ impl LocalRunEventStream {
     }
 }
 
-fn is_required_event(event: &RuntimeEventEnvelope) -> bool {
-    is_required_durability(event.durability)
-}
-
 fn is_required_durability(durability: RuntimeEventDurability) -> bool {
     matches!(
         durability,
@@ -902,9 +908,13 @@ fn is_required_durability(durability: RuntimeEventDurability) -> bool {
 }
 
 fn is_required_delivery_event(event: &RuntimeEventEnvelope) -> bool {
-    is_required_event(event)
+    requires_delivery(&event.event_type, event.durability)
+}
+
+fn requires_delivery(event_type: &str, durability: RuntimeEventDurability) -> bool {
+    is_required_durability(durability)
         || matches!(
-            event.event_type.as_str(),
+            event_type,
             "text_delta"
                 | "reasoning_delta"
                 | "reasoning_signature_delta"
@@ -1024,7 +1034,9 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         run_id: Uuid,
         event: RuntimeEventPayload,
     ) -> Result<RuntimeEventEnvelope> {
-        ensure_ephemeral_payload_size(&event.payload)?;
+        if !requires_delivery(&event.event_type, event.durability) {
+            ensure_ephemeral_payload_size(&event.payload)?;
+        }
         let run = self.run(run_id)?;
 
         let envelope = {
@@ -1037,7 +1049,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             let envelope = RuntimeEventEnvelope::new(run_id, sequence, event);
             let retained = RetainedRuntimeEvent::encode(&envelope)?;
             let retained_bytes = retained.wire.len();
-            run.make_room_for(&mut ring, retained_bytes)?;
+            run.make_room_for(&mut ring, retained_bytes, retained.is_required())?;
             run.next_sequence.store(sequence + 1, Ordering::SeqCst);
             *run.last_event_at
                 .lock()
@@ -1244,7 +1256,9 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
     }
 
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
-        EphemeralInspectionCapabilities::supported()
+        let mut capabilities = EphemeralInspectionCapabilities::supported();
+        capabilities.max_payload_size_bytes = u64::MAX;
+        capabilities
     }
 
     async fn list_ephemeral_entries(&self) -> Result<Vec<EphemeralEntrySnapshot>> {

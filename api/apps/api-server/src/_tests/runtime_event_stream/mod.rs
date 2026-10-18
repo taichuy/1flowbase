@@ -1,4 +1,5 @@
 mod lifecycle;
+mod payload_admission;
 mod memory_comparison;
 mod recoverable;
 
@@ -300,7 +301,7 @@ async fn local_runtime_event_stream_can_evict_ephemeral_history_waiting_for_pers
 }
 
 #[tokio::test]
-async fn local_runtime_event_stream_byte_budget_rejects_required_overflow() {
+async fn local_runtime_event_stream_byte_budget_preserves_required_overflow() {
     let stream = LocalRuntimeEventStream::new();
     let run_id = Uuid::now_v7();
     let policy = RuntimeEventStreamPolicy {
@@ -317,20 +318,17 @@ async fn local_runtime_event_stream_byte_budget_rejects_required_overflow() {
         )
         .await
         .unwrap();
-    let error = stream
+    stream
         .append(
             run_id,
             blob_event(1_800, RuntimeEventDurability::DurableRequired),
         )
         .await
-        .unwrap_err();
+        .unwrap();
 
-    assert!(error
-        .to_string()
-        .contains("runtime event stream byte capacity exceeded"));
     let replay = stream.replay(run_id, Some(0), 10).await.unwrap();
-    assert_eq!(replay.len(), 1);
-    assert_eq!(replay[0].sequence, 1);
+    assert_eq!(replay.len(), 2);
+    assert_eq!((replay[0].sequence, replay[1].sequence), (1, 2));
 }
 
 #[tokio::test]

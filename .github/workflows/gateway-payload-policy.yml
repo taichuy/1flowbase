@@ -86,6 +86,8 @@ jobs:
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib payload_admission -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/ingress.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/ingress.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/responses.log
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/ingress.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib runtime_event_stream -- --test-threads=1 > tmp/test-governance/gateway-payload-policy/ci/runtime-events.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/runtime-events.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-payload-policy/ci/runtime-events.log
       - name: Build candidate API for isolated development verification
         run: |
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server > tmp/test-governance/gateway-payload-policy/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-payload-policy/ci/build.log; exit 1; }
