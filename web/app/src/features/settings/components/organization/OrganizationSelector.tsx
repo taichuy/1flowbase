@@ -19,6 +19,8 @@ import { i18nText } from '../../../../shared/i18n/text';
 import './organization-management.css';
 interface OrganizationNode {
   key: string;
+  kind: 'root' | 'department' | 'pagination';
+  departmentId?: string;
   title: ReactNode;
   children?: OrganizationNode[];
   isLeaf?: boolean;
@@ -61,7 +63,8 @@ export function OrganizationSelector({
         const group = groups.find((group) => group.parent_id === row.id);
         if (group)
           children.push({
-            key: `more:${row.id}`,
+            key: `pagination:department:${row.id}`,
+            kind: 'pagination',
             title: (
               <Button
                 size="small"
@@ -77,7 +80,9 @@ export function OrganizationSelector({
           });
         return [
           {
-            key: row.id,
+            key: `department:${row.id}`,
+            kind: 'department',
+            departmentId: row.id,
             title: (
               <span className="organization-tree-label">
                 <FolderOutlined className="organization-tree-folder" />
@@ -94,7 +99,8 @@ export function OrganizationSelector({
     const rootGroup = groups.find((group) => !group.parent_id);
     if (rootGroup)
       roots.push({
-        key: 'more:root',
+        key: 'pagination:root',
+        kind: 'pagination',
         title: (
           <Button
             size="small"
@@ -111,6 +117,7 @@ export function OrganizationSelector({
     return [
       {
         key: ORGANIZATION_ROOT_KEY,
+        kind: 'root',
         isLeaf: false,
         title: (
           <span className="organization-tree-label">
@@ -176,27 +183,25 @@ export function OrganizationSelector({
           }
         }}
       >
-        <Tree
+        <Tree<OrganizationNode>
           key={searching ? `search:${search.trim()}` : 'tree'}
           blockNode
           expandedKeys={
             searching
-              ? departments.map((item) => item.id).concat(ORGANIZATION_ROOT_KEY)
+              ? departments.map((item) => `department:${item.id}`).concat(ORGANIZATION_ROOT_KEY)
               : expandedKeys
           }
           autoExpandParent={false}
           onExpand={(keys, { expanded, node }) => {
             if (!searching) setExpandedKeys(keys);
-            if (expanded && !searching && node.key !== ORGANIZATION_ROOT_KEY)
-              void onExpand(String(node.key));
+            if (expanded && !searching && node.kind === 'department')
+              void onExpand(node.departmentId!);
           }}
-          selectedKeys={[selected ?? ORGANIZATION_ROOT_KEY]}
+          selectedKeys={[selected === undefined ? ORGANIZATION_ROOT_KEY : `department:${selected}`]}
           treeData={treeData}
-          onSelect={(keys) => {
-            if (keys.length && !String(keys[0]).startsWith('more:'))
-              onSelect(
-                keys[0] === ORGANIZATION_ROOT_KEY ? undefined : String(keys[0])
-              );
+          onSelect={(keys, { node }) => {
+            if (keys.length && node.kind !== 'pagination')
+              onSelect(node.kind === 'root' ? undefined : node.departmentId);
           }}
         />
       </ConfigProvider>
