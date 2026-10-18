@@ -29,51 +29,30 @@ import {
   virtualClientKey,
   virtualClientEventKey
 } from './virtual-client-rows';
-import { appI18n } from '../../../../../../shared/i18n/app-i18n';
+import { useTranslation } from 'react-i18next';
 import { integrityLabel } from '../trajectory-presentation';
 import { ClientTrajectoryDetail } from './ClientTrajectoryDetail';
 import { categoryLabel, clientLane, sectionLabel } from './presentation';
 import './client-trajectory.css';
-const text = (key: string) =>
+const text = (key: string, language?: string) =>
   (
     ({
-      missing_identity: i18nText(
-        'agentFlow',
-        'conversation_trajectory.missing_identity'
-      ),
-      provenance: i18nText('agentFlow', 'conversation_trajectory.provenance'),
-      all_sources: i18nText('agentFlow', 'conversation_trajectory.all_sources'),
-      main: i18nText('agentFlow', 'conversation_trajectory.main'),
-      subagent: i18nText('agentFlow', 'conversation_trajectory.subagent'),
-      from: i18nText('agentFlow', 'conversation_trajectory.from'),
-      to: i18nText('agentFlow', 'conversation_trajectory.to'),
-      search_sections: i18nText(
-        'agentFlow',
-        'conversation_trajectory.search_sections'
-      ),
-      loaded: i18nText('agentFlow', 'conversation_trajectory.loaded'),
-      search: i18nText('agentFlow', 'conversation_trajectory.search'),
-      invalid_time: i18nText(
-        'agentFlow',
-        'conversation_trajectory.invalid_time'
-      ),
-      filters: i18nText('agentFlow', 'conversation_trajectory.filters'),
-      loaded_categories: i18nText(
-        'agentFlow',
-        'conversation_trajectory.loaded_categories'
-      ),
-      loaded_positions: i18nText(
-        'agentFlow',
-        'conversation_trajectory.loaded_positions'
-      ),
-      subagent_marker: i18nText(
-        'agentFlow',
-        'conversation_trajectory.subagent_marker'
-      ),
-      related_unloaded: i18nText(
-        'agentFlow',
-        'conversation_trajectory.related_unloaded'
-      )
+      missing_identity: i18nText('agentFlow', 'conversation_trajectory.missing_identity', { lng: language }),
+      provenance: i18nText('agentFlow', 'conversation_trajectory.provenance', { lng: language }),
+      all_sources: i18nText('agentFlow', 'conversation_trajectory.all_sources', { lng: language }),
+      main: i18nText('agentFlow', 'conversation_trajectory.main', { lng: language }),
+      subagent: i18nText('agentFlow', 'conversation_trajectory.subagent', { lng: language }),
+      from: i18nText('agentFlow', 'conversation_trajectory.from', { lng: language }),
+      to: i18nText('agentFlow', 'conversation_trajectory.to', { lng: language }),
+      search_sections: i18nText('agentFlow', 'conversation_trajectory.search_sections', { lng: language }),
+      loaded: i18nText('agentFlow', 'conversation_trajectory.loaded', { lng: language }),
+      search: i18nText('agentFlow', 'conversation_trajectory.search', { lng: language }),
+      invalid_time: i18nText('agentFlow', 'conversation_trajectory.invalid_time', { lng: language }),
+      filters: i18nText('agentFlow', 'conversation_trajectory.filters', { lng: language }),
+      loaded_categories: i18nText('agentFlow', 'conversation_trajectory.loaded_categories', { lng: language }),
+      loaded_positions: i18nText('agentFlow', 'conversation_trajectory.loaded_positions', { lng: language }),
+      subagent_marker: i18nText('agentFlow', 'conversation_trajectory.subagent_marker', { lng: language }),
+      related_unloaded: i18nText('agentFlow', 'conversation_trajectory.related_unloaded', { lng: language })
     }) as Record<string, string>
   )[key];
 /** Canonical identity comes from the server; a record is only an initial focus. */
@@ -143,7 +122,8 @@ function CanonicalTimeline({
   focusRecordId: string;
   active: boolean;
 }) {
-  const language = appI18n.resolvedLanguage ?? appI18n.language;
+  const { i18n } = useTranslation('agentFlow');
+  const language = i18n.resolvedLanguage ?? i18n.language;
   const [category, setCategory] = useState<string>();
   const [timeScale, setTimeScale] = useState(true);
   const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
@@ -299,7 +279,7 @@ function CanonicalTimeline({
     const labels = new Map<string, string>();
     return timelineItems.map((step) => {
       if (!labels.has(step.category))
-        labels.set(step.category, categoryLabel(step.category));
+        labels.set(step.category, categoryLabel(step.category, language));
       return {
         id: step.id,
         value: coordinates.get(step.id)!,
@@ -400,7 +380,7 @@ function CanonicalTimeline({
   const renderStep = useCallback(
     (step: ConversationClientTrajectoryStep) => {
       const matches = matchesByStep.get(step.id) ?? [];
-      const identity = `${step.is_subagent ? text('subagent') : text('main')} · ${step.source_client ?? step.source_kind} · ${step.source_session_id ?? '—'} · ${step.source_task_id ?? '—'} · ${step.source_id ?? '—'} · ${step.record_id}`;
+      const identity = `${step.is_subagent ? text('subagent', language) : text('main', language)} · ${step.source_client ?? step.source_kind} · ${step.source_session_id ?? '—'} · ${step.source_task_id ?? '—'} · ${step.source_id ?? '—'} · ${step.record_id}`;
       return (
         <button
           key={`${step.record_id}:${step.id}`}
@@ -409,12 +389,12 @@ function CanonicalTimeline({
           data-lane={clientLane(step)}
           data-selected={selectedStep?.id === step.id || undefined}
           aria-pressed={selectedStep?.id === step.id}
-          aria-label={`${categoryLabel(step.category)} · ${step.name}`}
+          aria-label={`${categoryLabel(step.category, language)} · ${step.name}`}
           onClick={() => select(step.id)}
         >
           <span className="provider-trajectory__marker" aria-hidden="true" />
           <span className="provider-trajectory__kind">
-            {categoryLabel(step.category)}
+            {categoryLabel(step.category, language)}
           </span>
           <span className="client-trajectory__summary">
             <strong>
@@ -426,7 +406,7 @@ function CanonicalTimeline({
                 matches
                   .map(
                     (match) =>
-                      `${sectionLabel(match.section)} · ${match.snippet}`
+                      `${sectionLabel(match.section, language)} · ${match.snippet}`
                   )
                   .join('\n') || step.preview
               }
@@ -441,7 +421,7 @@ function CanonicalTimeline({
                 className="conversation-trajectory__source"
                 title={identity}
               >
-                {text('subagent_marker')}
+                {text('subagent_marker', language)}
               </small>
             ) : null}
           </span>
@@ -481,7 +461,7 @@ function CanonicalTimeline({
         return (
           <div className="client-trajectory__category-group">
             <div className="client-trajectory__category-header">
-              <span>{categoryLabel(slot.category)}</span>
+              <span>{categoryLabel(slot.category, language)}</span>
               <small>{slot.count}</small>
             </div>
           </div>

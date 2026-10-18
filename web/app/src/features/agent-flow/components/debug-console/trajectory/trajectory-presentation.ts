@@ -1,20 +1,20 @@
 import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import { i18nText } from '../../../../../shared/i18n/text';
 
-export function stepLabel(step: ProviderTrajectoryStep): string {
+export function stepLabel(step: ProviderTrajectoryStep, language?: string): string {
   switch (step.metadata.kind) {
     case 'model_call':
-      return i18nText('agentFlow', 'trajectory.model_call');
+      return i18nText('agentFlow', 'trajectory.model_call', { lng: language });
     case 'model_reply':
-      return i18nText('agentFlow', 'trajectory.model_reply');
+      return i18nText('agentFlow', 'trajectory.model_reply', { lng: language });
     case 'tool_call':
-      return i18nText('agentFlow', 'trajectory.tool_request');
+      return i18nText('agentFlow', 'trajectory.tool_request', { lng: language });
     case 'tool_result':
-      return i18nText('agentFlow', 'trajectory.submitted_result');
+      return i18nText('agentFlow', 'trajectory.submitted_result', { lng: language });
     case 'error':
-      return i18nText('agentFlow', 'trajectory.protocol_error');
+      return i18nText('agentFlow', 'trajectory.protocol_error', { lng: language });
     case 'observation_gap':
-      return i18nText('agentFlow', 'trajectory.semantic_gap');
+      return i18nText('agentFlow', 'trajectory.semantic_gap', { lng: language });
   }
 }
 export function stepLane(

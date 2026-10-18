@@ -434,3 +434,13 @@ test('the Native workspace loads missing visible rows from the exact focus locat
   view.unmount();
   client.clear();
 });
+
+ test('updates cached native timeline labels when the mounted workspace changes locale', async () => {
+  const { loadWorkflowTrajectory } = fixture();
+  await screen.findByRole('button', { name: /模型调用准备 · 规划节点/ });
+  const requests = loadWorkflowTrajectory.mock.calls.length;
+  await act(async () => { await appI18n.changeLanguage('en_US'); });
+  expect(await screen.findByRole('button', { name: /Model call prepared · 规划节点/ })).toBeInTheDocument();
+  expect(screen.getByLabelText(/规划节点 · Model call prepared ·/)).toBeInTheDocument();
+  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(requests);
+});

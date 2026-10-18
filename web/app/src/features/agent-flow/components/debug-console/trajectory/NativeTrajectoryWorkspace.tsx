@@ -13,7 +13,7 @@ import type {
   ProviderTrajectoryOptions
 } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
-import { appI18n } from '../../../../../shared/i18n/app-i18n';
+import { useTranslation } from 'react-i18next';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 import { purposeLabel } from './trajectory-presentation';
@@ -161,14 +161,15 @@ export function NativeTrajectoryWorkspace({
     [groupCalls, groups, collapsed, matches]
   );
 
-  const language = appI18n.resolvedLanguage ?? appI18n.language;
+  const { i18n } = useTranslation('agentFlow');
+  const language = i18n.resolvedLanguage ?? i18n.language;
   const timelinePoints = useMemo(
     () =>
       matches.map((step) => ({
         id: step.event_id,
         value: Date.parse(step.created_at),
         lane: workflowEventLane(step),
-        label: `${workflowNodeName(step)} · ${workflowEventLabel(step)} · ${formatDateTime(step.created_at)}`
+        label: `${workflowNodeName(step, language)} · ${workflowEventLabel(step, language)} · ${formatDateTime(step.created_at)}`
       })),
     [matches, language]
   );
@@ -182,19 +183,19 @@ export function NativeTrajectoryWorkspace({
         className="provider-trajectory__row"
         data-lane={workflowEventLane(step)}
         data-selected={isSelected || undefined}
-        aria-label={`${workflowEventLabel(step)} · ${workflowNodeName(step)} · ${step.node_run_id ?? step.flow_run_id}`}
+        aria-label={`${workflowEventLabel(step, language)} · ${workflowNodeName(step, language)} · ${step.node_run_id ?? step.flow_run_id}`}
         aria-pressed={isSelected}
         onClick={() => setSelected(step.event_id)}
       >
         <span className="provider-trajectory__marker" aria-hidden="true" />
         <span className="provider-trajectory__kind">
-          {workflowEventLabel(step)}
+          {workflowEventLabel(step, language)}
         </span>
         <span className="provider-trajectory__preview">
-          <strong>{workflowNodeName(step)}</strong>
+          <strong>{workflowNodeName(step, language)}</strong>
           {step.preview &&
           step.preview !== step.event_type &&
-          step.preview !== workflowNodeName(step) ? (
+          step.preview !== workflowNodeName(step, language) ? (
             <span>{step.preview}</span>
           ) : null}
         </span>
