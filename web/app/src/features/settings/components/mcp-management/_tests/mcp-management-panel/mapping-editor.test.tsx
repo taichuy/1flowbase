@@ -1233,7 +1233,7 @@ describe('McpManagementPanel', () => {
     });
   }, 30_000);
 
-  test('shows des_id once when interface parameters already include it', async () => {
+  test('shows des_id once and preserves selectable repeated interface descriptors', async () => {
     renderPanel([
       {
         ...interfaceCapabilities[0],
@@ -1308,6 +1308,9 @@ describe('McpManagementPanel', () => {
 
     expect(desIdOptions).toHaveLength(1);
     expect(applicationIdOptions).toHaveLength(2);
+    fireEvent.click(applicationIdOptions[1]);
+    fireEvent.click(within(dialog).getByRole('button', { name: '添加', exact: true }));
+    expect(within(dialog).getByLabelText('mcp_param application_id')).toHaveValue('application_id');
   }, 90000);
 
   test('allows manually adding interface parameters and mappings when descriptors are empty', async () => {
