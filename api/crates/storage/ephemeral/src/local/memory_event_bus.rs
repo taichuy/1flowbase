@@ -33,9 +33,14 @@ struct State {
     next_id: u64,
     charged_json_bytes: u64,
     consumers: usize,
-    waiters: usize,
+    waiters: HashMap<u64, Instant>,
     topic_name_bytes: usize,
     abnormal_terminations: u64,
+    admission_rejected: u64,
+    accepted: u64,
+    received: u64,
+    processing_released: u64,
+    discarded_buffered: u64,
 }
 
 struct Topic {
@@ -56,6 +61,7 @@ struct Entry {
     bytes: u64,
     body: Option<Arc<serde_json::Value>>,
     phase: Phase,
+    phase_started: Instant,
 }
 
 impl Inner {
@@ -96,6 +102,11 @@ impl State {
     fn remove_entry(&mut self, id: u64) {
         if let Some(entry) = self.entries.remove(&id) {
             self.charged_json_bytes -= entry.bytes;
+            if entry.phase == Phase::InFlight {
+                self.processing_released = self.processing_released.saturating_add(1);
+            } else if entry.phase == Phase::Buffered {
+                self.discarded_buffered = self.discarded_buffered.saturating_add(1);
+            }
             self.cleanup_topic(entry.generation);
         }
         if self.entries.is_empty() {
@@ -125,6 +136,20 @@ impl State {
         // keep its charge and retired directory alive until send fails or it drops.
     }
     fn snapshot(&self) -> EventBusSnapshot {
+        let now = Instant::now();
+        let age = |started: Option<Instant>| {
+            started.map_or(0, |start| {
+                u64::try_from(now.saturating_duration_since(start).as_millis()).unwrap_or(u64::MAX)
+            })
+        };
+        let phase_age = |phase| {
+            age(self
+                .entries
+                .values()
+                .filter(|e| e.phase == phase)
+                .map(|e| e.phase_started)
+                .min())
+        };
         EventBusSnapshot {
             limits: self.limits,
             topics: self.topics.len(),
@@ -132,7 +157,7 @@ impl State {
             retired_topics: self.topics.values().filter(|t| t.consumers == 0).count(),
             topic_name_bytes: self.topic_name_bytes,
             consumers: self.consumers,
-            waiters: self.waiters,
+            waiters: self.waiters.len(),
             reserved: self
                 .entries
                 .values()
@@ -150,28 +175,44 @@ impl State {
                 .count(),
             charged_json_bytes: self.charged_json_bytes,
             abnormal_terminations: self.abnormal_terminations,
+            admission_rejected: self.admission_rejected,
+            accepted: self.accepted,
+            received: self.received,
+            processing_released: self.processing_released,
+            discarded_buffered: self.discarded_buffered,
+            oldest_waiter_age_ms: age(self.waiters.values().copied().min()),
+            oldest_buffered_age_ms: phase_age(Phase::Buffered),
+            oldest_in_flight_age_ms: phase_age(Phase::InFlight),
         }
     }
 }
 
 struct WaitTicket {
     inner: Arc<Inner>,
+    id: u64,
 }
 impl WaitTicket {
     fn acquire(inner: &Arc<Inner>, state: &mut State) -> Result<Self, EventBusError> {
         let limits = state.limits.ok_or(EventBusError::Unconfigured)?;
-        if state.waiters >= limits.max_waiters {
+        if state.waiters.len() >= limits.max_waiters {
             return Err(EventBusError::ResourceExhausted("waiters"));
         }
-        state.waiters += 1;
+        let id = state.next_id()?;
+        state.waiters.insert(id, Instant::now());
         Ok(Self {
             inner: inner.clone(),
+            id,
         })
     }
 }
 impl Drop for WaitTicket {
     fn drop(&mut self) {
-        self.inner.lock().waiters -= 1;
+        let mut state = self.inner.lock();
+        state.waiters.remove(&self.id);
+        if state.waiters.is_empty() {
+            state.waiters = HashMap::new();
+        }
+        drop(state);
         self.inner.wake();
     }
 }
@@ -209,6 +250,17 @@ impl Write for JsonCounter {
 }
 impl EventPermit for Permit {
     fn send(self: Box<Self>, body: serde_json::Value) -> Result<(), EventBusError> {
+        let inner = self.inner.clone();
+        let result = self.send_inner(body);
+        if result.is_err() {
+            let mut state = inner.lock();
+            state.admission_rejected = state.admission_rejected.saturating_add(1);
+        }
+        result
+    }
+}
+impl Permit {
+    fn send_inner(self: Box<Self>, body: serde_json::Value) -> Result<(), EventBusError> {
         let upper = {
             let state = self.inner.lock();
             let entry = state.entries.get(&self.id).ok_or(EventBusError::Closed)?;
@@ -251,12 +303,14 @@ impl EventPermit for Permit {
             .ok_or(EventBusError::Closed)?;
         entry.body = Some(Arc::new(body));
         entry.phase = Phase::Buffered;
+        entry.phase_started = Instant::now();
         state
             .topics
             .get_mut(&generation)
             .ok_or(EventBusError::Closed)?
             .buffered
             .push_back(self.id);
+        state.accepted = state.accepted.saturating_add(1);
         // The queue now owns the charge. Release the lock before disarming this
         // permit; no suspension or user callback occurs between these operations.
         drop(state);
@@ -290,11 +344,13 @@ impl EventConsumer for Consumer {
                     }
                     let entry = state.entries.get_mut(&id).ok_or(EventBusError::Closed)?;
                     entry.phase = Phase::InFlight;
+                    entry.phase_started = Instant::now();
                     let body = entry
                         .body
                         .as_ref()
                         .ok_or(EventBusError::InvalidBody)?
                         .clone();
+                    state.received = state.received.saturating_add(1);
                     return Ok(Some(EventDelivery::new(
                         body,
                         Box::new(DeliveryLease {
@@ -369,6 +425,79 @@ impl Drop for DeliveryLease {
 impl MemoryEventBus {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    async fn reserve_inner(
+        &self,
+        topic: &str,
+        upper: u64,
+        deadline: Instant,
+    ) -> Result<Box<dyn EventPermit>, EventBusError> {
+        let mut ticket = None;
+        let mut generation = None;
+        loop {
+            let notified = self.inner.changed.notified();
+            tokio::pin!(notified);
+            {
+                let mut state = self.inner.lock();
+                let limits = state.limits.ok_or(EventBusError::Unconfigured)?;
+                if upper > limits.max_json_bytes || limits.max_items == 0 {
+                    return Err(EventBusError::ResourceExhausted(
+                        "event exceeds total budget",
+                    ));
+                }
+                let id = match generation {
+                    Some(id) => {
+                        if state
+                            .topics
+                            .get(&id)
+                            .is_none_or(|t| t.closed || t.consumers == 0)
+                        {
+                            return Err(EventBusError::Closed);
+                        }
+                        id
+                    }
+                    None => {
+                        let id = state.generation(topic)?;
+                        generation = Some(id);
+                        id
+                    }
+                };
+                if Instant::now() >= deadline {
+                    return Err(EventBusError::DeadlineElapsed);
+                }
+                if state.entries.len() < limits.max_items
+                    && upper <= limits.max_json_bytes - state.charged_json_bytes
+                {
+                    let entry_id = state.next_id()?;
+                    state.entries.insert(
+                        entry_id,
+                        Entry {
+                            generation: id,
+                            bytes: upper,
+                            body: None,
+                            phase: Phase::Reserved,
+                            phase_started: Instant::now(),
+                        },
+                    );
+                    state.charged_json_bytes += upper;
+                    return Ok(Box::new(Permit {
+                        inner: self.inner.clone(),
+                        id: entry_id,
+                    }));
+                }
+                if ticket.is_none() {
+                    ticket = Some(WaitTicket::acquire(&self.inner, &mut state)?);
+                }
+                // Register with Notify only after the bounded ticket is acquired,
+                // under the state lock so a sender/close cannot race past registration.
+                notified.as_mut().enable();
+            }
+            tokio::select! {
+                _ = notified => {},
+                _ = tokio::time::sleep_until(deadline.into()) => return Err(EventBusError::DeadlineElapsed),
+            }
+        }
     }
 
     fn resource_snapshot(state: &State) -> EphemeralEntrySnapshot {
@@ -509,70 +638,12 @@ impl EventBus for MemoryEventBus {
         upper: u64,
         deadline: Instant,
     ) -> Result<Box<dyn EventPermit>, EventBusError> {
-        let mut ticket = None;
-        let mut generation = None;
-        loop {
-            let notified = self.inner.changed.notified();
-            tokio::pin!(notified);
-            {
-                let mut state = self.inner.lock();
-                let limits = state.limits.ok_or(EventBusError::Unconfigured)?;
-                if upper > limits.max_json_bytes || limits.max_items == 0 {
-                    return Err(EventBusError::ResourceExhausted(
-                        "event exceeds total budget",
-                    ));
-                }
-                let id = match generation {
-                    Some(id) => {
-                        if state
-                            .topics
-                            .get(&id)
-                            .is_none_or(|t| t.closed || t.consumers == 0)
-                        {
-                            return Err(EventBusError::Closed);
-                        }
-                        id
-                    }
-                    None => {
-                        let id = state.generation(topic)?;
-                        generation = Some(id);
-                        id
-                    }
-                };
-                if Instant::now() >= deadline {
-                    return Err(EventBusError::DeadlineElapsed);
-                }
-                if state.entries.len() < limits.max_items
-                    && upper <= limits.max_json_bytes - state.charged_json_bytes
-                {
-                    let entry_id = state.next_id()?;
-                    state.entries.insert(
-                        entry_id,
-                        Entry {
-                            generation: id,
-                            bytes: upper,
-                            body: None,
-                            phase: Phase::Reserved,
-                        },
-                    );
-                    state.charged_json_bytes += upper;
-                    return Ok(Box::new(Permit {
-                        inner: self.inner.clone(),
-                        id: entry_id,
-                    }));
-                }
-                if ticket.is_none() {
-                    ticket = Some(WaitTicket::acquire(&self.inner, &mut state)?);
-                }
-                // Register with Notify only after the bounded ticket is acquired,
-                // under the state lock so a sender/close cannot race past registration.
-                notified.as_mut().enable();
-            }
-            tokio::select! {
-                _ = notified => {},
-                _ = tokio::time::sleep_until(deadline.into()) => return Err(EventBusError::DeadlineElapsed),
-            }
+        let result = self.reserve_inner(topic, upper, deadline).await;
+        if result.is_err() {
+            let mut state = self.inner.lock();
+            state.admission_rejected = state.admission_rejected.saturating_add(1);
         }
+        result
     }
 
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {

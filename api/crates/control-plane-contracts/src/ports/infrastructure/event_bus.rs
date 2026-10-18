@@ -48,6 +48,20 @@ pub struct EventBusSnapshot {
     /// Upper bounds stay charged through reservation, buffering and processing.
     pub charged_json_bytes: u64,
     pub abnormal_terminations: u64,
+    /// reserve/send calls returning Err; excludes cancellation and configuration/registration.
+    /// Cumulative counters saturate at u64::MAX.
+    pub admission_rejected: u64,
+    /// Bodies successfully enqueued, dequeued, and no longer held by a processing guard.
+    pub accepted: u64,
+    pub received: u64,
+    /// Includes both complete and Drop. This is not a business-success ACK.
+    pub processing_released: u64,
+    /// Accepted, buffered bodies discarded when the last consumer disappears.
+    pub discarded_buffered: u64,
+    /// Current oldest age in each phase, measured by a monotonic clock; empty means zero.
+    pub oldest_waiter_age_ms: u64,
+    pub oldest_buffered_age_ms: u64,
+    pub oldest_in_flight_age_ms: u64,
 }
 
 pub trait EventPermit: Send {

@@ -46,6 +46,14 @@ fn resource_projection_roundtrips_full_width_explicit_budget_and_phase_counts() 
         buffered: 1,
         in_flight: 1,
         charged_json_bytes: u64::MAX,
+        admission_rejected: 7,
+        accepted: 4,
+        received: 2,
+        processing_released: 2,
+        discarded_buffered: 2,
+        oldest_waiter_age_ms: 1,
+        oldest_buffered_age_ms: 2,
+        oldest_in_flight_age_ms: 3,
         ..Default::default()
     };
     let wire = serde_json::to_value(&snapshot).unwrap();
@@ -54,6 +62,11 @@ fn resource_projection_roundtrips_full_width_explicit_budget_and_phase_counts() 
         serde_json::json!(u64::MAX)
     );
     assert_eq!(wire["charged_json_bytes"], serde_json::json!(u64::MAX));
+    assert_eq!(wire["admission_rejected"], serde_json::json!(7));
+    assert_eq!(wire["processing_released"], serde_json::json!(2));
+    assert_eq!(wire["oldest_waiter_age_ms"], serde_json::json!(1));
+    assert_eq!(wire["oldest_buffered_age_ms"], serde_json::json!(2));
+    assert_eq!(wire["oldest_in_flight_age_ms"], serde_json::json!(3));
     assert_eq!(
         serde_json::from_value::<EventBusSnapshot>(wire).unwrap(),
         snapshot

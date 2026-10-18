@@ -59,6 +59,7 @@ async fn no_consumer_or_budget_never_allocates_and_configuration_is_shared() {
         bus.event_bus_snapshot(),
         EventBusSnapshot {
             limits: Some(limits()),
+            admission_rejected: 101,
             ..Default::default()
         }
     );
@@ -457,4 +458,187 @@ async fn last_consumer_drop_wakes_reservation_without_retargeting_reopened_topic
     fresh.close();
     drop(fresh);
     assert_eq!(bus.event_bus_snapshot().topics, 0);
+}
+
+#[tokio::test]
+async fn admission_rejection_counts_failed_reserve_and_send_calls_only() {
+    let bus = configured(EventBusLimits {
+        max_items: 1,
+        max_waiters: 0,
+        ..limits()
+    });
+    assert!(
+        bus.configure_budget(EventBusLimits {
+            max_items: 8,
+            ..limits()
+        })
+        .is_err()
+    );
+    assert!(bus.open_consumer(&"x".repeat(65)).is_err());
+    assert_eq!(bus.event_bus_snapshot().admission_rejected, 0);
+    assert!(matches!(
+        bus.reserve("missing", 4, deadline()).await,
+        Err(EventBusError::NoConsumer)
+    ));
+    let consumer = bus.open_consumer("a").unwrap();
+    assert!(matches!(
+        bus.reserve("a", 129, deadline()).await,
+        Err(EventBusError::ResourceExhausted(_))
+    ));
+    assert!(matches!(
+        bus.reserve("a", 4, Instant::now()).await,
+        Err(EventBusError::DeadlineElapsed)
+    ));
+    assert!(matches!(
+        bus.reserve("a", 1, deadline())
+            .await
+            .unwrap()
+            .send(json!(null)),
+        Err(EventBusError::BodyExceedsReservation)
+    ));
+    let permit = bus.reserve("a", 4, deadline()).await.unwrap();
+    assert!(matches!(
+        bus.reserve("a", 4, deadline()).await,
+        Err(EventBusError::ResourceExhausted("waiters"))
+    ));
+    consumer.close();
+    assert!(matches!(
+        permit.send(json!(null)),
+        Err(EventBusError::Closed)
+    ));
+    assert!(matches!(
+        bus.reserve("a", 4, deadline()).await,
+        Err(EventBusError::Closed)
+    ));
+    assert!(consumer.recv().await.unwrap().is_none());
+    drop(consumer);
+    let snapshot = bus.event_bus_snapshot();
+    assert_eq!(snapshot.admission_rejected, 7);
+    assert_eq!(snapshot.accepted, 0);
+    assert_eq!(snapshot.received, 0);
+    assert_eq!(snapshot.charged_json_bytes, 0);
+}
+
+#[tokio::test]
+async fn progress_counts_guard_release_and_exact_buffer_discard_without_business_ack() {
+    let bus = configured(limits());
+    let consumer = bus.open_consumer("a").unwrap();
+    for id in 0..4 {
+        send(&bus, "a", json!(id)).await;
+    }
+    let completed = consumer.recv().await.unwrap().unwrap();
+    completed.complete();
+    let failed_processing = consumer.recv().await.unwrap().unwrap();
+    // A processing failure still releases the guard; this metric does not assert success.
+    assert_eq!(failed_processing.body(), &json!(1));
+    let processing_result: Result<(), &str> = Err("business handler rejected the event");
+    assert!(processing_result.is_err());
+    drop(failed_processing);
+    let snapshot = bus.event_bus_snapshot();
+    assert_eq!(
+        (
+            snapshot.accepted,
+            snapshot.received,
+            snapshot.processing_released
+        ),
+        (4, 2, 2)
+    );
+    assert_eq!(snapshot.discarded_buffered, 0);
+    drop(consumer);
+    let snapshot = bus.event_bus_snapshot();
+    assert_eq!(snapshot.discarded_buffered, 2);
+    assert_eq!(snapshot.abnormal_terminations, 1);
+    assert_eq!(
+        (
+            snapshot.accepted,
+            snapshot.received,
+            snapshot.processing_released
+        ),
+        (4, 2, 2)
+    );
+    assert_eq!(snapshot.topics, 0);
+    assert_eq!(snapshot.charged_json_bytes, 0);
+    let resource = bus.list_ephemeral_entries().await.unwrap().pop().unwrap();
+    assert_eq!(resource.metadata["accepted"], json!(4));
+    assert_eq!(resource.metadata["received"], json!(2));
+    assert_eq!(resource.metadata["processing_released"], json!(2));
+    assert_eq!(resource.metadata["discarded_buffered"], json!(2));
+}
+
+#[tokio::test]
+async fn current_wait_and_backlog_ages_are_observable_and_reset_after_release() {
+    let bus = configured(EventBusLimits {
+        max_items: 1,
+        ..limits()
+    });
+    let consumer = bus.open_consumer("a").unwrap();
+    let permit = bus.reserve("a", 4, deadline()).await.unwrap();
+    let mut waiting = Box::pin(bus.reserve("a", 4, deadline()));
+    tokio::select! {biased; _ = &mut waiting => panic!("must wait"), _ = tokio::task::yield_now() => {}}
+    tokio::time::sleep(Duration::from_millis(2)).await;
+    let resource = bus
+        .list_ephemeral_entries()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|e| e.entry_kind == "event_bus_resources")
+        .unwrap();
+    assert!(resource.metadata["oldest_waiter_age_ms"].as_u64().unwrap() >= 1);
+    assert_eq!(resource.metadata["waiters"], json!(1));
+    drop(waiting);
+    assert_eq!(bus.event_bus_snapshot().oldest_waiter_age_ms, 0);
+    assert_eq!(bus.event_bus_snapshot().admission_rejected, 0);
+    assert_eq!(bus.inner.lock().waiters.capacity(), 0);
+    permit.send(json!(null)).unwrap();
+    tokio::time::sleep(Duration::from_millis(2)).await;
+    let resource = bus
+        .list_ephemeral_entries()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|e| e.entry_kind == "event_bus_resources")
+        .unwrap();
+    assert!(
+        resource.metadata["oldest_buffered_age_ms"]
+            .as_u64()
+            .unwrap()
+            >= 1
+    );
+    let delivery = consumer.recv().await.unwrap().unwrap();
+    assert_eq!(bus.event_bus_snapshot().oldest_buffered_age_ms, 0);
+    tokio::time::sleep(Duration::from_millis(2)).await;
+    let resource = bus
+        .list_ephemeral_entries()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|e| e.entry_kind == "event_bus_resources")
+        .unwrap();
+    assert!(
+        resource.metadata["oldest_in_flight_age_ms"]
+            .as_u64()
+            .unwrap()
+            >= 1
+    );
+    delivery.complete();
+    consumer.close();
+    drop(consumer);
+    let snapshot = bus.event_bus_snapshot();
+    assert_eq!(
+        (
+            snapshot.oldest_waiter_age_ms,
+            snapshot.oldest_buffered_age_ms,
+            snapshot.oldest_in_flight_age_ms
+        ),
+        (0, 0, 0)
+    );
+    assert_eq!(
+        (
+            snapshot.accepted,
+            snapshot.received,
+            snapshot.processing_released
+        ),
+        (1, 1, 1)
+    );
+    assert_eq!(snapshot.admission_rejected, 0);
 }
