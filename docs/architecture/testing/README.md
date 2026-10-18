@@ -6,7 +6,7 @@
 
 - `verify.yml` 是 PR / push 合并基线；`quality-gate.yml scope=ci` 是完整项目体检，额外包含完整测试分片、Clippy、一致性、覆盖率和 React Doctor。
 - 一次完整体检固定同一个 full SHA。根 `quality-gate-report.json` 必须为 `passed/0`，必需 component 唯一、成功且绑定同 SHA；四个 API coverage 分片经 merge 后才形成覆盖率 component。
-- SDK / Host / EventBus 的单元测试由 runtime-storage-fast 执行；PostgreSQL adapter 与跨层 service 测试由 storage-postgres 分片执行；API lib 与 integration targets 由 API nextest 分片执行。临时专项 workflow 的存在不代表必须重复执行同一组行为。
+- SDK / Host / 内存 EventBus 的单元测试由 runtime-storage-fast 执行，贡献契约与插件事件注册测试由 core-libs 执行；PostgreSQL adapter 与跨层 service 测试由 storage-postgres 分片执行；API lib 与 integration targets 由 API nextest 分片执行。临时专项 workflow 的存在不代表必须重复执行同一组行为。
 - 定向 Cargo 命令必须有非零实际通过用例；编译、ignored 和空 filter 不等于行为通过。真实 managed worker 由 CI 先构建，再向行为测试注入路径。
 - `state-protocols --skip-live-acp` 不验证真实外部 ACP 服务；静态边界、单元测试与 component 收据也不证明所有页面视觉或生产运行态已经验收。报告分别列明证据范围。
 

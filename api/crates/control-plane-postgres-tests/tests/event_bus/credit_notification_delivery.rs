@@ -491,16 +491,17 @@ async fn typed_credit_notification_effect_before_ack_loss_retries_idempotently_w
             ("b".into(), "delivered".into(), 2)
         ]
     );
-    let completions = fixture.completions.0.lock().unwrap();
-    assert_eq!(completions.len(), 3);
-    assert!(completions
-        .iter()
-        .any(|outcome| outcome.payload().claim_id == old_claim));
-    assert!(completions
-        .iter()
-        .any(|outcome| outcome.payload().attempt_count == 2
-            && outcome.payload().claim_id != old_claim));
-    drop(completions);
+    {
+        let completions = fixture.completions.0.lock().unwrap();
+        assert_eq!(completions.len(), 3);
+        assert!(completions
+            .iter()
+            .any(|outcome| outcome.payload().claim_id == old_claim));
+        assert!(completions
+            .iter()
+            .any(|outcome| outcome.payload().attempt_count == 2
+                && outcome.payload().claim_id != old_claim));
+    }
     fixture.assert_final_effects_without_new_charge().await;
     assert_eq!(fixture.dispatcher.run_once().await.unwrap(), 0);
 }
