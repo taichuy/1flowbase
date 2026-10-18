@@ -1,3 +1,4 @@
+import { inTrajectoryRange, nearestTimelinePoint, type TimelinePoint, type TrajectoryRange } from './timeline-model';
 import {
   useEffect,
   useMemo,
@@ -10,21 +11,7 @@ import { Button, Tooltip } from 'antd';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 
-import {
-  DenseTrajectoryPoints,
-  nearestTimelinePoint
-} from './virtual/DenseTrajectoryPoints';
-
-export type TrajectoryRange = readonly [number, number] | null;
-export type TimelinePoint = {
-  id: string;
-  value: number;
-  lane: string;
-  label: string;
-};
-export function inTrajectoryRange(value: number, range: TrajectoryRange) {
-  return !range || (value >= range[0] && value <= range[1]);
-}
+import { DenseTrajectoryPoints } from './virtual/DenseTrajectoryPoints';
 
 /** Exact scope index drives both dense painting and keyboard event selection. */
 export function TrajectoryTimeline({

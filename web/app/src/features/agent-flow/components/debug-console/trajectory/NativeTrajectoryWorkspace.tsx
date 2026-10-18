@@ -24,7 +24,8 @@ import {
   workflowNodeName
 } from './workflow/presentation';
 import { WorkflowEventDetail } from './workflow/WorkflowEventDetail';
-import { TrajectoryTimeline, type TrajectoryRange } from './TrajectoryTimeline';
+import { TrajectoryTimeline } from './TrajectoryTimeline';
+import { type TrajectoryRange } from './timeline-model';
 import { useTrajectoryWindow } from './virtual/use-trajectory-window';
 import {
   TrajectoryVirtualList,

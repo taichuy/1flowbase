@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 
 import { useAssistantPageReferenceSelection } from '../../components/embedded-assistant/useAssistantPageReferenceSelection';
-import { pageReferenceByteLength } from '../../components/debug-console/conversation/PageReferenceTag';
+import { pageReferenceByteLength } from '../../components/debug-console/conversation/page-reference-presentation';
 
 function SelectionHarness({
   maxBytes = 65_536,

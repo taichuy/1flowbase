@@ -16,23 +16,15 @@ import { formatDateTime } from '../../../../../../shared/i18n/format';
 import { ClientTrajectoryDetail } from './ClientTrajectoryDetail';
 import { categoryLabel, clientLane } from './presentation';
 import { integrityLabel } from '../trajectory-presentation';
-import {
-  TrajectoryTimeline,
-  inTrajectoryRange,
-  type TrajectoryRange
-} from '../TrajectoryTimeline';
+import { TrajectoryTimeline } from '../TrajectoryTimeline';
+import { inTrajectoryRange, type TrajectoryRange } from '../timeline-model';
 import { useTrajectoryWindow } from '../virtual/use-trajectory-window';
 import {
   TrajectoryVirtualList,
   type TrajectoryVirtualListRef
 } from '../virtual/TrajectoryVirtualList';
-import {
-  indexLane,
-  PendingClientRow,
-  clientRowKey,
-  virtualClientKey,
-  virtualClientEventKey
-} from './virtual-client-rows';
+import { PendingClientRow } from './virtual-client-rows';
+import { indexLane, clientRowKey, virtualClientKey, virtualClientEventKey } from './virtual-client-model';
 import { useTranslation } from 'react-i18next';
 import './client-trajectory.css';
 
