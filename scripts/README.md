@@ -531,23 +531,28 @@ node scripts/node/plugin/cli.js package <plugin-path> --out ./dist
 node scripts/node/reset-rust-cache/cli.js
 ```
 
-只需执行这一个命令，清理、启动目标编译和完整测试预热会自动串行完成，无需手动分两次执行，也不需要追加参数。
+只需执行这一个命令，清理与三个预热阶段会自动按顺序完成，无需手动分次执行，也不需要追加参数。
 
 该入口会严格按顺序执行：
 
 1. 停止当前 worktree 的 `api-server`，删除 `api/target/`；
 2. 单独编译 `dev-up` 使用的 `api-server` binary，包含 `tikv-jemallocator/stats` feature；
-3. 启动目标编译成功后，使用项目统一的 `CARGO_PROFILE_TEST_DEBUG=0` 预热 workspace 全部 test targets，但不运行测试。
+3. 使用 `cargo test --workspace --bins --no-run` 预编译测试配置下的普通库和 binary 测试目标；
+4. 再用 `cargo test --workspace --all-targets --no-run` 完成 workspace 全部测试目标预热。
 
-启动编译阶段不使用 `--all-targets`，避免同时编译大型测试目标；测试预热仍默认执行，供后续 AI 开发复用。
+两个测试阶段均使用 `CARGO_PROFILE_TEST_DEBUG=0`，只编译、不运行测试。
+普通库准备阶段与全量测试阶段使用相同的 workspace 测试 feature 解析，使大型 `api-server` 普通库先完成、
+后续库测试再编译，避免两者同时争用内存。不要用 `cargo build --profile test --lib` 替代准备阶段：
+它可能缺少 dev-dependency 启用的 feature，导致后续重新编译。
 “启动目标编译完成”只表示第一阶段成功，脚本会自动继续测试预热；请等待最后的全量预热完成提示。
 每阶段输出完成耗时，并通过 `--timings` 在 `api/target/cargo-timings/` 保存 Cargo 构建报告。
 
-两个阶段均固定设置 `CARGO_BUILD_JOBS=1`，每次预热内部串行编译，避免大型普通库与测试目标同时争用内存，
-为其他 worktree 留出资源。这是单次 Cargo 调用的编译任务限制，不是跨 worktree 的全局队列，也不限制编译器内部线程数。
-预热命令继续读取 `.1flowbase.verify.local.json` 中的 `backend.incremental`。任一阶段失败时立即停止；只有输出
+阶段之间串行执行，阶段内部读取 `.1flowbase.verify.local.json` 的 `backend.cargoJobs` 与 `backend.incremental`，
+允许依赖编译和 rustc 内部遵循 jobserver 的工作使用配置中的并发预算。`cargoJobs` 是单次 Cargo 调用的预算，
+不是多个 worktree 合计的全局额度，也不保证所有编译阶段都能使用多个 CPU 核心。
+任一阶段失败时立即停止；只有输出
 `Rust 缓存清理与全量预热完成` 才表示全部缓存已经成功生成。
-该限制只用于本预热入口，不修改 `.1flowbase.verify.local.json` 的构建或测试并发配置，其他开发命令仍沿用原配置。
+脚本不修改 `.1flowbase.verify.local.json` 的构建或测试并发配置。
 脚本只生成构建缓存，不会自动启动或重启 API 服务；需要运行服务时再使用 `dev-up`。
 
 这个流程会真实删除当前 worktree 的 Rust 缓存并执行完整冷构建，耗时和磁盘写入量都较大。不要把它作为普通开发启动命令；没有清理需求时，继续使用 `dev-up` 或定向 Cargo 命令，让增量缓存自然复用。

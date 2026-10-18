@@ -12,10 +12,9 @@ function getRepoRoot() {
   return path.resolve(__dirname, '..', '..', '..');
 }
 
-function buildCargoEnv({ incremental, testProfile = false }) {
+function buildCargoEnv({ cargoJobs, incremental, testProfile = false }) {
   const env = {
-    // Keep one warmup from consuming the concurrency reserved for other worktrees.
-    CARGO_BUILD_JOBS: '1',
+    CARGO_BUILD_JOBS: String(cargoJobs),
     CARGO_INCREMENTAL: incremental ? '1' : '0',
   };
 
@@ -26,8 +25,9 @@ function buildCargoEnv({ incremental, testProfile = false }) {
   return env;
 }
 
-function buildRustWarmupPlan({ incremental }) {
-  const devEnv = buildCargoEnv({ incremental });
+function buildRustWarmupPlan({ cargoJobs, incremental }) {
+  const devEnv = buildCargoEnv({ cargoJobs, incremental });
+  const testEnv = buildCargoEnv({ cargoJobs, incremental, testProfile: true });
 
   return [
     {
@@ -48,6 +48,23 @@ function buildRustWarmupPlan({ incremental }) {
       env: devEnv,
     },
     {
+      label: 'workspace test-profile libraries and binary tests',
+      // Test mode preserves workspace dev-dependency feature unification. A
+      // separate `build --profile test --lib` can produce incompatible caches.
+      // Binary tests need the ordinary library, without its large lib-test target.
+      args: [
+        'test',
+        '--manifest-path',
+        'api/Cargo.toml',
+        '--workspace',
+        '--bins',
+        '--no-run',
+        '--locked',
+        '--timings',
+      ],
+      env: testEnv,
+    },
+    {
       label: 'workspace test targets',
       args: [
         'test',
@@ -59,7 +76,7 @@ function buildRustWarmupPlan({ incremental }) {
         '--locked',
         '--timings',
       ],
-      env: buildCargoEnv({ incremental, testProfile: true }),
+      env: testEnv,
     },
   ];
 }
@@ -103,8 +120,8 @@ async function runRustCacheReset({
   writeStdout = (text) => process.stdout.write(text),
 } = {}) {
   const runtimeConfig = loadRuntimeConfigImpl({ repoRoot });
-  const { incremental } = runtimeConfig.backend;
-  const plan = buildRustWarmupPlan({ incremental });
+  const { cargoJobs, incremental } = runtimeConfig.backend;
+  const plan = buildRustWarmupPlan({ cargoJobs, incremental });
 
   writeStdout('[1flowbase-reset-rust-cache] 清理 api/target 并停止 api-server。\n');
   const cleanupStatus = await cleanupBackendCacheImpl({ repoRoot, writeStdout });
