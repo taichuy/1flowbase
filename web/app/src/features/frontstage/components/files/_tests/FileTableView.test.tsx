@@ -241,6 +241,8 @@ describe('FileTableView', () => {
   test('renders backend preview URL lazily and opens image preview on click', async () => {
     const imageRecord = {
       ...record,
+      id: 'image-record-2',
+      url: '/api/console/files/table-1/records/image-record-2/content',
       filename: 'picture.png',
       mimetype: 'image/png',
       preview_url: '/different-preview-resource/image.png'
@@ -262,7 +264,8 @@ describe('FileTableView', () => {
     );
     expect(
       await screen.findByRole('link', { name: 'picture.png' })
-    ).toHaveAttribute('href', record.url);
+    ).toHaveAttribute('href', imageRecord.url);
+    expect(screen.getByRole('link', { name: 'hello.txt' })).toHaveAttribute('href', record.url);
   });
   test('selects the requested file table, uploads multipart through the host and refreshes records', async () => {
     vi.mocked(client.uploadConsoleFile).mockImplementation(async () => {
