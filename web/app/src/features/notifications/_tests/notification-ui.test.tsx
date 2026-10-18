@@ -719,8 +719,19 @@ test('filters both backend lists and resets both cursor pages', async () => {
     await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
   );
   await screen.findByRole('button', { name: '发布完成' });
+  // The retained snapshot may be visible while refetching still disables paging.
+  await waitFor(() =>
+    expect(screen.getAllByRole('button', { name: '下一页' })[1]).toBeEnabled()
+  );
   fireEvent.click(screen.getAllByRole('button', { name: '下一页' })[1]);
+  await waitFor(() => {
+    const request = calls.filter((call) => call.url.includes('/messages?')).at(-1)!;
+    expect(new URL(request.url, 'http://localhost').searchParams.get('cursor')).toBe('message-next');
+  });
   await screen.findByRole('button', { name: '第二页消息' });
+  await waitFor(() =>
+    expect(screen.getAllByRole('button', { name: '下一页' })[0]).toBeEnabled()
+  );
   fireEvent.click(screen.getAllByRole('button', { name: '下一页' })[0]);
   await screen.findByRole('button', { name: /另一渠道.*另一消息摘要/ });
   fireEvent.click(screen.getByRole('tab', { name: '未读' }));
