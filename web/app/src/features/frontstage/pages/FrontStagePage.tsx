@@ -56,10 +56,7 @@ import type {
 } from '../lib/page-canvas/runtime-demand';
 import type { FrontstageNativeBlockContextHost } from '../lib/page-canvas/native-block-context-host';
 import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
-import {
-  createFrontstagePageSignalSession,
-  FrontstageSignalRuntimeCoordinator
-} from '../lib/page-canvas/signal-runtime';
+import { usePageSignals } from './frontstage-page/runtime-session/use-page-signals';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
@@ -235,32 +232,13 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     () => (displayedPageDocument?.blocks ?? []).map((block) => block.id),
     [displayedPageDocument?.blocks]
   );
-  const pageSignalSession = useMemo(
-    () => createFrontstagePageSignalSession(),
-    [activePageContent?.page.id]
-  );
-  const pageSignalCoordinator = useMemo(
-    () =>
-      displayedPageDocument && activePageContent
-        ? new FrontstageSignalRuntimeCoordinator(
-            displayedPageDocument.blocks,
-            activePageContent.tab.id,
-            pageSignalSession
-          )
-        : undefined,
-    [
-      activePageContent?.tab.id,
-      displayedPageDocument?.rootUid,
-      pageSignalSession
-    ]
-  );
-  useEffect(() => {
-    pageSignalCoordinator?.updateBlocks(displayedPageDocument?.blocks ?? []);
-  }, [displayedPageDocument?.blocks, pageSignalCoordinator]);
-  useEffect(
-    () => () => pageSignalCoordinator?.dispose(),
-    [pageSignalCoordinator]
-  );
+  const pageSignalCoordinator = usePageSignals({
+    pageId: activePageContent?.page.id,
+    tabId: activePageContent?.tab.id,
+    rootUid: displayedPageDocument?.rootUid,
+    blocks: displayedPageDocument?.blocks
+  });
+
   const jsBlockCapabilityHandlers = useMemo(
     () =>
       selectedPageId && tabId

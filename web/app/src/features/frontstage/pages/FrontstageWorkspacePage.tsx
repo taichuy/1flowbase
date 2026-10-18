@@ -248,8 +248,7 @@ export function FrontstageWorkspacePage({
     return null;
   }, [
     blockId,
-    resolvedTab?.isDefault,
-    resolvedTab?.routeSegment,
+    resolvedTab,
     rootNode?.slug,
     selectedPageId,
     tabRef

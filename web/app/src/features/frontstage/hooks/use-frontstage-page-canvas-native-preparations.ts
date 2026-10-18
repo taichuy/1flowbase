@@ -111,32 +111,16 @@ export function useFrontstagePageCanvasNativePreparations({
   compile = compileNativeReactComponentInBrowser,
   moduleRegistryFactory = createFrontstageNativeReactModuleRegistry
 }: UseFrontstagePageCanvasNativePreparationsInput): UseFrontstagePageCanvasNativePreparationsResult {
-  const scheduler = useMemo(
-    () => new FrontstageNativePreparationScheduler(maxConcurrent),
-    [maxConcurrent, actorId, actorWorkspaceId]
-  );
-  const wasActive = useRef(active);
-  const needsReturnValidation = active && !wasActive.current;
-  const [isValidating, setIsValidating] = useState(false);
-  const [validationError, setValidationError] = useState<Error | null>(null);
-  const [validationAttempt, setValidationAttempt] = useState(0);
-  const sourceCopies = useMemo(
-    () => new Map<string, NativePreparationSource>(),
-    [scheduler]
-  );
-  const compiledRefreshes = useMemo(
-    () => new Map<string, number>(),
-    [scheduler]
-  );
-  const [refreshGenerationsByRequestId, setRefreshGenerationsByRequestId] =
-    useState<Record<string, number>>({});
-  const moduleDefinitions = useMemo(
-    () => moduleRegistryFactory().definitions,
-    [moduleRegistryFactory, actorId, actorWorkspaceId]
-  );
-  const modulePolicySha256 = useMemo(
-    () =>
-      sha256Text(
+  const preparationScope = useMemo(() => {
+    const moduleDefinitions = moduleRegistryFactory().definitions;
+    return {
+      actorId,
+      actorWorkspaceId,
+      scheduler: new FrontstageNativePreparationScheduler(maxConcurrent),
+      sourceCopies: new Map<string, NativePreparationSource>(),
+      compiledRefreshes: new Map<string, number>(),
+      moduleDefinitions,
+      modulePolicySha256: sha256Text(
         JSON.stringify(
           moduleDefinitions
             .map((definition) => ({
@@ -152,18 +136,32 @@ export function useFrontstagePageCanvasNativePreparations({
             )
         )
       ),
-    [moduleDefinitions]
-  );
-  const componentFactoryFlights = useMemo(
-    () => new Map<string, Promise<NativeComponentFlight>>(),
-    [actorId, actorWorkspaceId, moduleRegistryFactory, modulePolicySha256]
-  );
+      componentFactoryFlights: new Map<string, Promise<NativeComponentFlight>>()
+    };
+  }, [actorId, actorWorkspaceId, maxConcurrent, moduleRegistryFactory]);
+  const {
+    actorId: scopedActorId,
+    actorWorkspaceId: scopedWorkspaceId,
+    scheduler,
+    sourceCopies,
+    compiledRefreshes,
+    moduleDefinitions,
+    modulePolicySha256,
+    componentFactoryFlights
+  } = preparationScope;
+  const wasActive = useRef(active);
+  const needsReturnValidation = active && !wasActive.current;
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationError, setValidationError] = useState<Error | null>(null);
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const [refreshGenerationsByRequestId, setRefreshGenerationsByRequestId] =
+    useState<Record<string, number>>({});
   const tasks = useMemo<FrontstageNativePreparationTask[]>(() => {
     if (
-      !actorId ||
+      !scopedActorId ||
       !readPlan ||
       catalogEntries === null ||
-      actorWorkspaceId !== readPlan.workspaceId
+      scopedWorkspaceId !== readPlan.workspaceId
     ) {
       return [];
     }
@@ -186,7 +184,7 @@ export function useFrontstagePageCanvasNativePreparations({
         slotIndex: request.slotIndex,
         explicitRefresh: forceCompile,
         identity: [
-          actorId,
+          scopedActorId,
           readPlan.workspaceId,
           request.codeRef,
           modulePolicySha256,
@@ -203,7 +201,7 @@ export function useFrontstagePageCanvasNativePreparations({
               : 'binding-missing'
         ].join('/'),
         observationContext: {
-          actorId,
+          actorId: scopedActorId,
           workspaceId: readPlan.workspaceId,
           pageId: readPlan.pageId,
           tabId: null,
@@ -211,7 +209,7 @@ export function useFrontstagePageCanvasNativePreparations({
         },
         observe: (observation) =>
           recordFrontstageRuntimeObservation({
-            actorId,
+            actorId: scopedActorId,
             workspaceId: readPlan.workspaceId,
             pageId: readPlan.pageId,
             tabId: null,
@@ -231,7 +229,7 @@ export function useFrontstagePageCanvasNativePreparations({
                   readPlan.workspaceId
                 );
           const writeEpoch = artifactCache
-            .captureWriteEpoch?.(actorId)
+            .captureWriteEpoch?.(scopedActorId)
             .catch(() => ({ local: -1, persisted: -1 }));
           let source: NativePreparationSource;
           try {
@@ -267,7 +265,7 @@ export function useFrontstagePageCanvasNativePreparations({
             throw new NativeReactSourceContractError(legacyDiagnostic);
           }
           const identity = createFrontstageNativeReactArtifactCacheIdentity({
-            actorId,
+            actorId: scopedActorId,
             workspaceId: readPlan.workspaceId,
             source: source.source_code,
             modulePolicySha256
@@ -390,8 +388,8 @@ export function useFrontstagePageCanvasNativePreparations({
       };
     });
   }, [
-    actorId,
-    actorWorkspaceId,
+    scopedActorId,
+    scopedWorkspaceId,
     artifactCache,
     compile,
     catalogEntries,
