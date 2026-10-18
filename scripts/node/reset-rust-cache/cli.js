@@ -5,9 +5,10 @@ const { runRustCacheReset } = require('./core.js');
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(`用法：node scripts/node/reset-rust-cache/cli.js
 
-停止当前 worktree 的 api-server，删除 api/target，先编译 dev-up 使用的
-api-server binary，再准备测试配置下的普通库和 binary 测试目标，最后预热
-workspace 全部测试目标（不运行测试）。阶段串行执行，阶段内部沿用配置的 Cargo 并发。
+停止当前 worktree 的 api-server，删除 api/target，获取 Cargo.lock 中的依赖，
+编译 dev-up 使用的 api-server binary，再准备测试配置下的普通库和 binary 测试目标，
+最后预热 workspace 全部测试目标（不运行测试）。阶段串行，内部使用可用逻辑 CPU 的一半
+作为 Cargo 并发预算（向下取整，最少 1）；不修改共享的开发并发配置。
 `);
 }
 

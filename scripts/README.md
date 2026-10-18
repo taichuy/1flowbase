@@ -79,7 +79,7 @@ Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 | `RUST_MEMORY_SWAP_MAX` | Rust 构建 slice 可使用的 swap 上限。 |
 | `RUST_CPU_QUOTA` | Rust 编译总 CPU 配额；200% 表示最多两个逻辑核的 CPU 时间，不是构建时长限制。 |
 | `RUST_IO_WEIGHT` | Rust 构建 cgroup 的相对 I/O 权重，实际调度效果依赖设备和 cgroup 层级。 |
-| `CARGO_MAX_JOBS` | 全局 Cargo 包装器允许的最大编译 job 数；调用方显式设置更低值时保留低值。 |
+| `CARGO_MAX_JOBS` | Cargo 包装器的默认编译 job 上限；调用方显式设置更低值时保留低值。预热入口可通过单次调用的 `ONEFLOWBASE_CARGO_JOB_LIMIT` 指定独立预算，内存 scope 仍生效。 |
 | `PROJECT_CARGO_JOBS` | 本仓库启动、预热和验证脚本使用的 Cargo 编译 job 数。 |
 | `PROJECT_CARGO_TEST_THREADS` | 本仓库验证脚本传给 Rust test harness 的测试线程数。 |
 | `PROJECT_CARGO_INCREMENTAL` | 是否为本仓库本地验证启用 Rust incremental compilation。 |
@@ -531,25 +531,31 @@ node scripts/node/plugin/cli.js package <plugin-path> --out ./dist
 node scripts/node/reset-rust-cache/cli.js
 ```
 
-只需执行这一个命令，清理与三个预热阶段会自动按顺序完成，无需手动分次执行，也不需要追加参数。
+只需执行这一个命令，清理、依赖获取与三个编译阶段会自动按顺序完成，无需手动分次执行，也不需要追加参数。
 
 该入口会严格按顺序执行：
 
 1. 停止当前 worktree 的 `api-server`，删除 `api/target/`；
-2. 单独编译 `dev-up` 使用的 `api-server` binary，包含 `tikv-jemallocator/stats` feature；
-3. 使用 `cargo test --workspace --bins --no-run` 预编译测试配置下的普通库和 binary 测试目标；
-4. 再用 `cargo test --workspace --all-targets --no-run` 完成 workspace 全部测试目标预热。
+2. 使用 `cargo fetch --locked --target host-tuple` 获取 `Cargo.lock` 中当前主机平台的依赖，不升级依赖版本；
+3. 单独编译 `dev-up` 使用的 `api-server` binary，包含 `tikv-jemallocator/stats` feature；
+4. 使用 `cargo test --workspace --bins --no-run` 预编译测试配置下的普通库和 binary 测试目标；
+5. 再用 `cargo test --workspace --all-targets --no-run` 完成 workspace 全部测试目标预热。
 
 两个测试阶段均使用 `CARGO_PROFILE_TEST_DEBUG=0`，只编译、不运行测试。
 普通库准备阶段与全量测试阶段使用相同的 workspace 测试 feature 解析，使大型 `api-server` 普通库先完成、
 后续库测试再编译，避免两者同时争用内存。不要用 `cargo build --profile test --lib` 替代准备阶段：
 它可能缺少 dev-dependency 启用的 feature，导致后续重新编译。
-“启动目标编译完成”只表示第一阶段成功，脚本会自动继续测试预热；请等待最后的全量预热完成提示。
-每阶段输出完成耗时，并通过 `--timings` 在 `api/target/cargo-timings/` 保存 Cargo 构建报告。
+“启动目标编译完成”只表示启动构建成功，脚本会自动继续测试预热；请等待最后的全量预热完成提示。
+每阶段输出完成耗时，各编译阶段通过 `--timings` 在 `api/target/cargo-timings/` 保存 Cargo 构建报告。
 
-阶段之间串行执行，阶段内部读取 `.1flowbase.verify.local.json` 的 `backend.cargoJobs` 与 `backend.incremental`，
-允许依赖编译和 rustc 内部遵循 jobserver 的工作使用配置中的并发预算。`cargoJobs` 是单次 Cargo 调用的预算，
-不是多个 worktree 合计的全局额度，也不保证所有编译阶段都能使用多个 CPU 核心。
+阶段之间串行执行，阶段内部使用可用逻辑 CPU 数的一半作为 Cargo 并发预算（向下取整，最少 1）。
+例如 20 个逻辑 CPU 使用 `jobs=10`；增量编译仍读取 `.1flowbase.verify.local.json` 的 `backend.incremental`。
+这不是 CPU 绑核或多个 worktree 合计的全局额度，也不保证所有编译阶段都能使用多个核心。
+预热通过 `ONEFLOWBASE_CARGO_JOB_LIMIT` 将预算传给项目 Cargo 包装器；Linux 包装器为该调用设置对应的 CPU 配额
+（例如 10 jobs 对应 `CPUQuota=1000%`，覆盖链接器等内部线程），同时保留原有内存 scope。普通调用不新增 CPU 配额。
+更新过该包装器源码的 Linux 环境需重新应用资源配置，才能识别这个单次预算；旧包装器会继续压回原上限。
+Linux 预热入口会优先使用 `~/.local/bin/cargo` 中由本项目生成的资源包装器，避免终端 PATH 顺序绕过配额；
+不存在本项目包装器时使用 PATH 中的 Cargo。Windows/macOS 保持原生 Cargo 调用，CPU 硬配额由对应平台管理。
 任一阶段失败时立即停止；只有输出
 `Rust 缓存清理与全量预热完成` 才表示全部缓存已经成功生成。
 脚本不修改 `.1flowbase.verify.local.json` 的构建或测试并发配置。

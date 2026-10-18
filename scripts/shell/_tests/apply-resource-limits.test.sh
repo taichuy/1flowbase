@@ -64,7 +64,7 @@ grep -Fxq 'MemoryMax=18G' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'CPUQuota=' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'IOWeight=10' "$systemd_dir/dev-rust.slice"
-grep -Fq 'memory_budget_cargo_jobs=2' "$bin_dir/cargo"
+grep -Fq 'default_cargo_job_limit=2' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": 2' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq 'set-property --runtime dev-rust.slice MemoryHigh=16G MemoryMax=18G MemorySwapMax=1G CPUQuota= IOWeight=10' \
@@ -88,6 +88,33 @@ grep -Fxq 'CARGO_BUILD_JOBS=2' "$systemd_run_log"
 grep -Fq -- '--slice=dev-rust.slice -- ' "$systemd_run_log"
 grep -Fq -- 'test -j 2' "$systemd_run_log"
 test ! -e "$systemd_run_log.gate"
+
+# A warmup can provide its own job budget without changing the memory scope.
+env PATH="$mock_bin:$PATH" \
+  RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+  RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/warmup-run.log" \
+  ONEFLOWBASE_CARGO_JOB_LIMIT=10 CARGO_BUILD_JOBS=10 \
+  "$bin_dir/cargo" test --jobs=10
+grep -Fxq 'CARGO_BUILD_JOBS=10' "$test_root/warmup-run.log"
+grep -Fq -- '--slice=dev-rust.slice -- ' "$test_root/warmup-run.log"
+grep -Fq -- 'test --jobs=10' "$test_root/warmup-run.log"
+grep -Fq -- '--property=CPUQuota=1000%' "$test_root/warmup-run.log"
+
+# The override is per invocation; ordinary commands retain the default cap.
+env PATH="$mock_bin:$PATH" \
+  RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+  RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/default-run.log" \
+  CARGO_BUILD_JOBS=10 "$bin_dir/cargo" build -j10
+grep -Fxq 'CARGO_BUILD_JOBS=2' "$test_root/default-run.log"
+grep -Fq -- 'build -j2' "$test_root/default-run.log"
+! grep -Fq -- '--property=CPUQuota=' "$test_root/default-run.log"
+
+set +e
+ONEFLOWBASE_CARGO_JOB_LIMIT=invalid "$bin_dir/cargo" build >"$test_root/invalid-budget.log" 2>&1
+budget_status=$?
+set -e
+test "$budget_status" -eq 2
+grep -Fq 'ONEFLOWBASE_CARGO_JOB_LIMIT must be a positive integer' "$test_root/invalid-budget.log"
 
 # pnpm must enter the frontend child of the common development budget.
 cat >"$mock_bin/pnpm" <<'EOF'
