@@ -44,7 +44,7 @@ import {
   type WindowWorkspaceResizeEdge
 } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import { getWindowWorkspaceViewport } from '../../../../shared/ui/window-workspace/window-workspace-geometry';
-import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
+import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/window-workspace-context';
 import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { PageReferenceDraftRow } from '../debug-console/conversation/PageReferenceTag';
 import { useAssistantPageReferenceSelection } from './useAssistantPageReferenceSelection';

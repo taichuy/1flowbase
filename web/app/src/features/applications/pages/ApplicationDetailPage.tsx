@@ -24,7 +24,7 @@ import {
   type ApplicationSectionKey
 } from '../lib/application-sections';
 import './workflow-application-page.css';
-import { useAssistantRefreshTarget } from '../../../app-shell/AssistantClientTools';
+import { useAssistantRefreshTarget } from '../../../app-shell/assistant-client-tools/context';
 
 const AgentFlowEditorPage = lazy(() =>
   import('../../agent-flow/pages/AgentFlowEditorPage').then((module) => ({

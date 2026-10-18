@@ -7,10 +7,8 @@ import { Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { AccountMenu } from './AccountMenu';
-import {
-  AssistantClientToolProvider,
-  useAssistantClientTools
-} from './AssistantClientTools';
+import { AssistantClientToolProvider } from './AssistantClientTools';
+import { useAssistantClientTools } from './assistant-client-tools/context';
 import { FrontstageDesignModeAction } from './FrontstageDesignModeAction';
 import { HelpChromeMenu } from './HelpChromeMenu';
 import { LanguageChromeMenu } from './LanguageChromeMenu';

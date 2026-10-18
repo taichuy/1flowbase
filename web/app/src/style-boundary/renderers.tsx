@@ -21,7 +21,7 @@ import { createAccountMenuItems } from '../app-shell/account-menu-items';
 import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/AgentFlowEditorShell';
 import { VariableGroupsField } from '../features/agent-flow/components/bindings/VariableGroupsField';
 import type { FlowSelectorOption } from '../features/agent-flow/lib/selector-options';
-import { useWindowWorkspace } from '../shared/ui/window-workspace/WindowWorkspaceProvider';
+import { useWindowWorkspace } from '../shared/ui/window-workspace/window-workspace-context';
 import {
   ASSISTANT_WINDOW_ID,
   initialAssistantWindowRect

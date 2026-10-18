@@ -7,7 +7,7 @@ import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import { AgentFlowDockPanel } from '../editor/AgentFlowDockPanel';
 import { i18nText } from '../../../../shared/i18n/text';
 import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
-import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
+import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/window-workspace-context';
 import {
   ASSISTANT_WINDOW_ID,
   initialAssistantWindowRect

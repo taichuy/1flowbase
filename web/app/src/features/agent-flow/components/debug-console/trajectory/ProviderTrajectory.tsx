@@ -9,10 +9,8 @@ import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { useNativeBlockSurface } from '../../../../frontstage/lib/native-modules/native-block-surface-context';
-import {
-  WindowWorkspaceWindow,
-  useWindowWorkspaceOverlayZIndex
-} from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
+import { WindowWorkspaceWindow } from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
+import { useWindowWorkspaceOverlayZIndex } from '../../../../../shared/ui/window-workspace/window-workspace-overlay-context';
 import { NativeTrajectoryWorkspace } from './NativeTrajectoryWorkspace';
 import { ConversationTrajectoryWorkspace } from './client/ConversationTrajectoryWorkspace';
 import { ClientTrajectoryWorkspace } from './client/ClientTrajectoryWorkspace';

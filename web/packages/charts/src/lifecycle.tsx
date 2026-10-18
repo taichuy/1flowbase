@@ -1,18 +1,10 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode
-} from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
-interface ChartResource {
-  dispose(): void;
-}
-interface ChartResourceScope {
-  register(resource: ChartResource): () => void;
-}
-const ChartResourceContext = createContext<ChartResourceScope | null>(null);
+import {
+  ChartResourceContext,
+  type ChartResource,
+  type ChartResourceScope
+} from './lifecycle-context';
 
 /** Place outside Activity: visibility suspends a chart; its owner releases it. */
 export function EChartResourceBoundary({ children }: { children: ReactNode }) {
@@ -33,8 +25,4 @@ export function EChartResourceBoundary({ children }: { children: ReactNode }) {
     [resources]
   );
   return <ChartResourceContext value={scope}>{children}</ChartResourceContext>;
-}
-
-export function useEChartResourceScope() {
-  return useContext(ChartResourceContext);
 }

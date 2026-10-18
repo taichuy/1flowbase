@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, test, vi } from 'vitest';
 
-import { createAssistantClientTools } from '../AssistantClientTools';
+import { createAssistantClientTools } from '../assistant-client-tools/factory';
 import { registerFrontstageAssistantRuntime } from '../../features/frontstage/lib/assistant-frontstage-runtime';
 
 describe('assistant client tools', () => {
