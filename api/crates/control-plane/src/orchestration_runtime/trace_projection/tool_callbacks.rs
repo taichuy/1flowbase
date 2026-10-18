@@ -574,10 +574,8 @@ pub(super) fn tool_callback_content_payload(
         ("callback_status", serde_json::json!(callback_status)),
         (
             "execution_status",
-            serde_json::json!(
-                route_trace_execution_status(route_trace)
-                    .or_else(|| tool_result_execution_status(tool_result))
-            ),
+            serde_json::json!(route_trace_execution_status(route_trace)
+                .or_else(|| tool_result_execution_status(tool_result))),
         ),
         ("call_usage", serde_json::json!(call_usage)),
         (

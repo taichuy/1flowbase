@@ -6,6 +6,7 @@
 
 | 主题 | 入口 | 阅读目的 |
 | --- | --- | --- |
+| 质量证据与规则所有权 | [质量分层](testing/README.md) | 候选收据、测试分片、静态规则与真实运行态边界 |
 | 请求与调用生命周期 | [中文](interface-lifecycle.md) · [English](interface-lifecycle.en.md) | 入口装配、认证身份、执行计划、终态交付与等价证据 |
 | AI Gateway 执行证据 | [中文](ai-gateway-observation.md) · [English](ai-gateway-observation.en.md) | 三层职责、Native 必要日志、同调用正文引用与按需读取 |
 | Runtime 回放回收 | [热回放与冷恢复](runtime-replay/README.md) · [English](runtime-replay/README.en.md) | generation 落库证明、短期热缓存、分页恢复与数据库保留边界 |

@@ -1,11 +1,11 @@
 use super::*;
 use extension_contracts::{
-    MULTIPLEX_OUTPUT_BUDGET_BYTES, MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService,
-    MultiplexWorkerMessage, PluginDataRequest, RUNTIME_WORKER_RETENTION_V1,
+    MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService, MultiplexWorkerMessage,
+    PluginDataRequest, MULTIPLEX_OUTPUT_BUDGET_BYTES, RUNTIME_WORKER_RETENTION_V1,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 
 const QUEUE_CAPACITY: usize = 8;
 const WRITER_BYTES: usize = MULTIPLEX_OUTPUT_BUDGET_BYTES;
