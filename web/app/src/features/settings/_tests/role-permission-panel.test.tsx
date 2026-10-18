@@ -82,7 +82,7 @@ let RolePermissionPanel: typeof import('../components/RolePermissionPanel').Role
 import {
   findReorderIndices,
   reorderItems
-} from '../components/role-permissions/SortablePolicyTable';
+} from '../components/role-permissions/policy-order';
 
 function authenticate() {
   useAuthStore.getState().setAuthenticated({

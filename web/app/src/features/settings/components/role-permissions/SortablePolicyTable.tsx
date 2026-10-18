@@ -17,7 +17,6 @@ import {
 } from '@dnd-kit/core';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
@@ -25,6 +24,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from 'antd';
+
+import { findReorderIndices } from './policy-order';
 
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -77,32 +78,6 @@ export function PolicyDragHandle() {
       {...sortable.listeners}
     />
   );
-}
-
-export function reorderItems<T>(
-  items: T[],
-  oldIndex: number,
-  newIndex: number
-) {
-  if (
-    oldIndex < 0 ||
-    newIndex < 0 ||
-    oldIndex >= items.length ||
-    newIndex >= items.length
-  ) {
-    return items;
-  }
-  return arrayMove(items, oldIndex, newIndex);
-}
-
-export function findReorderIndices(
-  itemIds: string[],
-  activeId: string,
-  overId: string
-): [number, number] | null {
-  const oldIndex = itemIds.indexOf(activeId);
-  const newIndex = itemIds.indexOf(overId);
-  return oldIndex >= 0 && newIndex >= 0 ? [oldIndex, newIndex] : null;
 }
 
 export function SortablePolicyTable({

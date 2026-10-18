@@ -3,7 +3,7 @@ import { Button, Flex, Select, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { NamedBindingExpression } from '@1flowbase/flow-schema';
 import type { PluginFormFieldSchema } from '../../../../../../shared/schema-ui/v1/contracts/plugin-form-schema';
-import { renderSchemaFormFieldControl } from '../../../../../../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
+import { renderSchemaFormFieldControl } from '../../../../../../shared/schema-ui/v1/form-drawer/schema-form-field-control';
 import type { FlowSelectorOption } from '../../../../lib/selector-options';
 import { SelectorField } from '../../../bindings/SelectorField';
 import { TemplatedTextField } from '../../../bindings/TemplatedTextField';

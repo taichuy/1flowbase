@@ -2,25 +2,13 @@ import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Checkbox, Flex, Input, Space, Typography } from 'antd';
 import { useEffect } from 'react';
-import type {
-  ConsoleMcpProxyInputMapping,
-  ConsoleMcpProxyOutputMapping
-} from '@1flowbase/api-client';
-
 import { i18nText } from '../../../../../shared/i18n/text';
 
-const MCP_PROXY_PATH_PATTERN =
-  /^[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$/;
-
-type ProxyMapping = ConsoleMcpProxyInputMapping | ConsoleMcpProxyOutputMapping;
-
-export function mcpProxyMappingIsValid(value: ProxyMapping) {
-  return value.mappings.every(
-    (entry) =>
-      MCP_PROXY_PATH_PATTERN.test(entry.local_path) &&
-      MCP_PROXY_PATH_PATTERN.test(entry.remote_path)
-  );
-}
+import {
+  MCP_PROXY_PATH_PATTERN,
+  mcpProxyMappingIsValid,
+  type ProxyMapping
+} from './mcp-proxy-mapping-model';
 
 const textByKey = {
   proxy_add_mapping: () =>

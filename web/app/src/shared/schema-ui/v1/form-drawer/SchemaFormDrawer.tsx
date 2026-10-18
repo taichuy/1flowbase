@@ -5,9 +5,7 @@ import {
   Flex,
   Form,
   Input,
-  InputNumber,
   Modal,
-  Select,
   Space,
   Switch,
   Typography
@@ -29,6 +27,8 @@ import type {
   PluginFormSchema,
   PluginFormValue
 } from '../contracts/plugin-form-schema';
+
+import { renderSchemaFormFieldControl } from './schema-form-field-control';
 
 import './schema-form-drawer.css';
 
@@ -136,57 +136,6 @@ function fieldRules(field: PluginFormFieldSchema): Rule[] {
     });
   }
   return rules;
-}
-
-export function renderSchemaFormFieldControl(field: PluginFormFieldSchema) {
-  if (field.type === 'number') {
-    return (
-      <InputNumber
-        className="schema-form-drawer__number"
-        max={field.max}
-        min={field.min}
-        precision={field.precision}
-        step={field.step}
-      />
-    );
-  }
-
-  if (field.type === 'boolean') {
-    return <Switch />;
-  }
-
-  if (field.type === 'select' || field.control === 'multi-select') {
-    return (
-      <Select
-        mode={field.control === 'multi-select' ? 'multiple' : undefined}
-        options={(field.options ?? []).map((option) => ({
-          disabled: option.disabled,
-          label: option.label,
-          value: option.value as string | number | boolean
-        }))}
-      />
-    );
-  }
-
-  if (field.control === 'password' || field.type === 'password') {
-    return (
-      <Input.Password
-        placeholder={field.placeholder}
-        autoComplete="new-password"
-      />
-    );
-  }
-
-  if (field.control === 'textarea') {
-    return (
-      <Input.TextArea
-        autoSize={{ minRows: 3, maxRows: 8 }}
-        placeholder={field.placeholder}
-      />
-    );
-  }
-
-  return <Input placeholder={field.placeholder} />;
 }
 
 function drawerTitle(title: string, subtitle?: string) {
