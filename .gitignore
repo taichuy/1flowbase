@@ -75,3 +75,4 @@ docs/ziliao/*
 deploy/*
 # .dsh 是本机 harness/MCP 配置，含本地凭证，永不提交
 .dsh/
+1flowbase-web.tar.gz
