@@ -217,6 +217,7 @@ pub struct ApplicationCollectorResponse {
     pub collector_code: String,
     pub source_client: String,
     pub display_name: String,
+    pub icon: Option<String>,
     pub description: String,
     pub version: String,
     pub execution_target: String,

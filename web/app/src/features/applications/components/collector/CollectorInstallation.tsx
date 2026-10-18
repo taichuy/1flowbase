@@ -1,3 +1,4 @@
+import { CollectorIcon } from './CollectorIcon';
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Input, Radio, Space, Typography } from 'antd';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
@@ -110,9 +111,7 @@ export function CollectorInstallation({
         aria-label={t('agent_logs.installation_steps')}
       >
         <div className="application-collector__identity">
-          <span className="application-collector__logo" aria-hidden="true">
-            C
-          </span>
+          <CollectorIcon collector={collector} />
           <div>
             <Typography.Title level={4}>
               {collector.display_name}

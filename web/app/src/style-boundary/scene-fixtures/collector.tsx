@@ -17,6 +17,7 @@ const collector: ConsoleApplicationCollector = {
   collector_code: 'codex-logs-collector',
   source_client: 'codex',
   display_name: 'Codex',
+  icon: null,
   description: '采集本地 Codex 对话日志并上传到当前应用。',
   version: '0.1.0',
   execution_target: 'client',

@@ -26,6 +26,7 @@ import {
   installApplicationCollector
 } from '../api/applications';
 import { CollectorInstallation } from '../components/collector/CollectorInstallation';
+import { CollectorIcon } from '../components/collector/CollectorIcon';
 import '../components/collector/application-collector.css';
 
 type InstallOperation = {
@@ -231,12 +232,7 @@ export function ApplicationCollectorPage({
                   className="application-collector__card"
                 >
                   <div className="application-collector__identity">
-                    <span
-                      className="application-collector__logo"
-                      aria-hidden="true"
-                    >
-                      {collector.display_name.slice(0, 1)}
-                    </span>
+                    <CollectorIcon collector={collector} />
                     <div>
                       <Typography.Title
                         level={5}

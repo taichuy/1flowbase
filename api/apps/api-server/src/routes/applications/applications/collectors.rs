@@ -91,6 +91,7 @@ pub(crate) async fn catalog(
                 collector_code: manifest.collector_code.clone(),
                 source_client: manifest.source_client.clone(),
                 display_name: manifest.display_name.clone(),
+                icon: None,
                 description: manifest
                     .description
                     .get(locale.as_str())
@@ -159,6 +160,7 @@ pub(crate) async fn catalog(
                         collector_code: descriptor.collector_code.clone(),
                         source_client: descriptor.source_client.clone(),
                         display_name: descriptor.display_name.clone(),
+                        icon: None,
                         description: remote.description.clone(),
                         version: remote.version.clone(),
                         execution_target: descriptor.execution_target.clone(),
@@ -175,6 +177,12 @@ pub(crate) async fn catalog(
                         shell_installer_url: None,
                         powershell_installer_url: None,
                     });
+            entry.icon = remote
+                .source
+                .metadata
+                .get("icon")
+                .and_then(|value| value.as_str())
+                .map(str::to_owned);
             entry.version = remote.version;
             entry.installable = true;
         }

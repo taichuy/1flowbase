@@ -78,6 +78,11 @@
   gap: 32px;
   margin-top: 16px;
 }
+.application-collector__logo img {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+}
 .application-collector__steps {
   min-width: 0;
 }

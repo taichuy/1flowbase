@@ -5,6 +5,7 @@ fn collector_dto_projection_preserves_truthful_local_state_and_null_urls() {
         collector_code: "codex-logs-collector".into(),
         source_client: "codex".into(),
         display_name: "Codex".into(),
+        icon: Some("data:image/svg+xml;base64,PHN2Zy8+".into()),
         description: "Local logs".into(),
         version: "0.2.0".into(),
         execution_target: "client".into(),
@@ -23,6 +24,7 @@ fn collector_dto_projection_preserves_truthful_local_state_and_null_urls() {
     }];
     let value = serde_json::to_value(&collectors[0]).unwrap();
     assert!(value["shell_installer_url"].is_null());
+    assert_eq!(value["icon"], "data:image/svg+xml;base64,PHN2Zy8+");
     assert_eq!(value["installation_status"], "missing");
     assert_eq!(value["version"], "0.2.0");
     assert_eq!(value["installed_version"], "0.1.0");
@@ -52,6 +54,7 @@ fn collector_hook_summary_keeps_unbounded_public_catalog_and_long_urls() {
         collector_code: "collector".into(),
         source_client: "codex".into(),
         display_name: "Codex".into(),
+        icon: Some("data:image/svg+xml;base64,PHN2Zy8+".into()),
         description: "Local logs".into(),
         version: "0.1.0".into(),
         execution_target: "client".into(),

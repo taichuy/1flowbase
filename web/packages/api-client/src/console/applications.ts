@@ -41,6 +41,7 @@ export interface ConsoleApplicationCollector {
   collector_code: string;
   source_client: string;
   display_name: string;
+  icon: string | null;
   description: string;
   version: string;
   execution_target: 'client';

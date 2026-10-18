@@ -52,6 +52,7 @@ const collector: ConsoleApplicationCollector = {
   collector_code: 'codex-logs-collector',
   source_client: 'codex',
   display_name: 'Codex',
+  icon: 'data:image/svg+xml;base64,PHN2Zy8+',
   description: 'Catalog provided description',
   version: '0.1.0',
   execution_target: 'client',
@@ -601,4 +602,34 @@ test('failed command copy explains the usable manual fallback for a masked key p
     )
   ).toBeInTheDocument();
   expect(screen.getByLabelText('API 密钥')).toHaveValue('proof-key');
+});
+
+test('catalog icons appear on cards and installation details, with initials when absent or broken', async () => {
+  api.fetchApplicationCatalog.mockResolvedValue({
+    ...catalog,
+    collectors: [
+      collector,
+      {
+        ...uninstalled,
+        catalog_id: 'runtime-extensions:test/opencode',
+        display_name: 'OpenCode',
+        icon: null
+      }
+    ]
+  });
+  const { container } = renderPage();
+  await screen.findByRole('heading', { name: 'Codex' });
+  const icon = container.querySelector('.application-collector__logo img');
+  expect(icon).toHaveAttribute('src', collector.icon);
+  expect(
+    container.querySelectorAll('.application-collector__logo')[1]
+  ).toHaveTextContent('O');
+  fireEvent.error(icon!);
+  expect(
+    container.querySelector('.application-collector__logo')
+  ).toHaveTextContent('C');
+  fireEvent.click(screen.getByRole('tab', { name: 'Codex' }));
+  expect(
+    container.querySelector('.application-collector__identity img')
+  ).toHaveAttribute('src', collector.icon);
 });
