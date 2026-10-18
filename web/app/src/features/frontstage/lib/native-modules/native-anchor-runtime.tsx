@@ -318,7 +318,7 @@ function createScopedItems(
       if (!isLocalHref(entry.href)) {
         return {
           ...entry,
-          children: entry.children ? visit(entry.children) : undefined
+          ...(entry.children ? { children: visit(entry.children) } : {})
         };
       }
       sequence += 1;
@@ -336,7 +336,7 @@ function createScopedItems(
       return {
         ...entry,
         href: internalHref,
-        children: entry.children ? visit(entry.children) : undefined
+        ...(entry.children ? { children: visit(entry.children) } : {})
       };
     });
   return {
