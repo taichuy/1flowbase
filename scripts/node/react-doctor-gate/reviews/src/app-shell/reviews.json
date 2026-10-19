@@ -2,13 +2,6 @@
   "toolPackage": "react-doctor@0.2.16",
   "reviews": [
     {
-      "file": "web/app/src/app-shell/AssistantClientTools.tsx",
-      "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "33e767b083d72a71bddabc78f651b636469dd365cf06a2c77f5473ee6fd760d6",
-      "reason": "The flagged refreshTargets value is the guarded retained-ref initializer, not an unconditional new Map. The ref is initialized once and never replaced; including it in dependencies does not recreate callbacks/memos per render. AssistantClientTools allocates refreshTargets with (refreshTargetsRef.current ??= new Map()). The right-hand allocation runs only when the retained ref is null, and no code replaces the initialized map. registerRefreshTarget removes a key only if its callback is still the registered one, preserving per-provider registry identity across locale/query snapshot updates.",
-      "evidence": [{"file": "web/app/src/app-shell/AssistantClientTools.tsx", "sha256": "33e767b083d72a71bddabc78f651b636469dd365cf06a2c77f5473ee6fd760d6"}, {"file": "web/app/src/app-shell/_tests/assistant-client-tools.test.ts", "sha256": "e58092a014a7d41ee4944ed00f311a0573729e8f7606c4f2acbd6f45c5bd10a6"}]
-    },
-    {
       "file": "web/app/src/app-shell/Navigation.tsx",
       "rule": "react-doctor/no-render-in-render",
       "sourceSha256": "c3392bfff27986bf91d4da91e5baf4cee0bf17836f9e4cd0fc9cb4a5fc58a545",

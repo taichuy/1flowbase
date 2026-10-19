@@ -7,13 +7,6 @@
       "sourceSha256": "569c236c4f79ded856e92752bdfe4ee0374a8eb7ae7f318986b1a1aab9131c63",
       "reason": "useUpstreamMcpController已隔离connections查询、save/test/discovery/import mutation和结果状态；导出ThirdPartyMcpTab只组合同一个上游连接工作区的表格、连接表单、测试结果与工具发现dialog。请求与状态owner没有混进第二资源域，模块不导出hook/常量混合HMR边界；仅删除真实未消费的view.message解构，不能凭UI长度再改变连接/导入流程。",
       "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/_tests/third-party-mcp-tab.test.tsx", "sha256": "7ef6c9ee0f73692c7cb425ee2229611f8b4e8abc67891929f4f709ea20a0cd6c"}, {"file": "web/app/src/features/settings/components/mcp-management/upstream/ThirdPartyMcpTab.tsx", "sha256": "569c236c4f79ded856e92752bdfe4ee0374a8eb7ae7f318986b1a1aab9131c63"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/upstream/ThirdPartyMcpTab.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "569c236c4f79ded856e92752bdfe4ee0374a8eb7ae7f318986b1a1aab9131c63",
-      "reason": "The state values separately describe connection form visibility, editing record, test-result visibility, discovery record, keyword and selected tools. They are not a single always-synchronous transition tuple; Form and mutation state already have their own owners. A reducer is not required to preserve an invariant shown here.",
-      "evidence": [{"file": "web/app/src/features/settings/api/mcp-management.ts", "sha256": "350e367f664cb74822891243f567a8508c51c57540310d27c05b1e31e129f82e"}, {"file": "web/app/src/features/settings/components/mcp-management/McpManagementPanel.tsx", "sha256": "52a31a18e057fc8f5946157e4cb42e0b52f48171754b49009f57367a69329dbb"}, {"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-input-defaults.test.tsx", "sha256": "4973e23f6420f2a337f908fdfbd5444524993a00bf6e93457a19a834cc9b2943"}, {"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-instance-table.test.tsx", "sha256": "e521ed5cdb1d858bc9a53873358eb3cf3061c70f0e888858f922fff731f7dfc9"}, {"file": "web/app/src/features/settings/components/mcp-management/_tests/third-party-mcp-tab.test.tsx", "sha256": "7ef6c9ee0f73692c7cb425ee2229611f8b4e8abc67891929f4f709ea20a0cd6c"}, {"file": "web/app/src/features/settings/components/mcp-management/upstream/ThirdPartyMcpTab.tsx", "sha256": "569c236c4f79ded856e92752bdfe4ee0374a8eb7ae7f318986b1a1aab9131c63"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}, {"file": "web/app/src/shared/ui/loading-state/LoadingState.tsx", "sha256": "4092faf2cf194ec5f391a3e28c7146ef0ad500b19601075a549ed73d3e964458"}, {"file": "web/app/src/state/auth-store.ts", "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
     }
   ]
 }

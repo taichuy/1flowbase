@@ -14,13 +14,6 @@
       "sourceSha256": "8bfaa7730382a5c2adb15abf4f14bd19f45622b438bf098ba86235c85f1bbe79",
       "reason": "The mutation delegates success invalidation to refresh, which invalidates both department and member query prefixes; the rule does not follow the helper. DepartmentManagementPanel delete mutation uses onSuccess: refresh; refresh invalidates both settingsDepartmentsQueryKey and settingsMembersQueryKey through Promise.all. Department-tree and member queries share these prefixes, so invalidation exists across the helper boundary.",
       "evidence": [{"file": "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx", "sha256": "8bfaa7730382a5c2adb15abf4f14bd19f45622b438bf098ba86235c85f1bbe79"}, {"file": "web/app/src/features/settings/components/organization/_tests/DepartmentManagementPanel.test.tsx", "sha256": "e0ca246e6a5d42bb6473ef48d63fce621cd03028117bf798d9bfe28fefa2b4f5"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx",
-      "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "3976cb857af343e4ec44de22a615c0be30f4884830e4a20625bd17dff6c5933b",
-      "reason": "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx:96（react-doctor/js-combine-iterations）：probe 后 MemberDepartmentFields 已改为 selectedDepartments.options/inheritedRoles 的预先投影；原行81/92不再包含告警对应 filter/map 链，当前渲染只消费已计算数组。不得将旧 probe 行号当当前待修位置。 web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx:102（react-doctor/js-combine-iterations）：probe 后 MemberDepartmentFields 已改为 selectedDepartments.options/inheritedRoles 的预先投影；原行81/92不再包含告警对应 filter/map 链，当前渲染只消费已计算数组。不得将旧 probe 行号当当前待修位置。",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/member-management-panel.test.tsx", "sha256": "0204f00e307666807b09c819fb06adac1be21dbf5cff9f0b09d9ec23da975af5"}, {"file": "web/app/src/features/settings/components/MemberManagementPanel.tsx", "sha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0"}, {"file": "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx", "sha256": "3976cb857af343e4ec44de22a615c0be30f4884830e4a20625bd17dff6c5933b"}, {"file": "web/app/src/features/settings/components/organization/_tests/MemberDepartmentFields.test.tsx", "sha256": "868707077c595587a375e648bdb5271b673fcddc603c9698cc7a1cab7d4f19b1"}]
     }
   ]
 }

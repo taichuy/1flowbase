@@ -107,13 +107,6 @@
       "evidence": [{"file": "web/app/src/features/agent-flow/components/detail/fields/LlmResponseFormatField.tsx", "sha256": "976b3c3c79006dc885fc51fb6d6a0696f1b871fe381d189161675c377296c148"}, {"file": "web/app/src/features/agent-flow/schema/agent-flow-field-renderers.tsx", "sha256": "8d132c8a78f94b94fca5acab94a296b86289fc24e4fe9a4a5b507f73fd7cd52d"}]
     },
     {
-      "file": "web/app/src/features/agent-flow/components/detail/fields/LlmResponseFormatField.tsx",
-      "rule": "react-doctor/no-reset-all-state-on-prop-change",
-      "sourceSha256": "976b3c3c79006dc885fc51fb6d6a0696f1b871fe381d189161675c377296c148",
-      "reason": "web/app/src/features/agent-flow/components/detail/fields/LlmResponseFormatField.tsx:25（react-doctor/no-reset-all-state-on-prop-change）：schemaText 为 LLM response format 的可编辑 JSON 文本（包括尚未合法的内容）；effect 只在外部 responseFormat mode/schema 变化时重新装入。直接 JSON.stringify 当前 schema 会阻止输入未完成 JSON；重复初始序列化的独立成本已列 F8。",
-      "evidence": [{"file": "web/app/src/features/agent-flow/components/detail/fields/LlmResponseFormatField.tsx", "sha256": "976b3c3c79006dc885fc51fb6d6a0696f1b871fe381d189161675c377296c148"}, {"file": "web/app/src/features/agent-flow/schema/agent-flow-field-renderers.tsx", "sha256": "8d132c8a78f94b94fca5acab94a296b86289fc24e4fe9a4a5b507f73fd7cd52d"}]
-    },
-    {
       "file": "web/app/src/features/agent-flow/components/detail/fields/StartModelListField.tsx",
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "ef4f9b249e55c6a54b6ec34e8cb9aaf2d15e9990811b19cb928f0c2b44b0b778",

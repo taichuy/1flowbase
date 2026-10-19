@@ -3,13 +3,6 @@
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
-      "rule": "react-doctor/click-events-have-key-events",
-      "sourceSha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb",
-      "reason": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx:603（react-doctor/click-events-have-key-events）：当前 BlockSchemaTreePanel 的 node title span 没有 onClick；create/edit/delete 都是原生语义的 antd Button，带 onKeyDown.stopPropagation 并由 Tree 管理节点键盘。probe 后源码已变化，旧行605的静态点击告警已无对应生产者。",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/jsx-studio/JsxStudioResourcePanel.test.tsx", "sha256": "f67ffd2154679202b408c770771fdfc6124a034b1b00183630bee290200346bc"}, {"file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx", "sha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"}, {"file": "web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx", "sha256": "273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"}, {"file": "web/app/src/features/frontstage/components/jsx-studio/JsxStudioResourcePanel.tsx", "sha256": "4f105fe8a3528f9d21b80c45b6345848a3d31f39c6d428915fa90e03c9b5783b"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb",
       "reason": "This state retains user input/selection/history or an external resource receipt rather than merely caching a render calculation. BlockSchemaTreePanel owns lazy backend tree expansion/search and create/edit/move/delete form transactions. expandedKeys includes deliberate user onExpand changes plus ancestors merged by Set; deriving it only from the current path would collapse user-open branches. Form target, child cache, expansion, search and error are separate axes; Tree/node title/form remain distinct render owners.",
@@ -21,13 +14,6 @@
       "sourceSha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb",
       "reason": "The named owner and extracted child/controller boundaries below explain this component; declaration length alone is not a demonstrated competing responsibility or behavior failure. BlockSchemaTreePanel owns lazy backend tree expansion/search and create/edit/move/delete form transactions. expandedKeys includes deliberate user onExpand changes plus ancestors merged by Set; deriving it only from the current path would collapse user-open branches. Form target, child cache, expansion, search and error are separate axes; Tree/node title/form remain distinct render owners.",
       "evidence": [{"file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx", "sha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"}, {"file": "web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx", "sha256": "273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
-      "rule": "react-doctor/no-static-element-interactions",
-      "sourceSha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb",
-      "reason": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx:603（react-doctor/no-static-element-interactions）：当前 BlockSchemaTreePanel 的 node title span 没有 onClick；create/edit/delete 都是原生语义的 antd Button，带 onKeyDown.stopPropagation 并由 Tree 管理节点键盘。probe 后源码已变化，旧行605的静态点击告警已无对应生产者。",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/jsx-studio/JsxStudioResourcePanel.test.tsx", "sha256": "f67ffd2154679202b408c770771fdfc6124a034b1b00183630bee290200346bc"}, {"file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx", "sha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"}, {"file": "web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx", "sha256": "273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"}, {"file": "web/app/src/features/frontstage/components/jsx-studio/JsxStudioResourcePanel.tsx", "sha256": "4f105fe8a3528f9d21b80c45b6345848a3d31f39c6d428915fa90e03c9b5783b"}]
     },
     {
       "file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",

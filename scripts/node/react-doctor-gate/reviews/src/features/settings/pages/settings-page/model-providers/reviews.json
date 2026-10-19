@@ -21,13 +21,6 @@
       "sourceSha256": "4f212c871150482d3a29ebe7802d638250f91d030a80eeba7142d4795590de21",
       "reason": "web/app/src/features/settings/pages/settings-page/model-providers/use-official-plugin-task.ts:72（react-doctor/no-derived-state）：officialInstallState 是远程异步安装任务的 lifecycle，task 终态时清 taskId 停止轮询并通知 onSettled；不是 pluginTaskQuery.data 的恒等副本。必须在响应完成后处理，不能提前放安装按钮事件。",
       "evidence": [{"file": "web/app/src/features/settings/_tests/model-providers-page/instances-modal.test.tsx", "sha256": "5c262ca92ac8a39a4272578f94778ac2b07c972f7824f50dc6dc0f1831af0ae6"}, {"file": "web/app/src/features/settings/_tests/model-providers-page/main-instance-selection.test.tsx", "sha256": "e85f57df33aefefb3bde1166e49bca3ff60467f04950ebbf0d782aa277137d89"}, {"file": "web/app/src/features/settings/pages/settings-page/SettingsModelProvidersSection.tsx", "sha256": "292b4f31b822f6378b178253dc00ad364da8ba812c936c0e1b5f036ded70c9a6"}, {"file": "web/app/src/features/settings/pages/settings-page/model-providers/use-official-plugin-task.ts", "sha256": "4f212c871150482d3a29ebe7802d638250f91d030a80eeba7142d4795590de21"}]
-    },
-    {
-      "file": "web/app/src/features/settings/pages/settings-page/model-providers/use-official-plugin-task.ts",
-      "rule": "react-doctor/rules-of-hooks",
-      "sourceSha256": "4f212c871150482d3a29ebe7802d638250f91d030a80eeba7142d4795590de21",
-      "reason": "web/app/src/features/settings/pages/settings-page/model-providers/use-official-plugin-task.ts:58（react-doctor/rules-of-hooks）：useEffectEvent 声明在 hook 顶层；唯一调用在 useEffect 所注册 setTimeout 回调 47–49 内，不是 render 或 UI event 调用。这里错误是把函数列入 deps（另记 F6），不是违反调用位置规则。",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/model-providers-page/instances-modal.test.tsx", "sha256": "5c262ca92ac8a39a4272578f94778ac2b07c972f7824f50dc6dc0f1831af0ae6"}, {"file": "web/app/src/features/settings/_tests/model-providers-page/main-instance-selection.test.tsx", "sha256": "e85f57df33aefefb3bde1166e49bca3ff60467f04950ebbf0d782aa277137d89"}, {"file": "web/app/src/features/settings/pages/settings-page/SettingsModelProvidersSection.tsx", "sha256": "292b4f31b822f6378b178253dc00ad364da8ba812c936c0e1b5f036ded70c9a6"}, {"file": "web/app/src/features/settings/pages/settings-page/model-providers/use-official-plugin-task.ts", "sha256": "4f212c871150482d3a29ebe7802d638250f91d030a80eeba7142d4795590de21"}]
     }
   ]
 }
