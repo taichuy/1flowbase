@@ -6,6 +6,7 @@ const test = require("node:test");
 
 const {
   attachProfileGates,
+  buildSourceGraph,
   cacheIdentity,
   createIsolatedViteCacheDirectory,
   evaluateBudget,
@@ -155,6 +156,28 @@ test("DV-F01 robust regression activates after five same-reference samples", () 
   assert.equal(accepted.historyStatus, "active");
   assert.equal(accepted.ok, true);
   assert.equal(rejected.ok, false);
+});
+
+test("source graph follows sibling and parent imports without treating npm or missing modules as edges", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dev-experience-import-graph-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "feature"));
+  const entry = path.join(root, "feature/entry.ts");
+  const sibling = path.join(root, "feature/sibling.ts");
+  const shared = path.join(root, "shared.ts");
+  const npmLookalike = path.join(root, "antd.ts");
+  fs.writeFileSync(entry, [
+    "import { sibling } from './sibling';",
+    "export { shared } from '../shared';",
+    "import Button from 'antd';",
+    "import { missing } from './missing';",
+  ].join("\n"));
+  for (const file of [sibling, shared, npmLookalike]) fs.writeFileSync(file, "export {};\n");
+
+  const graph = buildSourceGraph(root);
+
+  assert.deepEqual(graph.get(entry), [sibling, shared]);
+  assert.deepEqual(graph.get(npmLookalike), []);
 });
 
 test("DV-F01 Tarjan SCC and condensation reachability preserve cycles", () => {

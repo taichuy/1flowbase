@@ -774,7 +774,7 @@ test('runQualityGate strips ANSI control sequences from published failure excerp
   assert.equal(createdIssues.length, 1);
   assert.doesNotMatch(createdIssues[0].body, /\u001b\[/u);
   assert.match(createdIssues[0].body, /dist\/asset\.js/u);
-  assert.match(createdIssues[0].body, /Diff in api\/apps\/api-server\/src\/_tests\/config_tests\.rs:77/u);
+  assert.match(createdIssues[0].body, /Diff in api\/apps\/api-server\/src\/_tests\/host_boot\/config_tests\.rs:77/u);
 });
 
 test('runQualityGate publishes the rust failure block when cargo stderr hides it at the tail', async () => {

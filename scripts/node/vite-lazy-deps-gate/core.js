@@ -58,7 +58,7 @@ function readWebPackageInfo(repoRoot) {
 function packageRoot(specifier) {
   if (
     !specifier
-    || specifier.startsWith('./cli')
+    || specifier.startsWith('.')
     || specifier.startsWith('/')
     || specifier.startsWith('node:')
     || specifier.startsWith('\0')
@@ -145,7 +145,7 @@ function collectDynamicImportSpecifiers(source) {
 }
 
 function resolveSourceFile(importerPath, specifier) {
-  if (!specifier.startsWith('./cli')) {
+  if (!specifier.startsWith('.')) {
     return null;
   }
 

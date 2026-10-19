@@ -36,7 +36,7 @@ function listSourceFiles(root) {
 }
 
 function resolveRelativeImport(importer, specifier) {
-  if (!specifier.startsWith("./cli")) {
+  if (!specifier.startsWith(".")) {
     return null;
   }
   const base = path.resolve(path.dirname(importer), specifier);
