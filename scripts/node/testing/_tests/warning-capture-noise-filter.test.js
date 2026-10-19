@@ -183,6 +183,10 @@ test('runCommandSequence detects ANSI and workspace-prefixed act output on stdou
   });
   assert.equal(status, 1);
   assert.match(diagnostic, /test-fidelity.*workspace-test/u);
+  assert.match(
+    fs.readFileSync(path.join(repoRoot, 'tmp/test-governance/frontend.warnings.log'), 'utf8'),
+    /\[stdout\].*\n.*An update to Table/u,
+  );
 });
 
 test('runCommandSequence records upstream warnings without treating them as act failures', () => {

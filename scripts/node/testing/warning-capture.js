@@ -203,14 +203,21 @@ function runCommandSequence({
     const warningStderr = result.status === 0
       ? filterSuccessfulWarningStderr(result.stderr)
       : result.stderr;
+    const stdoutHasActWarning = REACT_ACT_WARNING_PATTERN.test(
+      stripAnsiControlSequences(result.stdout || ''),
+    );
+    const warningOutput = [
+      warningStderr,
+      stdoutHasActWarning ? `[stdout]\n${result.stdout}` : '',
+    ].filter(Boolean).join('\n');
 
-    if (warningStderr) {
+    if (warningOutput) {
       writeWarningCapture({
         repoRoot,
         env,
         scope,
         step: command.label,
-        stderr: warningStderr,
+        stderr: warningOutput,
       });
     }
 
