@@ -358,12 +358,14 @@ function authenticate() {
   });
 }
 
-export function renderApp(pathname: string) {
+export function createAppView(pathname: string) {
   window.history.pushState({}, '', pathname);
 
-  return render(
-    createElement(AppProviders, null, createElement(AppRouterProvider))
-  );
+  return createElement(AppProviders, null, createElement(AppRouterProvider));
+}
+
+export function renderApp(pathname: string) {
+  return render(createAppView(pathname));
 }
 
 export function setDataModelsPageBreakpoint(breakpoint: { md: boolean }) {

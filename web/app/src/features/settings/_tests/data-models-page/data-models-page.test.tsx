@@ -5,7 +5,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 import type { SettingsCompatibleDataModelTemplate } from '../../api/data-models';
 import { dataModelStatusHelp } from '../../components/data-models/data-model-help-text';
 import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
-import { SLOW_SETTINGS_PAGE_TEST_TIMEOUT, cleanupDataModelsPageTest, contactsModel, dataModelsApi, generalTemplateSystemFields, openContactsDataModelEditor, openDataModelEditorByTitle, orderedTreeTemplateSystemFields, renderApp, setupDataModelsPageTest } from './support';
+import { SLOW_SETTINGS_PAGE_TEST_TIMEOUT, cleanupDataModelsPageTest, contactsModel, createAppView, dataModelsApi, generalTemplateSystemFields, openContactsDataModelEditor, openDataModelEditorByTitle, orderedTreeTemplateSystemFields, renderApp, setupDataModelsPageTest } from './support';
 
 beforeEach(setupDataModelsPageTest);
 afterEach(cleanupDataModelsPageTest);
@@ -14,7 +14,7 @@ describe('Settings data models page', () => {
   test('hides selected data source implementation metadata in model management', async () => {
     // Await the real lazy route commits before starting the UI readiness query.
     await act(async () => {
-      renderApp('/settings/data-models?source=main');
+      render(createAppView('/settings/data-models?source=main'));
     });
 
     expect(
