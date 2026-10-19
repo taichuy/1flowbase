@@ -1497,3 +1497,6 @@ impl control_plane::ports::RuntimeEventTerminalWriter for UnusedTerminalWriter {
 
 #[path = "runtime_events/after_commit_lanes.rs"]
 mod after_commit_lanes;
+
+#[path = "runtime_events/support.rs"]
+mod support;

@@ -139,42 +139,42 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "./MemberSettingsTabs",
+      "specifier": "../MemberSettingsTabs",
       "smokePaths": [
         "/settings/members"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../../components/RolePermissionPanel",
+      "specifier": "../../../components/RolePermissionPanel",
       "smokePaths": [
         "/settings/roles/console-policy"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../../components/SystemRuntimePanel",
+      "specifier": "../../../components/SystemRuntimePanel",
       "smokePaths": [
         "/settings/system-runtime"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "./SettingsAuthCenterSection",
+      "specifier": "../SettingsAuthCenterSection",
       "smokePaths": [
         "/settings/auth-center"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "./SettingsDataModelsSection",
+      "specifier": "../SettingsDataModelsSection",
       "smokePaths": [
         "/settings/data-models"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "./SettingsFilesSection",
+      "specifier": "../SettingsFilesSection",
       "smokePaths": [
         "/settings/files"
       ]
@@ -213,77 +213,77 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../../components/ApiDocsPanel",
+      "specifier": "../../../components/ApiDocsPanel",
       "smokePaths": [
         "/settings/docs"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../../components/PersonalAccessTokensPanel",
+      "specifier": "../../../components/PersonalAccessTokensPanel",
       "smokePaths": [
         "/settings/api-key-authentication"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "./ModelProviderSettingsTabs",
+      "specifier": "../ModelProviderSettingsTabs",
       "smokePaths": [
         "/settings/model-providers"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "./SettingsExtensionCenterSection",
+      "specifier": "../SettingsExtensionCenterSection",
       "smokePaths": [
         "/settings/extension-center/runtime-extensions"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "./SettingsMcpManagementSection",
+      "specifier": "../SettingsMcpManagementSection",
       "smokePaths": [
         "/settings/mcp-management"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../../components/host-infrastructure/HostInfrastructureMemoryObservationPanel",
+      "specifier": "../../../components/host-infrastructure/HostInfrastructureMemoryObservationPanel",
       "smokePaths": [
         "/settings/memory-observation"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../../components/application-management/ApplicationManagementPanel",
+      "specifier": "../../../components/application-management/ApplicationManagementPanel",
       "smokePaths": [
         "/settings/applications"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../../components/system-backups/SystemBackupsPanel",
+      "specifier": "../../../components/system-backups/SystemBackupsPanel",
       "smokePaths": [
         "/settings/backups"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../i18n-catalog/I18nCatalogPage",
+      "specifier": "../../i18n-catalog/I18nCatalogPage",
       "smokePaths": [
         "/settings/i18n"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../../components/ui-management/UiManagementPanel",
+      "specifier": "../../../components/ui-management/UiManagementPanel",
       "smokePaths": [
         "/settings/ui-management/code-templates"
       ]
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../network-center/NetworkCenterSection",
+      "specifier": "../../network-center/NetworkCenterSection",
       "smokePaths": [
         "/settings/network-center/proxy-types",
         "/settings/network-center/proxy-pools",
@@ -292,7 +292,7 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
-      "specifier": "../notifications/NotificationsPage",
+      "specifier": "../../notifications/NotificationsPage",
       "smokePaths": [
         "/settings/notifications"
       ]
