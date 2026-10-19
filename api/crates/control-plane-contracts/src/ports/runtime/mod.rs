@@ -29,14 +29,18 @@ pub use trace_projection::*;
 mod application_run_log_context;
 pub use application_run_log_context::*;
 
+#[path = "trajectory_contracts/trajectory.rs"]
 pub mod trajectory;
+#[path = "trajectory_contracts/workflow_trajectory.rs"]
 pub mod workflow_trajectory;
 pub use trajectory::*;
 pub use workflow_trajectory::*;
 
+#[path = "trajectory_contracts/client_trajectory.rs"]
 pub mod client_trajectory;
 pub use client_trajectory::*;
 
+#[path = "trajectory_contracts/workflow_observation.rs"]
 pub mod workflow_observation;
 pub use workflow_observation::*;
 
