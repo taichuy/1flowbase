@@ -40,11 +40,15 @@ use std::sync::{Arc, Mutex};
 use time::Duration;
 use uuid::Uuid;
 
+#[path = "protocols/anthropic_compat.rs"]
 mod anthropic_compat;
+#[path = "protocols/client_protocol_envelope.rs"]
 mod client_protocol_envelope;
 mod conversations;
+#[path = "protocols/inference_recovery.rs"]
 mod inference_recovery;
 mod native_run;
+#[path = "protocols/openai_compat.rs"]
 mod openai_compat;
 mod publications;
 mod published_workflow_operation;
