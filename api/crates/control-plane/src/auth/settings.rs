@@ -11,6 +11,7 @@ use crate::{
 };
 
 use super::AuthenticatorRegistry;
+mod secrets;
 
 pub const AUTH_CENTER_HOST_CONFIG_KEYS: &[&str] = &[
     "title",
@@ -62,6 +63,7 @@ pub struct UpdateAuthCenterLoginEntryPublicUiBlockCommand {
 pub struct AuthCenterSettingsService<R> {
     repository: R,
     registry: Arc<AuthenticatorRegistry>,
+    secret_codec: Option<Arc<dyn crate::ports::AuthenticationSecretCodec>>,
 }
 
 const AUTH_CENTER_OVERVIEW_VIEW_OPERATION_ID: &str = "auth_center.overview.view";
@@ -73,6 +75,44 @@ const AUTH_CENTER_LOGIN_ENTRY_ENABLED_UPDATE_OPERATION_ID: &str =
 const AUTH_CENTER_LOGIN_ENTRY_ORDER_OPERATION_ID: &str = "auth_center.login_entries.order";
 const AUTH_CENTER_LOGIN_ENTRY_UPDATE_OPERATION_ID: &str = "auth_center.login_entries.update";
 
+impl AuthenticatorRegistry {
+    /// Merge only Host-verified active managed provider declarations into the builtin registry.
+    pub fn with_managed_definitions(
+        &self,
+        providers: &[extension_contracts::AuthenticationProviderDescriptor],
+    ) -> Result<Self> {
+        let mut registry = self.clone();
+        for provider in providers {
+            if registry.definitions.contains_key(&provider.auth_type) {
+                return Err(ControlPlaneError::Conflict("auth_provider").into());
+            }
+            let mut config_schema = serde_json::to_value(&provider.config_schema)?;
+            if let Some(fields) = config_schema.as_array_mut() {
+                for field in fields {
+                    if field["key"] == "callback_url" {
+                        field["read_only"] = Value::Bool(true);
+                    }
+                }
+            }
+            registry.definitions.insert(
+                provider.auth_type.clone(),
+                super::AuthenticatorProviderDefinition {
+                    auth_type: provider.auth_type.clone(),
+                    display_name: provider.display_name.clone(),
+                    public_variables_schema: super::public_variables_schema(
+                        &config_schema,
+                        &provider.public_variable_keys,
+                    ),
+                    config_schema,
+                    default_public_ui_block: provider.default_public_ui_block.clone(),
+                    public_variable_keys: provider.public_variable_keys.clone(),
+                },
+            );
+        }
+        Ok(registry)
+    }
+}
+
 impl<R> AuthCenterSettingsService<R>
 where
     R: AuthRepository + LoginEntrySettingsRepository + RoleConsolePolicyReader,
@@ -81,6 +121,7 @@ where
         Self {
             repository,
             registry: Arc::new(AuthenticatorRegistry::new()),
+            secret_codec: None,
         }
     }
 
@@ -88,7 +129,16 @@ where
         Self {
             repository,
             registry,
+            secret_codec: None,
         }
+    }
+
+    pub fn with_secret_codec(
+        mut self,
+        codec: Arc<dyn crate::ports::AuthenticationSecretCodec>,
+    ) -> Self {
+        self.secret_codec = Some(codec);
+        self
     }
 
     pub async fn overview(
@@ -242,15 +292,24 @@ where
         if let Some(description) = command.description {
             upsert_description(&mut authenticator.options, description);
         }
-        if let Some(extension_config) = command.extension_config {
+        if let Some(mut extension_config) = command.extension_config {
+            let fields = self
+                .registry
+                .definition(&authenticator.auth_type)
+                .map(|definition| definition.config_schema.clone())
+                .ok_or(ControlPlaneError::InvalidInput("auth_type"))?;
+            secrets::protect_configuration(
+                &mut authenticator,
+                &mut extension_config,
+                &fields,
+                self.secret_codec.as_deref(),
+            )?;
             replace_extension_config(&mut authenticator.options, extension_config)?;
         }
-        if authenticator.auth_type == "password-local" {
-            upsert_self_registration_enabled(
-                &mut authenticator.options,
-                command.self_registration_enabled,
-            );
-        }
+        upsert_self_registration_enabled(
+            &mut authenticator.options,
+            command.self_registration_enabled,
+        );
         self.repository.update_login_entry(&authenticator).await?;
         Ok(authenticator)
     }

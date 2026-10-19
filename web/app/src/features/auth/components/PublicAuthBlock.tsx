@@ -17,7 +17,10 @@ import {
   prepareNativeReactSource,
   type NativeReactModuleRegistryFactory
 } from '../../../shared/code-block/native-react-source-preparation';
-import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../frontstage/lib/native-adapter/native-trusted-block-react-adapter';
+import {
+  FrontstageNativeTrustedBlockPortalHost,
+  type FrontstageNativeTrustedBlockReactComponent
+} from '../../frontstage/lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../frontstage/lib/native-trusted-block/unavailable-context';
 import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../frontstage/lib/page-document';
@@ -56,7 +59,7 @@ export type PublicAuthPhase =
 
 type ReadyPublicAuthSnapshot = {
   component: FrontstageNativeTrustedBlockReactComponent;
-  context: BlockContextSeed;
+  context: BlockContextSeed & { auth: { redirectToExternalLogin(): void } };
   moduleAssets: NativeReactResolvedModuleAsset[];
   moduleSources: string[];
   plan: NativeTrustedBlockPreparePlan;
@@ -173,6 +176,7 @@ export function PublicAuthBlock({
           const renderEpoch = `${requestId}:epoch`;
           const unavailable = createFrontstageUnavailableBlockContext(plan);
           const capabilities = createPublicAuthNativeBlockContextCapabilities({
+            loginEntryId: instance.id,
             requestId,
             instanceEpoch: renderEpoch,
             isCurrentInstance: () =>

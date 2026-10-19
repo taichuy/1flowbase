@@ -6,7 +6,7 @@ fn fixture() -> Value {
     value["binding_targets"] = json!(["system"]);
     value["runtime"]["protocol"] = json!(extension_contracts::STDIO_JSON_MULTIPLEX_V1);
     value["authentication_providers"] = json!([{
-        "auth_type":"github", "display_name":"GitHub", "config_schema":[{"key":"client_secret","label":"Client secret","type":"string","control":"password"}],
+        "auth_type":"github", "display_name":"GitHub", "config_schema":[{"key":"client_id","label":"Client ID","type":"string"},{"key":"client_secret","label":"Client secret","type":"string","control":"password"}],
         "default_public_ui_block":"github-login", "public_variable_keys":["client_id"], "contribution_id":"managed_fixture.auth"
     }]);
     value["managed"]["module"]["contributions"] = json!([{

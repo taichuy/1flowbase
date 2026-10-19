@@ -1072,7 +1072,8 @@
     "extension_upload_start": "Start upload",
     "extension_upload_clear": "Clear list",
     "extension_upload_ready": "Pending upload",
-    "extension_upload_remove": "Remove"
+    "extension_upload_remove": "Remove",
+    "authentication_secret_kept": "Configured; leave blank to keep the current secret"
   },
   "organization": {
     "title": "Organization",

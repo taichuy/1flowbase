@@ -202,6 +202,39 @@ fn authentication_effective_authority_rejects_missing_revoked_and_wrong_contribu
             .len(),
         2
     );
+    // Public OAuth has no user actor: only the exact active installed authentication
+    // contribution can obtain the Host HTTP service, and both grants remain live.
+    let binding = runtime_core::runtime_backend::HttpEgressBinding {
+        subject: extension_contracts::ManagedContributionSubject::new(
+            extension_contracts::ManagedInstallationId::new(installation.id.to_string()).unwrap(),
+            extension_contracts::ManagedWorkspaceId::new(domain::SYSTEM_SCOPE_ID.to_string())
+                .unwrap(),
+            contribution.contribution_id.clone(),
+        ),
+        publisher_namespace: installation.organization.clone(),
+        plugin_code: installation.provider_code.clone(),
+        plugin_version: installation.plugin_version.clone(),
+        caller: None,
+        deadline_unix_ms: i64::MAX,
+    };
+    let mut active = installation.clone();
+    active.desired_state = domain::PluginDesiredState::ActiveRequested;
+    active.metadata_json["managed"] =
+        serde_json::to_value(manifest.managed.as_ref().unwrap()).unwrap();
+    let validate = crate::plugin_management::authentication_egress::validate_authentication_egress;
+    assert!(validate(&binding, &active, &snapshot).is_ok());
+    let mut disabled = active.clone();
+    disabled.desired_state = domain::PluginDesiredState::Disabled;
+    assert!(validate(&binding, &disabled, &snapshot).is_err());
+    let mut wrong_version = binding.clone();
+    wrong_version.plugin_version = "99.0.0".into();
+    assert!(validate(&wrong_version, &active, &snapshot).is_err());
+    let mut expired = binding.clone();
+    expired.deadline_unix_ms = 0;
+    assert!(validate(&expired, &active, &snapshot).is_err());
+    let mut revoked = snapshot.clone();
+    revoked.authorizations[0].status = domain::ContributionAuthorizationStatus::Revoked;
+    assert!(validate(&binding, &active, &revoked).is_err());
     snapshot.authorizations[0].status = domain::ContributionAuthorizationStatus::Revoked;
     assert!(policy
         .effective_permissions(

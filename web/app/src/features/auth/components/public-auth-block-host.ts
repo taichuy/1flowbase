@@ -38,8 +38,10 @@ export function createPublicAuthNativeBlockContextCapabilities(input: {
   emitEvent?(event: NativeBlockContextEventInput): void;
   observeApiCall?(observation: NativeBlockContextApiCallObservation): void;
   reportDiagnostic?(diagnostic: NativeBlockContextCapabilityDiagnostic): void;
+  loginEntryId?: string;
+  redirect?(url: string): void;
 }) {
-  return createNativeBlockContextCapabilities({
+  const capabilities = createNativeBlockContextCapabilities({
     requestId: input.requestId,
     instanceEpoch: input.instanceEpoch,
     isCurrentInstance: input.isCurrentInstance,
@@ -52,6 +54,24 @@ export function createPublicAuthNativeBlockContextCapabilities(input: {
     observeApiCall: input.observeApiCall,
     reportDiagnostic: input.reportDiagnostic
   });
+  return {
+    ...capabilities,
+    auth: {
+      redirectToExternalLogin() {
+        if (!input.isCurrentInstance() || !input.loginEntryId) {
+          throw new Error('This authentication entry is no longer active.');
+        }
+        const url = new URL(
+          '/api/public/auth/external/start',
+          getAuthApiBaseUrl()
+        );
+        url.searchParams.set('login_entry_id', input.loginEntryId);
+        (input.redirect ?? ((target) => window.location.assign(target)))(
+          url.toString()
+        );
+      }
+    }
+  };
 }
 
 export function createPublicAuthPreviewCapabilityHandlers(): PublicAuthPreviewCapabilityHandlers {

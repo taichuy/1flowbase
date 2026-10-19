@@ -52,11 +52,16 @@ pub fn managed_installation_scope(
     workspace_id: Uuid,
 ) -> Uuid {
     if installation.contract_version == "1flowbase.extension-bus/v1"
-        && installation
+        && (installation
             .metadata_json
             .pointer("/managed_service/scope")
             .and_then(serde_json::Value::as_str)
             == Some("system")
+            || installation
+                .metadata_json
+                .get("binding_targets")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|targets| targets.len() == 1 && targets[0] == "system"))
     {
         crate::SYSTEM_SCOPE_ID
     } else {

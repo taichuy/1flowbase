@@ -168,6 +168,10 @@ pub(crate) async fn load_installations(
             code == installation.provider_code && manifest.version == installation.plugin_version,
             "managed service installed identity mismatch"
         );
+        // System scope also hosts other governed contributions, including authentication.
+        if manifest.managed_service.is_none() {
+            continue;
+        }
         anyhow::ensure!(
             owners.insert(code.clone()),
             "duplicate active managed service owner"

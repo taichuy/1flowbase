@@ -28,6 +28,8 @@ mod dynamic_backend_consumer_inventory;
 #[path = "host_boot/error_response_tests.rs"]
 mod error_response_tests;
 mod extension_bus;
+#[path = "identity_routes/external_auth_trace.rs"]
+mod external_auth_trace;
 #[path = "interface_contracts/external_endpoint_catalog.rs"]
 mod external_endpoint_catalog;
 #[path = "system_settings/file_management_routes.rs"]

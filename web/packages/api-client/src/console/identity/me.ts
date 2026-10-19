@@ -32,6 +32,20 @@ export interface ChangeConsolePasswordInput {
   new_password: string;
 }
 
+export function authorizeConsoleExternalIdentity(
+  input: { login_entry_id: string },
+  csrfToken: string,
+  baseUrl?: string
+): Promise<{ authorization_url: string }> {
+  return apiFetch({
+    path: '/api/console/me/external-identities/authorize',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
 export function fetchConsoleMe(baseUrl?: string): Promise<ConsoleMe> {
   return apiFetch<ConsoleMe>({
     path: '/api/console/me',

@@ -59,6 +59,7 @@ pub mod role_repository;
 mod runtime;
 pub mod runtime_record_repository;
 mod secret_crypto;
+pub use secret_crypto::AuthenticationSecretCipher;
 pub mod system_backup;
 pub mod system_recovery;
 pub mod ui_management_repository;

@@ -281,15 +281,19 @@ impl ManagedWorkers {
             },
             http_egress: if permissions.contains("network.http.request") {
                 http_egress
-                    .zip(request.principal.caller.clone())
-                    .map(|(port, caller)| {
+                    .filter(|_| {
+                        request.principal.caller.is_some()
+                            || binding.contribution.point_id.as_str()
+                                == extension_contracts::AUTHENTICATION_POINT
+                    })
+                    .map(|port| {
                         (
-                            runtime_core::runtime_backend::FileImportBinding {
+                            runtime_core::runtime_backend::HttpEgressBinding {
                                 subject: request.handle.identity().subject().clone(),
                                 publisher_namespace: binding.publisher_namespace.clone(),
                                 plugin_code: binding.plugin_code.clone(),
                                 plugin_version: binding.plugin_version.clone(),
-                                caller,
+                                caller: request.principal.caller.clone(),
                                 deadline_unix_ms: request.principal.deadline_unix_ms,
                             },
                             port,

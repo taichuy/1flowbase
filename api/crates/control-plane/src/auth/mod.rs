@@ -159,6 +159,7 @@ impl PasswordLocalCredentialVerifier {
 #[derive(Debug, Clone)]
 pub struct AuthenticatorProviderDefinition {
     pub auth_type: String,
+    pub display_name: String,
     pub config_schema: serde_json::Value,
     pub default_public_ui_block: String,
     pub public_variable_keys: Vec<String>,
@@ -196,6 +197,7 @@ impl AuthenticatorRegistry {
             "password-local".to_string(),
             AuthenticatorProviderDefinition {
                 auth_type: "password-local".to_string(),
+                display_name: "Password".to_string(),
                 config_schema,
                 default_public_ui_block: public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK.to_string(),
                 public_variable_keys,
@@ -231,6 +233,7 @@ impl AuthenticatorRegistry {
                 provider.auth_type.clone(),
                 AuthenticatorProviderDefinition {
                     auth_type: provider.auth_type.clone(),
+                    display_name: provider.display_name.clone(),
                     config_schema,
                     default_public_ui_block: provider.default_public_ui_block.clone(),
                     public_variable_keys: provider.public_variable_keys.clone(),
@@ -249,6 +252,16 @@ impl AuthenticatorRegistry {
         let mut auth_types = self.definitions.keys().cloned().collect::<Vec<_>>();
         auth_types.sort();
         auth_types
+    }
+
+    pub fn templates(&self) -> Vec<(String, String)> {
+        self.supported_auth_types()
+            .into_iter()
+            .filter_map(|auth_type| {
+                self.definition(&auth_type)
+                    .map(|definition| (auth_type, definition.display_name.clone()))
+            })
+            .collect()
     }
 
     pub fn definition(&self, auth_type: &str) -> Option<&AuthenticatorProviderDefinition> {

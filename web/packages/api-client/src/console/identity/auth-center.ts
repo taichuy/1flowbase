@@ -8,6 +8,11 @@ export interface ConsoleAuthCenterConfigField {
   read_only?: boolean;
   required?: boolean;
   pattern?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  description?: string;
+  default_value?: string | number | boolean | null;
 }
 
 export interface ConsoleAuthCenterLoginEntryConfigValues {
@@ -39,6 +44,7 @@ export interface ConsoleAuthCenterLoginEntry {
   context_variables: ConsoleAuthCenterContextVariable[];
   config_schema: ConsoleAuthCenterConfigField[];
   config_values: ConsoleAuthCenterLoginEntryConfigValues;
+  configured_secret_keys: string[];
 }
 
 export interface ConsoleAuthCenterLoginEntryConfigInput {
@@ -61,6 +67,10 @@ export interface ConsoleAuthCenterOverview {
   default_login_entry_id: string;
   supported_auth_types: string[];
   login_entries: ConsoleAuthCenterLoginEntry[];
+  authentication_provider_templates: {
+    auth_type: string;
+    display_name: string;
+  }[];
 }
 
 export interface ConsoleAuthCenterCreateLoginEntryInput {

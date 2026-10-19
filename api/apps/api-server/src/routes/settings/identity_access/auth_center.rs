@@ -33,6 +33,16 @@ pub struct AuthCenterConfigFieldResponse {
     pub required: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<Value>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -67,6 +77,7 @@ pub struct AuthCenterLoginEntryResponse {
     pub context_variables: Vec<AuthCenterContextVariableResponse>,
     pub config_schema: Vec<AuthCenterConfigFieldResponse>,
     pub config_values: Map<String, Value>,
+    pub configured_secret_keys: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -74,6 +85,13 @@ pub struct AuthCenterOverviewResponse {
     pub default_login_entry_id: Uuid,
     pub supported_auth_types: Vec<String>,
     pub login_entries: Vec<AuthCenterLoginEntryResponse>,
+    pub authentication_provider_templates: Vec<AuthCenterProviderTemplateResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AuthCenterProviderTemplateResponse {
+    pub auth_type: String,
+    pub display_name: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -210,6 +228,11 @@ fn auth_center_config_schema(
             read_only: None,
             required: None,
             pattern: None,
+            min: None,
+            max: None,
+            step: None,
+            description: None,
+            default_value: None,
         })
         .collect::<Vec<_>>();
     fields.sort_by(|left, right| left.key.cmp(&right.key));
@@ -256,7 +279,10 @@ fn auth_center_config_response_values(
         .iter()
         .filter(|(key, _)| {
             !AUTH_CENTER_HOST_CONFIG_KEYS.contains(&key.as_str())
-                && config_schema.iter().any(|field| field.key == key.as_str())
+                && config_schema.iter().any(|field| {
+                    field.key == key.as_str()
+                        && !matches!(field.r#type.as_str(), "secret" | "password")
+                })
         })
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect::<Map<_, _>>();
@@ -293,12 +319,20 @@ pub(crate) fn to_auth_center_login_entry_response(
     let extension_config = auth_center_extension_config(&authenticator.options);
     let config_schema =
         auth_center_config_schema_from_options(&authenticator.options, &extension_config);
-    let config_values = auth_center_config_response_values(
+    let mut config_values = auth_center_config_response_values(
         &authenticator,
         description,
         extension_config,
         &config_schema,
     );
+    if config_schema
+        .iter()
+        .any(|field| field.key == "callback_url")
+    {
+        if let Ok(callback) = crate::authentication_runtime::callback_url() {
+            config_values.insert("callback_url".into(), Value::String(callback));
+        }
+    }
     let public_variables = registry.public_variables(&authenticator);
     let default_public_ui_block = registry
         .definition(&authenticator.auth_type)
@@ -334,6 +368,17 @@ pub(crate) fn to_auth_center_login_entry_response(
         context_variables,
         config_schema,
         config_values,
+        configured_secret_keys: authenticator
+            .options
+            .get("authentication_secret_keys")
+            .and_then(Value::as_array)
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default(),
     }
 }
 
@@ -351,6 +396,16 @@ pub(crate) fn auth_center_overview_response(
         default_login_entry_id: overview.default_login_entry_id,
         supported_auth_types: overview.supported_auth_types,
         login_entries,
+        authentication_provider_templates: registry
+            .templates()
+            .into_iter()
+            .map(
+                |(auth_type, display_name)| AuthCenterProviderTemplateResponse {
+                    auth_type,
+                    display_name,
+                },
+            )
+            .collect(),
     }
 }
 

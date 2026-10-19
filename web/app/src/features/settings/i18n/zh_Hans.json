@@ -1072,7 +1072,8 @@
     "extension_upload_start": "开始上传",
     "extension_upload_clear": "清空列表",
     "extension_upload_ready": "待上传",
-    "extension_upload_remove": "移除"
+    "extension_upload_remove": "移除",
+    "authentication_secret_kept": "已配置，留空保留原密钥"
   },
   "organization": {
     "title": "组织",

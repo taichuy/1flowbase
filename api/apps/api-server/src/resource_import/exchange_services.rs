@@ -88,17 +88,38 @@ impl HttpEgressPort for ApiFileImportPort {
     ) -> HostServiceFuture<'a, HttpEgressResponse> {
         Box::pin(async move {
             request.validate()?;
-            let (state, actor, lease) = self
-                .exchange_caller(binding, "network.http.request")
+            let (state, workspace_id, lease) = if let Some(caller) = &binding.caller {
+                let caller_binding = runtime_core::runtime_backend::FileImportBinding {
+                    subject: binding.subject.clone(),
+                    publisher_namespace: binding.publisher_namespace.clone(),
+                    plugin_code: binding.plugin_code.clone(),
+                    plugin_version: binding.plugin_version.clone(),
+                    caller: caller.clone(),
+                    deadline_unix_ms: binding.deadline_unix_ms,
+                };
+                let (state, actor, lease) = self
+                    .exchange_caller(&caller_binding, "network.http.request")
+                    .await?;
+                (state, actor.current_workspace_id, lease)
+            } else {
+                let state = self
+                    .current_state()
+                    .ok_or_else(|| HostServiceError::new("host_service_unavailable"))?;
+                let lease = control_plane::plugin_management::authorize_authentication_egress(
+                    &state.store,
+                    binding,
+                )
                 .await?;
-            let result = http_request(&state, &actor, binding, request).await;
+                (state, domain::SYSTEM_SCOPE_ID, lease)
+            };
+            let result = http_request(&state, workspace_id, binding, request).await;
             finish_authority(result, lease.release().await)
         })
     }
 }
 async fn http_request(
     state: &crate::app_state::ApiState,
-    actor: &domain::ActorContext,
+    workspace_id: uuid::Uuid,
     binding: &HttpEgressBinding,
     request: &HttpEgressRequest,
 ) -> Result<HttpEgressResponse, HostServiceError> {
@@ -122,7 +143,7 @@ async fn http_request(
         .then(|| std::time::Duration::from_millis(remaining as u64));
     let scope = state
         .network_egress_http_clients()
-        .resolve_managed_plugin_request(actor.current_workspace_id, installation_id, timeout)
+        .resolve_managed_plugin_request(workspace_id, installation_id, timeout)
         .await
         .map_err(|_| HostServiceError::new("http_egress_unavailable"))?;
     let result: anyhow::Result<HttpEgressResponse> = async {

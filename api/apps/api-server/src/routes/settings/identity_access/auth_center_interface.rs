@@ -699,17 +699,26 @@ struct AuthCenterAdapter {
     store: MainDurableStore,
     registry: Arc<control_plane::auth::AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
+    node_id: String,
+    install_root: String,
+    secret_master_key: String,
 }
 
 pub(crate) fn auth_center_port(
     store: MainDurableStore,
     registry: Arc<control_plane::auth::AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
+    node_id: String,
+    install_root: String,
+    secret_master_key: String,
 ) -> Arc<dyn ConsoleInterfacePort<AuthCenterInput, AuthCenterOutput>> {
     Arc::new(AuthCenterAdapter {
         store,
         registry,
         bootstrap_workspace_id,
+        node_id,
+        install_root,
+        secret_master_key,
     })
 }
 
@@ -735,8 +744,15 @@ impl AuthCenterAdapter {
         authenticator: domain::LoginEntryRecord,
     ) -> Result<auth_center::AuthCenterLoginEntryResponse, ApiError> {
         let locale = self.locale(principal, &hints).await?;
+        let registry = crate::authentication_runtime::registry_for(
+            &self.store,
+            &self.node_id,
+            &self.install_root,
+            &self.registry,
+        )
+        .await?;
         let mut response =
-            auth_center::to_auth_center_login_entry_response(authenticator, self.registry.as_ref());
+            auth_center::to_auth_center_login_entry_response(authenticator, registry.as_ref());
         auth_center::localize_login_entry_response_with(
             &self.store,
             self.bootstrap_workspace_id,
@@ -754,8 +770,14 @@ impl AuthCenterAdapter {
         overview: control_plane::auth::settings::AuthCenterSettingsOverview,
     ) -> Result<auth_center::AuthCenterOverviewResponse, ApiError> {
         let locale = self.locale(principal, &hints).await?;
-        let mut response =
-            auth_center::auth_center_overview_response(overview, self.registry.as_ref());
+        let registry = crate::authentication_runtime::registry_for(
+            &self.store,
+            &self.node_id,
+            &self.install_root,
+            &self.registry,
+        )
+        .await?;
+        let mut response = auth_center::auth_center_overview_response(overview, registry.as_ref());
         auth_center::localize_overview_response_with(
             &self.store,
             self.bootstrap_workspace_id,
@@ -772,10 +794,17 @@ impl AuthCenterAdapter {
         input: AuthCenterInput,
     ) -> Result<AuthCenterOutput, ApiError> {
         let actor = principal.actor();
-        let service = AuthCenterSettingsService::with_registry(
-            self.store.clone(),
-            Arc::clone(&self.registry),
-        );
+        let registry = crate::authentication_runtime::registry_for(
+            &self.store,
+            &self.node_id,
+            &self.install_root,
+            &self.registry,
+        )
+        .await?;
+        let service = AuthCenterSettingsService::with_registry(self.store.clone(), registry)
+            .with_secret_codec(Arc::new(
+                storage_durable_postgres::AuthenticationSecretCipher::new(&self.secret_master_key),
+            ));
         match input {
             AuthCenterInput::Overview { locale } => {
                 let overview = service.overview(actor).await?;

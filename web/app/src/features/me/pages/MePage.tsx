@@ -7,13 +7,10 @@ import { Result } from 'antd';
 import { useAuthStore } from '../../../state/auth-store';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
-import {
-  changeMyPassword,
-  fetchMyProfile,
-  updateMyProfile
-} from '../api/me';
+import { changeMyPassword, fetchMyProfile, updateMyProfile } from '../api/me';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { ProfileForm } from '../components/ProfileForm';
+import { ExternalIdentitiesPanel } from '../components/ExternalIdentitiesPanel';
 import { getMeSections, type MeSectionKey } from '../lib/me-sections';
 import './me-page.css';
 import { i18nText } from '../../../shared/i18n/text';
@@ -39,7 +36,9 @@ export function MePage({
   const setAnonymous = useAuthStore((state) => state.setAnonymous);
   const visibleSections = getMeSections();
   const fallbackSection = visibleSections[0];
-  const activeSection = visibleSections.find((section) => section.key === requestedSectionKey);
+  const activeSection = visibleSections.find(
+    (section) => section.key === requestedSectionKey
+  );
 
   const profileQuery = useQuery({
     queryKey: profileQueryKey,
@@ -95,8 +94,8 @@ export function MePage({
     return (
       <Result
         status="warning"
-        title={i18nText("me", "auto.profile_unavailable")}
-        subTitle={i18nText("me", "auto.session_missing_user_context")}
+        title={i18nText('me', 'auto.profile_unavailable')}
+        subTitle={i18nText('me', 'auto.session_missing_user_context')}
       />
     );
   }
@@ -104,12 +103,17 @@ export function MePage({
   if (!fallbackSection) {
     return (
       <SectionPageLayout
-        pageTitle={i18nText("me", "auto.profile")}
-        pageDescription={i18nText("me", "auto.profile_description")}
+        pageTitle={i18nText('me', 'auto.profile')}
+        pageDescription={i18nText('me', 'auto.profile_description')}
         navItems={[]}
         activeKey=""
         contentWidth="narrow"
-        emptyState={<Result status="info" title={i18nText("me", "auto.account_has_no_content")} />}
+        emptyState={
+          <Result
+            status="info"
+            title={i18nText('me', 'auto.account_has_no_content')}
+          />
+        }
       >
         {null}
       </SectionPageLayout>
@@ -122,8 +126,8 @@ export function MePage({
 
   return (
     <SectionPageLayout
-      pageTitle={i18nText("me", "auto.profile")}
-      pageDescription={i18nText("me", "auto.profile_description")}
+      pageTitle={i18nText('me', 'auto.profile')}
+      pageDescription={i18nText('me', 'auto.profile_description')}
       navItems={visibleSections}
       activeKey={activeSection.key}
       contentWidth="narrow"
@@ -132,7 +136,11 @@ export function MePage({
         <div className="me-page">
           <ProfileForm
             me={currentProfile}
-            statusLabel={sessionStatus === 'authenticated' ? i18nText("me", "auto.logged_in") : i18nText("me", "auto.not_logged_in")}
+            statusLabel={
+              sessionStatus === 'authenticated'
+                ? i18nText('me', 'auto.logged_in')
+                : i18nText('me', 'auto.not_logged_in')
+            }
             submitting={profileMutation.isPending}
             errorMessage={getErrorMessage(profileMutation.error)}
             onSubmit={async (input) => {
@@ -148,6 +156,7 @@ export function MePage({
             errorMessage={getErrorMessage(changePasswordMutation.error)}
             onSubmit={(input) => changePasswordMutation.mutateAsync(input)}
           />
+          <ExternalIdentitiesPanel csrfToken={csrfToken} />
         </div>
       )}
     </SectionPageLayout>

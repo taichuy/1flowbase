@@ -154,7 +154,7 @@ fn no_store(response: &mut Response) {
 /// Start external sign-in.
 ///
 /// Start a browser-bound external authentication transaction for an enabled login entry.
-#[utoipa::path(get, path = "/api/public/auth/external/start", params(("login_entry_id" = Uuid, Query)), responses((status = 303)))]
+#[utoipa::path(get, path = "/api/public/auth/external/start", operation_id = "public.auth.external.start", params(("login_entry_id" = Uuid, Query)), responses((status = 303)))]
 pub async fn start(State(state): State<Arc<ApiState>>, RawQuery(raw): RawQuery) -> Response {
     let result = async {
         let login_entry_id = start_entry_id(raw.as_deref())?;
@@ -181,7 +181,7 @@ pub async fn start(State(state): State<Arc<ApiState>>, RawQuery(raw): RawQuery) 
 /// Authorize an external identity binding.
 ///
 /// Create an external authentication transaction bound to the current cookie session and return its authorization URL.
-#[utoipa::path(post, path = "/api/console/me/external-identities/authorize", request_body = AuthorizeBody, responses((status = 200, body = AuthorizeResponse), (status = 401), (status = 403)))]
+#[utoipa::path(post, path = "/api/console/me/external-identities/authorize", operation_id = "console.identity.external-authorize", request_body = AuthorizeBody, responses((status = 200, body = AuthorizeResponse), (status = 401), (status = 403)))]
 pub async fn authorize(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -497,7 +497,7 @@ async fn verify_callback(
 /// Complete external sign-in.
 ///
 /// Verify the one-time browser transaction and complete sign-in or explicit identity binding.
-#[utoipa::path(get, path = "/api/public/auth/external/callback", responses((status = 303)))]
+#[utoipa::path(get, path = "/api/public/auth/external/callback", operation_id = "public.auth.external.callback", responses((status = 303)))]
 pub async fn callback(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

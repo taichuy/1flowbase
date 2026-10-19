@@ -567,6 +567,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
       login_entries: [
         {
           id: 'auth-password-local',

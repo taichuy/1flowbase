@@ -272,6 +272,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(console_health_route_assembly())
         .merge(super::session::route_assembly())
         .merge(super::me::route_assembly())
+        .merge(super::external_auth::console_route_assembly())
         .merge(super::assistant::route_assembly())
         .merge(super::navigation::route_assembly())
         .merge(super::application_management::route_assembly())
@@ -936,11 +937,21 @@ fn compile_console_interface_metadata(
             "extension_center.managed_executions.retire" => "Reject retirement while the target is current or retains frozen invocations, future publications, admitted work or unfinished durable deliveries; preserve every delivery record.".to_string(),
             _ => format!("{summary} in the system backend."),
         };
+        let external_auth_metadata = super::external_auth::interface::bindings_metadata()
+            .iter()
+            .find(|metadata| {
+                metadata.method.eq_ignore_ascii_case(&binding.route.method)
+                    && metadata.path == binding.route.path
+            });
         interfaces.push(ConsoleInterfaceRegistration {
             interface_id,
             route: binding.route.clone(),
-            description,
-            summary,
+            description: external_auth_metadata
+                .map(|metadata| metadata.description.to_owned())
+                .unwrap_or(description),
+            summary: external_auth_metadata
+                .map(|metadata| metadata.summary.to_owned())
+                .unwrap_or(summary),
         });
     }
     if !missing.is_empty() {

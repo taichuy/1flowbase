@@ -40,6 +40,21 @@ impl OpenApi for ApiDoc {
         ] {
             document.merge(fragment);
         }
+        for binding in crate::routes::external_auth::interface::bindings_metadata() {
+            let path = document
+                .paths
+                .paths
+                .get_mut(binding.path)
+                .expect("external authentication API documentation is mounted");
+            let operation = match binding.method {
+                "GET" => path.get.as_mut(),
+                "POST" => path.post.as_mut(),
+                _ => None,
+            }
+            .expect("external authentication method is documented");
+            operation.summary = Some(binding.summary.into());
+            operation.description = Some(binding.description.into());
+        }
         document
     }
 }

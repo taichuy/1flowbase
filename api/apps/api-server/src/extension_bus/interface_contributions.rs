@@ -237,6 +237,8 @@ pub(crate) fn production_interface_contributions(
         state.store.clone(),
         Arc::clone(&state.authenticator_registry),
         state.bootstrap_workspace_id,
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
     );
     let public_sign_in = crate::routes::sign_in_interface::public_sign_in_port(
         state.store.clone(),
@@ -294,6 +296,9 @@ pub(crate) fn production_interface_contributions(
         state.store.clone(),
         Arc::clone(&state.authenticator_registry),
         state.bootstrap_workspace_id,
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+        state.provider_secret_master_key.clone(),
     );
     let console_ui_management = crate::routes::ui_management_interface::ui_management_port(
         crate::routes::ui_management_interface::UiManagementDependencies {
@@ -442,6 +447,12 @@ pub(crate) fn production_interface_contributions(
     );
 
     let mut contributions = vec![
+        InterfaceRegistryContribution::new(
+            "api-server.external-auth",
+            crate::routes::external_auth::interface::OPERATIONS,
+            &[crate::routes::external_auth::interface::OWNER],
+            crate::routes::external_auth::interface::compile_registry(state)?,
+        ),
         InterfaceRegistryContribution::new(
             "api-server.client-collectors", &["public.client-collectors.assets.read"], &["api-server.client-collectors"],
             crate::routes::client_collectors::compile_registry(state)?,

@@ -1,4 +1,5 @@
 import {
+  authorizeConsoleExternalIdentity,
   changeConsolePassword,
   fetchConsoleMe,
   updateConsoleMe,
@@ -12,6 +13,13 @@ export type UpdateMyProfileInput = UpdateConsoleMeInput;
 export type ChangeMyPasswordInput = ChangeConsolePasswordInput;
 
 export const myProfileQueryKey = ['me', 'profile'] as const;
+
+export function authorizeMyExternalIdentity(
+  login_entry_id: string,
+  csrfToken: string
+) {
+  return authorizeConsoleExternalIdentity({ login_entry_id }, csrfToken);
+}
 
 export function fetchMyProfile(): Promise<MyProfile> {
   return fetchConsoleMe();

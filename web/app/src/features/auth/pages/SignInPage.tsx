@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useNavigate } from '@tanstack/react-router';
 import { diagnoseLegacyBlockModuleSource } from '@1flowbase/page-runtime/source-contract';
+import { Alert } from 'antd';
 
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../../../state/auth-store';
@@ -47,6 +48,22 @@ interface SignInPageProps {
 export function SignInPage({ loginEntryId }: SignInPageProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('auth');
+  const externalError = new URLSearchParams(window.location.search).get(
+    'auth_error'
+  );
+  const externalErrorMessages: Record<string, string> = {
+    registration_disabled: t('external_auth.registration_disabled'),
+    account_too_new: t('external_auth.account_too_new'),
+    email_required: t('external_auth.email_required'),
+    identity_exists: t('external_auth.identity_exists'),
+    registration_ineligible: t('external_auth.registration_ineligible'),
+    cancelled: t('external_auth.cancelled'),
+    invalid_state: t('external_auth.invalid_state'),
+    entry_unavailable: t('external_auth.entry_unavailable'),
+    provider_unavailable: t('external_auth.provider_unavailable'),
+    session_expired: t('external_auth.session_expired'),
+    user_disabled: t('external_auth.user_disabled')
+  };
   const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
   const [loginEntries, setLoginEntries] = useState<PublicLoginEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,6 +167,16 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
         }}
       >
         <div className="auth-sign-in-content">
+          {externalError ? (
+            <Alert
+              showIcon
+              type="error"
+              title={
+                externalErrorMessages[externalError] ??
+                t('external_auth.failed')
+              }
+            />
+          ) : null}
           {loading ? <LoadingState compact /> : null}
           {loginEntries.length > 1 && !selectedLoginEntry ? (
             <div className="auth-sign-in-selector">

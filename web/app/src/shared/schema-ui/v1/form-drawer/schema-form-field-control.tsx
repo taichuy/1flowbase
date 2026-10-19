@@ -32,7 +32,11 @@ export function renderSchemaFormFieldControl(field: PluginFormFieldSchema) {
     );
   }
 
-  if (field.control === 'password' || field.type === 'password') {
+  if (
+    field.control === 'password' ||
+    field.type === 'password' ||
+    field.type === 'secret'
+  ) {
     return (
       <Input.Password
         placeholder={field.placeholder}

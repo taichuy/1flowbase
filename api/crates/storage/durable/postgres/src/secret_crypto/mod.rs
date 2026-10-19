@@ -1,4 +1,6 @@
+mod authentication;
 use anyhow::{anyhow, bail, Result};
+pub use authentication::AuthenticationSecretCipher;
 use chacha20poly1305::{
     aead::{Aead, Generate, KeyInit, Payload},
     XChaCha20Poly1305,

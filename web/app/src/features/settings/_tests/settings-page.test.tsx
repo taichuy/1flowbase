@@ -547,6 +547,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
       login_entries: [
         {
           id: 'auth-password-local',
@@ -1060,6 +1061,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
       login_entries: [
         {
           id: 'auth-oidc-main',
@@ -1145,6 +1147,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
       login_entries: [
         {
           id: 'auth-password-local',
@@ -1197,6 +1200,7 @@ describe('SettingsPage', () => {
       .mockResolvedValueOnce({
         default_login_entry_id: 'auth-oidc-main',
         supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
         login_entries: [
           {
             id: 'auth-oidc-main',
@@ -1220,6 +1224,7 @@ describe('SettingsPage', () => {
       .mockResolvedValueOnce({
         default_login_entry_id: 'auth-oidc-main',
         supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
         login_entries: [
           {
             id: 'auth-oidc-main',
@@ -1302,6 +1307,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
       login_entries: [
         {
           id: 'auth-oidc-main',
@@ -1342,6 +1348,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
       login_entries: [
         {
           id: 'auth-oidc-main',
@@ -1383,6 +1390,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
       login_entries: [
         {
           id: 'auth-oidc-main',
@@ -1423,6 +1431,7 @@ describe('SettingsPage', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
       default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
+      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
       login_entries: [
         {
           id: 'auth-password-local',

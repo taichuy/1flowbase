@@ -93,7 +93,15 @@ function authCenterConfigFormValues(row: LoginEntryRow): SchemaFormValues {
 function authCenterConfigFormSchema(row: LoginEntryRow): PluginFormSchema {
   return {
     schema_version: '1.0.0',
-    fields: row.config_schema.map((field) => ({ ...field }))
+    fields: row.config_schema.map((field) => ({
+      ...field,
+      ...(row.configured_secret_keys?.includes(field.key)
+        ? {
+            required: false,
+            placeholder: i18nText('settings', 'auto.authentication_secret_kept')
+          }
+        : {})
+    }))
   };
 }
 
@@ -420,10 +428,7 @@ export function SettingsAuthCenterSection() {
           overview
             ? {
                 ...overview,
-                login_entries: [
-                  ...overview.login_entries,
-                  authenticator
-                ].sort(
+                login_entries: [...overview.login_entries, authenticator].sort(
                   (left, right) =>
                     left.sort_order - right.sort_order ||
                     left.id.localeCompare(right.id)
@@ -740,10 +745,7 @@ export function SettingsAuthCenterSection() {
                 const sourceLoginEntryId = getDraggedLoginEntryId(event);
                 draggedLoginEntryId.current = null;
                 setDragOverLoginEntryId(null);
-                if (
-                  !sourceLoginEntryId ||
-                  sourceLoginEntryId === row.id
-                ) {
+                if (!sourceLoginEntryId || sourceLoginEntryId === row.id) {
                   return;
                 }
 
@@ -783,19 +785,14 @@ export function SettingsAuthCenterSection() {
           loginEntryTitle={selectedUiLoginEntry.title}
           authType={selectedUiLoginEntry.auth_type}
           contextVariables={selectedUiLoginEntry.context_variables}
-          defaultSource={
-            selectedUiLoginEntry.default_public_ui_block ?? null
-          }
+          defaultSource={selectedUiLoginEntry.default_public_ui_block ?? null}
           description={
-            typeof selectedUiLoginEntry.config_values.description ===
-            'string'
+            typeof selectedUiLoginEntry.config_values.description === 'string'
               ? selectedUiLoginEntry.config_values.description
               : null
           }
           enabled={selectedUiLoginEntry.enabled}
-          interfacePathPrefixes={
-            selectedUiLoginEntry.interface_path_prefixes
-          }
+          interfacePathPrefixes={selectedUiLoginEntry.interface_path_prefixes}
           publicVariables={selectedUiLoginEntry.public_variables}
           selfRegistrationEnabled={
             selectedUiLoginEntry.config_values.self_registration_enabled ===
@@ -874,12 +871,12 @@ export function SettingsAuthCenterSection() {
             ]}
           >
             <Select
-              options={(overviewQuery.data?.supported_auth_types ?? []).map(
-                (authType) => ({
-                  label: authType,
-                  value: authType
-                })
-              )}
+              options={(
+                overviewQuery.data?.authentication_provider_templates ?? []
+              ).map((provider) => ({
+                label: provider.display_name,
+                value: provider.auth_type
+              }))}
             />
           </Form.Item>
           <Form.Item

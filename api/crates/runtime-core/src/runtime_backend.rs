@@ -822,7 +822,17 @@ pub trait FileReadPort: Send + Sync {
 
 /// Host-only services reuse the admitted caller and installed contribution identity.
 pub type ApplicationLogsBinding = FileImportBinding;
-pub type HttpEgressBinding = FileImportBinding;
+/// A public authentication exchange has an installed service authority, without a user actor.
+/// Only Host admission can construct this binding; it is never serialized to a worker.
+#[derive(Debug, Clone)]
+pub struct HttpEgressBinding {
+    pub subject: extension_contracts::ManagedContributionSubject,
+    pub publisher_namespace: String,
+    pub plugin_code: String,
+    pub plugin_version: String,
+    pub caller: Option<RuntimeCallerContext>,
+    pub deadline_unix_ms: i64,
+}
 pub type HostServiceFuture<'a, T> = std::pin::Pin<
     Box<
         dyn std::future::Future<Output = Result<T, extension_contracts::HostServiceError>>

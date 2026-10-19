@@ -29,5 +29,19 @@
     "api_key": "API Key",
     "key_help": "Key 仅提交给 1flowbase 进行验证，不会发送给 ChatGPT。",
     "verify": "验证 API Key"
+  },
+  "external_auth": {
+    "registration_disabled": "此登录方式暂不允许新用户注册。已有账号请先使用原方式登录，再到个人中心绑定。",
+    "account_too_new": "你的 GitHub 账号注册时间尚未达到本站要求。",
+    "email_required": "首次注册需要 GitHub 上已验证的主邮箱，请先在 GitHub 完成邮箱验证。",
+    "identity_exists": "该邮箱或 GitHub 身份已关联账号。请先登录已有账号，再到个人中心绑定。",
+    "registration_ineligible": "你的 GitHub 账号暂不符合本站注册条件。",
+    "cancelled": "已取消 GitHub 授权，可以重新尝试。",
+    "invalid_state": "登录请求已过期或已使用，请重新发起登录。",
+    "entry_unavailable": "此登录入口已停用，请选择其他登录方式。",
+    "provider_unavailable": "GitHub 登录暂不可用，请稍后重试或选择其他方式。",
+    "session_expired": "绑定时的登录会话已失效，请重新登录后再绑定。",
+    "user_disabled": "此本地账号已停用，请联系管理员。",
+    "failed": "GitHub 登录未完成，请重试或选择其他登录方式。"
   }
 }

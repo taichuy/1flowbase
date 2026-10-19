@@ -72,5 +72,13 @@
       "zh_hans": "简体中文"
     },
     "title": "个人信息"
+  },
+  "external_identities": {
+    "title": "外部账号绑定",
+    "description": "绑定后可使用外部账号登录当前账号。同一外部身份只能关联一个本地账号；绑定不会改变你的权限。",
+    "bound": "外部账号已绑定。下次可以直接使用该账号登录。",
+    "failed": "绑定未完成，请重新尝试。",
+    "session_required": "请先登录后再绑定。",
+    "bind": "绑定 {{provider}}"
   }
 }

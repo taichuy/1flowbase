@@ -6,6 +6,10 @@
 mod application_logs;
 pub use application_logs::{ApplicationLogsClient, ApplicationLogsClientError};
 pub use extension_contracts::{ApplicationLogsRequest, ApplicationLogsResponse};
+pub use extension_contracts::{
+    AuthenticationProviderDescriptor, AuthenticationRequest, AuthenticationResponse,
+    AUTHENTICATION_CONTRACT_V1, AUTHENTICATION_PERMISSION, AUTHENTICATION_POINT,
+};
 mod http_egress;
 pub use extension_contracts::{
     ApplicationLogsApplication, ApplicationLogsRecord, HostServiceError,

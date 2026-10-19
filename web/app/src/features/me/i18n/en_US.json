@@ -72,5 +72,13 @@
       "zh_hans": "Simplified Chinese"
     },
     "title": "Personal information"
+  },
+  "external_identities": {
+    "title": "Linked sign-in accounts",
+    "description": "Link an external account to sign in to this account. Each external identity can belong to only one local account. Linking does not change your permissions.",
+    "bound": "Account linked. You can now use it to sign in.",
+    "failed": "The account could not be linked. Try again.",
+    "session_required": "Sign in before linking an account.",
+    "bind": "Link {{provider}}"
   }
 }

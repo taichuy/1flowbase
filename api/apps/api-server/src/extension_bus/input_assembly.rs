@@ -761,6 +761,9 @@ fn resolve_workspace_path(api_workspace_root: &Path, relative_path: &Path) -> Re
 
 fn managed_host_extension_points() -> Result<Vec<ExtensionPointDescriptor>> {
     let mut points = vec![
+        plugin_framework::extension_bus::authentication_extension_point(ModuleId::new(
+            BOOT_CORE_MODULE_ID,
+        )?)?,
         plugin_framework::extension_bus::notification_extension_point(ModuleId::new(
             BOOT_CORE_MODULE_ID,
         )?)?,

@@ -1,4 +1,6 @@
+mod authentication_egress;
 mod managed_activation;
+pub use authentication_egress::authorize_authentication_egress;
 pub use managed_activation::*;
 mod managed_data;
 pub use managed_data::ManagedPluginDataService;

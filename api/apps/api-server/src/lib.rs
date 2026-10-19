@@ -11,6 +11,7 @@ pub mod agent_logs_protocol;
 pub mod app_state;
 pub(crate) mod application_log_exchange;
 pub mod application_public_docs;
+mod authentication_runtime;
 pub mod config;
 #[path = "console_contracts/console_operation_compilation.rs"]
 pub(crate) mod console_operation_compilation;
@@ -488,12 +489,21 @@ fn app_with_state_and_config_and_console_route_assembly(
 }
 
 fn safe_http_trace_span(request: &axum::http::Request<axum::body::Body>) -> tracing::Span {
-    let uri = if request.uri().path() == "/api/public/files/content" {
-        request.uri().path().to_owned()
-    } else {
-        request.uri().to_string()
-    };
+    let uri = safe_http_trace_uri(request.uri());
     tracing::debug_span!("request", method = %request.method(), uri = %uri, version = ?request.version())
+}
+
+fn safe_http_trace_uri(uri: &axum::http::Uri) -> String {
+    if matches!(
+        uri.path(),
+        "/api/public/files/content"
+            | "/api/public/auth/external/callback"
+            | "/api/public/auth/external/start"
+    ) {
+        uri.path().to_owned()
+    } else {
+        uri.to_string()
+    }
 }
 
 pub async fn app_from_env() -> Result<Router> {

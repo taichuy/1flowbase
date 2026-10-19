@@ -7,6 +7,21 @@ use domain::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+/// Host-owned authenticated encryption for a connection's private configuration.
+/// The connection identity is authenticated associated data, never caller-selected ciphertext.
+pub trait AuthenticationSecretCodec: Send + Sync {
+    fn seal(
+        &self,
+        connection_id: Uuid,
+        secrets: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value>;
+    fn open(
+        &self,
+        connection_id: Uuid,
+        envelope: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value>;
+}
+
 #[async_trait]
 pub trait ConsolePermissionCatalogRepository: Send + Sync {
     /// Atomically record the complete catalog and grant only first-seen operations.

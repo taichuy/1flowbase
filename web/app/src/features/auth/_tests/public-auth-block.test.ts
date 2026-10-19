@@ -30,6 +30,32 @@ const instance = {
 describe('public Auth Block host adapter', () => {
   beforeEach(() => apiFetch.mockReset());
 
+  test('external login navigation is bound to the active entry and the Host start route', () => {
+    const redirect = vi.fn();
+    let current = true;
+    const context = createPublicAuthNativeBlockContextCapabilities({
+      requestId: 'external-login',
+      instanceEpoch: 'epoch-1',
+      isCurrentInstance: () => current,
+      outputs: { publish: () => ({ ok: true, stale: false }) },
+      loginEntryId: 'entry&return_to=https://untrusted.example',
+      redirect
+    });
+    context.auth.redirectToExternalLogin();
+    const target = new URL(redirect.mock.calls[0][0]);
+    expect(target.origin).toBe(window.location.origin);
+    expect(target.pathname).toBe('/api/public/auth/external/start');
+    expect([...target.searchParams.keys()]).toEqual(['login_entry_id']);
+    expect(target.searchParams.get('login_entry_id')).toBe(
+      'entry&return_to=https://untrusted.example'
+    );
+    current = false;
+    expect(() => context.auth.redirectToExternalLogin()).toThrow(
+      'no longer active'
+    );
+    expect(redirect).toHaveBeenCalledTimes(1);
+  });
+
   test('exposes stable Native Auth inputs without legacy action rerun state', () => {
     expect(
       createPublicAuthInputs(instance.id, instance.public_variables, true)

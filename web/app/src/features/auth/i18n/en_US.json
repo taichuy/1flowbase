@@ -29,5 +29,19 @@
     "api_key": "API key",
     "key_help": "Your key is submitted only to 1flowbase for verification. It is never sent to ChatGPT.",
     "verify": "Verify API key"
+  },
+  "external_auth": {
+    "registration_disabled": "New registrations are disabled for this sign-in method. Sign in to your existing account, then link GitHub in your profile.",
+    "account_too_new": "Your GitHub account does not meet this site’s minimum account age.",
+    "email_required": "Registration requires a verified primary email on GitHub. Verify your email on GitHub first.",
+    "identity_exists": "This email or GitHub identity is already associated with an account. Sign in to that account before linking GitHub.",
+    "registration_ineligible": "Your GitHub account does not currently meet this site’s registration requirements.",
+    "cancelled": "GitHub authorization was cancelled. You can try again.",
+    "invalid_state": "This sign-in request has expired or was already used. Start again.",
+    "entry_unavailable": "This sign-in entry is disabled. Choose another method.",
+    "provider_unavailable": "GitHub sign-in is temporarily unavailable. Try again later or choose another method.",
+    "session_expired": "Your session expired while linking GitHub. Sign in again before retrying.",
+    "user_disabled": "This local account is disabled. Contact your administrator.",
+    "failed": "GitHub sign-in did not complete. Try again or choose another method."
   }
 }
