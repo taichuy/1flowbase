@@ -136,8 +136,8 @@ export function DataModelDetail({
               </button>
               {!canUpdatePresentation && (
                 <Tag
-                  style={{ borderRadius: 6, margin: 0, fontSize: 10 }}
-                  icon={<LockOutlined style={{ fontSize: 10 }} />}
+                  style={{ borderRadius: 6, margin: 0, fontSize: 'var(--ant-font-size-sm, 12px)' }}
+                  icon={<LockOutlined style={{ fontSize: 'var(--ant-font-size-sm, 12px)' }} />}
                 >
                   {i18nText('settings', 'auto.read_only')}
                 </Tag>

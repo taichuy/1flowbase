@@ -396,7 +396,7 @@ export function DataModelTable({
                   </Typography.Text>
                   {model.source_kind === 'external_source' &&
                   model.external_resource_key ? (
-                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 'var(--ant-font-size-sm, 12px)' }}>
                       {i18nText('settings', 'auto.external_resource_key')}：
                       {model.external_resource_key}
                     </Typography.Text>
