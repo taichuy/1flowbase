@@ -91,3 +91,39 @@ test('changing a contract fixture invalidates evidence for unchanged component c
   assert.equal(f.evaluate().status, 'requires-review');
   assert.match(f.evaluate().findings[0].reason, /evidence changed/u);
 });
+
+
+test('owner-grouped reviews reject missing, duplicated and escaping inventories', (t) => {
+  const f = fixture(t);
+  const file = 'scripts/node/react-doctor-gate/reviews/owner.json';
+  fs.mkdirSync(path.dirname(path.join(f.repoRoot, file)), { recursive: true });
+  fs.writeFileSync(path.join(f.repoRoot, file), JSON.stringify({ toolPackage: f.manifest.toolPackage, reviews: f.manifest.reviews }));
+  f.manifest.schemaVersion = 2;
+  delete f.manifest.reviews;
+  f.manifest.reviewFiles = [file];
+  f.writeManifest();
+  assert.equal(f.evaluate().status, 'reviewed');
+  f.manifest.reviewFiles.push(file);
+  f.writeManifest();
+  assert.equal(f.evaluate().status, 'requires-review');
+  f.manifest.reviewFiles = [file, 'scripts/node/react-doctor-gate/reviews/missing.json'];
+  f.writeManifest();
+  assert.equal(f.evaluate().status, 'requires-review');
+  f.manifest.reviewFiles = ['scripts/node/react-doctor-gate/reviews/../reviews/owner.json'];
+  f.writeManifest();
+  assert.equal(f.evaluate().status, 'requires-review');
+});
+
+test('full scans can review build contracts while rejecting paths outside the application', (t) => {
+  const f = fixture(t);
+  const buildFile = 'web/app/build/owner.ts';
+  fs.mkdirSync(path.dirname(path.join(f.repoRoot, buildFile)), { recursive: true });
+  fs.copyFileSync(path.join(f.repoRoot, f.file), path.join(f.repoRoot, buildFile));
+  f.manifest.reviews[0].file = buildFile;
+  f.diagnostic.filePath = 'build/owner.ts';
+  f.writeManifest();
+  assert.equal(f.evaluate().status, 'reviewed');
+  f.diagnostic.filePath = '../../scripts/owner.ts';
+  assert.equal(f.evaluate().status, 'requires-review');
+  assert.match(f.evaluate().findings[0].reason, /outside/u);
+});

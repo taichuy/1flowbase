@@ -8,6 +8,28 @@ function sourceDigest(content) {
   return createHash('sha256').update(content).digest('hex');
 }
 
+// Review data is grouped by source owner; missing/ambiguous groups fail closed.
+function loadReviews(repoRoot, toolPackage) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, REVIEW_FILE), 'utf8'));
+    if (manifest.toolPackage !== toolPackage) return [];
+    if (manifest.schemaVersion === 1) return Array.isArray(manifest.reviews) ? manifest.reviews : [];
+    if (manifest.schemaVersion !== 2 || !Array.isArray(manifest.reviewFiles)
+        || new Set(manifest.reviewFiles).size !== manifest.reviewFiles.length) return [];
+    return manifest.reviewFiles.flatMap((file) => {
+      if (typeof file !== 'string' || path.posix.normalize(file) !== file
+          || !file.startsWith('scripts/node/react-doctor-gate/reviews/') || !file.endsWith('.json')) {
+        throw new Error('invalid review group path');
+      }
+      const group = JSON.parse(fs.readFileSync(path.join(repoRoot, file), 'utf8'));
+      if (group.toolPackage !== toolPackage || !Array.isArray(group.reviews)) throw new Error('invalid review group');
+      return group.reviews;
+    });
+  } catch {
+    return [];
+  }
+}
+
 // Keep every upstream diagnostic. A source-bound counterexample is review evidence,
 // never an instruction to hide the rule or ignore future changes in that file.
 function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
@@ -20,14 +42,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
   if (doctorReport.summary.suppressedDiagnosticCount > 0) {
     return { status: 'suppressed-output', reviewed: 0, findings: [{ reason: 'Doctor reports suppressed diagnostics; raw inventory is incomplete for acceptance' }] };
   }
-  let manifest;
-  try {
-    manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, REVIEW_FILE), 'utf8'));
-  } catch {
-    manifest = null;
-  }
-  const reviews = manifest?.schemaVersion === 1 && manifest.toolPackage === toolPackage
-    && Array.isArray(manifest.reviews) ? manifest.reviews : [];
+  const reviews = loadReviews(repoRoot, toolPackage);
   const byKey = new Map();
   for (const review of reviews) {
     const key = `${review.file}\0${review.rule}`;
@@ -53,7 +68,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     const rule = `${diagnostic.plugin}/${diagnostic.rule}`;
     const review = byKey.get(`${file}\0${rule}`);
     let reason;
-    if (!file.startsWith('web/app/src/')) {
+    if (!file.startsWith('web/app/') || diagnostic.filePath.startsWith('/') || diagnostic.filePath.includes('\\')) {
       reason = 'diagnostic path is outside the reviewed application source boundary';
     } else if (!review || typeof review.reason !== 'string' || !review.reason.trim() || !Array.isArray(review.evidence) || review.evidence.length === 0) {
       reason = 'diagnostic has no explicit source and contract review';

@@ -94,3 +94,5 @@ Trace projection 的写入对象由 `control-plane-contracts` 管理。共享 al
 项目体检优先在 GitHub Actions 执行，持续失败的剩余门禁不超过三项时才考虑本地取证。warning、coverage 与执行日志统一放在 `tmp/test-governance/`。完整通过只结算已有证据覆盖的目标，不能据此宣称完成独立安全审计、全产品人工验收或尚未执行的迁移与回归。
 
 项目体检和手动运行默认使用 React Doctor `--full`，强制覆盖全应用源文件，配置中的 diff 范围不能缩小扫描。PR 默认 diff，可用 `REACT_DOCTOR_SCAN_MODE=full|diff` 显式指定；收据分别保留请求/实际 scan mode 与 candidate/base，实际 mode 不匹配立即失败。changedFiles 只记录变更元数据，不冒称 full 扫描清单；全量诊断需逐项结算。
+
+全量诊断涵盖 `web/app/src`、构建/Vite owner 和 `package.json` 的依赖图；这些路径同样逐项审查。大型审查数据采用 schemaVersion 2：入口 `reviewFiles` 明确列出按 owner 收纳的 manifest，每项仍绑定完整源文件和证据摘要；缺失、重复、越界分组或工具版本不匹配不能部分接受。schemaVersion 1 保留为单文件读取契约。
