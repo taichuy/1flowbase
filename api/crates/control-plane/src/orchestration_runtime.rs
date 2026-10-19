@@ -48,13 +48,16 @@ pub mod callback_completion;
 mod canonical_stream;
 pub(crate) mod compile_context;
 mod data_model_runtime;
+#[path = "orchestration_runtime/debug/debug_artifacts.rs"]
 pub mod debug_artifacts;
 pub mod debug_stream_events;
+#[path = "orchestration_runtime/debug/debug_variable_cache.rs"]
 mod debug_variable_cache;
 mod frozen_plan;
 mod http_response_files;
 pub(crate) mod inputs;
 mod live_debug_run;
+#[path = "orchestration_runtime/debug/llm_observability_refs.rs"]
 mod llm_observability_refs;
 mod payloads;
 mod persistence;
@@ -1413,4 +1416,5 @@ pub(crate) fn materialize_responses_history_checkpoint(
     persistence::materialize_responses_history_checkpoint(lineage)
 }
 
+#[path = "orchestration_runtime/debug/node_debug_preview.rs"]
 mod node_debug_preview;
