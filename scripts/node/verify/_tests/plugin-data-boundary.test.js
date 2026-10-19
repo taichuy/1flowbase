@@ -25,7 +25,10 @@ test('Delivery 1919 keeps PluginData typed and free of implementation capabiliti
 test('Delivery 1919 keeps Host Service outside RuntimeBackend and storage outside Host', () => {
   const backend = read('api/crates/runtime-core/src/runtime_backend.rs');
   const hostCargo = read('api/crates/runtime-extension-host/Cargo.toml');
-  const host = read('api/crates/runtime-extension-host/src/runtime_host.rs');
+  const host = [
+    'api/crates/runtime-extension-host/src/runtime_host.rs',
+    'api/crates/runtime-extension-host/src/runtime_host/data_source.rs',
+  ].map(read).join('\n');
   const boot = read('api/apps/api-server/src/lib.rs');
   assert.doesNotMatch(backend, /PluginDataPort/u);
   assert.doesNotMatch(hostCargo, /storage-durable|control-plane/u);
@@ -69,8 +72,14 @@ test('Delivery 1919 SDK has a contract-only internal dependency graph', () => {
 });
 
 test('Delivery 1919 preserves additive provider wire and trusted internal principal', () => {
-  const provider = read('api/crates/runtime-extension-host/src/provider_host.rs');
-  const stdio = read('api/crates/runtime-extension-host/src/stdio_runtime.rs');
+  const provider = [
+    'api/crates/runtime-extension-host/src/provider_host.rs',
+    'api/crates/runtime-extension-host/src/provider_host/prompt_operations.rs',
+  ].map(read).join('\n');
+  const stdio = [
+    'api/crates/runtime-extension-host/src/stdio_runtime.rs',
+    'api/crates/runtime-extension-host/src/_tests/stdio_runtime/tests.rs',
+  ].map(read).join('\n');
   const apiRuntime = read('api/apps/api-server/src/provider_runtime/mod.rs');
   assert.match(provider, /current_provider_wire_input\(&loaded, &input\)/u);
   assert.match(stdio, /RuntimeHostWorkerFrame/u);
