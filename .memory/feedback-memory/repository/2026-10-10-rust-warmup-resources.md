@@ -1,22 +1,24 @@
 ---
 memory_type: feedback
 feedback_category: repository
-topic: Rust 预热顺序与固定资源配置
-summary: 保持共享资源配置；Rust 预热先获取依赖并分阶段错开普通库与库测试，单阶段采用一半可用逻辑 CPU 的预算。
+topic: Rust 预热顺序与半机资源预算
+summary: 日常开发测试与预热允许半数可用逻辑 CPU；预热先获取依赖并分阶段错开普通库与库测试，保留内存保护。
 keywords: [Rust, cargoJobs, cargoTestThreads, reset-rust-cache, 预热]
 match_when: [诊断 Rust 编译耗时, 修改 Rust 缓存清理与预热流程]
 created_at: 2026-10-10 10
-updated_at: 2026-10-18 23
-last_verified_at: 2026-10-18 23
+updated_at: 2026-10-19 10
+last_verified_at: 2026-10-19 10
 decision_policy: direct_reference
 scope: [scripts/node/reset-rust-cache, .1flowbase.verify.local.json]
 ---
 
 ## 规则
 
-用户明确纠正：共享的构建和测试并发已经调好，不准因机器 CPU 数量或编译耗时擅自调整；预热入口的独立预算按下述明确授权处理。
+资源预算按用户明确授权调整，不仅因 CPU 空闲或编译耗时就继续扩大。
 
-2026-10-18 用户在体验串行和分阶段预热后，明确允许单个阶段使用一半 CPU：预热独立采用一半可用逻辑 CPU 的 Cargo 并发预算，先获取锁定依赖，再按顺序完成普通库和全量测试预编译，避免前后阶段竞争；不修改共享的 `cargoJobs` / `cargoTestThreads` 配置，保留内存保护。
+2026-10-18 用户在体验串行和分阶段预热后，明确允许单个阶段使用一半 CPU：预热独立采用一半可用逻辑 CPU 的 Cargo 并发预算，先获取锁定依赖，再按顺序完成普通库和全量测试预编译，避免前后阶段竞争。
+
+2026-10-19 用户进一步明确授权把日常开发测试也开放到一半可用 CPU；共享 `cargoJobs` / `cargoTestThreads` 与系统 Cargo 包装器可据此调整，不再沿用此前固定为 2 的限制。保留多 worktree 的任务并发语义、预热阶段顺序及内存保护。
 
 源码开发环境仍需完整预热测试；先完成启动目标编译，再串行预热测试，不把取消测试预热作为优化结果。
 

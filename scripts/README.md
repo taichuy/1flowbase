@@ -43,9 +43,10 @@ bash scripts/shell/apply-resource-limits.sh \
 bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 ```
 
-24 GiB / 16 vCPU 配置：仅对所有 Rust 编译合计设置内存预算，
-`dev-rust.slice` High/Max 为 16/18 GiB，swap 上限 1 GiB，Cargo jobs=2。
-`dev.slice` 和 `dev-frontend.slice` 内存、swap 不设上限；父组 CPU 1200% 保留。
+24 GiB / 20 逻辑 CPU 配置：日常开发与验证的 Cargo jobs、Rust 测试线程均为 10，
+`dev.slice` 的 CPUQuota=1000% 让多个 worktree 的开发子组合计使用半机 CPU 时间。
+仅对所有 Rust 编译合计设置内存预算：`dev-rust.slice` High/Max 为 16/18 GiB，swap 上限 1 GiB。
+`dev.slice` 和 `dev-frontend.slice` 内存、swap 不设上限。
 18 GiB 是 Rust 组聚合硬上限，不是每个编译任务的额度，也不预留物理内存。
 
 通过 PATH 中的 `cargo`、`pnpm` 包装器自动进入子组；其他开发命令使用
@@ -80,7 +81,7 @@ Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 | `RUST_CPU_QUOTA` | Rust 编译总 CPU 配额；200% 表示最多两个逻辑核的 CPU 时间，不是构建时长限制。 |
 | `RUST_IO_WEIGHT` | Rust 构建 cgroup 的相对 I/O 权重，实际调度效果依赖设备和 cgroup 层级。 |
 | `CARGO_MAX_JOBS` | Cargo 包装器的默认编译 job 上限；调用方显式设置更低值时保留低值。预热入口可通过单次调用的 `ONEFLOWBASE_CARGO_JOB_LIMIT` 指定独立预算，内存 scope 仍生效。 |
-| `PROJECT_CARGO_JOBS` | 本仓库启动、预热和验证脚本使用的 Cargo 编译 job 数。 |
+| `PROJECT_CARGO_JOBS` | 本仓库启动和验证脚本使用的 Cargo 编译 job 数；缓存重置预热按可用逻辑 CPU 的一半独立计算，依赖获取与编译阶段串行执行。 |
 | `PROJECT_CARGO_TEST_THREADS` | 本仓库验证脚本传给 Rust test harness 的测试线程数。 |
 | `PROJECT_CARGO_INCREMENTAL` | 是否为本仓库本地验证启用 Rust incremental compilation。 |
 
@@ -135,7 +136,7 @@ node scripts/node/dev-up.js stop
 - `api-server` 的 dev profile 使用 `line-tables-only` 调试信息，保留回溯文件名/行号，减少模块级调试元数据；依赖仍沿用原 profile，预热和启动读取同一 Cargo.toml，不清空 target。
 - 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Linux Cargo 包装器处理自身编译 scope 的取消；取消后的 2 秒停止宽限期不限制正常编译时长。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
 - 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
-- 仓库资源配置面向当前 24 GiB / 16 vCPU 虚拟机：开发父组 CPUQuota=1200%，不限制内存；Rust 子组 MemoryHigh=16G、MemoryMax=18G、swap=1G、Cargo jobs=2。软阈值高于此前约 5 GiB 的编译工作集，避免持续触发内存回收；硬上限给桌面及其他工具留出余量。较小内存机器需要按容量调整自己的配置，不能直接沿用此预算；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
+- 仓库资源配置面向当前 24 GiB / 20 逻辑 CPU 开发机：开发父组 CPUQuota=1000%，不限制内存；Rust 子组 MemoryHigh=16G、MemoryMax=18G、swap=1G，Cargo jobs 与测试线程均为 10。硬上限给桌面及其他工具留出余量。其他容量的机器需要调整自己的配置；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。已启动的 Cargo 沿用启动时的并发数，后续新调用读取新设置。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
 
 ### `node scripts/node/reset-account-password.js [options]`
 

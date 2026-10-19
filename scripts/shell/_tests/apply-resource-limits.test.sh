@@ -53,7 +53,7 @@ grep -Fxq 'ManagedOOMSwap=kill' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'MemoryHigh=infinity' "$systemd_dir/dev.slice"
 grep -Fxq 'MemoryMax=infinity' "$systemd_dir/dev.slice"
 grep -Fxq 'MemorySwapMax=infinity' "$systemd_dir/dev.slice"
-grep -Fxq 'CPUQuota=1200%' "$systemd_dir/dev.slice"
+grep -Fxq 'CPUQuota=1000%' "$systemd_dir/dev.slice"
 grep -Fxq 'MemoryHigh=infinity' "$systemd_dir/dev-frontend.slice"
 grep -Fxq 'MemoryMax=infinity' "$systemd_dir/dev-frontend.slice"
 grep -Fxq 'MemoryLow=2G' "$systemd_dir/session.slice.d/50-memory-protection.conf"
@@ -64,9 +64,9 @@ grep -Fxq 'MemoryMax=18G' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'CPUQuota=' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'IOWeight=10' "$systemd_dir/dev-rust.slice"
-grep -Fq 'default_cargo_job_limit=2' "$bin_dir/cargo"
-grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq '"cargoTestThreads": 2' "$repo_dir/.1flowbase.verify.local.json"
+grep -Fq 'default_cargo_job_limit=10' "$bin_dir/cargo"
+grep -Fq '"cargoJobs": 10' "$repo_dir/.1flowbase.verify.local.json"
+grep -Fq '"cargoTestThreads": 10' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq 'set-property --runtime dev-rust.slice MemoryHigh=16G MemoryMax=18G MemorySwapMax=1G CPUQuota= IOWeight=10' \
   "$systemctl_log"
 
@@ -84,29 +84,29 @@ env PATH="$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
   CARGO_BUILD_JOBS=12 \
   "$bin_dir/cargo" test -j 12
-grep -Fxq 'CARGO_BUILD_JOBS=2' "$systemd_run_log"
+grep -Fxq 'CARGO_BUILD_JOBS=10' "$systemd_run_log"
 grep -Fq -- '--slice=dev-rust.slice -- ' "$systemd_run_log"
-grep -Fq -- 'test -j 2' "$systemd_run_log"
+grep -Fq -- 'test -j 10' "$systemd_run_log"
 test ! -e "$systemd_run_log.gate"
 
-# A warmup can provide its own job budget without changing the memory scope.
+# An invocation can request a smaller budget without changing the memory scope.
 env PATH="$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/warmup-run.log" \
-  ONEFLOWBASE_CARGO_JOB_LIMIT=10 CARGO_BUILD_JOBS=10 \
+  ONEFLOWBASE_CARGO_JOB_LIMIT=4 CARGO_BUILD_JOBS=10 \
   "$bin_dir/cargo" test --jobs=10
-grep -Fxq 'CARGO_BUILD_JOBS=10' "$test_root/warmup-run.log"
+grep -Fxq 'CARGO_BUILD_JOBS=4' "$test_root/warmup-run.log"
 grep -Fq -- '--slice=dev-rust.slice -- ' "$test_root/warmup-run.log"
-grep -Fq -- 'test --jobs=10' "$test_root/warmup-run.log"
-grep -Fq -- '--property=CPUQuota=1000%' "$test_root/warmup-run.log"
+grep -Fq -- 'test --jobs=4' "$test_root/warmup-run.log"
+grep -Fq -- '--property=CPUQuota=400%' "$test_root/warmup-run.log"
 
 # The override is per invocation; ordinary commands retain the default cap.
 env PATH="$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/default-run.log" \
-  CARGO_BUILD_JOBS=10 "$bin_dir/cargo" build -j10
-grep -Fxq 'CARGO_BUILD_JOBS=2' "$test_root/default-run.log"
-grep -Fq -- 'build -j2' "$test_root/default-run.log"
+  CARGO_BUILD_JOBS=12 "$bin_dir/cargo" build -j12
+grep -Fxq 'CARGO_BUILD_JOBS=10' "$test_root/default-run.log"
+grep -Fq -- 'build -j10' "$test_root/default-run.log"
 ! grep -Fq -- '--property=CPUQuota=' "$test_root/default-run.log"
 
 set +e
