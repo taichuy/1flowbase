@@ -77,7 +77,11 @@ test('Delivery 1919 preserves additive provider wire and trusted internal princi
   assert.match(stdio, /ProviderRuntimeLine/u);
   assert.match(apiRuntime, /RuntimeExecutionPrincipal/u);
   assert.doesNotMatch(
-    read('api/crates/extension-contracts/src/provider_contract.rs'),
+    [
+      'api/crates/extension-contracts/src/provider_contract.rs',
+      'api/crates/extension-contracts/src/provider_contract/count_tokens.rs',
+      'api/crates/extension-contracts/src/provider_contract/generate_projection.rs',
+    ].map(read).join('\n'),
     /RuntimeExecutionPrincipal|workspace_id.*actor_id/u,
   );
 });
