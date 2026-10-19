@@ -4,7 +4,7 @@ import type {
 } from '@1flowbase/api-client';
 import { useNavigate } from '@tanstack/react-router';
 import { Alert, Button, Empty, Flex, Input, Tabs, Typography } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
@@ -41,9 +41,9 @@ export function ApplicationTemplateCatalogPanel({
     name: string;
     body: ApplicationTemplateReference;
   }>();
-  const [previousPages] = useState(
-    () => new Map<string, { cursor?: string; page: number }>()
-  );
+  const previousPagesRef = useRef<Map<string, { cursor?: string; page: number }> | null>(null);
+  if (previousPagesRef.current === null) previousPagesRef.current = new Map();
+  const previousPages = previousPagesRef.current;
   useEffect(() => {
     setSearchText(q ?? '');
     previousPages.clear();
