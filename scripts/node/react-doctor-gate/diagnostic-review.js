@@ -17,6 +17,9 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
       || doctorReport.error) {
     return { status: 'invalid-output', reviewed: 0, findings: [{ reason: 'Doctor must return a complete diagnostic inventory and matching total' }] };
   }
+  if (doctorReport.summary.suppressedDiagnosticCount > 0) {
+    return { status: 'suppressed-output', reviewed: 0, findings: [{ reason: 'Doctor reports suppressed diagnostics; raw inventory is incomplete for acceptance' }] };
+  }
   let manifest;
   try {
     manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, REVIEW_FILE), 'utf8'));

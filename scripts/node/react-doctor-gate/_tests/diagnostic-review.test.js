@@ -57,6 +57,12 @@ test('incomplete output cannot turn a green child exit into accepted evidence', 
   assert.equal(f.evaluate().status, 'invalid-output');
 });
 
+test('tool-reported suppression cannot be accepted as a complete inventory', (t) => {
+  const f = fixture(t);
+  f.doctorReport.summary.suppressedDiagnosticCount = 1;
+  assert.equal(f.evaluate().status, 'suppressed-output');
+});
+
 test('review records require extant evidence, a pinned tool, and an unambiguous identity', (t) => {
   const f = fixture(t);
   f.manifest.reviews[0].evidence = ['web/app/src/deleted.tsx'];
