@@ -112,7 +112,7 @@ test('current auth hash records are not serializable or baseline-suppressed', ()
 
 test('scanRustSource limits sensitive serialization checks to the current struct', () => {
   const findings = scanRustSource({
-    relativePath: 'api/apps/api-server/src/routes/settings/members.rs',
+    relativePath: 'api/apps/api-server/src/routes/settings/identity_access/members.rs',
     content: [
       '#[derive(Serialize)]',
       'pub struct MemberResponse {',

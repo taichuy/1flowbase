@@ -1,3 +1,4 @@
+#[path = "role_access_interface/managed_projection.rs"]
 mod managed_projection;
 
 use std::sync::Arc;

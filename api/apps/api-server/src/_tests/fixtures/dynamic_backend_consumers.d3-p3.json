@@ -4,7 +4,7 @@
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
-    "dto": "api/apps/api-server/src/routes/settings/roles.rs",
+    "dto": "api/apps/api-server/src/routes/settings/identity_access/roles.rs",
     "api_client": "web/packages/api-client/src/console/identity/roles.ts",
     "ui": "web/app/src/features/settings/components/RolePermissionPanel.tsx"
   },
