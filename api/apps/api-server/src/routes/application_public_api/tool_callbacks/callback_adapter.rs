@@ -460,4 +460,5 @@ fn anthropic_tool_result_content(block: &Value) -> Value {
 }
 
 #[cfg(test)]
+#[path = "callback_adapter/tests.rs"]
 mod tests;
