@@ -36,6 +36,13 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
   }
   const findings = [];
   const digests = new Map();
+  const digestFile = (file) => {
+    if (!digests.has(file)) {
+      try { digests.set(file, sourceDigest(fs.readFileSync(path.join(repoRoot, file)))); }
+      catch { digests.set(file, null); }
+    }
+    return digests.get(file);
+  };
   for (const diagnostic of diagnostics) {
     if (!diagnostic || typeof diagnostic.filePath !== 'string'
         || typeof diagnostic.plugin !== 'string' || typeof diagnostic.rule !== 'string') {
@@ -51,19 +58,15 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     } else if (!review || typeof review.reason !== 'string' || !review.reason.trim() || !Array.isArray(review.evidence) || review.evidence.length === 0) {
       reason = 'diagnostic has no explicit source and contract review';
     } else {
-      if (!digests.has(file)) {
-        try { digests.set(file, sourceDigest(fs.readFileSync(path.join(repoRoot, file)))); }
-        catch { digests.set(file, null); }
-      }
-      if (digests.get(file) !== review.sourceSha256) {
+      if (digestFile(file) !== review.sourceSha256) {
         reason = 'source changed after review; reassess the counterexample or repair';
       } else if (!review.evidence.every((entry) => {
-        if (typeof entry !== 'string') return false;
-        const normalized = path.posix.normalize(entry);
-        return normalized === entry && !entry.startsWith('../') && !path.isAbsolute(entry)
-          && fs.existsSync(path.join(repoRoot, entry));
+        if (!entry || typeof entry.file !== 'string' || typeof entry.sha256 !== 'string') return false;
+        const normalized = path.posix.normalize(entry.file);
+        return normalized === entry.file && !entry.file.startsWith('../') && !path.isAbsolute(entry.file)
+          && digestFile(entry.file) === entry.sha256;
       })) {
-        reason = 'review evidence references a missing or invalid repository file';
+        reason = 'review evidence changed, disappeared, or references an invalid repository file';
       }
     }
     if (reason) findings.push({ file, rule, line: diagnostic.line, reason });

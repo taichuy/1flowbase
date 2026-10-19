@@ -82,7 +82,7 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
     reviews: doctorOutput.diagnostics.map(({ filePath }) => ({
       file: `web/app/${filePath}`, rule: 'react-doctor/no-event-handler',
       sourceSha256: sourceDigest(source), reason: 'External subscription cleanup is not a DOM interaction handler.',
-      evidence: [`web/app/${filePath}`],
+      evidence: [{ file: `web/app/${filePath}`, sha256: sourceDigest(source) }],
     })),
   }));
   const calls = [];

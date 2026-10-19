@@ -15,7 +15,7 @@ function fixture(t) {
   const review = {
     file, rule: 'react-doctor/no-render-in-render', sourceSha256: sourceDigest(source),
     reason: 'This is a plain function returning elements; element type and key identity remain stable.',
-    evidence: [file],
+    evidence: [{ file, sha256: sourceDigest(source) }],
   };
   const manifest = { schemaVersion: 1, toolPackage: 'react-doctor@0.2.16', reviews: [review] };
   const writeManifest = () => {
@@ -65,10 +65,10 @@ test('tool-reported suppression cannot be accepted as a complete inventory', (t)
 
 test('review records require extant evidence, a pinned tool, and an unambiguous identity', (t) => {
   const f = fixture(t);
-  f.manifest.reviews[0].evidence = ['web/app/src/deleted.tsx'];
+  f.manifest.reviews[0].evidence = [{ file: 'web/app/src/deleted.tsx', sha256: 'missing' }];
   f.writeManifest();
-  assert.match(f.evaluate().findings[0].reason, /missing or invalid/u);
-  f.manifest.reviews[0].evidence = [f.file];
+  assert.match(f.evaluate().findings[0].reason, /disappeared|invalid/u);
+  f.manifest.reviews[0].evidence = [{ file: f.file, sha256: sourceDigest(fs.readFileSync(path.join(f.repoRoot, f.file))) }];
   f.manifest.toolPackage = 'react-doctor@future';
   f.writeManifest();
   assert.match(f.evaluate().findings[0].reason, /no explicit/u);
@@ -76,4 +76,18 @@ test('review records require extant evidence, a pinned tool, and an unambiguous 
   f.manifest.reviews.push(f.manifest.reviews[0]);
   f.writeManifest();
   assert.match(f.evaluate().findings[0].reason, /no explicit/u);
+});
+
+
+test('changing a contract fixture invalidates evidence for unchanged component code', (t) => {
+  const f = fixture(t);
+  const proof = 'web/app/src/owner.test.tsx';
+  const original = 'test("preserves element identity", verifyIdentity);\n';
+  fs.writeFileSync(path.join(f.repoRoot, proof), original);
+  f.manifest.reviews[0].evidence = [{ file: proof, sha256: sourceDigest(original) }];
+  f.writeManifest();
+  assert.equal(f.evaluate().status, 'reviewed');
+  fs.writeFileSync(path.join(f.repoRoot, proof), 'test("only renders", verifyRender);\n');
+  assert.equal(f.evaluate().status, 'requires-review');
+  assert.match(f.evaluate().findings[0].reason, /evidence changed/u);
 });

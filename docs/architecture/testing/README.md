@@ -81,6 +81,8 @@ MCP v1 serde/上传 zip、SQL 编译与旧文本编辑、轨迹迁移后的原�
 
 不存在消费者的资源可删除；不同语义不能为消除同值 warning 强制合 key 或改写可见翻译。未知动态引用仍需真实 producer 与 renderer owner，不因上述有限证据自动保留所有未引用资源。
 
+审查证据也绑定文件内容 SHA-256；组件源码未变但契约或行为夹具改变时，原审查失效，不能仅凭路径仍存在接受旧结论。
+
 ## 写入与读取职责
 
 Trace projection 的写入对象由 `control-plane-contracts` 管理。共享 alias 使用 typed object 和 `Arc<Value>`，成员变更按 copy-on-write 隔离；标量和数组可作为普通 JSON 保留，但向其插入对象字段必须显式返回错误并保持原值。业务端传播错误，持久化边界才展开共享 alias，读取 DTO 与 wire JSON 形状保持不变。
