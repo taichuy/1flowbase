@@ -71,6 +71,23 @@ interface NodePickerPopoverProps {
   placement?: 'top' | 'bottom' | 'left' | 'right' | 'rightTop';
 }
 
+function resolvePopupContainer(triggerNode: HTMLElement) {
+  const canvas = triggerNode.closest<HTMLElement>('.agent-flow-canvas');
+
+  if (!canvas) {
+    return document.body;
+  }
+
+  const canvasRect = canvas.getBoundingClientRect();
+
+  canvas.style.setProperty(
+    '--agent-flow-node-picker-height',
+    `${Math.floor(canvasRect.height * 0.8)}px`
+  );
+
+  return canvas;
+}
+
 export function NodePickerPopover({
   ariaLabel,
   open,
@@ -141,22 +158,6 @@ export function NodePickerPopover({
     onOpenChange(false);
   }
 
-  function resolvePopupContainer(triggerNode: HTMLElement) {
-    const canvas = triggerNode.closest<HTMLElement>('.agent-flow-canvas');
-
-    if (!canvas) {
-      return document.body;
-    }
-
-    const canvasRect = canvas.getBoundingClientRect();
-
-    canvas.style.setProperty(
-      '--agent-flow-node-picker-height',
-      `${Math.floor(canvasRect.height * 0.8)}px`
-    );
-
-    return canvas;
-  }
 
   return (
     <Popover
