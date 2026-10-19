@@ -6,7 +6,7 @@
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "0316aa7a077aa625df6b0ea3bcf8ea441bce7d8abc26a6409ba3e5307270b8d8",
       "reason": "Select options exclude the currently edited department ID to prevent choosing self as parent before mapping unchanged backend identifiers to label/value. These paginated option transformations are linear and side-effect-free; combining passes does not remove a repeated lookup or fix a behavioral failure. Select options exclude the protected root role code from assignable role choices before mapping unchanged backend identifiers to label/value. These paginated option transformations are linear and side-effect-free; combining passes does not remove a repeated lookup or fix a behavioral failure.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/DepartmentEditorDrawer.test.tsx", "sha256": "59b8de0acbe13f456c8c582cb224c540bae21f6b9e342e1978031f440ada113c"}]
+      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/DepartmentEditorDrawer.test.tsx", "sha256": "08710941018ec9f048ed5c920ef7213b008303c9943296dfb65e376dbb72c14e"}]
     },
     {
       "file": "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx",
