@@ -285,6 +285,24 @@ pub struct CreateSelfRegisteredMemberInput {
     pub password_hash: String,
 }
 
+/// Host-verified external identity; storage must atomically create only a normal member.
+#[derive(Debug, Clone)]
+pub struct CreateExternalRegisteredMemberInput {
+    pub identity: VerifiedExternalIdentity,
+    pub email: String,
+    pub audit: AuditLogRecord,
+}
+
+#[async_trait]
+pub trait ExternalRegistrationRepository: Send + Sync {
+    /// Concurrent registration of the same identity returns the same user. Email collisions
+    /// with another identity fail closed; email is never an identity merge key.
+    async fn create_external_registered_member(
+        &self,
+        input: &CreateExternalRegisteredMemberInput,
+    ) -> anyhow::Result<UserRecord>;
+}
+
 #[derive(Debug, Clone)]
 pub struct UpdateMemberInput {
     pub actor_user_id: Uuid,

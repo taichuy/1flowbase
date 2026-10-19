@@ -1,5 +1,8 @@
 use std::collections::BTreeSet;
 
+#[path = "external_registration.rs"]
+mod external_registration;
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{

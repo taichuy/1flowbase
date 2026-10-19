@@ -13,8 +13,10 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+mod external;
 pub mod public_ui;
 pub mod settings;
+pub use external::CompleteExternalLoginCommand;
 
 use crate::{
     audit::audit_log,
@@ -752,6 +754,10 @@ where
                 .await?
                 .ok_or(ControlPlaneError::NotAuthenticated)?
         };
+        self.finish_login(user).await
+    }
+
+    async fn finish_login(&self, user: domain::UserRecord) -> Result<LoginResult> {
         if matches!(user.status, UserStatus::Disabled) {
             return Err(ControlPlaneError::PermissionDenied("user_disabled").into());
         }

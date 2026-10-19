@@ -26,6 +26,9 @@ use uuid::Uuid;
 
 use crate::_tests::support::{password_hash, MemorySessionStore};
 
+#[path = "auth_provider_instance/external_login.rs"]
+mod external_login;
+
 #[derive(Clone)]
 struct InstanceAwareAuthRepository {
     login_entries: Arc<HashMap<Uuid, LoginEntryRecord>>,
