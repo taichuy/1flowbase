@@ -12,7 +12,10 @@ afterEach(cleanupDataModelsPageTest);
 
 describe('Settings data models page', () => {
   test('hides selected data source implementation metadata in model management', async () => {
-    renderApp('/settings/data-models?source=main');
+    // Await the real lazy route commits before starting the UI readiness query.
+    await act(async () => {
+      renderApp('/settings/data-models?source=main');
+    });
 
     expect(
       await screen.findByRole('heading', { name: '主数据源' })

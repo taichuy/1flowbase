@@ -18,6 +18,13 @@ import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { AppProviders } from '../../../../app/AppProviders';
 import * as modelProviderOptionsApi from '../../api/model-provider-options';
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
+// Resolve the real LLM schema's lazy field modules during suite collection.
+// Cold module transforms must complete before the inspector's readiness assertions.
+import '../../components/detail/fields/LlmModelField';
+import '../../components/detail/fields/LlmMcpInstancesField';
+import '../../components/detail/fields/LlmToolRegistrationsField';
+import '../../components/detail/fields/LlmPromptMessagesField';
+import '../../components/detail/fields/LlmResponseFormatField';
 import { listLlmProviderOptions } from '../../lib/model-options';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
