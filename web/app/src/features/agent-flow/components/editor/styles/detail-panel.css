@@ -290,6 +290,8 @@
 }
 
 .agent-flow-node-detail__relation-add {
+  font: inherit;
+  text-align: inherit;
   display: flex;
   align-items: center;
   gap: 8px;

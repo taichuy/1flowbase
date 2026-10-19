@@ -590,14 +590,15 @@ function renderRelationsView({ adapter, block }: SchemaViewRendererProps) {
               {downstreamNode.alias}
             </div>
           ))}
-          <div
+          <button
+            type="button"
             className="agent-flow-node-detail__relation-add"
             onClick={() =>
               adapter.dispatch('openNodePicker', { nodeId: node.id })
             }
           >
             <PlusOutlined /> {i18nText('agentFlow', 'auto.add_parallel_node')}
-          </div>
+          </button>
         </div>
       </div>
     </div>
