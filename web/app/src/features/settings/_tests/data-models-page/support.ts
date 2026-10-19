@@ -261,6 +261,14 @@ import '../../../../shared/i18n/text';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import '../../components/data-models/DataModelFormDrawer';
 
+// Collect the real lazy route modules after API mocks and i18n are registered.
+// Chunk transformation belongs to collection; UI/query readiness stays in tests.
+await Promise.all([
+  import('../../../../app-shell/AppShellFrame'),
+  import('../../pages/SettingsPage'),
+  import('../../pages/settings-page/SettingsDataModelsSection')
+]);
+
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 const antdStaticMessageWarning =
   'Static function can not consume context like dynamic theme';

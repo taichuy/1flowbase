@@ -986,9 +986,9 @@ test('#2018 AC-107 preview MCP selection reaches both stream and fallback and re
   const start = vi
     .spyOn(runtimeApi, 'startFlowDebugRun')
     .mockResolvedValue(createSucceededRunDetail());
-  vi.spyOn(runtimeApi, 'fetchDebugVariableSnapshot').mockResolvedValue({
-    variable_cache: {}
-  });
+  const snapshots = vi
+    .spyOn(runtimeApi, 'fetchDebugVariableSnapshot')
+    .mockResolvedValue({ variable_cache: {} });
   const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
   const { result, rerender } = renderHook(
     ({ applicationId }) =>
@@ -1010,7 +1010,24 @@ test('#2018 AC-107 preview MCP selection reaches both stream and fallback and re
     mcp_instance_ids: ['preview-mcp'],
     document
   });
+  type VariableSnapshot = Awaited<
+    ReturnType<typeof runtimeApi.fetchDebugVariableSnapshot>
+  >;
+  let completeApplicationSnapshot!: (snapshot: VariableSnapshot) => void;
+  const applicationSnapshot = new Promise<VariableSnapshot>((resolve) => {
+    completeApplicationSnapshot = resolve;
+  });
+  snapshots.mockImplementation(async (applicationId) => {
+    if (applicationId === 'app-2') return applicationSnapshot;
+    return { variable_cache: {} };
+  });
   rerender({ applicationId: 'app-2' });
+  await waitFor(() => expect(snapshots).toHaveBeenLastCalledWith('app-2'));
+  // Complete the new scope's actual restore request within its async act owner.
+  await act(async () => {
+    completeApplicationSnapshot({ variable_cache: {} });
+    await applicationSnapshot;
+  });
   expect(result.current.mcp_instance_ids).toEqual([]);
 });
 

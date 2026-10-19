@@ -153,6 +153,7 @@ import {
 } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { getNativeSearchLandmark } from './support/native-search-landmark';
 import { getApplicationRunsTableColumns } from '../../components/logs/application-runs-table-columns';
 import type { ApplicationRunSummary } from '../../api/runtime';
 
@@ -518,7 +519,7 @@ describe('ApplicationLogsPage - table field settings', () => {
     );
 
     expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
-    const filters = screen.getByRole('search');
+    const filters = getNativeSearchLandmark();
 
     expect(
       within(filters).getByRole('button', { name: '字段配置' })
