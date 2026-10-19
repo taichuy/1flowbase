@@ -1401,4 +1401,5 @@ impl ModelProviderRepository for MemoryPluginManagementRepository {
     }
 }
 
+#[path = "repository/authentication.rs"]
 mod authentication;

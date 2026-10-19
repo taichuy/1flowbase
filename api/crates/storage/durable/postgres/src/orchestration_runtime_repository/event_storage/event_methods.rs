@@ -1,5 +1,3 @@
-mod observation_bodies;
-
 impl PgControlPlaneStore {
     async fn append_run_event(
         &self,

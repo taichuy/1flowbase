@@ -73,6 +73,7 @@ mod client_trajectory;
 mod detail_queries;
 mod json_storage;
 mod log_query;
+mod observation_bodies;
 mod task_trace_sources;
 mod trajectory;
 use json_storage::{
