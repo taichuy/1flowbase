@@ -57,7 +57,7 @@ migrations: []
 #[test]
 fn rr14_host_extension_parses_typed_interface_authentication_contribution() {
     let manifest = parse_host_extension_contribution_manifest(include_str!(
-        "../../../../plugins/fixtures/acme.authentication-host/host-extension.yaml"
+        "../../../../../plugins/fixtures/acme.authentication-host/host-extension.yaml"
     ))
     .unwrap();
     let authentication = manifest.interface_authentication_adapters.first().unwrap();
