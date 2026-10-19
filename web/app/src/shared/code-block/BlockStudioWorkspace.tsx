@@ -24,47 +24,47 @@ export type BlockStudioSection =
 
 const STUDIO_SECTION_DEFINITIONS: Array<{
   key: BlockStudioSection;
-  labelKey: string;
+  label: () => string;
   icon: ReactNode;
 }> = [
   {
     key: 'code',
-    labelKey: 'auto.code',
+    label: () => i18nText('frontstage', 'auto.code'),
     icon: <CodeOutlined />
   },
   {
     key: 'templates',
-    labelKey: 'auto.code_template',
+    label: () => i18nText('frontstage', 'auto.code_template'),
     icon: <FileTextOutlined />
   },
   {
     key: 'interfaces',
-    labelKey: 'auto.interfaces',
+    label: () => i18nText('frontstage', 'auto.interfaces'),
     icon: <ApiOutlined />
   },
   {
     key: 'variables',
-    labelKey: 'auto.variables',
+    label: () => i18nText('frontstage', 'auto.variables'),
     icon: <DatabaseOutlined />
   },
   {
     key: 'block-tree',
-    labelKey: 'auto.block_tree',
+    label: () => i18nText('frontstage', 'auto.block_tree'),
     icon: <ApartmentOutlined />
   },
   {
     key: 'components',
-    labelKey: 'auto.components',
+    label: () => i18nText('frontstage', 'auto.components'),
     icon: <AppstoreOutlined />
   },
   {
     key: 'configuration',
-    labelKey: 'auto.configuration',
+    label: () => i18nText('frontstage', 'auto.configuration'),
     icon: <SettingOutlined />
   },
   {
     key: 'run',
-    labelKey: 'auto.preview',
+    label: () => i18nText('frontstage', 'auto.preview'),
     icon: <PlayCircleOutlined />
   }
 ];
@@ -161,7 +161,7 @@ export function BlockStudioWorkspace({
         {STUDIO_SECTION_DEFINITIONS.filter((section) =>
           sections.includes(section.key)
         ).map((section) => {
-          const label = i18nText('frontstage', section.labelKey);
+          const label = section.label();
           return (
             <Tooltip key={section.key} title={label} placement="left">
               <Button

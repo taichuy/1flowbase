@@ -20,9 +20,18 @@ type ProxyPoolFilters = { search: string; health?: string; providerCode?: string
 
 const PAGE_SIZE = 20;
 
+// Explicit keys preserve locale ownership for the backend's known health states.
+// Unknown future values retain the existing dynamic-key projection.
+const HEALTH_LABEL_KEYS: ReadonlyMap<string, string> = new Map([
+  ['healthy', 'auto.network_center_health_healthy'],
+  ['not_tested', 'auto.network_center_health_not_tested'],
+  ['unhealthy', 'auto.network_center_health_unhealthy'],
+  ['invalid', 'auto.network_center_health_invalid']
+]);
+
 function healthTag(health: string) {
   const color = health === 'healthy' ? 'green' : health === 'unhealthy' ? 'red' : health === 'not_tested' ? 'default' : 'orange';
-  return <Tag color={color}>{i18nText('settings', `auto.network_center_health_${health}`)}</Tag>;
+  return <Tag color={color}>{i18nText('settings', HEALTH_LABEL_KEYS.get(health) ?? `auto.network_center_health_${health}`)}</Tag>;
 }
 
 function probeCapabilityTag(protocol: 'http' | 'https', status: string) {
