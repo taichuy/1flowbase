@@ -4,7 +4,7 @@
     {
       "file": "web/app/src/features/agent-flow/_tests/embedded-assistant/assistant-fixture.tsx",
       "rule": "react-doctor/only-export-components",
-      "sourceSha256": "c7bcec2e1c26ef15c582128b2eaa15a21da5f2a1191e6279bad6a119763af2b3",
+      "sourceSha256": "f126d80efbb1a546411c281908a66ab0e5c6d1f9fc7c22406d1bab842d5ceb90",
       "reason": "This is a Vitest fixture/observer API, not a browser Fast Refresh component module. assistant-fixture.tsx exports Vitest runtime mocks, lifecycle setup, dimension spies, render/rerender/event helpers used by the split embedded-assistant suites. These are test fixture APIs, not production HMR exports; treating each mock/helper as a component boundary would destroy the shared suite owner rather than repair Fast Refresh.",
       "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/assistant-activity.test.tsx", "sha256": "7d0a5f637e5a6e765d9c121920750ea3fa36a673d21fcb141847402a2cd17096"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/assistant-transport.test.tsx", "sha256": "dac5e10f256288304c84334076753db7f7f317382008cab3919d0951a4fb43bb"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}]
     }
