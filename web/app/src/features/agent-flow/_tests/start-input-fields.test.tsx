@@ -467,7 +467,8 @@ test('keeps the surviving option input mounted when deleting its preceding optio
       onChange={(patch) => setField((current) => ({ ...current, ...patch }))}
       onClose={() => {}} onSave={() => {}} />;
   }
-  await appI18n.changeLanguage('zh-Hans');
+  writeLocalePreferenceToStorage('zh_Hans');
+  await appI18n.changeLanguage('zh_Hans');
   renderWithProviders(<Harness />);
   const survivor = await screen.findByLabelText('输入字段选项 2');
   fireEvent.click(screen.getByRole('button', { name: '删除下拉选项 1' }));
