@@ -85,7 +85,10 @@ function inspectAuthenticationInvocationBoundary(relativePath, source) {
 
 function inspectInterfaceLifecycleBoundary(repoRoot) {
   const stream = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compat_sse.rs');
-  const openai = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/openai.rs');
+  const openai = [
+    'api/apps/api-server/src/routes/application_public_api/openai.rs',
+    'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch.rs',
+  ].map(relativePath => read(repoRoot, relativePath)).join('\n');
   const anthropic = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/anthropic.rs');
   const workflowExtension = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/ex.rs');
   const contributions = read(repoRoot, 'api/apps/api-server/src/extension_bus/interface_contributions.rs');

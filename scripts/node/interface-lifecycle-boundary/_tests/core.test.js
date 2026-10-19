@@ -19,6 +19,7 @@ const sources = [
   'api/apps/api-server/src/routes/mcp_protocol.rs',
   'api/apps/api-server/src/lib.rs',
   'api/apps/api-server/src/external_endpoint_catalog.rs',
+  'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch.rs',
 ];
 
 function fixture(overrides = {}) {
@@ -43,6 +44,7 @@ function fixture(overrides = {}) {
     [sources[9]]: 'struct McpAdapter { dispatch: Arc<dyn McpDispatchService> }',
     [sources[10]]: 'publish_external_endpoint_catalog(); contribute_openapi_document(); fn console_router_with_assembly() { ExternalRouteAssembly::new(); router.contributions(); router.into_router(); }',
     [sources[11]]: 'fn compile_complete() {} enum Error { UnclassifiedRows }',
+    [sources[12]]: '',
   };
   for (const source of sources) {
     const target = path.join(root, source);

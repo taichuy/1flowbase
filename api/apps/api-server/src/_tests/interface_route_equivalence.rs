@@ -60,7 +60,11 @@ async fn issue_1944_native_response_modes_are_distinct_published_contracts() {
 #[test]
 fn issue_1958_migrated_routes_have_no_production_compatibility_bypass() {
     let compatibility_stream = include_str!("../routes/application_public_api/compat_sse.rs");
-    let openai = include_str!("../routes/application_public_api/openai.rs");
+    let openai = concat!(
+        include_str!("../routes/application_public_api/openai.rs"),
+        "\n",
+        include_str!("../routes/application_public_api/openai/response_dispatch.rs"),
+    );
     let anthropic = include_str!("../routes/application_public_api/anthropic.rs");
     let workflow_extension = include_str!("../routes/application_public_api/ex.rs");
 

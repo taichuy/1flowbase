@@ -72,7 +72,11 @@ fn blocking_compatibility_bindings_publish_as_typed_http_plans() {
 
 #[test]
 fn compatibility_routes_select_frozen_bindings_and_registered_invocation_helpers() {
-    let source = include_str!("../routes/application_public_api/openai.rs");
+    let source = concat!(
+        include_str!("../routes/application_public_api/openai.rs"),
+        "\n",
+        include_str!("../routes/application_public_api/openai/response_dispatch.rs"),
+    );
     let anthropic = include_str!("../routes/application_public_api/anthropic.rs");
 
     for binding in [
