@@ -326,6 +326,31 @@ function platformReadinessForTable({ table, profile, config, tableFindings }) {
       reason: needsOwnerReviewReason,
     };
   }
+  const ownedContract = config.ownedTableContracts[table.name];
+  if (ownedContract?.routingColumns?.length) {
+    const invalid = tableFindings.some((item) => item.severity === 'error');
+    return {
+      category: declaration.category,
+      timeKey: null,
+      tieBreaker: null,
+      fields,
+      missingFields: tableFindings.filter((item) => item.severity === 'error')
+        .map((item) => item.column || item.rule),
+      requiredScopeId: false,
+      routingKeyStatus: ownedContract.routingColumns.join('+'),
+      scopeGenerationSource: {
+        status: invalid ? 'needs_owner_review' : 'declared',
+        source: declaredSource(declaration.scopeGenerationSource),
+      },
+      backfillSource: null,
+      writePathSource: declaredSource(declaration.writePathSource),
+      hasScopeTimeIdIndex: false,
+      recommendedActions: [invalid ? 'review_profile_contract' : 'no_action'],
+      severity: invalid ? 'error' : 'ok',
+      reason: invalid ? 'specialized owner routing contract requires repair'
+        : 'declared composite owner routing, lifecycle and lookup contracts passed',
+    };
+  }
   if (profile === 'flow_run_owned_table' || profile === 'retired_archive_table') {
     const invalid = tableFindings.some((item) => item.severity === 'error');
     const flowRunOwned = profile === 'flow_run_owned_table';

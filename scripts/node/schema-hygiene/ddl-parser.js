@@ -318,6 +318,7 @@ function createTable(name, source) {
     uniqueConstraints: [],
     indexes: [],
     foreignKeys: [],
+    triggers: [],
     checks: [],
     jsonbColumns: [],
   };
@@ -404,6 +405,11 @@ function parseReference(raw) {
   };
 }
 
+function foreignKeyDeleteAction(definition) {
+  const match = /\bon\s+delete\s+(cascade|restrict|no\s+action|set\s+null|set\s+default)\b/iu.exec(definition);
+  return match ? { onDelete: match[1].toLowerCase().replace(/\s+/gu, ' ') } : {};
+}
+
 function addInlineConstraints(table, column, raw) {
   if (/\bprimary\s+key\b/iu.test(raw)) {
     table.primaryKey = {
@@ -426,6 +432,7 @@ function addInlineConstraints(table, column, raw) {
     table.foreignKeys.push({
       columns: [column.name],
       references: reference,
+      ...foreignKeyDeleteAction(raw),
       name: null,
       source: 'inline',
     });
@@ -467,6 +474,7 @@ function parseTableConstraint(table, definition) {
         table: normalizeIdentifier(foreignKeyMatch[2]),
         columns: foreignKeyMatch[3] ? parseColumnList(foreignKeyMatch[3]) : [],
       },
+      ...foreignKeyDeleteAction(normalized),
       name: constraintName,
       source: 'table',
     });
@@ -748,6 +756,56 @@ function parseDropIndex(statement, context) {
   }
 }
 
+// Track current trigger attachments while replaying migrations. This projects
+// DDL identity and invocation shape; it does not verify PL/pgSQL function bodies.
+function parseCreateTrigger(statement, context) {
+  const match = /^create\s+(?:or\s+replace\s+)?(constraint\s+)?trigger\s+([a-zA-Z0-9_."$]+)\s+(before|after|instead\s+of)\s+([\s\S]+?)\s+on\s+([a-zA-Z0-9_."$]+)\s+([\s\S]+?)\s+execute\s+(?:function|procedure)\s+([a-zA-Z0-9_."$]+)\s*\(([\s\S]*)\)$/iu.exec(statement);
+  const row = match && /^(?:(?:not\s+)?deferrable\s+)?(?:initially\s+(?:deferred|immediate)\s+)?for\s+each\s+(row|statement)(?:\s+when\s*\(([\s\S]*)\))?$/iu.exec(match[6].trim());
+  const events = match && match[4].split(/\s+or\s+/iu).map((raw) => {
+    const event = /^(insert|delete|truncate|update)(?:\s+of\s+([a-zA-Z0-9_."$,\s]+))?$/iu.exec(raw.trim());
+    if (!event || (event[2] && event[1].toLowerCase() !== 'update')) return null;
+    return { event: event[1].toLowerCase(), columns: event[2] ? parseColumnList(event[2]) : [] };
+  });
+  if (!match || !row || events.some((event) => !event)) {
+    context.parseErrors.push(createParseError(context, 'unsupported-create-trigger', statement));
+    return;
+  }
+  // Views are outside the table inventory; do not manufacture a managed table.
+  const table = context.tables.get(normalizeIdentifier(match[5]));
+  if (!table) return;
+  const trigger = {
+    name: normalizeIdentifier(match[2]), timing: match[3].toLowerCase().replace(/\s+/gu, ' '),
+    events, forEach: row[1].toLowerCase(), when: row[2]?.trim() || null,
+    constraint: Boolean(match[1]), function: normalizeIdentifier(match[7]),
+    arguments: match[8].trim() ? splitTopLevel(match[8], ',').map((value) => value.trim()) : [],
+    source: context.relativePath,
+  };
+  table.triggers = [...(table.triggers || []).filter((item) => item.name !== trigger.name), trigger];
+}
+
+function parseDropTrigger(statement, context) {
+  const match = /^drop\s+trigger\s+(?:if\s+exists\s+)?([a-zA-Z0-9_."$]+)\s+on\s+([a-zA-Z0-9_."$]+)(?:\s+(?:cascade|restrict))?$/iu.exec(statement);
+  if (!match) {
+    context.parseErrors.push(createParseError(context, 'unsupported-drop-trigger', statement));
+    return;
+  }
+  const table = context.tables.get(normalizeIdentifier(match[2]));
+  if (table) table.triggers = (table.triggers || []).filter((trigger) => trigger.name !== normalizeIdentifier(match[1]));
+}
+
+function parseDropTriggerFunction(statement, context) {
+  // A trigger function has no declared arguments. Dropping it with CASCADE
+  // removes its dependent attachments; a historical CREATE is no longer proof.
+  const match = /^drop\s+function\s+(?:if\s+exists\s+)?([a-zA-Z0-9_."$]+)\s*\(\s*\)\s+cascade$/iu.exec(statement);
+  if (!match) {
+    context.parseErrors.push(createParseError(context, 'unsupported-drop-trigger-function', statement));
+    return;
+  }
+  for (const table of context.tables.values()) {
+    table.triggers = (table.triggers || []).filter((trigger) => trigger.function !== normalizeIdentifier(match[1]));
+  }
+}
+
 function createParseError(context, rule, statement) {
   const message = `Unable to parse schema DDL statement in ${context.relativePath}`;
   return {
@@ -767,6 +825,22 @@ function parseSchemaStatement(statement, context) {
     return;
   }
 
+  if (/^create\s+(?:or\s+replace\s+)?(?:constraint\s+)?trigger\b/iu.test(normalized)) {
+    parseCreateTrigger(normalized, context);
+    return;
+  }
+  if (/^drop\s+trigger\b/iu.test(normalized)) {
+    parseDropTrigger(normalized, context);
+    return;
+  }
+  if (/^alter\s+trigger\b/iu.test(normalized)) {
+    context.parseErrors.push(createParseError(context, 'unsupported-alter-trigger', statement));
+    return;
+  }
+  if (/^drop\s+function\b[\s\S]*\bcascade\s*$/iu.test(normalized)) {
+    parseDropTriggerFunction(normalized, context);
+    return;
+  }
   const temporaryTableMatch = /^create\s+(?:temporary|temp)\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."$]+)/iu.exec(normalized);
   if (temporaryTableMatch) {
     context.temporaryTables.add(normalizeIdentifier(temporaryTableMatch[1]));

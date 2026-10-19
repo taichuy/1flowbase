@@ -20,7 +20,7 @@ vendor 的规模 finding 仅在精确 `api/vendor/` 边界降为 warning，仍�
 
 Rust 文件按领域职责收纳物理子目录时，Cargo package identity、逻辑 module 路径与既有导出保持稳定；不能以目录移动暗改 crate 依赖方向或业务所有权。例如 `domain/src/lib.rs` 将 extension/modeling 类型映射到子目录，`control-plane/src/lib.rs` 将扩展、网络与展示服务映射到职责目录，`storage/durable/postgres/src/lib.rs` 将 repository 映射到子目录，仍通过 `#[path]` 保留原模块入口。窄 Port 定义、业务状态写入与事务 owner 继续遵守 [crate 职责表](../../../api/crates/AGENTS.md)，不因物理拆分转移到调用方或 mapper。拆分测试保留真实场景、断言、mock 注册时序和资源回收边界。
 
-`schema-hygiene` 从正式 migrations 构造结构 inventory。合法表或 constraint 重命名保留原列、键与引用语义；constraint 改名后的删除按新身份处理。无法识别的 DDL 仍报告解析失败，不能把整条 migration 豁免。静态 inventory 不替代 PostgreSQL 的真实迁移执行、约束校验和事务验证。
+`schema-hygiene` 从正式 migrations 构造结构 inventory。合法表或 constraint 重命名保留原列、键与引用语义；constraint 改名后的删除按新身份处理。无法识别的 DDL 仍报告解析失败，不能把整条 migration 豁免。静态 inventory 不替代 PostgreSQL 的真实迁移执行、约束校验和事务验证。 有限 owner 契约在 `schema-hygiene/ownership-config.json` 集中声明，由原 `loadConfig` 入口合并：mixed system/workspace contribution authority 保留 installation/workspace 复合身份、级联引用、scope lookup index 与 validation/cleanup trigger；protocol capsule 保留 flow-run/kind/slot 身份、run cascade 和 hard-expiry index。Trigger inventory 按 migration 顺序跟踪 create/drop 及调用形状，未知变形报告解析错误；它不验证 PL/pgSQL 函数体、加密、expiry 或 replay 的运行语义。
 
 规则自身需要合法反例与违规反例。删除旧断言的依据是当前 contract 和有效替代证据，不能只因为它失败，也不能反过来让产品兼容过期测试。规模、兼容与翻译 finding 都应保留实际 owner 和处置依据，不能通过扩大路径豁免或清空报告获得健康结论。
 

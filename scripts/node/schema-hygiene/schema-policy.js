@@ -29,7 +29,16 @@ function loadConfig(repoRoot, configPath = DEFAULT_CONFIG_FILE) {
     return {};
   }
 
-  return JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+  const config = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+  if (!config.ownershipPolicyFile) return config;
+  const ownershipPath = path.resolve(path.dirname(absolutePath), config.ownershipPolicyFile);
+  const ownership = JSON.parse(fs.readFileSync(ownershipPath, 'utf8'));
+  const allowed = ['exemptions', 'ownedTableContracts'];
+  if (Object.keys(ownership).some((key) => !allowed.includes(key))
+    || allowed.some((key) => Object.hasOwn(config, key))) {
+    throw new Error('ownership policy file must exclusively declare exemptions and ownedTableContracts');
+  }
+  return { ...config, ...ownership };
 }
 
 function normalizeConfig(config = {}) {
@@ -294,7 +303,7 @@ function evaluateSchemaHygiene({ inventory, config = {} }) {
     const needsOwnerReviewReason = normalizedConfig.needsOwnerReviewTables[table.name];
 
     tableFindings.push(...collectExemptionPolicyFindings(table, exemption, normalizedConfig));
-    tableFindings.push(...ownedTableFindings(table, normalizedConfig.ownedTableContracts[table.name])
+    tableFindings.push(...ownedTableFindings(table, normalizedConfig.ownedTableContracts[table.name], inventory.tables)
       .map((item) => finding({ ...item, table })));
 
     if (needsOwnerReviewReason) {

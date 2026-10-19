@@ -33,7 +33,7 @@ test('specialized logs and organization tables retain real ownership and lookup 
           ? { ...column, nullable: true } : column) }, 'owned-table-owner-column');
       }
     }
-    for (const owner of contract.ownerColumns || []) {
+    for (const owner of new Set([...(contract.ownerColumns || []), ...(contract.routingColumns || [])])) {
       rejected({ ...original, columns: original.columns.filter((column) => column.name !== owner) }, 'owned-table-owner-column');
       rejected({ ...original, columns: original.columns.map((column) => column.name === owner
         ? { ...column, nullable: true } : column) }, 'owned-table-owner-column');
