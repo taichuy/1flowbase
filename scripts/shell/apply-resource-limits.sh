@@ -41,6 +41,8 @@ dev_wrapper="$user_bin_dir/dev-run"
 pnpm_wrapper="$user_bin_dir/pnpm"
 cargo_wrapper="$user_bin_dir/cargo"
 project_config="$repo_root/.1flowbase.verify.local.json"
+budget_source="$script_dir/../node/testing/resources/budget.js"
+budget_helper="$user_bin_dir/oneflowbase-resource-budget"
 
 require_value() {
   local name=$1
@@ -49,10 +51,6 @@ require_value() {
     exit 2
   fi
 }
-
-# Keep installed wrappers independent of the checkout they were generated from.
-# Node's availableParallelism also respects process CPU affinity/cpuset limits.
-half_cpu_expression='const os = require("node:os"); console.log(Math.max(1, Math.floor((os.availableParallelism?.() ?? os.cpus().length) / 2)))'
 
 write_limited_profile() {
   local required
@@ -84,15 +82,23 @@ write_limited_profile() {
     exit 2
   fi
 
-  local half_cpu_jobs project_cargo_jobs_json project_cargo_test_threads_json
+  local cpu_jobs project_cargo_jobs_json project_cargo_test_threads_json
   if [[ $DEV_CPU_QUOTA == auto || $CARGO_MAX_JOBS == auto ||
         $PROJECT_CARGO_JOBS == auto || $PROJECT_CARGO_TEST_THREADS == auto ]]; then
-    half_cpu_jobs=$(node -e "$half_cpu_expression")
-    if [[ ! $half_cpu_jobs =~ ^[1-9][0-9]*$ ]]; then
+    cpu_jobs=$(node "$budget_source" cpu-jobs)
+    if [[ ! $cpu_jobs =~ ^[1-9][0-9]*$ ]]; then
       printf 'Unable to determine the available CPU budget\n' >&2
       exit 2
     fi
-    [[ $DEV_CPU_QUOTA != auto ]] || DEV_CPU_QUOTA="${half_cpu_jobs}00%"
+    [[ $DEV_CPU_QUOTA != auto ]] || DEV_CPU_QUOTA="${cpu_jobs}00%"
+  fi
+  local memory_limits reserve_bytes high_bytes max_bytes
+  if [[ $SESSION_MEMORY_LOW == auto || $RUST_MEMORY_HIGH == auto || $RUST_MEMORY_MAX == auto ]]; then
+    memory_limits=$(node "$budget_source" memory-limits)
+    read -r reserve_bytes high_bytes max_bytes <<<"$memory_limits"
+    [[ $SESSION_MEMORY_LOW != auto ]] || SESSION_MEMORY_LOW=$reserve_bytes
+    [[ $RUST_MEMORY_HIGH != auto ]] || RUST_MEMORY_HIGH=$high_bytes
+    [[ $RUST_MEMORY_MAX != auto ]] || RUST_MEMORY_MAX=$max_bytes
   fi
   project_cargo_jobs_json=$PROJECT_CARGO_JOBS
   project_cargo_test_threads_json=$PROJECT_CARGO_TEST_THREADS
@@ -157,6 +163,8 @@ EOF
   install -m 0755 "$script_dir/resource-dev-run.sh" "$dev_wrapper"
   install -m 0755 "$script_dir/resource-pnpm.sh" "$pnpm_wrapper"
   install -m 0755 "$script_dir/resource-heavy-run.py" "$user_bin_dir/dev-heavy-run"
+  # Installed wrappers must keep working when the source worktree is moved.
+  install -m 0755 "$budget_source" "$budget_helper"
 
   cat >"$cargo_wrapper" <<EOF
 #!/usr/bin/env bash
@@ -167,7 +175,7 @@ readonly real_cargo='$real_cargo'
 readonly default_cargo_job_limit=$CARGO_MAX_JOBS
 cargo_job_limit=\${ONEFLOWBASE_CARGO_JOB_LIMIT:-\$default_cargo_job_limit}
 if [[ \$cargo_job_limit == auto ]]; then
-  cargo_job_limit=\$(node -e '$half_cpu_expression')
+  cargo_job_limit=\$(node "\$(dirname -- "\${BASH_SOURCE[0]}")/oneflowbase-resource-budget" cpu-jobs)
 fi
 readonly memory_budget_cargo_jobs=\$cargo_job_limit
 if [[ ! \$memory_budget_cargo_jobs =~ ^[1-9][0-9]*$ ]]; then
@@ -270,11 +278,14 @@ EOF
     "MemorySwapMax=$RUST_MEMORY_SWAP_MAX" \
     "CPUQuota=$RUST_CPU_QUOTA" \
     "IOWeight=$RUST_IO_WEIGHT"
+
+  printf 'Development CPU quota: %s; Rust memory high/max: %s / %s; session protection: %s\n' \
+    "$DEV_CPU_QUOTA" "$RUST_MEMORY_HIGH" "$RUST_MEMORY_MAX" "$SESSION_MEMORY_LOW"
 }
 
 write_unlimited_profile() {
   rm -f -- "$session_config" "$app_config" "$dev_config" "$rust_config" \
-    "$cargo_wrapper" "$project_config" "$frontend_config" "$dev_wrapper" "$pnpm_wrapper" "$user_bin_dir/dev-heavy-run"
+    "$cargo_wrapper" "$project_config" "$frontend_config" "$dev_wrapper" "$pnpm_wrapper" "$user_bin_dir/dev-heavy-run" "$budget_helper"
   rmdir --ignore-fail-on-non-empty -- "$(dirname -- "$session_config")" \
     "$(dirname -- "$app_config")" 2>/dev/null || true
 

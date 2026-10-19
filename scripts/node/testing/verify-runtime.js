@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { getAvailableParallelism, getLocalCpuBudget } = require("./resources/budget.js");
 
 const LOCAL_VERIFY_CONFIG_FILE = ".1flowbase.verify.local.json";
 const VERIFY_LOCK_TOKEN_ENV = "ONEFLOWBASE_VERIFY_LOCK_TOKEN";
@@ -15,14 +16,6 @@ const DEFAULT_WAIT_TIMEOUT_MINUTES = 30;
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 // Local heuristic: reserve CPU headroom for the OS, browser helpers, and test cleanup.
 const LOCAL_VITEST_CPU_SHARE = 0.5;
-
-function getAvailableParallelism() {
-  if (typeof os.availableParallelism === "function") {
-    return os.availableParallelism();
-  }
-
-  return os.cpus().length;
-}
 
 function isCiEnvironment(env = process.env) {
   return (
@@ -87,15 +80,6 @@ function assertKnownKeys(name, value, allowedKeys) {
       `Unknown ${name} key${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
     );
   }
-}
-
-function getLocalCpuBudget(availableParallelism = getAvailableParallelism()) {
-  const parallelism = assertPositiveInteger(
-    "availableParallelism",
-    availableParallelism,
-  );
-
-  return Math.max(1, Math.floor(parallelism / 2));
 }
 
 function resolveCargoDefaults(availableParallelism) {

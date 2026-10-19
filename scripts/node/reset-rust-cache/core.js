@@ -142,6 +142,7 @@ function runCargo({ repoRoot, args, env }) {
 
 async function runRustCacheReset({
   repoRoot = getRepoRoot(),
+  warmupOnly = false,
   availableParallelism = getAvailableParallelism(),
   loadRuntimeConfigImpl = loadVerifyRuntimeConfig,
   cleanupBackendCacheImpl = cleanupBackendCache,
@@ -152,10 +153,14 @@ async function runRustCacheReset({
   const { incremental } = runtimeConfig.backend;
   const plan = buildRustWarmupPlan({ incremental, availableParallelism });
 
-  writeStdout('[1flowbase-reset-rust-cache] 清理 api/target 并停止 api-server。\n');
-  const cleanupStatus = await cleanupBackendCacheImpl({ repoRoot, writeStdout });
-  if (cleanupStatus !== undefined && cleanupStatus !== 0) {
-    return cleanupStatus;
+  if (warmupOnly) {
+    writeStdout('[1flowbase-reset-rust-cache] 保留已有缓存与运行中的服务，仅预热 Rust 构建和测试目标。\n');
+  } else {
+    writeStdout('[1flowbase-reset-rust-cache] 清理 api/target 并停止 api-server。\n');
+    const cleanupStatus = await cleanupBackendCacheImpl({ repoRoot, writeStdout });
+    if (cleanupStatus !== undefined && cleanupStatus !== 0) {
+      return cleanupStatus;
+    }
   }
 
   for (const stage of plan) {
@@ -176,7 +181,7 @@ async function runRustCacheReset({
     );
   }
 
-  writeStdout('[1flowbase-reset-rust-cache] Rust 缓存清理与全量预热完成。\n');
+  writeStdout(`[1flowbase-reset-rust-cache] Rust ${warmupOnly ? '全量预热' : '缓存清理与全量预热'}完成。\n`);
   return 0;
 }
 

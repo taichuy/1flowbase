@@ -66,10 +66,34 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
       },
     },
   ]);
-  for (const availableParallelism of [1, 3]) {
+  for (const [availableParallelism, expected] of [[1, '1'], [2, '2'], [3, '2']]) {
     assert.ok(buildRustWarmupPlan({ availableParallelism, incremental: true })
-      .every((stage) => stage.env.CARGO_BUILD_JOBS === '1'));
+      .every((stage) => stage.env.CARGO_BUILD_JOBS === expected));
   }
+});
+
+test('warmup-only preserves existing cache and completes dependency/test stages in order', async () => {
+  const events = [];
+  const status = await runRustCacheReset({
+    repoRoot: '/repo', warmupOnly: true, availableParallelism: 2,
+    loadRuntimeConfigImpl: () => ({ backend: { incremental: true } }),
+    cleanupBackendCacheImpl: () => assert.fail('warmup-only must not stop services or delete caches'),
+    runCargoImpl: async ({ label, env }) => {
+      assert.equal(env.CARGO_BUILD_JOBS, '2');
+      events.push(`start:${label}`);
+      await new Promise((resolve) => setImmediate(resolve));
+      events.push(`end:${label}`);
+      return 0;
+    },
+    writeStdout: () => {},
+  });
+  assert.equal(status, 0);
+  assert.deepEqual(events, [
+    'start:locked dependencies', 'end:locked dependencies',
+    'start:api-server dev-up target', 'end:api-server dev-up target',
+    'start:workspace test-profile libraries and binary tests', 'end:workspace test-profile libraries and binary tests',
+    'start:workspace test targets', 'end:workspace test targets',
+  ]);
 });
 
 test('runRustCacheReset uses its own CPU budget while preserving shared development settings', async () => {

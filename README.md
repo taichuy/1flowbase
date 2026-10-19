@@ -114,8 +114,33 @@ Run from the repository root:
 ```bash
 git clone https://github.com/taichuy/1flowbase.git
 cd 1flowbase
+```
+
+Before the first source build on Linux with a user systemd manager, apply the
+development resource profile and put its user-level wrappers on PATH:
+
+```bash
+bash scripts/shell/apply-resource-limits.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Rust normally uses half the available CPU and memory, targeting at least 2 logical
+CPUs and 8 GiB when capacity permits. Smaller machines may exceed the half-machine
+share; memory still leaves OS/service headroom. These are build budget targets,
+not verified minimum hardware requirements. Explicit local settings remain supported.
+Windows/macOS use the same CPU policy; Linux systemd memory limits do not apply there.
+See [resource configuration](scripts/README.md#dev-runtime) for limits and overrides.
+
+For first-time development, precompile the Rust test targets, then start the services:
+
+```bash
+node scripts/node/reset-rust-cache/cli.js --warmup-only
 node scripts/node/dev-up.js
 ```
+
+`--warmup-only` fetches locked dependencies and compiles build/test targets in sequence
+without deleting existing caches or stopping services; it does not execute tests.
+For subsequent daily starts, run `dev-up` directly to reuse the caches.
 
 `dev-up` starts the Docker middleware, installs frontend dependencies, builds and runs the backend, and starts the frontend. Other common commands:
 

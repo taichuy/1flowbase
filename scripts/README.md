@@ -43,34 +43,48 @@ bash scripts/shell/apply-resource-limits.sh \
 bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 ```
 
-CPU 默认使用 `auto`：`max(1, floor(可用逻辑 CPU / 2))`。例如 1 / 3 / 8 / 20 CPU
-分别得到 1 / 1 / 4 / 10 个编译 job 和测试线程。Node 使用 `os.availableParallelism()`
+CPU 默认使用 `auto`：`min(可用 CPU, max(2, floor(可用 CPU / 2)))`。例如 1 / 2 / 3 / 8 / 20 CPU
+分别得到 1 / 2 / 2 / 4 / 10 个编译 job 和测试线程。Node 使用 `os.availableParallelism()`
 检测当前进程可用 CPU，包含 CPU affinity / cpuset 限制；旧版 Node 回退到 `os.cpus().length`。
 本地启动、验证、缓存重置预热和已安装的 Cargo 包装器在每次调用时计算；没有本地配置的新
 worktree 也采用该默认值。日常启动和验证保留显式整数覆盖，包装器保留更低的 `CARGO_BUILD_JOBS`；
-CI 仍使用全部 runner CPU。预热采用独立的半机预算，始终先获取锁定依赖，
+CI 仍使用全部 runner CPU。预热独立采用同一自动预算规则，始终先获取锁定依赖，
 再串行完成启动目标、测试普通库和全量测试预编译。
 
 Linux 安装脚本需要 Node 和用户 systemd，会在应用配置时把 `DEV_CPU_QUOTA=auto` 解析为
 对应的 CPUQuota（例如 8 CPU 得到 400%），多个 worktree 的开发子组共享父组总预算。
-迁移机器或调整 CPU 数量后，重新运行安装脚本刷新 systemd 配额；无需手工重新计算数值。
+迁移机器或调整 CPU/内存容量后，重新运行安装脚本刷新 systemd 配额；无需手工重新计算数值。
 Windows/macOS 的项目 Node 入口采用同一并发规则；systemd 配额仅适用于 Linux。
 已有 `.1flowbase.verify.local.json` 中的数字视为显式覆盖，不会猜测并替换；需要自动适配时，
 把 `backend.cargoJobs`、`backend.cargoTestThreads` 改成 `"auto"` 或删除这两个字段。
 
-内存配置仍是 24 GiB 开发机的可选示例，应按目标机器容量调整后再应用：
-`dev-rust.slice` High/Max 为 16/18 GiB，swap 上限 1 GiB。
-`dev.slice` 和 `dev-frontend.slice` 内存、swap 不设上限。
-18 GiB 是 Rust 组聚合硬上限，不是每个编译任务的额度，也不预留物理内存。
+内存也默认使用 `auto`，有效容量取物理内存与进程/容器约束的较小值，不跟随瞬时空闲内存抖动：
+
+```text
+系统余量 = min(2 GiB, 有效内存 × 25%)
+Rust MemoryMax = min(有效内存 - 系统余量, max(8 GiB, 有效内存 / 2))
+Rust MemoryHigh = MemoryMax × 90%（按 MiB 向下取整）
+```
+
+例如 4 / 8 / 12 / 16 / 24 GiB 机器，Rust 硬上限分别为 3 / 6 / 8 / 8 / 12 GiB。
+2 CPU / 8 GiB 是容量允许时的 Rust 预算目标，不是最低硬件认证；低配允许超过半机，
+资源不足时使用扣除系统余量后的预算。`MemoryHigh` 提前回收/节流，`MemoryMax` 是
+所有 Rust worktree 合计的硬上限，不是单个任务额度，也不预分配内存或保证构建一定成功。
+swap 上限保留 1 GiB；`dev.slice` 和 `dev-frontend.slice` 内存、swap 不设上限。
+自定义内存配置时可同时指定 `RUST_MEMORY_HIGH` / `RUST_MEMORY_MAX`；显式值原样传给 systemd。
+可先运行 `node scripts/node/testing/resources/budget.js` 查看当前环境自动预算。
 
 CPU portability: local build/test defaults and the installed Cargo wrapper recalculate
-`max(1, floor(available logical CPUs / 2))` on each invocation. Set local Cargo counts to
+`min(CPUs, max(2, floor(CPUs / 2)))` on each invocation. Set local Cargo counts to
 `"auto"` (or omit them) to adapt across machines; explicit integers remain overrides.
-CI keeps full runner parallelism. On Linux, rerun the installer after changing CPU capacity
-to refresh the shared systemd quota. The memory values are a 24 GiB host example and must
-be reviewed for the target machine. Windows/macOS use the same Node concurrency defaults
-without Linux systemd limits. Warmup still fetches locked dependencies before sequential
-compilation stages.
+CI keeps full runner parallelism. Automatic memory capacity respects process/container
+constraints, leaves `min(2 GiB, 25% of capacity)` for the OS/services, and targets the larger
+of 8 GiB or half capacity within the remaining budget. MemoryHigh is 90% of MemoryMax.
+These are aggregate Rust limits, not verified minimum hardware requirements or allocations.
+On Linux, reapply the installer after capacity changes to refresh systemd limits.
+Windows/macOS use the same Node CPU policy without Linux systemd limits.
+First-time warmup uses `node scripts/node/reset-rust-cache/cli.js --warmup-only` to fetch
+locked dependencies and precompile all test targets sequentially while preserving caches.
 
 通过 PATH 中的 `cargo`、`pnpm` 包装器自动进入子组；其他开发命令使用
 `dev-run <command>`（前端可用 `dev-run --frontend <command>`）。
@@ -95,17 +109,17 @@ Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 | 字段 | 作用 |
 | --- | --- |
 | `PROFILE_MODE` | `limited` 写入并应用限制；`unlimited` 删除脚本管理的配置并恢复默认值。 |
-| `DEV_CPU_QUOTA` | `auto` 在应用配置时按半数可用 CPU 生成父组总配额；也可显式指定 systemd CPUQuota，例如 `400%`。 |
-| `SESSION_MEMORY_LOW` | 为 `session.slice` 设置低水位内存保护，不是最大内存限制。 |
+| `DEV_CPU_QUOTA` | `auto` 按半机/目标至少 2 CPU 生成父组总配额，不超过实际 CPU；也可显式指定 systemd CPUQuota，例如 `400%`。 |
+| `SESSION_MEMORY_LOW` | `auto` 使用上述系统余量；为 `session.slice` 设置低水位保护，不是最大内存限制。 |
 | `RUST_OOM_PRESSURE_LIMIT` | `dev-rust.slice` 的 PSI 内存压力阈值，只影响 Rust 组。 |
 | `RUST_OOM_PRESSURE_DURATION` | Rust 组超过压力阈值后必须持续的时间。 |
-| `RUST_MEMORY_HIGH` | Rust 构建 slice 的软阈值；超过后内核开始加强回收和节流。 |
-| `RUST_MEMORY_MAX` | Rust 构建 slice 的内存硬上限。 |
+| `RUST_MEMORY_HIGH` | `auto` 使用自动内存预算的 90%；超过后内核加强回收和节流，支持显式 systemd 值。 |
+| `RUST_MEMORY_MAX` | `auto` 使用上述半机/8 GiB/系统余量公式，支持显式 systemd 值。 |
 | `RUST_MEMORY_SWAP_MAX` | Rust 构建 slice 可使用的 swap 上限。 |
 | `RUST_CPU_QUOTA` | Rust 编译总 CPU 配额；200% 表示最多两个逻辑核的 CPU 时间，不是构建时长限制。 |
 | `RUST_IO_WEIGHT` | Rust 构建 cgroup 的相对 I/O 权重，实际调度效果依赖设备和 cgroup 层级。 |
-| `CARGO_MAX_JOBS` | `auto` 每次运行按半数可用 CPU 计算包装器默认上限，也支持正整数；调用方显式设置更低值时保留。预热入口可通过单次调用的 `ONEFLOWBASE_CARGO_JOB_LIMIT` 指定独立预算，内存 scope 仍生效。 |
-| `PROJECT_CARGO_JOBS` | 本仓库启动和验证的编译并发，`auto` 原样写入本地 JSON，在每次读取时按半数可用 CPU 计算；也支持正整数。 |
+| `CARGO_MAX_JOBS` | `auto` 每次运行采用上述 CPU 策略，也支持正整数；调用方显式设置更低值时保留。预热入口可通过单次调用的 `ONEFLOWBASE_CARGO_JOB_LIMIT` 指定独立预算，内存 scope 仍生效。 |
+| `PROJECT_CARGO_JOBS` | 本仓库启动和验证的编译并发，`auto` 原样写入本地 JSON，每次读取时按当前 CPU 计算；也支持正整数。 |
 | `PROJECT_CARGO_TEST_THREADS` | Rust test harness 的测试线程数，支持 `auto` 或正整数。 |
 | `PROJECT_CARGO_INCREMENTAL` | 是否为本仓库本地验证启用 Rust incremental compilation。 |
 
@@ -120,6 +134,7 @@ Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 - `~/.local/bin/pnpm`
 - `~/.local/bin/dev-heavy-run`
 - `~/.local/bin/cargo`
+- `~/.local/bin/oneflowbase-resource-budget`（独立安装的预算计算器，迁移源码目录后仍可用）
 - 仓库根目录 `.1flowbase.verify.local.json`
 
 `resource-limits.unlimited.example.conf` 使用 `PROFILE_MODE=unlimited`，会删除上述
@@ -160,7 +175,7 @@ node scripts/node/dev-up.js stop
 - `api-server` 的 dev profile 使用 `line-tables-only` 调试信息，保留回溯文件名/行号，减少模块级调试元数据；依赖仍沿用原 profile，预热和启动读取同一 Cargo.toml，不清空 target。
 - 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Linux Cargo 包装器处理自身编译 scope 的取消；取消后的 2 秒停止宽限期不限制正常编译时长。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
 - 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
-- 本地编译与测试默认按可用 CPU 的一半自动计算，最少为 1；显式整数配置优先。Linux CPU 配额的应用时机、迁移方式与内存示例见上面的资源配置说明。已启动的 Cargo 沿用启动时的并发数，后续新调用读取新设置。
+- 本地编译与测试按上述半机/目标至少 2 CPU 策略自动计算；显式整数配置优先。Linux 配额的应用时机、迁移方式与内存预算见上面的资源配置说明。已启动的 Cargo 沿用启动时的并发数，后续新调用读取新设置。
 
 ### `node scripts/node/reset-account-password.js [options]`
 
@@ -233,14 +248,14 @@ cargo test --workspace
 ```
 
 实际并发参数由 `scripts/node/testing/verify-runtime.js` 的运行时配置控制。
-本地默认编译 job 数和测试线程数都使用可用逻辑 CPU 的一半（向下取整，最少为 1）；CI 使用全部 runner CPU。同一 worktree 仍只运行一条 Cargo 命令。直接运行定向测试时复用同一编译并发配置，不写死 job 数：
+本地编译 job 数和测试线程数通常使用半数可用逻辑 CPU，目标最少 2 且不超过实际可用数量；CI 使用全部 runner CPU。同一 worktree 仍只运行一条 Cargo 命令。直接运行定向测试时复用同一编译并发配置，不写死 job 数：
 
 ```bash
 CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" \
   cargo test -p control-plane <test-filter> --lib
 ```
 
-开发者可以在 `.1flowbase.verify.local.json` 显式指定并发整数；省略字段或设置为 `"auto"` 时使用本地半机默认值，适配迁移后的 CPU 数量。
+开发者可以在 `.1flowbase.verify.local.json` 显式指定并发整数；省略字段或设置为 `"auto"` 时使用本地自动预算，适配迁移后的 CPU 数量。
 
 ### `node scripts/node/cli/test-contracts.js`
 
@@ -558,9 +573,15 @@ node scripts/node/reset-rust-cache/cli.js
 
 只需执行这一个命令，清理、依赖获取与三个编译阶段会自动按顺序完成，无需手动分次执行，也不需要追加参数。
 
+首次开发或补齐测试缓存时，使用保留缓存的模式：
+
+```bash
+node scripts/node/reset-rust-cache/cli.js --warmup-only
+```
+
 该入口会严格按顺序执行：
 
-1. 停止当前 worktree 的 `api-server`，删除 `api/target/`；
+1. 默认停止当前 worktree 的 `api-server` 并删除 `api/target/`；`--warmup-only` 跳过此步，保留缓存和服务；
 2. 使用 `cargo fetch --locked --target host-tuple` 获取 `Cargo.lock` 中当前主机平台的依赖，不升级依赖版本；
 3. 单独编译 `dev-up` 使用的 `api-server` binary，包含 `tikv-jemallocator/stats` feature；
 4. 使用 `cargo test --workspace --bins --no-run` 预编译测试配置下的普通库和 binary 测试目标；
@@ -573,7 +594,7 @@ node scripts/node/reset-rust-cache/cli.js
 “启动目标编译完成”只表示启动构建成功，脚本会自动继续测试预热；请等待最后的全量预热完成提示。
 每阶段输出完成耗时，各编译阶段通过 `--timings` 在 `api/target/cargo-timings/` 保存 Cargo 构建报告。
 
-阶段之间串行执行，阶段内部使用可用逻辑 CPU 数的一半作为 Cargo 并发预算（向下取整，最少 1）。
+阶段之间串行执行，阶段内部通常使用半数可用 CPU，目标至少 2，不超过实际可用数量。
 例如 20 个逻辑 CPU 使用 `jobs=10`；增量编译仍读取 `.1flowbase.verify.local.json` 的 `backend.incremental`。
 这不是 CPU 绑核或多个 worktree 合计的全局额度，也不保证所有编译阶段都能使用多个核心。
 预热通过 `ONEFLOWBASE_CARGO_JOB_LIMIT` 将预算传给项目 Cargo 包装器；Linux 包装器为该调用设置对应的 CPU 配额
@@ -582,11 +603,11 @@ node scripts/node/reset-rust-cache/cli.js
 Linux 预热入口会优先使用 `~/.local/bin/cargo` 中由本项目生成的资源包装器，避免终端 PATH 顺序绕过配额；
 不存在本项目包装器时使用 PATH 中的 Cargo。Windows/macOS 保持原生 Cargo 调用，CPU 硬配额由对应平台管理。
 任一阶段失败时立即停止；只有输出
-`Rust 缓存清理与全量预热完成` 才表示全部缓存已经成功生成。
+`Rust 缓存清理与全量预热完成`（或 warmup-only 的 `Rust 全量预热完成`）才表示本次全部预编译阶段成功。
 脚本不修改 `.1flowbase.verify.local.json` 的构建或测试并发配置。
 脚本只生成构建缓存，不会自动启动或重启 API 服务；需要运行服务时再使用 `dev-up`。
 
-这个流程会真实删除当前 worktree 的 Rust 缓存并执行完整冷构建，耗时和磁盘写入量都较大。不要把它作为普通开发启动命令；没有清理需求时，继续使用 `dev-up` 或定向 Cargo 命令，让增量缓存自然复用。
+不带 `--warmup-only` 时会真实删除当前 worktree 的 Rust 缓存并执行完整冷构建，耗时和磁盘写入量都较大。日常使用 `dev-up` 或定向 Cargo 命令复用缓存；只需补齐全量测试缓存时使用 `--warmup-only`。
 
 若只想查看或删除缓存而不重新预热，使用 `clean-build-cache`：
 

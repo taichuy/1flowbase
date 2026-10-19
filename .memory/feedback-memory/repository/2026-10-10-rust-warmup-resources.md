@@ -1,8 +1,8 @@
 ---
 memory_type: feedback
 feedback_category: repository
-topic: Rust 预热顺序与半机资源预算
-summary: 开源开发环境须自动适配半数可用逻辑 CPU，不把当前机器算出的数值写成通用默认；预热先获取依赖再分阶段编译，保留内存保护。
+topic: Rust 预热顺序与可迁移资源预算
+summary: 开源开发环境自动适配资源，Rust 以 2 CPU / 8 GiB 为预算目标下限，低配允许超过半机；预热先获取依赖再分阶段编译，保留内存保护。
 keywords: [Rust, cargoJobs, cargoTestThreads, reset-rust-cache, 预热]
 match_when: [诊断 Rust 编译耗时, 修改 Rust 缓存清理与预热流程]
 created_at: 2026-10-10 10
@@ -21,6 +21,8 @@ scope: [scripts/node/reset-rust-cache, .1flowbase.verify.local.json]
 2026-10-19 用户进一步明确授权把日常开发测试也开放到一半可用 CPU；共享 `cargoJobs` / `cargoTestThreads` 与系统 Cargo 包装器可据此调整，不再沿用此前固定为 2 的限制。保留多 worktree 的任务并发语义、预热阶段顺序及内存保护。
 
 同日用户纠正：项目是开源开发环境，需要适配其他开发者的机器；半机 CPU 必须按运行环境自动计算，不能把当前 20 CPU 得到的 10 写成通用固定值。显式本地覆盖仍属于开发者自己的选择。
+
+随后用户明确：2 核、8 GiB 指 Rust 构建预算下限，不是整机最低配置；低配机器允许超过半机。资源充足时 CPU 和内存通常取一半，不能把这条规则解释成任何机器都严格限于一半。实际容量不足时仍受容量和系统内存余量约束，最低硬件是否能完成冷构建须另行验证。
 
 源码开发环境仍需完整预热测试；先完成启动目标编译，再串行预热测试，不把取消测试预热作为优化结果。
 

@@ -120,8 +120,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 ```bash
 git clone https://github.com/taichuy/1flowbase.git
 cd 1flowbase
+```
+
+Linux 且有用户 systemd manager 时，首次源码构建前建议应用开发资源配置，
+并把安装后的用户级包装器放到 PATH 前面：
+
+```bash
+bash scripts/shell/apply-resource-limits.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Rust 通常使用可用 CPU 和内存的一半，在容量允许时尽量满足 2 个逻辑 CPU、8 GiB
+的构建预算。低配机器允许超过半机，内存仍保留系统和服务余量。这是预算目标，
+不是已经验证的最低硬件要求；支持显式本地覆盖。Windows/macOS 使用同一 CPU 策略，
+Linux systemd 内存配额不适用于这两个平台。详见[资源配置](../../scripts/README.md#dev-runtime)。
+
+首次开发先预编译 Rust 测试目标，再启动服务：
+
+```bash
+node scripts/node/reset-rust-cache/cli.js --warmup-only
 node scripts/node/dev-up.js
 ```
+
+`--warmup-only` 先获取锁定依赖，再串行预编译构建和测试目标，保留已有缓存及运行中的服务，
+不会执行测试。之后日常启动直接运行 `dev-up`，复用已有缓存即可。
 
 `dev-up` 会启动 Docker 中间件、安装前端依赖、构建并运行后端，再启动前端。其他常用命令：
 
