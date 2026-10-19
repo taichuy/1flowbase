@@ -72,7 +72,7 @@ function FrontstageDesignModeActionBase() {
     ? i18nText('appShell', 'auto.exit_design_mode')
     : i18nText('appShell', 'auto.enter_design_mode');
 
-  const handleClick = () => {
+  const handleDesignModeMenuClick = () => {
     toggleDesignMode();
   };
 
@@ -103,7 +103,7 @@ function FrontstageDesignModeActionBase() {
             )
           }
         ]}
-        onClick={handleClick}
+        onClick={handleDesignModeMenuClick}
         disabledOverflow
       />
     </Tooltip>
