@@ -1282,8 +1282,9 @@ fn ac_002_official_builtin_export_removes_excluded_tools_and_their_bindings() {
 
 #[tokio::test]
 async fn bundle_preview_rejects_retired_v1_manifest_before_replacing_any_graph() {
+    let actor_user_id = Uuid::now_v7();
     let repository = McpBundleFixtureRepository::with_export_snapshot(McpBundleExportSnapshot {
-        actor: domain::ActorContext::root(Uuid::now_v7(), Uuid::now_v7(), "root"),
+        actor: domain::ActorContext::root(actor_user_id, Uuid::now_v7(), "root"),
         instances: Vec::new(),
         groups: Vec::new(),
         bindings: Vec::new(),
@@ -1295,7 +1296,7 @@ async fn bundle_preview_rejects_retired_v1_manifest_before_replacing_any_graph()
     package.manifest.schema_version = "1flowbase.mcp.bundle/v1".into();
     let result = McpManagementService::new(repository.clone())
         .preview_bundle(crate::mcp_bundle::PreviewMcpBundleCommand {
-            actor_user_id: Uuid::now_v7(),
+            actor_user_id,
             package,
             interface_catalog: Vec::new(),
             current_system_version: "0.5.7".into(),

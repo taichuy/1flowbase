@@ -190,7 +190,6 @@ async fn shared_overview_child(
     step_id: Uuid,
     section: &str,
     value: &Value,
-    historical: bool,
 ) -> Result<Option<(Uuid, Vec<String>)>> {
     let keys: &[&str] = match section {
         "parameters" => &["arguments", "input"],
@@ -216,11 +215,6 @@ async fn shared_overview_child(
     "#).bind(input.flow_run_id).bind(input.request_id).bind(step_id).fetch_all(&mut **tx).await?;
     for row in rows {
         let body: Value = row.get("body");
-        // Historical event SQL reconstruction cannot extract from an overview
-        // containing NUL elsewhere. Keep its ordinary section independently.
-        if historical && contains_nul(&body) {
-            continue;
-        }
         let path: Vec<String> = row.get("content_path");
         // Overviews are full immutable bodies, never another child locator.
         anyhow::ensure!(path.is_empty(), "client overview locator invalid");
@@ -237,8 +231,7 @@ pub(super) async fn write_section(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     input: &AppendClientTrajectoryInput,
     sequence: i64,
-    historical_id: Option<Uuid>,
-    locked_scope: Option<&FlowContentScope>,
+    flow_scope: &FlowContentScope,
 ) -> Result<Uuid> {
     let ClientTrajectoryFact::Section {
         step_id,
@@ -249,7 +242,7 @@ pub(super) async fn write_section(
         return Err(anyhow!("client trajectory section fact required"));
     };
     let step_id = *step_id;
-    let id = historical_id.unwrap_or_else(Uuid::now_v7);
+    let id = Uuid::now_v7();
     let (value_hash, value_byte_size) = value_identity(value)?;
     let value_digest = digest_bytes(&value_hash)?;
     let mut content_id = None;
@@ -257,27 +250,10 @@ pub(super) async fn write_section(
     let body_kind = if section == "timing" && *value == json!({"observed_at":input.observed_at}) {
         "timing"
     } else {
-        if let Some((id, path)) =
-            shared_overview_child(tx, input, step_id, section, value, historical_id.is_some())
-                .await?
-        {
+        if let Some((id, path)) = shared_overview_child(tx, input, step_id, section, value).await? {
             content_id = Some(id);
             content_path = path;
         } else {
-            let maintenance_scope;
-            let flow_scope = if let Some(scope) = locked_scope {
-                scope
-            } else {
-                // Historical maintenance locks an allowlist of runs, rather than
-                // receiving the normal fact writer's typed locked ownership.
-                maintenance_scope = sqlx::query_as::<_, FlowContentScope>(
-                    "select scope_id,application_id from flow_runs where id=$1",
-                )
-                .bind(input.flow_run_id)
-                .fetch_one(&mut **tx)
-                .await?;
-                &maintenance_scope
-            };
             let (id, _, _, created) = put_canonical_runtime_content_with_creation(
                 tx,
                 flow_scope.scope_id,
@@ -311,7 +287,7 @@ pub(super) async fn write_section(
             and client_trajectory_sections.step_id=excluded.step_id
             and client_trajectory_sections.section=excluded.section
             and client_trajectory_sections.event_sequence=excluded.event_sequence
-    "#).bind(id).bind(historical_id).bind(input.request_id).bind(step_id).bind(input.flow_run_id).bind(input.node_run_id)
+    "#).bind(id).bind(None::<Uuid>).bind(input.request_id).bind(step_id).bind(input.flow_run_id).bind(input.node_run_id)
         .bind(section).bind(sequence).bind(content_id).bind(&content_path).bind(body_kind).bind(observed_at).bind(originals)
         .bind(value_digest).bind(value_byte_size).execute(&mut **tx).await?;
     Ok(id)

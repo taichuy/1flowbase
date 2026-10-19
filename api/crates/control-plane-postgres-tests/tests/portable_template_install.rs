@@ -866,7 +866,7 @@ fn mcp_template_fixture() -> domain::McpBundlePackage {
     serde_json::from_value(json!({
         "manifest":{"schema_version":"1flowbase.mcp.bundle/v2","organization":"test","bundle_id":"template","bundle_version":"1.0.0","locale":"en_US","minimum_host_version":"1.0.0","exported_from_system_version":"1.0.0","exported_at":"2026-10-10T00:00:00Z","files":[]},
         "connections":[],
-        "tools":[{"tool_id":"shared_template_tool","name":"Tool","short_description":"Tool","full_description":"Tool","interface_id":"workspace_list","parameter_schema_snapshot":{},"result_schema_snapshot":{},"input_mapping":{},"output_mapping":{},"risk_level_snapshot":"low","status":"enabled"}],
+        "tools":[{"tool_id":"shared_template_tool","name":"Tool","short_description":"Tool","full_description":"Tool","execution_target":{"kind":"interface_wrapper","interface_id":"workspace_list"},"parameter_schema_snapshot":{},"result_schema_snapshot":{},"input_mapping":{},"output_mapping":{},"risk_level_snapshot":"low","status":"enabled"}],
         "instances":[{"instance_id":"1flowbase","name":"Official","description_short":null,"status":"enabled","default_entry_path":"/","groups":[{"path":"/group","display_name":"Group","description_short":null,"enabled":true,"sort_order":0}],"bindings":[{"group_path":"/group","tool_id":"shared_template_tool","display_alias":null,"visible":true,"sort_order":0}],"discovery_policy":{"list_default_limit":20,"list_max_depth":8,"list_regex_enabled":false,"list_regex_max_length":128,"list_return_fields":[]}}]
     })).unwrap()
 }
