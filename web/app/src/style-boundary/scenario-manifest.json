@@ -23,6 +23,7 @@
       "web/app/src/app-shell/AppShellFrame.tsx",
       "web/app/src/style-boundary/renderers.tsx",
       "web/app/src/style-boundary/scene-fixtures.ts",
+      "web/app/src/style-boundary/scene-fixtures/common-fetch.ts",
       "web/app/src/style-boundary/scene-fixtures/AssistantPreviewScene.tsx"
     ],
     "boundaryNodes": [
@@ -1401,6 +1402,7 @@
       "web/app/src/features/settings/i18n/zh_Hans.json",
       "web/app/src/features/settings/i18n/en_US.json",
       "web/app/src/style-boundary/scene-fixtures.ts",
+      "web/app/src/style-boundary/scene-fixtures/common-fetch.ts",
       "web/app/src/style-boundary/SettingsSystemRuntimeStyleBoundaryScene.tsx",
       "web/app/src/style-boundary/renderers.tsx",
       "web/app/src/app/router.tsx",
