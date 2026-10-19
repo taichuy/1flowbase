@@ -1,10 +1,15 @@
+#[path = "resources/application.rs"]
 mod application;
+#[path = "resources/application_public_api.rs"]
 mod application_public_api;
 mod auth;
 mod billing_core;
+#[path = "resources/data_source.rs"]
 mod data_source;
 mod extension_installation;
+#[path = "resources/file_management.rs"]
 mod file_management;
+#[path = "resources/flow.rs"]
 mod flow;
 mod frontstage;
 mod frontstage_blocks;
@@ -13,12 +18,14 @@ mod infrastructure;
 mod managed_schema;
 mod mcp_management;
 mod mcp_result_receipt;
+#[path = "resources/model_definition.rs"]
 mod model_definition;
 mod model_provider;
 mod network_egress;
 mod plugin;
 mod runtime;
 mod system_backup;
+#[path = "resources/ui_management.rs"]
 mod ui_management;
 
 use async_trait::async_trait;
