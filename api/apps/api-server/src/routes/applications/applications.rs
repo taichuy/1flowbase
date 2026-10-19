@@ -457,14 +457,14 @@ fn to_application_tag_catalog_entry(
 
 fn to_application_environment_variable(
     variable: domain::ApplicationEnvironmentVariable,
-) -> ApplicationEnvironmentVariableResponse {
-    ApplicationEnvironmentVariableResponse {
+) -> Result<ApplicationEnvironmentVariableResponse, ApiError> {
+    Ok(ApplicationEnvironmentVariableResponse {
         name: variable.name,
         value_type: variable.value_type,
         value: variable.value,
         description: variable.description,
-        updated_at: variable.updated_at.format(&Rfc3339).unwrap(),
-    }
+        updated_at: variable.updated_at.format(&Rfc3339)?,
+    })
 }
 
 fn to_application_js_dependency_selection(
@@ -491,8 +491,10 @@ fn to_application_js_dependency_selection(
     }
 }
 
-fn to_application_summary(application: domain::ApplicationRecord) -> ApplicationSummaryResponse {
-    ApplicationSummaryResponse {
+fn to_application_summary(
+    application: domain::ApplicationRecord,
+) -> Result<ApplicationSummaryResponse, ApiError> {
+    Ok(ApplicationSummaryResponse {
         id: application.id.to_string(),
         application_type: application.application_type.into(),
         name: application.name,
@@ -501,13 +503,13 @@ fn to_application_summary(application: domain::ApplicationRecord) -> Application
         icon_type: application.icon_type,
         icon_background: application.icon_background,
         created_by: application.created_by.to_string(),
-        updated_at: application.updated_at.format(&Rfc3339).unwrap(),
+        updated_at: application.updated_at.format(&Rfc3339)?,
         tags: application
             .tags
             .into_iter()
             .map(to_application_tag)
             .collect(),
-    }
+    })
 }
 
 fn to_sections_response(sections: domain::ApplicationSections) -> ApplicationSectionsResponse {
@@ -596,8 +598,10 @@ fn api_credentials_status(value: &str) -> ApplicationApiCredentialsStatusRespons
     }
 }
 
-fn to_application_detail(application: domain::ApplicationRecord) -> ApplicationDetailResponse {
-    ApplicationDetailResponse {
+fn to_application_detail(
+    application: domain::ApplicationRecord,
+) -> Result<ApplicationDetailResponse, ApiError> {
+    Ok(ApplicationDetailResponse {
         id: application.id.to_string(),
         application_type: application.application_type.into(),
         workflow_trigger_type: application
@@ -609,14 +613,14 @@ fn to_application_detail(application: domain::ApplicationRecord) -> ApplicationD
         icon_type: application.icon_type,
         icon_background: application.icon_background,
         created_by: application.created_by.to_string(),
-        updated_at: application.updated_at.format(&Rfc3339).unwrap(),
+        updated_at: application.updated_at.format(&Rfc3339)?,
         tags: application
             .tags
             .into_iter()
             .map(to_application_tag)
             .collect(),
         sections: to_sections_response(application.sections),
-    }
+    })
 }
 
 #[utoipa::path(
@@ -977,3 +981,7 @@ pub async fn delete_application(
 }
 
 pub(crate) mod collectors;
+
+#[cfg(test)]
+#[path = "applications/_tests/time_response.rs"]
+mod time_response_tests;

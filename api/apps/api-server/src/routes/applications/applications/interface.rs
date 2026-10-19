@@ -641,7 +641,7 @@ impl ApplicationsAdapter {
                     .await?
                     .into_iter()
                     .map(super::to_application_summary)
-                    .collect(),
+                    .collect::<Result<Vec<_>, _>>()?,
             )),
             ApplicationsInput::Catalog { locale } => Ok(ApplicationsOutput::Catalog(
                 self.catalog(principal, locale).await?,
@@ -667,7 +667,7 @@ impl ApplicationsAdapter {
                     })
                     .await?;
                 Ok(ApplicationsOutput::Application(
-                    super::to_application_detail(created),
+                    super::to_application_detail(created)?,
                 ))
             }
             ApplicationsInput::CreateTag(body) => {
@@ -686,7 +686,7 @@ impl ApplicationsAdapter {
                     .get_application(actor.user_id, application_id)
                     .await?;
                 Ok(ApplicationsOutput::Application(
-                    super::to_application_detail(application),
+                    super::to_application_detail(application)?,
                 ))
             }
             ApplicationsInput::Patch {
@@ -715,7 +715,7 @@ impl ApplicationsAdapter {
                     })
                     .await?;
                 Ok(ApplicationsOutput::Application(
-                    super::to_application_detail(updated),
+                    super::to_application_detail(updated)?,
                 ))
             }
             ApplicationsInput::Delete { application_id } => {
@@ -734,7 +734,7 @@ impl ApplicationsAdapter {
                         .await?
                         .into_iter()
                         .map(super::to_application_environment_variable)
-                        .collect(),
+                        .collect::<Result<Vec<_>, _>>()?,
                 ))
             }
             ApplicationsInput::ReplaceEnvironmentVariables {
@@ -764,7 +764,7 @@ impl ApplicationsAdapter {
                     replaced
                         .into_iter()
                         .map(super::to_application_environment_variable)
-                        .collect(),
+                        .collect::<Result<Vec<_>, _>>()?,
                 ))
             }
             ApplicationsInput::ListJsDependencies { application_id } => {

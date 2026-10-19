@@ -242,8 +242,8 @@ fn to_risk_warnings(
 
 fn to_installed_version(
     entry: &domain::ExtensionInstallationRecord,
-) -> LocalExtensionInstalledVersionResponse {
-    LocalExtensionInstalledVersionResponse {
+) -> Result<LocalExtensionInstalledVersionResponse, ApiError> {
+    Ok(LocalExtensionInstalledVersionResponse {
         contract_version: entry.contract_version.clone(),
         id: entry.id.to_string(),
         version: entry.identity.version.clone(),
@@ -261,16 +261,16 @@ fn to_installed_version(
         deletable: false,
         delete_reasons: Vec::new(),
         created_by: entry.created_by.to_string(),
-        created_at: format_time(entry.created_at),
-        updated_at: format_time(entry.updated_at),
-    }
+        created_at: format_time(entry.created_at)?,
+        updated_at: format_time(entry.updated_at)?,
+    })
 }
 
 fn to_local_inventory_family(
     entry: domain::ExtensionInstallationRecord,
     installed_versions: Vec<domain::ExtensionInstallationRecord>,
-) -> LocalExtensionInventoryEntryResponse {
-    LocalExtensionInventoryEntryResponse {
+) -> Result<LocalExtensionInventoryEntryResponse, ApiError> {
+    Ok(LocalExtensionInventoryEntryResponse {
         contract_version: entry.contract_version,
         id: entry.id.to_string(),
         catalog_id: entry.identity.catalog_id(),
@@ -296,24 +296,24 @@ fn to_local_inventory_family(
         application_action: entry.application_action.as_str().to_string(),
         application_status: default_application_status(entry.application_action).to_string(),
         created_by: entry.created_by.to_string(),
-        created_at: format_time(entry.created_at),
-        updated_at: format_time(entry.updated_at),
+        created_at: format_time(entry.created_at)?,
+        updated_at: format_time(entry.updated_at)?,
         installed_versions: installed_versions
             .iter()
             .map(to_installed_version)
-            .collect(),
-    }
+            .collect::<Result<Vec<_>, _>>()?,
+    })
 }
 
 fn to_local_inventory_entry(
     entry: domain::ExtensionInstallationRecord,
-) -> LocalExtensionInventoryEntryResponse {
+) -> Result<LocalExtensionInventoryEntryResponse, ApiError> {
     to_local_inventory_family(entry.clone(), vec![entry])
 }
 
 fn to_local_inventory_family_entry(
     family: InstalledExtensionFamily,
-) -> LocalExtensionInventoryEntryResponse {
+) -> Result<LocalExtensionInventoryEntryResponse, ApiError> {
     to_local_inventory_family(family.current, family.installed_versions)
 }
 

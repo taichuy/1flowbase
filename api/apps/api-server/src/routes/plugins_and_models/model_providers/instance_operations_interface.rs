@@ -828,7 +828,7 @@ impl ProviderInstanceOperationsAdapter {
                     })
                     .await?;
                 Ok(ProviderInstanceOperationsOutput::Authentication(
-                    to_authenticate_response(result),
+                    to_authenticate_response(result)?,
                 ))
             }
             ProviderInstanceOperationsInput::Usage { id } => {
@@ -905,8 +905,7 @@ impl ProviderInstanceOperationsAdapter {
                             .map(to_runtime_model_descriptor_response)
                             .collect(),
                         preview_token: preview.preview_token.to_string(),
-                        expires_at: format_optional_time(Some(preview.expires_at))
-                            .unwrap_or_default(),
+                        expires_at: format_time(preview.expires_at)?,
                     },
                 ))
             }

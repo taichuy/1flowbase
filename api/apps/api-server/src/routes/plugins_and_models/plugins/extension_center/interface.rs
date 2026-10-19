@@ -108,7 +108,7 @@ impl ExtensionCenterAdapter {
                     )
                     .await?;
                 Ok(ExtensionCenterOutput::ContributionAuthorizations(
-                    snapshot.into(),
+                    snapshot.try_into()?,
                 ))
             }
             ExtensionCenterInput::RevokeContributionPermission(installation_id, request) => {
@@ -127,7 +127,7 @@ impl ExtensionCenterAdapter {
                     )
                     .await?;
                 Ok(ExtensionCenterOutput::ContributionAuthorizations(
-                    snapshot.into(),
+                    snapshot.try_into()?,
                 ))
             }
             ExtensionCenterInput::QueryContributionAuthorizations(installation_id) => {
@@ -137,7 +137,7 @@ impl ExtensionCenterAdapter {
                 ).with_node_id(self.0.api_node_id.clone());
                 let snapshot = service.query(actor, installation_id).await?;
                 Ok(ExtensionCenterOutput::ContributionAuthorizations(
-                    snapshot.into(),
+                    snapshot.try_into()?,
                 ))
             }
             ExtensionCenterInput::ListInstalled(query) => {
@@ -216,7 +216,7 @@ impl ExtensionCenterAdapter {
                         } else {
                             None
                         };
-                    let mut response = to_local_inventory_family_entry(family);
+                    let mut response = to_local_inventory_family_entry(family)?;
                     if let Some(states) = collector_states {
                         if !states.get(&response.id).copied().unwrap_or(false) {
                             response.status = "missing".into();
@@ -352,7 +352,7 @@ impl ExtensionCenterAdapter {
                             .await?;
                         let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store,&self.0.api_node_id,installation_id).await?
                             .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
-                        let mut response = to_local_inventory_entry(selected);
+                        let mut response = to_local_inventory_entry(selected)?;
                         response.is_current = true;
                         response.desired_state = Some("pending_restart".into());
                         if let Some(artifact) =
@@ -392,7 +392,7 @@ impl ExtensionCenterAdapter {
                         let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
                             .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
                         return Ok(ExtensionCenterOutput::Installation(
-                            to_local_inventory_entry(selected),
+                            to_local_inventory_entry(selected)?,
                         ));
                     }
                 }
@@ -403,7 +403,7 @@ impl ExtensionCenterAdapter {
                         "extension_installation",
                     ))?;
                 Ok(ExtensionCenterOutput::Installation(
-                    to_local_inventory_entry(installation),
+                    to_local_inventory_entry(installation)?,
                 ))
             }
             ExtensionCenterInput::Enable(installation_id) => {
@@ -427,7 +427,7 @@ impl ExtensionCenterAdapter {
                 })
                 .await
                 .map_err(anyhow::Error::from)??;
-                Ok(ExtensionCenterOutput::Task(to_task_response(task)))
+                Ok(ExtensionCenterOutput::Task(to_task_response(task)?))
             }
             ExtensionCenterInput::Disable(installation_id) => {
                 let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
@@ -440,7 +440,7 @@ impl ExtensionCenterAdapter {
                     .await?;
                 retain_managed_schema(&self.0, actor.current_workspace_id, &installation.identity)
                     .await?;
-                Ok(ExtensionCenterOutput::Task(to_task_response(task)))
+                Ok(ExtensionCenterOutput::Task(to_task_response(task)?))
             }
             ExtensionCenterInput::Delete(installation_id) => {
                 let existing = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
@@ -498,7 +498,7 @@ impl ExtensionCenterAdapter {
                 )
                 .await?;
                 Ok(ExtensionCenterOutput::Installation(
-                    to_local_inventory_entry(installation),
+                    to_local_inventory_entry(installation)?,
                 ))
             }
             ExtensionCenterInput::ListCatalog { category, query } => {

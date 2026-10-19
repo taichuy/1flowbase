@@ -878,7 +878,7 @@ impl NetworkPluginAdapter {
                     .service(actor, "network_egress_plugins.install.official")
                     .install_resolved_official_plugin(command)
                     .await?;
-                Ok(NetworkPluginOutput::Installed(to_install_response(result)))
+                Ok(NetworkPluginOutput::Installed(to_install_response(result)?))
             }
             NetworkPluginInput::InstallUploaded {
                 file_name,
@@ -892,7 +892,7 @@ impl NetworkPluginAdapter {
                         package_bytes,
                     })
                     .await?;
-                Ok(NetworkPluginOutput::Installed(to_install_response(result)))
+                Ok(NetworkPluginOutput::Installed(to_install_response(result)?))
             }
         }
     }
