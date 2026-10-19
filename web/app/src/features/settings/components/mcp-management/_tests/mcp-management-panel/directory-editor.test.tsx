@@ -91,7 +91,10 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    await expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
+    const tree = within(dialog).getByRole('tree');
+    await expandTreeRootIfCollapsed(tree);
+    expect(within(tree).getByRole('img', { name: 'folder-open' })).toBeInTheDocument();
+    expect(within(tree).getByRole('img', { name: 'folder' })).toBeInTheDocument();
     await click(within(dialog).getByText('ops'));
     await waitFor(() => {
       expect(
