@@ -82,7 +82,10 @@ impl InMemoryOrchestrationRuntimeRepository {
             .unwrap_or_default())
     }
 
-    pub(super) fn memory_list_usage_ledger(&self, flow_run_id: Uuid) -> Result<Vec<domain::UsageLedgerRecord>> {
+    pub(super) fn memory_list_usage_ledger(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<domain::UsageLedgerRecord>> {
         let inner = self.inner.lock().expect("runtime repo mutex poisoned");
         Ok(inner
             .usage_ledger_by_flow_run_id

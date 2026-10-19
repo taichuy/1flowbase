@@ -169,5 +169,4 @@ where
 
         Ok(MapDataSourceResourceToModelResult { model, fields })
     }
-
 }

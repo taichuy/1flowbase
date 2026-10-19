@@ -366,4 +366,3 @@ where
         self.protect_code_console_logs(console_logs).await
     }
 }
-

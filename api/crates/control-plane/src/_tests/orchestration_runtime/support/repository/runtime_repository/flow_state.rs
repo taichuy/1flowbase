@@ -50,7 +50,10 @@ impl InMemoryOrchestrationRuntimeRepository {
         Ok(inner.compiled_plans_by_id.get(&compiled_plan_id).cloned())
     }
 
-    pub(super) fn memory_create_flow_run(&self, input: &CreateFlowRunInput) -> Result<domain::FlowRunRecord> {
+    pub(super) fn memory_create_flow_run(
+        &self,
+        input: &CreateFlowRunInput,
+    ) -> Result<domain::FlowRunRecord> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         let record = flow_run_record_from_create_input(input);
         inner.flow_runs_by_id.insert(record.id, record.clone());
@@ -141,14 +144,20 @@ impl InMemoryOrchestrationRuntimeRepository {
         Ok(record)
     }
 
-    pub(super) fn memory_create_node_run(&self, input: &CreateNodeRunInput) -> Result<domain::NodeRunRecord> {
+    pub(super) fn memory_create_node_run(
+        &self,
+        input: &CreateNodeRunInput,
+    ) -> Result<domain::NodeRunRecord> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         let record = node_run_record_from_create_input(input);
         inner.node_runs_by_id.insert(record.id, record.clone());
         Ok(record)
     }
 
-    pub(super) fn memory_update_node_run(&self, input: &UpdateNodeRunInput) -> Result<domain::NodeRunRecord> {
+    pub(super) fn memory_update_node_run(
+        &self,
+        input: &UpdateNodeRunInput,
+    ) -> Result<domain::NodeRunRecord> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         let Some(record) = inner.node_runs_by_id.get_mut(&input.node_run_id) else {
             return Err(ControlPlaneError::NotFound("node_run").into());
@@ -162,7 +171,10 @@ impl InMemoryOrchestrationRuntimeRepository {
         Ok(record.clone())
     }
 
-    pub(super) fn memory_update_flow_run(&self, input: &UpdateFlowRunInput) -> Result<domain::FlowRunRecord> {
+    pub(super) fn memory_update_flow_run(
+        &self,
+        input: &UpdateFlowRunInput,
+    ) -> Result<domain::FlowRunRecord> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         force_status_before_next_flow_update(&mut inner, input.flow_run_id);
         let Some(record) = inner.flow_runs_by_id.get_mut(&input.flow_run_id) else {

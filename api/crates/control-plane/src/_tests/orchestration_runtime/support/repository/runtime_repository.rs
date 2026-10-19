@@ -1,10 +1,10 @@
-mod flow_state;
-mod callback_state;
-mod side_effect_state;
-mod context_state;
-mod resume_state;
 mod billing_state;
+mod callback_state;
+mod context_state;
+mod flow_state;
 mod query_state;
+mod resume_state;
+mod side_effect_state;
 
 use super::runtime_repository_helpers::{
     flow_run_record_from_create_input, flow_run_shell_record_from_input,
@@ -532,7 +532,10 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         _billing_session_id: Uuid,
         _reservation_expires_at: OffsetDateTime,
     ) -> Result<bool> {
-        self.memory_model_billing_heartbeat_credit_reservation(_billing_session_id, _reservation_expires_at)
+        self.memory_model_billing_heartbeat_credit_reservation(
+            _billing_session_id,
+            _reservation_expires_at,
+        )
     }
 
     async fn finalize_model_billing(
