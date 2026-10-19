@@ -12,6 +12,11 @@
   border-right: 1px solid #f0f0f0;
 }
 
+.role-permission-layout__role:focus-visible {
+  outline: 2px solid var(--ant-color-primary);
+  outline-offset: -2px;
+}
+
 .role-permission-layout__content {
   display: flex;
   flex: 1 1 auto;

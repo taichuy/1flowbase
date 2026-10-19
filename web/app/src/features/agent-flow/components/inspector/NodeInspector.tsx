@@ -16,7 +16,7 @@ import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
   namedBindingEntriesFromValue,
   toNamedBinding
-} from '../detail/fields/http-request/HttpRequestKeyValuesField';
+} from '../detail/fields/http-request/key-values-model';
 import { useNodeSchemaRuntime } from './use-node-schema-runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 

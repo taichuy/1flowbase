@@ -5,9 +5,9 @@ import type { SettingsSectionNavItem } from '../../../lib/settings-sections';
 import { SettingsEmptyState } from './SettingsEmptyState';
 import {
   SETTINGS_PAGE_DESCRIPTION,
-  SETTINGS_PAGE_TITLE,
-  SettingsNavigation
-} from './SettingsNavigation';
+  SETTINGS_PAGE_TITLE
+} from './settings-page-copy';
+import { SettingsNavigation } from './SettingsNavigation';
 
 export function SettingsRouteShell({
   visibleSections,

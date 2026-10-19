@@ -626,7 +626,7 @@ export function McpToolsTab({
               loading={saveToolMutation.isPending}
               onClick={() => form.submit()}
             >
-              OK
+              {i18nText('settings', 'auto.save')}
             </Button>
           </Space>
         }

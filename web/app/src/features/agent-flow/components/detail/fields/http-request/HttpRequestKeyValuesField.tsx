@@ -1,47 +1,14 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button } from 'antd';
-import type { FlowBinding, NamedBindingEntry } from '@1flowbase/flow-schema';
+import type { FlowBinding } from '@1flowbase/flow-schema';
 import { useRef } from 'react';
 
 import type { FlowSelectorOption } from '../../../../lib/selector-options';
 import { HttpRequestTemplateInput } from './HttpRequestTemplateInput';
 import { i18nText } from '../../../../../../shared/i18n/text';
 
-export type HttpRequestKeyValueEntry = Pick<
-  NamedBindingEntry,
-  'name' | 'value' | 'valueType'
->;
-
-export function namedBindingEntriesFromValue(
-  value: unknown
-): HttpRequestKeyValueEntry[] {
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as { kind?: unknown }).kind === 'named_bindings' &&
-    Array.isArray((value as { value?: unknown }).value)
-  ) {
-    return (value as { value: unknown[] }).value as HttpRequestKeyValueEntry[];
-  }
-
-  return [];
-}
-
-export function toNamedBinding(
-  entries: HttpRequestKeyValueEntry[]
-): FlowBinding {
-  return {
-    kind: 'named_bindings',
-    value: entries.map((entry) => ({
-      name: entry.name,
-      valueType: entry.valueType,
-      value: entry.value ?? { kind: 'templated_text', value: '' }
-    }))
-  };
-}
+import { namedBindingEntriesFromValue, toNamedBinding, type HttpRequestKeyValueEntry } from './key-values-model';
 
 function getTemplatedValue(entry: HttpRequestKeyValueEntry) {
   return entry.value?.kind === 'templated_text' ? entry.value.value : '';

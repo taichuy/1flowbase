@@ -86,12 +86,28 @@ describe('I2019 canvas keyboard ownership', () => {
         >
           edit
         </div>
-        <div data-testid="custom" role="slider" tabIndex={0}>
+        <div
+          data-testid="custom"
+          role="slider"
+          aria-label="Custom value"
+          aria-valuenow={50}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-orientation="horizontal"
+          tabIndex={0}
+        >
           custom widget
         </div>
       </div>
     ));
     const target = await queries.findByTestId(kind);
+    if (kind === 'custom') {
+      expect(target).toHaveAccessibleName('Custom value');
+      expect(target).toHaveAttribute('aria-valuenow', '50');
+      expect(target).toHaveAttribute('aria-valuemin', '0');
+      expect(target).toHaveAttribute('aria-valuemax', '100');
+      expect(target).toHaveAttribute('aria-orientation', 'horizontal');
+    }
     for (const key of ['Enter', ' ']) {
       const event = new KeyboardEvent('keydown', {
         key,

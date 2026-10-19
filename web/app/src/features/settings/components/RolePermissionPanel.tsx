@@ -736,20 +736,29 @@ export function RolePermissionPanel({
                   {filteredRoles.map((role) => {
                     const isActive = selectedRoleCode === role.code;
                     return (
-                      <div
+                      <button
+                        type="button"
+                        className="role-permission-layout__role"
+                        aria-pressed={isActive}
                         key={role.code}
                         onClick={() => setSelectedRoleCode(role.code)}
                         style={{
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'left',
+                          border: 0,
+                          font: 'inherit',
+                          color: 'inherit',
                           padding: '12px 16px',
                           cursor: 'pointer',
                           background: isActive ? '#e6f4ff' : 'transparent',
                           borderRight: isActive
                             ? '3px solid #1677ff'
                             : '3px solid transparent',
-                          transition: 'all 0.2s'
+                          transition: 'background-color 0.2s, border-color 0.2s'
                         }}
                       >
-                        <div
+                        <span
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -771,11 +780,11 @@ export function RolePermissionPanel({
                               {i18nText('settings', 'auto.built_in')}
                             </Tag>
                           )}
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                        </span>
+                        <span style={{ display: 'block', fontSize: '12px', color: '#8c8c8c' }}>
                           {role.code}
-                        </div>
-                      </div>
+                        </span>
+                      </button>
                     );
                   })}
                 </div>

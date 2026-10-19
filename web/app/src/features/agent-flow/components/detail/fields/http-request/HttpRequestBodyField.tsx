@@ -11,13 +11,13 @@ import {
 } from '../../../../lib/http-request/contract';
 import type { FlowSelectorOption } from '../../../../lib/selector-options';
 import { SelectorField } from '../../../bindings/SelectorField';
+import { HttpRequestKeyValuesField } from './HttpRequestKeyValuesField';
 import { HttpRequestTemplateInput } from './HttpRequestTemplateInput';
 import {
-  HttpRequestKeyValuesField,
   namedBindingEntriesFromValue,
   toNamedBinding,
   type HttpRequestKeyValueEntry
-} from './HttpRequestKeyValuesField';
+} from './key-values-model';
 import { i18nText } from '../../../../../../shared/i18n/text';
 
 type HttpRequestFormDataKind = 'text' | 'file';

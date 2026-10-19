@@ -446,6 +446,7 @@ export function BlockSchemaTreePanel({
                   selectedKeys={[currentBlockId]}
                   treeData={treeData}
                   loadData={(node) => loadChildren(node.summary)}
+                  onSelect={(_keys, info) => onOpenBlock(String(info.node.key))}
                   onDrop={(info) => void moveNode(info)}
                   onExpand={(keys) => setExpandedKeys(keys.map(String))}
                   titleRender={(node) => (
@@ -455,7 +456,6 @@ export function BlockSchemaTreePanel({
                       onCreate={openCreateForm}
                       onDelete={(target) => void deleteNode(target)}
                       onEdit={openEditForm}
-                      onOpen={onOpenBlock}
                     />
                   )}
                 />
@@ -591,28 +591,20 @@ function BlockTreeNodeTitle({
   pending,
   onCreate,
   onEdit,
-  onDelete,
-  onOpen
+  onDelete
 }: {
   node: FrontstageBlockNodeSummary;
   pending: boolean;
   onCreate: (node: FrontstageBlockNodeSummary) => void;
   onEdit: (node: FrontstageBlockNodeSummary) => void;
   onDelete: (node: FrontstageBlockNodeSummary) => void;
-  onOpen: (blockId: string) => void;
 }) {
   return (
-    <span
-      className="frontstage-block-schema-tree__node"
-      onClick={() => onOpen(node.block_id)}
-    >
+    <span className="frontstage-block-schema-tree__node">
       <span className="frontstage-block-schema-tree__node-title">
         {node.title ?? node.block_id}
       </span>
-      <span
-        className="frontstage-block-schema-tree__node-actions"
-        onClick={(event) => event.stopPropagation()}
-      >
+      <span className="frontstage-block-schema-tree__node-actions">
         <Tooltip title={i18nText('frontstage', 'auto.block_tree_create_child')}>
           <Button
             aria-label={i18nText('frontstage', 'auto.block_tree_create_child')}
@@ -620,7 +612,11 @@ function BlockTreeNodeTitle({
             icon={<PlusOutlined />}
             size="small"
             type="text"
-            onClick={() => onCreate(node)}
+            onKeyDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCreate(node);
+            }}
           />
         </Tooltip>
         <Tooltip title={i18nText('frontstage', 'auto.edit')}>
@@ -630,7 +626,11 @@ function BlockTreeNodeTitle({
             icon={<EditOutlined />}
             size="small"
             type="text"
-            onClick={() => onEdit(node)}
+            onKeyDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit(node);
+            }}
           />
         </Tooltip>
         <Tooltip title={i18nText('frontstage', 'auto.delete')}>
@@ -641,7 +641,11 @@ function BlockTreeNodeTitle({
             icon={<DeleteOutlined />}
             size="small"
             type="text"
-            onClick={() => onDelete(node)}
+            onKeyDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete(node);
+            }}
           />
         </Tooltip>
       </span>
