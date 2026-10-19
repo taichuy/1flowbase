@@ -440,7 +440,7 @@
       "target": "extension-contracts:lib",
       "name": "_tests::managed_hook_contract_tests::root_2007_ac_003_004_hook_transport_phase_and_identity_contract",
       "expected": 1,
-      "source": "api/crates/extension-contracts/src/_tests/managed_hook_contract_tests.rs",
+      "source": "api/crates/extension-contracts/src/_tests/managed_contributions/managed_hook_contract_tests.rs",
       "ac": [
         "AC-003",
         "AC-004"

@@ -47,7 +47,7 @@
   "required": [
     {
       "target": "extension-contracts:lib",
-      "source": "api/crates/extension-contracts/src/_tests/managed_interface_reference_tests.rs",
+      "source": "api/crates/extension-contracts/src/_tests/managed_contributions/managed_interface_reference_tests.rs",
       "name": "_tests::managed_interface_reference_tests::root_2014_r3_probe_independent_budgets",
       "expected": 1,
       "ac": [
