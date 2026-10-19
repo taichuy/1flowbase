@@ -34,7 +34,7 @@ fn runtime_catalog_route_is_authenticated_documented_and_module_free() {
     assert!(!operation["summary"].as_str().unwrap().is_empty());
     assert!(!operation["description"].as_str().unwrap().is_empty());
 
-    let source = include_str!("../routes/runtime_i18n_catalog.rs");
+    let source = include_str!("../../routes/runtime_i18n_catalog.rs");
     assert!(!source.contains("module"));
     assert!(!source.contains("bundles"));
     assert!(source.contains("catalog_revision"));

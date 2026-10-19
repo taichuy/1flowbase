@@ -107,11 +107,11 @@ async fn rr14_compiled_authentication_registration_without_factory_fails_catalog
 async fn rr14_trusted_host_extension_factory_is_assembled_and_executes_success_reject_and_contract_mismatch(
 ) {
     let manifest = plugin_framework::parse_plugin_manifest(include_str!(
-        "../../../../plugins/fixtures/acme.authentication-host/manifest.yaml"
+        "../../../../../plugins/fixtures/acme.authentication-host/manifest.yaml"
     ))
     .unwrap();
     let contribution = plugin_framework::parse_host_extension_contribution_manifest(include_str!(
-        "../../../../plugins/fixtures/acme.authentication-host/host-extension.yaml"
+        "../../../../../plugins/fixtures/acme.authentication-host/host-extension.yaml"
     ))
     .unwrap();
     let library = contribution.native.library.clone();
@@ -175,11 +175,11 @@ async fn rr14_trusted_host_extension_factory_is_assembled_and_executes_success_r
 #[test]
 fn rr14_host_extension_authentication_manifest_without_native_factory_fails_activation() {
     let manifest = plugin_framework::parse_plugin_manifest(include_str!(
-        "../../../../plugins/fixtures/acme.authentication-host/manifest.yaml"
+        "../../../../../plugins/fixtures/acme.authentication-host/manifest.yaml"
     ))
     .unwrap();
     let contribution = plugin_framework::parse_host_extension_contribution_manifest(include_str!(
-        "../../../../plugins/fixtures/acme.authentication-host/host-extension.yaml"
+        "../../../../../plugins/fixtures/acme.authentication-host/host-extension.yaml"
     ))
     .unwrap();
 

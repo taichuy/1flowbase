@@ -430,11 +430,19 @@ async fn dispatch_capability(
     .await
 }
 
+#[path = "frontstage_routes/authoring.rs"]
 mod authoring;
+#[path = "frontstage_routes/block_tree.rs"]
 mod block_tree;
+#[path = "frontstage_routes/content.rs"]
 mod content;
+#[path = "frontstage_routes/context_contract.rs"]
 mod context_contract;
+#[path = "frontstage_routes/listing.rs"]
 mod listing;
+#[path = "frontstage_routes/placement.rs"]
 mod placement;
+#[path = "frontstage_routes/presentation.rs"]
 mod presentation;
+#[path = "frontstage_routes/runtime_assembly.rs"]
 mod runtime_assembly;

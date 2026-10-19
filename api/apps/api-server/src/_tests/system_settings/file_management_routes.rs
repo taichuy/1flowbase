@@ -1163,4 +1163,5 @@ async fn file_upload_requires_workspace_session_context() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
+#[path = "file_management_routes/storage_settings.rs"]
 mod storage_settings;

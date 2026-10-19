@@ -648,7 +648,7 @@ typed phase/point 让插件的“空间”可编译，snapshot/generation/receip
 - `api/apps/api-server/src/extension_bus/authentication_activation.rs:427`：生产 HostExtension Authentication factory catalog。
 - `api/apps/api-server/src/middleware/require_settings_feature_permission.rs:78`：激活 Console Interface Route 在旧 AuthN middleware 前分流。
 - `api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs:268`：HTTP/MCP/Internal 共用 typed Interface 的生产调用。
-- `api/apps/api-server/src/_tests/authentication_activation_tests.rs:181`：HostExtension manifest → Graph → factory → Registry → Router 及单次 AuthN 的真实 fixture。
+- `api/apps/api-server/src/_tests/identity_routes/authentication_activation_tests.rs:181`：HostExtension manifest → Graph → factory → Registry → Router 及单次 AuthN 的真实 fixture。
 - `docs/architecture/archive/1944/1944-interface-lifecycle-assembly-receipt.md`：四类生产路径、RR/ARC 与 Fresh QA 的候选结算证据。
 
 本次更新只同步当前架构事实，不修改产品代码、测试、数据库、外部 contract 或运行时行为。

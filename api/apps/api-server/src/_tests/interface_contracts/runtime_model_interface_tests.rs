@@ -44,7 +44,7 @@ fn eil_f07_dynamic_runtime_methods_publish_frozen_typed_bindings() {
 
 #[test]
 fn eil_f07_dynamic_runtime_router_has_one_kernel_execution_path() {
-    let source = include_str!("../routes/plugins_and_models/runtime_models.rs");
+    let source = include_str!("../../routes/plugins_and_models/runtime_models.rs");
     assert!(source.contains("interface::invoke(state, headers, method, model_code, uri, body)"));
     assert!(!source.contains("impl interface::RuntimeModelOperationPort for ApiState"));
     assert!(!source.contains("Arc<ApiState> as Arc<dyn interface::RuntimeModelOperationPort>"));

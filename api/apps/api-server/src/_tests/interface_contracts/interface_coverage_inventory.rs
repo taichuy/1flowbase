@@ -81,21 +81,21 @@ struct CompatibilityEquivalenceCase {
 
 fn inventory() -> Inventory {
     serde_json::from_str(include_str!(
-        "fixtures/interface_coverage_inventory.1944.json"
+        "../fixtures/interface_coverage_inventory.1944.json"
     ))
     .expect("#1944 frozen coverage inventory must remain valid JSON")
 }
 
 fn compatibility_inventory() -> CompatibilityInventory {
     serde_json::from_str(include_str!(
-        "fixtures/interface_coverage_inventory.1958.json"
+        "../fixtures/interface_coverage_inventory.1958.json"
     ))
     .expect("#1958 frozen compatibility inventory must remain valid JSON")
 }
 
 fn compatibility_equivalence_matrix() -> CompatibilityEquivalenceMatrix {
     serde_json::from_str(include_str!(
-        "fixtures/interface_route_equivalence.1958.json"
+        "../fixtures/interface_route_equivalence.1958.json"
     ))
     .expect("#1958 route equivalence matrix must remain valid JSON")
 }

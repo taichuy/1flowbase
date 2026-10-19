@@ -6,6 +6,7 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+#[path = "mcp_management_routes/interface_inventory.rs"]
 mod interface_inventory;
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -1248,4 +1249,5 @@ async fn mcp_tool_create_requires_tool_id() {
     );
 }
 
+#[path = "mcp_management_routes/instance_discovery.rs"]
 mod instance_discovery;

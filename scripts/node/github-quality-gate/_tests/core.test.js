@@ -757,7 +757,7 @@ test('runQualityGate strips ANSI control sequences from published failure excerp
       return {
         status: 1,
         stdout: '\u001b[2mdist/\u001b[22m\u001b[36masset.js\u001b[39m\n',
-        stderr: '\u001b[31mDiff in api/apps/api-server/src/_tests/config_tests.rs:77\u001b[39m\n',
+        stderr: '\u001b[31mDiff in api/apps/api-server/src/_tests/host_boot/config_tests.rs:77\u001b[39m\n',
       };
     },
     createIssueImpl(issue) {

@@ -32,8 +32,8 @@ fn public_sign_in_publishes_one_typed_mutation_plan() {
 
 #[test]
 fn public_sign_in_route_projects_cookie_after_terminal_receipt() {
-    let route = include_str!("../routes/identity/auth.rs");
-    let handler = include_str!("../routes/identity/sign_in_interface.rs");
+    let route = include_str!("../../routes/identity/auth.rs");
+    let handler = include_str!("../../routes/identity/sign_in_interface.rs");
     let receipt = route
         .find("outcome.receipt().clone().projected()")
         .expect("route must project the terminal receipt");

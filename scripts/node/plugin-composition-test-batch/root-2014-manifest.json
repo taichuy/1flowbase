@@ -1167,7 +1167,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/ui_management_routes.rs",
+      "source": "api/apps/api-server/src/_tests/console_routes/ui_management_routes.rs",
       "name": "_tests::ui_management_routes::root_2014_ac_014_old_process_cannot_serve_new_target_template",
       "expected": 1,
       "ac": [
@@ -1179,7 +1179,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/ui_management_routes.rs",
+      "source": "api/apps/api-server/src/_tests/console_routes/ui_management_routes.rs",
       "name": "_tests::ui_management_routes::root_2014_ac_014_old_process_plugin_operation_version_gate",
       "expected": 1,
       "ac": [

@@ -27,7 +27,9 @@ use crate::_tests::support::{
     test_app_with_runtime_profile_error, test_config,
 };
 
+#[path = "mcp_bundle_routes/import_atomicity.rs"]
 mod import_atomicity;
+#[path = "mcp_bundle_routes/openapi_contract.rs"]
 mod openapi_contract;
 
 #[derive(Clone)]

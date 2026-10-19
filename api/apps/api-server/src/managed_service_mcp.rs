@@ -306,7 +306,7 @@ fn input_mapping(schema: &Value) -> Value {
 }
 
 #[cfg(test)]
-#[path = "_tests/managed_service_mcp.rs"]
+#[path = "_tests/mcp_routes/managed_service_mcp.rs"]
 mod tests;
 
 // Project only a real declared metadata subschema; unresolved schemas remain unconstrained.

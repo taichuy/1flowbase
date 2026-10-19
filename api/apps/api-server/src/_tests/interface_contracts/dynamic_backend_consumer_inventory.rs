@@ -49,7 +49,7 @@ struct LowCodeReference {
 #[test]
 fn console_interface_projection_inventory_is_key_only_and_exact() {
     let fixture: InterfaceInventory = serde_json::from_str(include_str!(
-        "fixtures/dynamic_backend_consumers.d3-p3.json"
+        "../fixtures/dynamic_backend_consumers.d3-p3.json"
     ))
     .unwrap();
     let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
@@ -210,7 +210,7 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
 #[test]
 fn console_display_inventory_matches_key_only_fixture() {
     let inventory: Inventory = serde_json::from_str(include_str!(
-        "fixtures/dynamic_backend_consumers.d3-p4.json"
+        "../fixtures/dynamic_backend_consumers.d3-p4.json"
     ))
     .unwrap();
     let fixture = inventory
@@ -245,7 +245,7 @@ fn console_display_inventory_matches_key_only_fixture() {
 #[test]
 fn metadata_and_backend_consumers_are_key_only() {
     let metadata: Vec<MetadataConsumer> = serde_json::from_str(include_str!(
-        "../../../../crates/control-plane/src/_tests/fixtures/metadata_i18n_consumers.json"
+        "../../../../../crates/control-plane/src/_tests/fixtures/metadata_i18n_consumers.json"
     ))
     .unwrap();
     let expected = metadata
@@ -264,7 +264,7 @@ fn metadata_and_backend_consumers_are_key_only() {
     assert_eq!(expected, actual);
 
     let inventory: Inventory = serde_json::from_str(include_str!(
-        "fixtures/dynamic_backend_consumers.d3-p6.json"
+        "../fixtures/dynamic_backend_consumers.d3-p6.json"
     ))
     .unwrap();
     assert_eq!(inventory.count, inventory.consumers.len());
@@ -277,7 +277,7 @@ fn metadata_and_backend_consumers_are_key_only() {
 #[test]
 fn official_seed_coverage_is_global_key_based_with_pinned_provenance() {
     let coverage: OfficialCoverageFixture = serde_json::from_str(include_str!(
-        "fixtures/official_i18n_catalog_coverage.d3-p8.json"
+        "../fixtures/official_i18n_catalog_coverage.d3-p8.json"
     ))
     .unwrap();
     let seed: serde_json::Value =

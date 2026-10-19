@@ -151,7 +151,7 @@ async fn ac_001_002_block_context_contract_is_authenticated_and_complete() {
 
 #[test]
 fn ac_001_embedded_contract_rejects_invalid_versions_and_duplicate_names() {
-    let source = include_bytes!("../../../resources/ctx/block-context.v1.json");
+    let source = include_bytes!("../../../../resources/ctx/block-context.v1.json");
     let mut invalid_version: Value = serde_json::from_slice(source).unwrap();
     invalid_version["contract_version"] = json!("2.0.0");
     assert!(
@@ -204,7 +204,7 @@ fn ac_004_backend_contract_keys_match_the_frontend_protocol_source() {
         .collect::<Vec<_>>();
 
     let contract: Value = serde_json::from_slice(include_bytes!(
-        "../../../resources/ctx/block-context.v1.json"
+        "../../../../resources/ctx/block-context.v1.json"
     ))
     .unwrap();
     let backend_keys = contract["entries"]
