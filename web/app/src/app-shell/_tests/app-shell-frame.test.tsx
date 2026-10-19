@@ -256,14 +256,14 @@ describe('AppShellFrame', () => {
         settingsTrigger.compareDocumentPosition(helpTrigger) &
           Node.DOCUMENT_POSITION_FOLLOWING
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-      expect(designButton).toHaveAttribute('aria-pressed', 'false');
+      expect(designButton).toHaveAttribute('aria-checked', 'false');
     });
 
     await domEvents.click(screen.getByLabelText('Enter design mode'));
 
     expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(true);
     expect(screen.getByLabelText('Exit design mode')).toHaveAttribute(
-      'aria-pressed',
+      'aria-checked',
       'true'
     );
   });

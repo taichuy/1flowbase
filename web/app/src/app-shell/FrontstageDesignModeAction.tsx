@@ -88,15 +88,15 @@ function FrontstageDesignModeActionBase() {
         items={[
           {
             key: 'design-mode',
+            role: 'menuitemcheckbox',
+            'aria-label': label,
+            'aria-checked': isDesignMode,
             className: isDesignMode
               ? 'app-shell-design-mode-button ant-menu-item-selected'
               : 'app-shell-design-mode-button',
             label: (
               <span
                 className="app-shell-design-block"
-                aria-label={label}
-                role="button"
-                aria-pressed={isDesignMode}
               >
                 UI
               </span>
