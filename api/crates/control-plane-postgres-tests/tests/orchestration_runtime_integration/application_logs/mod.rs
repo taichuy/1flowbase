@@ -16,3 +16,4 @@ mod task_projection;
 mod rework_migration;
 
 mod agent_logs;
+mod native_log_deletion;

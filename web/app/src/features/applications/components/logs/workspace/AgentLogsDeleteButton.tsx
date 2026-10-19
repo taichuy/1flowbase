@@ -41,9 +41,11 @@ const active = (job: AgentLogsDeleteJob | null | undefined) =>
   job?.status === 'queued' || job?.status === 'running';
 function useDeletionJobController({
   applicationId,
+  applicationType = 'agent_logs',
   onFinished
 }: {
   applicationId: string;
+  applicationType?: 'agent_logs' | 'agent_flow';
   onFinished: () => Promise<void>;
 }) {
   const { t } = useTranslation('applications');
@@ -212,14 +214,16 @@ function useDeletionJobController({
     : 0;
   return {
     setAnchor, setOpen, csrfToken, t, open, job, stop, reset, pendingInput, start,
-    trackedId, scope, preview, observed, form, submit, date, processing, percent
+    trackedId, scope, preview, observed, form, submit, date, processing, percent,
+    applicationType
   };
 }
 
 export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobController>[0]) {
   const {
     setAnchor, setOpen, csrfToken, t, open, job, stop, reset, pendingInput, start,
-    trackedId, scope, preview, observed, form, submit, date, processing, percent
+    trackedId, scope, preview, observed, form, submit, date, processing, percent,
+    applicationType
   } = useDeletionJobController(props);
   return (
     <>
@@ -398,7 +402,9 @@ export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobCon
             </Form.Item>
           </Form>
         )}
-        <Alert type="warning" showIcon title={t('log_deletion.warning')} />
+        <Alert type="warning" showIcon title={applicationType === 'agent_flow'
+          ? t('log_deletion.native_warning')
+          : t('log_deletion.warning')} />
         {job && (
           <div role="status" style={{ marginTop: 16 }}>
             <Typography.Paragraph>

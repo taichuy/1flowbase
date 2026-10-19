@@ -24,6 +24,9 @@ fn map_job(row: sqlx::postgres::PgRow) -> Result<AgentLogsDeleteJob> {
         updated_at: timestamp("updated_at")?,
     })
 }
+mod native;
+const CANDIDATES_SQL: &str = include_str!("deletion_candidates.sql");
+
 const JOB_COLUMNS: &str = "j.*, exists(select 1 from application_log_deletion_stop_requests s where s.job_id=j.id) as stop_requested";
 
 pub(in crate::orchestration_runtime_repository) async fn preview(
@@ -35,8 +38,17 @@ pub(in crate::orchestration_runtime_repository) async fn preview(
     let (from, to) = scope
         .bounds()?
         .map_or((None, None), |(from, to)| (Some(from), Some(to)));
-    let total: i64 = sqlx::query_scalar("select count(*) from application_run_log_tasks where application_id=$1 and scope_id=$2 and source_kind='imported' and ($3::timestamptz is null or started_at >= $3) and ($4::timestamptz is null or started_at < $4)")
-        .bind(app).bind(scope_id).bind(from).bind(to).fetch_one(store.pool()).await?;
+    // SQL safety: CANDIDATES_SQL is a static, compiled-in query; all values are bound.
+    let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "select count(*) from ({CANDIDATES_SQL}) candidates"
+    )))
+    .bind(app)
+    .bind(scope_id)
+    .bind(from)
+    .bind(to)
+    .bind(Option::<OffsetDateTime>::None)
+    .fetch_one(store.pool())
+    .await?;
     Ok(AgentLogsDeletePreview {
         total_records: u64::try_from(total)?,
     })
@@ -53,7 +65,7 @@ pub(in crate::orchestration_runtime_repository) async fn create(
         .bind(format!("agent-logs-application:{app}"))
         .execute(&mut *tx)
         .await?;
-    let supported: bool=sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type='agent_logs')").bind(app).bind(scope_id).fetch_one(&mut *tx).await?;
+    let supported: bool=sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type in ('agent_logs','agent_flow'))").bind(app).bind(scope_id).fetch_one(&mut *tx).await?;
     anyhow::ensure!(supported, "agent_logs.application_type");
     // SQL safety: JOB_COLUMNS is static SQL; deletion job selectors remain bound.
     if let Some(row) = sqlx::query(sqlx::AssertSqlSafe(format!(
@@ -82,7 +94,10 @@ pub(in crate::orchestration_runtime_repository) async fn create(
         .scope
         .bounds()?
         .map_or((None, None), |(from, to)| (Some(from), Some(to)));
-    let total=sqlx::query("insert into application_log_deletion_records(job_id,record_id) select $1,id from application_run_log_tasks where application_id=$2 and scope_id=$3 and source_kind='imported' and ($4::timestamptz is null or started_at >= $4) and ($5::timestamptz is null or started_at < $5) and ingested_at < $6").bind(input.job_id).bind(app).bind(scope_id).bind(from).bind(to).bind(boundary).execute(&mut *tx).await?.rows_affected();
+    // SQL safety: static SQL composition only; the job and scope remain bound.
+    let total=sqlx::query(sqlx::AssertSqlSafe(format!(
+        "insert into application_log_deletion_records(job_id,record_id,native_run_ids) select $6,record_id,native_run_ids from ({CANDIDATES_SQL}) candidates"
+    ))).bind(app).bind(scope_id).bind(from).bind(to).bind(boundary).bind(input.job_id).execute(&mut *tx).await?.rows_affected();
     sqlx::query("update application_log_deletion_jobs set total_records=$2,status=case when $2=0 then 'succeeded' else 'queued' end where id=$1").bind(input.job_id).bind(i64::try_from(total)?).execute(&mut *tx).await?;
     let job = map_job(
         sqlx::query(sqlx::AssertSqlSafe(format!(
@@ -143,8 +158,7 @@ pub(in crate::orchestration_runtime_repository) async fn advance(
     let count = if job.stop_requested {
         0
     } else {
-        sqlx::query("with selected as (select record_id from application_log_deletion_records where job_id=$1 order by record_id limit $2) delete from application_run_log_tasks t using selected s where t.id=s.record_id")
-            .bind(id).bind(i64::from(job.scope.batch_size().ok_or_else(||anyhow!("agent_logs.delete_job_batch_size"))?.get())).execute(&mut *tx).await?.rows_affected()
+        native::delete_batch(&mut tx, &job).await?
     };
     anyhow::ensure!(
         job.stop_requested || count > 0 || job.deleted_records == job.total_records,

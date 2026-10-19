@@ -432,6 +432,7 @@
     "batch_size": "Records per batch",
     "batch_invalid": "Enter a positive integer up to 4294967295",
     "warning": "Delete complete conversations and trajectories by log start time. This cannot be undone. Only records that exist when deletion starts are included.",
+    "native_warning": "Permanently delete complete logs and trajectories for finished tasks by log start time. Running tasks and tasks waiting to continue are retained. Only tasks and execution members present when deletion starts are included. Cost, credit and usage ledgers, and billing sessions are retained.",
     "stop": "Stop further batches",
     "stopping": "Stopping",
     "stopping_detail": "Waiting for the current batch to commit. Deleted logs will remain deleted.",

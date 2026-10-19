@@ -296,7 +296,7 @@ pub(crate) fn compile_preview_registry(
     )
 }
 
-#[utoipa::path(post,operation_id="applications.logs.delete.preview",path="/api/console/applications/{id}/logs/deletion-preview",summary="Count imported logs in a deletion scope",request_body(content=inline(super::LogsDeleteScopeSchema)),params(("id"=String,Path)),responses((status=200,body=PreviewOutput)))]
+#[utoipa::path(post,operation_id="applications.logs.delete.preview",path="/api/console/applications/{id}/logs/deletion-preview",summary="Count deletable application log tasks",description="Preview imported Agent Logs records or complete terminal Agent Flow tasks. Active native tasks and assistant history seeds are excluded. Financial ledgers and billing sessions are retained.",request_body(content=inline(super::LogsDeleteScopeSchema)),params(("id"=String,Path)),responses((status=200,body=PreviewOutput)))]
 pub(crate) async fn preview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -323,7 +323,7 @@ impl utoipa::PartialSchema for CreateJobSchema {
         serde_json::from_value(json!({"type":"object","additionalProperties":false,"required":["job_id","scope"],"properties":{"job_id":{"type":"string","format":"uuid"},"scope":scope}})).expect("static deletion start schema")
     }
 }
-#[utoipa::path(post,operation_id="applications.logs.delete.jobs.create",path="/api/console/applications/{id}/logs/deletion-jobs",summary="Start a persistent batched log deletion",request_body=CreateJobSchema,params(("id"=String,Path)),responses((status=200,body=JobOutput),(status=409,description="Another deletion is active or job identity conflicts")))]
+#[utoipa::path(post,operation_id="applications.logs.delete.jobs.create",path="/api/console/applications/{id}/logs/deletion-jobs",summary="Start a persistent batched log deletion",description="Delete imported Agent Logs records or complete terminal Agent Flow tasks in durable batches. Freeze tasks and native execution members at creation. Preserve cost, credit and usage ledgers, billing sessions, application credentials and live tasks. A changed native workset fails its batch atomically.",request_body=CreateJobSchema,params(("id"=String,Path)),responses((status=200,body=JobOutput),(status=409,description="Another deletion is active or job identity conflicts")))]
 pub(crate) async fn create(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

@@ -1160,10 +1160,11 @@ export function ApplicationLogsWorkspace({
               </Tooltip>
             </>
           ) : null}
-          {applicationType === 'agent_logs' && applicationId && (
+          {(applicationType === 'agent_logs' || applicationType === 'agent_flow') && applicationId && (
             <AgentLogsDeleteButton
               key={applicationId}
               applicationId={applicationId}
+              applicationType={applicationType}
               onFinished={async () => {
                 setSelectedRunIds([]);
                 setSelectedRunId(null);

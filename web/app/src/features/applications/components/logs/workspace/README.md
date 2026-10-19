@@ -21,4 +21,6 @@ export default function AllApplicationLogsBlock({ ctx }) {
 
 总日志的批量导出按 `application_id` 分组下载归档；导入需确认目标应用，并保留该应用的导入任务恢复信息。后端负责跨应用筛选、排序及分页；前端不合并各应用的分页结果。
 
+单应用 Agent Flow 与 Agent Logs 复用删除日志弹窗：日期范围、数量预览、每批数量、后台进度与停止。Agent Flow 仅删除已结束任务及其完整执行成员，启动时固定工作集，每批重新核对成员和终态；活跃任务与历史会话种子保留。后端清理日志、轨迹、恢复状态和无剩余引用的正文，保留费用、积分、用量流水及计费会话的原始执行 UUID。关闭弹窗不会停止后台任务；总日志页不提供跨应用删除。
+
 `archive-import-persistence.ts` 独占浏览器中按应用保存的导入任务恢复信息，保留既有存储键与 JSON 形状；`ApplicationLogsWorkspace` 负责恢复时机、任务状态和界面，不在存储模块发起请求或判断导入结果。
