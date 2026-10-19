@@ -13,6 +13,13 @@ systemctl_log="$test_root/systemctl.log"
 systemd_run_log="$test_root/systemd-run.log"
 mkdir -p "$systemd_dir" "$bin_dir" "$repo_dir" "$mock_bin"
 
+# Exercise the real Node calculation with deterministic available CPU counts.
+cat >"$test_root/available-cpus.cjs" <<'EOF'
+require('node:os').availableParallelism = () => Number(process.env.RESOURCE_LIMITS_TEST_CPUS);
+EOF
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--require=$test_root/available-cpus.cjs"
+export RESOURCE_LIMITS_TEST_CPUS=20
+
 cat >"$mock_bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"${RESOURCE_LIMITS_SYSTEMCTL_LOG:?}"
@@ -64,9 +71,9 @@ grep -Fxq 'MemoryMax=18G' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'CPUQuota=' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'IOWeight=10' "$systemd_dir/dev-rust.slice"
-grep -Fq 'default_cargo_job_limit=10' "$bin_dir/cargo"
-grep -Fq '"cargoJobs": 10' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq '"cargoTestThreads": 10' "$repo_dir/.1flowbase.verify.local.json"
+grep -Fq 'default_cargo_job_limit=auto' "$bin_dir/cargo"
+grep -Fq '"cargoJobs": "auto"' "$repo_dir/.1flowbase.verify.local.json"
+grep -Fq '"cargoTestThreads": "auto"' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq 'set-property --runtime dev-rust.slice MemoryHigh=16G MemoryMax=18G MemorySwapMax=1G CPUQuota= IOWeight=10' \
   "$systemctl_log"
 
@@ -166,6 +173,51 @@ cancel_status=$?
 set -e
 test "$cancel_status" -eq 143
 grep -Fq -- '--no-block stop rust-cargo-' "$systemctl_log"
+
+# Installation resolves systemd quotas; wrappers recalculate for every call.
+for cpu_case in 1:1 2:1 3:1 8:4 20:10; do
+  cpus=${cpu_case%:*}
+  jobs=${cpu_case#*:}
+  env "${common_env[@]}" RESOURCE_LIMITS_TEST_CPUS="$cpus" \
+    "$script_dir/apply-resource-limits.sh" "$script_dir/resource-limits.conf"
+  grep -Fxq "CPUQuota=${jobs}00%" "$systemd_dir/dev.slice"
+  grep -Fq '"cargoJobs": "auto"' "$repo_dir/.1flowbase.verify.local.json"
+  env PATH="$mock_bin:$PATH" RESOURCE_LIMITS_TEST_CPUS="$cpus" \
+    RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+    RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/cpu-$cpus.log" \
+    CARGO_BUILD_JOBS=40 "$bin_dir/cargo" build --jobs=40
+  grep -Fxq "CARGO_BUILD_JOBS=$jobs" "$test_root/cpu-$cpus.log"
+  grep -Fq -- "build --jobs=$jobs" "$test_root/cpu-$cpus.log"
+done
+
+# The same installed wrapper follows changed CPU availability without reinstall.
+env PATH="$mock_bin:$PATH" RESOURCE_LIMITS_TEST_CPUS=8 \
+  RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+  RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/migrated.log" \
+  "$bin_dir/cargo" build
+grep -Fxq 'CARGO_BUILD_JOBS=4' "$test_root/migrated.log"
+
+# Explicit lower job counts remain effective with automatic defaults.
+env PATH="$mock_bin:$PATH" \
+  RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+  RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/lower.log" \
+  CARGO_BUILD_JOBS=2 "$bin_dir/cargo" test -j2
+grep -Fxq 'CARGO_BUILD_JOBS=2' "$test_root/lower.log"
+grep -Fq -- 'test -j2' "$test_root/lower.log"
+
+# Custom fixed profiles remain supported and emit numeric JSON values.
+cat >"$test_root/fixed.conf" <<EOF
+source '$script_dir/resource-limits.conf'
+DEV_CPU_QUOTA=300%
+CARGO_MAX_JOBS=3
+PROJECT_CARGO_JOBS=2
+PROJECT_CARGO_TEST_THREADS=1
+EOF
+env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" "$test_root/fixed.conf"
+grep -Fxq 'CPUQuota=300%' "$systemd_dir/dev.slice"
+grep -Fq 'default_cargo_job_limit=3' "$bin_dir/cargo"
+grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
+grep -Fq '"cargoTestThreads": 1' "$repo_dir/.1flowbase.verify.local.json"
 
 env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
   "$script_dir/resource-limits.unlimited.example.conf"

@@ -89,11 +89,17 @@ function assertKnownKeys(name, value, allowedKeys) {
   }
 }
 
-function resolveCargoDefaults(availableParallelism) {
+function getLocalCpuBudget(availableParallelism = getAvailableParallelism()) {
   const parallelism = assertPositiveInteger(
     "availableParallelism",
     availableParallelism,
   );
+
+  return Math.max(1, Math.floor(parallelism / 2));
+}
+
+function resolveCargoDefaults(availableParallelism) {
+  const parallelism = getLocalCpuBudget(availableParallelism);
 
   return {
     cargoJobs: parallelism,
@@ -594,9 +600,14 @@ function resolveRuntimeConfig(config, availableParallelism) {
     new Set(["waitTimeoutMinutes", "pollIntervalMs"]),
   );
 
-  const cargoJobs = backendConfig.cargoJobs ?? backendDefaults.cargoJobs;
+  const cargoJobs =
+    backendConfig.cargoJobs === "auto"
+      ? backendDefaults.cargoJobs
+      : backendConfig.cargoJobs ?? backendDefaults.cargoJobs;
   const cargoTestThreads =
-    backendConfig.cargoTestThreads ?? backendDefaults.cargoTestThreads;
+    backendConfig.cargoTestThreads === "auto"
+      ? backendDefaults.cargoTestThreads
+      : backendConfig.cargoTestThreads ?? backendDefaults.cargoTestThreads;
   const incremental = backendConfig.incremental ?? false;
   const turboConcurrency =
     frontendConfig.turboConcurrency ?? frontendDefaults.turboConcurrency;
@@ -723,6 +734,7 @@ module.exports = {
   VERIFY_LOCK_TOKEN_ENV,
   acquireHeavyVerifyLock,
   getAvailableParallelism,
+  getLocalCpuBudget,
   isCiEnvironment,
   loadVerifyRuntimeConfig,
   main,

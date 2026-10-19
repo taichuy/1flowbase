@@ -8,6 +8,7 @@ const {
 } = require('../clean-build-cache/core.js');
 const {
   getAvailableParallelism,
+  getLocalCpuBudget,
   loadVerifyRuntimeConfig,
 } = require('../testing/verify-runtime.js');
 
@@ -30,7 +31,7 @@ function buildCargoEnv({ cargoJobs, incremental, testProfile = false }) {
 }
 
 function buildRustWarmupPlan({ incremental, availableParallelism = getAvailableParallelism() }) {
-  const cargoJobs = Math.max(1, Math.floor(availableParallelism / 2));
+  const cargoJobs = getLocalCpuBudget(availableParallelism);
   const devEnv = buildCargoEnv({ cargoJobs, incremental });
   const testEnv = buildCargoEnv({ cargoJobs, incremental, testProfile: true });
 

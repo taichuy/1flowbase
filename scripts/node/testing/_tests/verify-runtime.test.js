@@ -30,8 +30,8 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
 
   assert.deepEqual(config, {
     backend: {
-      cargoJobs: 8,
-      cargoTestThreads: 8,
+      cargoJobs: 4,
+      cargoTestThreads: 4,
       incremental: false,
     },
     frontend: {
@@ -59,7 +59,7 @@ test("frontend defaults reserve local CPU headroom on large machines", () => {
   assert.equal(config.frontend.turboConcurrency, 16);
 });
 
-test("cargo-jobs prints all machine parallelism by default", () => {
+test("cargo-jobs prints half the available parallelism by default", () => {
   const repoRoot = createRepoRoot();
   let stdout = "";
 
@@ -73,7 +73,23 @@ test("cargo-jobs prints all machine parallelism by default", () => {
   });
 
   assert.equal(status, 0);
-  assert.equal(stdout, "10\n");
+  assert.equal(stdout, "5\n");
+});
+
+test("local CPU budgets adapt to the current machine without rewriting config", () => {
+  const repoRoot = createRepoRoot();
+  try {
+    for (const backend of [{}, { cargoJobs: "auto", cargoTestThreads: "auto" }]) {
+      fs.writeFileSync(path.join(repoRoot, LOCAL_VERIFY_CONFIG_FILE), JSON.stringify({ backend }));
+      for (const [availableParallelism, expected] of [[1, 1], [2, 1], [3, 1], [8, 4], [20, 10]]) {
+        const config = loadVerifyRuntimeConfig({ repoRoot, env: {}, availableParallelism });
+        assert.equal(config.backend.cargoJobs, expected);
+        assert.equal(config.backend.cargoTestThreads, expected);
+      }
+    }
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
 });
 
 test("loadVerifyRuntimeConfig applies local overrides when config file exists", () => {
@@ -294,7 +310,7 @@ test("loadVerifyRuntimeConfig merges backend and lock overrides field by field",
   assert.deepEqual(config, {
     backend: {
       cargoJobs: 3,
-      cargoTestThreads: 8,
+      cargoTestThreads: 4,
       incremental: false,
     },
     frontend: {

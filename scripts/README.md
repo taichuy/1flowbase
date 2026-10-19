@@ -43,11 +43,34 @@ bash scripts/shell/apply-resource-limits.sh \
 bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 ```
 
-24 GiB / 20 逻辑 CPU 配置：日常开发与验证的 Cargo jobs、Rust 测试线程均为 10，
-`dev.slice` 的 CPUQuota=1000% 让多个 worktree 的开发子组合计使用半机 CPU 时间。
-仅对所有 Rust 编译合计设置内存预算：`dev-rust.slice` High/Max 为 16/18 GiB，swap 上限 1 GiB。
+CPU 默认使用 `auto`：`max(1, floor(可用逻辑 CPU / 2))`。例如 1 / 3 / 8 / 20 CPU
+分别得到 1 / 1 / 4 / 10 个编译 job 和测试线程。Node 使用 `os.availableParallelism()`
+检测当前进程可用 CPU，包含 CPU affinity / cpuset 限制；旧版 Node 回退到 `os.cpus().length`。
+本地启动、验证、缓存重置预热和已安装的 Cargo 包装器在每次调用时计算；没有本地配置的新
+worktree 也采用该默认值。日常启动和验证保留显式整数覆盖，包装器保留更低的 `CARGO_BUILD_JOBS`；
+CI 仍使用全部 runner CPU。预热采用独立的半机预算，始终先获取锁定依赖，
+再串行完成启动目标、测试普通库和全量测试预编译。
+
+Linux 安装脚本需要 Node 和用户 systemd，会在应用配置时把 `DEV_CPU_QUOTA=auto` 解析为
+对应的 CPUQuota（例如 8 CPU 得到 400%），多个 worktree 的开发子组共享父组总预算。
+迁移机器或调整 CPU 数量后，重新运行安装脚本刷新 systemd 配额；无需手工重新计算数值。
+Windows/macOS 的项目 Node 入口采用同一并发规则；systemd 配额仅适用于 Linux。
+已有 `.1flowbase.verify.local.json` 中的数字视为显式覆盖，不会猜测并替换；需要自动适配时，
+把 `backend.cargoJobs`、`backend.cargoTestThreads` 改成 `"auto"` 或删除这两个字段。
+
+内存配置仍是 24 GiB 开发机的可选示例，应按目标机器容量调整后再应用：
+`dev-rust.slice` High/Max 为 16/18 GiB，swap 上限 1 GiB。
 `dev.slice` 和 `dev-frontend.slice` 内存、swap 不设上限。
 18 GiB 是 Rust 组聚合硬上限，不是每个编译任务的额度，也不预留物理内存。
+
+CPU portability: local build/test defaults and the installed Cargo wrapper recalculate
+`max(1, floor(available logical CPUs / 2))` on each invocation. Set local Cargo counts to
+`"auto"` (or omit them) to adapt across machines; explicit integers remain overrides.
+CI keeps full runner parallelism. On Linux, rerun the installer after changing CPU capacity
+to refresh the shared systemd quota. The memory values are a 24 GiB host example and must
+be reviewed for the target machine. Windows/macOS use the same Node concurrency defaults
+without Linux systemd limits. Warmup still fetches locked dependencies before sequential
+compilation stages.
 
 通过 PATH 中的 `cargo`、`pnpm` 包装器自动进入子组；其他开发命令使用
 `dev-run <command>`（前端可用 `dev-run --frontend <command>`）。
@@ -72,6 +95,7 @@ Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 | 字段 | 作用 |
 | --- | --- |
 | `PROFILE_MODE` | `limited` 写入并应用限制；`unlimited` 删除脚本管理的配置并恢复默认值。 |
+| `DEV_CPU_QUOTA` | `auto` 在应用配置时按半数可用 CPU 生成父组总配额；也可显式指定 systemd CPUQuota，例如 `400%`。 |
 | `SESSION_MEMORY_LOW` | 为 `session.slice` 设置低水位内存保护，不是最大内存限制。 |
 | `RUST_OOM_PRESSURE_LIMIT` | `dev-rust.slice` 的 PSI 内存压力阈值，只影响 Rust 组。 |
 | `RUST_OOM_PRESSURE_DURATION` | Rust 组超过压力阈值后必须持续的时间。 |
@@ -80,9 +104,9 @@ Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
 | `RUST_MEMORY_SWAP_MAX` | Rust 构建 slice 可使用的 swap 上限。 |
 | `RUST_CPU_QUOTA` | Rust 编译总 CPU 配额；200% 表示最多两个逻辑核的 CPU 时间，不是构建时长限制。 |
 | `RUST_IO_WEIGHT` | Rust 构建 cgroup 的相对 I/O 权重，实际调度效果依赖设备和 cgroup 层级。 |
-| `CARGO_MAX_JOBS` | Cargo 包装器的默认编译 job 上限；调用方显式设置更低值时保留低值。预热入口可通过单次调用的 `ONEFLOWBASE_CARGO_JOB_LIMIT` 指定独立预算，内存 scope 仍生效。 |
-| `PROJECT_CARGO_JOBS` | 本仓库启动和验证脚本使用的 Cargo 编译 job 数；缓存重置预热按可用逻辑 CPU 的一半独立计算，依赖获取与编译阶段串行执行。 |
-| `PROJECT_CARGO_TEST_THREADS` | 本仓库验证脚本传给 Rust test harness 的测试线程数。 |
+| `CARGO_MAX_JOBS` | `auto` 每次运行按半数可用 CPU 计算包装器默认上限，也支持正整数；调用方显式设置更低值时保留。预热入口可通过单次调用的 `ONEFLOWBASE_CARGO_JOB_LIMIT` 指定独立预算，内存 scope 仍生效。 |
+| `PROJECT_CARGO_JOBS` | 本仓库启动和验证的编译并发，`auto` 原样写入本地 JSON，在每次读取时按半数可用 CPU 计算；也支持正整数。 |
+| `PROJECT_CARGO_TEST_THREADS` | Rust test harness 的测试线程数，支持 `auto` 或正整数。 |
 | `PROJECT_CARGO_INCREMENTAL` | 是否为本仓库本地验证启用 Rust incremental compilation。 |
 
 脚本会管理以下本机文件：
@@ -136,7 +160,7 @@ node scripts/node/dev-up.js stop
 - `api-server` 的 dev profile 使用 `line-tables-only` 调试信息，保留回溯文件名/行号，减少模块级调试元数据；依赖仍沿用原 profile，预热和启动读取同一 Cargo.toml，不清空 target。
 - 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Linux Cargo 包装器处理自身编译 scope 的取消；取消后的 2 秒停止宽限期不限制正常编译时长。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
 - 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
-- 仓库资源配置面向当前 24 GiB / 20 逻辑 CPU 开发机：开发父组 CPUQuota=1000%，不限制内存；Rust 子组 MemoryHigh=16G、MemoryMax=18G、swap=1G，Cargo jobs 与测试线程均为 10。硬上限给桌面及其他工具留出余量。其他容量的机器需要调整自己的配置；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。已启动的 Cargo 沿用启动时的并发数，后续新调用读取新设置。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
+- 本地编译与测试默认按可用 CPU 的一半自动计算，最少为 1；显式整数配置优先。Linux CPU 配额的应用时机、迁移方式与内存示例见上面的资源配置说明。已启动的 Cargo 沿用启动时的并发数，后续新调用读取新设置。
 
 ### `node scripts/node/reset-account-password.js [options]`
 
@@ -209,14 +233,14 @@ cargo test --workspace
 ```
 
 实际并发参数由 `scripts/node/testing/verify-runtime.js` 的运行时配置控制。
-默认编译 job 数和测试线程数都使用机器全部逻辑 CPU；同一 worktree 仍只运行一条 Cargo 命令。直接运行定向测试时复用同一配置，不写死 job 数：
+本地默认编译 job 数和测试线程数都使用可用逻辑 CPU 的一半（向下取整，最少为 1）；CI 使用全部 runner CPU。同一 worktree 仍只运行一条 Cargo 命令。直接运行定向测试时复用同一编译并发配置，不写死 job 数：
 
 ```bash
 CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" \
   cargo test -p control-plane <test-filter> --lib
 ```
 
-只有开发者主动排查资源问题时，才在 `.1flowbase.verify.local.json` 显式覆盖并发值；仓库本地默认不降载。
+开发者可以在 `.1flowbase.verify.local.json` 显式指定并发整数；省略字段或设置为 `"auto"` 时使用本地半机默认值，适配迁移后的 CPU 数量。
 
 ### `node scripts/node/cli/test-contracts.js`
 
