@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -79,9 +79,9 @@ export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProp
     tableId: string;
     workspaceId: string | undefined;
   }>();
-  const uploads = useRef(new Set<AbortController>());
+  const [uploads] = useState(() => new Set<AbortController>());
   useEffect(() => {
-    const controllers = uploads.current;
+    const controllers = uploads;
     return () => {
       for (const controller of controllers) controller.abort();
     };
@@ -271,7 +271,7 @@ export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProp
 
   const customRequest: UploadProps['customRequest'] = (request) => {
     const controller = new AbortController();
-    uploads.current.add(controller);
+    uploads.add(controller);
     async function upload() {
       if (!table || !csrfToken || !(request.file instanceof File)) {
         throw new Error(i18nText('frontstage', 'files.upload_unavailable'));
@@ -306,7 +306,7 @@ export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProp
         message.error(failure.message);
       })
       .finally(() => {
-        uploads.current.delete(controller);
+        uploads.delete(controller);
       });
     return { abort: () => controller.abort() };
   };

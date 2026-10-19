@@ -4,7 +4,7 @@ import type {
 } from '@1flowbase/api-client';
 import { useNavigate } from '@tanstack/react-router';
 import { Alert, Button, Empty, Flex, Input, Tabs, Typography } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
@@ -41,15 +41,15 @@ export function ApplicationTemplateCatalogPanel({
     name: string;
     body: ApplicationTemplateReference;
   }>();
-  const previousPages = useRef(
-    new Map<string, { cursor?: string; page: number }>()
+  const [previousPages] = useState(
+    () => new Map<string, { cursor?: string; page: number }>()
   );
   useEffect(() => {
     setSearchText(q ?? '');
-    previousPages.current.clear();
+    previousPages.clear();
   }, [q]);
   const currentPage = cursor
-    ? (previousPages.current.get(cursor)?.page ?? 2)
+    ? (previousPages.get(cursor)?.page ?? 2)
     : 1;
   const goTo = (nextCursor?: string, query = q) =>
     void navigate({
@@ -207,13 +207,13 @@ export function ApplicationTemplateCatalogPanel({
                 onPreviousPage: () =>
                   goTo(
                     cursor
-                      ? previousPages.current.get(cursor)?.cursor
+                      ? previousPages.get(cursor)?.cursor
                       : undefined
                   ),
                 onNextPage: () => {
                   const nextCursor = catalog.data?.next_cursor;
                   if (!nextCursor) return;
-                  previousPages.current.set(nextCursor, {
+                  previousPages.set(nextCursor, {
                     cursor,
                     page: currentPage + 1
                   });

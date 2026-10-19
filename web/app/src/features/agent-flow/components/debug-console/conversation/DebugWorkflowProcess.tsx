@@ -2,7 +2,7 @@ import Think from '@ant-design/x/es/think';
 import ThoughtChain, {
   type ThoughtChainItemType
 } from '@ant-design/x/es/thought-chain';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import { Typography } from 'antd';
@@ -75,7 +75,7 @@ export function DebugWorkflowProcess({
   const [expandedNodeKeys, setExpandedNodeKeys] = useState<Set<string>>(
     () => new Set()
   );
-  const automaticallyExpandedNodeKeysRef = useRef(new Set<string>());
+  const [automaticallyExpandedNodeKeys] = useState(() => new Set<string>());
   const traceGroups = useMemo(() => groupTraceItemsForDisplay(items), [items]);
   const liveToolDebugPayloads = useMemo(
     () => traceGroups.map((group) => group.item.debugPayload),
@@ -114,10 +114,10 @@ export function DebugWorkflowProcess({
       let changed = false;
 
       automaticDetailKeys.forEach((key) => {
-        if (automaticallyExpandedNodeKeysRef.current.has(key)) {
+        if (automaticallyExpandedNodeKeys.has(key)) {
           return;
         }
-        automaticallyExpandedNodeKeysRef.current.add(key);
+        automaticallyExpandedNodeKeys.add(key);
         if (!next.has(key)) {
           next.add(key);
           changed = true;
