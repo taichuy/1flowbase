@@ -135,7 +135,6 @@
     "name": "名称",
     "name_required": "请输入名称",
     "network_retry": "请检查网络后重试。",
-    "new_page_prefix": "页面 新建 ",
     "new_page_with_number": "页面 新建 {{value1}}",
     "no_available_components": "当前工作区没有可用组件",
     "no_available_block_catalog_entries": "当前没有可用区块目录项，暂时无法新增区块。",

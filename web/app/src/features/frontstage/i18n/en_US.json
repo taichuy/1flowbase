@@ -135,7 +135,6 @@
     "name": "Name",
     "name_required": "Please enter name",
     "network_retry": "Please check the network and try again.",
-    "new_page_prefix": "Page New",
     "new_page_with_number": "Page New {{value1}}",
     "no_available_components": "No components are available in the current workspace",
     "no_available_block_catalog_entries": "There are currently no available block directory entries, and new blocks cannot be added at the moment.",
