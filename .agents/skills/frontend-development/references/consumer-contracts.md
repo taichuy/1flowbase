@@ -6,7 +6,7 @@
 
 - 接口授权与注册归属：[后端设置注册规则](../../backend-development/references/console-settings-registration.md)。
 - 协议、身份、终态与交付：[接口生命周期](../../../../docs/architecture/interface-lifecycle.md)，按文档目录读取相关章节。
-- 当前角色目录与写入类型：[console-roles.ts](../../../../web/packages/api-client/src/console-roles.ts)；类型是消费入口，后端 DTO / 已确认 contract 才是语义真值。
+- 当前角色目录与写入类型：[console-roles.ts](../../../../web/packages/api-client/src/console/identity/roles.ts)；类型是消费入口，后端 DTO / 已确认 contract 才是语义真值。
 
 ## API Consumption
 

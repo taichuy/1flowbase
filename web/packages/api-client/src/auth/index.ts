@@ -12,7 +12,7 @@ export {
   type ConsoleSessionActor,
   type ConsoleSessionSnapshot
 } from '../console/session';
-export { fetchConsoleMe, type ConsoleMe } from '../console-me';
+export { fetchConsoleMe, type ConsoleMe } from '../console/identity/me';
 export {
   fetchPublicLoginEntries,
   signInWithPassword,

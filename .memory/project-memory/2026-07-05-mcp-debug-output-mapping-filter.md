@@ -20,7 +20,7 @@ scope:
   - api/apps/api-server/src/routes/settings/mcp_management/debug_execute.rs
   - api/apps/api-server/src/_tests/mcp_management_debug_execute_routes.rs
   - web/app/src/features/settings/components/mcp-management
-  - web/packages/api-client/src/console-mcp-management.ts
+  - web/packages/api-client/src/console/administration/mcp-management.ts
 ---
 
 # MCP Debug output_mapping filter semantics

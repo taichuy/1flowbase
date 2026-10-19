@@ -124,7 +124,7 @@ test("scanSourceFile distinguishes protocol history from actionable maintenance 
 test("scanSourceFile reports low-value test smells as advisory findings", () => {
   const findings = scanSourceFile({
     relativePath:
-      "web/packages/api-client/src/_tests/console-frontstage.test.ts",
+      "web/packages/api-client/src/_tests/console/modeling/frontstage.test.ts",
     content: [
       "test('frontstage transport spy is active', () => {",
       "  expect(apiFetchSpy).toHaveBeenCalledTimes(0);",

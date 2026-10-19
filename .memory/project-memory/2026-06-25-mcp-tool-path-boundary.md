@@ -19,7 +19,7 @@ scope:
   - api/crates/control-plane/src/mcp_management.rs
   - api/apps/api-server/src/routes/settings/mcp_management.rs
   - web/app/src/features/settings/components/mcp-management
-  - web/packages/api-client/src/console-mcp-management.ts
+  - web/packages/api-client/src/console/administration/mcp-management.ts
 ---
 
 # MCP Tool Path Boundary

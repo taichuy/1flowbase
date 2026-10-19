@@ -20,7 +20,7 @@ updated_at: 2026-04-20 15
 last_verified_at: 2026-04-20 15
 decision_policy: verify_before_decision
 scope:
-  - /home/taichu/git/1flowbase/web/packages/api-client/src/console-model-providers.ts
+  - /home/taichu/git/1flowbase/web/packages/api-client/src/console/modeling/model-providers.ts
   - /home/taichu/git/1flowbase/web/app/src/features/settings/api/model-providers.ts
   - /home/taichu/git/1flowbase/web/app/src/style-boundary/registry.tsx
   - /home/taichu/git/1flowbase/scripts/node/verify-repo.js

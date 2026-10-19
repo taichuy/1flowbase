@@ -2,7 +2,7 @@ import { apiFetch, apiFetchVoid } from '../transport';
 import type {
   InstallConsoleOfficialPluginInput,
   InstallConsolePluginResult
-} from '../console-plugins';
+} from './administration/plugins';
 
 export interface ConsoleNetworkEgressOfficialPluginCatalogEntry {
   plugin_id: string;

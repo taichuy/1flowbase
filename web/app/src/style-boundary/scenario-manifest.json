@@ -685,7 +685,7 @@
       "web/app/src/features/agent-flow/store/editor/index.ts",
       "web/app/src/style-boundary/registry.tsx",
       "web/app/src/app/router.tsx",
-      "web/packages/api-client/src/console-model-providers.ts",
+      "web/packages/api-client/src/console/modeling/model-providers.ts",
       "web/packages/flow-schema/src/index.ts",
       "web/app/src/features/agent-flow/components/editor/styles/shell.css",
       "web/app/src/features/agent-flow/components/editor/styles/dock-panel.css",
@@ -993,7 +993,7 @@
       "web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx",
       "web/app/src/features/settings/components/mcp-management/bundle/McpBundleReviewModal.tsx",
       "web/app/src/features/settings/api/mcp-management.ts",
-      "web/packages/api-client/src/console-mcp-management.ts"
+      "web/packages/api-client/src/console/administration/mcp-management.ts"
     ],
     "boundaryNodes": [
       {
@@ -1083,10 +1083,10 @@
       "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx",
       "web/app/src/features/settings/components/model-provider-request-logs/model-provider-request-logs-panel.css",
       "web/app/src/app/router.tsx",
-      "web/packages/api-client/src/console-data-models.ts",
-      "web/packages/api-client/src/console-model-providers.ts",
-      "web/packages/api-client/src/console-billing.ts",
-      "web/packages/api-client/src/console-plugins.ts",
+      "web/packages/api-client/src/console/modeling/data-models.ts",
+      "web/packages/api-client/src/console/modeling/model-providers.ts",
+      "web/packages/api-client/src/console/administration/billing.ts",
+      "web/packages/api-client/src/console/administration/plugins.ts",
       "web/packages/api-client/src/console/network-center.ts",
       "web/app/src/features/settings/i18n/zh_Hans.json",
       "web/app/src/features/settings/i18n/en_US.json"
@@ -1404,7 +1404,7 @@
       "web/app/src/style-boundary/SettingsSystemRuntimeStyleBoundaryScene.tsx",
       "web/app/src/style-boundary/renderers.tsx",
       "web/app/src/app/router.tsx",
-      "web/packages/api-client/src/console-system.ts"
+      "web/packages/api-client/src/console/administration/system.ts"
     ],
     "boundaryNodes": [
       {
@@ -1650,7 +1650,7 @@
       "web/app/src/features/settings/i18n/zh_Hans.json",
       "web/app/src/features/settings/i18n/en_US.json",
       "web/app/src/app/router.tsx",
-      "web/packages/api-client/src/console-mcp-management.ts"
+      "web/packages/api-client/src/console/administration/mcp-management.ts"
     ],
     "boundaryNodes": [
       {

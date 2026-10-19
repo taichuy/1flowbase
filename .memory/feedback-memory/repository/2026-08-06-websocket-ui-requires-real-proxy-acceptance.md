@@ -19,7 +19,7 @@ last_verified_at: 2026-08-06 11
 decision_policy: direct_reference
 scope:
   - web/app/vite.config.ts
-  - web/packages/api-client/src/console-assistant.ts
+  - web/packages/api-client/src/console/administration/assistant.ts
   - web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSession.ts
   - api/apps/api-server/src/routes/assistant/websocket.rs
 ---

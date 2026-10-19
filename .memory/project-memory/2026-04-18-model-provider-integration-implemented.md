@@ -27,7 +27,7 @@ scope:
   - api/crates/control-plane/src/model_provider.rs
   - api/crates/control-plane/src/plugin_management.rs
   - api/crates/orchestration-runtime
-  - web/packages/api-client/src/console-model-providers.ts
+  - web/packages/api-client/src/console/modeling/model-providers.ts
   - web/app/src/features/settings
   - web/app/src/features/agent-flow
   - web/app/src/style-boundary

@@ -27,7 +27,7 @@ scope:
   - https://github.com/taichuy/1flowbase/issues/1608
   - web/app/src/features/agent-flow/components/embedded-assistant
   - web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSession.ts
-  - web/packages/api-client/src/console-assistant.ts
+  - web/packages/api-client/src/console/administration/assistant.ts
   - api/apps/api-server/src/routes/assistant.rs
   - api/crates/control-plane/src/application_public_api/run_service.rs
   - api/crates/storage-durable/postgres/src/orchestration_runtime_repository
