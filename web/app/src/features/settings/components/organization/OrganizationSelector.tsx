@@ -57,7 +57,7 @@ export function OrganizationSelector({
   ]);
   const searching = Boolean(search.trim());
   const { token } = theme.useToken();
-  const treeData = useMemo(() => {
+  const treeData = useMemo<OrganizationNode[]>(() => {
     const present = (rows: DepartmentTreeRow[]): OrganizationNode[] =>
       rows.flatMap((row) => {
         const children = present(row.children ?? []);

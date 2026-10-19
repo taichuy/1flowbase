@@ -1309,7 +1309,7 @@ describe('McpManagementPanel', () => {
     expect(desIdOptions).toHaveLength(1);
     expect(applicationIdOptions).toHaveLength(2);
     fireEvent.click(applicationIdOptions[1]);
-    fireEvent.click(within(dialog).getByRole('button', { name: '添加', exact: true }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^添\s*加$/ }));
     expect(within(dialog).getByLabelText('mcp_param application_id')).toHaveValue('application_id');
   }, 90000);
 
