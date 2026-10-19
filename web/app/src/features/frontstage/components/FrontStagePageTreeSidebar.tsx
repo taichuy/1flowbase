@@ -388,15 +388,19 @@ function renderTreeNode({
   const nodeContent = (
     <div className="frontstage-page-tree-sidebar__node-main">
       {node.kind === 'group' && (
-        <span
+        <button
+          type="button"
+          aria-label={title}
+          aria-expanded={!isCollapsed}
           className="frontstage-page-tree-sidebar__chevron"
+          onKeyDown={(event) => event.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             toggleGroupCollapse(node.id);
           }}
         >
           {isCollapsed ? <RightOutlined /> : <DownOutlined />}
-        </span>
+        </button>
       )}
       {renderNodeIcon(node)}
       <span className="frontstage-page-tree-sidebar__node-copy">

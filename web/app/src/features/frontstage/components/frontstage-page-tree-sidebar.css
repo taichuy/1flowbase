@@ -225,6 +225,9 @@
 }
 
 .frontstage-page-tree-sidebar__chevron {
+  border: 0;
+  padding: 0;
+  background: transparent;
   cursor: pointer;
   display: inline-flex;
   align-items: center;

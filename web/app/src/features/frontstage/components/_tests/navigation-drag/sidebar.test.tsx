@@ -154,3 +154,20 @@ test('pending operations cannot start a move or display a destination', () => {
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(move).not.toHaveBeenCalled();
 });
+
+
+test('group collapse button exposes state and isolates keyboard bubbling', () => {
+  setup();
+  const collapse = within(item('group', 'Group')).getByRole('button', {
+    name: 'Group',
+    expanded: true
+  });
+  fireEvent.keyDown(collapse, { key: 'Enter' });
+  expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.click(collapse);
+  expect(collapse).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByTestId('frontstage-tree-node-group-Nested')).not.toBeInTheDocument();
+  fireEvent.click(collapse);
+  expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByTestId('frontstage-tree-node-group-Nested')).toBeInTheDocument();
+});
