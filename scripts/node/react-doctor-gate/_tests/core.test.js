@@ -13,7 +13,7 @@ const {
 } = require('../core.js');
 
 test('buildReactDoctorCommand records an explicit base while scanning JSON evidence', () => {
-  assert.deepEqual(buildReactDoctorCommand({ repoRoot: '/repo', diffBase: 'abc123' }), {
+  assert.deepEqual(buildReactDoctorCommand({ repoRoot: '/repo', diffBase: 'abc123', scanMode: 'diff' }), {
     command: 'npm',
     args: [
       'exec',
@@ -40,6 +40,7 @@ test('buildReactDoctorCommand accepts an explicit debt audit baseline', () => {
   const command = buildReactDoctorCommand({
     repoRoot: '/repo',
     diffBase: 'origin/main',
+    scanMode: 'diff',
   });
 
   assert.deepEqual(command.args.slice(7, 11), ['--diff', 'origin/main', '--json', '--no-score']);
@@ -67,6 +68,7 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
     env: { REACT_DOCTOR_DIFF_BASE: 'base-sha' },
   }), 'base-sha');
   const doctorOutput = {
+    mode: 'diff',
     summary: { totalDiagnosticCount: 2 },
     diagnostics: ['a', 'b'].map((name) => ({
       filePath: `src/features/${name}.tsx`, plugin: 'react-doctor', rule: 'no-event-handler', line: 1,
@@ -92,6 +94,7 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
     repoRoot,
     env: {
       PATH: process.env.PATH,
+      REACT_DOCTOR_SCAN_MODE: 'diff',
       REACT_DOCTOR_DIFF_BASE: 'base-sha',
       REACT_DOCTOR_CANDIDATE_SHA: 'candidate-sha',
     },

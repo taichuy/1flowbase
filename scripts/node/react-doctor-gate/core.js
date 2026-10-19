@@ -27,6 +27,7 @@ function formatCommand(command) {
 function buildReactDoctorCommand({
   repoRoot = getRepoRoot(),
   diffBase,
+  scanMode = 'full',
 } = {}) {
   return {
     command: 'npm',
@@ -38,8 +39,7 @@ function buildReactDoctorCommand({
       '--',
       'react-doctor',
       'web/app',
-      '--diff',
-      diffBase,
+      ...(scanMode === 'diff' ? ['--diff', diffBase] : ['--full']),
       '--json',
       '--no-score',
       '--fail-on',
@@ -49,6 +49,15 @@ function buildReactDoctorCommand({
     ],
     cwd: repoRoot,
   };
+}
+
+function resolveReactDoctorScanMode({ env = process.env } = {}) {
+  const mode = env.REACT_DOCTOR_SCAN_MODE?.trim()
+    || (env.GITHUB_EVENT_NAME === 'pull_request' ? 'diff' : 'full');
+  if (mode !== 'full' && mode !== 'diff') {
+    throw new Error('React Doctor scan mode must be full or diff');
+  }
+  return mode;
 }
 
 function resolveReactDoctorDiffBase({
@@ -215,6 +224,8 @@ function writeReactDoctorReports({
     candidateSha: range.candidateSha,
     changedFiles: range.changedFiles,
     changedFileCount: range.changedFiles.length,
+    scanMode: range.scanMode,
+    reportedScanMode: doctorReport?.mode ?? null,
     unsuppressedDiagnostics: doctorReport?.summary?.totalDiagnosticCount ?? null,
     suppressedDiagnostics: resolveSuppressedDiagnostics(doctorReport),
     configuredSuppressionEntries,
@@ -269,8 +280,9 @@ function runReactDoctorGate({
   writeStdout = (text) => process.stdout.write(text),
   writeStderr = (text) => process.stderr.write(text),
 } = {}) {
-  const range = resolveReactDoctorRange({ repoRoot, env, spawnSyncImpl });
-  const command = buildReactDoctorCommand({ repoRoot, diffBase: range.baseSha });
+  const scanMode = resolveReactDoctorScanMode({ env });
+  const range = { ...resolveReactDoctorRange({ repoRoot, env, spawnSyncImpl }), scanMode };
+  const command = buildReactDoctorCommand({ repoRoot, diffBase: range.baseSha, scanMode });
   const result = spawnSyncImpl(command.command, command.args, {
     cwd: command.cwd,
     env,
@@ -288,6 +300,11 @@ function runReactDoctorGate({
     doctorReport: parseDoctorJsonReport(stdout),
     toolPackage: REACT_DOCTOR_PACKAGE,
   });
+  const reportedMode = parseDoctorJsonReport(stdout)?.mode;
+  if (reportedMode !== scanMode) {
+    diagnosticReview.status = 'invalid-scan-mode';
+    diagnosticReview.findings.push({ reason: `requested ${scanMode} scan, received ${reportedMode ?? 'unknown'}` });
+  }
   const suppressionCount = countConfiguredSuppressions({ repoRoot, changedFiles: range.changedFiles });
   const exitCode = toolExitCode || (diagnosticReview.status !== 'reviewed' || suppressionCount !== 0 ? 1 : 0);
 
@@ -325,6 +342,7 @@ module.exports = {
   resolveCandidateSource,
   resolveSuppressedDiagnostics,
   resolveReactDoctorDiffBase,
+  resolveReactDoctorScanMode,
   resolveReactDoctorRange,
   resolveReactDoctorCandidate,
   runReactDoctorGate,
