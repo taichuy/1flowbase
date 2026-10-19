@@ -533,4 +533,3 @@ fn code_protocol_context_plan() -> CompiledPlan {
     );
     plan
 }
-

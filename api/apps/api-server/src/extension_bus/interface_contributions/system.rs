@@ -14,38 +14,52 @@ pub(super) fn contributions(
                 "system.runtime_process.terminate",
             ],
             &["api-server.console-system"],
-            crate::routes::system::compile_registry(crate::routes::system::SystemInterfaceDependencies {
-                store: state.store.clone(),
-                profiles: crate::runtime_profile_client::RuntimeProfileSnapshotCache::new(
-                    state.infrastructure.cache_store(), state.infrastructure.distributed_lock(),
-                    Arc::clone(&state.api_runtime_profile), Arc::clone(&state.runtime_host_system),
-                    state.api_node_id.clone(), state.process_started_at,
-                ),
-                api_node_id: state.api_node_id.clone(),
-                provider_install_root: state.provider_install_root.clone(),
-                host_extension_dropin_root: state.host_extension_dropin_root.clone(),
-                process_sampler: Arc::clone(&state.runtime_process_sampler),
-                network_egress: state.network_egress_http_clients(),
-            })?,
+            crate::routes::system::compile_registry(
+                crate::routes::system::SystemInterfaceDependencies {
+                    store: state.store.clone(),
+                    profiles: crate::runtime_profile_client::RuntimeProfileSnapshotCache::new(
+                        state.infrastructure.cache_store(),
+                        state.infrastructure.distributed_lock(),
+                        Arc::clone(&state.api_runtime_profile),
+                        Arc::clone(&state.runtime_host_system),
+                        state.api_node_id.clone(),
+                        state.process_started_at,
+                    ),
+                    api_node_id: state.api_node_id.clone(),
+                    provider_install_root: state.provider_install_root.clone(),
+                    host_extension_dropin_root: state.host_extension_dropin_root.clone(),
+                    process_sampler: Arc::clone(&state.runtime_process_sampler),
+                    network_egress: state.network_egress_http_clients(),
+                },
+            )?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-system-templates",
-            &["system_templates.catalog", "system_templates.export", "system_templates.preview", "system_templates.install"],
+            &[
+                "system_templates.catalog",
+                "system_templates.export",
+                "system_templates.preview",
+                "system_templates.install",
+            ],
             &["api-server.console-system-templates"],
             crate::routes::system_templates::interface::compile_registry(
                 crate::routes::system_templates::plugins::TemplateDependencies {
                     bootstrap_workspace_id: state.bootstrap_workspace_id,
                     application_template_root: state.application_template_root.clone(),
-                    store: state.store.clone(), provider_runtime: state.provider_runtime.clone(),
-                    runtime_registry_sync: crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
-                        state.store.clone(), state.runtime_engine.registry().clone(),
-                    ),
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    runtime_registry_sync:
+                        crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
+                            state.store.clone(),
+                            state.runtime_engine.registry().clone(),
+                        ),
                     official_plugin_source: state.official_plugin_source.clone(),
                     official_catalog_source: state.official_extension_catalog_source.clone(),
                     cache_store: state.infrastructure.cache_store(),
-                    provider_install_root: state.provider_install_root.clone(), api_node_id: state.api_node_id.clone(),
+                    provider_install_root: state.provider_install_root.clone(),
+                    api_node_id: state.api_node_id.clone(),
                     mcp_interface_catalog: mcp_interface_catalog_dependencies.clone(),
-                }
+                },
             )?,
         ),
         InterfaceRegistryContribution::new(

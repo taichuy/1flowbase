@@ -114,4 +114,3 @@ pub(super) fn runtime_acl_denial_reason(error: &anyhow::Error) -> Option<&'stati
 
     None
 }
-

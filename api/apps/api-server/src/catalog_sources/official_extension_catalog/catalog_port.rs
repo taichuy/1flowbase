@@ -371,4 +371,3 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
         })
     }
 }
-

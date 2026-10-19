@@ -1422,5 +1422,4 @@ fn managed_contract_schema<T: InterfaceContract>() -> ManagedContractSchema {
     }
 }
 
-
 mod compiler;

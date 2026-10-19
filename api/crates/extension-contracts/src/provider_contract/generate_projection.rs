@@ -352,4 +352,3 @@ fn canonical_block_kind(block_type: &str) -> Option<ProviderCanonicalBlockKind> 
         _ => None,
     }
 }
-

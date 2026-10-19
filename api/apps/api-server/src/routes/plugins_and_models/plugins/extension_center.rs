@@ -81,8 +81,8 @@ pub(crate) mod interface;
 mod managed_execution;
 mod managed_schema;
 mod official_install;
-use official_install::install_or_update_official_extension;
 use managed_execution::*;
+use official_install::install_or_update_official_extension;
 
 use builtin_mcp::builtin_frontstage_catalog_entry;
 pub(crate) use builtin_mcp::BUILTIN_FRONTSTAGE_CATALOG_ID;

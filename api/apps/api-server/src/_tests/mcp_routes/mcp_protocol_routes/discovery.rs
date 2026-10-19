@@ -336,4 +336,3 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
     .await;
     assert_eq!(missing_tool_payload["error"]["code"], json!(-32602));
 }
-

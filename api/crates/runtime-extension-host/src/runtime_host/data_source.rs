@@ -239,4 +239,3 @@ impl DataSourceRuntimePort for RuntimeExtensionHost {
         operation.await.map_err(Into::into)
     }
 }
-

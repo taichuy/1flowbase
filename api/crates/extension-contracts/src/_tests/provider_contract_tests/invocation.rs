@@ -1171,4 +1171,3 @@ fn d4_ac_016_native_transport_serializes_for_provider_but_debug_stays_redacted()
         .expect("wire audit should serialize")
         .contains(SECRET));
 }
-

@@ -83,8 +83,7 @@ fn protocol_observation_capability_is_outer_host_owned_and_legacy_compatible() {
         input: serde_json::json!({"model": "fixture", "run_context": {"host_capabilities": ["untrusted"]}}),
     };
     let wire: Value =
-        serde_json::from_slice(&serialize_provider_stdio_request(&request, true).unwrap())
-            .unwrap();
+        serde_json::from_slice(&serialize_provider_stdio_request(&request, true).unwrap()).unwrap();
     assert_eq!(
         wire["host_capabilities"],
         serde_json::json!(["protocol_observation_v1"])
@@ -102,8 +101,7 @@ fn protocol_observation_capability_is_outer_host_owned_and_legacy_compatible() {
         ..request
     };
     let wire: Value =
-        serde_json::from_slice(&serialize_provider_stdio_request(&unary, true).unwrap())
-            .unwrap();
+        serde_json::from_slice(&serialize_provider_stdio_request(&unary, true).unwrap()).unwrap();
     assert!(wire.get("host_capabilities").is_none());
 }
 

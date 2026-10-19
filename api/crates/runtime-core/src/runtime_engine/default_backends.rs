@@ -378,4 +378,3 @@ pub(super) fn test_model_metadata() -> ModelMetadata {
         ),
     }
 }
-

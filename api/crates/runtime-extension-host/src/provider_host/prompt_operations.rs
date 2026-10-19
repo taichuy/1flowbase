@@ -172,5 +172,4 @@ impl ProviderHost {
             Ok(ProviderCompactOutput { result })
         })
     }
-
 }

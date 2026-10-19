@@ -140,6 +140,32 @@ fn provider_runtime_error_normalizes_common_vendor_failures() {
 }
 
 #[test]
+fn provider_runtime_error_display_preserves_upstream_context_through_operation_errors() {
+    let message = "400 Bad Request: upstream rejected request";
+    let summary = "x-request-id=req_123";
+    let runtime =
+        ProviderRuntimeError::new(ProviderRuntimeErrorKind::ProviderUpstreamError, message)
+            .with_provider_summary(summary);
+    let runtime_display: &dyn std::fmt::Display = &runtime;
+    let count_tokens = ProviderCountTokensError::Runtime {
+        error: runtime.clone(),
+    };
+    let compact = ProviderCompactError::Runtime {
+        error: runtime.clone(),
+    };
+    let operation_errors: [&dyn std::error::Error; 2] = [&count_tokens, &compact];
+
+    let display = runtime_display.to_string();
+    assert!(display.contains(message));
+    assert!(display.contains(summary));
+    for error in operation_errors {
+        let display = error.to_string();
+        assert!(display.contains(message));
+        assert!(display.contains(summary));
+    }
+}
+
+#[test]
 fn provider_stdio_contract_uses_snake_case_methods_and_result_payloads() {
     let request = ProviderStdioRequest {
         method: ProviderStdioMethod::ListModels,
@@ -258,4 +284,3 @@ fn provider_balance_result_serializes_deepseek_shape() {
     assert_eq!(payload["balance_infos"][0]["topped_up_balance"], "100.00");
     assert_eq!(payload["provider_metadata"]["provider"], "deepseek");
 }
-

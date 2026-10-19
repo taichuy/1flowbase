@@ -726,4 +726,3 @@ async fn output_protocol_failure_without_node_retry_fails_without_exposing_parti
         .expect("llm trace should exist");
     assert!(llm_trace.output_payload.get("text").is_none());
 }
-

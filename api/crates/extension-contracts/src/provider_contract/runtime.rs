@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

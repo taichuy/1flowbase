@@ -369,4 +369,3 @@ fn compile_variable_aggregator_rejects_incompatible_or_unknown_run_level_types()
             .expect_err("incompatible and unknown run-level types must be rejected");
     }
 }
-

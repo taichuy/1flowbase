@@ -632,4 +632,3 @@ fn root_1998_ac_006_rr15_rr16_decision_bindings_fail_publish_when_missing_extra_
         ))
     ));
 }
-

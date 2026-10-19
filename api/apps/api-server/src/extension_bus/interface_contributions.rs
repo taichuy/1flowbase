@@ -1,7 +1,7 @@
-mod provider_operations;
+mod mcp;
 mod network;
 mod plugins;
-mod mcp;
+mod provider_operations;
 mod system;
 
 use std::{collections::BTreeSet, sync::Arc};
@@ -1346,7 +1346,10 @@ pub(crate) fn production_interface_contributions(
             crate::routes::application_management::compile_registry(state.store.clone())?,
         ),
     ]);
-    contributions.extend(system::contributions(state, &mcp_interface_catalog_dependencies)?);
+    contributions.extend(system::contributions(
+        state,
+        &mcp_interface_catalog_dependencies,
+    )?);
     contributions.extend(vec![
         InterfaceRegistryContribution::new(
             "api-server.application-agent-logs",

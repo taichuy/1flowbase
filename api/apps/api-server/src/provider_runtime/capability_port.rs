@@ -72,4 +72,3 @@ impl CapabilityPluginRuntimePort for ApiProviderRuntime {
         result
     }
 }
-

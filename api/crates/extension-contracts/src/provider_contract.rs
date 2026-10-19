@@ -9,8 +9,8 @@ mod count_tokens;
 pub use count_tokens::*;
 
 mod generate_projection;
-pub use generate_projection::*;
 use generate_projection::project_generate_reasoning_history;
+pub use generate_projection::*;
 
 mod external_context;
 pub use external_context::*;

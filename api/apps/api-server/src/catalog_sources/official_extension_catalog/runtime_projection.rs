@@ -357,4 +357,3 @@ fn runtime_extension_i18n_summary(
         bundles,
     })
 }
-

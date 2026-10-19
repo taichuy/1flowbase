@@ -66,8 +66,8 @@ use crate::runtime_activity::{
 
 mod capability_port;
 mod distribution_registry;
-mod provider_port;
 mod model_provider_slot;
+mod provider_port;
 mod transport_session_lifecycle;
 
 pub(crate) use transport_session_lifecycle::{

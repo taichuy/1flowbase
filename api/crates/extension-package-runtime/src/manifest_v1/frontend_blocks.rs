@@ -372,4 +372,3 @@ fn validate_frontend_block_permissions(
     )?;
     Ok(())
 }
-

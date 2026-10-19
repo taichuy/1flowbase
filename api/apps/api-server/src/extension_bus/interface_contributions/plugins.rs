@@ -60,8 +60,6 @@ pub(super) fn contributions(
                 "extension_center.managed_execution.view",
                 "extension_center.lifecycle_deliveries.resume",
                 "extension_center.managed_executions.retire",
-
-
                 "extension_center.installed.disable",
                 "extension_center.installed.delete",
                 "extension_center.catalog.view",
@@ -78,7 +76,9 @@ pub(super) fn contributions(
                     provider_runtime: state.provider_runtime.clone(),
                     official_plugin_source: state.official_plugin_source.clone(),
                     official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
-                    official_extension_catalog_source: state.official_extension_catalog_source.clone(),
+                    official_extension_catalog_source: state
+                        .official_extension_catalog_source
+                        .clone(),
                     cache_store: state.infrastructure.cache_store(),
                     provider_install_root: state.provider_install_root.clone(),
                     api_node_id: state.api_node_id.clone(),

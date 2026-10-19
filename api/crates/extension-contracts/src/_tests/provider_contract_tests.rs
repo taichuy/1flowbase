@@ -33,7 +33,7 @@ use extension_contracts::provider_contract::{
 };
 use serde_json::json;
 
-mod operations;
 mod invocation;
+mod operations;
 mod runtime_output;
 mod transport_recovery;
