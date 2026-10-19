@@ -4,9 +4,9 @@
     {
       "file": "web/app/src/features/settings/components/role-permissions/RoleDataPolicySection.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "caf64b4b4f78c2d084c8423b9ebc98a254672263769b3c4ffbcc899d81267126",
+      "sourceSha256": "d133189dbb8c87a1311dc5a59637dc0737f478a81e76406061b1844d8e572e93",
       "reason": "The named owner and extracted child/controller boundaries below explain this component; declaration length alone is not a demonstrated competing responsibility or behavior failure. RoleDataPolicySection has real editable default/model-policy drafts but synchronizes them from each query data change without a dirty or role-owner guard. The role query is keyed by roleCode while local draft survives prop changes; replaceSettingsRoleDataPolicy uses the current roleCode with those retained values. Parent save only checks edit permission, not query readiness/owner. Table loading overlay is not a submission guard.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/role-permission-panel.test.tsx", "sha256": "b400ea0e152946f4a811519ded863f84ab140faaea22b556f906564c5b7ecc84"}, {"file": "web/app/src/features/settings/components/RolePermissionPanel.tsx", "sha256": "bb44afaa22a30b3c21aca8660d72ccf4b870f98b9d54c8c146f617a4c2cb6dd2"}, {"file": "web/app/src/features/settings/components/role-permissions/RoleDataPolicySection.tsx", "sha256": "caf64b4b4f78c2d084c8423b9ebc98a254672263769b3c4ffbcc899d81267126"}]
+      "evidence": [{"file": "web/app/src/features/settings/_tests/role-permission-panel.test.tsx", "sha256": "c6c85d2a33fa6de5feaf118c597d8b58a21510565ee877bb6749519c939a1a10"}, {"file": "web/app/src/features/settings/components/RolePermissionPanel.tsx", "sha256": "bb44afaa22a30b3c21aca8660d72ccf4b870f98b9d54c8c146f617a4c2cb6dd2"}, {"file": "web/app/src/features/settings/components/role-permissions/RoleDataPolicySection.tsx", "sha256": "d133189dbb8c87a1311dc5a59637dc0737f478a81e76406061b1844d8e572e93"}]
     },
     {
       "file": "web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx",
@@ -27,7 +27,7 @@
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "9ed3110c19d918457d675dfe7c175f5f0b5b09c5e22bcfd510fba6a94ffd2677",
       "reason": "The displayed source uses two linear semantic stages (select valid/authorized items, then project payload/UI) with no repeated expensive effect; original ordering and identity are intentional. policyTableRows filters catalogGroups by kind and only then assigns display_key to the filtered display order. SortablePolicyTable uses this display order; combining passes with the original catalog index would change drag/reorder positions. It is a linear projection, not repeated expensive lookup.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/role-permission-panel.test.tsx", "sha256": "b400ea0e152946f4a811519ded863f84ab140faaea22b556f906564c5b7ecc84"}]
+      "evidence": [{"file": "web/app/src/features/settings/_tests/role-permission-panel.test.tsx", "sha256": "c6c85d2a33fa6de5feaf118c597d8b58a21510565ee877bb6749519c939a1a10"}]
     }
   ]
 }
