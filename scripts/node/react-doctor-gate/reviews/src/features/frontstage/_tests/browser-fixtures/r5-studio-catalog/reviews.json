@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/_tests/browser-fixtures/r5-studio-catalog/R5StudioCatalogFixture.tsx",
+      "rule": "react-doctor/exhaustive-deps",
+      "sourceSha256": "45d0a241bc5cb3900dc1b87fecfff1149d0532abd62f36f1a6420b716113ccfa",
+      "reason": "createStudioRunConsoleStore is an imported module-stable zero-reactive-input factory. useMemo invokes it once for the fixture store; there is no omitted prop/state dependency. R5StudioCatalogFixture calls useMemo(createStudioRunConsoleStore, []) to create one console store. The imported factory is module stable and reads no reactive values; an empty dependency array is its intended per-fixture lifetime.",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/browser-fixtures/r5-studio-catalog/R5StudioCatalogFixture.tsx", "sha256": "45d0a241bc5cb3900dc1b87fecfff1149d0532abd62f36f1a6420b716113ccfa"}]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
+      "rule": "react-doctor/js-tosorted-immutable",
+      "sourceSha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f",
+      "reason": "HeroAnimation 属 DESIGN.md §2.1 Brand Layer，canvas RAF 和监听有 cleanup；三片柔光固定 filter，float keyframes 仅动画 transform，不逐帧改 blur。 排序目标是 spread/Array.from 新数组，未更改生产者集合，已满足输入不可变语义。",
+      "evidence": [{"file": "web/app/src/features/auth/_tests/sign-in-page.test.tsx", "sha256": "81151c5b29c2f943d19c56c35ecdb1bb13f2c14cfbdb710c8b99425073259202"}, {"file": "web/app/src/features/auth/components/HeroAnimation.tsx", "sha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f"}, {"file": "web/app/src/features/auth/pages/SignInPage.tsx", "sha256": "72fa87bbd72991743310c876053e897e33c462d1fc5e158ef65ba3d41b1fb1ba"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+    },
+    {
+      "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f",
+      "reason": "HeroAnimation 属 DESIGN.md §2.1 Brand Layer，canvas RAF 和监听有 cleanup；三片柔光固定 filter，float keyframes 仅动画 transform，不逐帧改 blur。 职责属于同一资源或组件生命周期，独立草稿/异步状态没有应合为单一字段的不变量；同步 setters 由 React19 batching，行数或 setter 数本身不能证明额外 render。",
+      "evidence": [{"file": "web/app/src/features/auth/_tests/sign-in-page.test.tsx", "sha256": "81151c5b29c2f943d19c56c35ecdb1bb13f2c14cfbdb710c8b99425073259202"}, {"file": "web/app/src/features/auth/components/HeroAnimation.tsx", "sha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f"}, {"file": "web/app/src/features/auth/pages/SignInPage.tsx", "sha256": "72fa87bbd72991743310c876053e897e33c462d1fc5e158ef65ba3d41b1fb1ba"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+    },
+    {
+      "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
+      "rule": "react-doctor/no-inline-exhaustive-style",
+      "sourceSha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f",
+      "reason": "HeroAnimation 属 DESIGN.md §2.1 Brand Layer，canvas RAF 和监听有 cleanup；三片柔光固定 filter，float keyframes 仅动画 transform，不逐帧改 blur。 Brand Layer 几何与 blur 是固定 style，动画只变 transform；无逐帧 blur 属性计算，运行时性能未取证。",
+      "evidence": [{"file": "web/app/src/features/auth/_tests/sign-in-page.test.tsx", "sha256": "81151c5b29c2f943d19c56c35ecdb1bb13f2c14cfbdb710c8b99425073259202"}, {"file": "web/app/src/features/auth/components/HeroAnimation.tsx", "sha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f"}, {"file": "web/app/src/features/auth/pages/SignInPage.tsx", "sha256": "72fa87bbd72991743310c876053e897e33c462d1fc5e158ef65ba3d41b1fb1ba"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+    },
+    {
+      "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
+      "rule": "react-doctor/no-large-animated-blur",
+      "sourceSha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f",
+      "reason": "HeroAnimation 属 DESIGN.md §2.1 Brand Layer，canvas RAF 和监听有 cleanup；三片柔光固定 filter，float keyframes 仅动画 transform，不逐帧改 blur。 Brand Layer 几何与 blur 是固定 style，动画只变 transform；无逐帧 blur 属性计算，运行时性能未取证。",
+      "evidence": [{"file": "web/app/src/features/auth/_tests/sign-in-page.test.tsx", "sha256": "81151c5b29c2f943d19c56c35ecdb1bb13f2c14cfbdb710c8b99425073259202"}, {"file": "web/app/src/features/auth/components/HeroAnimation.tsx", "sha256": "64a98fb615c73fdfdd97d68ab2c9fafe8caf3d1d901ec5e113467ed89397ab0f"}, {"file": "web/app/src/features/auth/pages/SignInPage.tsx", "sha256": "72fa87bbd72991743310c876053e897e33c462d1fc5e158ef65ba3d41b1fb1ba"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+    },
+    {
+      "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
+      "rule": "react-doctor/async-defer-await",
+      "sourceSha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be",
+      "reason": "The awaited result is consumed by the immediately following validation/preparation step; it is a data dependency. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
+      "evidence": [{"file": "web/app/src/features/auth/_tests/public-auth-block-component.test.tsx", "sha256": "c5783c4c741033800f440ec77a0f1ffa50e36a4222d2a29ffafa5d48481cce8d"}, {"file": "web/app/src/features/auth/_tests/public-auth-block.test.ts", "sha256": "989d165377a84c012d27f93da9e6cd1320b962191d4393e9da82534045e5b7df"}, {"file": "web/app/src/features/auth/_tests/public-auth-compilation.test.ts", "sha256": "ee907ed983140428b2522075be138c03f8da1124cd478a95d2c385bd9196886b"}, {"file": "web/app/src/features/auth/_tests/public-auth-import-graph.test.ts", "sha256": "d28817b8743c0aa7ef0bf6fe374a72ec6a0947bf78c74ebea1e9dc6746e04be9"}, {"file": "web/app/src/features/auth/_tests/public-auth-loading.test.ts", "sha256": "a596de210e4af809585a36944424410ab6cfe76c4cbd76f9108cd6b002005d72"}, {"file": "web/app/src/features/auth/_tests/public-auth-runtime-boundary.test.ts", "sha256": "8856b1e7c9a80198cc68dcdc01afa3ad5eeffc08b99fd5945be422539e81b4e1"}, {"file": "web/app/src/features/auth/components/PublicAuthBlock.tsx", "sha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be"}]
+    },
+    {
+      "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
+      "rule": "react-doctor/exhaustive-deps",
+      "sourceSha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be",
+      "reason": "Cleanup intentionally invalidates the current generation and clears current activeInstance, not a stale captured ref value; prepare itself carries the full reactive dependency list and late results check the generation. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
+      "evidence": [{"file": "web/app/src/features/auth/_tests/public-auth-block-component.test.tsx", "sha256": "c5783c4c741033800f440ec77a0f1ffa50e36a4222d2a29ffafa5d48481cce8d"}, {"file": "web/app/src/features/auth/_tests/public-auth-block.test.ts", "sha256": "989d165377a84c012d27f93da9e6cd1320b962191d4393e9da82534045e5b7df"}, {"file": "web/app/src/features/auth/_tests/public-auth-compilation.test.ts", "sha256": "ee907ed983140428b2522075be138c03f8da1124cd478a95d2c385bd9196886b"}, {"file": "web/app/src/features/auth/_tests/public-auth-import-graph.test.ts", "sha256": "d28817b8743c0aa7ef0bf6fe374a72ec6a0947bf78c74ebea1e9dc6746e04be9"}, {"file": "web/app/src/features/auth/_tests/public-auth-loading.test.ts", "sha256": "a596de210e4af809585a36944424410ab6cfe76c4cbd76f9108cd6b002005d72"}, {"file": "web/app/src/features/auth/_tests/public-auth-runtime-boundary.test.ts", "sha256": "8856b1e7c9a80198cc68dcdc01afa3ad5eeffc08b99fd5945be422539e81b4e1"}, {"file": "web/app/src/features/auth/components/PublicAuthBlock.tsx", "sha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be"}]
+    },
+    {
+      "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
+      "rule": "react-doctor/no-pass-live-state-to-parent",
+      "sourceSha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be",
+      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
+      "evidence": [{"file": "web/app/src/features/auth/_tests/public-auth-block-component.test.tsx", "sha256": "c5783c4c741033800f440ec77a0f1ffa50e36a4222d2a29ffafa5d48481cce8d"}, {"file": "web/app/src/features/auth/_tests/public-auth-block.test.ts", "sha256": "989d165377a84c012d27f93da9e6cd1320b962191d4393e9da82534045e5b7df"}, {"file": "web/app/src/features/auth/_tests/public-auth-compilation.test.ts", "sha256": "ee907ed983140428b2522075be138c03f8da1124cd478a95d2c385bd9196886b"}, {"file": "web/app/src/features/auth/_tests/public-auth-import-graph.test.ts", "sha256": "d28817b8743c0aa7ef0bf6fe374a72ec6a0947bf78c74ebea1e9dc6746e04be9"}, {"file": "web/app/src/features/auth/_tests/public-auth-loading.test.ts", "sha256": "a596de210e4af809585a36944424410ab6cfe76c4cbd76f9108cd6b002005d72"}, {"file": "web/app/src/features/auth/_tests/public-auth-runtime-boundary.test.ts", "sha256": "8856b1e7c9a80198cc68dcdc01afa3ad5eeffc08b99fd5945be422539e81b4e1"}, {"file": "web/app/src/features/auth/components/PublicAuthBlock.tsx", "sha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be"}]
+    }
+  ]
+}

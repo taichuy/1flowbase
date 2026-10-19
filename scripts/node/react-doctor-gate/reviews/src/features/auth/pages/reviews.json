@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/auth/pages/SignInPage.tsx",
+      "rule": "react-doctor/no-event-handler",
+      "sourceSha256": "72fa87bbd72991743310c876053e897e33c462d1fc5e158ef65ba3d41b1fb1ba",
+      "reason": "web/app/src/features/auth/pages/SignInPage.tsx:105（react-doctor/no-event-handler）：登录入口发现是异步外部 discovery，effect 只在 loading/failed/loginEntryId 检查后，当前登录入口已禁用/无效时请求 selector；无单个用户 click 能覆盖服务端入口变更。不能把发现后纠正入口的生命周期错误归为重复 event handler。 web/app/src/features/auth/pages/SignInPage.tsx:106（react-doctor/no-event-handler）：登录入口发现是异步外部 discovery，effect 只在 loading/failed/loginEntryId 检查后，当前登录入口已禁用/无效时请求 selector；无单个用户 click 能覆盖服务端入口变更。不能把发现后纠正入口的生命周期错误归为重复 event handler。",
+      "evidence": [{"file": "scripts/node/dev-up/_tests/vite-config-text.test.js", "sha256": "c3eb165ba5c7644691211e59da2203a10df8b411da34133a289aef4406fb11a1"}, {"file": "web/app/src/app/public-router.tsx", "sha256": "bc8da8526a2d8a5f70ddda15024c0496b43924b43efe07842905173aefa040f9"}, {"file": "web/app/src/features/auth/_tests/sign-in-page.test.tsx", "sha256": "81151c5b29c2f943d19c56c35ecdb1bb13f2c14cfbdb710c8b99425073259202"}, {"file": "web/app/src/features/auth/pages/SignInPage.tsx", "sha256": "72fa87bbd72991743310c876053e897e33c462d1fc5e158ef65ba3d41b1fb1ba"}]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/shared/ui/fixed-height-modal/ModalWidthResize.tsx",
+      "rule": "react-doctor/prefer-tag-over-role",
+      "sourceSha256": "393d1eaefa6f2e716b9dc7a8a0974ead36ea42b70f0ee5fa4491ddecdd937a40",
+      "reason": "web/app/src/shared/ui/fixed-height-modal/ModalWidthResize.tsx:25（react-doctor/prefer-tag-over-role）：这是可调尺寸的分隔控件（aria-orientation + drag/resize），不是静态水平分割线。<hr> 不能替代可交互 separator 的语义；ModalWidthResize 已有 tabIndex/ArrowLeft/ArrowRight。浮动面板/变量缓存缺失键盘能力另记 F2，不能通过换 hr 修复。",
+      "evidence": [{"file": "web/app/src/shared/ui/fixed-height-modal/FixedHeightModal.tsx", "sha256": "f7f474d5ce4ea8282217153929707336725ad7e589493efb8fd426a2fa45bb3f"}, {"file": "web/app/src/shared/ui/fixed-height-modal/ModalWidthResize.tsx", "sha256": "393d1eaefa6f2e716b9dc7a8a0974ead36ea42b70f0ee5fa4491ddecdd937a40"}, {"file": "web/app/src/shared/ui/fixed-height-modal/_tests/FixedHeightModal.test.tsx", "sha256": "e3be1d0a1adedcf3e6d4d8a62bffb49b175988f1e8edd511beb5b51297a34ad4"}, {"file": "web/app/src/shared/ui/fixed-height-modal/_tests/ModalWidthResize.test.tsx", "sha256": "ab520599b47b5bb810f536dd44e7258aebc6c1e686cfdb8438f1c121cfb0750c"}]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/app-shell/assistant-client-tools/context.ts",
+      "rule": "react-doctor/no-react19-deprecated-apis",
+      "sourceSha256": "50d49a1c475df65420b80c25148b046248504a9061dbff03c1625f145f0e00e4",
+      "reason": "web/app/src/app-shell/assistant-client-tools/context.ts:2（react-doctor/no-react19-deprecated-apis）：forwardRef/useContext 在当前 React 19 仍是受支持的 API；forwardRef 继续向 Monaco/CanvasHandle/overlay 转发 ref，useContext 读取所选 runtime provider。没有新建组件类型或丢失 ref 的证据；替换为 React.use 不改变当前行为，也不能修复此告警所暗示的错误。此结论只支持保留具体 API，不声称永不迁移。",
+      "evidence": [{"file": "web/app/src/app-shell/AppShellFrame.tsx", "sha256": "e1bc74b044a8d413b62ad445ec5216de6ac878cbdf5ed03bb23db526ebc46834"}, {"file": "web/app/src/app-shell/AssistantClientTools.tsx", "sha256": "a28a36767b36cdecc43c6cd7273472ce63bf444831c982c9102a0d8fe8ff7709"}, {"file": "web/app/src/app-shell/_tests/app-shell-frame.test.tsx", "sha256": "43c287e5ae51f952a79fb3f74eb44596cdff8c06ef2c288881f393d2d826a772"}, {"file": "web/app/src/app-shell/assistant-client-tools/context.ts", "sha256": "50d49a1c475df65420b80c25148b046248504a9061dbff03c1625f145f0e00e4"}, {"file": "web/app/src/features/applications/_tests/workflow-application-page.test.tsx", "sha256": "8d976bf5210ab2af706fcf99419a8e3e7b16897ec9fdd97b4ae14f03b3fc4dde"}, {"file": "web/app/src/features/applications/pages/ApplicationDetailPage.tsx", "sha256": "dd9981c47351b6399732a3968a01ee9d5bf208a4f14e17760c89d44b4c215f65"}]
+    }
+  ]
+}

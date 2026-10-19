@@ -1,0 +1,47 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
+      "rule": "react-doctor/no-adjust-state-on-prop-change",
+      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
+      "reason": "The external owner/identity changed, so previous draft/error/resource state is explicitly invalidated; the nearest fixture/source demonstrates that lifecycle. SystemTemplateDialog owns an asynchronous selected-file read. Input change clears previous error/busy/importFile before starting the new read; each completion checks cancelled. The nearest tests explicitly cover failed-read→preloaded-template and pending-read→preloaded-template. Removing the input synchronization would restore the stale error/busy defect.",
+      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx", "sha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112"}, {"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
+      "rule": "react-doctor/no-array-index-as-key",
+      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
+      "reason": "The list identity and mutable state contract are described in the file-specific rationale; a data-text key would not uniquely identify repeated entries. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
+      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
+      "rule": "react-doctor/no-array-index-key",
+      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
+      "reason": "Alias of no-array-index-as-key; the same source-level list identity analysis applies. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
+      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
+      "rule": "react-doctor/no-cascading-set-state",
+      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
+      "reason": "These setters apply the same external lifecycle transition to separate state axes; there is no self-triggering feedback loop. SystemTemplateDialog owns an asynchronous selected-file read. Input change clears previous error/busy/importFile before starting the new read; each completion checks cancelled. The nearest tests explicitly cover failed-read→preloaded-template and pending-read→preloaded-template. Removing the input synchronization would restore the stale error/busy defect.",
+      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx", "sha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112"}, {"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
+      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
+      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
+      "rule": "react-doctor/prefer-useReducer",
+      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
+      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
+      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+    }
+  ]
+}

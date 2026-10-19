@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/lib/page-tree-icons/search-index.ts",
+      "rule": "react-doctor/js-combine-iterations",
+      "sourceSha256": "3d4ff3843b215a849dc64cb2799ac6261afb0b63aa17c7ea30aa4835245d68eb",
+      "reason": "web/app/src/features/frontstage/lib/page-tree-icons/search-index.ts:42（react-doctor/js-combine-iterations）：IconSearchIndex 已预构建 postings，查询从最短 posting 开始，remaining 转为 Set 做交集，再仅将命中的索引映射名字；这避免扫描整个图标域。filter/map 只遍历最短候选集，最后过滤 undefined 提供安全类型边界，机械取消阶段会破坏 posting/name 一致性保护。",
+      "evidence": [{"file": "web/app/src/features/frontstage/lib/page-tree-icons/PageTreeIconPicker.tsx", "sha256": "253f73e31c3fc81d2df44b9470ea6ee95f9eb28998ae33af02b7beb6b744c34e"}, {"file": "web/app/src/features/frontstage/lib/page-tree-icons/_tests/PageTreeIconPicker.test.tsx", "sha256": "6779cc9d6adbd7487ff28b5de7411c68ef5b640f4b84fb13541e9739ac1f40ed"}, {"file": "web/app/src/features/frontstage/lib/page-tree-icons/_tests/search-index.test.ts", "sha256": "85563f448908402ef3f4218ca350091a92730bc16022cf3c26d95e0d2c5217b8"}, {"file": "web/app/src/features/frontstage/lib/page-tree-icons/search-index.ts", "sha256": "3d4ff3843b215a849dc64cb2799ac6261afb0b63aa17c7ea30aa4835245d68eb"}]
+    }
+  ]
+}

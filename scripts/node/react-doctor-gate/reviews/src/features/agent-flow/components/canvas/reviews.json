@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/agent-flow/components/canvas/CanvasHandle.tsx",
+      "rule": "react-doctor/no-react19-deprecated-apis",
+      "sourceSha256": "6302a8af74a6b5f48e0cfe8ef05864bd39bb0d80c597605ddcfa81c6cfe4df6a",
+      "reason": "web/app/src/features/agent-flow/components/canvas/CanvasHandle.tsx:1（react-doctor/no-react19-deprecated-apis）：forwardRef/useContext 在当前 React 19 仍是受支持的 API；forwardRef 继续向 Monaco/CanvasHandle/overlay 转发 ref，useContext 读取所选 runtime provider。没有新建组件类型或丢失 ref 的证据；替换为 React.use 不改变当前行为，也不能修复此告警所暗示的错误。此结论只支持保留具体 API，不声称永不迁移。",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/agent-flow-node-card.test.tsx", "sha256": "7d48f81e47f8202e0472baf84bdb3d494d1e02139f7b3cf49d2fed7c9ae1b772"}, {"file": "web/app/src/features/agent-flow/components/canvas/CanvasHandle.tsx", "sha256": "6302a8af74a6b5f48e0cfe8ef05864bd39bb0d80c597605ddcfa81c6cfe4df6a"}, {"file": "web/app/src/features/agent-flow/components/nodes/AgentFlowNodeCard.tsx", "sha256": "4f021ce885774cc17f69035b9701d8f73641f86fee1b7f24036af4c3ac8f55b1"}]
+    }
+  ]
+}

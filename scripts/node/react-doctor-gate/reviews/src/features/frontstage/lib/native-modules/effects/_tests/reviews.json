@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/lib/native-modules/effects/_tests/effects-runtime.test.tsx",
+      "rule": "react-doctor/no-react19-deprecated-apis",
+      "sourceSha256": "cd3a790be66e8ab4bbfddd18072ce6d304db0f7ff49dd7ceb985577439e29ed6",
+      "reason": "forwardRef/useContext remain supported React 19 APIs. The native/mock ABI explicitly consumes their ref/context behavior; this is only a migration hint. The effects runtime fixture uses supported useContext to assert provider/theme scope inside actual native portals. Migration to use() adds no missing capability to these unconditional reads and is not required for React 19 compatibility.",
+      "evidence": [{"file": "web/app/src/features/frontstage/lib/native-modules/effects/_tests/effects-runtime.test.tsx", "sha256": "cd3a790be66e8ab4bbfddd18072ce6d304db0f7ff49dd7ceb985577439e29ed6"}]
+    }
+  ]
+}

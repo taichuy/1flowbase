@@ -1,986 +1,149 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "toolPackage": "react-doctor@0.2.16",
-  "reviews": [
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
-      "reason": "The state retains draft/history/resource information beyond the latest input projection. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-derived-useState",
-      "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
-      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
-      "reason": "This is an asynchronous loading/export status live region, not a form-calculation output. Native output would introduce the wrong semantic owner for these messages. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes. This is a movable pane/edge separator with orientation, keyboard handling and numeric size semantics. There is no native HTML resize-separator element; hr would describe a document thematic break rather than an adjustable pane boundary. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/NativeTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "4a7e16cfa058f85dae0fae76fda048feaaa374e6c1af59453fc16c57b3983d1a",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeTrajectoryWorkspace owns one workflow trajectory view: server filter/window loading, retained run metadata, selection and floating geometry. TrajectoryTimeline, TrajectoryVirtualList and detail rendering remain separate owners; filter, focus and geometry are independent axes.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/ProviderTrajectory.tsx",
-      "rule": "react-doctor/no-array-index-as-key",
-      "sourceSha256": "9ef5e617a42e4c0566be806647786c6782d4e9ba5b2a2dad438ecb54f352d1ec",
-      "reason": "The list identity and mutable state contract are described in the file-specific rationale; a data-text key would not uniquely identify repeated entries. ProviderTrajectory appends views in navigate and keeps inactive views mounted/hidden; it does not insert, sort or remove individual views. Reset closes the whole portal. Repeated navigation to the same run is allowed, so runId is not a unique view key.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/ProviderTrajectory.tsx",
-      "rule": "react-doctor/no-array-index-key",
-      "sourceSha256": "9ef5e617a42e4c0566be806647786c6782d4e9ba5b2a2dad438ecb54f352d1ec",
-      "reason": "Alias of no-array-index-as-key; the same source-level list identity analysis applies. ProviderTrajectory appends views in navigate and keeps inactive views mounted/hidden; it does not insert, sort or remove individual views. Reset closes the whole portal. Repeated navigation to the same run is allowed, so runId is not a unique view key.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/provider-trajectory.test.tsx", "sha256": "b6d06ba055aa753d43c176ccc5d8b41c66d8201769261af5f99335d2d80389ca"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
-      "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
-      "reason": "The domain filters non-finite point coordinates before reducing extent and explicitly uses the first finite coordinate as its seed, or [0,0] for an empty domain. This is linear in the points and has defined non-finite/empty behavior; combining the operations would only remove a transient numeric array and does not repair a discovered extent/selection defect.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. TrajectoryTimeline owns measured track geometry, pointer brushing, focus and dense/non-dense point selection. DenseTrajectoryPoints and range helpers own drawing/math; measured width and cursor are independent state, with ResizeObserver disconnected on cleanup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
-      "rule": "react-doctor/no-initialize-state",
-      "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
-      "reason": "The initial value depends on measured DOM/viewport data and is refreshed by its subscribed browser resource; it cannot be read reliably during server/render initialization. TrajectoryTimeline owns measured track geometry, pointer brushing, focus and dense/non-dense point selection. DenseTrajectoryPoints and range helpers own drawing/math; measured width and cursor are independent state, with ResizeObserver disconnected on cleanup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
-      "rule": "react-doctor/no-static-element-interactions",
-      "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
-      "reason": "The track has role=group/tabIndex=0 in dense mode and handles ArrowLeft/ArrowRight/Home/End/Enter/Space selection. In non-dense mode point buttons own keyboard focus; separate brush slider handles implement range keyboard changes. The continuous pointer track is not itself a button.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/TrajectoryTimeline.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "92c93579c4b6adfba5c3f452a2d3e4734853160e5e11c0bb759b08883b518f23",
-      "reason": "The two brush handles control the start/end of one custom time-domain selection with pointer capture and Arrow/Home/End handlers. Native input range would add a separate native track and input state rather than retain this paired-handle geometry. TrajectoryTimeline owns measured track geometry, pointer brushing, focus and dense/non-dense point selection. DenseTrajectoryPoints and range helpers own drawing/math; measured width and cursor are independent state, with ResizeObserver disconnected on cleanup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ClientTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/js-index-maps",
-      "sourceSha256": "7aad7def45fda80c3f3685bae75b94b335b37deef4d8fe49d7f7e26430e2225a",
-      "reason": "The lookup scans disjoint pre-grouped arrays, so introducing another index does not remove the alleged repeated full-collection lookup. ClientTrajectoryWorkspace owns request-grouped virtual trajectory selection and range navigation. Virtual rows, timeline and detail have separate components. Request groups are disjoint: steps.find searches only its own request group, so total scans are linear in index length rather than repeated full-index lookup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ClientTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-derived-useState",
-      "sourceSha256": "7aad7def45fda80c3f3685bae75b94b335b37deef4d8fe49d7f7e26430e2225a",
-      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. ClientTrajectoryWorkspace owns request-grouped virtual trajectory selection and range navigation. Virtual rows, timeline and detail have separate components. Request groups are disjoint: steps.find searches only its own request group, so total scans are linear in index length rather than repeated full-index lookup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ClientTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "7aad7def45fda80c3f3685bae75b94b335b37deef4d8fe49d7f7e26430e2225a",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. ClientTrajectoryWorkspace owns request-grouped virtual trajectory selection and range navigation. Virtual rows, timeline and detail have separate components. Request groups are disjoint: steps.find searches only its own request group, so total scans are linear in index length rather than repeated full-index lookup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ClientTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-pass-data-to-parent",
-      "sourceSha256": "7aad7def45fda80c3f3685bae75b94b335b37deef4d8fe49d7f7e26430e2225a",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. ClientTrajectoryWorkspace owns request-grouped virtual trajectory selection and range navigation. Virtual rows, timeline and detail have separate components. Request groups are disjoint: steps.find searches only its own request group, so total scans are linear in index length rather than repeated full-index lookup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ClientTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-pass-live-state-to-parent",
-      "sourceSha256": "7aad7def45fda80c3f3685bae75b94b335b37deef4d8fe49d7f7e26430e2225a",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. ClientTrajectoryWorkspace owns request-grouped virtual trajectory selection and range navigation. Virtual rows, timeline and detail have separate components. Request groups are disjoint: steps.find searches only its own request group, so total scans are linear in index length rather than repeated full-index lookup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ClientTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "7aad7def45fda80c3f3685bae75b94b335b37deef4d8fe49d7f7e26430e2225a",
-      "reason": "This is an asynchronous loading/export status live region, not a form-calculation output. Native output would introduce the wrong semantic owner for these messages. ClientTrajectoryWorkspace owns request-grouped virtual trajectory selection and range navigation. Virtual rows, timeline and detail have separate components. Request groups are disjoint: steps.find searches only its own request group, so total scans are linear in index length rather than repeated full-index lookup. This is a movable pane/edge separator with orientation, keyboard handling and numeric size semantics. There is no native HTML resize-separator element; hr would describe a document thematic break rather than an adjustable pane boundary. ClientTrajectoryWorkspace owns request-grouped virtual trajectory selection and range navigation. Virtual rows, timeline and detail have separate components. Request groups are disjoint: steps.find searches only its own request group, so total scans are linear in index length rather than repeated full-index lookup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ClientTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "7aad7def45fda80c3f3685bae75b94b335b37deef4d8fe49d7f7e26430e2225a",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. ClientTrajectoryWorkspace owns request-grouped virtual trajectory selection and range navigation. Virtual rows, timeline and detail have separate components. Request groups are disjoint: steps.find searches only its own request group, so total scans are linear in index length rather than repeated full-index lookup.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/window.test.tsx", "sha256": "b6a0f6846370d504c2e2d1bce77c76b60147a2affe8db29028dfcc764540e1fd"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ConversationTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "e9802ae3bcdb7588220a5e328f38bcba5e5e33994eff0dcc81b209018faad320",
-      "reason": "The state retains draft/history/resource information beyond the latest input projection. ConversationTrajectoryWorkspace owns server-filtered conversation windows, related-record lookup and persistent category choices. relatedStep preserves an explicitly fetched off-window record; seenCategories accumulates categories across filtered result windows. Neither is a pure projection of the latest page.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/linked-trajectory.test.tsx", "sha256": "0bde9611909a4883f1eda83a56598ee8e8f24a682eb87ab9d79f793e1e80a632"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ConversationTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "e9802ae3bcdb7588220a5e328f38bcba5e5e33994eff0dcc81b209018faad320",
-      "reason": "The flagged location is a query/resource/viewport synchronization expression, not a callback that can simply move to a user event. ConversationTrajectoryWorkspace owns server-filtered conversation windows, related-record lookup and persistent category choices. relatedStep preserves an explicitly fetched off-window record; seenCategories accumulates categories across filtered result windows. Neither is a pure projection of the latest page.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/linked-trajectory.test.tsx", "sha256": "0bde9611909a4883f1eda83a56598ee8e8f24a682eb87ab9d79f793e1e80a632"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ConversationTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "e9802ae3bcdb7588220a5e328f38bcba5e5e33994eff0dcc81b209018faad320",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. ConversationTrajectoryWorkspace owns server-filtered conversation windows, related-record lookup and persistent category choices. relatedStep preserves an explicitly fetched off-window record; seenCategories accumulates categories across filtered result windows. Neither is a pure projection of the latest page.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/linked-trajectory.test.tsx", "sha256": "0bde9611909a4883f1eda83a56598ee8e8f24a682eb87ab9d79f793e1e80a632"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ConversationTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/no-static-element-interactions",
-      "sourceSha256": "e9802ae3bcdb7588220a5e328f38bcba5e5e33994eff0dcc81b209018faad320",
-      "reason": "The axis parent captures pointer movement to distinguish brush drags from point clicks and forwards brush-key completion to commitRange. Child TrajectoryTimeline owns focusable range handles and point selection. Adding another focusable parent/button would duplicate the keyboard target and interfere with child controls.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/linked-trajectory.test.tsx", "sha256": "0bde9611909a4883f1eda83a56598ee8e8f24a682eb87ab9d79f793e1e80a632"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ConversationTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "e9802ae3bcdb7588220a5e328f38bcba5e5e33994eff0dcc81b209018faad320",
-      "reason": "The span groups the existing provenance navigation buttons. A fieldset would imply a form-control field group and legend; those are navigation buttons rather than form fields. ConversationTrajectoryWorkspace owns server-filtered conversation windows, related-record lookup and persistent category choices. relatedStep preserves an explicitly fetched off-window record; seenCategories accumulates categories across filtered result windows. Neither is a pure projection of the latest page. This is an asynchronous loading/export status live region, not a form-calculation output. Native output would introduce the wrong semantic owner for these messages. ConversationTrajectoryWorkspace owns server-filtered conversation windows, related-record lookup and persistent category choices. relatedStep preserves an explicitly fetched off-window record; seenCategories accumulates categories across filtered result windows. Neither is a pure projection of the latest page. This is a movable pane/edge separator with orientation, keyboard handling and numeric size semantics. There is no native HTML resize-separator element; hr would describe a document thematic break rather than an adjustable pane boundary. ConversationTrajectoryWorkspace owns server-filtered conversation windows, related-record lookup and persistent category choices. relatedStep preserves an explicitly fetched off-window record; seenCategories accumulates categories across filtered result windows. Neither is a pure projection of the latest page.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/linked-trajectory.test.tsx", "sha256": "0bde9611909a4883f1eda83a56598ee8e8f24a682eb87ab9d79f793e1e80a632"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/ConversationTrajectoryWorkspace.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "e9802ae3bcdb7588220a5e328f38bcba5e5e33994eff0dcc81b209018faad320",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. ConversationTrajectoryWorkspace owns server-filtered conversation windows, related-record lookup and persistent category choices. relatedStep preserves an explicitly fetched off-window record; seenCategories accumulates categories across filtered result windows. Neither is a pure projection of the latest page.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/client-trajectory.test.tsx", "sha256": "1f94fc3fae88d35973e2912a9697768827509b431c866934fb171448cfd01994"}, {"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/linked-trajectory.test.tsx", "sha256": "0bde9611909a4883f1eda83a56598ee8e8f24a682eb87ab9d79f793e1e80a632"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/client/virtual-client-rows.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "974e34fbcc07f58632adfddc099470dc4d368fbdff31f6e72037a7b35024f2cf",
-      "reason": "This is an asynchronous loading/export status live region, not a form-calculation output. Native output would introduce the wrong semantic owner for these messages. Client virtual-row busy status is live text nested inside the real row button. Its status role announces deferred record loading and has no native form-output semantics.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/virtual-list.test.tsx", "sha256": "15d1c7e04413e60ab926b547bb8c092e0fc27b5d260efe089598cf4269635e84"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/debug-console/trajectory/virtual/DenseTrajectoryPoints.tsx",
-      "rule": "react-doctor/no-aria-hidden-on-focusable",
-      "sourceSha256": "f6a3b28517a5d307deef0e9ea90335f51ea03ba966c05b2afec0ccaacbb59236",
-      "reason": "The canvas is not focusable; keyboard ownership lives on the parent accessible selection group. DenseTrajectoryPoints paints an aria-hidden canvas with no tabIndex or event handler. Keyboard selection belongs to the focusable parent group; non-dense points use buttons, preventing duplicate canvas announcements.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/debug-console/trajectory/timeline.test.tsx", "sha256": "a480bcbb4a89646d5c4a5aab9aadea75e3d8d7480fe4f735c296fb388f387029"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/detail/fields/notification/NotificationInputField.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "45c9b34868f1ee15506d91a85b0355f85416cec627bc4e0b8683de6530425c19",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. JsonConstantField deliberately holds invalid/uncommitted JSON text and parse/type errors separately from the committed value. Its value/type effect resets that draft only for owner input changes; deriving draft from value on each render would discard invalid typing.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-notification.test.tsx", "sha256": "dfda0a48c9e4c565aecdc9ac303275816268c564de85a923819bc786c3cb4e67"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/detail/fields/notification/NotificationInputField.tsx",
-      "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "45c9b34868f1ee15506d91a85b0355f85416cec627bc4e0b8683de6530425c19",
-      "reason": "The state retains draft/history/resource information beyond the latest input projection. JsonConstantField deliberately holds invalid/uncommitted JSON text and parse/type errors separately from the committed value. Its value/type effect resets that draft only for owner input changes; deriving draft from value on each render would discard invalid typing.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-notification.test.tsx", "sha256": "dfda0a48c9e4c565aecdc9ac303275816268c564de85a923819bc786c3cb4e67"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/detail/fields/notification/NotificationInputField.tsx",
-      "rule": "react-doctor/no-derived-state-effect",
-      "sourceSha256": "45c9b34868f1ee15506d91a85b0355f85416cec627bc4e0b8683de6530425c19",
-      "reason": "The effect synchronizes a resource or independently editable draft with its external owner. JsonConstantField deliberately holds invalid/uncommitted JSON text and parse/type errors separately from the committed value. Its value/type effect resets that draft only for owner input changes; deriving draft from value on each render would discard invalid typing.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-notification.test.tsx", "sha256": "dfda0a48c9e4c565aecdc9ac303275816268c564de85a923819bc786c3cb4e67"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistant.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "6eacd92f2c2b3e48e72e0ded7d273fa96e3d01bd02188322010328806f313e15",
-      "reason": "Antd Menu owns the focus and activation of this action label. Adding a nested native button would create a second focus target inside the menuitem. EmbeddedAgentAssistant Menu label is inside an Antd Menu item, whose focus/click/navigation owner is Menu. The span role supplies the item action label; inserting a nested button would create competing focus/action ownership.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/jsx-no-new-object-as-prop",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "These props are current render snapshots for AssistantPanelPlugin (runtime/selection/activity/history), not effect dependencies or component types; each includes live state/callbacks. There is no source-level remount or resource teardown on object identity. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "The effect applies one external lifecycle transition to independent local state; it does not create a self-triggering update cycle. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/no-chain-state-updates",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "The updates share an external invalidation event, not a derivation chain that can be replaced by a render calculation. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "The flagged location is a query/resource/viewport synchronization expression, not a callback that can simply move to a user event. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/no-initialize-state",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "The initial value depends on measured DOM/viewport data and is refreshed by its subscribed browser resource; it cannot be read reliably during server/render initialization. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/no-pass-data-to-parent",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/no-pass-live-state-to-parent",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "This is a movable pane/edge separator with orientation, keyboard handling and numeric size semantics. There is no native HTML resize-separator element; hr would describe a document thematic break rather than an adjustable pane boundary. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "77c062e8f74f0ef79aed25e4deb6f3cbfae29a377cfcb089d8ac450ba5cfa862",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. EmbeddedAgentAssistantPreview owns the assistant window session and side-panel geometry, while useEmbeddedAgentAssistantSession, AssistantPanelPlugin and window-workspace own transport/rendering/window resources. Settings/history/activity, viewport mode and persisted width are independent state axes. Effects synchronize external session, workspace, WebSocket and viewport lifecycles rather than simulate user handlers.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx", "sha256": "0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"}, {"file": "web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx", "sha256": "9ce365668a0e4fc93f42b761f9c85d27336c0d1a9f783436208b2236e42a9004"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/ApplicationRunLogViewer.tsx",
-      "rule": "react-doctor/no-derived-useState",
-      "sourceSha256": "f42ff9435b3dcf71398b39259186af123c716e61463a3cd155ac260cf0478041",
-      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. ApplicationRunLogViewer initializes panel, trace message and timelineRunId for one opened run view. The overlay permits local navigation after opening; these are initial inputs rather than controlled props, and the viewer instance is created per open request.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/ApplicationRunLogViewer.tsx", "sha256": "f42ff9435b3dcf71398b39259186af123c716e61463a3cd155ac260cf0478041"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
-      "rule": "react-doctor/async-await-in-loop",
-      "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
-      "reason": "The loop intentionally serializes browser archive downloads and their per-owner success/failure progression. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
-      "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
-      "reason": "The awaited result is consumed by the immediately following validation/preparation step; it is a data dependency. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
-      "rule": "react-doctor/no-derived-useState",
-      "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
-      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/exchange/AgentLogsExchange.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "d469a0d46171c1b13cb012c4e8b5ceacac1c42bc8d27434dd7e1df25d426bf01",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. AgentLogsExchange owns separate export selection, import files/target, archive receipts and in-flight statuses. Export download awaits each selected application archive/save in order. File.text must finish before JSON inspection and import contract validation.",
-      "evidence": [{"file": "web/app/src/features/applications/components/logs/exchange/_tests/AgentLogsExchange.test.tsx", "sha256": "46092936fa743c14b99f9ce7d7ddc4c015de3f07eb0e22dd3060c25f3241bf23"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
-      "rule": "react-doctor/async-await-in-loop",
-      "sourceSha256": "010b8c15b7caeb73dd4c09b809f6cc9592141f8a1ee53a5930a8b97cd0fff2ea",
-      "reason": "The loop intentionally serializes browser archive downloads and their per-owner success/failure progression. ApplicationLogsWorkspace owns server filters, table selection, URL/popstate synchronization and three independent overlays. Existing extracted overlay helpers own detail/trace/timeline rendering. Viewport resize clamps existing rectangles; application changes reset pagination; popstate applies external browser state. These have external event/resource owners.",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-logs-page/all-applications.test.tsx", "sha256": "d51bc0873749c99d412920b65e92adfa2bf2b269b52bad85cd3904d84f39e2a1"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace-floating-detail.test.tsx", "sha256": "76ce67cec487241a4d09e7a04c5a357318ec2f219374eb3dc08e74d2866ca106"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace.test.tsx", "sha256": "aa96ad2add4e6e36a3c6c7c11b9175b467c60794378f7396f40d974a16414144"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/export-downloads.test.tsx", "sha256": "b46cfdc47128e46f05fa7d551b2fcd8fbdc21e82f5e2b5f2eb9f57dd3d2a9202"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/floating-windows-timeline.test.tsx", "sha256": "c054a42e9fc58ca8ef8c9f319b6f7ede92928bdff9339942982d78720461081b"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/layout-css.test.tsx", "sha256": "41d3bc88c25b91de2eedee715f57d094466819803e0e10c2ecb4504a4e29599a"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/sorting-filtering-pagination.test.tsx", "sha256": "26475a576b890b5594cd7cbbaafbe8ca04cc943a58c26d02cb16c3dc321b6741"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/table-field-settings.test.tsx", "sha256": "d2bf8d65c7a4afc4464b6542308f2f4bee54093e81c0fc63c16bf755e3b2581c"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "010b8c15b7caeb73dd4c09b809f6cc9592141f8a1ee53a5930a8b97cd0fff2ea",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. ApplicationLogsWorkspace owns server filters, table selection, URL/popstate synchronization and three independent overlays. Existing extracted overlay helpers own detail/trace/timeline rendering. Viewport resize clamps existing rectangles; application changes reset pagination; popstate applies external browser state. These have external event/resource owners.",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-logs-page/all-applications.test.tsx", "sha256": "d51bc0873749c99d412920b65e92adfa2bf2b269b52bad85cd3904d84f39e2a1"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace-floating-detail.test.tsx", "sha256": "76ce67cec487241a4d09e7a04c5a357318ec2f219374eb3dc08e74d2866ca106"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace.test.tsx", "sha256": "aa96ad2add4e6e36a3c6c7c11b9175b467c60794378f7396f40d974a16414144"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/export-downloads.test.tsx", "sha256": "b46cfdc47128e46f05fa7d551b2fcd8fbdc21e82f5e2b5f2eb9f57dd3d2a9202"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/floating-windows-timeline.test.tsx", "sha256": "c054a42e9fc58ca8ef8c9f319b6f7ede92928bdff9339942982d78720461081b"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/layout-css.test.tsx", "sha256": "41d3bc88c25b91de2eedee715f57d094466819803e0e10c2ecb4504a4e29599a"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/sorting-filtering-pagination.test.tsx", "sha256": "26475a576b890b5594cd7cbbaafbe8ca04cc943a58c26d02cb16c3dc321b6741"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/table-field-settings.test.tsx", "sha256": "d2bf8d65c7a4afc4464b6542308f2f4bee54093e81c0fc63c16bf755e3b2581c"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
-      "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "010b8c15b7caeb73dd4c09b809f6cc9592141f8a1ee53a5930a8b97cd0fff2ea",
-      "reason": "The effect applies one external lifecycle transition to independent local state; it does not create a self-triggering update cycle. ApplicationLogsWorkspace owns server filters, table selection, URL/popstate synchronization and three independent overlays. Existing extracted overlay helpers own detail/trace/timeline rendering. Viewport resize clamps existing rectangles; application changes reset pagination; popstate applies external browser state. These have external event/resource owners.",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-logs-page/all-applications.test.tsx", "sha256": "d51bc0873749c99d412920b65e92adfa2bf2b269b52bad85cd3904d84f39e2a1"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace-floating-detail.test.tsx", "sha256": "76ce67cec487241a4d09e7a04c5a357318ec2f219374eb3dc08e74d2866ca106"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace.test.tsx", "sha256": "aa96ad2add4e6e36a3c6c7c11b9175b467c60794378f7396f40d974a16414144"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/export-downloads.test.tsx", "sha256": "b46cfdc47128e46f05fa7d551b2fcd8fbdc21e82f5e2b5f2eb9f57dd3d2a9202"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/floating-windows-timeline.test.tsx", "sha256": "c054a42e9fc58ca8ef8c9f319b6f7ede92928bdff9339942982d78720461081b"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/layout-css.test.tsx", "sha256": "41d3bc88c25b91de2eedee715f57d094466819803e0e10c2ecb4504a4e29599a"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/sorting-filtering-pagination.test.tsx", "sha256": "26475a576b890b5594cd7cbbaafbe8ca04cc943a58c26d02cb16c3dc321b6741"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/table-field-settings.test.tsx", "sha256": "d2bf8d65c7a4afc4464b6542308f2f4bee54093e81c0fc63c16bf755e3b2581c"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
-      "rule": "react-doctor/no-derived-state-effect",
-      "sourceSha256": "010b8c15b7caeb73dd4c09b809f6cc9592141f8a1ee53a5930a8b97cd0fff2ea",
-      "reason": "The effect synchronizes a resource or independently editable draft with its external owner. ApplicationLogsWorkspace owns server filters, table selection, URL/popstate synchronization and three independent overlays. Existing extracted overlay helpers own detail/trace/timeline rendering. Viewport resize clamps existing rectangles; application changes reset pagination; popstate applies external browser state. These have external event/resource owners.",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-logs-page/all-applications.test.tsx", "sha256": "d51bc0873749c99d412920b65e92adfa2bf2b269b52bad85cd3904d84f39e2a1"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace-floating-detail.test.tsx", "sha256": "76ce67cec487241a4d09e7a04c5a357318ec2f219374eb3dc08e74d2866ca106"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace.test.tsx", "sha256": "aa96ad2add4e6e36a3c6c7c11b9175b467c60794378f7396f40d974a16414144"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/export-downloads.test.tsx", "sha256": "b46cfdc47128e46f05fa7d551b2fcd8fbdc21e82f5e2b5f2eb9f57dd3d2a9202"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/floating-windows-timeline.test.tsx", "sha256": "c054a42e9fc58ca8ef8c9f319b6f7ede92928bdff9339942982d78720461081b"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/layout-css.test.tsx", "sha256": "41d3bc88c25b91de2eedee715f57d094466819803e0e10c2ecb4504a4e29599a"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/sorting-filtering-pagination.test.tsx", "sha256": "26475a576b890b5594cd7cbbaafbe8ca04cc943a58c26d02cb16c3dc321b6741"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/table-field-settings.test.tsx", "sha256": "d2bf8d65c7a4afc4464b6542308f2f4bee54093e81c0fc63c16bf755e3b2581c"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "010b8c15b7caeb73dd4c09b809f6cc9592141f8a1ee53a5930a8b97cd0fff2ea",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. ApplicationLogsWorkspace owns server filters, table selection, URL/popstate synchronization and three independent overlays. Existing extracted overlay helpers own detail/trace/timeline rendering. Viewport resize clamps existing rectangles; application changes reset pagination; popstate applies external browser state. These have external event/resource owners.",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-logs-page/all-applications.test.tsx", "sha256": "d51bc0873749c99d412920b65e92adfa2bf2b269b52bad85cd3904d84f39e2a1"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace-floating-detail.test.tsx", "sha256": "76ce67cec487241a4d09e7a04c5a357318ec2f219374eb3dc08e74d2866ca106"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace.test.tsx", "sha256": "aa96ad2add4e6e36a3c6c7c11b9175b467c60794378f7396f40d974a16414144"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/export-downloads.test.tsx", "sha256": "b46cfdc47128e46f05fa7d551b2fcd8fbdc21e82f5e2b5f2eb9f57dd3d2a9202"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/floating-windows-timeline.test.tsx", "sha256": "c054a42e9fc58ca8ef8c9f319b6f7ede92928bdff9339942982d78720461081b"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/layout-css.test.tsx", "sha256": "41d3bc88c25b91de2eedee715f57d094466819803e0e10c2ecb4504a4e29599a"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/sorting-filtering-pagination.test.tsx", "sha256": "26475a576b890b5594cd7cbbaafbe8ca04cc943a58c26d02cb16c3dc321b6741"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/table-field-settings.test.tsx", "sha256": "d2bf8d65c7a4afc4464b6542308f2f4bee54093e81c0fc63c16bf755e3b2581c"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
-      "rule": "react-doctor/no-render-in-render",
-      "sourceSha256": "010b8c15b7caeb73dd4c09b809f6cc9592141f8a1ee53a5930a8b97cd0fff2ea",
-      "reason": "The flagged render-prefixed function is invoked normally; React does not treat that call as a new component type. ApplicationLogsWorkspace owns server filters, table selection, URL/popstate synchronization and three independent overlays. Existing extracted overlay helpers own detail/trace/timeline rendering. Viewport resize clamps existing rectangles; application changes reset pagination; popstate applies external browser state. These have external event/resource owners.",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-logs-page/all-applications.test.tsx", "sha256": "d51bc0873749c99d412920b65e92adfa2bf2b269b52bad85cd3904d84f39e2a1"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace-floating-detail.test.tsx", "sha256": "76ce67cec487241a4d09e7a04c5a357318ec2f219374eb3dc08e74d2866ca106"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace.test.tsx", "sha256": "aa96ad2add4e6e36a3c6c7c11b9175b467c60794378f7396f40d974a16414144"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/export-downloads.test.tsx", "sha256": "b46cfdc47128e46f05fa7d551b2fcd8fbdc21e82f5e2b5f2eb9f57dd3d2a9202"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/floating-windows-timeline.test.tsx", "sha256": "c054a42e9fc58ca8ef8c9f319b6f7ede92928bdff9339942982d78720461081b"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/layout-css.test.tsx", "sha256": "41d3bc88c25b91de2eedee715f57d094466819803e0e10c2ecb4504a4e29599a"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/sorting-filtering-pagination.test.tsx", "sha256": "26475a576b890b5594cd7cbbaafbe8ca04cc943a58c26d02cb16c3dc321b6741"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/table-field-settings.test.tsx", "sha256": "d2bf8d65c7a4afc4464b6542308f2f4bee54093e81c0fc63c16bf755e3b2581c"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "010b8c15b7caeb73dd4c09b809f6cc9592141f8a1ee53a5930a8b97cd0fff2ea",
-      "reason": "This is an asynchronous loading/export status live region, not a form-calculation output. Native output would introduce the wrong semantic owner for these messages. ApplicationLogsWorkspace owns server filters, table selection, URL/popstate synchronization and three independent overlays. Existing extracted overlay helpers own detail/trace/timeline rendering. Viewport resize clamps existing rectangles; application changes reset pagination; popstate applies external browser state. These have external event/resource owners.",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-logs-page/all-applications.test.tsx", "sha256": "d51bc0873749c99d412920b65e92adfa2bf2b269b52bad85cd3904d84f39e2a1"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace-floating-detail.test.tsx", "sha256": "76ce67cec487241a4d09e7a04c5a357318ec2f219374eb3dc08e74d2866ca106"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace.test.tsx", "sha256": "aa96ad2add4e6e36a3c6c7c11b9175b467c60794378f7396f40d974a16414144"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/export-downloads.test.tsx", "sha256": "b46cfdc47128e46f05fa7d551b2fcd8fbdc21e82f5e2b5f2eb9f57dd3d2a9202"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/floating-windows-timeline.test.tsx", "sha256": "c054a42e9fc58ca8ef8c9f319b6f7ede92928bdff9339942982d78720461081b"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/layout-css.test.tsx", "sha256": "41d3bc88c25b91de2eedee715f57d094466819803e0e10c2ecb4504a4e29599a"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/sorting-filtering-pagination.test.tsx", "sha256": "26475a576b890b5594cd7cbbaafbe8ca04cc943a58c26d02cb16c3dc321b6741"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/table-field-settings.test.tsx", "sha256": "d2bf8d65c7a4afc4464b6542308f2f4bee54093e81c0fc63c16bf755e3b2581c"}]
-    },
-    {
-      "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "010b8c15b7caeb73dd4c09b809f6cc9592141f8a1ee53a5930a8b97cd0fff2ea",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. ApplicationLogsWorkspace owns server filters, table selection, URL/popstate synchronization and three independent overlays. Existing extracted overlay helpers own detail/trace/timeline rendering. Viewport resize clamps existing rectangles; application changes reset pagination; popstate applies external browser state. These have external event/resource owners.",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-logs-page/all-applications.test.tsx", "sha256": "d51bc0873749c99d412920b65e92adfa2bf2b269b52bad85cd3904d84f39e2a1"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace-floating-detail.test.tsx", "sha256": "76ce67cec487241a4d09e7a04c5a357318ec2f219374eb3dc08e74d2866ca106"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/artifacts-trace.test.tsx", "sha256": "aa96ad2add4e6e36a3c6c7c11b9175b467c60794378f7396f40d974a16414144"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/export-downloads.test.tsx", "sha256": "b46cfdc47128e46f05fa7d551b2fcd8fbdc21e82f5e2b5f2eb9f57dd3d2a9202"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/floating-windows-timeline.test.tsx", "sha256": "c054a42e9fc58ca8ef8c9f319b6f7ede92928bdff9339942982d78720461081b"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/layout-css.test.tsx", "sha256": "41d3bc88c25b91de2eedee715f57d094466819803e0e10c2ecb4504a4e29599a"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/sorting-filtering-pagination.test.tsx", "sha256": "26475a576b890b5594cd7cbbaafbe8ca04cc943a58c26d02cb16c3dc321b6741"}, {"file": "web/app/src/features/applications/_tests/application-logs-page/table-field-settings.test.tsx", "sha256": "d2bf8d65c7a4afc4464b6542308f2f4bee54093e81c0fc63c16bf755e3b2581c"}]
-    },
-    {
-      "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
-      "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be",
-      "reason": "The awaited result is consumed by the immediately following validation/preparation step; it is a data dependency. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
-      "evidence": [{"file": "web/app/src/features/auth/_tests/public-auth-block-component.test.tsx", "sha256": "c5783c4c741033800f440ec77a0f1ffa50e36a4222d2a29ffafa5d48481cce8d"}, {"file": "web/app/src/features/auth/_tests/public-auth-block.test.ts", "sha256": "989d165377a84c012d27f93da9e6cd1320b962191d4393e9da82534045e5b7df"}, {"file": "web/app/src/features/auth/_tests/public-auth-compilation.test.ts", "sha256": "ee907ed983140428b2522075be138c03f8da1124cd478a95d2c385bd9196886b"}, {"file": "web/app/src/features/auth/_tests/public-auth-import-graph.test.ts", "sha256": "d28817b8743c0aa7ef0bf6fe374a72ec6a0947bf78c74ebea1e9dc6746e04be9"}, {"file": "web/app/src/features/auth/_tests/public-auth-loading.test.ts", "sha256": "a596de210e4af809585a36944424410ab6cfe76c4cbd76f9108cd6b002005d72"}, {"file": "web/app/src/features/auth/_tests/public-auth-runtime-boundary.test.ts", "sha256": "8856b1e7c9a80198cc68dcdc01afa3ad5eeffc08b99fd5945be422539e81b4e1"}, {"file": "web/app/src/features/auth/components/PublicAuthBlock.tsx", "sha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be"}]
-    },
-    {
-      "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
-      "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be",
-      "reason": "Cleanup intentionally invalidates the current generation and clears current activeInstance, not a stale captured ref value; prepare itself carries the full reactive dependency list and late results check the generation. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
-      "evidence": [{"file": "web/app/src/features/auth/_tests/public-auth-block-component.test.tsx", "sha256": "c5783c4c741033800f440ec77a0f1ffa50e36a4222d2a29ffafa5d48481cce8d"}, {"file": "web/app/src/features/auth/_tests/public-auth-block.test.ts", "sha256": "989d165377a84c012d27f93da9e6cd1320b962191d4393e9da82534045e5b7df"}, {"file": "web/app/src/features/auth/_tests/public-auth-compilation.test.ts", "sha256": "ee907ed983140428b2522075be138c03f8da1124cd478a95d2c385bd9196886b"}, {"file": "web/app/src/features/auth/_tests/public-auth-import-graph.test.ts", "sha256": "d28817b8743c0aa7ef0bf6fe374a72ec6a0947bf78c74ebea1e9dc6746e04be9"}, {"file": "web/app/src/features/auth/_tests/public-auth-loading.test.ts", "sha256": "a596de210e4af809585a36944424410ab6cfe76c4cbd76f9108cd6b002005d72"}, {"file": "web/app/src/features/auth/_tests/public-auth-runtime-boundary.test.ts", "sha256": "8856b1e7c9a80198cc68dcdc01afa3ad5eeffc08b99fd5945be422539e81b4e1"}, {"file": "web/app/src/features/auth/components/PublicAuthBlock.tsx", "sha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be"}]
-    },
-    {
-      "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
-      "rule": "react-doctor/no-pass-live-state-to-parent",
-      "sourceSha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
-      "evidence": [{"file": "web/app/src/features/auth/_tests/public-auth-block-component.test.tsx", "sha256": "c5783c4c741033800f440ec77a0f1ffa50e36a4222d2a29ffafa5d48481cce8d"}, {"file": "web/app/src/features/auth/_tests/public-auth-block.test.ts", "sha256": "989d165377a84c012d27f93da9e6cd1320b962191d4393e9da82534045e5b7df"}, {"file": "web/app/src/features/auth/_tests/public-auth-compilation.test.ts", "sha256": "ee907ed983140428b2522075be138c03f8da1124cd478a95d2c385bd9196886b"}, {"file": "web/app/src/features/auth/_tests/public-auth-import-graph.test.ts", "sha256": "d28817b8743c0aa7ef0bf6fe374a72ec6a0947bf78c74ebea1e9dc6746e04be9"}, {"file": "web/app/src/features/auth/_tests/public-auth-loading.test.ts", "sha256": "a596de210e4af809585a36944424410ab6cfe76c4cbd76f9108cd6b002005d72"}, {"file": "web/app/src/features/auth/_tests/public-auth-runtime-boundary.test.ts", "sha256": "8856b1e7c9a80198cc68dcdc01afa3ad5eeffc08b99fd5945be422539e81b4e1"}, {"file": "web/app/src/features/auth/components/PublicAuthBlock.tsx", "sha256": "a49a72514f5bb8288bfdab8918e238258f9c927318cd43f466bbddfc71b927be"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. NativeReactTrialFixture is an explicit browser integration harness for native component lifecycle/style/overlay scenarios. Independent fixture switches and logs expose observations for browser automation; they are not a production component or a single coupled state machine.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx", "sha256": "ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeReactTrialFixture is an explicit browser integration harness for native component lifecycle/style/overlay scenarios. Independent fixture switches and logs expose observations for browser automation; they are not a production component or a single coupled state machine.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/browser-fixtures/native-react-trial/NativeReactTrialFixture.tsx", "sha256": "ede050d8a370a2c905c25359df38d8e4de419ce3366c76df6508820a452877fb"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/_tests/browser-fixtures/r5-studio-catalog/R5StudioCatalogFixture.tsx",
-      "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "45d0a241bc5cb3900dc1b87fecfff1149d0532abd62f36f1a6420b716113ccfa",
-      "reason": "createStudioRunConsoleStore is an imported module-stable zero-reactive-input factory. useMemo invokes it once for the fixture store; there is no omitted prop/state dependency. R5StudioCatalogFixture calls useMemo(createStudioRunConsoleStore, []) to create one console store. The imported factory is module stable and reads no reactive values; an empty dependency array is its intended per-fixture lifetime.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/browser-fixtures/r5-studio-catalog/R5StudioCatalogFixture.tsx", "sha256": "45d0a241bc5cb3900dc1b87fecfff1149d0532abd62f36f1a6420b716113ccfa"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/_tests/native-trusted-block/dialog-retained-ref.test.tsx",
-      "rule": "react-doctor/no-react19-deprecated-apis",
-      "sourceSha256": "16b237a9498d2b5d1770758fb711417299ea64cb2e557af0ceaee18bd414e901",
-      "reason": "The installed rule labels this a migration hint. The API remains supported; ref/context ABI is intentional. dialog-retained-ref test mocks forwardRef to preserve the shipped Dialog imperative-ref ABI. React 19 supports forwardRef; this migration hint does not identify a removed API. Replacing the mock ref contract would weaken retained-ref assertions.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/dialog-retained-ref.test.tsx", "sha256": "16b237a9498d2b5d1770758fb711417299ea64cb2e557af0ceaee18bd414e901"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "signalSession lifetime is page id. The constructor reads no reactive data; page id is an intentional lifecycle invalidation key even though absent from the factory body. PageCanvas coordinates a page-id-scoped signal session, tab/page-scoped coordinator, measurements and runtime slots. Runtime slot/width/auto-height modules already own sub-responsibilities. The page change clears measurement epochs and creates a fresh batch, while block changes update the retained coordinator instead of disposing active sessions. The coordinator lifetime is tab/page/sharedCoordinator/signalSession; a following updateBlocks effect reconciles changing runtime blocks. Adding block array identity would dispose live signal epochs on ordinary updates. PageCanvas coordinates a page-id-scoped signal session, tab/page-scoped coordinator, measurements and runtime slots. Runtime slot/width/auto-height modules already own sub-responsibilities. The page change clears measurement epochs and creates a fresh batch, while block changes update the retained coordinator instead of disposing active sessions.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "captureFrontstageScrollAnchor measures each DOM block exactly once into a rect snapshot, filters visibility against one ownerRect, then sorts snapshots by top. This preserves a consistent geometry snapshot while scrolling; the array stages are linear before the required sort and are not repeated DOM measurements.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. PageCanvas coordinates a page-id-scoped signal session, tab/page-scoped coordinator, measurements and runtime slots. Runtime slot/width/auto-height modules already own sub-responsibilities. The page change clears measurement epochs and creates a fresh batch, while block changes update the retained coordinator instead of disposing active sessions.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "The flagged location is a query/resource/viewport synchronization expression, not a callback that can simply move to a user event. PageCanvas coordinates a page-id-scoped signal session, tab/page-scoped coordinator, measurements and runtime slots. Runtime slot/width/auto-height modules already own sub-responsibilities. The page change clears measurement epochs and creates a fresh batch, while block changes update the retained coordinator instead of disposing active sessions.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. PageCanvas coordinates a page-id-scoped signal session, tab/page-scoped coordinator, measurements and runtime slots. Runtime slot/width/auto-height modules already own sub-responsibilities. The page change clears measurement epochs and creates a fresh batch, while block changes update the retained coordinator instead of disposing active sessions.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/no-many-boolean-props",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "The booleans are separate capabilities/activity conditions from their backend or runtime owners, rather than mutually exclusive variants. PageCanvas coordinates a page-id-scoped signal session, tab/page-scoped coordinator, measurements and runtime slots. Runtime slot/width/auto-height modules already own sub-responsibilities. The page change clears measurement epochs and creates a fresh batch, while block changes update the retained coordinator instead of disposing active sessions.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/no-render-in-render",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "The flagged render-prefixed function is invoked normally; React does not treat that call as a new component type. PageCanvas coordinates a page-id-scoped signal session, tab/page-scoped coordinator, measurements and runtime slots. Runtime slot/width/auto-height modules already own sub-responsibilities. The page change clears measurement epochs and creates a fresh batch, while block changes update the retained coordinator instead of disposing active sessions.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/no-reset-all-state-on-prop-change",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "Only the explicitly changed owner state is reset; remounting the whole component would also dispose retained native/editor/session resources. PageCanvas coordinates a page-id-scoped signal session, tab/page-scoped coordinator, measurements and runtime slots. Runtime slot/width/auto-height modules already own sub-responsibilities. The page change clears measurement epochs and creates a fresh batch, while block changes update the retained coordinator instead of disposing active sessions.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/PageCanvas.tsx",
-      "rule": "react-doctor/no-static-element-interactions",
-      "sourceSha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701",
-      "reason": "The block frame is role=button and tabIndex=0 in design mode, with keyboard activation below this diagnostic and pointer hover styling. In run mode the handlers are disabled and keyboard activation stays with the originating inner control. The diagnostic sees conditional handlers/role, not an unlabelled static click target.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/auto-height-layout.test.ts", "sha256": "fc8bdeb76a7b7bba74dff2837507d22b61fd0527e39c901e28abca7f46055bfc"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/frontstage-block-interaction.bench.test.ts", "sha256": "b37904733e2a3723158f091609f32432776129dc702e3effa2336704e79cc70f"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/shared-page-variables.test.ts", "sha256": "c924516ad8edd0ce3c7c11a3151d104e35881d9ecdea9cd497cd620d91a32d8e"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/signal-runtime.test.ts", "sha256": "6f264021574970150b84a29a4fe7d31e9c47b3c3e06f6c8c280d3b927d0ff403"}, {"file": "web/app/src/features/frontstage/components/PageCanvas.tsx", "sha256": "126dbd57b611f8afa8a0cfa2f10e95296fc3da9d19c7eb3b684a382974ae2701"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/use-canvas-width.test.tsx", "sha256": "51cc42c97a3d6ab3418ae7dea8e248a6d6c1bd298e822a850f6760adfa43305d"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/geometry/_tests/view-mode-transitions.test.ts", "sha256": "7e907499fe081a6a880eb42e93ed506c1b2cc098c4189a0a00aeb5168b870d51"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx",
-      "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "121f8374fa5f5597e91302bc21c63b2308b59e5bd1f3023b860f102293173d00",
-      "reason": "The awaited result is consumed by the immediately following validation/preparation step; it is a data dependency. JsxStudioRunPanel awaits compilation before reading compiler diagnostics and prepared source. Moving this await later would access an unresolved compile result and cannot preserve diagnostic/preview ordering.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/jsx-studio/JsxStudioRunPanel.test.tsx", "sha256": "aca8f56fab5087e8154781c5e11e9c58c102f07cf976c1fbd51efeb1305a436f"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/page-canvas/NativeRuntimeSlotSurface.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "18551cd227ff3cd3dbfb029a5490aad6ad462bb311cb9f5de79d49e7b2f65d97",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx", "sha256": "805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"}, {"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/components/page-canvas/NativeRuntimeSlotSurface.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "18551cd227ff3cd3dbfb029a5490aad6ad462bb311cb9f5de79d49e7b2f65d97",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/PageCanvas.test.tsx", "sha256": "f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"}, {"file": "web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx", "sha256": "805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"}, {"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx", "sha256": "4bb72768ee19af4621fcfffa34465601372bb683a97b02a49019af6c1d79933b"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
-      "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337",
-      "reason": "Contribution mount/dispose captures root/contribution. mountedRenderInput is updated separately through lifecycle.update; adding renderInput/renderEpoch would remount native contribution DOM and lose drafts. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles. Runtime-host lifetime is plan.blockId/surface. surfaceLayoutEpoch is applied by advanceLayoutEpoch in its own layout effect, so it must not recreate runtime/host on every layout change. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx", "sha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx", "sha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
-      "rule": "react-doctor/no-react19-deprecated-apis",
-      "sourceSha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337",
-      "reason": "The installed rule labels this a migration hint. The API remains supported; ref/context ABI is intentional. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx", "sha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
-      "rule": "react-doctor/rerender-state-only-in-handlers",
-      "sourceSha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337",
-      "reason": "The error arrives from an asynchronous external module-loading promise, so an event-only state setter would hide resource failures. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx", "sha256": "43e91effce8deee2dc21d05c3f5232b4181cc3b3099325130b98c854f020b9ac"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx", "sha256": "34a2e0f4cc868c0f3fd8c61521ad2cc0fd64c1bbcddcb1b94c3dc8e14fb12337"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/lib/native-modules/affix-anchor/native-anchor-runtime.tsx",
-      "rule": "react-doctor/no-generic-handler-names",
-      "sourceSha256": "bf0cefa5e6a36123066f5fbf7c3d3f53b5f4f42bf2ad708cd756af818d47a607",
-      "reason": "The handler is scoped to a single anchor click and immediately connected to that element; renaming does not correct behavior. native-anchor-runtime exports a native module factory/registration contract as well as private components. Anchor measurement reports DOM-derived geometry to its native owner after layout. handleClick is local to the anchor click semantics, not an ambiguous exported event multiplexer.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-anchor-runtime.test.tsx", "sha256": "1ba30b09da4794b2f90ba6d87467c1c5778f5ea96155f34b8c9eb867a69d6899"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/lib/native-modules/affix-anchor/native-anchor-runtime.tsx",
-      "rule": "react-doctor/no-pass-live-state-to-parent",
-      "sourceSha256": "bf0cefa5e6a36123066f5fbf7c3d3f53b5f4f42bf2ad708cd756af818d47a607",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. native-anchor-runtime exports a native module factory/registration contract as well as private components. Anchor measurement reports DOM-derived geometry to its native owner after layout. handleClick is local to the anchor click semantics, not an ambiguous exported event multiplexer.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-anchor-runtime.test.tsx", "sha256": "1ba30b09da4794b2f90ba6d87467c1c5778f5ea96155f34b8c9eb867a69d6899"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/lib/native-modules/affix-anchor/native-anchor-runtime.tsx",
-      "rule": "react-doctor/only-export-components",
-      "sourceSha256": "bf0cefa5e6a36123066f5fbf7c3d3f53b5f4f42bf2ad708cd756af818d47a607",
-      "reason": "This module is a native runtime factory entrypoint; component-only Fast Refresh export conventions do not apply to its registration API. native-anchor-runtime exports a native module factory/registration contract as well as private components. Anchor measurement reports DOM-derived geometry to its native owner after layout. handleClick is local to the anchor click semantics, not an ambiguous exported event multiplexer.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-anchor-runtime.test.tsx", "sha256": "1ba30b09da4794b2f90ba6d87467c1c5778f5ea96155f34b8c9eb867a69d6899"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/lib/native-modules/notification/runtime.tsx",
-      "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "2d7999101f227925124e256166462bfe8e93ef02978d5dc7d60e9b3ed9206e31",
-      "reason": "active is a mutable factory lexical binding, not component state. The mount layout effect marks the existing runtime active once. createBlockNotificationRuntime has factory-scoped mutable active/api bindings. Lifecycle activates the factory and registers surface effect-resource disposal; cleanup destroys the current factory API. Those bindings are not reactive component props and cannot form meaningful React dependencies. Cleanup must destroy the factory current notification API and unregister its captured surface registration; depending on mutable api/active would not subscribe to assignment and would not improve ownership. createBlockNotificationRuntime has factory-scoped mutable active/api bindings. Lifecycle activates the factory and registers surface effect-resource disposal; cleanup destroys the current factory API. Those bindings are not reactive component props and cannot form meaningful React dependencies.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-notification-runtime.test.tsx", "sha256": "13056def8bdc433f24835d79e896262616459efc9aee89e57123e7bbf363d1db"}, {"file": "web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx", "sha256": "4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
-      "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "f55f1e18af8d84243e5b4fbd9480a027a1cf42ec5c74d7f46b000dd8da6a2306",
-      "reason": "The awaited result is consumed by the immediately following validation/preparation step; it is a data dependency. FrontStagePage awaits the query refresh before refreshing native preparations so preparation consumes the refreshed page/contract. Deferring the await would prepare from stale query data.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/frontstage-page-content-query.test.tsx", "sha256": "1defe7475ab2b3a089059b82ad597ec4237e234afca4979de1feed44d1c63f60"}, {"file": "web/app/src/features/frontstage/_tests/use-frontstage-page-content-save.test.tsx", "sha256": "c6bf82c2f57369f419e04ec398e8126c8448d5354b85b77b59e70c23e116aa5d"}, {"file": "web/app/src/features/frontstage/_tests/use-frontstage-page-tree-mutations.test.tsx", "sha256": "84fb25cd93de2f61ff2bf162a09e0801fed29e2cc377b612c9ead68e21bdd24d"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/RetainedFrontstagePages.test.tsx", "sha256": "2c2becc81568b310efa8c2256f5406eb3f91ea5aba5cfb4f4cedbf66f49595a7"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-memory.test.ts", "sha256": "6184f78ee44ad39954dbd9f69a6e209bdd3eaf667522c7b4a8d1f06fbae34efc"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-policy.test.ts", "sha256": "85916d4e5d58cdf8a2bddf6964562e12cf25e87bd247f6b7e397fa99ab0f869b"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/retention-stats.test.ts", "sha256": "fe5351e3d324be27adb6e75d6f459bf100602a99d96d7a7a7e665ba11100c63f"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/use-page-signals.test.tsx", "sha256": "140d3186aa809aac27446ae57932191dbf3194351b682218a5415155b9550cf5"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/pages/FrontstageWorkspacePage.tsx",
-      "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "fcfc910ee178a4133f1757828dde0b6f49204beccfa06756cc505386c68d5280",
-      "reason": "The flagged location is a query/resource/viewport synchronization expression, not a callback that can simply move to a user event. FrontstageWorkspacePage consumes route/page selection and server queries. The flagged expressions are enabled/queryFn/read-model ternaries for selected backend page IDs, not event handlers. Navigation, queries and the three-stage page workspace remain one route owner.",
-      "evidence": [{"file": "web/app/src/features/frontstage/pages/FrontstageWorkspacePage.tsx", "sha256": "fcfc910ee178a4133f1757828dde0b6f49204beccfa06756cc505386c68d5280"}]
-    },
-    {
-      "file": "web/app/src/features/frontstage/pages/FrontstageWorkspacePage.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "fcfc910ee178a4133f1757828dde0b6f49204beccfa06756cc505386c68d5280",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. FrontstageWorkspacePage consumes route/page selection and server queries. The flagged expressions are enabled/queryFn/read-model ternaries for selected backend page IDs, not event handlers. Navigation, queries and the three-stage page workspace remain one route owner.",
-      "evidence": [{"file": "web/app/src/features/frontstage/pages/FrontstageWorkspacePage.tsx", "sha256": "fcfc910ee178a4133f1757828dde0b6f49204beccfa06756cc505386c68d5280"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/MemberManagementPanel.tsx",
-      "rule": "react-doctor/no-chain-state-updates",
-      "sourceSha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0",
-      "reason": "The updates share an external invalidation event, not a derivation chain that can be replaced by a render calculation. MemberManagementPanel separates department selection, pagination, editor/password/department dialogs and independent backend permission capabilities. Department changes reset page; later member deletion/refetch clamps an out-of-range page. The guarded second effect is not a state feedback cycle.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/MemberSettingsTabs.test.tsx", "sha256": "5dc9dd38643c299c5cb5bdbbfb2c4f49b478b25c3bc9ffb49b005776fd449932"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/MemberManagementPanel.tsx",
-      "rule": "react-doctor/no-derived-state-effect",
-      "sourceSha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0",
-      "reason": "The effect synchronizes a resource or independently editable draft with its external owner. MemberManagementPanel separates department selection, pagination, editor/password/department dialogs and independent backend permission capabilities. Department changes reset page; later member deletion/refetch clamps an out-of-range page. The guarded second effect is not a state feedback cycle.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/MemberSettingsTabs.test.tsx", "sha256": "5dc9dd38643c299c5cb5bdbbfb2c4f49b478b25c3bc9ffb49b005776fd449932"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/MemberManagementPanel.tsx",
-      "rule": "react-doctor/no-effect-chain",
-      "sourceSha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0",
-      "reason": "The second guarded effect reacts to a later server result and only corrects an out-of-range page; it is not a cycle. MemberManagementPanel separates department selection, pagination, editor/password/department dialogs and independent backend permission capabilities. Department changes reset page; later member deletion/refetch clamps an out-of-range page. The guarded second effect is not a state feedback cycle.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/MemberSettingsTabs.test.tsx", "sha256": "5dc9dd38643c299c5cb5bdbbfb2c4f49b478b25c3bc9ffb49b005776fd449932"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/MemberManagementPanel.tsx",
-      "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0",
-      "reason": "The flagged location is a query/resource/viewport synchronization expression, not a callback that can simply move to a user event. MemberManagementPanel separates department selection, pagination, editor/password/department dialogs and independent backend permission capabilities. Department changes reset page; later member deletion/refetch clamps an out-of-range page. The guarded second effect is not a state feedback cycle.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/MemberSettingsTabs.test.tsx", "sha256": "5dc9dd38643c299c5cb5bdbbfb2c4f49b478b25c3bc9ffb49b005776fd449932"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/MemberManagementPanel.tsx",
-      "rule": "react-doctor/no-many-boolean-props",
-      "sourceSha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0",
-      "reason": "The booleans are separate capabilities/activity conditions from their backend or runtime owners, rather than mutually exclusive variants. MemberManagementPanel separates department selection, pagination, editor/password/department dialogs and independent backend permission capabilities. Department changes reset page; later member deletion/refetch clamps an out-of-range page. The guarded second effect is not a state feedback cycle.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/MemberSettingsTabs.test.tsx", "sha256": "5dc9dd38643c299c5cb5bdbbfb2c4f49b478b25c3bc9ffb49b005776fd449932"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/MemberManagementPanel.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. MemberManagementPanel separates department selection, pagination, editor/password/department dialogs and independent backend permission capabilities. Department changes reset page; later member deletion/refetch clamps an out-of-range page. The guarded second effect is not a state feedback cycle.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/MemberSettingsTabs.test.tsx", "sha256": "5dc9dd38643c299c5cb5bdbbfb2c4f49b478b25c3bc9ffb49b005776fd449932"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/PersonalAccessTokensPanel.tsx",
-      "rule": "react-doctor/jsx-no-jsx-as-prop",
-      "sourceSha256": "7c4ca7b33320f4dd671ffc627d3a827057a64ffa365c149ff9d0615de1453370",
-      "reason": "The receiving shared component defines this named ReactNode slot; it is part of the layout API. PersonalAccessTokensPanel keeps creation draft, secret display, copy feedback and revoke confirmation independent. DataTableLayout.filters is a named JSX slot API; moving the JSX to children would occupy the table content instead of the filter region.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/personal-access-tokens-panel.test.tsx", "sha256": "db0da4cd401388ebf2fe47b4c061b8155b4aa0d1ebd079292367d42c609a4848"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/PersonalAccessTokensPanel.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "7c4ca7b33320f4dd671ffc627d3a827057a64ffa365c149ff9d0615de1453370",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. PersonalAccessTokensPanel keeps creation draft, secret display, copy feedback and revoke confirmation independent. DataTableLayout.filters is a named JSX slot API; moving the JSX to children would occupy the table content instead of the filter region.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/personal-access-tokens-panel.test.tsx", "sha256": "db0da4cd401388ebf2fe47b4c061b8155b4aa0d1ebd079292367d42c609a4848"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
-      "rule": "react-doctor/jsx-no-jsx-as-prop",
-      "sourceSha256": "1ad2cbfb0b7e44f8c5043b4939d5ab061952b588692df84da2d033cec22a4a12",
-      "reason": "The receiving shared component defines this named ReactNode slot; it is part of the layout API. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "a4871616ca94455f08df846e1a98ad1502696448ff87032c60cac70f63ddf464"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "1ad2cbfb0b7e44f8c5043b4939d5ab061952b588692df84da2d033cec22a4a12",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "a4871616ca94455f08df846e1a98ad1502696448ff87032c60cac70f63ddf464"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
-      "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "1ad2cbfb0b7e44f8c5043b4939d5ab061952b588692df84da2d033cec22a4a12",
-      "reason": "The state retains draft/history/resource information beyond the latest input projection. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "a4871616ca94455f08df846e1a98ad1502696448ff87032c60cac70f63ddf464"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
-      "rule": "react-doctor/no-derived-useState",
-      "sourceSha256": "1ad2cbfb0b7e44f8c5043b4939d5ab061952b588692df84da2d033cec22a4a12",
-      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "a4871616ca94455f08df846e1a98ad1502696448ff87032c60cac70f63ddf464"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/billing/PricingCatalogPanel.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "b489e57cff8ef6c5c9ea8846e6952ea699a17f14584063d98f1fe83b34f050b1",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. PricingCatalogPanel is the catalog page composition of server-supplied pricing records, filters and create/edit/remove dialogs. Table columns and pricing forms are explicit subcomponents; line-count alone does not show a competing state owner or broken boundary.",
-      "evidence": [{"file": "web/app/src/features/settings/components/billing/PricingCatalogPanel.tsx", "sha256": "b489e57cff8ef6c5c9ea8846e6952ea699a17f14584063d98f1fe83b34f050b1"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/data-models/DataSourceResourcesPanel.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "9f80d7b7afb1344fee7a3015226c4330996bb1a4a6028b2e639eb75eb5640253",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. DataSourceResourcesPanel clears selectedTemplate on mapping-target change or unavailable catalog, then retains only a backend-compatible template ID. selectedTemplateIsCompatible independently gates mapping. This fail-closed synchronization prevents an old choice surviving a target/catalog change.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/api/data-model-options.test.ts", "sha256": "b1379ba5515d4a9748effd5af55a7b6d0c8bafb911761525abd03e6b4e9a0a3f"}, {"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-data-model.slow.test.tsx", "sha256": "01279b6218bf9e35fafd38145867941da7b0deaf7c53edbf09892446502be9a5"}, {"file": "web/app/src/features/settings/_tests/data-models-page/data-models-page.test.tsx", "sha256": "74ae5affabf0339bd4653b7156cc7d487bd31978429b40836f9145944a654099"}, {"file": "web/app/src/features/settings/_tests/data-models-page/data-source-management.test.tsx", "sha256": "71e321ebffb1ec049a9ec13aa7b43a5b8548ebb2eb7fd619458b15722cb97bf0"}, {"file": "web/app/src/features/settings/_tests/data-models-page/external-template-refetch.test.tsx", "sha256": "47eb7f02ae71497c5c4a330324f51b91e6f6f991cddbce675df5fc345c1d6239"}, {"file": "web/app/src/features/settings/_tests/data-models-page/file-template-form.test.tsx", "sha256": "c6e39d0f2df543ea4d28fb3559be1c5217dfafe4f66155acfa7c80dfd98d950e"}, {"file": "web/app/src/features/settings/api/_tests/data-models-api.test.ts", "sha256": "3d2d3b7f9a970324ec1b2d76200a8bfd3af610fa255b59b50ead9f12fe932b8a"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/data-models/DataSourceResourcesPanel.tsx",
-      "rule": "react-doctor/no-chain-state-updates",
-      "sourceSha256": "9f80d7b7afb1344fee7a3015226c4330996bb1a4a6028b2e639eb75eb5640253",
-      "reason": "The updates share an external invalidation event, not a derivation chain that can be replaced by a render calculation. DataSourceResourcesPanel clears selectedTemplate on mapping-target change or unavailable catalog, then retains only a backend-compatible template ID. selectedTemplateIsCompatible independently gates mapping. This fail-closed synchronization prevents an old choice surviving a target/catalog change.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/api/data-model-options.test.ts", "sha256": "b1379ba5515d4a9748effd5af55a7b6d0c8bafb911761525abd03e6b4e9a0a3f"}, {"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-data-model.slow.test.tsx", "sha256": "01279b6218bf9e35fafd38145867941da7b0deaf7c53edbf09892446502be9a5"}, {"file": "web/app/src/features/settings/_tests/data-models-page/data-models-page.test.tsx", "sha256": "74ae5affabf0339bd4653b7156cc7d487bd31978429b40836f9145944a654099"}, {"file": "web/app/src/features/settings/_tests/data-models-page/data-source-management.test.tsx", "sha256": "71e321ebffb1ec049a9ec13aa7b43a5b8548ebb2eb7fd619458b15722cb97bf0"}, {"file": "web/app/src/features/settings/_tests/data-models-page/external-template-refetch.test.tsx", "sha256": "47eb7f02ae71497c5c4a330324f51b91e6f6f991cddbce675df5fc345c1d6239"}, {"file": "web/app/src/features/settings/_tests/data-models-page/file-template-form.test.tsx", "sha256": "c6e39d0f2df543ea4d28fb3559be1c5217dfafe4f66155acfa7c80dfd98d950e"}, {"file": "web/app/src/features/settings/api/_tests/data-models-api.test.ts", "sha256": "3d2d3b7f9a970324ec1b2d76200a8bfd3af610fa255b59b50ead9f12fe932b8a"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/data-models/DataSourceResourcesPanel.tsx",
-      "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "9f80d7b7afb1344fee7a3015226c4330996bb1a4a6028b2e639eb75eb5640253",
-      "reason": "The state retains draft/history/resource information beyond the latest input projection. DataSourceResourcesPanel clears selectedTemplate on mapping-target change or unavailable catalog, then retains only a backend-compatible template ID. selectedTemplateIsCompatible independently gates mapping. This fail-closed synchronization prevents an old choice surviving a target/catalog change.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/api/data-model-options.test.ts", "sha256": "b1379ba5515d4a9748effd5af55a7b6d0c8bafb911761525abd03e6b4e9a0a3f"}, {"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-data-model.slow.test.tsx", "sha256": "01279b6218bf9e35fafd38145867941da7b0deaf7c53edbf09892446502be9a5"}, {"file": "web/app/src/features/settings/_tests/data-models-page/data-models-page.test.tsx", "sha256": "74ae5affabf0339bd4653b7156cc7d487bd31978429b40836f9145944a654099"}, {"file": "web/app/src/features/settings/_tests/data-models-page/data-source-management.test.tsx", "sha256": "71e321ebffb1ec049a9ec13aa7b43a5b8548ebb2eb7fd619458b15722cb97bf0"}, {"file": "web/app/src/features/settings/_tests/data-models-page/external-template-refetch.test.tsx", "sha256": "47eb7f02ae71497c5c4a330324f51b91e6f6f991cddbce675df5fc345c1d6239"}, {"file": "web/app/src/features/settings/_tests/data-models-page/file-template-form.test.tsx", "sha256": "c6e39d0f2df543ea4d28fb3559be1c5217dfafe4f66155acfa7c80dfd98d950e"}, {"file": "web/app/src/features/settings/api/_tests/data-models-api.test.ts", "sha256": "3d2d3b7f9a970324ec1b2d76200a8bfd3af610fa255b59b50ead9f12fe932b8a"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/data-models/DataSourceResourcesPanel.tsx",
-      "rule": "react-doctor/no-derived-state-effect",
-      "sourceSha256": "9f80d7b7afb1344fee7a3015226c4330996bb1a4a6028b2e639eb75eb5640253",
-      "reason": "The effect synchronizes a resource or independently editable draft with its external owner. DataSourceResourcesPanel clears selectedTemplate on mapping-target change or unavailable catalog, then retains only a backend-compatible template ID. selectedTemplateIsCompatible independently gates mapping. This fail-closed synchronization prevents an old choice surviving a target/catalog change.",
-      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/api/data-model-options.test.ts", "sha256": "b1379ba5515d4a9748effd5af55a7b6d0c8bafb911761525abd03e6b4e9a0a3f"}, {"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-data-model.slow.test.tsx", "sha256": "01279b6218bf9e35fafd38145867941da7b0deaf7c53edbf09892446502be9a5"}, {"file": "web/app/src/features/settings/_tests/data-models-page/data-models-page.test.tsx", "sha256": "74ae5affabf0339bd4653b7156cc7d487bd31978429b40836f9145944a654099"}, {"file": "web/app/src/features/settings/_tests/data-models-page/data-source-management.test.tsx", "sha256": "71e321ebffb1ec049a9ec13aa7b43a5b8548ebb2eb7fd619458b15722cb97bf0"}, {"file": "web/app/src/features/settings/_tests/data-models-page/external-template-refetch.test.tsx", "sha256": "47eb7f02ae71497c5c4a330324f51b91e6f6f991cddbce675df5fc345c1d6239"}, {"file": "web/app/src/features/settings/_tests/data-models-page/file-template-form.test.tsx", "sha256": "c6e39d0f2df543ea4d28fb3559be1c5217dfafe4f66155acfa7c80dfd98d950e"}, {"file": "web/app/src/features/settings/api/_tests/data-models-api.test.ts", "sha256": "3d2d3b7f9a970324ec1b2d76200a8bfd3af610fa255b59b50ead9f12fe932b8a"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/McpInputMappingEditor.tsx",
-      "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "0775b1fd8eadb0cb662c49a742b7da21a870d6bbaf19a58ba6feb425935887d4",
-      "reason": "The concrete transformation stages retain meaningful original identity/measurement/option semantics; there is no demonstrated repeated full-source lookup. McpInputMappingEditor reports validity to the parent save gate for externally loaded mappings and local invalid JSON. The parameter map/filter/map captures the original parameter index before filtering; this index distinguishes duplicate parameter names and must not be recomputed after filtering.",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-input-mapping-model.test.ts", "sha256": "cef34b22ad3270e8a56694a9e9e49f60801a3d66d3cf3db5103e443d87fbce56"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/McpInputMappingEditor.tsx",
-      "rule": "react-doctor/no-pass-data-to-parent",
-      "sourceSha256": "0775b1fd8eadb0cb662c49a742b7da21a870d6bbaf19a58ba6feb425935887d4",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. McpInputMappingEditor reports validity to the parent save gate for externally loaded mappings and local invalid JSON. The parameter map/filter/map captures the original parameter index before filtering; this index distinguishes duplicate parameter names and must not be recomputed after filtering.",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-input-mapping-model.test.ts", "sha256": "cef34b22ad3270e8a56694a9e9e49f60801a3d66d3cf3db5103e443d87fbce56"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/McpInputMappingEditor.tsx",
-      "rule": "react-doctor/no-pass-live-state-to-parent",
-      "sourceSha256": "0775b1fd8eadb0cb662c49a742b7da21a870d6bbaf19a58ba6feb425935887d4",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. McpInputMappingEditor reports validity to the parent save gate for externally loaded mappings and local invalid JSON. The parameter map/filter/map captures the original parameter index before filtering; this index distinguishes duplicate parameter names and must not be recomputed after filtering.",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-input-mapping-model.test.ts", "sha256": "cef34b22ad3270e8a56694a9e9e49f60801a3d66d3cf3db5103e443d87fbce56"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/McpInputMappingEditor.tsx",
-      "rule": "react-doctor/no-prop-callback-in-effect",
-      "sourceSha256": "0775b1fd8eadb0cb662c49a742b7da21a870d6bbaf19a58ba6feb425935887d4",
-      "reason": "Reporting validity on externally loaded state is required in addition to user event updates; calling only from local edit handlers misses that path. McpInputMappingEditor reports validity to the parent save gate for externally loaded mappings and local invalid JSON. The parameter map/filter/map captures the original parameter index before filtering; this index distinguishes duplicate parameter names and must not be recomputed after filtering.",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-input-mapping-model.test.ts", "sha256": "cef34b22ad3270e8a56694a9e9e49f60801a3d66d3cf3db5103e443d87fbce56"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx",
-      "rule": "react-doctor/no-array-index-as-key",
-      "sourceSha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630",
-      "reason": "The list identity and mutable state contract are described in the file-specific rationale; a data-text key would not uniquely identify repeated entries. McpProxyMappingEditor is a controlled positional mapping pipeline. Each row reads value.mappings[index], updates that same index and has no row-local React state/ref. Duplicate local/remote paths are editable, so path text is not a stable unique key. Validity callback reports externally loaded invalid mappings as well as user edits.",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx", "sha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx",
-      "rule": "react-doctor/no-array-index-key",
-      "sourceSha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630",
-      "reason": "Alias of no-array-index-as-key; the same source-level list identity analysis applies. McpProxyMappingEditor is a controlled positional mapping pipeline. Each row reads value.mappings[index], updates that same index and has no row-local React state/ref. Duplicate local/remote paths are editable, so path text is not a stable unique key. Validity callback reports externally loaded invalid mappings as well as user edits.",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx", "sha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx",
-      "rule": "react-doctor/no-pass-data-to-parent",
-      "sourceSha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. McpProxyMappingEditor is a controlled positional mapping pipeline. Each row reads value.mappings[index], updates that same index and has no row-local React state/ref. Duplicate local/remote paths are editable, so path text is not a stable unique key. Validity callback reports externally loaded invalid mappings as well as user edits.",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx", "sha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx",
-      "rule": "react-doctor/no-prop-callback-in-effect",
-      "sourceSha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630",
-      "reason": "Reporting validity on externally loaded state is required in addition to user event updates; calling only from local edit handlers misses that path. McpProxyMappingEditor is a controlled positional mapping pipeline. Each row reads value.mappings[index], updates that same index and has no row-local React state/ref. Duplicate local/remote paths are editable, so path text is not a stable unique key. Validity callback reports externally loaded invalid mappings as well as user edits.",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx", "sha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/model-providers/ModelProviderInstanceDrawer.tsx",
-      "rule": "react-doctor/no-render-in-render",
-      "sourceSha256": "947152fa3285a2a075eb66343d76401431c6d986a386c665f9ba6ce60e46b028",
-      "reason": "The flagged render-prefixed function is invoked normally; React does not treat that call as a new component type. ModelProviderInstanceDrawer invokes renderAuthenticationCard() as an ordinary function to fill its authentication slot. It does not render <RenderAuthenticationCard/> or create a new component type, so no remount follows from the render-prefixed name.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/model-provider-drawer.test.tsx", "sha256": "cc93738427cd223e13cb22bfd8ecab25b6905491db32b7f7096264bd59cb3893"}, {"file": "web/app/src/features/settings/components/model-provider-request-logs/_tests/ModelProviderRequestLogsPanel.test.tsx", "sha256": "753d0e249027e6c4ab61c89cb7c08d967809e5f323ae8885d05103a4c7afdb81"}, {"file": "web/app/src/features/settings/components/model-providers/_tests/ModelProviderAccountOperationsCard.test.tsx", "sha256": "5fc969941891f853229aa2a252074d132e8225b51c074302f06808e41affedc4"}, {"file": "web/app/src/features/settings/components/model-providers/_tests/ModelProviderCatalogPanel.test.tsx", "sha256": "4bb8623221b371581f1ab1c8bdce7cd90bfa96a26c1d225cd2c69bd0369f15af"}, {"file": "web/app/src/features/settings/components/model-providers/_tests/OfficialPluginInstallPanel.test.tsx", "sha256": "71f7296258513fdb0461b1a60aa017c071a4e644545f05c74b9fa603fc761d01"}, {"file": "web/app/src/features/settings/components/model-providers/_tests/PluginUploadInstallModal.test.tsx", "sha256": "92bb47cef7676a29b840087be82db5bde1bcc0029615d40add0d072ccc4b5be6"}, {"file": "web/app/src/features/settings/pages/settings-page/model-providers/_tests/shared.test.ts", "sha256": "cb7d4034b7d11a5a8cc1f3986a5813d913f894c02aec0c3bc6f32e512a8af3aa"}, {"file": "web/app/src/features/settings/pages/settings-page/model-providers/_tests/use-model-provider-mutations.test.tsx", "sha256": "f3d0f70a467be5dbde77aea16412fb59176514eadc8d18083f688324755c0dde"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/organization/DepartmentEditorDrawer.tsx",
-      "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "0316aa7a077aa625df6b0ea3bcf8ea441bce7d8abc26a6409ba3e5307270b8d8",
-      "reason": "Select options exclude the currently edited department ID to prevent choosing self as parent before mapping unchanged backend identifiers to label/value. These paginated option transformations are linear and side-effect-free; combining passes does not remove a repeated lookup or fix a behavioral failure. Select options exclude the protected root role code from assignable role choices before mapping unchanged backend identifiers to label/value. These paginated option transformations are linear and side-effect-free; combining passes does not remove a repeated lookup or fix a behavioral failure.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/DepartmentEditorDrawer.test.tsx", "sha256": "f300fc454d2fe00abc75d8b3c50275f8a583801e9cfa68fb48a6d41e7ae2ca9f"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx",
-      "rule": "react-doctor/query-mutation-missing-invalidation",
-      "sourceSha256": "8bfaa7730382a5c2adb15abf4f14bd19f45622b438bf098ba86235c85f1bbe79",
-      "reason": "The mutation delegates success invalidation to refresh, which invalidates both department and member query prefixes; the rule does not follow the helper. DepartmentManagementPanel delete mutation uses onSuccess: refresh; refresh invalidates both settingsDepartmentsQueryKey and settingsMembersQueryKey through Promise.all. Department-tree and member queries share these prefixes, so invalidation exists across the helper boundary.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx", "sha256": "8bfaa7730382a5c2adb15abf4f14bd19f45622b438bf098ba86235c85f1bbe79"}, {"file": "web/app/src/features/settings/components/organization/_tests/DepartmentManagementPanel.test.tsx", "sha256": "e0ca246e6a5d42bb6473ef48d63fce621cd03028117bf798d9bfe28fefa2b4f5"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx",
-      "rule": "react-doctor/no-multi-comp",
-      "sourceSha256": "66934259b16b69e28c48c7680db2588a2f97fb278d08892613057b8a8a51ba8d",
-      "reason": "The components are cohesive private provider/consumer or explicitly separate scene fixtures; no shared state/lifecycle defect is identified. SortablePolicyTable keeps sortable row, drag handle and table together because they share the private row-handle context and DndContext provider contract. These are cohesive cooperating components, not unrelated exports. useContext is supported in React 19.",
-      "evidence": [{"file": "web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx", "sha256": "66934259b16b69e28c48c7680db2588a2f97fb278d08892613057b8a8a51ba8d"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx",
-      "rule": "react-doctor/no-react19-deprecated-apis",
-      "sourceSha256": "66934259b16b69e28c48c7680db2588a2f97fb278d08892613057b8a8a51ba8d",
-      "reason": "The installed rule labels this a migration hint. The API remains supported; ref/context ABI is intentional. SortablePolicyTable keeps sortable row, drag handle and table together because they share the private row-handle context and DndContext provider contract. These are cohesive cooperating components, not unrelated exports. useContext is supported in React 19.",
-      "evidence": [{"file": "web/app/src/features/settings/components/role-permissions/SortablePolicyTable.tsx", "sha256": "66934259b16b69e28c48c7680db2588a2f97fb278d08892613057b8a8a51ba8d"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx",
-      "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "199d6207eb5e8995e774e1a4d3dbef5a1c02d48f039b0e75f7565f8968b356a6",
-      "reason": "The flagged location is a query/resource/viewport synchronization expression, not a callback that can simply move to a user event. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner.",
-      "evidence": [{"file": "api/apps/api-server/src/routes/settings/system_backups/interface.rs", "sha256": "af7a5b493c81db043e8338c752ad18f3e7b62b646051cfdd5e624bfcb118ae04"}, {"file": "api/apps/api-server/src/system_backup/runtime.rs", "sha256": "7e04de37c980e02a50200217153ac5b5ad025e8f34755238e5e99b3cbe0cf1d2"}, {"file": "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx", "sha256": "199d6207eb5e8995e774e1a4d3dbef5a1c02d48f039b0e75f7565f8968b356a6"}, {"file": "web/app/src/features/settings/components/system-backups/_tests/SystemBackupsPanel.test.tsx", "sha256": "a8c81963f66a9cc68849563abec8ffb7bc3276c5ce7b057ad2aca4f4fdc5b266"}, {"file": "web/packages/api-client/src/console/system-backups/types.ts", "sha256": "8ca4d585c01911589c204f95d1cd8f8e0fbc3769143a1e9a1a315551d2b5dc33"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "199d6207eb5e8995e774e1a4d3dbef5a1c02d48f039b0e75f7565f8968b356a6",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner.",
-      "evidence": [{"file": "api/apps/api-server/src/routes/settings/system_backups/interface.rs", "sha256": "af7a5b493c81db043e8338c752ad18f3e7b62b646051cfdd5e624bfcb118ae04"}, {"file": "api/apps/api-server/src/system_backup/runtime.rs", "sha256": "7e04de37c980e02a50200217153ac5b5ad025e8f34755238e5e99b3cbe0cf1d2"}, {"file": "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx", "sha256": "199d6207eb5e8995e774e1a4d3dbef5a1c02d48f039b0e75f7565f8968b356a6"}, {"file": "web/app/src/features/settings/components/system-backups/_tests/SystemBackupsPanel.test.tsx", "sha256": "a8c81963f66a9cc68849563abec8ffb7bc3276c5ce7b057ad2aca4f4fdc5b266"}, {"file": "web/packages/api-client/src/console/system-backups/types.ts", "sha256": "8ca4d585c01911589c204f95d1cd8f8e0fbc3769143a1e9a1a315551d2b5dc33"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "199d6207eb5e8995e774e1a4d3dbef5a1c02d48f039b0e75f7565f8968b356a6",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner.",
-      "evidence": [{"file": "api/apps/api-server/src/routes/settings/system_backups/interface.rs", "sha256": "af7a5b493c81db043e8338c752ad18f3e7b62b646051cfdd5e624bfcb118ae04"}, {"file": "api/apps/api-server/src/system_backup/runtime.rs", "sha256": "7e04de37c980e02a50200217153ac5b5ad025e8f34755238e5e99b3cbe0cf1d2"}, {"file": "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx", "sha256": "199d6207eb5e8995e774e1a4d3dbef5a1c02d48f039b0e75f7565f8968b356a6"}, {"file": "web/app/src/features/settings/components/system-backups/_tests/SystemBackupsPanel.test.tsx", "sha256": "a8c81963f66a9cc68849563abec8ffb7bc3276c5ce7b057ad2aca4f4fdc5b266"}, {"file": "web/packages/api-client/src/console/system-backups/types.ts", "sha256": "8ca4d585c01911589c204f95d1cd8f8e0fbc3769143a1e9a1a315551d2b5dc33"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx",
-      "rule": "react-doctor/query-mutation-missing-invalidation",
-      "sourceSha256": "199d6207eb5e8995e774e1a4d3dbef5a1c02d48f039b0e75f7565f8968b356a6",
-      "reason": "Backup creation only queues work. onSuccess sets backupJobId; backupJobStatus polls until succeeded/failed, and its success effect invalidates the backup query prefix. Invalidating at queue acceptance would read the pre-creation list. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner. Import onSuccess awaits refresh(), which calls queryClient.invalidateQueries({queryKey}); the rule does not follow this helper. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner. Verify onSuccess awaits refresh(), which invalidates the shared backup query prefix before closing the verify dialog. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner. Delete onSuccess awaits refresh(), which invalidates list/detail query prefix; the helper boundary causes this diagnostic. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner. Preflight is read-only recovery-plan evaluation: onSuccess stores the returned plan/confirmation state and does not mutate the backup catalog. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner. The backend selective path awaits restore_selected_backup and returns succeeded, which awaits refresh(). The nonselective path only prepares an offline handoff and explicitly returns restart_required=true/status=preparing. Its status DTO has phase/journal_state and no status property; this is an offline handoff, not an online queued restore whose terminal success was omitted. SystemBackupsPanel owns backup catalog/selection and separate create/import/verify/delete/recovery dialogs. refresh invalidates the shared backup query prefix. Async backup creation invalidates only after polled job success; preflight computes a recovery plan without changing backup catalog; recovery intent has its own job/status owner.",
-      "evidence": [{"file": "api/apps/api-server/src/routes/settings/system_backups/interface.rs", "sha256": "af7a5b493c81db043e8338c752ad18f3e7b62b646051cfdd5e624bfcb118ae04"}, {"file": "api/apps/api-server/src/system_backup/runtime.rs", "sha256": "7e04de37c980e02a50200217153ac5b5ad025e8f34755238e5e99b3cbe0cf1d2"}, {"file": "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx", "sha256": "199d6207eb5e8995e774e1a4d3dbef5a1c02d48f039b0e75f7565f8968b356a6"}, {"file": "web/app/src/features/settings/components/system-backups/_tests/SystemBackupsPanel.test.tsx", "sha256": "a8c81963f66a9cc68849563abec8ffb7bc3276c5ce7b057ad2aca4f4fdc5b266"}, {"file": "web/packages/api-client/src/console/system-backups/types.ts", "sha256": "8ca4d585c01911589c204f95d1cd8f8e0fbc3769143a1e9a1a315551d2b5dc33"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
-      "rule": "react-doctor/no-array-index-as-key",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "The list identity and mutable state contract are described in the file-specific rationale; a data-text key would not uniquely identify repeated entries. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
-      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "acdb842a11b9df3cefc9b0bfcd999de10b2eaea7bdd81598c428f63369e7d601"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
-      "rule": "react-doctor/no-array-index-key",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "Alias of no-array-index-as-key; the same source-level list identity analysis applies. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
-      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "acdb842a11b9df3cefc9b0bfcd999de10b2eaea7bdd81598c428f63369e7d601"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
-      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "acdb842a11b9df3cefc9b0bfcd999de10b2eaea7bdd81598c428f63369e7d601"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/system-templates/SystemTemplateDialog.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "a1e6516b5cd615b276718ec8cb66203ecd194a3c2962b150aff6f3d8e25dc112",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. SystemTemplateDialog owns import-file reading/preview/install and export selection. Read completion is asynchronous and cancelled on input switch. Failure/warning alerts render immutable backend message snapshots with no row-local state; index keys distinguish duplicate messages and lists are not interactively sorted or edited.",
-      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "acdb842a11b9df3cefc9b0bfcd999de10b2eaea7bdd81598c428f63369e7d601"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "21572862fe771ec9b7edfe41dd7f9379a15b4f5639ed8a25ed6e808fde0bc4b7",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. UiCodeTemplateStudio initializes independent unsaved draft and preview from the explicit studio initialValue. Parent CodeTemplatesTab creates that stable snapshot for opening an editor and destroys the studio on close; reset on open/snapshot change prevents another template inheriting draft state.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "21572862fe771ec9b7edfe41dd7f9379a15b4f5639ed8a25ed6e808fde0bc4b7",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. UiCodeTemplateStudio initializes independent unsaved draft and preview from the explicit studio initialValue. Parent CodeTemplatesTab creates that stable snapshot for opening an editor and destroys the studio on close; reset on open/snapshot change prevents another template inheriting draft state.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}]
-    },
-    {
-      "file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx",
-      "rule": "react-doctor/no-reset-all-state-on-prop-change",
-      "sourceSha256": "21572862fe771ec9b7edfe41dd7f9379a15b4f5639ed8a25ed6e808fde0bc4b7",
-      "reason": "Only the explicitly changed owner state is reset; remounting the whole component would also dispose retained native/editor/session resources. UiCodeTemplateStudio initializes independent unsaved draft and preview from the explicit studio initialValue. Parent CodeTemplatesTab creates that stable snapshot for opening an editor and destroys the studio on close; reset on open/snapshot change prevents another template inheriting draft state.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}]
-    },
-    {
-      "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
-      "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f",
-      "reason": "Notification type options first exclude unavailable backend types and then localize display labels while preserving the [type_code,installation_id] identity value. The filter limits the localizeType calls to selectable records; this is linear and does not duplicate localization for rejected types.",
-      "evidence": [{"file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx", "sha256": "5e78d80629a3a1b02329104ed34f3e9baeba9601cc99d6020e20fcdd0628f4c4"}]
-    },
-    {
-      "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
-      "rule": "react-doctor/no-derived-useState",
-      "sourceSha256": "4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f",
-      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. NotificationInstanceDrawer retains savedInstance after creating a notification while the drawer remains open, so it cannot be derived solely from initial instance. NotificationsPage keys the drawer by editing.instance.id or new. Type options filter backend available types before localizing their display name; type_code/installation_id remain the value.",
-      "evidence": [{"file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx", "sha256": "5e78d80629a3a1b02329104ed34f3e9baeba9601cc99d6020e20fcdd0628f4c4"}]
-    },
-    {
-      "file": "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
-      "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "4ea9c686f5d530f25229728d77297321fcd997ac476c107ff6d74cb2b79c168f",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NotificationInstanceDrawer retains savedInstance after creating a notification while the drawer remains open, so it cannot be derived solely from initial instance. NotificationsPage keys the drawer by editing.instance.id or new. Type options filter backend available types before localizing their display name; type_code/installation_id remain the value.",
-      "evidence": [{"file": "web/app/src/features/settings/pages/notifications/_tests/notification-authorization.test.tsx", "sha256": "5e78d80629a3a1b02329104ed34f3e9baeba9601cc99d6020e20fcdd0628f4c4"}]
-    },
-    {
-      "file": "web/app/src/features/settings/pages/settings-page/PluginSettingsPage.tsx",
-      "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "5423258572736229472809a40d960670badb5c82aa9c94369e96c7b99cb01cb5",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. PluginSettingsPage owns an asynchronous fetched native-module registry for route/version/source. Its effect clears the previous prepared/error state, fences promise results with current and disposes loader on cleanup. These are native preparation-resource transitions, not redundant derivation from page.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/plugin-settings-template-lifecycle.test.tsx", "sha256": "e1ea7f5d4a8ee95302477682d89960981f00ffb086a3c3089e8c1f77f71dd6e9"}]
-    },
-    {
-      "file": "web/app/src/features/settings/pages/settings-page/PluginSettingsPage.tsx",
-      "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "5423258572736229472809a40d960670badb5c82aa9c94369e96c7b99cb01cb5",
-      "reason": "The effect applies one external lifecycle transition to independent local state; it does not create a self-triggering update cycle. PluginSettingsPage owns an asynchronous fetched native-module registry for route/version/source. Its effect clears the previous prepared/error state, fences promise results with current and disposes loader on cleanup. These are native preparation-resource transitions, not redundant derivation from page.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/plugin-settings-template-lifecycle.test.tsx", "sha256": "e1ea7f5d4a8ee95302477682d89960981f00ffb086a3c3089e8c1f77f71dd6e9"}]
-    },
-    {
-      "file": "web/app/src/shared/code-block/BlockSourceStudio.tsx",
-      "rule": "react-doctor/jsx-no-jsx-as-prop",
-      "sourceSha256": "6388f3b53edd28b53d7ecbe2433ef1c9143cd3524eb7fb4f9e1d026d7f47e7e9",
-      "reason": "The receiving shared component defines this named ReactNode slot; it is part of the layout API. BlockSourceStudio owns external window registration, dirty status and viewport/maximize synchronization; cleanup closes that registered window. BlockStudioWorkspace.editor is the designated code-editor JSX slot. activeSection is editable local navigation initialized/reset on explicit open/initialSection changes.",
-      "evidence": [{"file": "web/app/src/shared/code-block/BlockSourceStudio.tsx", "sha256": "6388f3b53edd28b53d7ecbe2433ef1c9143cd3524eb7fb4f9e1d026d7f47e7e9"}]
-    },
-    {
-      "file": "web/app/src/shared/code-block/BlockSourceStudio.tsx",
-      "rule": "react-doctor/no-derived-state-effect",
-      "sourceSha256": "6388f3b53edd28b53d7ecbe2433ef1c9143cd3524eb7fb4f9e1d026d7f47e7e9",
-      "reason": "The effect synchronizes a resource or independently editable draft with its external owner. BlockSourceStudio owns external window registration, dirty status and viewport/maximize synchronization; cleanup closes that registered window. BlockStudioWorkspace.editor is the designated code-editor JSX slot. activeSection is editable local navigation initialized/reset on explicit open/initialSection changes.",
-      "evidence": [{"file": "web/app/src/shared/code-block/BlockSourceStudio.tsx", "sha256": "6388f3b53edd28b53d7ecbe2433ef1c9143cd3524eb7fb4f9e1d026d7f47e7e9"}]
-    },
-    {
-      "file": "web/app/src/shared/code-block/BlockSourceStudio.tsx",
-      "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "6388f3b53edd28b53d7ecbe2433ef1c9143cd3524eb7fb4f9e1d026d7f47e7e9",
-      "reason": "The flagged location is a query/resource/viewport synchronization expression, not a callback that can simply move to a user event. BlockSourceStudio owns external window registration, dirty status and viewport/maximize synchronization; cleanup closes that registered window. BlockStudioWorkspace.editor is the designated code-editor JSX slot. activeSection is editable local navigation initialized/reset on explicit open/initialSection changes.",
-      "evidence": [{"file": "web/app/src/shared/code-block/BlockSourceStudio.tsx", "sha256": "6388f3b53edd28b53d7ecbe2433ef1c9143cd3524eb7fb4f9e1d026d7f47e7e9"}]
-    },
-    {
-      "file": "web/app/src/shared/code-block/BlockSourceStudio.tsx",
-      "rule": "react-doctor/no-initialize-state",
-      "sourceSha256": "6388f3b53edd28b53d7ecbe2433ef1c9143cd3524eb7fb4f9e1d026d7f47e7e9",
-      "reason": "The initial value depends on measured DOM/viewport data and is refreshed by its subscribed browser resource; it cannot be read reliably during server/render initialization. BlockSourceStudio owns external window registration, dirty status and viewport/maximize synchronization; cleanup closes that registered window. BlockStudioWorkspace.editor is the designated code-editor JSX slot. activeSection is editable local navigation initialized/reset on explicit open/initialSection changes.",
-      "evidence": [{"file": "web/app/src/shared/code-block/BlockSourceStudio.tsx", "sha256": "6388f3b53edd28b53d7ecbe2433ef1c9143cd3524eb7fb4f9e1d026d7f47e7e9"}]
-    },
-    {
-      "file": "web/app/src/shared/schema-ui/v1/form-drawer/SchemaFormDrawer.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "74e08123080fab5592fe93236cdb947b4478ffc87d1f3a29d32988c0489150b1",
-      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. SchemaFormDrawer owns Antd form-store initialization, submission status and actions. Its owner-input effect must replace record values while retaining mounted custom controls; schema fields and action/status slots are distinct owners, not a reason to create a reducer or remount the entire drawer.",
-      "evidence": [{"file": "web/app/src/shared/schema-ui/v1/_tests/schema-form-drawer.test.tsx", "sha256": "99acb9460f798b164b453c839ae8cfd6dc077912de8d158bc6ab2523938c0e37"}]
-    },
-    {
-      "file": "web/app/src/shared/ui/window-workspace/WindowWorkspaceWindow.tsx",
-      "rule": "react-doctor/prefer-html-dialog",
-      "sourceSha256": "5eae845ec9b69413fb4993c95c3742ef319ce9a62bf923a7cbb05849a35696e5",
-      "reason": "The floating window is nonmodal and participates in a retained custom z-index/overlay stack; native dialog top-layer/display lifecycle would change that contract. WindowWorkspaceWindow is a nonmodal absolutely positioned floating workspace with custom z-index and overlay context. Native dialog show/showModal introduces native display/top-layer semantics that do not model this retained workspace stack. Resize separators have no native element equivalent and now implement keyboard focus and arrow resizing.",
-      "evidence": [{"file": "web/app/src/shared/ui/window-workspace/WindowWorkspaceWindow.tsx", "sha256": "5eae845ec9b69413fb4993c95c3742ef319ce9a62bf923a7cbb05849a35696e5"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/shared/ui/window-workspace/WindowWorkspaceWindow.tsx",
-      "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "5eae845ec9b69413fb4993c95c3742ef319ce9a62bf923a7cbb05849a35696e5",
-      "reason": "The retained nonmodal window uses absolute positioning and an overlay z-index context. Native dialog show/showModal would impose a different display/top-layer lifecycle on the workspace. WindowWorkspaceWindow is a nonmodal absolutely positioned floating workspace with custom z-index and overlay context. Native dialog show/showModal introduces native display/top-layer semantics that do not model this retained workspace stack. Resize separators have no native element equivalent and now implement keyboard focus and arrow resizing. This is a movable pane/edge separator with orientation, keyboard handling and numeric size semantics. There is no native HTML resize-separator element; hr would describe a document thematic break rather than an adjustable pane boundary. WindowWorkspaceWindow is a nonmodal absolutely positioned floating workspace with custom z-index and overlay context. Native dialog show/showModal introduces native display/top-layer semantics that do not model this retained workspace stack. Resize separators have no native element equivalent and now implement keyboard focus and arrow resizing.",
-      "evidence": [{"file": "web/app/src/shared/ui/window-workspace/WindowWorkspaceWindow.tsx", "sha256": "5eae845ec9b69413fb4993c95c3742ef319ce9a62bf923a7cbb05849a35696e5"}, {"file": "web/app/src/shared/ui/window-workspace/_tests/WindowWorkspaceWindow.test.tsx", "sha256": "5d65b5f005602ae6000fe308477193e622c5d5f11d9e7fc94f0d041b6c9c9905"}]
-    },
-    {
-      "file": "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
-      "rule": "react-doctor/no-multi-comp",
-      "sourceSha256": "459b85d6044ab94ec9e649527a6755894b8c5ed744a0fa7eb4997623e21d2c1f",
-      "reason": "The components are cohesive private provider/consumer or explicitly separate scene fixtures; no shared state/lifecycle defect is identified. Notification scene fixtures export two deliberately separate tiny notification scenarios consumed by the style-boundary scene registry. Keeping scene exports in the same fixture module does not share React state or create a production component ownership conflict.",
-      "evidence": [{"file": "web/app/src/style-boundary/_tests/registry.test.tsx", "sha256": "142ec95c6b3d0f5a011e1a0dd07fb31d2f2016e98fa34d78126baf195fedfada"}]
-    }
+  "reviewFiles": [
+    "scripts/node/react-doctor-gate/reviews/build/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/app-shell/assistant-client-tools/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/app-shell/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/app/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/_tests/embedded-assistant/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/_tests/node-inspector/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/bindings/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/bindings/template-editor/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/canvas/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/conversation/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/trajectory/client/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/trajectory/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/trajectory/virtual/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/trajectory/workflow/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/debug-console/variables/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/detail/fields/http-request/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/detail/fields/json-schema/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/detail/fields/notification/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/detail/fields/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/detail/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/editor/canvas-frame/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/editor/environment-variables/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/editor/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/embedded-assistant/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/field-container/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/inspector/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/issues/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/components/nodes/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/hooks/interactions/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/hooks/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/hooks/runtime/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/lib/adapters/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/lib/debug-console/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/lib/document/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/lib/document/transforms/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/lib/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/lib/variables/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/agent-flow/schema/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/components/api/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/components/archive/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/components/collector/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/components/logs/exchange/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/components/logs/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/components/logs/workspace/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/components/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/components/statistics/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/hooks/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/applications/pages/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/auth/components/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/auth/pages/mcp-authorization/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/auth/pages/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/flow-editor/authoring/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/flow-editor/store/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/_tests/browser-fixtures/native-react-trial/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/_tests/browser-fixtures/navigation-drag/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/_tests/browser-fixtures/r5-studio-catalog/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/_tests/browser-fixtures/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/_tests/model-usage-report/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/_tests/native-trusted-block/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/_tests/page-canvas/keyboard/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/components/block-schema-tree/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/components/files/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/components/jsx-studio/block-tabs/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/components/jsx-studio/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/components/page-canvas/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/components/page-tree-actions/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/components/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/hooks/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/jsx-studio/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-adapter/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/_tests/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/affix-anchor/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/effects/_tests/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/effects/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/image-crop/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/menu/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/modal/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/notification/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/overlay/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/native-modules/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/page-canvas/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/page-tree-icons/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/lib/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/pages/frontstage-page/controllers/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/pages/frontstage-page/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/pages/frontstage-page/runtime-session/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/pages/frontstage-page/workspace-shell/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/frontstage/pages/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/me/pages/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/notifications/hooks/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/_tests/application-management-page/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/api/system-templates/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/application-management/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/auth-center/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/billing/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/data-models/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/extension-center/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/host-infrastructure/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/i18n-catalog/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/mcp-management/McpInstancesTab/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/mcp-management/McpToolsTab/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/mcp-management/bundle/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/mcp-management/proxy/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/mcp-management/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/mcp-management/upstream/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/model-provider-request-logs/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/model-providers/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/organization/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/role-permissions/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/system-backups/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/system-templates/_tests/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/system-templates/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/components/ui-management/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/hooks/organization/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/network-center/pools/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/network-center/providers/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/network-center/routes/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/pages/i18n-catalog/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/pages/notifications/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/pages/settings-page/model-providers/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/pages/settings-page/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/settings/pages/settings-page/shell/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/workflow/components/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/code-block/fetched-modules/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/code-block/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/schema-ui/v1/form-drawer/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/schema-ui/v1/runtime/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/ui/api-docs/_tests/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/ui/api-docs/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/ui/data-table/_tests/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/ui/data-table/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/ui/fixed-height-modal/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/ui/loading-state/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/ui/resizable-drawer/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/shared/ui/window-workspace/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/state/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/style-boundary/scene-fixtures/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/vite/reviews.json"
   ]
 }

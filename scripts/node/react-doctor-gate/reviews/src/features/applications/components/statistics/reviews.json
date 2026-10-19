@@ -1,0 +1,26 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "72f09a4784934fe21e7f18fb0209b981d7c637c2af2b3c8c57bc39450a70de22",
+      "reason": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx:59（react-doctor/no-giant-component）：ApplicationTaskStatistics 的筛选/时间范围、metric 和 drilldown 属于同一个后端 statistics report；query 使用后端聚合，不在前端重建业务统计。少量独立 state/490行并不证明一个重绘链或资源边界越界。",
+      "evidence": [{"file": "web/app/src/features/applications/_tests/application-statistics-page.test.tsx", "sha256": "d3cbd2ae18c0db8b772470e5a30dd2da4471141be830908ddfc1ba7260e83299"}, {"file": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx", "sha256": "72f09a4784934fe21e7f18fb0209b981d7c637c2af2b3c8c57bc39450a70de22"}, {"file": "web/app/src/features/applications/pages/ApplicationStatisticsPage.tsx", "sha256": "cc3e68fe4b25a1bc29562649e167e3333cbb759432c05a2f5d3d3831cebb771e"}]
+    },
+    {
+      "file": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx",
+      "rule": "react-doctor/prefer-module-scope-pure-function",
+      "sourceSha256": "72f09a4784934fe21e7f18fb0209b981d7c637c2af2b3c8c57bc39450a70de22",
+      "reason": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx:101（react-doctor/prefer-module-scope-pure-function）：本地函数仅把传入数值格式化、window.location.assign 或 mask token 文本，使用点是同步调用/局部 event 闭包；函数本身不传给 memoized child，且未在 hot collection 内重复创建。模块化是代码整理选择，不能把局部分配直接认定为可见重绘错误。 web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx:113（react-doctor/prefer-module-scope-pure-function）：本地函数仅把传入数值格式化、window.location.assign 或 mask token 文本，使用点是同步调用/局部 event 闭包；函数本身不传给 memoized child，且未在 hot collection 内重复创建。模块化是代码整理选择，不能把局部分配直接认定为可见重绘错误。",
+      "evidence": [{"file": "web/app/src/features/applications/_tests/application-statistics-page.test.tsx", "sha256": "d3cbd2ae18c0db8b772470e5a30dd2da4471141be830908ddfc1ba7260e83299"}, {"file": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx", "sha256": "72f09a4784934fe21e7f18fb0209b981d7c637c2af2b3c8c57bc39450a70de22"}, {"file": "web/app/src/features/applications/pages/ApplicationStatisticsPage.tsx", "sha256": "cc3e68fe4b25a1bc29562649e167e3333cbb759432c05a2f5d3d3831cebb771e"}]
+    },
+    {
+      "file": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx",
+      "rule": "react-doctor/prefer-useReducer",
+      "sourceSha256": "72f09a4784934fe21e7f18fb0209b981d7c637c2af2b3c8c57bc39450a70de22",
+      "reason": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx:63（react-doctor/prefer-useReducer）：ApplicationTaskStatistics 的筛选/时间范围、metric 和 drilldown 属于同一个后端 statistics report；query 使用后端聚合，不在前端重建业务统计。少量独立 state/490行并不证明一个重绘链或资源边界越界。",
+      "evidence": [{"file": "web/app/src/features/applications/_tests/application-statistics-page.test.tsx", "sha256": "d3cbd2ae18c0db8b772470e5a30dd2da4471141be830908ddfc1ba7260e83299"}, {"file": "web/app/src/features/applications/components/statistics/ApplicationTaskStatistics.tsx", "sha256": "72f09a4784934fe21e7f18fb0209b981d7c637c2af2b3c8c57bc39450a70de22"}, {"file": "web/app/src/features/applications/pages/ApplicationStatisticsPage.tsx", "sha256": "cc3e68fe4b25a1bc29562649e167e3333cbb759432c05a2f5d3d3831cebb771e"}]
+    }
+  ]
+}

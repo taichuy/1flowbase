@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/McpInstancesTab/McpInstanceModals.tsx",
+      "rule": "react-doctor/no-multi-comp",
+      "sourceSha256": "49f49cc4ee23670dcd987e324666271c0a7ddc68bb8ab4c3a00567c6332180dd",
+      "reason": "Copy-instance and edit-instance modal components share this modal owner and copy/connection editor primitives. Their state is separately scoped by props and hooks; two named sibling components do not create hook-order or remount defects.",
+      "evidence": [{"file": "web/app/src/features/settings/api/mcp-management.ts", "sha256": "350e367f664cb74822891243f567a8508c51c57540310d27c05b1e31e129f82e"}, {"file": "web/app/src/features/settings/components/mcp-management/McpInstancesTab.tsx", "sha256": "98194ca2f1528e9bfdc615c024b40d4139655e0050f3fd1610a65b20b2cccec5"}, {"file": "web/app/src/features/settings/components/mcp-management/McpInstancesTab/McpInstanceModals.tsx", "sha256": "49f49cc4ee23670dcd987e324666271c0a7ddc68bb8ab4c3a00567c6332180dd"}, {"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-input-defaults.test.tsx", "sha256": "4973e23f6420f2a337f908fdfbd5444524993a00bf6e93457a19a834cc9b2943"}, {"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-instance-table.test.tsx", "sha256": "e521ed5cdb1d858bc9a53873358eb3cf3061c70f0e888858f922fff731f7dfc9"}, {"file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/instance-contract.test.tsx", "sha256": "1b70c142abb957f74e7ffd63ea308745d648cd06a7135441ac603eb5567f5ec6"}, {"file": "web/app/src/features/settings/components/mcp-management/mcp-management-view-model.ts", "sha256": "f389e8f945f35b5859257418bf69ef7a8ebfd5cc9db818830e9dfa9f876cade9"}, {"file": "web/app/src/shared/i18n/text.ts", "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/shared/ui/api-docs/_tests/ApiDocsExplorer.test.tsx",
+      "rule": "react-doctor/anchor-is-valid",
+      "sourceSha256": "229be916e7173a7983ce19d044853a70cdd0aeb36579d39fa3144c3b1c8b1dc6",
+      "reason": "web/app/src/shared/ui/api-docs/_tests/ApiDocsExplorer.test.tsx:14（react-doctor/anchor-is-valid）：当前 ApiDocsExplorer fixture 的 endpoint anchor 已有真实 #operation-create-chat-completion href，作为文档内锚点由 viewer 转发；probe 后不再是无目标 action anchor。",
+      "evidence": [{"file": "web/app/src/shared/ui/api-docs/_tests/ApiDocsExplorer.test.tsx", "sha256": "229be916e7173a7983ce19d044853a70cdd0aeb36579d39fa3144c3b1c8b1dc6"}]
+    }
+  ]
+}

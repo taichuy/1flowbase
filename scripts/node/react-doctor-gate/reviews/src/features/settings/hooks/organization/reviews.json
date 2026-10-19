@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/hooks/organization/useDepartmentOptions.ts",
+      "rule": "react-doctor/js-tosorted-immutable",
+      "sourceSha256": "e31c09bfd5fc3e7bd64627fa642cb772a16b972aed0d95638edcaed15e85195f",
+      "reason": "The sort receiver is a new array made from spread/Map values/Set values, not an aliased input prop or shared state array. Sorting this owned temporary already preserves source immutability; the exact allocation/sort chain is captured below.",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/api/data-model-options.test.ts", "sha256": "b1379ba5515d4a9748effd5af55a7b6d0c8bafb911761525abd03e6b4e9a0a3f"}, {"file": "web/app/src/features/settings/api/identity-access/departments.ts", "sha256": "bfee88904e2e3aa20fad0cb120055605e74997f93adf90cd9bda04842e6529d8"}, {"file": "web/app/src/features/settings/components/organization/DepartmentEditorDrawer.tsx", "sha256": "0316aa7a077aa625df6b0ea3bcf8ea441bce7d8abc26a6409ba3e5307270b8d8"}, {"file": "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx", "sha256": "3976cb857af343e4ec44de22a615c0be30f4884830e4a20625bd17dff6c5933b"}, {"file": "web/app/src/features/settings/hooks/organization/_tests/department-options.test.tsx", "sha256": "d8c9a2c3053a5946b1f00a6d0c96dd159020eaf065a0f303107f9ec83c70e8d3"}, {"file": "web/app/src/features/settings/hooks/organization/_tests/department-tree.test.tsx", "sha256": "6fe62fad4d12ceb57d452e407090fd38d91cc5cfce95f51a4d804e3ca55137cb"}, {"file": "web/app/src/features/settings/hooks/organization/useDepartmentOptions.ts", "sha256": "e31c09bfd5fc3e7bd64627fa642cb772a16b972aed0d95638edcaed15e85195f"}]
+    }
+  ]
+}

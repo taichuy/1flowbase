@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/_tests/application-management-page/fixture.tsx",
+      "rule": "react-doctor/only-export-components",
+      "sourceSha256": "89ce0980897c26d5229edbcac362beec4f7bf2eb9f611bb6e5246179bf95ac89",
+      "reason": "This is a Vitest fixture/observer API, not a browser Fast Refresh component module. This is a Vitest fixture module: vi.hoisted API mocks plus setupApplicationManagementFixture register beforeAll/beforeEach/resetAuthStore and AppProviders. Tests import those explicit fixtures; it is not a browser Fast Refresh component boundary.",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/application-management-page/application-archives.test.tsx", "sha256": "eb3ab0f88a8b18e0b306342a630d8a1805e64a617b1270f77bf663f98d6ed24e"}, {"file": "web/app/src/features/settings/_tests/application-management-page/application-management-page.test.tsx", "sha256": "c410a498745ad636b4bf47c5a832afd3d997e2c5e03ad995fec177c59fd0c97a"}]
+    }
+  ]
+}

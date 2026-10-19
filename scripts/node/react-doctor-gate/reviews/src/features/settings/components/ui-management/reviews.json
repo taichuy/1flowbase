@@ -1,0 +1,61 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/components/ui-management/CodeTemplatesTab.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "187532242e17937802f4bdf128cca248063d7db7fa8b01f60da6eec4b1095da7",
+      "reason": "CodeTemplatesTab 拥有模板表和代码 studio，studio session 捕获 starting revision，后台刷新不覆盖未保存 source。 职责属于同一资源或组件生命周期，独立草稿/异步状态没有应合为单一字段的不变量；同步 setters 由 React19 batching，行数或 setter 数本身不能证明额外 render。",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/plugin-settings-template-lifecycle.test.tsx", "sha256": "e1ea7f5d4a8ee95302477682d89960981f00ffb086a3c3089e8c1f77f71dd6e9"}, {"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}, {"file": "web/app/src/features/settings/_tests/ui-management/ui-management-components.test.tsx", "sha256": "77bf6fcd3226a5d74a32d43dbd18e8c92d2a94f4252a090e301815723eafc66d"}, {"file": "web/app/src/features/settings/api/ui-management.ts", "sha256": "07196a3b201b77b1f0066243357c7056ee36a1b478c7d0dc6f7b671589acef05"}, {"file": "web/app/src/features/settings/components/SettingsSectionSurface.tsx", "sha256": "a0c92573e1e4222d91832304848a5f24df9dea2b1ed152fe53d2c95c0c3c3b3b"}, {"file": "web/app/src/features/settings/components/ui-management/CodeTemplatesTab.tsx", "sha256": "187532242e17937802f4bdf128cca248063d7db7fa8b01f60da6eec4b1095da7"}, {"file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx", "sha256": "21572862fe771ec9b7edfe41dd7f9379a15b4f5639ed8a25ed6e808fde0bc4b7"}, {"file": "web/app/src/features/settings/components/ui-management/UiManagementPanel.tsx", "sha256": "850ff63d5861c0437d2643ddb548361cf24ce7cd942a60417a26d2cfd8fb8b53"}, {"file": "web/app/src/shared/ui/data-table/DataTable.tsx", "sha256": "c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"}, {"file": "web/app/src/shared/ui/data-table/data-table-state.ts", "sha256": "8f4f28d12d1e98ae2838fcf1fffce22cd9dc869d5caf82ad3318cbcd98bb44fa"}, {"file": "web/app/src/state/auth-store.ts", "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx",
+      "rule": "react-doctor/js-flatmap-filter",
+      "sourceSha256": "22dea1af0fcc01d45ef8a95c5ed8c068105770f98c9ddade1318c942f2ddbd46",
+      "reason": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx:77（react-doctor/js-flatmap-filter）：这里是单个输入的逗号列表/具名 import specifier 规范化：先做 string type guard（适用时）、trim，再去掉空字符串；并保留原有顺序/重复值合同。不是每次 JSX render 创建多重查询，也没有对整个文档重复扫描。各阶段有不同输入类型/语义，简单 flatMap 对非字符串输入调用 trim 会破坏该具体边界，不能机械替换。",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}, {"file": "web/app/src/features/settings/_tests/ui-management/ui-management-components.test.tsx", "sha256": "77bf6fcd3226a5d74a32d43dbd18e8c92d2a94f4252a090e301815723eafc66d"}, {"file": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx", "sha256": "22dea1af0fcc01d45ef8a95c5ed8c068105770f98c9ddade1318c942f2ddbd46"}, {"file": "web/app/src/features/settings/components/ui-management/UiManagementPanel.tsx", "sha256": "850ff63d5861c0437d2643ddb548361cf24ce7cd942a60417a26d2cfd8fb8b53"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx",
+      "rule": "react-doctor/jsx-no-jsx-as-prop",
+      "sourceSha256": "22dea1af0fcc01d45ef8a95c5ed8c068105770f98c9ddade1318c942f2ddbd46",
+      "reason": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx:258（react-doctor/jsx-no-jsx-as-prop）：JSX 作为 antd/共享布局的 title/toolbar/emptyText/indicator slot 是该组件的公开 ReactNode 合同。节点被 React 正常按 type/key 对账，创建 element 不等于重挂载或完整子树重算；调用方本次状态改变本来也要更新 slot 内容，不能无依赖地 hoist 活数据。",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}, {"file": "web/app/src/features/settings/_tests/ui-management/ui-management-components.test.tsx", "sha256": "77bf6fcd3226a5d74a32d43dbd18e8c92d2a94f4252a090e301815723eafc66d"}, {"file": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx", "sha256": "22dea1af0fcc01d45ef8a95c5ed8c068105770f98c9ddade1318c942f2ddbd46"}, {"file": "web/app/src/features/settings/components/ui-management/UiManagementPanel.tsx", "sha256": "850ff63d5861c0437d2643ddb548361cf24ce7cd942a60417a26d2cfd8fb8b53"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "22dea1af0fcc01d45ef8a95c5ed8c068105770f98c9ddade1318c942f2ddbd46",
+      "reason": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx:84（react-doctor/no-giant-component）：ComponentRecordsTab 的 record 查询、筛选和编辑 dialog 状态在该组件资产 owner 内，持久状态通过对应 API/query；9个 useState 是多个输入/可见性控制，React 事件批处理不产生9次独立 render。未找到应迁到共享/global owner 的逻辑。",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}, {"file": "web/app/src/features/settings/_tests/ui-management/ui-management-components.test.tsx", "sha256": "77bf6fcd3226a5d74a32d43dbd18e8c92d2a94f4252a090e301815723eafc66d"}, {"file": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx", "sha256": "22dea1af0fcc01d45ef8a95c5ed8c068105770f98c9ddade1318c942f2ddbd46"}, {"file": "web/app/src/features/settings/components/ui-management/UiManagementPanel.tsx", "sha256": "850ff63d5861c0437d2643ddb548361cf24ce7cd942a60417a26d2cfd8fb8b53"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx",
+      "rule": "react-doctor/prefer-useReducer",
+      "sourceSha256": "22dea1af0fcc01d45ef8a95c5ed8c068105770f98c9ddade1318c942f2ddbd46",
+      "reason": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx:84（react-doctor/prefer-useReducer）：ComponentRecordsTab 的 record 查询、筛选和编辑 dialog 状态在该组件资产 owner 内，持久状态通过对应 API/query；9个 useState 是多个输入/可见性控制，React 事件批处理不产生9次独立 render。未找到应迁到共享/global owner 的逻辑。",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}, {"file": "web/app/src/features/settings/_tests/ui-management/ui-management-components.test.tsx", "sha256": "77bf6fcd3226a5d74a32d43dbd18e8c92d2a94f4252a090e301815723eafc66d"}, {"file": "web/app/src/features/settings/components/ui-management/ComponentRecordsTab.tsx", "sha256": "22dea1af0fcc01d45ef8a95c5ed8c068105770f98c9ddade1318c942f2ddbd46"}, {"file": "web/app/src/features/settings/components/ui-management/UiManagementPanel.tsx", "sha256": "850ff63d5861c0437d2643ddb548361cf24ce7cd942a60417a26d2cfd8fb8b53"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx",
+      "rule": "react-doctor/no-adjust-state-on-prop-change",
+      "sourceSha256": "21572862fe771ec9b7edfe41dd7f9379a15b4f5639ed8a25ed6e808fde0bc4b7",
+      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. UiCodeTemplateStudio initializes independent unsaved draft and preview from the explicit studio initialValue. Parent CodeTemplatesTab creates that stable snapshot for opening an editor and destroys the studio on close; reset on open/snapshot change prevents another template inheriting draft state.",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "21572862fe771ec9b7edfe41dd7f9379a15b4f5639ed8a25ed6e808fde0bc4b7",
+      "reason": "Reviewed component responsibilities and existing child boundaries; the flagged declaration length is an investigation signal, not itself a demonstrated defect. UiCodeTemplateStudio initializes independent unsaved draft and preview from the explicit studio initialValue. Parent CodeTemplatesTab creates that stable snapshot for opening an editor and destroys the studio on close; reset on open/snapshot change prevents another template inheriting draft state.",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx",
+      "rule": "react-doctor/no-reset-all-state-on-prop-change",
+      "sourceSha256": "21572862fe771ec9b7edfe41dd7f9379a15b4f5639ed8a25ed6e808fde0bc4b7",
+      "reason": "Only the explicitly changed owner state is reset; remounting the whole component would also dispose retained native/editor/session resources. UiCodeTemplateStudio initializes independent unsaved draft and preview from the explicit studio initialValue. Parent CodeTemplatesTab creates that stable snapshot for opening an editor and destroys the studio on close; reset on open/snapshot change prevents another template inheriting draft state.",
+      "evidence": [{"file": "web/app/src/features/settings/_tests/ui-management/ui-management-code-templates.test.tsx", "sha256": "ff5af551fbb27513180b1f91cd91553b8fea52f9ac50d8beaed2ad4856fb130c"}]
+    }
+  ]
+}

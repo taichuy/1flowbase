@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx",
+      "rule": "react-doctor/rendering-hydration-mismatch-time",
+      "sourceSha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d",
+      "reason": "Date.now executes only inside an event handler in a browser-only test Harness. It is neither a render-time value nor an SSR hydration input. Date.now is called inside export-button/input change handlers in a browser-only test Harness to request a fresh dialog instance after each action. It is not evaluated during render or server hydration. The fixture has no SSR/hydration consumer.",
+      "evidence": [{"file": "web/app/src/features/settings/components/system-templates/_tests/SystemTemplateDialog.test.tsx", "sha256": "b7a62fe78b72f3f7e3b7a7e3d03f870717d6e8a8cb4403fb9bc630f1eb46e51d"}]
+    }
+  ]
+}

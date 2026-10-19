@@ -1,0 +1,26 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/agent-flow/components/detail/fields/notification/NotificationInputField.tsx",
+      "rule": "react-doctor/no-adjust-state-on-prop-change",
+      "sourceSha256": "45c9b34868f1ee15506d91a85b0355f85416cec627bc4e0b8683de6530425c19",
+      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. JsonConstantField deliberately holds invalid/uncommitted JSON text and parse/type errors separately from the committed value. Its value/type effect resets that draft only for owner input changes; deriving draft from value on each render would discard invalid typing.",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-notification.test.tsx", "sha256": "dfda0a48c9e4c565aecdc9ac303275816268c564de85a923819bc786c3cb4e67"}]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/detail/fields/notification/NotificationInputField.tsx",
+      "rule": "react-doctor/no-derived-state",
+      "sourceSha256": "45c9b34868f1ee15506d91a85b0355f85416cec627bc4e0b8683de6530425c19",
+      "reason": "The state retains draft/history/resource information beyond the latest input projection. JsonConstantField deliberately holds invalid/uncommitted JSON text and parse/type errors separately from the committed value. Its value/type effect resets that draft only for owner input changes; deriving draft from value on each render would discard invalid typing.",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-notification.test.tsx", "sha256": "dfda0a48c9e4c565aecdc9ac303275816268c564de85a923819bc786c3cb4e67"}]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/detail/fields/notification/NotificationInputField.tsx",
+      "rule": "react-doctor/no-derived-state-effect",
+      "sourceSha256": "45c9b34868f1ee15506d91a85b0355f85416cec627bc4e0b8683de6530425c19",
+      "reason": "The effect synchronizes a resource or independently editable draft with its external owner. JsonConstantField deliberately holds invalid/uncommitted JSON text and parse/type errors separately from the committed value. Its value/type effect resets that draft only for owner input changes; deriving draft from value on each render would discard invalid typing.",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/node-inspector/node-inspector-notification.test.tsx", "sha256": "dfda0a48c9e4c565aecdc9ac303275816268c564de85a923819bc786c3cb4e67"}]
+    }
+  ]
+}
