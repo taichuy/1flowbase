@@ -40,6 +40,8 @@ Rust 文件按领域职责收纳物理子目录时，Cargo package identity、�
 
 根前端 `lint` 入口向所有包的 ESLint 透传 `--max-warnings 0`。hygiene 的兼容期限、语义碰撞和结构预警由各自规则与证据结算，不能据 lint 零 warning 宣称这些检查也已通过。
 
+`@rc-component/util@1.12.0` 的 `useDelayState` 补丁回移已合并的 [upstream #806](https://github.com/react-component/util/pull/806)：卸载复用既有 `cancelPending`，同时取消毫秒与 RAF 更新，保持替换、正常提交和实例隔离语义。ESM/CJS 的真实已安装产物由 `test/_tests/dependency-lifecycle` 覆盖；升级到包含该修复的版本时删除这两处补丁并保留行为回归。测试不得通过延时、全局清空 timer 或替换真实 Hook 掩盖卸载泄漏。
+
 ## React Doctor 的原始诊断与源码审查
 
 [Doctor wrapper](../../../scripts/node/react-doctor-gate/core.js) 是门禁。它固定工具 package/version，解析明确的 base/candidate full SHA，并要求 candidate 等于当前 checkout；检查范围是两者之间的 `web/app` 变更，不代表全仓或所有页面。缺少完整范围时拒绝执行，不能用未知 baseline 推导无新增诊断。

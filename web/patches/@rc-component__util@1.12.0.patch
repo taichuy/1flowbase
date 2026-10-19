@@ -234,3 +234,25 @@ diff --git a/lib/Dom/dynamicCSS.js b/lib/Dom/dynamicCSS.js
 -  containerCache.clear();
 +  containerCache = new WeakMap();
  }
+diff --git a/es/hooks/useDelayState.js b/es/hooks/useDelayState.js
+--- a/es/hooks/useDelayState.js
++++ b/es/hooks/useDelayState.js
+@@ -19,6 +19,7 @@
+       delayRef.current = null;
+     }
+   });
++  React.useEffect(() => cancelPending, [cancelPending]);
+   const setDelayValue = useEvent((nextValue, immediatelyOrDelay) => {
+     const delayConfig = immediatelyOrDelay || {
+       frame: 1
+diff --git a/lib/hooks/useDelayState.js b/lib/hooks/useDelayState.js
+--- a/lib/hooks/useDelayState.js
++++ b/lib/hooks/useDelayState.js
+@@ -28,6 +28,7 @@
+       delayRef.current = null;
+     }
+   });
++  React.useEffect(() => cancelPending, [cancelPending]);
+   const setDelayValue = (0, _useEvent.default)((nextValue, immediatelyOrDelay) => {
+     const delayConfig = immediatelyOrDelay || {
+       frame: 1
