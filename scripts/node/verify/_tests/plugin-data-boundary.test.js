@@ -9,7 +9,7 @@ const repoRoot = path.resolve(__dirname, '../../../..');
 const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8');
 
 test('Delivery 1919 keeps PluginData typed and free of implementation capabilities', () => {
-  const contract = read('api/crates/extension-contracts/src/plugin_data_contract.rs');
+  const contract = read('api/crates/extension-contracts/src/host_services/plugin_data_contract.rs');
   assert.match(contract, /pub trait PluginDataPort/u);
   assert.match(contract, /enum PluginDataOperation/u);
   assert.match(contract, /enum PluginDataTarget/u);

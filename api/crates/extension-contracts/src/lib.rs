@@ -6,6 +6,7 @@
 extern crate self as extension_contracts;
 pub mod application_logs_contract;
 pub use application_logs_contract::*;
+#[path = "host_services/http_egress_contract.rs"]
 pub mod http_egress_contract;
 pub use http_egress_contract::*;
 
@@ -13,16 +14,23 @@ pub mod data_model_template_contract;
 pub mod data_source_contract;
 pub mod error;
 pub mod extension_bus;
+#[path = "managed_contributions/lifecycle_contract.rs"]
 pub mod lifecycle_contract;
+#[path = "managed_contributions/managed_event_contract.rs"]
 pub mod managed_event_contract;
+#[path = "managed_contributions/managed_hook_contract.rs"]
 pub mod managed_hook_contract;
+#[path = "managed_contributions/managed_interface_contract.rs"]
 pub mod managed_interface_contract;
+#[path = "managed_contributions/managed_interface_reference.rs"]
 pub mod managed_interface_reference;
 pub mod network_egress_contract;
 pub mod network_egress_provider_contract;
 pub mod notification_contract;
 pub mod package_intake_contract;
+#[path = "host_services/plugin_data_contract.rs"]
 pub mod plugin_data_contract;
+#[path = "host_services/plugin_data_model_contract.rs"]
 pub mod plugin_data_model_contract;
 pub mod provider_contract;
 pub mod provider_distribution_contract;
@@ -61,6 +69,7 @@ mod _tests;
 pub mod capability_contract;
 pub use capability_contract::*;
 
+#[path = "host_services/plugin_credential_contract.rs"]
 pub mod plugin_credential_contract;
 pub use plugin_credential_contract::*;
 
