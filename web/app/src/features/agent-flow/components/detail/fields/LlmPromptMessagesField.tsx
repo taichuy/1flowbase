@@ -2,7 +2,7 @@ import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Dropdown, Typography } from 'antd';
-import { useState } from 'react';
+import { useRef } from 'react';
 
 import type {
   LlmPromptMessage,
@@ -122,7 +122,7 @@ export function LlmPromptMessagesField({
   options,
   onChange
 }: LlmPromptMessagesFieldProps) {
-  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const draggingIndex = useRef<number | null>(null);
   const { systemMessage, dynamicMessages, orderedMessages } =
     normalizeMessageGroups(value);
 
@@ -165,13 +165,13 @@ export function LlmPromptMessagesField({
   }
 
   function handleDrop(targetIndex: number) {
-    if (draggingIndex === null || draggingIndex === 0 || targetIndex === 0) {
-      setDraggingIndex(null);
+    if (draggingIndex.current === null || draggingIndex.current === 0 || targetIndex === 0) {
+      (draggingIndex.current = null);
       return;
     }
 
-    onChange(moveItem(orderedMessages, draggingIndex, targetIndex));
-    setDraggingIndex(null);
+    onChange(moveItem(orderedMessages, draggingIndex.current, targetIndex));
+    (draggingIndex.current = null);
   }
 
   function renderPromptMessage(message: LlmPromptMessage, index: number) {
@@ -246,8 +246,8 @@ export function LlmPromptMessagesField({
             )}
             value={message.content.value}
             onChange={(nextValue) => updateContent(index, nextValue)}
-            onDragEnd={() => setDraggingIndex(null)}
-            onDragStart={() => setDraggingIndex(index)}
+            onDragEnd={() => (draggingIndex.current = null)}
+            onDragStart={() => (draggingIndex.current = index)}
           />
         </div>
       </div>
