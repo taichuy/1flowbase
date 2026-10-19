@@ -95,6 +95,14 @@ pub(crate) fn route_assembly(
         )
         .route("/sign-in", crate::external_route_assembly::post(sign_in))
         .route("/sign-up", crate::external_route_assembly::post(sign_up))
+        .route(
+            "/external/start",
+            crate::external_route_assembly::get(super::external_auth::start),
+        )
+        .route(
+            "/external/callback",
+            crate::external_route_assembly::get(super::external_auth::callback),
+        )
 }
 
 fn public_login_entry_description(options: &Value) -> Option<String> {
@@ -228,6 +236,8 @@ struct PublicLoginEntriesAdapter {
     store: MainDurableStore,
     authenticator_registry: Arc<AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
+    node_id: String,
+    install_root: String,
 }
 
 impl PublicLoginEntriesPort for PublicLoginEntriesAdapter {
@@ -235,7 +245,16 @@ impl PublicLoginEntriesPort for PublicLoginEntriesAdapter {
         let store = self.store.clone();
         let registry = Arc::clone(&self.authenticator_registry);
         let bootstrap_workspace_id = self.bootstrap_workspace_id;
+        let node_id = self.node_id.clone();
+        let install_root = self.install_root.clone();
         Box::pin(async move {
+            let registry = crate::authentication_runtime::registry_for(
+                &store,
+                &node_id,
+                &install_root,
+                &registry,
+            )
+            .await?;
             let mut login_entries = store
                 .list_login_entries()
                 .await
@@ -278,11 +297,15 @@ pub(crate) fn public_login_entries_port(
     store: MainDurableStore,
     authenticator_registry: Arc<AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
+    node_id: String,
+    install_root: String,
 ) -> Arc<dyn PublicLoginEntriesPort> {
     Arc::new(PublicLoginEntriesAdapter {
         store,
         authenticator_registry,
         bootstrap_workspace_id,
+        node_id,
+        install_root,
     })
 }
 
