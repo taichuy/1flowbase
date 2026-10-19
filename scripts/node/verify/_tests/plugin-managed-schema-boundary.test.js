@@ -43,6 +43,6 @@ test('PDM production path consumes compiler, preview, apply, and retain lifecycl
 });
 
 test('PDM ports do not expose SQL, connection, or runtime transport details', () => {
-  const contract = read('api/crates/control-plane-contracts/src/ports/managed_schema.rs');
+  const contract = read('api/crates/control-plane-contracts/src/ports/extension_ports/managed_schema.rs');
   assert.doesNotMatch(contract, /sqlx|PgPool|Connection|raw_sql|local_path|stdio|http|grpc/i);
 });
