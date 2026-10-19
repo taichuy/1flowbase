@@ -80,7 +80,7 @@ async function save() {
 
 describe('organization parent selector', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
     vi.clearAllMocks();
     resetAuthStore();
     useAuthStore.setState({ csrfToken: 'csrf' });
@@ -101,11 +101,17 @@ describe('organization parent selector', () => {
     api.updateSettingsDepartment.mockResolvedValue(development);
   });
 
-  afterEach(() => {
-    // Release only the render owners created by this fixture before its resource teardown.
-    for (const view of mountedViews) view.unmount();
-    mountedViews.clear();
-    vi.useRealTimers();
+  afterEach(async () => {
+    try {
+      await act(async () => {
+        // Dispose this fixture's subscriptions and motion owners before draining.
+        for (const view of mountedViews) view.unmount();
+        mountedViews.clear();
+        await vi.runOnlyPendingTimersAsync();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('an empty organization tree displays and offers the organization root and submits null', async () => {
@@ -212,7 +218,18 @@ describe('organization parent selector', () => {
 async function dispatch<T>(event: () => T) {
   let result!: T;
   await act(async () => { result = event(); });
+  await settleTimers();
   return result;
+}
+
+async function settleTimers() {
+  // Effects can queue another animation frame when an act scope commits.
+  // The fixture clock advances only inside act, including those later frames.
+  while (vi.getTimerCount() > 0) {
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+  }
 }
 
 // Explicit render owners for this fixture; other test roots remain RTL-owned.
@@ -224,6 +241,7 @@ async function renderSettled(...args: Parameters<typeof render>) {
     view = render(...args);
     mountedViews.add(view);
   });
+  await settleTimers();
   return view;
 }
 

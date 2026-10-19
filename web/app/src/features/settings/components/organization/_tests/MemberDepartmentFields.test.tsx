@@ -62,7 +62,7 @@ function Harness({
 }
 describe('member department invariants', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
     fetchDepartments.mockImplementation(async ({ ids }: { ids?: string }) => ({
       items: departments
         .filter((item) => !ids || ids.split(',').includes(item.id))
@@ -71,11 +71,17 @@ describe('member department invariants', () => {
       next_cursor: null
     }));
   });
-  afterEach(() => {
-    // Release only the render owners created by this fixture before its resource teardown.
-    for (const view of mountedViews) view.unmount();
-    mountedViews.clear();
-    vi.useRealTimers();
+  afterEach(async () => {
+    try {
+      await act(async () => {
+        // Dispose this fixture's subscriptions and motion owners before draining.
+        for (const view of mountedViews) view.unmount();
+        mountedViews.clear();
+        await vi.runOnlyPendingTimersAsync();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
   test('retains and resolves existing selections absent from the first page', async () => {
     const submit = vi.fn();
@@ -157,7 +163,18 @@ describe('member department invariants', () => {
 async function dispatch<T>(event: () => T) {
   let result!: T;
   await act(async () => { result = event(); });
+  await settleTimers();
   return result;
+}
+
+async function settleTimers() {
+  // Effects can queue another animation frame when an act scope commits.
+  // The fixture clock advances only inside act, including those later frames.
+  while (vi.getTimerCount() > 0) {
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+  }
 }
 
 // Explicit render owners for this fixture; other test roots remain RTL-owned.
@@ -169,6 +186,7 @@ async function renderSettled(...args: Parameters<typeof render>) {
     view = render(...args);
     mountedViews.add(view);
   });
+  await settleTimers();
   return view;
 }
 
