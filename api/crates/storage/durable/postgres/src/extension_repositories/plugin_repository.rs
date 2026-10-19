@@ -133,7 +133,7 @@ async fn lock_managed_desired_state_scopes(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     installation_id: Uuid,
 ) -> Result<()> {
-    let workspaces: Vec<Uuid> = sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 union select workspace_id from plugin_assignments where installation_id=$1 union select '00000000-0000-0000-0000-000000000000'::uuid from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}' = 'system' order by workspace_id")
+    let workspaces: Vec<Uuid> = sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 union select workspace_id from plugin_assignments where installation_id=$1 union select '00000000-0000-0000-0000-000000000000'::uuid from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) order by workspace_id")
         .bind(installation_id).fetch_all(&mut **transaction).await?;
     for workspace in workspaces {
         crate::plugin_contribution_authority_repository::lock_managed_workspace(
