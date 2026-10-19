@@ -315,7 +315,7 @@ impl PluginInterfaceAdapter {
                         .entries
                         .into_iter()
                         .map(to_catalog_response)
-                        .collect(),
+                        .collect::<Result<Vec<_>, _>>()?,
                 }))
             }
             PluginInterfaceInput::ListFamilies { query, locale } => {
@@ -339,7 +339,7 @@ impl PluginInterfaceAdapter {
                             .entries
                             .into_iter()
                             .map(to_family_response)
-                            .collect(),
+                            .collect::<Result<Vec<_>, _>>()?,
                     },
                 ))
             }
@@ -370,7 +370,7 @@ impl PluginInterfaceAdapter {
                     .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
-                )))
+                )?))
             }
             PluginInterfaceInput::InstallUploaded {
                 file_name,
@@ -386,7 +386,7 @@ impl PluginInterfaceAdapter {
                     .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
-                )))
+                )?))
             }
             PluginInterfaceInput::InstallOfficial(body) => {
                 let command = self
@@ -398,7 +398,7 @@ impl PluginInterfaceAdapter {
                     .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
-                )))
+                )?))
             }
             PluginInterfaceInput::RefreshCatalogProjection { installation_id } => Ok(
                 PluginInterfaceOutput::Projection(to_catalog_projection_response(
@@ -408,7 +408,7 @@ impl PluginInterfaceAdapter {
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
                         })
                         .await?,
-                )),
+                )?),
             ),
             PluginInterfaceInput::RefreshArtifact { installation_id } => Ok(
                 PluginInterfaceOutput::Artifact(to_artifact_instance_response(
@@ -418,7 +418,7 @@ impl PluginInterfaceAdapter {
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
                         })
                         .await?,
-                )),
+                )?),
             ),
             PluginInterfaceInput::InstallArtifact { installation_id } => Ok(
                 PluginInterfaceOutput::Artifact(to_artifact_instance_response(
@@ -428,7 +428,7 @@ impl PluginInterfaceAdapter {
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
                         })
                         .await?,
-                )),
+                )?),
             ),
             PluginInterfaceInput::UpgradeLatest {
                 provider_code,
@@ -447,7 +447,7 @@ impl PluginInterfaceAdapter {
                         risk_override,
                     })
                     .await?;
-                Ok(PluginInterfaceOutput::Task(to_task_response(task)))
+                Ok(PluginInterfaceOutput::Task(to_task_response(task)?))
             }
             PluginInterfaceInput::SwitchVersion {
                 provider_code,
@@ -462,7 +462,7 @@ impl PluginInterfaceAdapter {
                             target_installation_id: installation_id,
                         })
                         .await?,
-                )))
+                )?))
             }
             PluginInterfaceInput::DeleteFamily { provider_code } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
@@ -472,7 +472,7 @@ impl PluginInterfaceAdapter {
                             provider_code,
                         })
                         .await?,
-                )))
+                )?))
             }
             PluginInterfaceInput::Enable { installation_id } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
@@ -482,7 +482,7 @@ impl PluginInterfaceAdapter {
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
                         })
                         .await?,
-                )))
+                )?))
             }
             PluginInterfaceInput::Assign { installation_id } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
@@ -492,7 +492,7 @@ impl PluginInterfaceAdapter {
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
                         })
                         .await?,
-                )))
+                )?))
             }
             PluginInterfaceInput::ListTasks => Ok(PluginInterfaceOutput::Tasks(
                 self.service(actor, "plugins.tasks.view")
@@ -500,14 +500,14 @@ impl PluginInterfaceAdapter {
                     .await?
                     .into_iter()
                     .map(to_task_response)
-                    .collect(),
+                    .collect::<Result<Vec<_>, _>>()?,
             )),
             PluginInterfaceInput::GetTask { task_id } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
                     self.service(actor, "plugins.tasks.view")
                         .get_task(actor.user_id, parse_uuid(&task_id, "task_id")?)
                         .await?,
-                )))
+                )?))
             }
             PluginInterfaceInput::ModelFamilies { mut query, locale } => {
                 query.plugin_type = Some(settings_routes::MODEL_PROVIDER_PLUGIN_TYPE.to_string());
@@ -531,7 +531,7 @@ impl PluginInterfaceAdapter {
                             .entries
                             .into_iter()
                             .map(to_family_response)
-                            .collect(),
+                            .collect::<Result<Vec<_>, _>>()?,
                     },
                 ))
             }
@@ -632,7 +632,7 @@ impl PluginInterfaceAdapter {
                     .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
-                )))
+                )?))
             }
             PluginInterfaceInput::ModelInstallUploaded {
                 file_name,
@@ -648,7 +648,7 @@ impl PluginInterfaceAdapter {
                     .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
-                )))
+                )?))
             }
             PluginInterfaceInput::ModelRefreshArtifact { installation_id } => Ok(
                 PluginInterfaceOutput::Artifact(to_artifact_instance_response(
@@ -658,7 +658,7 @@ impl PluginInterfaceAdapter {
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
                         })
                         .await?,
-                )),
+                )?),
             ),
             PluginInterfaceInput::ModelInstallArtifact { installation_id } => Ok(
                 PluginInterfaceOutput::Artifact(to_artifact_instance_response(
@@ -668,7 +668,7 @@ impl PluginInterfaceAdapter {
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
                         })
                         .await?,
-                )),
+                )?),
             ),
             PluginInterfaceInput::ModelUpgradeLatest {
                 provider_code,
@@ -687,7 +687,7 @@ impl PluginInterfaceAdapter {
                             risk_override,
                         })
                         .await?,
-                )))
+                )?))
             }
             PluginInterfaceInput::ModelSwitchVersion {
                 provider_code,
@@ -703,7 +703,7 @@ impl PluginInterfaceAdapter {
                         )?,
                     })
                     .await?,
-            ))),
+            )?)),
             PluginInterfaceInput::ModelDeleteFamily { provider_code } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
                     self.model_service(actor, "model_provider_plugins.families.delete")
@@ -712,14 +712,14 @@ impl PluginInterfaceAdapter {
                             provider_code,
                         })
                         .await?,
-                )))
+                )?))
             }
             PluginInterfaceInput::ModelGetTask { task_id } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
                     self.model_service(actor, "model_provider_plugins.tasks.view")
                         .get_task(actor.user_id, parse_uuid(&task_id, "task_id")?)
                         .await?,
-                )))
+                )?))
             }
         }
     }

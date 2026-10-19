@@ -18,7 +18,7 @@ decision_policy: verify_before_decision
 scope:
   - /home/taichuy/git/1flowbase-official-plugins/mcp
   - web/app/src/features/settings/components/mcp-management
-  - web/packages/api-client/src/console-mcp-management.ts
+  - web/packages/api-client/src/console/administration/mcp-management.ts
   - api/apps/api-server/src/routes/settings/mcp_management.rs
   - api/crates/control-plane/src/mcp_management.rs
   - api/crates/domain/src/mcp_management.rs

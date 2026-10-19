@@ -5,7 +5,7 @@ import {
   settingsDepartmentsQueryKey,
   type DepartmentTreeItem,
   type DepartmentListParams
-} from '../../api/departments';
+} from '../../api/identity-access/departments';
 export function useDepartmentTree(enabled = true) {
   const client = useQueryClient();
   const [prefix, setPrefixValue] = useState('');

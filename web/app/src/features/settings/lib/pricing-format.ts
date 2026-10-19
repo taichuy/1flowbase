@@ -1,4 +1,4 @@
-export function formatTokenUnit(value: number) {
+function formatTokenUnit(value: number) {
   const units = [
     { threshold: 1_000_000_000, suffix: 'B' },
     { threshold: 1_000_000, suffix: 'M' },
@@ -13,7 +13,7 @@ export function formatTokenUnit(value: number) {
   return `${scaled}${unit.suffix}`;
 }
 
-export function formatUsdRate(value: string) {
+function formatUsdRate(value: string) {
   const [rawInteger = '0', rawFraction = ''] = value.split('.');
   const integer = rawInteger.replace(/^0+(?=\d)/u, '') || '0';
   const significantFraction = rawFraction.replace(/0+$/u, '');

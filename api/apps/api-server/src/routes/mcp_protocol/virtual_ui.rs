@@ -1,3 +1,6 @@
+mod runtime_output;
+use runtime_output::runtime_internal_tool_output;
+
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
@@ -532,35 +535,6 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
         .map_err(|error| anyhow::anyhow!(error.0.to_string()))?;
         runtime_internal_tool_output(node, registration, outcome)
     }
-}
-
-fn runtime_internal_tool_output(
-    node: &CompiledNode,
-    registration: &RuntimeInternalToolRegistration,
-    outcome: VirtualToolOutcome,
-) -> anyhow::Result<RuntimeInternalToolOutput> {
-    let (content, is_error) = match outcome {
-        VirtualToolOutcome::Success(value) => (value, false),
-        VirtualToolOutcome::Error {
-            code,
-            message,
-            data,
-        } => (
-            json!({"code": code, "message": message, "data": data}),
-            true,
-        ),
-    };
-    Ok(RuntimeInternalToolOutput {
-        content,
-        is_error,
-        event: json!({
-            "event_type": "mcp_runtime_tool_call_completed",
-            "node_id": node.node_id,
-            "provider_name": registration.provider_name,
-            "owner": registration.owner,
-            "is_error": is_error,
-        }),
-    })
 }
 
 impl VirtualToolOutcome {

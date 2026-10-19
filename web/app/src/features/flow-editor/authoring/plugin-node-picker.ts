@@ -22,7 +22,7 @@ export type NodePickerOption =
   | BuiltinNodePickerOption
   | PluginContributionPickerOption;
 
-export function toPluginContributionPickerOption(
+function toPluginContributionPickerOption(
   node: ConsoleApplicationNodeCatalogEntry
 ): PluginContributionPickerOption {
   if (node.source_kind !== 'plugin' || !node.plugin) {

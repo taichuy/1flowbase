@@ -1,0 +1,883 @@
+import { apiFetch } from '../../transport';
+
+export type ConsoleDataModelStatus =
+  | 'draft'
+  | 'published'
+  | 'disabled'
+  | 'broken';
+
+export type ConsoleDataModelScopeKind = 'workspace' | 'system';
+export type ConsoleDataModelSourceKind = 'main_source' | 'external_source';
+export type ConsoleDataModelPermissionProfile =
+  | 'owner'
+  | 'scope_all'
+  | 'system_all';
+
+export type ConsoleDataModelBuiltinKind = 'core' | 'runtime_read';
+
+export type ConsoleDataModelFieldOwnership = 'system_owned' | 'user_added';
+
+export interface ConsoleDataModelRecordCapabilities {
+  can_list: boolean;
+  can_get: boolean;
+  can_create: boolean;
+  can_update: boolean;
+  can_delete: boolean;
+}
+
+export interface ConsoleDataModelCapabilities {
+  can_delete: boolean;
+  can_add_user_field: boolean;
+  can_update_lifecycle_status: boolean;
+  record: ConsoleDataModelRecordCapabilities;
+}
+
+export interface ConsoleDataModelFieldCapabilities {
+  ownership: ConsoleDataModelFieldOwnership;
+  can_update_presentation_metadata: boolean;
+  can_update_physical_metadata: boolean;
+  can_delete: boolean;
+}
+
+export interface ConsoleDataSourceCapabilities {
+  can_update_defaults: boolean;
+  can_create_data_model: boolean;
+  can_validate: boolean;
+  can_discover_resources: boolean;
+  can_preview_resources: boolean;
+  can_map_resources: boolean;
+}
+
+interface ConsoleDataSourceBase {
+  id: string;
+  display_name: string;
+  status: string;
+  enabled: boolean;
+  fixed: boolean;
+  default_data_model_status: ConsoleDataModelStatus;
+  capabilities: ConsoleDataSourceCapabilities;
+}
+
+export interface ConsoleCoreDataSource extends ConsoleDataSourceBase {
+  id: 'main';
+  fixed: true;
+  backend: {
+    kind: 'core';
+    durable_backend: string;
+  };
+}
+
+export interface ConsoleRuntimeExtensionDataSource extends ConsoleDataSourceBase {
+  fixed: false;
+  backend: {
+    kind: 'runtime_extension';
+    installation_id: string;
+    source_code: string;
+    config_json: Record<string, unknown>;
+    secret_ref: string | null;
+    secret_version: number | null;
+    catalog_refresh_status: string | null;
+    catalog_last_error_message: string | null;
+    catalog_refreshed_at: string | null;
+  };
+}
+
+export type ConsoleDataSource =
+  | ConsoleCoreDataSource
+  | ConsoleRuntimeExtensionDataSource;
+
+export interface ConsoleDataSourceConfigFieldOption {
+  label: string;
+  value: unknown;
+  description: string | null;
+  disabled: boolean | null;
+}
+
+export interface ConsoleDataSourceConfigField {
+  key: string;
+  label: string;
+  field_type: string;
+  control: string | null;
+  required: boolean | null;
+  send_mode: string | null;
+  description: string | null;
+  placeholder: string | null;
+  default_value: unknown | null;
+  options: ConsoleDataSourceConfigFieldOption[];
+}
+
+export interface ConsoleDataSourceCatalogEntry {
+  installation_id: string;
+  source_code: string;
+  plugin_id: string;
+  plugin_version: string;
+  display_name: string;
+  protocol: string;
+  config_schema: ConsoleDataSourceConfigField[];
+}
+
+export interface ConsoleDataSourceCatalog {
+  entries: ConsoleDataSourceCatalogEntry[];
+}
+
+export interface ConsoleDataSourceResourceCapabilities {
+  supports_list: boolean;
+  supports_get: boolean;
+  supports_create: boolean;
+  supports_update: boolean;
+  supports_delete: boolean;
+  supports_filter: boolean;
+  supports_sort: boolean;
+  supports_pagination: boolean;
+  supports_owner_filter: boolean;
+  supports_scope_filter: boolean;
+  supports_write: boolean;
+  supports_transactions: boolean;
+}
+
+export interface ConsoleDataSourceRemoteResource {
+  resource_key: string;
+  display_name: string;
+  resource_kind: string;
+  capabilities: ConsoleDataSourceResourceCapabilities;
+  metadata: Record<string, unknown>;
+}
+
+export interface ConsoleDataSourceResources {
+  entries: ConsoleDataSourceRemoteResource[];
+  refresh_status: string;
+  last_error_message: string | null;
+  refreshed_at: string | null;
+}
+
+export interface ConsoleDataModelField {
+  id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  physical_column_name: string;
+  external_field_key: string | null;
+  field_kind: string;
+  is_system: boolean;
+  is_writable: boolean;
+  is_required: boolean;
+  api_required: boolean;
+  is_unique: boolean;
+  default_value: unknown | null;
+  display_interface: string | null;
+  display_options: Record<string, unknown>;
+  relation_target_model_id: string | null;
+  relation_options: Record<string, unknown>;
+  sort_order: number;
+  capabilities: ConsoleDataModelFieldCapabilities;
+}
+
+export interface ConsoleDataModel {
+  id: string;
+  scope_kind: ConsoleDataModelScopeKind;
+  scope_id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  status: ConsoleDataModelStatus;
+  runtime_availability: string;
+  data_source_id: string | null;
+  source_kind: ConsoleDataModelSourceKind;
+  external_resource_key: string | null;
+  external_table_id: string | null;
+  template_provider: string;
+  template_code: string;
+  template_version: string;
+  template_summary: string | null;
+  physical_table_name: string;
+  acl_namespace: string;
+  audit_namespace: string;
+  builtin_kind: ConsoleDataModelBuiltinKind | null;
+  capabilities: ConsoleDataModelCapabilities;
+  fields: ConsoleDataModelField[];
+}
+
+export interface ConsoleCompatibleDataModelTemplate {
+  template_provider: string;
+  template_code: string;
+  template_version: string;
+  summary: string;
+  description: string;
+  system_fields: ConsoleCompatibleDataModelTemplateSystemField[];
+}
+
+export interface ConsoleCompatibleDataModelTemplateSystemField {
+  code: string;
+  summary: string;
+  description: string;
+  field_kind: string;
+  required: boolean;
+}
+
+export type ConsoleAgentFlowDataModelOptionState =
+  | 'enabled'
+  | 'unpublished'
+  | 'disabled'
+  | 'broken';
+
+export interface ConsoleAgentFlowDataModelFieldOption {
+  code: string;
+  title: string;
+  valueType: string;
+  required: boolean;
+  writable: boolean;
+}
+
+export interface ConsoleAgentFlowDataModelOption {
+  value: string;
+  label: string;
+  state: ConsoleAgentFlowDataModelOptionState;
+  disabled: boolean;
+  disabledReason: string | null;
+  modelId: string;
+  modelCode: string;
+  fields: ConsoleAgentFlowDataModelFieldOption[];
+}
+
+export interface ConsoleDataModelScopeGrant {
+  id: string;
+  scope_kind: ConsoleDataModelScopeKind;
+  scope_id: string;
+  data_model_id: string;
+  enabled: boolean;
+  permission_profile: ConsoleDataModelPermissionProfile;
+}
+
+export interface ConsoleDataModelAdvisorFinding {
+  id: string;
+  data_model_id: string;
+  severity: 'blocking' | 'high' | 'info' | string;
+  code: string;
+  message: string;
+  recommended_action: string;
+  can_acknowledge: boolean;
+}
+
+export type ConsoleRuntimeModelRecord = Record<string, unknown>;
+
+export interface ConsoleRuntimeRecordPreview {
+  items: ConsoleRuntimeModelRecord[];
+  total: number;
+}
+
+export interface ConsoleDataModelOpenApiDocument {
+  openapi: string;
+  info?: Record<string, unknown>;
+  paths?: Record<string, unknown>;
+  components?: Record<string, unknown>;
+}
+
+export interface UpdateConsoleDataSourceDefaultsInput {
+  default_data_model_status: ConsoleDataModelStatus;
+}
+
+export interface FetchConsoleDataModelsInput {
+  data_source_id?: string;
+  filter?: Record<string, unknown>;
+}
+
+export interface CreateConsoleDataModelInput {
+  scope_kind: ConsoleDataModelScopeKind;
+  template_provider: string;
+  template_code: string;
+  template_version: string;
+  bound_storage_id?: string | null;
+  code: string;
+  title: string;
+  description?: string | null;
+  status?: ConsoleDataModelStatus;
+}
+
+export interface FetchConsoleCompatibleDataModelTemplatesInput {
+  data_source_id: string;
+  resource_key?: string;
+}
+
+export interface MapConsoleDataSourceResourceToModelInput {
+  resource_key: string;
+  template_provider: string;
+  template_code: string;
+  template_version: string;
+}
+
+export interface CreateConsoleDataSourceInput {
+  installation_id: string;
+  source_code: string;
+  display_name: string;
+  config_json: Record<string, unknown>;
+  secret_json: Record<string, unknown>;
+}
+
+export interface PreviewConsoleDataSourceResourceInput {
+  resource_key: string;
+  limit?: number;
+  cursor?: string;
+  options_json: Record<string, unknown>;
+}
+
+export interface ConsoleDataSourcePreview {
+  preview_session_id: string;
+  expires_at: string;
+  output: {
+    rows: Record<string, unknown>[];
+    next_cursor: string | null;
+  };
+}
+
+export interface UpdateConsoleDataModelInput {
+  title?: string;
+  description?: string | null;
+  status?: ConsoleDataModelStatus;
+}
+
+export interface BatchDeleteConsoleDataModelsInput {
+  filterByTk?: string | string[];
+  filter?: Record<string, unknown>;
+  confirmed: boolean;
+}
+
+export interface BatchDeleteConsoleDataModelsResult {
+  deleted: boolean;
+  deleted_count: number;
+  deleted_ids: string[];
+}
+
+export interface CreateConsoleDataModelFieldInput {
+  code: string;
+  title: string;
+  description?: string | null;
+  external_field_key?: string | null;
+  field_kind: string;
+  is_required: boolean;
+  api_required?: boolean;
+  is_unique: boolean;
+  default_value: unknown | null;
+  display_interface: string | null;
+  display_options: Record<string, unknown>;
+  relation_target_model_id: string | null;
+  relation_options: Record<string, unknown>;
+}
+
+export interface UpdateConsoleDataModelFieldInput {
+  title: string;
+  description?: string | null;
+  is_required: boolean;
+  api_required?: boolean;
+  is_unique: boolean;
+  default_value: unknown | null;
+  display_interface: string | null;
+  display_options: Record<string, unknown>;
+  relation_options: Record<string, unknown>;
+}
+
+export interface CreateConsoleDataModelScopeGrantInput {
+  scope_kind: ConsoleDataModelScopeKind;
+  scope_id: string;
+  enabled: boolean;
+  permission_profile: ConsoleDataModelPermissionProfile;
+  confirm_unsafe_external_source_system_all: boolean;
+}
+
+export interface UpdateConsoleDataModelScopeGrantInput {
+  enabled?: boolean;
+  permission_profile?: ConsoleDataModelPermissionProfile;
+  confirm_unsafe_external_source_system_all: boolean;
+}
+
+export type ConsoleRuntimeModelRecordFilterInput = Record<string, unknown>;
+
+export interface ConsoleRuntimeModelRecordSortInput {
+  field: string;
+  direction: string;
+}
+
+export interface FetchConsoleRuntimeModelRecordsInput {
+  page?: number;
+  page_size?: number;
+  filter?: ConsoleRuntimeModelRecordFilterInput;
+  sort?: ConsoleRuntimeModelRecordSortInput | string;
+  expand?: string | string[];
+}
+
+export type ConsoleRuntimeModelRecordInput = Record<string, unknown>;
+
+function appendQuery(path: string, params: Record<string, string | undefined>) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) {
+      searchParams.set(key, value);
+    }
+  }
+  const query = searchParams.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+function encodedPathSegment(value: string) {
+  return encodeURIComponent(value);
+}
+
+function runtimeModelActionPath(modelCode: string, action: string) {
+  return `/api/runtime/models/${encodedPathSegment(modelCode)}/${action}`;
+}
+
+function runtimeModelRecordActionPath(
+  modelCode: string,
+  action: string,
+  recordId: string
+) {
+  return `${runtimeModelActionPath(modelCode, action)}/${encodedPathSegment(recordId)}`;
+}
+
+function serializeRuntimeRecordFilter(
+  filter: FetchConsoleRuntimeModelRecordsInput['filter']
+) {
+  if (filter === undefined || typeof filter === 'string') {
+    return filter;
+  }
+  return JSON.stringify(filter);
+}
+
+function serializeRuntimeRecordSort(
+  sort: FetchConsoleRuntimeModelRecordsInput['sort']
+) {
+  if (sort === undefined || typeof sort === 'string') {
+    return sort;
+  }
+  return `${sort.field}:${sort.direction}`;
+}
+
+function serializeRuntimeRecordExpand(
+  expand: FetchConsoleRuntimeModelRecordsInput['expand']
+) {
+  if (Array.isArray(expand)) {
+    return expand.join(',');
+  }
+  return expand;
+}
+
+function appendRuntimeRecordsQuery(
+  path: string,
+  input: FetchConsoleRuntimeModelRecordsInput
+) {
+  const searchParams = new URLSearchParams();
+  if (input.page !== undefined) {
+    searchParams.set('page', String(input.page));
+  }
+  if (input.page_size !== undefined) {
+    searchParams.set('page_size', String(input.page_size));
+  }
+
+  const filter = serializeRuntimeRecordFilter(input.filter);
+  if (filter) {
+    searchParams.set('filter', filter);
+  }
+
+  const sort = serializeRuntimeRecordSort(input.sort);
+  if (sort) {
+    searchParams.set('sort', sort);
+  }
+
+  const expand = serializeRuntimeRecordExpand(input.expand);
+  if (expand) {
+    searchParams.set('expand', expand);
+  }
+
+  const query = searchParams.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+export function fetchConsoleDataSourceCatalog(baseUrl?: string) {
+  return apiFetch<ConsoleDataSourceCatalog>({
+    path: '/api/console/settings/data-models/data-sources/catalog',
+    baseUrl
+  });
+}
+
+export function fetchConsoleDataSources(baseUrl?: string) {
+  return apiFetch<ConsoleDataSource[]>({
+    path: '/api/console/settings/data-models/data-sources',
+    baseUrl
+  });
+}
+
+export function createConsoleDataSource(
+  input: CreateConsoleDataSourceInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleRuntimeExtensionDataSource>({
+    path: '/api/console/settings/data-models/data-sources',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function validateConsoleDataSource(
+  dataSourceId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<{
+    data_source: ConsoleRuntimeExtensionDataSource;
+    output: Record<string, unknown>;
+  }>({
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/validate`,
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleDataSourceDefaults(
+  dataSourceId: string,
+  input: UpdateConsoleDataSourceDefaultsInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataSource>({
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/defaults`,
+    method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleDataSourceResources(
+  dataSourceId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataSourceResources>({
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/resources`,
+    baseUrl
+  });
+}
+
+export function discoverConsoleDataSourceResources(
+  dataSourceId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataSourceResources>({
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/resources/discover`,
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function previewConsoleDataSourceResource(
+  dataSourceId: string,
+  input: PreviewConsoleDataSourceResourceInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataSourcePreview>({
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/preview-read`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function mapConsoleDataSourceResourceToModel(
+  dataSourceId: string,
+  input: MapConsoleDataSourceResourceToModelInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModel>({
+    path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/resources/map-to-model`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleCompatibleDataModelTemplates(
+  input: FetchConsoleCompatibleDataModelTemplatesInput,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleCompatibleDataModelTemplate[]>({
+    path: appendQuery('/api/console/settings/data-models/model-templates', {
+      data_source_id: input.data_source_id,
+      resource_key: input.resource_key
+    }),
+    baseUrl
+  });
+}
+
+export function fetchConsoleDataModels(
+  input: FetchConsoleDataModelsInput = {},
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModel[]>({
+    path: appendQuery('/api/console/settings/data-models/model-definitions', {
+      data_source_id: input.data_source_id,
+      filter: input.filter ? JSON.stringify(input.filter) : undefined
+    }),
+    baseUrl
+  });
+}
+
+export function fetchConsoleAgentFlowDataModelOptions(baseUrl?: string) {
+  return apiFetch<ConsoleAgentFlowDataModelOption[]>({
+    path: '/api/console/models/agent-flow-options',
+    baseUrl
+  });
+}
+
+export function createConsoleDataModel(
+  input: CreateConsoleDataModelInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModel>({
+    path: '/api/console/settings/data-models/model-definitions',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleDataModel(
+  modelId: string,
+  input: UpdateConsoleDataModelInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModel>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}`,
+    method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleDataModel(
+  modelId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<{ deleted: boolean }>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}?confirmed=true`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function batchDeleteConsoleDataModels(
+  input: BatchDeleteConsoleDataModelsInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<BatchDeleteConsoleDataModelsResult>({
+    path: '/api/console/settings/data-models/model-definitions:batchDelete',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function createConsoleDataModelField(
+  modelId: string,
+  input: CreateConsoleDataModelFieldInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModelField>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/fields`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleDataModelField(
+  modelId: string,
+  fieldId: string,
+  input: UpdateConsoleDataModelFieldInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModelField>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/fields/${fieldId}`,
+    method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleDataModelField(
+  modelId: string,
+  fieldId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<{ deleted: boolean }>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/fields/${fieldId}?confirmed=true`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleDataModelScopeGrants(
+  modelId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModelScopeGrant[]>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/scope-grants`,
+    baseUrl
+  });
+}
+
+export function createConsoleDataModelScopeGrant(
+  modelId: string,
+  input: CreateConsoleDataModelScopeGrantInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModelScopeGrant>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/scope-grants`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleDataModelScopeGrant(
+  modelId: string,
+  grantId: string,
+  input: UpdateConsoleDataModelScopeGrantInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModelScopeGrant>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/scope-grants/${grantId}`,
+    method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleDataModelAdvisorFindings(
+  modelId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModelAdvisorFinding[]>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/advisor-findings`,
+    baseUrl
+  });
+}
+
+export function fetchConsoleDataModelRecordPreview(
+  modelCode: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleRuntimeRecordPreview>({
+    path: appendRuntimeRecordsQuery(runtimeModelActionPath(modelCode, 'list'), {
+      page: 1,
+      page_size: 20
+    }),
+    baseUrl
+  });
+}
+
+export function fetchConsoleRuntimeModelRecords(
+  modelCode: string,
+  input: FetchConsoleRuntimeModelRecordsInput = {},
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleRuntimeRecordPreview>({
+    path: appendRuntimeRecordsQuery(
+      runtimeModelActionPath(modelCode, 'list'),
+      input
+    ),
+    baseUrl
+  });
+}
+
+export function fetchConsoleRuntimeModelRecord(
+  modelCode: string,
+  recordId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleRuntimeModelRecord>({
+    path: runtimeModelRecordActionPath(modelCode, 'get', recordId),
+    baseUrl
+  });
+}
+
+export function createConsoleRuntimeModelRecord(
+  modelCode: string,
+  input: ConsoleRuntimeModelRecordInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleRuntimeModelRecord>({
+    path: runtimeModelActionPath(modelCode, 'create'),
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleRuntimeModelRecord(
+  modelCode: string,
+  recordId: string,
+  input: ConsoleRuntimeModelRecordInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleRuntimeModelRecord>({
+    path: runtimeModelRecordActionPath(modelCode, 'update', recordId),
+    method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleRuntimeModelRecord(
+  modelCode: string,
+  recordId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<{ deleted: true }>({
+    path: runtimeModelRecordActionPath(modelCode, 'delete', recordId),
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleDataModelOpenApiDocument(
+  modelId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleDataModelOpenApiDocument>({
+    path: `/api/console/settings/data-models/model-definitions/${modelId}/openapi.json`,
+    unwrapSuccess: false,
+    baseUrl
+  });
+}

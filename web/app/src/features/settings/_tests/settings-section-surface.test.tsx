@@ -94,7 +94,7 @@ const consoleNavigationApi = vi.hoisted(() => ({
 
 vi.mock('../api/api-docs', () => docsApi);
 vi.mock('../api/model-providers', () => modelProvidersApi);
-vi.mock('../api/plugins', () => pluginsApi);
+vi.mock('../api/extensions/plugins', () => pluginsApi);
 vi.mock('../api/file-management', () => fileManagementApi);
 vi.mock('../api/console-navigation', () => consoleNavigationApi);
 vi.mock('../../auth/api/session', () => authApi);

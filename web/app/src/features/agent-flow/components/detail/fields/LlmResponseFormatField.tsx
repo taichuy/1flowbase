@@ -18,7 +18,7 @@ const DEFAULT_JSON_SCHEMA = {
 
 export function LlmResponseFormatField({ adapter, block }: SchemaFieldRendererProps) {
   const responseFormat = getLlmResponseFormat(getNodeConfig(adapter));
-  const [schemaText, setSchemaText] = useState(
+  const [schemaText, setSchemaText] = useState(() =>
     JSON.stringify(responseFormat.schema ?? DEFAULT_JSON_SCHEMA, null, 2)
   );
 

@@ -1,6 +1,8 @@
+import { useFrontstageDesignPersistence } from './frontstage-page/controllers/use-frontstage-design-persistence';
+import { useFrontstagePageRefresh } from './frontstage-page/controllers/use-frontstage-page-refresh';
 import { Alert, Button, Divider, Drawer, Empty, Modal, Typography } from 'antd';
 import type { CSSProperties, FC, ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
 import type { ConsoleFrontstageBlockRuntimeLayer } from '@1flowbase/api-client';
 
@@ -23,15 +25,12 @@ import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog
 import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
 import { useFrontstagePageCanvasIsolatedPreparations } from '../hooks/use-frontstage-page-canvas-isolated-preparations';
 import { useFrontstageRuntimeAssembly } from '../hooks/use-frontstage-runtime-assembly';
-import { useFrontstageBlockTreeMutations } from '../hooks/use-frontstage-block-tree-mutations';
-import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
+
 import {
-  appendFrontstageBlock,
   createFrontstageBlockCompositionState,
   updateFrontstageBlockLayout,
   updateFrontstageBlockPresentation,
-  updateFrontstagePageLayoutMode,
-  type FrontstageBlockCompositionState
+  updateFrontstagePageLayoutMode
 } from '../lib/block-composition';
 import { FrontstageRuntimeActivityContext } from '../lib/page-canvas/runtime-activity';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
@@ -39,8 +38,6 @@ import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capab
 import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block/unavailable-context';
 import {
   createFrontstagePageDocument,
-  createFrontstageBlockRuntimeDescriptor,
-  type FrontstageBlockInstance,
   type FrontstageBlockPresentation,
   type FrontstagePageLayoutMode
 } from '../lib/page-document';
@@ -65,16 +62,16 @@ import {
 } from '../lib/responsive-grid-layout';
 import { getPageDisplayTitle } from '../lib/page-tree';
 import { i18nText } from '../../../shared/i18n/text';
-import {
-  createCatalogBlockInput,
-  findMatchingFrontstageBlockCatalogEntry
-} from './frontstage-page/block-catalog-helpers';
+import { findMatchingFrontstageBlockCatalogEntry } from './frontstage-page/block-catalog-helpers';
 import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
 import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMenu';
 import { FrontstageWorkspaceShell } from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
-import { useFrontstageWorkspace, useOptionalFrontstageWorkspace } from './frontstage-page/workspace-shell/workspace-context';
+import {
+  useFrontstageWorkspace,
+  useOptionalFrontstageWorkspace
+} from './frontstage-page/workspace-shell/workspace-context';
 import { useFrontstageRetentionProtection } from './frontstage-page/runtime-session/retention-protection';
 import './frontstage-page.css';
 
@@ -141,25 +138,25 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
   } = useFrontstageWorkspace(pageId);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
-  const [savedPageContent, setSavedPageContent] =
-    useState<FrontstagePageContent | null>(null);
-  const [isBlockSavePending, setIsBlockSavePending] = useState(false);
-  const blockCreationPendingRef = useRef(false);
-  const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
-  const pageRefreshPendingRef = useRef(false);
-  const pageRefreshGenerationRef = useRef(0);
-  const [isPageRefreshPending, setIsPageRefreshPending] = useState(false);
-  const [pageRefreshError, setPageRefreshError] = useState<string | null>(null);
-  const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
-  const pageContentSave = useFrontstagePageContentSave({
+  const {
+    savedPageContent,
+    setSavedPageContent,
+    isBlockSavePending,
+    blockSaveError,
+    setBlockSaveError,
+    pageContentSave,
+    blockTreeMutations,
+    saveBlockComposition,
+    saveStudioBlock,
+    saveStudioBlockTitle,
+    addBlock
+  } = useFrontstageDesignPersistence({
     workspaceId,
-    pageId: selectedPageId,
-    tabId
+    selectedPageId,
+    tabId,
+    setSelectedBlockId
   });
-  const blockTreeMutations = useFrontstageBlockTreeMutations(
-    workspaceId,
-    selectedPageId ?? ''
-  );
+  const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
   const displayedPageContent = savedPageContent ?? pageContent;
   const hasLoadedSelectedPageContent = Boolean(
     selectedPageId && displayedPageContent?.page.id === selectedPageId
@@ -466,48 +463,19 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       isOperationPending ||
       Boolean(pageContentSaveError)
   );
-  const handlePageRefresh = useCallback(async () => {
-    if (
-      !onRefreshPage ||
-      pageRefreshPendingRef.current ||
-      isOperationPending ||
-      isPageContentSavePending
-    ) {
-      return;
-    }
-
-    pageRefreshPendingRef.current = true;
-    const refreshGeneration = pageRefreshGenerationRef.current + 1;
-    pageRefreshGenerationRef.current = refreshGeneration;
-    setIsPageRefreshPending(true);
-    setPageRefreshError(null);
-    setSavedPageContent(null);
-    try {
-      await onRefreshPage();
-      if (pageRefreshGenerationRef.current !== refreshGeneration) return;
-      rootBlocks.forEach((block) =>
-        pageCanvasNativePreparations.refreshBlock(block.id)
-      );
-      assemblyBlocks.forEach((block) => assemblyRuntime.refreshBlock(block.id));
-    } catch (error) {
-      if (pageRefreshGenerationRef.current === refreshGeneration) {
-        setPageRefreshError(toDisplayErrorMessage(error));
-      }
-    } finally {
-      if (pageRefreshGenerationRef.current === refreshGeneration) {
-        pageRefreshPendingRef.current = false;
-        setIsPageRefreshPending(false);
-      }
-    }
-  }, [
-    assemblyBlocks,
-    assemblyRuntime,
-    isOperationPending,
-    isPageContentSavePending,
-    onRefreshPage,
-    pageCanvasNativePreparations,
-    rootBlocks
-  ]);
+  const { handlePageRefresh, isPageRefreshPending, pageRefreshError } =
+    useFrontstagePageRefresh({
+      selectedPageId,
+      tabId,
+      onRefreshPage,
+      isOperationPending,
+      isPageContentSavePending,
+      setSavedPageContent,
+      rootBlocks,
+      assemblyBlocks,
+      pageCanvasNativePreparations,
+      assemblyRuntime
+    });
   const canAddBlock =
     Boolean(activePageContent) &&
     !isPageContentLoading &&
@@ -555,15 +523,11 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     [blockCatalog.items, selectedBlock]
   );
   useEffect(() => {
-    pageRefreshGenerationRef.current += 1;
-    pageRefreshPendingRef.current = false;
-    setIsPageRefreshPending(false);
     setSavedPageContent(null);
     setSelectedBlockId(null);
     setIsJsxStudioOpen(false);
     setBlockSaveError(null);
-    setPageRefreshError(null);
-  }, [selectedPageId, tabId]);
+  }, [selectedPageId, tabId, setSavedPageContent, setBlockSaveError]);
 
   useEffect(() => {
     setSavedPageContent(null);
@@ -584,7 +548,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
 
       return hasCurrentBlock ? currentBlockId : null;
     });
-  }, [assemblyTargetId, rootBlocks]);
+  }, [assemblyTargetId, rootBlocks, setSavedPageContent]);
 
   useEffect(() => {
     if (!canShowSelectedBlockActions) {
@@ -623,92 +587,6 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     : selectedPageId
       ? i18nText('frontstage', 'auto.page_with_id', { value1: selectedPageId })
       : null;
-  const saveBlockComposition = useCallback(
-    async (
-      sourceContent: FrontstagePageContent,
-      compositionState: FrontstageBlockCompositionState
-    ) => {
-      setIsBlockSavePending(true);
-      setBlockSaveError(null);
-      pageContentSave.clearError();
-
-      try {
-        if (!tabId) throw new Error('missing frontstage tab id');
-        if (compositionState.document.blocks.length > 0) {
-          await blockTreeMutations.updateDescriptors.mutateAsync({
-            tab_id: tabId,
-            input: {
-              updates: compositionState.document.blocks.map((block) => ({
-                block_id: block.id,
-                runtime_descriptor:
-                  createFrontstageBlockRuntimeDescriptor(block)
-              }))
-            }
-          });
-        }
-        const documentPayload = sourceContent.document.payload;
-        const documentRecord: Record<string, unknown> =
-          typeof documentPayload === 'object' &&
-          documentPayload !== null &&
-          !Array.isArray(documentPayload)
-            ? (documentPayload as Record<string, unknown>)
-            : {};
-        const nextContent = await pageContentSave.save({
-          payload: {
-            ...documentRecord,
-            'x-layout-mode': compositionState.document.layoutMode
-          }
-        });
-        setSavedPageContent(nextContent);
-        setSelectedBlockId(compositionState.selectedBlockId);
-        return true;
-      } catch (error) {
-        setBlockSaveError(toDisplayErrorMessage(error));
-        return false;
-      } finally {
-        setIsBlockSavePending(false);
-      }
-    },
-    [blockTreeMutations.updateDescriptors, pageContentSave, tabId]
-  );
-
-  const saveStudioBlock = useCallback(
-    async (nextBlock: FrontstageBlockInstance) => {
-      if (!selectedPageId) {
-        return false;
-      }
-      try {
-        await blockTreeMutations.update.mutateAsync({
-          block_id: nextBlock.id,
-          input: {
-            runtime_descriptor:
-              createFrontstageBlockRuntimeDescriptor(nextBlock)
-          }
-        });
-        return true;
-      } catch (error) {
-        setBlockSaveError(toDisplayErrorMessage(error));
-        return false;
-      }
-    },
-    [blockTreeMutations.update, selectedPageId]
-  );
-  const saveStudioBlockTitle = useCallback(
-    async (blockId: string, title: string) => {
-      if (!selectedPageId) return false;
-      try {
-        await blockTreeMutations.update.mutateAsync({
-          block_id: blockId,
-          input: { title }
-        });
-        return true;
-      } catch (error) {
-        setBlockSaveError(toDisplayErrorMessage(error));
-        return false;
-      }
-    },
-    [blockTreeMutations.update, selectedPageId]
-  );
   const designActions = useMemo(() => {
     if (!canEnterDesignMode || !isDesignMode) {
       return undefined;
@@ -757,7 +635,8 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     selectedPageId,
     workspaceId,
     setSelectedBlockId,
-    setIsJsxStudioOpen
+    setIsJsxStudioOpen,
+    setBlockSaveError
   ]);
 
   if (initialPageTree === undefined && isPageTreeLoading) {
@@ -868,91 +747,13 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     void saveBlockComposition(activePageContent, next);
   };
 
-  const handleAddBlock = async () => {
-    if (
-      !canAddBlock ||
-      blockCatalog.loading ||
-      blockCreationPendingRef.current
-    ) {
-      return;
-    }
-    setBlockSaveError(null);
-    pageContentSave.clearError();
-    if (!activePageContent || !blockCompositionState || !tabId) {
-      return;
-    }
-
-    if (blockCatalog.error) {
-      setBlockSaveError(toDisplayErrorMessage(blockCatalog.error));
-      return;
-    }
-
-    if (blockCatalog.items.length === 0) {
-      setBlockSaveError(
-        i18nText('frontstage', 'auto.no_available_block_catalog_entries')
-      );
-      return;
-    }
-
-    if (blockCatalog.items.length !== 1) {
-      setBlockSaveError(
-        i18nText('frontstage', 'auto.block_catalog_load_failed')
-      );
-      return;
-    }
-
-    const [entry] = blockCatalog.items;
-    if (!entry) return;
-
-    const codeTemplate = entry.codeCapabilities?.template;
-    if (!codeTemplate) {
-      setBlockSaveError(
-        i18nText('frontstage', 'auto.catalog_entry_missing_code_template')
-      );
-      return;
-    }
-
-    const nextBlockInput = createCatalogBlockInput(
-      entry,
-      blockCompositionState.document.blocks.length
-    );
-    const nextCompositionState = appendFrontstageBlock(
-      blockCompositionState,
-      nextBlockInput
-    );
-
-    blockCreationPendingRef.current = true;
-    setIsBlockSavePending(true);
-    try {
-      const createdBlock =
-        nextCompositionState.document.blocks.find(
-          (block) => block.id === nextCompositionState.selectedBlockId
-        ) ??
-        nextCompositionState.document.blocks[
-          nextCompositionState.document.blocks.length - 1
-        ];
-      if (!createdBlock) {
-        throw new Error('created block is missing');
-      }
-
-      const createdNode = await blockTreeMutations.create.mutateAsync({
-        tab_id: tabId,
-        description: '',
-        presentation: 'page',
-        parent_block_id: null,
-        before_block_id: null,
-        after_block_id: null,
-        source_code: codeTemplate.source,
-        runtime_descriptor: createFrontstageBlockRuntimeDescriptor(createdBlock)
-      });
-      setSelectedBlockId(createdNode.block_id);
-    } catch (error) {
-      setBlockSaveError(toDisplayErrorMessage(error));
-    } finally {
-      blockCreationPendingRef.current = false;
-      setIsBlockSavePending(false);
-    }
-  };
+  const handleAddBlock = () =>
+    addBlock({
+      canAddBlock,
+      blockCatalog,
+      activePageContent,
+      blockCompositionState
+    });
 
   const canEditPageTree = canEnterDesignMode && isDesignMode;
   const handleCanvasResponsiveLayoutSave = (

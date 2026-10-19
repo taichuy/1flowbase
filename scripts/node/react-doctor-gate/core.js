@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { evaluateDiagnosticReviews } = require('./diagnostic-review.js');
 
 const {
   getRepoRoot,
@@ -26,6 +27,7 @@ function formatCommand(command) {
 function buildReactDoctorCommand({
   repoRoot = getRepoRoot(),
   diffBase,
+  scanMode = 'full',
 } = {}) {
   return {
     command: 'npm',
@@ -37,8 +39,7 @@ function buildReactDoctorCommand({
       '--',
       'react-doctor',
       'web/app',
-      '--diff',
-      diffBase,
+      ...(scanMode === 'diff' ? ['--diff', diffBase] : ['--full']),
       '--json',
       '--no-score',
       '--fail-on',
@@ -48,6 +49,15 @@ function buildReactDoctorCommand({
     ],
     cwd: repoRoot,
   };
+}
+
+function resolveReactDoctorScanMode({ env = process.env } = {}) {
+  const mode = env.REACT_DOCTOR_SCAN_MODE?.trim()
+    || (env.GITHUB_EVENT_NAME === 'pull_request' ? 'diff' : 'full');
+  if (mode !== 'full' && mode !== 'diff') {
+    throw new Error('React Doctor scan mode must be full or diff');
+  }
+  return mode;
 }
 
 function resolveReactDoctorDiffBase({
@@ -144,21 +154,14 @@ function resolveReactDoctorRange({
   return { baseSha, candidateSha, changedFiles };
 }
 
-function countConfiguredSuppressions({ repoRoot, changedFiles }) {
+function countConfiguredSuppressions({ repoRoot }) {
   const configPath = path.join(repoRoot, 'web', 'app', 'doctor.config.json');
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    const changedAppFiles = new Set(
-      changedFiles
-        .filter((filePath) => filePath.startsWith('web/app/'))
-        .map((filePath) => filePath.slice('web/app/'.length)),
-    );
-    return (config.ignore?.overrides || []).reduce((count, override) => {
-      if (!override.files?.some((filePath) => changedAppFiles.has(filePath))) {
-        return count;
-      }
-      return count + (Array.isArray(override.rules) ? override.rules.length : 0);
-    }, 0);
+    const ignore = config.ignore || {};
+    return (ignore.rules?.length || 0) + (ignore.files?.length || 0)
+      + (ignore.overrides || []).reduce((count, override) =>
+        count + Math.max(1, Array.isArray(override.rules) ? override.rules.length : 0), 0);
   } catch {
     return null;
   }
@@ -196,6 +199,8 @@ function writeReactDoctorReports({
   stdout,
   stderr,
   range,
+  diagnosticReview,
+  toolExitCode = exitCode,
 }) {
   const outputDir = resolveOutputDir(repoRoot, env);
   fs.mkdirSync(outputDir, { recursive: true });
@@ -213,16 +218,20 @@ function writeReactDoctorReports({
   const report = {
     status,
     exitCode,
+    toolExitCode,
+    diagnosticReview,
     baseSha: range.baseSha,
     candidateSha: range.candidateSha,
     changedFiles: range.changedFiles,
     changedFileCount: range.changedFiles.length,
+    scanMode: range.scanMode,
+    reportedScanMode: doctorReport?.mode ?? null,
     unsuppressedDiagnostics: doctorReport?.summary?.totalDiagnosticCount ?? null,
     suppressedDiagnostics: resolveSuppressedDiagnostics(doctorReport),
     configuredSuppressionEntries,
     suppressionSource: 'react-doctor JSON report when available; otherwise unavailable',
     configuredSuppressionSource:
-      'web/app/doctor.config.json override entries intersecting changed files',
+      'all rule/file/override suppressions in web/app/doctor.config.json',
     baseSource: resolveBaseSource(env),
     candidateSource: resolveCandidateSource(env),
     command: formatCommand(command),
@@ -239,6 +248,10 @@ function writeReactDoctorReports({
     '',
     `- Status: ${status}`,
     `- Exit code: ${exitCode}`,
+    `- Tool exit code: ${toolExitCode}`,
+    `- Review: ${diagnosticReview?.status ?? 'unavailable'}`,
+    `- Reviewed diagnostics: ${diagnosticReview?.reviewed ?? 0}`,
+    `- Unresolved diagnostics: ${diagnosticReview?.findings?.length ?? 'unavailable'}`,
     `- Base SHA: ${report.baseSha}`,
     `- Candidate SHA: ${report.candidateSha}`,
     `- Base source: ${report.baseSource}`,
@@ -267,8 +280,9 @@ function runReactDoctorGate({
   writeStdout = (text) => process.stdout.write(text),
   writeStderr = (text) => process.stderr.write(text),
 } = {}) {
-  const range = resolveReactDoctorRange({ repoRoot, env, spawnSyncImpl });
-  const command = buildReactDoctorCommand({ repoRoot, diffBase: range.baseSha });
+  const scanMode = resolveReactDoctorScanMode({ env });
+  const range = { ...resolveReactDoctorRange({ repoRoot, env, spawnSyncImpl }), scanMode };
+  const command = buildReactDoctorCommand({ repoRoot, diffBase: range.baseSha, scanMode });
   const result = spawnSyncImpl(command.command, command.args, {
     cwd: command.cwd,
     env,
@@ -280,7 +294,19 @@ function runReactDoctorGate({
   const stderr = result.error
     ? `${result.stderr || ''}${result.error.stack || result.error.message}\n`
     : result.stderr || '';
-  const exitCode = result.error ? 1 : result.status ?? 1;
+  const toolExitCode = result.error ? 1 : result.status ?? 1;
+  const diagnosticReview = evaluateDiagnosticReviews({
+    repoRoot,
+    doctorReport: parseDoctorJsonReport(stdout),
+    toolPackage: REACT_DOCTOR_PACKAGE,
+  });
+  const reportedMode = parseDoctorJsonReport(stdout)?.mode;
+  if (reportedMode !== scanMode) {
+    diagnosticReview.status = 'invalid-scan-mode';
+    diagnosticReview.findings.push({ reason: `requested ${scanMode} scan, received ${reportedMode ?? 'unknown'}` });
+  }
+  const suppressionCount = countConfiguredSuppressions({ repoRoot, changedFiles: range.changedFiles });
+  const exitCode = toolExitCode || (diagnosticReview.status !== 'reviewed' || suppressionCount !== 0 ? 1 : 0);
 
   if (stdout) {
     writeStdout(stdout);
@@ -298,7 +324,12 @@ function runReactDoctorGate({
     stdout,
     stderr,
     range,
+    diagnosticReview,
+    toolExitCode,
   });
+  if (toolExitCode === 0 && exitCode !== 0) {
+    writeStderr(`[react-doctor-review] ${diagnosticReview.findings.length} unresolved diagnostics; configured suppressions=${suppressionCount ?? 'unavailable'}. Raw evidence is retained.\n`);
+  }
 
   return exitCode;
 }
@@ -311,6 +342,7 @@ module.exports = {
   resolveCandidateSource,
   resolveSuppressedDiagnostics,
   resolveReactDoctorDiffBase,
+  resolveReactDoctorScanMode,
   resolveReactDoctorRange,
   resolveReactDoctorCandidate,
   runReactDoctorGate,

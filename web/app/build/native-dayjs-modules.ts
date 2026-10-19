@@ -240,9 +240,9 @@ export const DAYJS_MODULE_DEFINITIONS = Object.freeze(
 );
 
 export const DAYJS_DECLARATION_SOURCES = Object.freeze(${JSON.stringify(
-    inventory
-      .filter(({ hasDeclaration }) => hasDeclaration)
-      .map(({ moduleSource }) => moduleSource)
+    inventory.flatMap(({ hasDeclaration, moduleSource }) =>
+      hasDeclaration ? [moduleSource] : []
+    )
   )});
 
 export const DAYJS_PACKAGE = Object.freeze(${JSON.stringify({

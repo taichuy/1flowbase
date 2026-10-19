@@ -68,10 +68,14 @@ const VALID_SCOPES = new Set([
   ...BACKEND_CONSISTENCY_COMPONENT_SCOPES,
 ]);
 const PACKED_CLI_ENTRIES = new Set(['container-image-security', 'verify-backend-consistency']);
+const OWNER_CLI_ENTRIES = new Set(['coverage-shadow', 'release-rollback-gate']);
 
 function resolveCliEntry(repoRoot, entryName) {
+  if (OWNER_CLI_ENTRIES.has(entryName)) {
+    return path.join(repoRoot, 'scripts', 'node', entryName, 'cli.js');
+  }
   const cliDir = PACKED_CLI_ENTRIES.has(entryName)
-    ? path.join('scripts', 'node', 'cli')
+    ? path.join('scripts', 'node', 'cli', 'quality')
     : path.join('scripts', 'node');
   return path.join(repoRoot, cliDir, `${entryName}.js`);
 }

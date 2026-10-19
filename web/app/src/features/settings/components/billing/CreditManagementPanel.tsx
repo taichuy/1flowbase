@@ -15,7 +15,7 @@ import {
 
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
-import { fetchSettingsMembers } from '../../api/members';
+import { fetchSettingsMembers } from '../../api/identity-access/members';
 import {
   executeSettingsCreditCommand,
   listSettingsCreditAccounts,
@@ -23,7 +23,7 @@ import {
   settingsCreditAccountsQueryKey,
   settingsCreditLedgerQueryKey
 } from '../../api/billing';
-import { settingsMembersQueryKey } from '../../api/members';
+import { settingsMembersQueryKey } from '../../api/identity-access/members';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 
 type MoneyCommand = 'grant' | 'charge' | 'adjust' | 'refund';

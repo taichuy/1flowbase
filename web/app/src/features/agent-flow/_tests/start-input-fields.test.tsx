@@ -5,7 +5,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import copyToClipboard from 'copy-to-clipboard';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -15,6 +15,9 @@ import { appI18n } from '../../../shared/i18n/app-i18n';
 import { writeLocalePreferenceToStorage } from '../../../shared/user-preferences/locale-preference';
 
 import { NodeConfigTab } from '../components/detail/tabs/NodeConfigTab';
+import { StartInputFieldSettingsPanel } from '../components/detail/fields/StartInputFieldSettingsPanel';
+import { startInputTypeOptions } from '../lib/variables/start-node-variables';
+import type { FlowStartInputField } from '@1flowbase/flow-schema';
 import { StartInputFieldsField } from '../components/detail/fields/StartInputFieldsField';
 import { AgentFlowEditorStoreProvider } from '../store/editor/AgentFlowEditorStoreProvider';
 import { useAgentFlowEditorStore } from '../store/editor/provider';
@@ -449,4 +452,26 @@ describe('start input fields', () => {
       screen.queryByRole('combobox', { name: '输入字段参数来源' })
     ).not.toBeInTheDocument();
   });
+});
+
+
+test('keeps the surviving option input mounted when deleting its preceding option', async () => {
+  function Harness() {
+    const [field, setField] = useState<FlowStartInputField>({
+      key: 'priority', label: 'Priority', inputType: 'select', valueType: 'string',
+      required: false, options: ['first', 'second']
+    });
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    return <StartInputFieldSettingsPanel mode="edit" field={field}
+      inputTypeOptions={startInputTypeOptions} sourceOptions={[]} triggerRef={triggerRef}
+      onChange={(patch) => setField((current) => ({ ...current, ...patch }))}
+      onClose={() => {}} onSave={() => {}} />;
+  }
+  writeLocalePreferenceToStorage('zh_Hans');
+  await appI18n.changeLanguage('zh_Hans');
+  renderWithProviders(<Harness />);
+  const survivor = await screen.findByLabelText('输入字段选项 2');
+  fireEvent.click(screen.getByRole('button', { name: '删除下拉选项 1' }));
+  expect(screen.getByLabelText('输入字段选项 1')).toBe(survivor);
+  expect(survivor).toHaveValue('second');
 });

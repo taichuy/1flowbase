@@ -21,7 +21,7 @@ import {
   checkSettingsExtensionUpdates,
   fetchSettingsExtensionCatalog,
   settingsExtensionCatalogQueryKey
-} from '../extensions';
+} from '../extensions/extensions';
 
 describe('settings extension catalog query contract', () => {
   beforeEach(() => {

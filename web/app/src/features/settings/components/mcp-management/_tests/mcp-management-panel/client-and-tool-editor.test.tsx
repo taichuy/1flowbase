@@ -1,13 +1,13 @@
+import { i18nText } from '../../../../../../shared/i18n/text';
 /* eslint-disable @typescript-eslint/no-unused-vars -- shared MCP panel fixture inventory is intentionally broader than each scenario file. */
-import {
-  act,
+import { act,
   fireEvent,
   render,
   screen,
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, type Mock, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, type Mock, vi } from 'vitest';
 import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 
 const mcpManagementApi = vi.hoisted(() => ({
@@ -352,10 +352,10 @@ const publishApplicationApiCapability: ConsoleMcpInterfaceCapability = {
   ]
 };
 
-function renderPanel(
+async function renderPanel(
   capabilities: ConsoleMcpInterfaceCapability[] = interfaceCapabilities
 ) {
-  return render(
+  return await renderSettled(
     <AppProviders>
       <McpManagementPanel
         canManage
@@ -372,7 +372,7 @@ function renderPanel(
   );
 }
 
-function renderPanelWithMountedTool({
+async function renderPanelWithMountedTool({
   includeBinding = true,
   includeGroup = false,
   operation = 'POST /api/console/apps',
@@ -385,7 +385,7 @@ function renderPanelWithMountedTool({
   proxy?: boolean;
   fullDescription?: string;
 } = {}) {
-  return render(
+  return await renderSettled(
     <AppProviders>
       <McpManagementPanel
         canManage
@@ -528,25 +528,25 @@ async function selectAntdOption(label: string) {
     );
   });
 
-  fireEvent.click(option);
+  await domEvents.click(option);
 }
 
-function clickSegmentedOption(root: HTMLElement, label: string) {
+async function clickSegmentedOption(root: HTMLElement, label: string) {
   const option = within(root).getByText((text, element) => {
     return Boolean(
       text === label && element?.matches('.ant-segmented-item-label')
     );
   });
 
-  fireEvent.click(option);
+  await domEvents.click(option);
 }
 
-function expandTreeRootIfCollapsed(tree: HTMLElement) {
+async function expandTreeRootIfCollapsed(tree: HTMLElement) {
   const rootItem = within(tree).getAllByRole('treeitem')[0];
   if (rootItem?.getAttribute('aria-expanded') === 'false') {
     const switcher = rootItem.querySelector('.ant-tree-switcher');
     expect(switcher).toBeInstanceOf(HTMLElement);
-    fireEvent.click(switcher as HTMLElement);
+    await domEvents.click(switcher as HTMLElement);
   }
 }
 
@@ -564,7 +564,7 @@ async function setFullDescription(value: string) {
   });
   const editor = vditorMock.instances.at(-1);
 
-  act(() => {
+  await act(async () => {
     editor!.options.input?.(value);
   });
 }
@@ -753,9 +753,9 @@ describe('McpManagementPanel', () => {
   });
 
   test('AC-003 AC-004 renders persistent Agent CLI configuration commands with the current endpoint and API key', async () => {
-    renderPanelWithMountedTool();
-    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
-    fireEvent.change(await screen.findByLabelText('API Key'), {
+    await renderPanelWithMountedTool();
+    await domEvents.click(screen.getByRole('button', { name: '连接客户端' }));
+    await domEvents.change(await screen.findByLabelText('API Key'), {
       target: { value: 'test-secret-key' }
     });
 
@@ -769,7 +769,7 @@ describe('McpManagementPanel', () => {
     );
     const endpoint = `${window.location.origin}/api/mcp/ops_mcp`;
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Codex' }));
+    await domEvents.click(within(dialog).getByRole('tab', { name: 'Codex' }));
     const codexInstallPreview = within(dialog).getByRole('region', {
       name: '安装 / 更新命令预览'
     });
@@ -800,7 +800,7 @@ describe('McpManagementPanel', () => {
     expect(codexInstallMarkdown).toMatch(/```powershell\n[^\n]+\n```/);
     expect(codexInstallMarkdown).toMatch(/```bat\n[^\n]+\n```/);
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Claude Code' }));
+    await domEvents.click(within(dialog).getByRole('tab', { name: 'Claude Code' }));
     const claudeCodePanel = within(dialog).getByRole('tabpanel', {
       name: 'Claude Code'
     });
@@ -827,7 +827,7 @@ describe('McpManagementPanel', () => {
     );
     expect(claudeRemovePreview).not.toHaveTextContent('test-secret-key');
 
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'OpenCode' }));
+    await domEvents.click(within(dialog).getByRole('tab', { name: 'OpenCode' }));
     const openCodePanel = within(dialog).getByRole('tabpanel', {
       name: 'OpenCode'
     });
@@ -855,11 +855,11 @@ describe('McpManagementPanel', () => {
   });
 
   test('AC-005 AC-008 keeps Agent commands copyable but incomplete until an API key is entered', async () => {
-    renderPanelWithMountedTool();
-    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+    await renderPanelWithMountedTool();
+    await domEvents.click(screen.getByRole('button', { name: '连接客户端' }));
 
     const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Codex' }));
+    await domEvents.click(within(dialog).getByRole('tab', { name: 'Codex' }));
 
     expect(
       within(dialog).getByText('输入 API Key 后生成可直接执行的命令。')
@@ -873,7 +873,7 @@ describe('McpManagementPanel', () => {
     expect(removePreview).toHaveTextContent("codex mcp remove 'ops_mcp'");
     expect(removePreview).not.toHaveTextContent('test-secret-key');
 
-    fireEvent.change(within(dialog).getByLabelText('API Key'), {
+    await domEvents.change(within(dialog).getByLabelText('API Key'), {
       target: { value: 'test-secret-key' }
     });
     await waitFor(() => {
@@ -892,15 +892,15 @@ describe('McpManagementPanel', () => {
       saved: true,
       api_key: 'saved-secret-key'
     });
-    renderPanelWithMountedTool();
+    await renderPanelWithMountedTool();
 
-    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+    await domEvents.click(screen.getByRole('button', { name: '连接客户端' }));
 
     await waitFor(() => {
       expect(screen.getByLabelText('API Key')).toHaveValue('saved-secret-key');
     });
     expect(screen.queryByText('已加密保存')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /清除认证/ }));
+    await domEvents.click(screen.getByRole('button', { name: /清除认证/ }));
 
     await waitFor(() => {
       expect(
@@ -911,9 +911,9 @@ describe('McpManagementPanel', () => {
   });
 
   test('saves the MCP client API key from the modal footer without a switch', async () => {
-    renderPanelWithMountedTool();
-    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
-    fireEvent.change(await screen.findByLabelText('API Key'), {
+    await renderPanelWithMountedTool();
+    await domEvents.click(screen.getByRole('button', { name: '连接客户端' }));
+    await domEvents.change(await screen.findByLabelText('API Key'), {
       target: { value: 'new-secret-key' }
     });
 
@@ -939,7 +939,7 @@ describe('McpManagementPanel', () => {
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(saveButton).toHaveClass('ant-btn-primary');
-    fireEvent.click(screen.getByRole('button', { name: /保存$/ }));
+    await domEvents.click(screen.getByRole('button', { name: /保存$/ }));
 
     await waitFor(() => {
       expect(
@@ -950,10 +950,10 @@ describe('McpManagementPanel', () => {
   });
 
   test('AC-001 keeps the full-description Vditor outline closed by default', async () => {
-    renderPanel();
+    await renderPanel();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+    await domEvents.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    await domEvents.click(screen.getByRole('button', { name: /新增/ }));
 
     const dialog = await screen.findByRole('dialog');
     const editor = within(dialog).getByLabelText('full_description');
@@ -969,21 +969,21 @@ describe('McpManagementPanel', () => {
     });
     expect(vditorMock.instances[0]?.options.value).toBe('');
 
-    act(() => {
+    await act(async () => {
       vditorMock.instances[0]?.options.input?.('Rendered **markdown**');
     });
   });
 
   test('AC-001 saves an interface wrapper from input mapping when full description is empty', async () => {
-    renderPanelWithMountedTool({ fullDescription: '' });
+    await renderPanelWithMountedTool({ fullDescription: '' });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    await domEvents.click(screen.getByRole('tab', { name: 'Tool 配置' }));
     const toolRow = screen.getByRole('row', { name: /Search customer/ });
-    fireEvent.click(within(toolRow).getAllByRole('button')[0]);
+    await domEvents.click(within(toolRow).getAllByRole('button')[0]);
 
     const dialog = await screen.findByRole('dialog');
-    clickSegmentedOption(dialog, 'input_mapping');
-    fireEvent.click(within(dialog).getByText('OK'));
+    await clickSegmentedOption(dialog, 'input_mapping');
+    await domEvents.click(within(dialog).getByRole('button', { name: i18nText('settings', 'auto.save') }));
 
     await waitFor(() => {
       expect(mcpManagementApi.updateSettingsMcpTool).toHaveBeenCalledWith(
@@ -995,7 +995,7 @@ describe('McpManagementPanel', () => {
   });
 
   test('waits for Vditor readiness before syncing external full description values', async () => {
-    const { rerender } = render(
+    const { rerender } = await renderSettled(
       <MarkdownIrEditor
         ariaLabel="full_description"
         value="Initial description"
@@ -1019,7 +1019,7 @@ describe('McpManagementPanel', () => {
     expect(editor?.getValue).not.toHaveBeenCalled();
     expect(editor?.setValue).not.toHaveBeenCalled();
 
-    act(() => {
+    await act(async () => {
       editor?.options.after?.();
     });
 
@@ -1028,31 +1028,27 @@ describe('McpManagementPanel', () => {
   });
 
   test('shows the selected interface operation in input output and debug steps', async () => {
-    renderPanel();
+    await renderPanel();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+    await domEvents.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    await domEvents.click(screen.getByRole('button', { name: /新增/ }));
 
     const dialog = await screen.findByRole('dialog');
 
-    clickSegmentedOption(dialog, 'interface');
-    fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'operation' })
-    );
+    await clickSegmentedOption(dialog, 'interface');
+    await domEvents.mouseDown(within(dialog).getByRole('combobox', { name: 'operation' }));
     await selectAntdOption('create_app');
 
-    clickSegmentedOption(dialog, 'input_mapping');
+    await clickSegmentedOption(dialog, 'input_mapping');
     expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
     expect(visibleTextEntries(dialog, 'operationId')).toHaveLength(0);
     expect(visibleTextEntries(dialog, 'risk_level')).toHaveLength(0);
     expect(visibleTextEntries(dialog, 'permission_code')).toHaveLength(0);
 
-    clickSegmentedOption(dialog, 'output_mapping');
+    await clickSegmentedOption(dialog, 'output_mapping');
     expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
 
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '获取返回结构' })
-    );
+    await domEvents.click(within(dialog).getByRole('button', { name: '获取返回结构' }));
     expect(within(dialog).getByDisplayValue('run_id')).toBeInTheDocument();
     expect(within(dialog).queryByDisplayValue('type')).not.toBeInTheDocument();
     expect(
@@ -1062,7 +1058,7 @@ describe('McpManagementPanel', () => {
       within(dialog).queryByDisplayValue('properties')
     ).not.toBeInTheDocument();
 
-    clickSegmentedOption(dialog, 'debug');
+    await clickSegmentedOption(dialog, 'debug');
     expect(visibleTextEntries(dialog, 'POST /api/console/apps').length).toBe(1);
   });
 
@@ -1093,10 +1089,10 @@ describe('McpManagementPanel', () => {
               run_id: 'run-1'
             }
     );
-    renderPanel();
+    await renderPanel();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+    await domEvents.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    await domEvents.click(screen.getByRole('button', { name: /新增/ }));
 
     const dialog = await screen.findByRole('dialog');
 
@@ -1106,23 +1102,17 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getAllByText('debug').length).toBeGreaterThan(0);
     expect(within(dialog).queryByText('preview')).not.toBeInTheDocument();
 
-    clickSegmentedOption(dialog, 'interface');
-    fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'operation' })
-    );
+    await clickSegmentedOption(dialog, 'interface');
+    await domEvents.mouseDown(within(dialog).getByRole('combobox', { name: 'operation' }));
     await selectAntdOption('create_app');
 
-    clickSegmentedOption(dialog, 'input_mapping');
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '获取接口参数' })
-    );
-    fireEvent.click(await within(dialog).findByText('映射层'));
-    fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_param' })
-    );
+    await clickSegmentedOption(dialog, 'input_mapping');
+    await domEvents.click(within(dialog).getByRole('button', { name: '获取接口参数' }));
+    await domEvents.click(await within(dialog).findByText('映射层'));
+    await domEvents.mouseDown(within(dialog).getByRole('combobox', { name: 'interface_param' }));
     await selectAntdOption('app_id');
-    fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
-    fireEvent.change(within(dialog).getByLabelText('mcp_param app_id'), {
+    await domEvents.click(within(dialog).getByRole('button', { name: '添加' }));
+    await domEvents.change(within(dialog).getByLabelText('mcp_param app_id'), {
       target: { value: 'appId' }
     });
 
@@ -1131,20 +1121,18 @@ describe('McpManagementPanel', () => {
     );
     expect(within(dialog).getByLabelText('hidden app_id')).not.toBeChecked();
 
-    clickSegmentedOption(dialog, 'output_mapping');
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '获取返回结构' })
-    );
+    await clickSegmentedOption(dialog, 'output_mapping');
+    await domEvents.click(within(dialog).getByRole('button', { name: '获取返回结构' }));
 
-    clickSegmentedOption(dialog, 'debug');
+    await clickSegmentedOption(dialog, 'debug');
     expect(within(dialog).getByLabelText('appId')).toBeInTheDocument();
     expect(
       within(dialog).queryByLabelText('MCP 参数 JSON')
     ).not.toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('appId'), {
+    await domEvents.change(within(dialog).getByLabelText('appId'), {
       target: { value: 'app-1' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: '运行' }));
+    await domEvents.click(within(dialog).getByRole('button', { name: '运行' }));
 
     await waitFor(() => {
       expect(mcpManagementApi.executeSettingsMcpToolDebug).toHaveBeenCalledWith(
@@ -1201,9 +1189,7 @@ describe('McpManagementPanel', () => {
     expect(debugResult).not.toHaveTextContent('"tool_result"');
     expect(debugResult).not.toHaveTextContent('"output_mapping"');
 
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '查看完整内容' })
-    );
+    await domEvents.click(within(dialog).getByRole('button', { name: '查看完整内容' }));
 
     await waitFor(() => {
       expect(
@@ -1263,8 +1249,8 @@ describe('McpManagementPanel', () => {
     expect(debugDetails).toHaveTextContent('"tool_result"');
   }, 30000);
 
-  test('renders debug operation and run action in one row without duplicate field-name help text', () => {
-    render(
+  test('renders debug operation and run action in one row without duplicate field-name help text', async () => {
+    await renderSettled(
       <McpToolDebugPanel
         operationLabel="POST /api/runtime/models/users/create"
         inputMapping={{
@@ -1304,41 +1290,37 @@ describe('McpManagementPanel', () => {
   });
 
   test('loads interface descriptors into dedicated input mappings after the explicit mapping action', async () => {
-    renderPanel();
+    await renderPanel();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+    await domEvents.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    await domEvents.click(screen.getByRole('button', { name: /新增/ }));
 
     const dialog = await screen.findByRole('dialog');
 
     expect(
       within(dialog).queryByLabelText('des_id_required')
     ).not.toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('name'), {
+    await domEvents.change(within(dialog).getByLabelText('name'), {
       target: { value: 'Create App' }
     });
-    fireEvent.change(within(dialog).getByLabelText('des_id'), {
+    await domEvents.change(within(dialog).getByLabelText('des_id'), {
       target: { value: 'des12345' }
     });
-    fireEvent.change(within(dialog).getByLabelText('short_description'), {
+    await domEvents.change(within(dialog).getByLabelText('short_description'), {
       target: { value: 'Create app' }
     });
     await setFullDescription('Create app');
-    clickSegmentedOption(dialog, 'interface');
-    fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'operation' })
-    );
+    await clickSegmentedOption(dialog, 'interface');
+    await domEvents.mouseDown(within(dialog).getByRole('combobox', { name: 'operation' }));
     await selectAntdOption('create_app');
 
-    clickSegmentedOption(dialog, 'input_mapping');
+    await clickSegmentedOption(dialog, 'input_mapping');
     expect(
       within(dialog).queryByDisplayValue('app_id')
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByDisplayValue('type')).not.toBeInTheDocument();
 
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '获取接口参数' })
-    );
+    await domEvents.click(within(dialog).getByRole('button', { name: '获取接口参数' }));
     for (const [name, fieldType] of [
       ['des_id', 'string'],
       ['max_inline_chars', 'integer'],
@@ -1360,21 +1342,17 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByText('JSON 请求体')).toBeInTheDocument();
     expect(within(dialog).queryByDisplayValue('type')).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByText('映射层'));
-    fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_param' })
-    );
+    await domEvents.click(within(dialog).getByText('映射层'));
+    await domEvents.mouseDown(within(dialog).getByRole('combobox', { name: 'interface_param' }));
     await selectAntdOption('app_id');
-    fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
-    fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'interface_param' })
-    );
+    await domEvents.click(within(dialog).getByRole('button', { name: '添加' }));
+    await domEvents.mouseDown(within(dialog).getByRole('combobox', { name: 'interface_param' }));
     await selectAntdOption('display_name');
-    fireEvent.click(within(dialog).getByRole('button', { name: '添加' }));
+    await domEvents.click(within(dialog).getByRole('button', { name: '添加' }));
     expect(within(dialog).getByLabelText('mcp_param app_id')).toHaveValue(
       'app_id'
     );
-    fireEvent.change(within(dialog).getByLabelText('mcp_param app_id'), {
+    await domEvents.change(within(dialog).getByLabelText('mcp_param app_id'), {
       target: { value: 'appId' }
     });
 
@@ -1385,12 +1363,12 @@ describe('McpManagementPanel', () => {
       expect(within(dialog).getByLabelText(`hidden ${name}`)).not.toBeChecked();
     }
 
-    clickSegmentedOption(dialog, 'debug');
+    await clickSegmentedOption(dialog, 'debug');
     expect(
       within(dialog).queryByText('mcp_get(tool_id)')
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByText('audit_policy')).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByText('OK'));
+    await domEvents.click(within(dialog).getByRole('button', { name: i18nText('settings', 'auto.save') }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
@@ -1449,4 +1427,35 @@ describe('McpManagementPanel', () => {
       expect.any(String)
     );
   }, 30_000);
+});
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+// Explicit render owners for this fixture; other test roots remain RTL-owned.
+const mountedViews = new Set<ReturnType<typeof render>>();
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
+  return view;
+}
+
+const domEvents = {
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
+  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args)),
+  mouseDown: (...args: Parameters<typeof fireEvent.mouseDown>) => dispatch(() => fireEvent.mouseDown(...args))
+};
+
+afterEach(() => {
+  // Release only the render owners created by this fixture before its resource teardown.
+  for (const view of mountedViews) view.unmount();
+  mountedViews.clear();
+  for (const editor of vditorMock.instances) expect(editor.destroy).toHaveBeenCalledOnce();
 });

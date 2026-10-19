@@ -1,7 +1,7 @@
 export const NODE_DETAIL_DEFAULT_WIDTH = 420;
-export const NODE_DETAIL_MIN_WIDTH = 300;
+const NODE_DETAIL_MIN_WIDTH = 300;
 export const NODE_DETAIL_MIN_CANVAS_WIDTH = 300;
-export const NODE_DETAIL_COMPACT_THRESHOLD = 360;
+const NODE_DETAIL_COMPACT_THRESHOLD = 360;
 
 export function getNodeDetailLayout(width: number) {
   return width <= NODE_DETAIL_COMPACT_THRESHOLD ? 'compact' : 'regular';

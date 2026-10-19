@@ -29,7 +29,7 @@ vi.mock('../api/session', async () => {
 import { PublicAuthBlock } from '../components/PublicAuthBlock';
 import { createPublicAuthCompilation } from '../lib/public-auth-compilation';
 import { appI18n } from '../../../shared/i18n/app-i18n';
-import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../frontstage/lib/native-trusted-block-runtime-factory';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../frontstage/lib/native-adapter/native-trusted-block-runtime-factory';
 
 describe('PublicAuthBlock Native Host composition', () => {
   beforeEach(async () => {

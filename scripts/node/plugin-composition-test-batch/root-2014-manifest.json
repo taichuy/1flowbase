@@ -155,7 +155,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_activation_tests::root_2007_ac_001_002_package_activation",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_activation_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_activation_tests.rs",
       "ac": [
         "AC-001",
         "AC-002"
@@ -176,7 +176,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_candidate_switch",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_candidate_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_candidate_tests.rs",
       "ac": [
         "AC-009"
       ],
@@ -197,7 +197,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_historical_authority",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_candidate_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_candidate_tests.rs",
       "ac": [
         "AC-009"
       ],
@@ -218,7 +218,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_event_authority_tests::root_2007_ac_005_event_authority_installed_publisher_and_subscribers",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_authority_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_authority_tests.rs",
       "ac": [
         "AC-005"
       ],
@@ -235,7 +235,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_event_authority_tests::root_2007_ac_005_event_authority_static_namespace_and_contract",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_authority_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_authority_tests.rs",
       "ac": [
         "AC-005"
       ],
@@ -252,7 +252,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_event_effect_tests::root_2007_ac_007_ack_loss_and_claim_fencing",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_effect_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_effect_tests.rs",
       "ac": [
         "AC-007"
       ],
@@ -269,7 +269,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_governance_tests::root_2007_ac_009_pause_revoke_retire",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_governance_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_governance_tests.rs",
       "ac": [
         "AC-009"
       ],
@@ -290,7 +290,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_resource_tests::root_2007_ac_010_lane_budgets_owned_transactions_shutdown",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_resource_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_resource_tests.rs",
       "ac": [
         "AC-010"
       ],
@@ -304,7 +304,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_snapshot_tests::root_2007_ac_008_snapshot_restart",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_snapshot_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_snapshot_tests.rs",
       "ac": [
         "AC-008"
       ],
@@ -481,7 +481,7 @@
       "target": "extension-contracts:lib",
       "name": "_tests::managed_hook_contract_tests::root_2007_ac_003_004_hook_transport_phase_and_identity_contract",
       "expected": 1,
-      "source": "api/crates/extension-contracts/src/_tests/managed_hook_contract_tests.rs",
+      "source": "api/crates/extension-contracts/src/_tests/managed_contributions/managed_hook_contract_tests.rs",
       "ac": [
         "AC-003",
         "AC-004"
@@ -820,7 +820,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_006_transaction_targets",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "ac": [
         "AC-006"
       ],
@@ -832,7 +832,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_claim_fencing_and_paused_backlog",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "ac": [
         "AC-007"
       ],
@@ -847,7 +847,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_concurrent_ack_rollup",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "ac": [
         "AC-007"
       ],
@@ -862,7 +862,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_delivery_migration_preserves_old_targets",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "ac": [
         "AC-007"
       ],
@@ -889,7 +889,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "managed_operation_lifetime::tests::root_2007_ac_010_lane_budgets_owned_operation_shutdown",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/managed_operation_lifetime.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/managed_operation_lifetime.rs",
       "ac": [
         "AC-010"
       ],
@@ -901,7 +901,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_changed_reinstall_preserves_history",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",
       "ac": [
         "AC-001",
         "AC-008",
@@ -922,7 +922,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_identical_archive_restores_artifact",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",
       "ac": [
         "AC-001",
         "AC-008",
@@ -942,7 +942,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_upgrade_and_concurrent_identity",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",
       "ac": [
         "AC-001",
         "AC-002",
@@ -975,7 +975,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/extension_bus/generic_event_history_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/events/generic_event_history_tests.rs",
       "name": "_tests::extension_bus::generic_event_history_tests::root_2014_ac_008_generic_history_and_f01",
       "expected": 1,
       "ac": [
@@ -989,7 +989,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/extension_bus/generic_event_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/events/generic_event_tests.rs",
       "name": "_tests::extension_bus::generic_event_tests::root_2014_ac_005_installed_generic_event_exchange",
       "expected": 1,
       "ac": [
@@ -1003,7 +1003,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/extension_bus/generic_event_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/events/generic_event_tests.rs",
       "name": "_tests::extension_bus::generic_event_tests::root_2014_ac_006_event_authority_schema_negatives",
       "expected": 1,
       "ac": [
@@ -1017,7 +1017,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/extension_bus/generic_event_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/events/generic_event_tests.rs",
       "name": "_tests::extension_bus::generic_event_tests::root_2014_ac_007_transaction_retry_claim_fencing",
       "expected": 1,
       "ac": [
@@ -1167,7 +1167,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/ui_management_routes.rs",
+      "source": "api/apps/api-server/src/_tests/console_routes/ui_management_routes.rs",
       "name": "_tests::ui_management_routes::root_2014_ac_014_old_process_cannot_serve_new_target_template",
       "expected": 1,
       "ac": [
@@ -1179,7 +1179,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/ui_management_routes.rs",
+      "source": "api/apps/api-server/src/_tests/console_routes/ui_management_routes.rs",
       "name": "_tests::ui_management_routes::root_2014_ac_014_old_process_plugin_operation_version_gate",
       "expected": 1,
       "ac": [
@@ -1215,7 +1215,7 @@
     },
     {
       "target": "extension-contracts:lib",
-      "source": "api/crates/extension-contracts/src/_tests/managed_interface_contract_tests.rs",
+      "source": "api/crates/extension-contracts/src/_tests/managed_contributions/managed_interface_contract_tests.rs",
       "name": "_tests::managed_interface_contract_tests::root_2014_managed_observers_cannot_deny_patch_or_replace_result",
       "expected": 1,
       "ac": [
@@ -1228,7 +1228,7 @@
     },
     {
       "target": "extension-contracts:lib",
-      "source": "api/crates/extension-contracts/src/_tests/managed_interface_contract_tests.rs",
+      "source": "api/crates/extension-contracts/src/_tests/managed_contributions/managed_interface_contract_tests.rs",
       "name": "_tests::managed_interface_contract_tests::root_2014_managed_schema_rejects_unknown_fields_and_oversize",
       "expected": 1,
       "ac": [
@@ -1295,7 +1295,7 @@
     },
     {
       "target": "storage-durable-postgres:lib",
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2014_generic_event_history_scope_is_verified_or_conservative",
       "expected": 1,
       "ac": [
@@ -1307,7 +1307,7 @@
     },
     {
       "target": "storage-durable-postgres:lib",
-      "source": "api/crates/storage/durable/postgres/src/_tests/plugin_settings_template_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/plugin_settings_template_tests.rs",
       "name": "_tests::plugin_settings_template_tests::root_2014_ac_010_template_trigger_matrix",
       "expected": 1,
       "ac": [
@@ -1319,7 +1319,7 @@
     },
     {
       "target": "storage-durable-postgres:lib",
-      "source": "api/crates/storage/durable/postgres/src/_tests/plugin_settings_template_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/plugin_settings_template_tests.rs",
       "name": "_tests::plugin_settings_template_tests::root_2014_ac_011_atomic_version_retry_concurrency",
       "expected": 1,
       "ac": [
@@ -1331,7 +1331,7 @@
     },
     {
       "target": "extension-contracts:lib",
-      "source": "api/crates/extension-contracts/src/_tests/managed_interface_reference_tests.rs",
+      "source": "api/crates/extension-contracts/src/_tests/managed_contributions/managed_interface_reference_tests.rs",
       "name": "_tests::managed_interface_reference_tests::root_2014_r3_probe_independent_budgets",
       "expected": 1,
       "ac": [

@@ -1,4 +1,4 @@
-import type { ConsolePluginFormSchema } from '../../console-model-providers';
+import type { ConsolePluginFormSchema } from '../modeling/model-providers';
 import { apiFetch, apiFetchVoid, getDefaultApiBaseUrl } from '../../transport';
 
 export interface NotificationAuthorizationDescriptor {

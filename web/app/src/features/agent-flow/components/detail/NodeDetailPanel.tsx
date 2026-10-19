@@ -19,6 +19,9 @@ const nodeDetailShellSchema = {
   title: i18nText('agentFlow', 'auto.node_details')
 } as const;
 
+const EMPTY_ENVIRONMENT_VARIABLES: AgentFlowEnvironmentVariable[] = [];
+const EMPTY_ISSUES: AgentFlowIssue[] = [];
+
 export function NodeDetailPanel({
   onClose,
   onDebugNode,
@@ -26,8 +29,8 @@ export function NodeDetailPanel({
   applicationId,
   activeRunId,
   debugLoading = false,
-  environmentVariables = [],
-  issues = [],
+  environmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
+  issues = EMPTY_ISSUES,
   onResolveRunScope,
   previewActionsDisabled = false,
   runLoading = false,

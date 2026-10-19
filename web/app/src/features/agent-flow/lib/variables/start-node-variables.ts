@@ -98,7 +98,7 @@ export const startSystemVariables = [
   }
 ] satisfies FlowNodeOutputDocument[];
 
-export function getStartNodeVariableOutputs(
+function getStartNodeVariableOutputs(
   node: Pick<FlowNodeDocument, 'config' | 'outputs'>
 ): FlowNodeOutputDocument[] {
   if (node.outputs.length > 0) {

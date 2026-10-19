@@ -1,5 +1,4 @@
-import {
-  act,
+import { act,
   fireEvent,
   render,
   screen,
@@ -10,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AppProviders } from '../../../../../app/AppProviders';
 import { MemberDepartmentFields } from '../MemberDepartmentFields';
 const fetchDepartments = vi.hoisted(() => vi.fn());
-vi.mock('../../../api/departments', () => ({
+vi.mock('../../../api/identity-access/departments', () => ({
   fetchSettingsDepartments: fetchDepartments,
   settingsDepartmentsQueryKey: ['settings', 'departments']
 }));
@@ -63,7 +62,6 @@ function Harness({
 }
 describe('member department invariants', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
     fetchDepartments.mockImplementation(async ({ ids }: { ids?: string }) => ({
       items: departments
         .filter((item) => !ids || ids.split(',').includes(item.id))
@@ -73,26 +71,22 @@ describe('member department invariants', () => {
     }));
   });
   afterEach(async () => {
-    try {
-      // Real Form validation schedules delayed rc-util state updates. Finish
-      // fixture-owned callbacks before the runner's automatic cleanup, even on failure.
-      await act(async () => {
-        await vi.runOnlyPendingTimersAsync();
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    await act(async () => {
+      // Dispose only this fixture's render roots and their motion subscriptions.
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
+    });
   });
   test('retains and resolves existing selections absent from the first page', async () => {
     const submit = vi.fn();
-    render(
+    await renderSettled(
       <AppProviders>
         <Harness submit={submit} partial />
       </AppProviders>
     );
     expect(await screen.findAllByText('Support')).not.toHaveLength(0);
     expect(fetchDepartments).toHaveBeenCalledWith({ ids: 'a,b', limit: 50 });
-    fireEvent.click(screen.getByText('Submit'));
+    await domEvents.click(screen.getByText('Submit'));
     await waitFor(() =>
       expect(submit).toHaveBeenCalledWith({
         department_ids: ['a', 'b'],
@@ -102,21 +96,23 @@ describe('member department invariants', () => {
   });
   test('edits the primary department while retaining both assignments', async () => {
     const submit = vi.fn();
-    render(
+    await renderSettled(
       <AppProviders>
         <Harness submit={submit} />
       </AppProviders>
     );
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '主部门' }));
-    fireEvent.click(
-      await screen.findByText((_, element) =>
-        Boolean(
-          element?.matches('.ant-select-item-option-content') &&
-          element.textContent === 'Support'
-        )
+    await domEvents.mouseDown(screen.getByRole('combobox', { name: '主部门' }));
+    const support = await screen.findByText((_, element) =>
+      Boolean(
+        element?.matches('.ant-select-item-option-content') &&
+        element.textContent === 'Support'
       )
     );
-    fireEvent.click(screen.getByText('Submit'));
+    const popup = support.closest<HTMLElement>('.ant-select-dropdown');
+    if (!popup) throw new Error('Primary department selector popup is missing');
+    await domEvents.click(support);
+    await waitFor(() => expect(popup).not.toBeVisible());
+    await domEvents.click(screen.getByText('Submit'));
     await waitFor(() =>
       expect(submit).toHaveBeenCalledWith({
         department_ids: ['a', 'b'],
@@ -126,12 +122,12 @@ describe('member department invariants', () => {
   });
   test('saves exactly one primary department from the selected set', async () => {
     const submit = vi.fn();
-    render(
+    await renderSettled(
       <AppProviders>
         <Harness submit={submit} />
       </AppProviders>
     );
-    fireEvent.click(screen.getByText('Submit'));
+    await domEvents.click(screen.getByText('Submit'));
     await waitFor(() =>
       expect(submit).toHaveBeenCalledWith({
         department_ids: ['a', 'b'],
@@ -141,18 +137,18 @@ describe('member department invariants', () => {
   });
   test('rejects a primary outside the selected set and permits an explicit empty assignment', async () => {
     const submit = vi.fn();
-    render(
+    await renderSettled(
       <AppProviders>
         <Harness submit={submit} invalid />
       </AppProviders>
     );
-    fireEvent.click(screen.getByText('Submit'));
+    await domEvents.click(screen.getByText('Submit'));
     expect(
       await screen.findByText('请选择所属部门中的一个主部门')
     ).toBeInTheDocument();
     expect(submit).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Clear'));
-    fireEvent.click(screen.getByText('Submit'));
+    await domEvents.click(screen.getByText('Clear'));
+    await domEvents.click(screen.getByText('Submit'));
     await waitFor(() =>
       expect(submit).toHaveBeenCalledWith({
         department_ids: [],
@@ -161,3 +157,26 @@ describe('member department invariants', () => {
     );
   });
 });
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+// Explicit render owners for this fixture; other test roots remain RTL-owned.
+const mountedViews = new Set<ReturnType<typeof render>>();
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
+  return view;
+}
+
+const domEvents = {
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
+  mouseDown: (...args: Parameters<typeof fireEvent.mouseDown>) => dispatch(() => fireEvent.mouseDown(...args))
+};

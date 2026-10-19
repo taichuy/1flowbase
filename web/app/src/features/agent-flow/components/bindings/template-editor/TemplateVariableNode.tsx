@@ -1,4 +1,4 @@
-import type { LexicalNode, NodeKey, SerializedLexicalNode } from 'lexical';
+import type { NodeKey, SerializedLexicalNode } from 'lexical';
 
 import { DecoratorNode } from 'lexical';
 
@@ -76,10 +76,4 @@ export class TemplateVariableNode extends DecoratorNode<React.JSX.Element> {
 
 export function $createTemplateVariableNode(selector: string[], label: string) {
   return new TemplateVariableNode(selector, label);
-}
-
-export function $isTemplateVariableNode(
-  node: LexicalNode | null | undefined
-): node is TemplateVariableNode {
-  return node instanceof TemplateVariableNode;
 }

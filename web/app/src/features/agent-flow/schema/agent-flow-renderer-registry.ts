@@ -1,8 +1,4 @@
-import {
-  createRendererRegistry,
-  type SchemaFieldRenderer,
-  type SchemaViewRenderer
-} from '../../../shared/schema-ui/v1/registry/create-renderer-registry';
+import { createRendererRegistry } from '../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import { LlmParameterForm } from '../components/detail/fields/LlmParameterForm';
 import { agentFlowFieldRenderers } from './agent-flow-field-renderers';
@@ -16,14 +12,3 @@ export const agentFlowRendererRegistry = createRendererRegistry({
   },
   shells: {}
 });
-
-export function registerAgentFlowRenderers({
-  fields,
-  views
-}: {
-  fields?: Record<string, SchemaFieldRenderer>;
-  views?: Record<string, SchemaViewRenderer>;
-}) {
-  Object.assign(agentFlowRendererRegistry.fields, fields ?? {});
-  Object.assign(agentFlowRendererRegistry.views, views ?? {});
-}

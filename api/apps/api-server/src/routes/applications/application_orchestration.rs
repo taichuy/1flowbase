@@ -846,30 +846,40 @@ async fn to_response_with(
 
     Ok(OrchestrationStateResponse {
         flow_id: state.flow.id.to_string(),
-        draft: FlowDraftResponse {
-            id: state.draft.id.to_string(),
-            flow_id: state.draft.flow_id.to_string(),
-            document: state.draft.document,
-            updated_at: state.draft.updated_at.format(&Rfc3339).unwrap(),
-        },
+        draft: to_flow_draft_response(state.draft)?,
         messages,
         versions: state
             .versions
             .into_iter()
-            .map(|version| FlowVersionResponse {
-                id: version.id.to_string(),
-                sequence: version.sequence,
-                trigger: version.trigger.as_str().to_string(),
-                change_kind: version.change_kind.as_str().to_string(),
-                summary: version.summary,
-                summary_is_custom: version.summary_is_custom,
-                is_user_protected: version.is_user_protected,
-                is_current_publication: version.is_current_publication,
-                created_at: version.created_at.format(&Rfc3339).unwrap(),
-            })
-            .collect(),
+            .map(to_flow_version_response)
+            .collect::<Result<Vec<_>, _>>()?,
         autosave_interval_seconds: state.autosave_interval_seconds,
         user_protection_limit: domain::FLOW_USER_PROTECTION_LIMIT,
+    })
+}
+
+fn to_flow_draft_response(draft: domain::FlowDraftRecord) -> Result<FlowDraftResponse, ApiError> {
+    Ok(FlowDraftResponse {
+        id: draft.id.to_string(),
+        flow_id: draft.flow_id.to_string(),
+        document: draft.document,
+        updated_at: draft.updated_at.format(&Rfc3339)?,
+    })
+}
+
+fn to_flow_version_response(
+    version: domain::FlowVersionRecord,
+) -> Result<FlowVersionResponse, ApiError> {
+    Ok(FlowVersionResponse {
+        id: version.id.to_string(),
+        sequence: version.sequence,
+        trigger: version.trigger.as_str().to_string(),
+        change_kind: version.change_kind.as_str().to_string(),
+        summary: version.summary,
+        summary_is_custom: version.summary_is_custom,
+        is_user_protected: version.is_user_protected,
+        is_current_publication: version.is_current_publication,
+        created_at: version.created_at.format(&Rfc3339)?,
     })
 }
 
@@ -1147,3 +1157,7 @@ pub async fn update_version(
         .await?;
     Ok(Json(ApiSuccess::new(output.into_state()?)))
 }
+
+#[cfg(test)]
+#[path = "application_orchestration/_tests/time_response.rs"]
+mod time_response_tests;

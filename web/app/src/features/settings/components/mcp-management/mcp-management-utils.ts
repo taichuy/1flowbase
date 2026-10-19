@@ -1,13 +1,5 @@
 import type { ConsoleMcpExportPackage } from '@1flowbase/api-client';
 
-export function parseJsonText(value: string, field: string) {
-  try {
-    return JSON.parse(value || '{}') as unknown;
-  } catch {
-    throw new Error(`${field} JSON`);
-  }
-}
-
 export function stringifyJson(value: unknown) {
   return JSON.stringify(value ?? {}, null, 2);
 }

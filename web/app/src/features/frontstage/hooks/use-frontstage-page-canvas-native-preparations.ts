@@ -29,9 +29,9 @@ import { createFrontstageNativeReactModuleRegistry } from '../lib/native-modules
 import {
   createFrontstageNativeReactArtifactCacheIdentity,
   createFrontstageNativeReactArtifactCacheKey,
-  frontstageNativeReactArtifactCache,
   type FrontstageNativeReactArtifactCache
-} from '../lib/runtime-cache';
+} from '../lib/runtime-cache/native-react-artifact-cache';
+import { frontstageNativeReactArtifactCache } from '../lib/runtime-cache/default-cache';
 import {
   FrontstageNativePreparationScheduler,
   FrontstageNativeSourceReadError,

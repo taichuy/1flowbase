@@ -277,8 +277,8 @@ impl ProviderDiscoveryAdapter {
                 cache_hit_token_unit_price: rule.cache_hit_token_unit_price.to_string(),
                 cache_write_token_unit_size: rule.cache_write_token_unit_size,
                 cache_write_token_unit_price: rule.cache_write_token_unit_price.to_string(),
-                effective_from: format_time(rule.effective_from),
-                effective_to: format_optional_time(rule.effective_to),
+                effective_from: format_time(rule.effective_from)?,
+                effective_to: format_optional_time(rule.effective_to)?,
                 timezone: rule.timezone,
                 weekday_mask: rule.weekday_mask,
                 local_time_start: rule.local_time_start.map(|value| value.to_string()),
@@ -309,14 +309,14 @@ impl ProviderDiscoveryAdapter {
                     self.service(&actor, true, "model_providers.instances.models.view")
                         .list_models(actor.user_id, parse_uuid(&id, "id")?)
                         .await?,
-                )))
+                )?))
             }
             ProviderDiscoveryInput::RefreshModels { id } => {
                 Ok(ProviderDiscoveryOutput::Models(to_model_catalog_response(
                     self.service(&actor, true, "model_providers.instances.models.refresh")
                         .refresh_models(actor.user_id, parse_uuid(&id, "id")?)
                         .await?,
-                )))
+                )?))
             }
             ProviderDiscoveryInput::Options {
                 query,

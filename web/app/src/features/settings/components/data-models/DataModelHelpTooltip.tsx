@@ -4,27 +4,6 @@ import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOut
 import { Tooltip } from 'antd';
 import { i18nText } from '../../../../shared/i18n/text';
 
-export function DataModelFieldLabel({
-  label,
-  title,
-  decorativeHelp = false
-}: {
-  label: string;
-  title: string;
-  decorativeHelp?: boolean;
-}) {
-  return (
-    <span className="data-model-panel__field-label">
-      <span>{label}</span>
-      <DataModelHelpTooltip
-        decorative={decorativeHelp}
-        label={label}
-        title={title}
-      />
-    </span>
-  );
-}
-
 export function DataModelHelpTooltip({
   decorative = false,
   label,

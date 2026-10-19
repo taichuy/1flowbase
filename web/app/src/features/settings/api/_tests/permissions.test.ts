@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { settingsConsolePolicyCatalogQueryKey } from '../permissions';
+import { settingsConsolePolicyCatalogQueryKey } from '../identity-access/permissions';
 
 describe('settings console policy catalog query', () => {
   test('partitions localized catalog results by canonical locale (Issue #1259 AC-009)', () => {

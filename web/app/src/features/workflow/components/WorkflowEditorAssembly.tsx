@@ -25,13 +25,16 @@ interface WorkflowEditorAssemblyProps {
   ) => Promise<ConsoleApplicationOrchestrationState>;
 }
 
+const EMPTY_ENVIRONMENT_VARIABLES: ConsoleApplicationEnvironmentVariable[] = [];
+const EMPTY_NODE_CATALOG: ConsoleApplicationNodeCatalog = { nodes: [] };
+
 export function WorkflowEditorAssembly({
   applicationId,
   applicationName,
   initialState,
   workflowTriggerContext,
-  initialEnvironmentVariables = [],
-  nodeCatalog = { nodes: [] },
+  initialEnvironmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
+  nodeCatalog = EMPTY_NODE_CATALOG,
   saveDraftOverride,
   restoreVersionOverride
 }: WorkflowEditorAssemblyProps) {

@@ -1,0 +1,1474 @@
+{
+  "exemptions": {
+    "model_provider_session_bindings": {
+      "kind": "immutable_provider_session_origin",
+      "reason": "Provider session origin is immutable and looked up by authenticated workspace plus scoped digest; it preserves the original instance identity after instance deletion and does not consume generic row identity or time pagination.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_credentials": {
+      "kind": "plugin_credential_lookup",
+      "reason": "Plugin outbound credentials are encrypted values addressed by publisher namespace, plugin code, scope and credential identity; reads and writes use that full composite key rather than chronological resource pagination.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_schema_version_objects": {
+      "kind": "system_schema_version_membership",
+      "reason": "Version membership is an immutable set keyed by plugin owner, admitted version and ownership key; ownership_key references the system schema catalog and owner/version prefix supports all membership lookups.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "application_log_deletion_jobs": {
+      "kind": "application_owned_job",
+      "reason": "Deletion jobs are addressed by application_id and scope_id with newest-job chronology, while pending work uses the existing status-filtered index.",
+      "skip": [
+        "managed-table-scope-time-index"
+      ]
+    },
+    "application_log_deletion_records": {
+      "kind": "job_owned_workset",
+      "reason": "Deletion worksets use composite job_id and record_id identity, inherit scope from the owning deletion job and cascade with canonical task records.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "application_log_deletion_stop_requests": {
+      "kind": "job_owned_stop_fact",
+      "reason": "A stop request is one presence fact per deletion job, inherits job authorization and is removed with the job rather than tracked as mutable business metadata.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "application_log_upload_receipts": {
+      "kind": "application_owned_event_receipt",
+      "reason": "Upload receipts use application_id source_id event_id identity and point to canonical task and trajectory rows; replay lookup never scans workspace chronology.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "departments": {
+      "kind": "workspace_owned_tree",
+      "reason": "Departments are accessed through scope_id and parent_id tree adjacency and sibling-rank indexes; scope chronology is not an organization query contract.",
+      "skip": [
+        "managed-table-scope-time-index"
+      ]
+    },
+    "department_role_bindings": {
+      "kind": "department_owned_relation",
+      "reason": "Role binding identity and authorization derive from scope_id department_id and role_id; the relation carries no independent mutable timestamp lifecycle.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "user_department_bindings": {
+      "kind": "workspace_owned_membership_relation",
+      "reason": "Department memberships use workspace user and department relation identity with a transactional primary-department invariant rather than independent timestamp chronology.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "mcp_oauth_state": {
+      "kind": "oauth_protocol_state",
+      "reason": "Host-owned OAuth client registration and browser-bound one-time state use (kind, token_hash) identity and explicit expires_at; not workspace CRUD resources. Client registrations are durable, transient states expire and are atomically consumed.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "mcp_oauth_grants": {
+      "kind": "oauth_authorization_grant",
+      "reason": "Host-owned OAuth grant is scoped through user_id and api_key_id; payload carries workspace-bound authorization. Its lifecycle is expiry/revocation, not user-editable workspace CRUD; no generic scope or timestamp columns are consumed by the repository.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "mcp_oauth_refresh_tokens": {
+      "kind": "oauth_refresh_rotation",
+      "reason": "One-way token_hash identifies a refresh token; grant_id foreign key cascades revocation retention cleanup. expires_at and consumed govern atomic rotation and replay rejection, rather than generic workspace CRUD timestamps.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_archive_blocks": {
+      "kind": "request_archive_child",
+      "reason": "immutable archive blocks use request and block identity and inherit scope through their capture owner",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_archive_heads": {
+      "kind": "request_archive_head",
+      "reason": "request identity owns the archive before optional flow run binding and cursor updates",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_archive_parts": {
+      "kind": "request_archive_child",
+      "reason": "archive parts use part identity and request foreign key for bounded cursor retrieval",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_archive_segments": {
+      "kind": "request_archive_child",
+      "reason": "sealed segment directories use block identity and request foreign key for cursor retrieval",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "node_run_details": {
+      "kind": "node_run_payload_child",
+      "reason": "payload sections use node run and section composite identity with cascade ownership",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "runtime_native_snapshot_items": {
+      "kind": "immutable_application_content",
+      "reason": "immutable snapshot items carry scope and application foreign key with content hash identity",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "runtime_native_snapshot_manifests": {
+      "kind": "immutable_application_content",
+      "reason": "immutable snapshot manifests carry scope and application foreign key with content hash identity",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "runtime_native_snapshot_references": {
+      "kind": "immutable_snapshot_child",
+      "reason": "manifest and item foreign keys form immutable composite identity for snapshot references",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "runtime_observation_body_ownership": {
+      "kind": "canonical_content_child",
+      "reason": "content foreign key records ownership only and cascades with canonical content lifecycle",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "console_permission_catalog_sync": {
+      "kind": "system_permission_catalog_state",
+      "reason": "one global singleton records catalog initialization with singleton identity and no workspace lifecycle columns",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "console_permission_catalog_groups": {
+      "kind": "system_permission_catalog",
+      "reason": "global catalog groups use group-kind plus group-id identity and retain their first observed timestamp",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "console_permission_catalog_operations": {
+      "kind": "system_permission_catalog",
+      "reason": "global catalog operations use stable operation-id identity and retain their first observed timestamp",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "native_plugin_application_requests": {
+      "kind": "system_native_extension_request",
+      "reason": "host extension application requests use composite generation identity and immutable created-at audit facts",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "native_plugin_targets": {
+      "kind": "system_native_extension_target",
+      "reason": "host extension target selection uses composite installation identity while retaining explicit update lifecycle fields",
+      "skip": [
+        "managed-table-id"
+      ]
+    },
+    "plugin_settings_template_applications": {
+      "kind": "system_native_template_application",
+      "reason": "verified native template application uses composite generation identity with applied-at as immutable completion time",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "plugin_settings_template_defaults": {
+      "kind": "system_native_template_default",
+      "reason": "verified native template defaults use installation and contribution composite identity without lifecycle history columns",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "lifecycle_outbox": {
+      "kind": "delivery_outbox",
+      "reason": "lifecycle events use event_id as identity and mutate explicit delivery state while remaining globally bounded by pending and transaction indexes",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "lifecycle_outbox_deliveries": {
+      "kind": "subscriber_delivery_outbox",
+      "reason": "subscriber delivery rows are bounded children of one lifecycle event and use event_id plus subscriber_id as identity while explicit claim and delivery timestamps track mutable state",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_data_idempotency_receipts": {
+      "kind": "bounded_idempotency_receipt",
+      "reason": "plugin data requests use the owner workspace provider and idempotency key composite identity and retain immutable request and response receipts",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_schema_ownership": {
+      "kind": "system_schema_ownership_catalog",
+      "reason": "managed schema ownership uses ownership_key as the global object identity and owner indexes bound all catalog queries",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_schema_reconcile_receipts": {
+      "kind": "bounded_reconcile_receipt",
+      "reason": "schema reconcile receipts use receipt_id and owner fingerprint identity with applied_at as their immutable completion timestamp",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "credit_event_outbox": {
+      "kind": "delivery_outbox",
+      "reason": "outbox rows are identified by event_id, routed by workspace_id, and mutate only delivery lifecycle columns (locked_by, locked_until, published_at, last_error) instead of a generic updated_at",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_pool_members": {
+      "kind": "bounded_child_list",
+      "reason": "pool members inherit the fixed system scope from their global pool and retain provider keys as explicit invalid references",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_route_pool_members": {
+      "kind": "ordered_route_member_relation",
+      "reason": "route-member association rows use the composite route and member identity, sequence defines order, and workspace ownership derives from the route",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_projections": {
+      "kind": "bounded_projection",
+      "reason": "provider projections are bounded catalog rows keyed by provider and provider egress key with synced_at as source freshness",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_provider_secrets": {
+      "kind": "bounded_secret_projection",
+      "reason": "provider secrets are bounded child rows keyed by provider_id; encrypted payload identity and updated_at replace generic row history",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_routes": {
+      "kind": "workspace_routing",
+      "reason": "egress routes are workspace-routed policy rows keyed by consumer selector; workspace_id is the owning scope",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "user_credit_accounts": {
+      "kind": "workspace_routed_account",
+      "reason": "credit accounts are routed by (workspace_id, user_id, credit_unit) with a workspace_id + updated_at listing index; scope_id expansion is deferred to a dedicated billing scope migration",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_billing_settings": {
+      "kind": "bounded_workspace_singleton",
+      "reason": "one billing settings row per workspace uses workspace_id as its stable identity and is bounded by the workspaces table",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "assistant_conversations": {
+      "kind": "bounded_conversation_projection",
+      "reason": "assistant conversations use conversation_id as their stable identity and the scoped user application updated index matches the bounded listing contract",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "application_extension_sources": {
+      "kind": "bounded_application_source",
+      "reason": "one extension source row is bounded by its owning application and uses application_id as its stable identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "authentication_connections": {
+      "kind": "system_reference_table",
+      "reason": "authentication connections define global identity namespaces shared by login entries and user identities, not workspace-owned data",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "login_entries": {
+      "kind": "system_reference_table",
+      "reason": "system login entry configuration selects a global authentication connection before workspace routing",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "i18n_catalog_release_files": {
+      "kind": "bounded_release_child",
+      "reason": "release files are bounded immutable children keyed by release locale and path",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "i18n_catalog_release_messages": {
+      "kind": "bounded_release_child",
+      "reason": "release messages are bounded immutable children keyed by release and catalog key",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "i18n_catalog_release_translations": {
+      "kind": "bounded_release_child",
+      "reason": "release translations are bounded immutable children keyed by release key and locale",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "i18n_catalog_releases": {
+      "kind": "system_release_ledger",
+      "reason": "catalog releases are immutable global release records outside workspace row routing",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "model_catalog_sync_runs": {
+      "kind": "low_volume_operational_history",
+      "reason": "catalog sync runs are bounded operational history owned through catalog_source_id and reviewed before high-frequency retention work",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "model_change_logs": {
+      "kind": "low_volume_audit_history",
+      "reason": "model change logs are bounded audit history; data_model_id = null is limited to create failure, delete result, historical, or failed-before-parent rows",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "model_failover_queue_items": {
+      "kind": "bounded_child_list",
+      "reason": "failover queue items are a bounded queue-template child list with template-local ordering",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "model_provider_catalog_entries": {
+      "kind": "bounded_catalog_projection",
+      "reason": "model provider catalog entries are a bounded catalog projection keyed by catalog source and upstream model",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "mcp_upstream_connection_secrets": {
+      "kind": "bounded_secret_projection",
+      "reason": "one encrypted secret projection is bounded by each upstream connection and uses upstream_connection_id as its stable identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "extension_artifact_instances": {
+      "kind": "bounded_projection",
+      "reason": "bounded extension artifact projection is keyed by unified installation and node without unbounded history",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_artifact_cleanup_jobs": {
+      "kind": "system_runtime_cleanup_queue",
+      "reason": "system-scoped artifact cleanup obligations are keyed by node and provider; retry mutations use last_attempt_at and last_error, while listing is ordered by node and creation time",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "retained_frontend_module_assets": {
+      "kind": "bounded_projection",
+      "reason": "immutable module assets are bounded by one system extension installation and composite content identity",
+      "skip": [
+        "managed-table-id"
+      ]
+    },
+    "mcp_extension_bundle_imports": {
+      "kind": "bounded_workspace_import",
+      "reason": "one MCP bundle import result is bounded by workspace and unified extension installation composite identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_package_catalog_projection": {
+      "kind": "bounded_projection",
+      "reason": "bounded plugin package catalog projection is one row per plugin installation and does not introduce unbounded expansion history",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_group_policies": {
+      "kind": "bounded_role_policy_child",
+      "reason": "console group policies are bounded by the owning role and compiled console group catalog",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_operation_policies": {
+      "kind": "bounded_role_policy_child",
+      "reason": "console operation overrides are bounded by the owning role and compiled operation catalog",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_group_policy_snapshots": {
+      "kind": "bounded_migration_snapshot",
+      "reason": "group policy snapshots are bounded children of one console policy migration run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_operation_policy_snapshots": {
+      "kind": "bounded_migration_snapshot",
+      "reason": "operation policy snapshots are bounded children of one console policy migration run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_console_settings_order_items": {
+      "kind": "bounded_workspace_order_child",
+      "reason": "console settings order items are bounded by the owning workspace order and use workspace plus group as their stable composite identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_console_settings_orders": {
+      "kind": "bounded_workspace_order_projection",
+      "reason": "one mutable console settings order row is bounded by each workspace and uses workspace_id as both owner and stable identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_actor_previews": {
+      "kind": "bounded_migration_preview",
+      "reason": "actor previews are bounded by one console policy migration run and its captured actor set",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_cutover_state": {
+      "kind": "system_singleton_state",
+      "reason": "console policy cutover state is one system singleton and is not workspace-routed history",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_ledger": {
+      "kind": "low_volume_migration_history",
+      "reason": "console policy migration ledger is bounded release history owned through role_id and migration revision fingerprints",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_role_previews": {
+      "kind": "bounded_migration_preview",
+      "reason": "role previews are bounded by one console policy migration run and the captured role set",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_run_artifacts": {
+      "kind": "bounded_migration_artifact",
+      "reason": "compiled migration artifacts are one bounded snapshot per console policy migration run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_console_policy_migration_runs": {
+      "kind": "low_volume_migration_history",
+      "reason": "console policy migration runs are low volume system release history keyed by migration revision",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_data_model_policies": {
+      "kind": "bounded_role_policy_child",
+      "reason": "data model policy overrides are bounded by the owning role and registered data model set",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "role_data_policies": {
+      "kind": "bounded_role_policy_child",
+      "reason": "default data policies are one bounded policy row per owning role",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "ui_code_template_defaults": {
+      "kind": "bounded_system_default_projection",
+      "reason": "UI code template defaults are one bounded system-scoped mapping per provider contribution and use the composite primary key as stable identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at"
+      ]
+    },
+    "tenants": {
+      "kind": "routing_root_reference",
+      "reason": "tenant routing root reference uses tenant id as the root route key and must not invent workspace scope",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "users": {
+      "kind": "global_identity_reference",
+      "reason": "global user identity reference is shared by login and membership flows and is not routed by workspace scope",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "user_auth_identities": {
+      "kind": "global_identity_reference",
+      "reason": "global auth identity reference follows the login user identity and is not owned by workspace routing scope",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspaces": {
+      "kind": "workspace_routing_root",
+      "reason": "workspace routing root uses workspaces.id as the workspace routing scope and should not duplicate scope_id",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_i18n_catalog_custom_translations": {
+      "kind": "bounded_workspace_projection",
+      "reason": "custom translations are bounded workspace projections keyed by catalog key and locale",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_i18n_catalog_states": {
+      "kind": "workspace_state_root",
+      "reason": "catalog state is one bounded revision root keyed directly by workspace id",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_i18n_catalog_obsolete_messages": {
+      "kind": "bounded_workspace_projection",
+      "reason": "obsolete markers are bounded workspace projections keyed by one catalog key",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_i18n_catalog_overrides": {
+      "kind": "bounded_workspace_projection",
+      "reason": "translation overrides are bounded workspace projections keyed by catalog key and locale",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "schema_migrations": {
+      "reason": "sqlx internal migration ledger, not application-managed user data",
+      "skip": [
+        "id",
+        "created_at",
+        "updated_at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "flow_run_recovery_history": {
+      "kind": "immutable_flow_recovery_history",
+      "reason": "immutable recovery history is addressed by flow run sequence and never by a scope chronology scan",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "flow_run_resume_claims": {
+      "kind": "flow_owned_resume_claims",
+      "reason": "resume claims are addressed by flow run target and status rather than a scope chronology scan",
+      "skip": [
+        "managed-table-scope-time-index"
+      ]
+    },
+    "frontstage_executable_upgrade_markers": {
+      "kind": "system_upgrade_marker",
+      "reason": "global executable upgrade markers use the marker as identity and are not workspace routed application data",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "frontstage_executable_upgrade_runs": {
+      "kind": "global_upgrade_attempt_history",
+      "reason": "global upgrade attempts are bounded by their marker and run id instead of workspace row routing",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_captures": {
+      "kind": "bounded_projection",
+      "reason": "client capture integrity is a bounded one-row-per-request projection keyed by request_id and linked to runtime event evidence",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_steps": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory steps are bounded event projections keyed by request and event identity with pagination indexes on flow runs",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_sections": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory sections are bounded event projections keyed by event_id and request with section-specific evidence ordering",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_node_links": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory node links are a bounded many-to-many correlation projection keyed by request_id and node_run_id, sourced from runtime_events and scoped through the owning flow run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "runtime_canonical_contents": {
+      "kind": "immutable_application_content",
+      "reason": "canonical content is immutable and addressed by application plus content hash rather than a scope chronology scan",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "runtime_invocation_context_bindings": {
+      "kind": "immutable_invocation_binding",
+      "reason": "one immutable binding uses invocation span as identity and is read through the owning flow runtime",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "runtime_legacy_shadow_batches": {
+      "kind": "global_migration_operation",
+      "reason": "conversion shadow batches are global operational migration state rather than workspace owned application data",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "runtime_legacy_shadow_rows": {
+      "kind": "immutable_conversion_evidence",
+      "reason": "conversion shadow rows are immutable evidence addressed by batch or flow rather than a scope chronology scan",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "notification_instances": {
+      "kind": "workspace_owned_notification_channel",
+      "reason": "Notification channel configuration uses non-null workspace identity and workspace created_at id lookup; dedicated notification services own access and this table is not a generic scope chronology consumer.",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "system_notifications": {
+      "kind": "recipient_owned_notification_history",
+      "reason": "Inbox history uses workspace recipient chronology with stable instance identity and monotonic read_at acknowledgement; it survives recipient or channel deletion and has no generic editable updated_at lifecycle.",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "notification_send_logs": {
+      "kind": "workspace_owned_notification_send_attempt",
+      "reason": "Send attempts retain workspace, actor and instance identities without cascading foreign keys; repositories fence pending to terminal status and completed_at by workspace and id. Queries use workspace created_at id and workspace instance created_at id indexes, not generic scope chronology or an editable updated_at lifecycle.",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "plugin_contribution_authorization_revisions": {
+      "kind": "mixed_scope_contribution_authority_revision",
+      "reason": "Authority revision state is addressed by installation and workspace, where canonical nil denotes a declared managed system service. Validation and workspace-deletion triggers preserve this mixed owner domain; snapshots and locks use the composite identity rather than generic scope chronology.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_contribution_authorizations": {
+      "kind": "mixed_scope_contribution_authorization",
+      "reason": "Authorization history belongs to the validated installation/workspace revision identity through a cascading composite foreign key, including canonical managed system authority. Grant and revoke facts retain their own timestamps, revision and scoped lookup indexes rather than independent scope chronology.",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    }
+  },
+  "ownedTableContracts": {
+    "model_provider_session_bindings": {
+      "primaryKey": [
+        "workspace_id",
+        "scope_digest"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "ownerColumns": [
+        "scope_digest",
+        "provider_instance_id"
+      ],
+      "indexes": [
+        [
+          "workspace_id",
+          "scope_digest"
+        ]
+      ]
+    },
+    "plugin_credentials": {
+      "primaryKey": [
+        "publisher_namespace",
+        "plugin_code",
+        "scope_id",
+        "credential_id"
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          "publisher_namespace",
+          "plugin_code",
+          "scope_id",
+          "credential_id"
+        ]
+      ]
+    },
+    "plugin_schema_version_objects": {
+      "primaryKey": [
+        "owner_id",
+        "owner_version",
+        "ownership_key"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "ownership_key"
+          ],
+          "table": "plugin_schema_ownership",
+          "references": [
+            "ownership_key"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "owner_id",
+          "owner_version"
+        ]
+      ]
+    },
+    "application_log_deletion_jobs": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "application_id"
+          ],
+          "table": "applications",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "application_id",
+          "scope_id",
+          "created_at",
+          "id"
+        ]
+      ]
+    },
+    "application_log_deletion_records": {
+      "primaryKey": [
+        "job_id",
+        "record_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "table": "application_log_deletion_jobs",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "record_id"
+          ],
+          "table": "application_run_log_tasks",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "record_id"
+        ]
+      ]
+    },
+    "application_log_deletion_stop_requests": {
+      "primaryKey": [
+        "job_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "table": "application_log_deletion_jobs",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "application_log_upload_receipts": {
+      "primaryKey": [
+        "application_id",
+        "source_id",
+        "event_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "application_id"
+          ],
+          "table": "applications",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "record_id"
+          ],
+          "table": "application_run_log_tasks",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "step_id"
+          ],
+          "table": "client_trajectory_steps",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "record_id"
+        ],
+        [
+          "step_id"
+        ]
+      ]
+    },
+    "departments": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "scope_id",
+            "tree_partition_id",
+            "parent_id"
+          ],
+          "table": "departments",
+          "references": [
+            "scope_id",
+            "tree_partition_id",
+            "id"
+          ]
+        }
+      ],
+      "nullableOwnerColumns": [
+        "parent_id"
+      ],
+      "indexes": [
+        [
+          "scope_id",
+          "parent_id"
+        ]
+      ]
+    },
+    "department_role_bindings": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id",
+            "department_id"
+          ],
+          "table": "departments",
+          "references": [
+            "scope_id",
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "role_id"
+          ],
+          "table": "roles",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "user_department_bindings": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "scope_id",
+            "department_id"
+          ],
+          "table": "departments",
+          "references": [
+            "scope_id",
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "scope_id",
+            "user_id"
+          ],
+          "table": "workspace_memberships",
+          "references": [
+            "workspace_id",
+            "user_id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "scope_id",
+          "department_id",
+          "user_id"
+        ]
+      ]
+    },
+    "notification_instances": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "workspace_id",
+          "created_at",
+          "id"
+        ]
+      ]
+    },
+    "system_notifications": {
+      "primaryKey": [
+        "id"
+      ],
+      "ownerColumns": [
+        "workspace_id",
+        "recipient_user_id",
+        "instance_id"
+      ],
+      "requiredColumns": [
+        "read_at"
+      ],
+      "indexes": [
+        [
+          "workspace_id",
+          "recipient_user_id",
+          "created_at",
+          "id"
+        ]
+      ]
+    },
+    "notification_send_logs": {
+      "primaryKey": [
+        "id"
+      ],
+      "ownerColumns": [
+        "workspace_id",
+        "actor_user_id",
+        "instance_id"
+      ],
+      "requiredColumns": [
+        "source",
+        "status",
+        "completed_at"
+      ],
+      "indexes": [
+        [
+          "workspace_id",
+          "created_at",
+          "id"
+        ],
+        [
+          "workspace_id",
+          "instance_id",
+          "created_at",
+          "id"
+        ]
+      ]
+    },
+    "plugin_contribution_authorization_revisions": {
+      "primaryKey": [
+        "installation_id",
+        "workspace_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "installation_id"
+          ],
+          "table": "extension_installations",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "requiredColumns": [
+        "revision",
+        "updated_at"
+      ],
+      "indexes": [
+        [
+          "installation_id",
+          "workspace_id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "plugin_contribution_authorization_revisions",
+          "name": "managed_authority_scope",
+          "timing": "before",
+          "events": [
+            {
+              "event": "insert"
+            },
+            {
+              "event": "update",
+              "columns": [
+                "workspace_id",
+                "installation_id"
+              ]
+            }
+          ],
+          "function": "validate_managed_authority_scope"
+        },
+        {
+          "table": "workspaces",
+          "name": "managed_authority_workspace_deleted",
+          "timing": "after",
+          "events": [
+            {
+              "event": "delete"
+            }
+          ],
+          "function": "cleanup_managed_authority_workspace"
+        }
+      ],
+      "routingColumns": [
+        "installation_id",
+        "workspace_id"
+      ]
+    },
+    "plugin_contribution_authorizations": {
+      "primaryKey": [
+        "id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "installation_id",
+            "workspace_id"
+          ],
+          "table": "plugin_contribution_authorization_revisions",
+          "references": [
+            "installation_id",
+            "workspace_id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "requiredColumns": [
+        "contribution_id",
+        "point_id",
+        "permission",
+        "resource_scope",
+        "permission_contract_id",
+        "permission_contract_version",
+        "status",
+        "granted_by",
+        "revoked_by",
+        "granted_at",
+        "revoked_at",
+        "revision"
+      ],
+      "indexes": [
+        [
+          "workspace_id",
+          "installation_id",
+          "contribution_id",
+          "status"
+        ],
+        [
+          "point_id",
+          "permission",
+          "status"
+        ]
+      ],
+      "routingColumns": [
+        "installation_id",
+        "workspace_id"
+      ]
+    },
+    "provider_protocol_capsules": {
+      "primaryKey": [
+        "flow_run_id",
+        "capsule_kind",
+        "slot_key"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id"
+          ],
+          "table": "flow_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "ownerColumns": [
+        "capsule_kind",
+        "slot_key"
+      ],
+      "requiredColumns": [
+        "encrypted_payload",
+        "plaintext_digest",
+        "plaintext_size_bytes",
+        "key_version",
+        "hard_expires_at",
+        "created_at",
+        "updated_at"
+      ],
+      "indexes": [
+        [
+          "hard_expires_at",
+          "flow_run_id"
+        ]
+      ]
+    }
+  }
+}

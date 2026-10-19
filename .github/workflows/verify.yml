@@ -220,7 +220,7 @@ jobs:
           assert.equal(receipt.source_sha, main);
           assert.equal(receipt.plugins_sha, official);
           JS
-      - run: node scripts/node/cli/github-quality-gate-aggregate.js
+      - run: node scripts/node/cli/quality/github-quality-gate-aggregate.js
         env:
           GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel

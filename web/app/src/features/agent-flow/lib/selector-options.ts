@@ -126,6 +126,13 @@ function visibleInternalLlmToolArgumentOptions(
   const visitedNodeIds = new Set<string>();
   const queue = [nodeId];
   const optionsByField = new Map<string, FlowSelectorOption>();
+  const nodesById = new Map<string, (typeof document.graph.nodes)[number]>();
+  for (const node of document.graph.nodes) {
+    if (!nodesById.has(node.id)) nodesById.set(node.id, node);
+  }
+  type InternalTool = ReturnType<typeof getLlmVisibleInternalTools>[number];
+  const toolsByNodeId = new Map<string, Map<string, InternalTool>>();
+
 
   while (queue.length > 0) {
     const currentNodeId = queue.shift();
@@ -149,9 +156,7 @@ function visibleInternalLlmToolArgumentOptions(
         continue;
       }
 
-      const sourceNode = document.graph.nodes.find(
-        (node) => node.id === edge.source
-      );
+      const sourceNode = nodesById.get(edge.source);
 
       if (
         sourceNode?.type !== 'llm' ||
@@ -160,10 +165,16 @@ function visibleInternalLlmToolArgumentOptions(
         continue;
       }
 
-      const tool = getLlmVisibleInternalTools(sourceNode.config).find(
-        (candidate) =>
-          (candidate.connector_id || candidate.tool_name) === connectorId
-      );
+      let toolsByConnector = toolsByNodeId.get(sourceNode.id);
+      if (!toolsByConnector) {
+        toolsByConnector = new Map<string, InternalTool>();
+        for (const candidate of getLlmVisibleInternalTools(sourceNode.config)) {
+          const key = candidate.connector_id || candidate.tool_name;
+          if (!toolsByConnector.has(key)) toolsByConnector.set(key, candidate);
+        }
+        toolsByNodeId.set(sourceNode.id, toolsByConnector);
+      }
+      const tool = toolsByConnector.get(connectorId);
       const properties = isRecord(tool?.input_schema?.properties)
         ? tool.input_schema.properties
         : {};

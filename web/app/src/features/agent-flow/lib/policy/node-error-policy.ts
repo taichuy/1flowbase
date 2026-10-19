@@ -4,7 +4,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 
 export const ERROR_BRANCH_SOURCE_HANDLE = 'error';
 
-export function nodeSupportsErrorPolicy(nodeType: FlowNodeType) {
+function nodeSupportsErrorPolicy(nodeType: FlowNodeType) {
   return nodeType !== 'start';
 }
 

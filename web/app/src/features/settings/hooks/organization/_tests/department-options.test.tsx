@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 const fetchDepartments = vi.hoisted(() => vi.fn());
-vi.mock('../../../api/departments', () => ({
+vi.mock('../../../api/identity-access/departments', () => ({
   fetchSettingsDepartments: fetchDepartments,
   settingsDepartmentsQueryKey: ['settings', 'departments']
 }));

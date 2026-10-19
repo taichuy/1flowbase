@@ -1,3 +1,4 @@
+import { i18nText } from '../../../../../../shared/i18n/text';
 import { App } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -93,7 +94,7 @@ describe('MCP return default editor', () => {
 
   it('preserves configured defaults when saving from basic', async () => {
     const dialog = await openEditor();
-    fireEvent.click(within(dialog).getByText('OK'));
+    fireEvent.click(within(dialog).getByRole('button', { name: i18nText('settings', 'auto.save') }));
     await waitFor(() =>
       expect(api.updateSettingsMcpTool).toHaveBeenCalledWith(
         'read_tab',
@@ -117,7 +118,7 @@ describe('MCP return default editor', () => {
     expect(fields.tagName).toBe('INPUT');
     fireEvent.change(budget, { target: { value: '80000' } });
     fireEvent.change(fields, { target: { value: '[]' } });
-    fireEvent.click(within(dialog).getByText('OK'));
+    fireEvent.click(within(dialog).getByRole('button', { name: i18nText('settings', 'auto.save') }));
     await waitFor(() =>
       expect(api.updateSettingsMcpTool).toHaveBeenCalledWith(
         'read_tab',
@@ -138,13 +139,13 @@ describe('MCP return default editor', () => {
     const fields = within(dialog).getByLabelText('默认返回字段白名单');
     fireEvent.change(budget, { target: { value: '' } });
     fireEvent.change(fields, { target: { value: '["title"]' } });
-    fireEvent.click(within(dialog).getByText('OK'));
+    fireEvent.click(within(dialog).getByRole('button', { name: i18nText('settings', 'auto.save') }));
     expect(
       await within(dialog).findByText('请输入有效的 JSON Pointer 字符串数组。')
     ).toBeInTheDocument();
     expect(api.updateSettingsMcpTool).not.toHaveBeenCalled();
     fireEvent.change(fields, { target: { value: '' } });
-    fireEvent.click(within(dialog).getByText('OK'));
+    fireEvent.click(within(dialog).getByRole('button', { name: i18nText('settings', 'auto.save') }));
     await waitFor(() =>
       expect(api.updateSettingsMcpTool).toHaveBeenCalledWith(
         'read_tab',

@@ -437,7 +437,7 @@ impl ProviderCatalogLogsAdapter {
                     .list_catalog(actor.user_id, requested_locales(&locale_meta))
                     .await?;
                 Ok(ProviderCatalogLogsOutput::Catalog(
-                    to_catalog_view_response(locale_meta, catalog),
+                    to_catalog_view_response(locale_meta, catalog)?,
                 ))
             }
             ProviderCatalogLogsInput::ListLogs(query) => {
@@ -472,7 +472,7 @@ impl ProviderCatalogLogsAdapter {
                             .items
                             .into_iter()
                             .map(to_request_log_response)
-                            .collect(),
+                            .collect::<Result<Vec<_>, _>>()?,
                         total_count: page.total_count,
                         page: page.page,
                         page_size: page.page_size,

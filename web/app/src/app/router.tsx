@@ -40,7 +40,7 @@ import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
 import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
-import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions';
+import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions/extensions';
 import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
 import { recoverDevModuleGraph } from './bootstrap/dev-module-recovery';
 

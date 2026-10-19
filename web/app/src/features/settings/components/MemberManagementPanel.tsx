@@ -39,11 +39,11 @@ import {
   settingsMembersQueryKey,
   updateSettingsMember,
   type SettingsMember
-} from '../api/members';
+} from '../api/identity-access/members';
 import {
   fetchSettingsMemberRoleOptions,
   settingsMemberRoleOptionsQueryKey
-} from '../api/departments';
+} from '../api/identity-access/departments';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
 
@@ -51,7 +51,7 @@ import {
   replaceSettingsMemberDepartments,
   settingsDepartmentsQueryKey,
   fetchSettingsDepartments
-} from '../api/departments';
+} from '../api/identity-access/departments';
 import { OrganizationSelector } from './organization/OrganizationSelector';
 import {
   DepartmentEditorDrawer,

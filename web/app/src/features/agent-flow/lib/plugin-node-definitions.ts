@@ -7,16 +7,12 @@ import {
 
 import type { ConsolePluginNodeIdentity } from '@1flowbase/api-client';
 import './node-definitions/contracts';
-import type {
-  NodeDefinition,
-  NodeDefinitionMeta
-} from './node-definitions/types';
+import type { NodeDefinition } from './node-definitions/types';
 import { i18nText } from '../../../shared/i18n/text';
 export {
   buildNodePickerOptions,
   getNodePickerOptionKey,
   getNodePickerOptionNodeType,
-  toPluginContributionPickerOption,
   type NodePickerOption,
   type PluginContributionPickerOption
 } from '../../flow-editor/authoring/plugin-node-picker';
@@ -49,11 +45,6 @@ export const pluginNodeDefinition: NodeDefinition = {
       fields: []
     }
   ]
-};
-
-export const pluginNodeDefinitionMeta: NodeDefinitionMeta = {
-  summary: i18nText('agentFlow', 'auto.plugin_node_meta_summary'),
-  helpHref: null
 };
 
 export function toPluginContributionRef(

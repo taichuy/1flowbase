@@ -146,11 +146,13 @@ type EditingInputField = {
   field: FlowStartInputField;
 };
 
-export function StartInputFieldsField({
+const EMPTY_SOURCE_OPTIONS: StartInputSourceOption[] = [];
+
+function useStartInputFieldsController({
   contractKind,
   title,
   value,
-  sourceOptions = [],
+  sourceOptions = EMPTY_SOURCE_OPTIONS,
   inputTypeContract,
   sourceContract,
   onChange
@@ -279,6 +281,21 @@ export function StartInputFieldsField({
       onSave={saveDraft}
     />
   ) : null;
+  return {
+    title, inputTypes, openAddPanel, triggerRef, fields, itemKeys, handleDrop,
+    handleDragStart, draggingIndexRef, openEditPanel, variableNamespace, removeItemKey,
+    onChange, contractKind, expandedSystemKeys, toggleSystemVariable, value,
+    floatingPanel
+  };
+}
+
+export function StartInputFieldsField(props: Parameters<typeof useStartInputFieldsController>[0]) {
+  const {
+    title, inputTypes, openAddPanel, triggerRef, fields, itemKeys, handleDrop,
+    handleDragStart, draggingIndexRef, openEditPanel, variableNamespace, removeItemKey,
+    onChange, contractKind, expandedSystemKeys, toggleSystemVariable,
+    floatingPanel
+  } = useStartInputFieldsController(props);
 
   return (
     <div className="agent-flow-start-input-fields">

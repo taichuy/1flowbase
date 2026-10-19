@@ -7,7 +7,9 @@ pub use managed_credential::ManagedPluginCredentialService;
 mod managed_execution;
 pub use managed_execution::*;
 mod artifact_instance;
+#[path = "backup/backup_export.rs"]
 mod backup_export;
+#[path = "backup/backup_restore.rs"]
 mod backup_restore;
 mod catalog;
 mod catalog_projection;

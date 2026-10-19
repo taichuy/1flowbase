@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import {
   getSettingsExtensionRiskChallenge,
   uploadSettingsExtension
-} from '../../api/extensions';
+} from '../../api/extensions/extensions';
 
 type Phase =
   | 'ready'

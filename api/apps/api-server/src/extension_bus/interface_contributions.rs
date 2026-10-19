@@ -1,3 +1,9 @@
+mod mcp;
+mod network;
+mod plugins;
+mod provider_operations;
+mod system;
+
 use std::{collections::BTreeSet, sync::Arc};
 
 use interface_runtime::{
@@ -435,7 +441,7 @@ pub(crate) fn production_interface_contributions(
         },
     );
 
-    Ok(vec![
+    let mut contributions = vec![
         InterfaceRegistryContribution::new(
             "api-server.client-collectors", &["public.client-collectors.assets.read"], &["api-server.client-collectors"],
             crate::routes::client_collectors::compile_registry(state)?,
@@ -1139,86 +1145,9 @@ pub(crate) fn production_interface_contributions(
                 state.runtime_engine.clone(),
             )?,
         ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-provider-catalog-logs",
-            &[
-                "model_providers.catalog.view",
-                "model_providers.request_logs.view",
-                "model_providers.request_logs.delete",
-                "model_providers.request_logs.clear",
-            ],
-            &["api-server.console-provider-catalog-logs"],
-            crate::routes::model_providers::catalog_logs_interface::compile_registry(
-                crate::routes::model_providers::catalog_logs_interface::ProviderCatalogLogsDependencies {
-                    store: state.store.clone(),
-                    provider_runtime: state.provider_runtime.clone(),
-                    secret_key: state.provider_secret_master_key.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                    install_root: state.provider_install_root.clone(),
-                    cache_store: state.infrastructure.cache_store(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-provider-instance-lifecycle",
-            &[
-                "model_providers.instances.view",
-                "model_providers.instances.create",
-                "model_providers.instances.update",
-                "model_providers.instances.validate",
-                "model_providers.instances.delete",
-            ],
-            &["api-server.console-provider-instance-lifecycle"],
-            crate::routes::model_providers::instance_lifecycle_interface::compile_registry(
-                crate::routes::model_providers::instance_lifecycle_interface::ProviderInstanceLifecycleDependencies {
-                    store: state.store.clone(),
-                    provider_runtime: state.provider_runtime.clone(),
-                    secret_key: state.provider_secret_master_key.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                    install_root: state.provider_install_root.clone(),
-                    cache_store: state.infrastructure.cache_store(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-provider-instance-operations",
-            &[
-                "model_providers.instances.authenticate",
-                "model_providers.instances.usage.view",
-                "model_providers.instances.reset_credits.view",
-                "model_providers.instances.reset_credits.consume",
-                "model_providers.balance.view",
-                "model_providers.preview.view",
-                "model_providers.instances.secrets.reveal",
-            ],
-            &["api-server.console-provider-instance-operations"],
-            crate::routes::model_providers::instance_operations_interface::compile_registry(
-                crate::routes::model_providers::instance_operations_interface::ProviderInstanceOperationsDependencies {
-                    store: state.store.clone(),
-                    provider_runtime: state.provider_runtime.clone(),
-                    secret_key: state.provider_secret_master_key.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                    install_root: state.provider_install_root.clone(),
-                    cache_store: state.infrastructure.cache_store(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-provider-routing",
-            &["model_providers.main_instance.view", "model_providers.main_instance.update"],
-            &["api-server.console-provider-routing"],
-            crate::routes::model_providers::routing_interface::compile_registry(
-                crate::routes::model_providers::routing_interface::ProviderRoutingDependencies {
-                    store: state.store.clone(), provider_runtime: state.provider_runtime.clone(), secret_key: state.provider_secret_master_key.clone(), api_node_id: state.api_node_id.clone(), install_root: state.provider_install_root.clone(), cache_store: state.infrastructure.cache_store(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-provider-discovery",
-            &["model_providers.instances.models.view", "model_providers.instances.models.refresh", "model_providers.options.view", "model_providers.settings_options.view"],
-            &["api-server.console-provider-discovery"],
-            crate::routes::model_providers::discovery_interface::compile_registry(crate::routes::model_providers::discovery_interface::ProviderDiscoveryDependencies { store: state.store.clone(), provider_runtime: state.provider_runtime.clone(), secret_key: state.provider_secret_master_key.clone(), api_node_id: state.api_node_id.clone(), install_root: state.provider_install_root.clone(), cache_store: state.infrastructure.cache_store() })?,
-        ),
+    ];
+    contributions.extend(provider_operations::contributions(state)?);
+    contributions.extend(vec![
         InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
@@ -1239,290 +1168,11 @@ pub(crate) fn production_interface_contributions(
                 state.provider_install_root.clone(),
             )?,
         ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-network-pools",
-            &[
-                "network_egress_pools.list",
-                "network_egress_proxies.create",
-                "network_egress_proxies.get",
-                "network_egress_proxies.update",
-                "network_egress_pool_members.test_connection",
-                "network_egress_pools.create",
-                "network_egress_pools.update",
-                "network_egress_pools.delete",
-                "network_egress_pool_members.create",
-                "network_egress_pool_members.create_static_http",
-                "network_egress_pool_members.add_provider_egresses",
-                "network_egress_pool_members.update",
-                "network_egress_pool_members.delete",
-                "network_egress_pool_members.batch_delete",
-            ],
-            &["api-server.console-network-pools"],
-            crate::routes::network_center::pools_interface::compile_registry(
-                crate::routes::network_center::pools_interface::NetworkPoolsDependencies {
-                    store: state.store.clone(),
-                    provider_runtime: state.provider_runtime.clone(),
-                    secret_key: state.provider_secret_master_key.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-network-center",
-            &[
-                "network_egress_providers.list",
-                "network_egress_proxy_types.list",
-                "network_egress_providers.create",
-                "network_egress_providers.lifecycle.update",
-                "network_egress_providers.sync",
-                "network_egress_routes.list",
-                "network_egress_routes.create",
-                "network_egress_routes.update",
-                "network_egress_routes.delete",
-            ],
-            &["api-server.console-network-center"],
-            crate::routes::network_center::core_interface::compile_registry(
-                crate::routes::network_center::core_interface::NetworkCenterDependencies {
-                    store: state.store.clone(),
-                    provider_runtime: state.provider_runtime.clone(),
-                    secret_key: state.provider_secret_master_key.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-network-plugins",
-            &[
-                "network_egress_plugins.official_catalog.view",
-                "network_egress_plugins.families.view",
-                "network_egress_plugins.families.switch",
-                "network_egress_plugins.families.uninstall",
-                "network_egress_plugins.install.official",
-                "network_egress_plugins.install.upload",
-            ],
-            &["api-server.console-network-plugins"],
-            crate::routes::network_center::plugins::plugins_interface::compile_registry(
-                crate::routes::network_center::plugins::plugins_interface::NetworkPluginDependencies {
-                    store: state.store.clone(),
-                    provider_runtime: state.provider_runtime.clone(),
-                    official_plugin_source: state.official_plugin_source.clone(),
-                    official_catalog_source: state.official_extension_catalog_source.clone(),
-                    cache_store: state.infrastructure.cache_store(),
-                    provider_install_root: state.provider_install_root.clone(),
-                    provider_secret_master_key: state.provider_secret_master_key.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                    bootstrap_workspace_id: state.bootstrap_workspace_id,
-                    allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-plugins",
-            &[
-                "plugins.catalog.view",
-                "plugins.families.view",
-                "plugins.official_catalog.view",
-                "plugins.install",
-                "plugins.install.upload",
-                "plugins.install.official",
-                "plugins.catalog_projection.refresh",
-                "plugins.artifact.refresh",
-                "plugins.artifact.install",
-                "plugins.families.upgrade",
-                "plugins.families.switch",
-                "plugins.families.delete",
-                "plugins.enable",
-                "plugins.assign",
-                "plugins.tasks.view",
-                "model_provider_plugins.families.view",
-                "model_provider_plugins.official_catalog.view",
-                "model_provider_plugins.install.official",
-                "model_provider_plugins.install.upload",
-                "model_provider_plugins.artifact.refresh",
-                "model_provider_plugins.artifact.install",
-                "model_provider_plugins.families.upgrade",
-                "model_provider_plugins.families.switch",
-                "model_provider_plugins.families.delete",
-                "model_provider_plugins.tasks.view",
-            ],
-            &["api-server.console-plugins"],
-            crate::routes::plugins::interface::compile_registry(
-                crate::routes::plugins::interface::PluginInterfaceDependencies {
-                    store: state.store.clone(),
-                    provider_runtime: state.provider_runtime.clone(),
-                    official_plugin_source: state.official_plugin_source.clone(),
-                    official_catalog_source: state.official_extension_catalog_source.clone(),
-                    cache_store: state.infrastructure.cache_store(),
-                    provider_install_root: state.provider_install_root.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                    bootstrap_workspace_id: state.bootstrap_workspace_id,
-                    allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-extension-center",
-            &[
-                "extension_center.installed.view",
-                "extension_center.installed.select",
-                "extension_center.installed.enable",
-                "extension_center.contribution_authorizations.grant",
-                "extension_center.contribution_authorizations.revoke",
-                "extension_center.contribution_authorizations.view",
-                "extension_center.managed_execution.view",
-                "extension_center.lifecycle_deliveries.resume",
-                "extension_center.managed_executions.retire",
-
-
-                "extension_center.installed.disable",
-                "extension_center.installed.delete",
-                "extension_center.catalog.view",
-                "extension_center.catalog.detail",
-                "extension_center.update_check",
-                "extension_center.install",
-                "extension_center.update",
-                "extension_center.install.upload",
-            ],
-            &["api-server.console-extension-center"],
-            crate::routes::plugins::extension_center::interface::compile_registry(
-                crate::routes::plugins::extension_center::ExtensionCenterDependencies {
-                    store: state.store.clone(),
-                    provider_runtime: state.provider_runtime.clone(),
-                    official_plugin_source: state.official_plugin_source.clone(),
-                    official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
-                    official_extension_catalog_source: state.official_extension_catalog_source.clone(),
-                    cache_store: state.infrastructure.cache_store(),
-                    provider_install_root: state.provider_install_root.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                    allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-mcp-core",
-            &[
-                "mcp.client_credential.reveal",
-                "mcp.client_credential.save",
-                "mcp.client_credential.delete",
-                "mcp.instances.view",
-                "mcp.instances.create",
-                "mcp.instances.copy",
-                "mcp.instances.update",
-                "mcp.instances.delete",
-                "mcp.groups.upsert",
-                "mcp.groups.move",
-                "mcp.groups.delete",
-                "mcp.tool_bindings.create",
-                "mcp.tool_bindings.update",
-                "mcp.tool_bindings.delete",
-                "mcp.discovery_policy.view",
-                "mcp.discovery_policy.update",
-            ],
-            &["api-server.console-mcp-core"],
-            crate::routes::mcp_management::interface_core::compile_registry(
-                crate::routes::mcp_management::interface_core::McpCoreDependencies {
-                    store: state.store.clone(),
-                    provider_secret_master_key: state.provider_secret_master_key.clone(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-mcp-catalog",
-            &["mcp.catalog.view", "mcp.catalog.export"],
-            &["api-server.console-mcp-catalog"],
-            crate::routes::mcp_management::interface_catalog_routes::compile_registry(
-                crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
-                    store: state.store.clone(),
-                    openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                        store: state.store.clone(),
-                        console_operations: state.console_operation_registry.inventory().clone(),
-                        interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
-                        api_docs: Arc::clone(&state.api_docs),
-                        template_catalog: state.runtime_engine.template_catalog().clone(),
-                    },
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-mcp-tools",
-            &[
-                "mcp.tools.view",
-                "mcp.tools.create",
-                "mcp.tools.update",
-                "mcp.tools.delete",
-                "mcp.tools.description.refresh",
-                "mcp.tools.description.check",
-            ],
-            &["api-server.console-mcp-tools"],
-            crate::routes::mcp_management::interface_tools::compile_registry(
-                crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
-                    store: state.store.clone(),
-                    openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                        store: state.store.clone(),
-                        console_operations: state.console_operation_registry.inventory().clone(),
-                        interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
-                        api_docs: Arc::clone(&state.api_docs),
-                        template_catalog: state.runtime_engine.template_catalog().clone(),
-                    },
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-mcp-bundles",
-            &[
-                "mcp.bundles.official.list", "mcp.bundles.preview", "mcp.bundles.import",
-                "mcp.bundles.export", "mcp.instances.export", "mcp.bundle_library.list",
-                "mcp.bundle_library.sync", "mcp.bundle_library.preview", "mcp.bundle_library.import",
-                "mcp.bundle_library.current.switch", "mcp.bundle_library.releases.delete",
-                "mcp.bundle_library.releases.repair",
-            ],
-            &["api-server.console-mcp-bundles"],
-            crate::routes::mcp_management::bundles_interface::compile_registry(
-                crate::routes::mcp_management::bundles_interface::port(
-                    crate::routes::mcp_management::bundles_interface::McpBundlesDependencies {
-                        store: state.store.clone(),
-                        official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
-                        official_extension_catalog_source: state.official_extension_catalog_source.clone(),
-                        provider_install_root: state.provider_install_root.clone(),
-                        api_node_id: state.api_node_id.clone(),
-                        bootstrap_workspace_id: state.bootstrap_workspace_id,
-                        interface_catalog: crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
-                            store: state.store.clone(),
-                            openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                                store: state.store.clone(), console_operations: state.console_operation_registry.inventory().clone(), interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()), api_docs: Arc::clone(&state.api_docs), template_catalog: state.runtime_engine.template_catalog().clone(),
-                            },
-                        },
-                    },
-                ),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-mcp-upstream",
-            &[
-                "mcp.upstream_connections.view",
-                "mcp.upstream_connections.create",
-                "mcp.upstream_connections.update",
-                "mcp.upstream_connections.delete",
-                "mcp.upstream_credentials.update",
-                "mcp.upstream_credentials.delete",
-                "mcp.upstream_connections.test",
-                "mcp.upstream_connections.discover",
-                "mcp.upstream_tools.import",
-                "mcp.upstream_tools.debug",
-            ],
-            &["api-server.console-mcp-upstream"],
-            crate::routes::mcp_management::upstream_interface::compile_registry(
-                crate::routes::mcp_management::upstream_interface::port(
-                    crate::routes::mcp_management::upstream_interface::McpUpstreamDependencies {
-                        store: state.store.clone(),
-                        provider_secret_master_key: state.provider_secret_master_key.clone(),
-                        transport: Arc::new(
-                            crate::routes::mcp_management::upstream_client::StreamableHttpMcpUpstreamTransport,
-                        ),
-                    },
-                ),
-            )?,
-        ),
+    ]);
+    contributions.extend(network::contributions(state)?);
+    contributions.extend(plugins::contributions(state)?);
+    contributions.extend(mcp::contributions(state)?);
+    contributions.extend(vec![
         InterfaceRegistryContribution::new(
             "api-server.console-mcp-debug",
             &["mcp.debug.execute"],
@@ -1695,95 +1345,12 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-application-management"],
             crate::routes::application_management::compile_registry(state.store.clone())?,
         ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-system",
-            &[
-                "system.runtime_profile.view",
-                "system.runtime_processes.view",
-                "system.release_status.view",
-                "system.runtime_process.terminate",
-            ],
-            &["api-server.console-system"],
-            crate::routes::system::compile_registry(crate::routes::system::SystemInterfaceDependencies {
-                store: state.store.clone(),
-                profiles: crate::runtime_profile_client::RuntimeProfileSnapshotCache::new(
-                    state.infrastructure.cache_store(), state.infrastructure.distributed_lock(),
-                    Arc::clone(&state.api_runtime_profile), Arc::clone(&state.runtime_host_system),
-                    state.api_node_id.clone(), state.process_started_at,
-                ),
-                api_node_id: state.api_node_id.clone(),
-                provider_install_root: state.provider_install_root.clone(),
-                host_extension_dropin_root: state.host_extension_dropin_root.clone(),
-                process_sampler: Arc::clone(&state.runtime_process_sampler),
-                network_egress: state.network_egress_http_clients(),
-            })?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-system-templates",
-            &["system_templates.catalog", "system_templates.export", "system_templates.preview", "system_templates.install"],
-            &["api-server.console-system-templates"],
-            crate::routes::system_templates::interface::compile_registry(
-                crate::routes::system_templates::plugins::TemplateDependencies {
-                    bootstrap_workspace_id: state.bootstrap_workspace_id,
-                    application_template_root: state.application_template_root.clone(),
-                    store: state.store.clone(), provider_runtime: state.provider_runtime.clone(),
-                    runtime_registry_sync: crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
-                        state.store.clone(), state.runtime_engine.registry().clone(),
-                    ),
-                    official_plugin_source: state.official_plugin_source.clone(),
-                    official_catalog_source: state.official_extension_catalog_source.clone(),
-                    cache_store: state.infrastructure.cache_store(),
-                    provider_install_root: state.provider_install_root.clone(), api_node_id: state.api_node_id.clone(),
-                    mcp_interface_catalog: mcp_interface_catalog_dependencies.clone(),
-                }
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-system-backups",
-            &[
-                "system_backups.catalog",
-                "system_backups.list",
-                "system_backups.create",
-                "system_backups.import",
-                "system_backups.recovery.status",
-                "system_backups.status",
-                "system_backups.detail",
-                "system_backups.delete",
-                "system_backups.verify",
-                "system_backups.download",
-                "system_backups.recovery.preflight",
-                "system_backups.recovery.reauth",
-                "system_backups.recovery.intent",
-            ],
-            &["api-server.console-system-backups"],
-            crate::routes::system_backups::interface::compile_registry(
-                crate::routes::system_backups::interface::port(
-                    crate::routes::system_backups::interface::SystemBackupsDependencies {
-                        runtime: state.system_backup.clone(),
-                        store: state.store.clone(),
-                        backup_status_access: {
-                            let access = crate::middleware::require_settings_feature_permission::compiled_console_route_access(
-                                &state.console_operation_registry,
-                                "GET",
-                                "/api/console/settings/system-backups/jobs/status/:backup_job_id",
-                            )
-                            .map_err(|_| {
-                                RegistryCompilationError::UnknownAuthorizationOperation(
-                                    interface_runtime::InterfaceId::new("system_backups.status")
-                                        .expect("static system backup status operation is valid"),
-                                )
-                            })?;
-                            crate::routes::system_backups::interface::BackupStatusAccess {
-                                operation_id: access.operation_id.to_owned(),
-                                policy_group: access.policy_group.clone(),
-                                authorization: access.authorization.clone(),
-                                resource_access: access.resource_access.cloned(),
-                            }
-                        },
-                    },
-                ),
-            )?,
-        ),
+    ]);
+    contributions.extend(system::contributions(
+        state,
+        &mcp_interface_catalog_dependencies,
+    )?);
+    contributions.extend(vec![
         InterfaceRegistryContribution::new(
             "api-server.application-agent-logs",
             &["application.logs.events.ingest"],
@@ -1895,7 +1462,8 @@ pub(crate) fn production_interface_contributions(
                 ),
             )?,
         ),
-    ])
+    ]);
+    Ok(contributions)
 }
 
 impl InterfaceContributionCollector {

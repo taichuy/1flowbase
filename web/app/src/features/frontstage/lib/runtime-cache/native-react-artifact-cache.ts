@@ -12,7 +12,7 @@ import type { NativeReactArtifactStore } from './native-react-artifact-store';
 import type { NativeReactBrowserCompileResult } from '../../../../shared/code-block/native-react-compiler-browser';
 
 export const FRONTSTAGE_NATIVE_REACT_ARTIFACT_CACHE_SCHEMA_VERSION = 3 as const;
-export const DEFAULT_FRONTSTAGE_NATIVE_REACT_ARTIFACT_CACHE_BYTE_BUDGET =
+const DEFAULT_FRONTSTAGE_NATIVE_REACT_ARTIFACT_CACHE_BYTE_BUDGET =
   16 * 1024 * 1024;
 
 export interface FrontstageNativeReactArtifactCacheIdentity extends NativeReactComponentArtifactIdentity {
@@ -384,7 +384,7 @@ export function createFrontstageNativeReactArtifactCacheKey(
     .join('/');
 }
 
-export function canonicalizeFrontstageNativeReactArtifactCacheRecord(
+function canonicalizeFrontstageNativeReactArtifactCacheRecord(
   value: unknown
 ): FrontstageNativeReactArtifactCacheRecord | null {
   const identity = readRecordIdentity(value);

@@ -1,6 +1,6 @@
 import '@xyflow/react/dist/style.css';
 
-import { render, type RenderOptions } from '@testing-library/react';
+import { act, render, type RenderOptions } from '@testing-library/react';
 import type { ReactElement } from 'react';
 
 import { AppProviders } from '../../app/AppProviders';
@@ -92,7 +92,7 @@ function resolveSceneDimension(value: number | undefined, fallback: number) {
   return Number.isFinite(value) && value !== undefined ? value : fallback;
 }
 
-export function renderReactFlowScene(
+function prepareReactFlowScene(
   ui: ReactElement,
   {
     width = DEFAULT_SCENE_WIDTH,
@@ -136,5 +136,29 @@ export function renderReactFlowScene(
     </div>
   );
 
-  return render(withProviders ? <AppProviders>{frame}</AppProviders> : frame, renderOptions);
+  return {
+    frame: withProviders ? <AppProviders>{frame}</AppProviders> : frame,
+    renderOptions
+  };
+}
+
+export function renderReactFlowScene(
+  ui: ReactElement,
+  options: RenderReactFlowSceneOptions = {}
+) {
+  const { frame, renderOptions } = prepareReactFlowScene(ui, options);
+  return render(frame, renderOptions);
+}
+
+// Await mount effects at the fixture that owns the actual RTL render call.
+export async function renderReactFlowSceneSettled(
+  ui: ReactElement,
+  options: RenderReactFlowSceneOptions = {}
+) {
+  const { frame, renderOptions } = prepareReactFlowScene(ui, options);
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(frame, renderOptions);
+  });
+  return view;
 }

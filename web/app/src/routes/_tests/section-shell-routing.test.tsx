@@ -228,9 +228,9 @@ const extensionsApi = vi.hoisted(() => ({
   getSettingsInstalledMcpExtensionIntegrityChallenge: vi.fn()
 }));
 
-vi.mock('../../features/settings/api/members', () => membersApi);
-vi.mock('../../features/settings/api/roles', () => rolesApi);
-vi.mock('../../features/settings/api/permissions', () => permissionsApi);
+vi.mock('../../features/settings/api/identity-access/members', () => membersApi);
+vi.mock('../../features/settings/api/identity-access/roles', () => rolesApi);
+vi.mock('../../features/settings/api/identity-access/permissions', () => permissionsApi);
 vi.mock('../../features/settings/api/api-docs', () => docsApi);
 vi.mock('../../features/settings/api/model-providers', () => modelProvidersApi);
 vi.mock('../../features/settings/api/file-management', () => fileManagementApi);
@@ -240,7 +240,7 @@ vi.mock(
   () => consoleNavigationApi
 );
 vi.mock('../../features/settings/api/network-center', () => networkCenterApi);
-vi.mock('../../features/settings/api/extensions', () => extensionsApi);
+vi.mock('../../features/settings/api/extensions/extensions', () => extensionsApi);
 
 import { AppProviders } from '../../app/AppProviders';
 import { AppRouterProvider } from '../../app/router';

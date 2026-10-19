@@ -64,18 +64,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function isRuntimeDebugArtifactPreview(value: unknown): value is {
-  __runtime_debug_artifact: true;
-  artifact_ref: string;
-  tool_callbacks?: unknown;
-} {
-  return (
-    isRecord(value) &&
-    value.__runtime_debug_artifact === true &&
-    typeof value.artifact_ref === 'string'
-  );
-}
-
 function firstRecordField(
   record: Record<string, unknown>,
   keys: string[]
@@ -247,7 +235,7 @@ function roundIndex(round: Record<string, unknown>, fallbackIndex: number) {
   return fallbackIndex;
 }
 
-export function readLlmRoundsFromDebugPayload(
+function readLlmRoundsFromDebugPayload(
   debugPayload: unknown
 ): Record<string, unknown>[] {
   if (!isRecord(debugPayload)) {
@@ -255,17 +243,6 @@ export function readLlmRoundsFromDebugPayload(
   }
 
   return recordArray(debugPayload.llm_rounds);
-}
-
-export function readLlmRoundsArtifactRef(debugPayload: unknown): string | null {
-  if (!isRecord(debugPayload)) {
-    return null;
-  }
-
-  const llmRounds = debugPayload.llm_rounds;
-  return isRuntimeDebugArtifactPreview(llmRounds)
-    ? llmRounds.artifact_ref
-    : null;
 }
 
 function callbackStatusValue(
@@ -384,21 +361,6 @@ export function readLlmToolCallbackDetail(
         'detail_artifact_ref'
       ]) ?? null,
     detailRef: firstStringField(loadedPayload, ['detail_ref'])
-  };
-}
-
-export function debugPayloadWithLoadedLlmRounds(
-  debugPayload: unknown,
-  loadedPayload: unknown
-): Record<string, unknown> {
-  const loadedRounds =
-    isRecord(loadedPayload) && Array.isArray(loadedPayload.llm_rounds)
-      ? loadedPayload.llm_rounds
-      : loadedPayload;
-
-  return {
-    ...(isRecord(debugPayload) ? debugPayload : {}),
-    llm_rounds: loadedRounds
   };
 }
 
@@ -550,8 +512,9 @@ function parsedResultFromCallbackPayload(
     'execution',
     'execution_status'
   ]
-    .filter((key) => Object.prototype.hasOwnProperty.call(callbackPayload, key))
-    .map((key) => [key, callbackPayload[key]] as const);
+    .flatMap((key) => Object.prototype.hasOwnProperty.call(callbackPayload, key)
+      ? [[key, callbackPayload[key]] as const]
+      : []);
 
   return Object.fromEntries(parsedEntries);
 }
@@ -566,11 +529,11 @@ export function collectLlmToolCallbacksFromDebugPayloads(
   debugPayloads: unknown[]
 ): LlmToolCallback[] {
   const routeTracesById = new Map<string, LlmToolRouteTraceSummary>();
-  debugPayloads
-    .flatMap(readVisibleInternalRouteTraces)
-    .forEach(({ id, trace }) => {
+  for (const payload of debugPayloads) {
+    for (const { id, trace } of readVisibleInternalRouteTraces(payload)) {
       routeTracesById.set(id, trace);
-    });
+    }
+  }
   const callbacks = mergeLlmToolCallbacks([
     ...debugPayloads.flatMap(readIndexedToolCallbacks),
     ...collectLlmToolCallbacksFromRounds(

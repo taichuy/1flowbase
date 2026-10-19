@@ -1,7 +1,7 @@
 const path = require('node:path');
 const { exportMcpInstanceToOfficial } = require('./core.js');
 
-const USAGE = 'usage: node scripts/node/export-mcp-instance-to-official.js --instance-id <id> --target <absolute mcp/@org/bundle> [--api-base-url <url>]';
+const USAGE = 'usage: node scripts/node/export-mcp-instance-to-official/cli.js --instance-id <id> --target <absolute mcp/@org/bundle> [--api-base-url <url>]';
 
 function readArguments(argv) {
   if (argv.length === 1 && (argv[0] === '-h' || argv[0] === '--help')) return { help: true };

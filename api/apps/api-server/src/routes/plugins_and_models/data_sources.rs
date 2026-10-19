@@ -447,12 +447,12 @@ fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
-fn format_time(value: time::OffsetDateTime) -> String {
-    value.format(&Rfc3339).unwrap()
+fn format_time(value: time::OffsetDateTime) -> Result<String, ApiError> {
+    Ok(value.format(&Rfc3339)?)
 }
 
-fn format_optional_time(value: Option<time::OffsetDateTime>) -> Option<String> {
-    value.map(format_time)
+fn format_optional_time(value: Option<time::OffsetDateTime>) -> Result<Option<String>, ApiError> {
+    value.map(format_time).transpose()
 }
 
 fn to_catalog_entry_response(entry: DataSourceCatalogEntryView) -> DataSourceCatalogEntryResponse {
@@ -491,8 +491,10 @@ fn to_catalog_entry_response(entry: DataSourceCatalogEntryView) -> DataSourceCat
     }
 }
 
-fn to_resources_response(view: DataSourceResourcesView) -> DataSourceResourcesResponse {
-    DataSourceResourcesResponse {
+fn to_resources_response(
+    view: DataSourceResourcesView,
+) -> Result<DataSourceResourcesResponse, ApiError> {
+    Ok(DataSourceResourcesResponse {
         entries: view
             .entries
             .into_iter()
@@ -522,11 +524,11 @@ fn to_resources_response(view: DataSourceResourcesView) -> DataSourceResourcesRe
             .collect(),
         refresh_status: view.refresh_status.as_str().to_string(),
         last_error_message: view.last_error_message,
-        refreshed_at: format_optional_time(view.refreshed_at),
-    }
+        refreshed_at: format_optional_time(view.refreshed_at)?,
+    })
 }
 
-fn to_data_source_response(view: DataSourceView) -> DataSourceResponse {
+fn to_data_source_response(view: DataSourceView) -> Result<DataSourceResponse, ApiError> {
     let capabilities = view.capabilities();
     let capabilities = DataSourceCapabilitiesResponse {
         can_update_defaults: capabilities.can_update_defaults,
@@ -536,8 +538,7 @@ fn to_data_source_response(view: DataSourceView) -> DataSourceResponse {
         can_preview_resources: capabilities.can_preview_resources,
         can_map_resources: capabilities.can_map_resources,
     };
-
-    match view.backend {
+    Ok(match view.backend {
         DataSourceBackendView::Core { defaults } => DataSourceResponse {
             id: "main".to_string(),
             display_name: "主数据源".to_string(),
@@ -578,15 +579,18 @@ fn to_data_source_response(view: DataSourceView) -> DataSourceResponse {
                     catalog_last_error_message: catalog
                         .as_ref()
                         .and_then(|cache| cache.last_error_message.clone()),
-                    catalog_refreshed_at: catalog
-                        .and_then(|cache| format_optional_time(cache.refreshed_at)),
+                    catalog_refreshed_at: format_optional_time(
+                        catalog.and_then(|cache| cache.refreshed_at),
+                    )?,
                 },
             }
         }
-    }
+    })
 }
 
-fn to_runtime_extension_data_source_response(view: DataSourceInstanceView) -> DataSourceResponse {
+fn to_runtime_extension_data_source_response(
+    view: DataSourceInstanceView,
+) -> Result<DataSourceResponse, ApiError> {
     to_data_source_response(DataSourceView {
         backend: DataSourceBackendView::RuntimeExtension(view),
     })
@@ -605,25 +609,29 @@ fn parse_model_status(raw: &str) -> Result<domain::DataModelStatus, ApiError> {
     }
 }
 
-fn to_validate_response(result: ValidateDataSourceInstanceResult) -> ValidateDataSourceResponse {
-    ValidateDataSourceResponse {
+fn to_validate_response(
+    result: ValidateDataSourceInstanceResult,
+) -> Result<ValidateDataSourceResponse, ApiError> {
+    Ok(ValidateDataSourceResponse {
         data_source: to_runtime_extension_data_source_response(DataSourceInstanceView {
             instance: result.instance,
             catalog: None,
-        }),
+        })?,
         output: result.output,
-    }
+    })
 }
 
-fn to_preview_response(result: PreviewDataSourceReadResult) -> PreviewDataSourceReadResponse {
-    PreviewDataSourceReadResponse {
+fn to_preview_response(
+    result: PreviewDataSourceReadResult,
+) -> Result<PreviewDataSourceReadResponse, ApiError> {
+    Ok(PreviewDataSourceReadResponse {
         preview_session_id: result.preview_session.id.to_string(),
-        expires_at: format_time(result.preview_session.expires_at),
+        expires_at: format_time(result.preview_session.expires_at)?,
         output: DataSourcePreviewOutputResponse {
             rows: result.output.rows,
             next_cursor: result.output.next_cursor,
         },
-    }
+    })
 }
 
 impl DataSourcesAdapter {
@@ -683,7 +691,7 @@ impl DataSourcesAdapter {
                     .await?
                     .into_iter()
                     .map(to_data_source_response)
-                    .collect(),
+                    .collect::<Result<Vec<_>, _>>()?,
             )),
             DataSourcesInput::Create(body) => {
                 let created = self
@@ -699,7 +707,7 @@ impl DataSourcesAdapter {
                     })
                     .await?;
                 Ok(DataSourcesOutput::DataSource(
-                    to_runtime_extension_data_source_response(created),
+                    to_runtime_extension_data_source_response(created)?,
                 ))
             }
             DataSourcesInput::UpdateDefaults {
@@ -720,7 +728,7 @@ impl DataSourcesAdapter {
                         .await?;
                     to_data_source_response(DataSourceView {
                         backend: DataSourceBackendView::Core { defaults },
-                    })
+                    })?
                 } else {
                     let instance = self
                         .service(actor, true)
@@ -734,7 +742,7 @@ impl DataSourcesAdapter {
                     to_runtime_extension_data_source_response(DataSourceInstanceView {
                         instance,
                         catalog: None,
-                    })
+                    })?
                 };
                 Ok(DataSourcesOutput::DataSource(response))
             }
@@ -747,7 +755,7 @@ impl DataSourcesAdapter {
                             instance_id: parse_uuid(&data_source_id, "data_source_id")?,
                         })
                         .await?,
-                )))
+                )?))
             }
             DataSourcesInput::RotateSecret {
                 data_source_id,
@@ -762,7 +770,7 @@ impl DataSourcesAdapter {
                             secret_json: body.secret_json,
                         })
                         .await?,
-                ),
+                )?,
             )),
             DataSourcesInput::ListResources { data_source_id } => {
                 Ok(DataSourcesOutput::Resources(to_resources_response(
@@ -773,7 +781,7 @@ impl DataSourcesAdapter {
                             parse_uuid(&data_source_id, "data_source_id")?,
                         )
                         .await?,
-                )))
+                )?))
             }
             DataSourcesInput::DiscoverResources { data_source_id } => {
                 Ok(DataSourcesOutput::Resources(to_resources_response(
@@ -784,7 +792,7 @@ impl DataSourcesAdapter {
                             instance_id: parse_uuid(&data_source_id, "data_source_id")?,
                         })
                         .await?,
-                )))
+                )?))
             }
             DataSourcesInput::PreviewRead {
                 data_source_id,
@@ -801,7 +809,7 @@ impl DataSourcesAdapter {
                         options_json: body.options_json,
                     })
                     .await?,
-            ))),
+            )?)),
             DataSourcesInput::MapResourceToModel {
                 data_source_id,
                 body,
@@ -1102,3 +1110,7 @@ pub async fn map_resource_to_model(
     };
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
+
+#[cfg(test)]
+#[path = "data_sources/_tests/time_response.rs"]
+mod time_response_tests;

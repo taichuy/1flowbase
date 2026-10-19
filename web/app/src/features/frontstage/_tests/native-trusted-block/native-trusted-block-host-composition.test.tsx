@@ -12,8 +12,8 @@ import {
   type NativeTrustedBlockPrepareInput
 } from '@1flowbase/page-runtime';
 
-import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
-import { createFrontstageNativeTrustedBlockRuntimeFactory } from '../../lib/native-trusted-block-runtime-factory';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-adapter/native-trusted-block-react-adapter';
+import { createFrontstageNativeTrustedBlockRuntimeFactory } from '../../lib/native-adapter/native-trusted-block-runtime-factory';
 
 function createContext(
   overrides: Partial<BlockContextSeed> = {}

@@ -58,10 +58,10 @@ test('Delivery 1898 binds the production Backend Slot and hides concrete registr
     path.join(repoRoot, 'api/apps/api-server/src/provider_runtime/mod.rs'),
     'utf8',
   );
-  const host = fs.readFileSync(
-    path.join(repoRoot, 'api/crates/runtime-extension-host/src/runtime_host.rs'),
-    'utf8',
-  );
+  const host = [
+    'api/crates/runtime-extension-host/src/runtime_host.rs',
+    'api/crates/runtime-extension-host/src/runtime_host/data_source.rs',
+  ].map((relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8')).join('\n');
   const contract = fs.readFileSync(
     path.join(repoRoot, 'api/crates/runtime-core/src/runtime_backend.rs'),
     'utf8',

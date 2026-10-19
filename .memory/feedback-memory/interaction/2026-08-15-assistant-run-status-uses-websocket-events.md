@@ -18,7 +18,7 @@ last_verified_at: 2026-08-15 23
 decision_policy: direct_reference
 scope:
   - web/app/src/features/agent-flow/components/embedded-assistant
-  - web/packages/api-client/src/console-assistant.ts
+  - web/packages/api-client/src/console/administration/assistant.ts
 ---
 
 # 助手运行状态使用 WebSocket 事件

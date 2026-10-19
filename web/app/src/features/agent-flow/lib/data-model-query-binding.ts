@@ -38,22 +38,6 @@ const ACTIVE_BINDINGS: Record<string, string[]> = {
   delete: ['record_id']
 };
 
-export function getDataModelAction(value: unknown) {
-  if (typeof value === 'string') {
-    const nodeTypeAction = getDataModelActionForNodeType(value);
-
-    if (nodeTypeAction) {
-      return nodeTypeAction;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(ACTIVE_BINDINGS, value)) {
-      return value;
-    }
-  }
-
-  return 'list';
-}
-
 export function getActiveNodeBindings(node: FlowNodeDocument) {
   const action = getDataModelActionForNodeType(node.type);
 

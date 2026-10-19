@@ -179,8 +179,7 @@ function createGenericModuleDeclarations(
   exports: readonly string[]
 ): string {
   const namedExports = exports
-    .filter((exportName) => exportName !== 'default')
-    .map((exportName) => `  export const ${exportName}: any;`)
+    .flatMap((exportName) => exportName !== 'default' ? [`  export const ${exportName}: any;`] : [])
     .join('\n');
   const defaultExport = exports.includes('default')
     ? '\n  const defaultExport: any;\n  export default defaultExport;'

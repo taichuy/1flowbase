@@ -19,85 +19,6 @@ export type PageSelectionResolution = {
   shouldNavigate: boolean;
 };
 
-export function collectTreeNodeIds(nodes: FrontStageTreeNode[]): Set<string> {
-  const nodeIds = new Set<string>();
-
-  const visit = (items: FrontStageTreeNode[]) => {
-    for (const node of items) {
-      nodeIds.add(node.id);
-
-      if (node.children && node.children.length > 0) {
-        visit(node.children);
-      }
-    }
-  };
-
-  visit(nodes);
-
-  return nodeIds;
-}
-
-function generateNodeId(): string {
-  if (
-    typeof crypto !== 'undefined' &&
-    typeof crypto.randomUUID === 'function'
-  ) {
-    return crypto.randomUUID();
-  }
-
-  return `00000000-0000-4000-8000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`;
-}
-
-function getNextNodeTitleIndex(
-  nodes: FrontStageTreeNode[],
-  nodeType: 'group' | 'page',
-  titlePrefix: string
-): number {
-  let maxIndex = 0;
-
-  const visit = (items: FrontStageTreeNode[]) => {
-    for (const item of items) {
-      if (item.kind === nodeType) {
-        const matched = item.title?.match(new RegExp(`^${titlePrefix}(\\d+)$`));
-
-        if (matched) {
-          const candidateIndex = Number.parseInt(matched[1], 10);
-          if (candidateIndex > maxIndex) {
-            maxIndex = candidateIndex;
-          }
-        }
-      }
-
-      if (item.children && item.children.length > 0) {
-        visit(item.children);
-      }
-    }
-  };
-
-  visit(nodes);
-
-  return maxIndex + 1;
-}
-
-export function getNextNodeId(nodes: FrontStageTreeNode[]): string {
-  const nextId = generateNodeId();
-
-  const existingIds = collectTreeNodeIds(nodes);
-  if (!existingIds.has(nextId)) {
-    return nextId;
-  }
-
-  return getNextNodeId(nodes);
-}
-
-export function getNextPageTitleIndex(nodes: FrontStageTreeNode[]): number {
-  return getNextNodeTitleIndex(nodes, 'page', i18nText("frontstage", "auto.new_page_prefix"));
-}
-
-export function getNextGroupTitleIndex(nodes: FrontStageTreeNode[]): number {
-  return getNextNodeTitleIndex(nodes, 'group', i18nText("frontstage", "auto.group"));
-}
-
 export function createPageNode(
   id: string,
   numberHint: number
@@ -138,7 +59,7 @@ export function findNodeById(
   return null;
 }
 
-export function isPageInTree(
+function isPageInTree(
   nodes: FrontStageTreeNode[],
   targetPageId: string
 ): boolean {
@@ -338,19 +259,4 @@ export function insertPageIntoGroup(
         : node.children
     };
   });
-}
-
-export function canMoveNode(
-  nodes: FrontStageTreeNode[],
-  targetNodeId: string
-): { canMoveUp: boolean; canMoveDown: boolean } {
-  const index = nodes.findIndex((node) => node.id === targetNodeId);
-  if (index < 0) {
-    return { canMoveUp: false, canMoveDown: false };
-  }
-
-  return {
-    canMoveUp: index > 0,
-    canMoveDown: index < nodes.length - 1
-  };
 }

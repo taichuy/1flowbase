@@ -22,23 +22,9 @@ export function getEdgeById(
   return document.graph.edges.find((edge) => edge.id === edgeId) ?? null;
 }
 
-export function getIncomingEdges(
-  document: FlowAuthoringDocument,
-  nodeId: string
-) {
-  return document.graph.edges.filter((edge) => edge.target === nodeId);
-}
-
 export function getOutgoingEdges(
   document: FlowAuthoringDocument,
   nodeId: string
 ) {
   return document.graph.edges.filter((edge) => edge.source === nodeId);
-}
-
-export function getContainerChildren(
-  document: FlowAuthoringDocument,
-  containerId: string | null
-) {
-  return document.graph.nodes.filter((node) => node.containerId === containerId);
 }

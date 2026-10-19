@@ -729,7 +729,7 @@ async function runRollbackGate({
 }
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
-  writeStdout(`Usage: node scripts/node/release-rollback-gate.js [options]
+  writeStdout(`Usage: node scripts/node/release-rollback-gate/cli.js [options]
 
 Options:
   --previous-image-tag <tag>   Previous release image tag, or auto. Default: auto

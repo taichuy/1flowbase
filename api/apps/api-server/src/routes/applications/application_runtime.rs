@@ -87,7 +87,7 @@ pub(super) const RUNTIME_DEBUG_STREAM_DEFAULT_PAGE_SIZE: usize = 500;
 pub(super) const RUNTIME_DEBUG_STREAM_MAX_PAGE_SIZE: usize = 1_000;
 pub(super) const RUNTIME_DEBUG_ARTIFACT_RESOLVE_MAX_REFS: usize = 50;
 
-include!("application_runtime/types.rs");
+include!("application_runtime/response_projection/types.rs");
 
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
@@ -384,17 +384,17 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-include!("application_runtime/summary_responses.rs");
+include!("application_runtime/response_projection/summary_responses.rs");
 
-include!("application_runtime/conversation_helpers.rs");
+include!("application_runtime/response_projection/conversation_helpers.rs");
 
-include!("application_runtime/detail_responses.rs");
+include!("application_runtime/response_projection/detail_responses.rs");
 
-include!("application_runtime/debug_handlers.rs");
+include!("application_runtime/handlers/debug_handlers.rs");
 
-include!("application_runtime/log_handlers.rs");
+include!("application_runtime/handlers/log_handlers.rs");
 
-include!("application_runtime/export_handlers.rs");
+include!("application_runtime/handlers/export_handlers.rs");
 
 #[cfg(test)]
 use archive::{build_archive_from_trace_exports, parse_run_archive_v1};

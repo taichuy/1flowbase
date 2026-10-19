@@ -1201,7 +1201,8 @@ impl ApplicationRuntimeReadsAdapter {
                 self.visible_application(actor, application_id).await?;
                 Ok(ApplicationRuntimeReadsOutput::RuntimeActivity(
                     self.runtime_activity
-                        .snapshot(application_id, self.process_started_at),
+                        .snapshot(application_id, self.process_started_at)
+                        .await,
                 ))
             }
             ApplicationRuntimeReadsInput::GetRuntimeDebugStream {

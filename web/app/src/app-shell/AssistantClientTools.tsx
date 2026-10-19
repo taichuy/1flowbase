@@ -17,7 +17,13 @@ export function AssistantClientToolProvider({ children }: PropsWithChildren) {
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id ?? null
   );
-  const refreshTargets = useRef(new Map<string, AssistantRefreshTarget>());
+  const refreshTargetsRef = useRef<Map<string, AssistantRefreshTarget> | null>(
+    null
+  );
+  if (refreshTargetsRef.current === null) {
+    refreshTargetsRef.current = new Map<string, AssistantRefreshTarget>();
+  }
+  const refreshTargets = refreshTargetsRef.current;
   const snapshot = useCallback((): AssistantClientSnapshot => {
     const pathname = window.location.pathname;
     const routeId =
@@ -37,21 +43,21 @@ export function AssistantClientToolProvider({ children }: PropsWithChildren) {
     () =>
       createAssistantClientTools({
         queryClient,
-        refreshTargets: refreshTargets.current,
+        refreshTargets,
         snapshot
       }),
-    [queryClient, snapshot]
+    [queryClient, refreshTargets, snapshot]
   );
   const registerRefreshTarget = useCallback(
     (targetId: string, refresh: AssistantRefreshTarget) => {
-      refreshTargets.current.set(targetId, refresh);
+      refreshTargets.set(targetId, refresh);
       return () => {
-        if (refreshTargets.current.get(targetId) === refresh) {
-          refreshTargets.current.delete(targetId);
+        if (refreshTargets.get(targetId) === refresh) {
+          refreshTargets.delete(targetId);
         }
       };
     },
-    []
+    [refreshTargets]
   );
   const value = useMemo(
     () => ({ clientTools, registerRefreshTarget }),

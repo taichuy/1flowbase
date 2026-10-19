@@ -1,5 +1,7 @@
 import '../../../../../test/fixtures/rc-util-unique-ids';
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -50,18 +52,47 @@ const record = {
   created_at: '2026-10-12T12:00:00Z'
 };
 
-function mount(
+// Await the asynchronous work triggered by each real DOM event.
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function mouseEnter(...args: Parameters<typeof fireEvent.mouseEnter>) {
+  await act(async () => {
+    fireEvent.mouseEnter(...args);
+  });
+}
+async function error(...args: Parameters<typeof fireEvent.error>) {
+  await act(async () => {
+    fireEvent.error(...args);
+  });
+}
+
+const mountedClients = new Set<QueryClient>();
+
+async function mount(
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   })
 ) {
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <App>
-        <FileTableView fileTableCode="file_demo" />
-      </App>
-    </QueryClientProvider>
-  );
+  mountedClients.add(queryClient);
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(
+      <QueryClientProvider client={queryClient}>
+        <App>
+          <FileTableView fileTableCode="file_demo" />
+        </App>
+      </QueryClientProvider>
+    );
+  });
+  return view;
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -81,14 +112,28 @@ beforeEach(() => {
     total: 0
   });
 });
-afterEach(() => {
-  resetAuthStore();
+afterEach(async () => {
+  try {
+    await waitFor(() => {
+      for (const queryClient of mountedClients) {
+        expect(queryClient.isFetching()).toBe(0);
+        expect(queryClient.isMutating()).toBe(0);
+      }
+    });
+  } finally {
+    cleanup();
+    for (const queryClient of mountedClients) queryClient.clear();
+    mountedClients.clear();
+    await act(async () => {
+      resetAuthStore();
+    });
+  }
 });
 
 describe('FileTableView', () => {
   test('searches and sorts on the server instead of filtering the current page', async () => {
-    mount();
-    fireEvent.change(screen.getByRole('textbox', { name: '搜索文件名…' }), {
+    await mount();
+    await change(screen.getByRole('textbox', { name: '搜索文件名…' }), {
       target: { value: 'report' }
     });
     await waitFor(() =>
@@ -100,7 +145,7 @@ describe('FileTableView', () => {
         { filename: 'report', sort: 'created_at:desc' }
       )
     );
-    fireEvent.click(screen.getByRole('columnheader', { name: /大小/ }));
+    await click(screen.getByRole('columnheader', { name: /大小/ }));
     await waitFor(() =>
       expect(client.fetchConsoleFileRecords).toHaveBeenLastCalledWith(
         'file_demo',
@@ -123,13 +168,13 @@ describe('FileTableView', () => {
     vi.mocked(client.deleteConsoleRuntimeModelRecord).mockResolvedValue({
       deleted: true
     });
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
+    await mount();
+    await click(await screen.findByRole('button', { name: /编辑/ }));
     const drawer = await screen.findByRole('dialog', { name: '编辑文件' });
-    fireEvent.change(within(drawer).getByRole('textbox'), {
+    await change(within(drawer).getByRole('textbox'), {
       target: { value: 'renamed.txt' }
     });
-    fireEvent.click(within(drawer).getByRole('button', { name: '保存' }));
+    await click(within(drawer).getByRole('button', { name: '保存' }));
     await waitFor(() =>
       expect(client.updateConsoleRuntimeModelRecord).toHaveBeenCalledWith(
         'file_demo',
@@ -143,10 +188,10 @@ describe('FileTableView', () => {
         screen.queryByRole('dialog', { name: '编辑文件' })
       ).not.toBeInTheDocument()
     );
-    fireEvent.click(screen.getByRole('button', { name: /删除/ }));
+    await click(screen.getByRole('button', { name: /删除/ }));
     const confirm = await screen.findByRole('dialog');
     expect(client.deleteConsoleRuntimeModelRecord).not.toHaveBeenCalled();
-    fireEvent.click(within(confirm).getByRole('button', { name: /删除/ }));
+    await click(within(confirm).getByRole('button', { name: /删除/ }));
     await waitFor(() =>
       expect(client.deleteConsoleRuntimeModelRecord).toHaveBeenCalledWith(
         'file_demo',
@@ -162,8 +207,8 @@ describe('FileTableView', () => {
       total: 1
     });
     vi.mocked(copy).mockResolvedValueOnce(false);
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: '复制链接' }));
+    await mount();
+    await click(await screen.findByRole('button', { name: '复制链接' }));
     expect(await screen.findByText('复制失败，请手动复制链接')).toBeVisible();
     expect(screen.queryByText('链接已复制')).not.toBeInTheDocument();
   });
@@ -176,13 +221,13 @@ describe('FileTableView', () => {
     vi.mocked(client.updateConsoleRuntimeModelRecord).mockRejectedValue(
       new Error('No write access')
     );
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
+    await mount();
+    await click(await screen.findByRole('button', { name: /编辑/ }));
     const drawer = await screen.findByRole('dialog', { name: '编辑文件' });
-    fireEvent.change(within(drawer).getByRole('textbox'), {
+    await change(within(drawer).getByRole('textbox'), {
       target: { value: 'denied.txt' }
     });
-    fireEvent.click(within(drawer).getByRole('button', { name: '保存' }));
+    await click(within(drawer).getByRole('button', { name: '保存' }));
     expect(await screen.findByText('No write access')).toBeVisible();
     expect(drawer).toBeVisible();
     expect(
@@ -198,7 +243,7 @@ describe('FileTableView', () => {
         items: [{ ...record, mimetype }],
         total: 1
       });
-      mount();
+      await mount();
       const filename = await screen.findByRole('link', {
         name: record.filename
       });
@@ -217,10 +262,10 @@ describe('FileTableView', () => {
       items: [{ ...record, preview_url: '/unavailable-image.png' }],
       total: 1
     });
-    mount();
+    await mount();
     const thumbnail = await screen.findByRole('img', { name: record.filename });
     const cell = thumbnail.closest('td')!;
-    fireEvent.error(thumbnail);
+    await error(thumbnail);
     expect(
       await within(cell).findByRole('link', { name: record.url })
     ).toHaveAttribute('href', record.url);
@@ -232,9 +277,9 @@ describe('FileTableView', () => {
       items: [{ ...record, size: 1_667_307 }],
       total: 1
     });
-    mount();
+    await mount();
     const size = await screen.findByText('1.59 MiB');
-    fireEvent.mouseEnter(size);
+    await mouseEnter(size);
     expect(await screen.findByRole('tooltip')).toHaveTextContent('1,667,307 B');
   });
 
@@ -251,14 +296,14 @@ describe('FileTableView', () => {
       items: [imageRecord, record],
       total: 2
     });
-    mount();
+    await mount();
     const thumbnail = await screen.findByRole('img', { name: 'picture.png' });
     expect(thumbnail).toHaveAttribute('src', imageRecord.preview_url);
     expect(thumbnail).toHaveAttribute('loading', 'lazy');
     expect(
       screen.queryByRole('img', { name: 'hello.txt' })
     ).not.toBeInTheDocument();
-    fireEvent.click(thumbnail);
+    await click(thumbnail);
     await waitFor(() =>
       expect(document.querySelector('[role="dialog"]')).toBeInTheDocument()
     );
@@ -275,14 +320,14 @@ describe('FileTableView', () => {
       });
       return { file_table_id: table.id, storage_id: record.storage_id, record };
     });
-    mount();
+    await mount();
     const button = await screen.findByRole('button', { name: /上传文件/ });
     await waitFor(() => expect(button).toBeEnabled());
-    fireEvent.click(button);
+    await click(button);
     const dialog = await screen.findByRole('dialog', { name: '上传文件' });
     const input = dialog.querySelector('input[type="file"]')!;
     const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
-    fireEvent.change(input, { target: { files: [file] } });
+    await change(input, { target: { files: [file] } });
     await waitFor(() =>
       expect(client.uploadConsoleFile).toHaveBeenCalledWith(
         expect.any(File),
@@ -307,7 +352,7 @@ describe('FileTableView', () => {
   });
   test('does not enable upload or query records for a missing target table', async () => {
     vi.mocked(client.fetchConsoleFileTables).mockResolvedValue([]);
-    mount();
+    await mount();
     expect(
       await screen.findByText('文件表不可用，请检查文件表配置和访问权限。')
     ).toBeInTheDocument();
@@ -318,12 +363,12 @@ describe('FileTableView', () => {
     vi.mocked(client.uploadConsoleFile).mockRejectedValue(
       new Error('存储不可用')
     );
-    mount();
+    await mount();
     const button = await screen.findByRole('button', { name: /上传文件/ });
     await waitFor(() => expect(button).toBeEnabled());
-    fireEvent.click(button);
+    await click(button);
     const dialog = await screen.findByRole('dialog', { name: '上传文件' });
-    fireEvent.change(dialog.querySelector('input[type="file"]')!, {
+    await change(dialog.querySelector('input[type="file"]')!, {
       target: { files: [new File(['hello'], 'hello.txt')] }
     });
     expect(await screen.findByText('存储不可用')).toBeInTheDocument();
@@ -371,12 +416,12 @@ describe('FileTableView', () => {
         record: newest
       };
     });
-    mount(queryClient);
-    fireEvent.click(await screen.findByTitle('2'));
+    await mount(queryClient);
+    await click(await screen.findByTitle('2'));
     await screen.findByRole('link', { name: 'second.txt' });
-    fireEvent.click(screen.getByRole('button', { name: /上传文件/ }));
+    await click(screen.getByRole('button', { name: /上传文件/ }));
     const dialog = await screen.findByRole('dialog', { name: '上传文件' });
-    fireEvent.change(dialog.querySelector('input[type="file"]')!, {
+    await change(dialog.querySelector('input[type="file"]')!, {
       target: { files: [new File(['newest'], 'newest.txt')] }
     });
     expect(
@@ -396,20 +441,20 @@ describe('FileTableView', () => {
         preview_url: previewUrl,
         expires_at: '2026-10-13T12:00:00Z'
       });
-      mount();
+      await mount();
       expect(
         await screen.findByRole('link', { name: 'hello.txt' })
       ).toHaveAttribute('href', stored.url);
-      fireEvent.click(await screen.findByRole('button', { name: '分享' }));
+      await click(await screen.findByRole('button', { name: '分享' }));
       await waitFor(() =>
         expect(
           screen.getByText('有效期内，任何持有链接的人均可访问此文件。')
         ).toBeVisible()
       );
-      fireEvent.change(screen.getByRole('spinbutton'), {
+      await change(screen.getByRole('spinbutton'), {
         target: { value: '120' }
       });
-      fireEvent.click(screen.getByRole('button', { name: '生成链接' }));
+      await click(screen.getByRole('button', { name: '生成链接' }));
       const field = await screen.findByRole('link', { name: '分享链接' });
       const url = new URL(
         previewUrl ?? '/api/public/files/content?token=temporary',
@@ -426,7 +471,7 @@ describe('FileTableView', () => {
         'csrf-123',
         expect.any(AbortSignal)
       );
-      fireEvent.click(
+      await click(
         within(screen.getByRole('dialog', { name: '分享' })).getByRole(
           'button',
           { name: '复制链接' }
@@ -434,7 +479,7 @@ describe('FileTableView', () => {
       );
       expect(copy).toHaveBeenCalledWith(url);
       expect(screen.getByText(/到期时间：/)).toBeVisible();
-      fireEvent.click(
+      await click(
         within(screen.getByRole('dialog', { name: '分享' })).getByRole(
           'button',
           { name: /取\s*消/ }
@@ -460,27 +505,31 @@ describe('FileTableView', () => {
           resolve = done;
         })
     );
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: '分享' }));
-    fireEvent.click(screen.getByRole('button', { name: '生成链接' }));
+    await mount();
+    await click(await screen.findByRole('button', { name: '分享' }));
+    await click(screen.getByRole('button', { name: '生成链接' }));
     await waitFor(() =>
       expect(client.createConsoleFileShareLink).toHaveBeenCalled()
     );
     const signal = vi.mocked(client.createConsoleFileShareLink).mock
       .calls[0][4]!;
-    useAuthStore.setState({
-      actor: {
-        id: 'user-1',
-        account: 'root',
-        effective_display_role: 'root',
-        current_workspace_id: 'workspace-2'
-      }
+    await act(async () => {
+      useAuthStore.setState({
+        actor: {
+          id: 'user-1',
+          account: 'root',
+          effective_display_role: 'root',
+          current_workspace_id: 'workspace-2'
+        }
+      });
     });
     await waitFor(() => expect(signal.aborted).toBe(true));
-    resolve({
-      url: '/api/public/files/content?token=stale',
-      preview_url: null,
-      expires_at: '2026-10-13T12:00:00Z'
+    await act(async () => {
+      resolve({
+        url: '/api/public/files/content?token=stale',
+        preview_url: null,
+        expires_at: '2026-10-13T12:00:00Z'
+      });
     });
     await waitFor(() =>
       expect(
@@ -497,9 +546,9 @@ describe('FileTableView', () => {
     vi.mocked(client.createConsoleFileShareLink).mockRejectedValue(
       new Error('file access denied')
     );
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: '分享' }));
-    fireEvent.click(screen.getByRole('button', { name: '生成链接' }));
+    await mount();
+    await click(await screen.findByRole('button', { name: '分享' }));
+    await click(screen.getByRole('button', { name: '生成链接' }));
     await waitFor(() =>
       expect(screen.getByText('file access denied')).toBeVisible()
     );

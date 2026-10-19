@@ -44,6 +44,8 @@ const TopbarNavigationMoveDialog = lazy(() =>
   }))
 );
 
+const EMPTY_FRONTSTAGE_NODES: FrontstagePageTreeNode[] = [];
+
 interface ConsolePrimaryNavigationRoute {
   id: string;
   path: string;
@@ -69,6 +71,7 @@ function topbarPageRoutes(
 
 function topbarNavigationItems({
   nodes,
+  topbarSiblings,
   pathname,
   useRouterLinks,
   workspaceId,
@@ -77,6 +80,7 @@ function topbarNavigationItems({
   translateText
 }: {
   nodes: FrontstagePageTreeNode[];
+  topbarSiblings: FrontstagePageTreeNode[];
   pathname: string;
   useRouterLinks: boolean;
   workspaceId?: string;
@@ -110,9 +114,7 @@ function topbarNavigationItems({
               workspaceId={workspaceId}
               node={node}
               onOpenMoveNode={onOpenMoveNode}
-              siblings={nodes.filter(
-                (candidate) => candidate.placement === 'topbar'
-              )}
+              siblings={topbarSiblings}
             >
               {renderNavigationLink(
                 path,
@@ -309,7 +311,7 @@ export function Navigation({
     retry: false
   });
   const dynamicRoutes = useMemo(
-    () => topbarPageRoutes(frontstageNavigationQuery.data ?? []),
+    () => topbarPageRoutes(frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES),
     [frontstageNavigationQuery.data]
   );
   const routes = useMemo<ConsolePrimaryNavigationRoute[]>(() => {
@@ -324,8 +326,12 @@ export function Navigation({
       pathname === candidate.path || pathname.startsWith(`${candidate.path}/`)
   );
   const hasSelectedDynamicPage = Boolean(selectedDynamicRoute);
-  const selectedTopbarNode = (frontstageNavigationQuery.data ?? []).find(
+  const selectedTopbarNode = (frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES).find(
     (node) => node.id === selectedDynamicRoute?.id
+  );
+  const topbarSiblings = useMemo(
+    () => (frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES).filter((node) => node.placement === 'topbar'),
+    [frontstageNavigationQuery.data]
   );
   const closeMobileNavigation = () => setIsMobileNavigationOpen(false);
   const items: MenuProps['items'] =
@@ -354,7 +360,8 @@ export function Navigation({
             )
           })),
           ...topbarNavigationItems({
-            nodes: frontstageNavigationQuery.data ?? [],
+            nodes: frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES,
+            topbarSiblings,
             pathname,
             useRouterLinks,
             workspaceId,
@@ -379,7 +386,7 @@ export function Navigation({
               closeMobileNavigation
             )
           })),
-          ...(frontstageNavigationQuery.data ?? []).flatMap((node) => {
+          ...(frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES).flatMap((node) => {
             if (node.placement !== 'topbar' || !node.slug) return [];
             const path = `/${node.slug}`;
             const childItems = frontstagePageItems({
@@ -476,7 +483,7 @@ export function Navigation({
             <Suspense fallback={null}>
               <TopbarNavigationDesigner
                 workspaceId={workspaceId}
-                nodes={frontstageNavigationQuery.data ?? []}
+                nodes={frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES}
               />
             </Suspense>
           ) : null}
@@ -486,7 +493,7 @@ export function Navigation({
         <Suspense fallback={null}>
           <TopbarNavigationDesigner
             workspaceId={workspaceId}
-            nodes={frontstageNavigationQuery.data ?? []}
+            nodes={frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES}
           />
         </Suspense>
       ) : null}
@@ -496,7 +503,7 @@ export function Navigation({
             key={moveNodeId}
             workspaceId={workspaceId}
             nodeId={moveNodeId}
-            nodes={frontstageNavigationQuery.data ?? []}
+            nodes={frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES}
             onCancel={() => setMoveNodeId(null)}
           />
         </Suspense>

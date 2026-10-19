@@ -5,16 +5,16 @@ import type {
   StyleBoundaryRuntimeScene
 } from './types';
 
-export function getSceneManifest(): StyleBoundaryManifestScene[] {
+function getSceneManifest(): StyleBoundaryManifestScene[] {
   return manifest as StyleBoundaryManifestScene[];
 }
 
 export function getSceneIdsForFiles(files: string[]): string[] {
   const fileSet = new Set(files);
 
-  return getSceneManifest()
-    .filter((scene) => scene.impactFiles.some((file) => fileSet.has(file)))
-    .map((scene) => scene.id);
+  return getSceneManifest().flatMap((scene) =>
+    scene.impactFiles.some((file) => fileSet.has(file)) ? [scene.id] : []
+  );
 }
 
 export function getRuntimeScene(sceneId: string): StyleBoundaryRuntimeScene {

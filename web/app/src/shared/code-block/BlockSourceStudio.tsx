@@ -62,6 +62,9 @@ export interface BlockSourceStudioProps<
   renderResource: (section: Exclude<Section, 'code'>) => ReactNode;
 }
 
+const EMPTY_EDITOR_DIAGNOSTICS: readonly BlockSourceEditorDiagnostic[] = [];
+const EMPTY_EXTRA_LIBS: readonly BlockSourceExtraLib[] = [];
+
 const INITIAL_WINDOW_RECT: WindowWorkspaceRect = {
   left: 120,
   top: 64,
@@ -84,11 +87,11 @@ export function BlockSourceStudio<Section extends BlockStudioSection>(
 function BlockSourceStudioWindow<Section extends BlockStudioSection>({
   contextComment,
   dirty,
-  editorDiagnostics = [],
+  editorDiagnostics = EMPTY_EDITOR_DIAGNOSTICS,
   editorHeader,
   editorNotice,
   errorMessage,
-  extraLibs = [],
+  extraLibs = EMPTY_EXTRA_LIBS,
   initialSection,
   loading,
   onChange,

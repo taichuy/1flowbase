@@ -15,7 +15,7 @@ const api = vi.hoisted(() => ({
   uploadSettingsExtension: vi.fn(),
   getSettingsExtensionRiskChallenge: vi.fn()
 }));
-vi.mock('../../../api/extensions', () => api);
+vi.mock('../../../api/extensions/extensions', () => api);
 beforeEach(() => {
   vi.clearAllMocks();
   api.getSettingsExtensionRiskChallenge.mockReturnValue(null);

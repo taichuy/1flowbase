@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { buildCommands, main } = require('../../cli/test-contracts.js');
+const { buildCommands, main } = require('../../cli/quality/test-contracts.js');
 
 const CONTRACT_TEST_FILES = [
   'src/features/settings/api/_tests/settings-api/settings-api.test.ts',

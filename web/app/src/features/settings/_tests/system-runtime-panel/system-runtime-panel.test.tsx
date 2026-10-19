@@ -733,6 +733,27 @@ describe('SystemRuntimePanel', () => {
     });
   });
 
+  test('preserves collapsed branches on metrics updates and synchronizes changed parent topology', async () => {
+    const initial = runtimeProcessList();
+    initial.processes.forEach((process) => { process.backend_process = true; });
+    initial.processes[1]!.parent_pid = initial.processes[0]!.pid;
+    systemRuntimeApi.fetchSettingsSystemRuntimeProcesses.mockResolvedValue(initial);
+    const { queryClient } = renderPanel();
+    const child = await screen.findByText('MainThread');
+    const tree = child.closest('.ant-tree')!;
+    const parentRow = within(tree as HTMLElement).getByText('api-server').closest('.ant-tree-treenode')!;
+    fireEvent.click(parentRow.querySelector('.ant-tree-switcher')!);
+    await waitFor(() => expect(within(tree as HTMLElement).queryByText('MainThread')).not.toBeInTheDocument());
+
+    const metricsOnly = { ...initial, processes: initial.processes.map((process) => ({ ...process, cpu_usage_percent: 5 })) };
+    act(() => { queryClient.setQueryData(systemRuntimeApi.settingsSystemRuntimeProcessesQueryKey, metricsOnly); });
+    expect(within(tree as HTMLElement).queryByText('MainThread')).not.toBeInTheDocument();
+
+    const changedParent = { ...metricsOnly, processes: metricsOnly.processes.map((process, index) => index === 0 ? { ...process, parent_pid: initial.processes[2]!.pid } : process) };
+    act(() => { queryClient.setQueryData(systemRuntimeApi.settingsSystemRuntimeProcessesQueryKey, changedParent); });
+    await waitFor(() => expect(within(tree as HTMLElement).getByText('MainThread')).toBeInTheDocument());
+  });
+
   test('defaults the process tree splitter to 4:6 and restores a saved ratio', async () => {
     const view = renderPanel();
     const treePanel = await waitFor(() => {

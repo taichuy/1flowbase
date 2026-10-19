@@ -8,8 +8,8 @@ import type {
   IfElseBranchDocument
 } from '@1flowbase/flow-schema';
 
-export const IF_ELSE_BRANCH_BINDING_KEY = 'branches';
-export const IF_ELSE_IF_HANDLE_PREFIX = 'else-if-';
+const IF_ELSE_BRANCH_BINDING_KEY = 'branches';
+const IF_ELSE_IF_HANDLE_PREFIX = 'else-if-';
 
 const DEFAULT_IF_ELSE_BRANCHES: IfElseBranchDocument[] = [
   {

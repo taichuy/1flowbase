@@ -279,6 +279,7 @@ export function shiftDownstreamNodesBFS(
 
   // 2. 初始化队列和已访问集合
   const queue: string[] = [startNodeId];
+  const queuedNodeIds = new Set(queue);
   const visited = new Set<string>();
   const shiftedNodeIds = new Set<string>();
 
@@ -287,6 +288,7 @@ export function shiftDownstreamNodesBFS(
 
   while (queue.length > 0) {
     const currentNodeId = queue.shift()!;
+    queuedNodeIds.delete(currentNodeId);
     visited.add(currentNodeId);
 
     const currentPos = positions[currentNodeId];
@@ -316,8 +318,9 @@ export function shiftDownstreamNodesBFS(
         };
         shiftedNodeIds.add(targetNodeId);
 
-        if (!queue.includes(targetNodeId)) {
+        if (!queuedNodeIds.has(targetNodeId)) {
           queue.push(targetNodeId);
+          queuedNodeIds.add(targetNodeId);
         }
       }
     }
@@ -423,9 +426,9 @@ export function arrangeCanvasLeftToRight(
     outgoingTargetsByNodeId.get(edge.source)?.push(edge.target);
   }
 
-  const queue = containerNodes
-    .filter((node) => (incomingCountByNodeId.get(node.id) ?? 0) === 0)
-    .map((node) => node.id);
+  const queue = containerNodes.flatMap((node) =>
+    (incomingCountByNodeId.get(node.id) ?? 0) === 0 ? [node.id] : []
+  );
   const remainingIncomingCountByNodeId = new Map(incomingCountByNodeId);
   let visitedCount = 0;
 

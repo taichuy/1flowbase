@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/_tests/native-trusted-block/dialog-retained-ref.test.tsx",
+      "rule": "react-doctor/no-react19-deprecated-apis",
+      "sourceSha256": "16b237a9498d2b5d1770758fb711417299ea64cb2e557af0ceaee18bd414e901",
+      "reason": "The installed rule labels this a migration hint. The API remains supported; ref/context ABI is intentional. dialog-retained-ref test mocks forwardRef to preserve the shipped Dialog imperative-ref ABI. React 19 supports forwardRef; this migration hint does not identify a removed API. Replacing the mock ref contract would weaken retained-ref assertions.",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/dialog-retained-ref.test.tsx", "sha256": "16b237a9498d2b5d1770758fb711417299ea64cb2e557af0ceaee18bd414e901"}]
+    }
+  ]
+}

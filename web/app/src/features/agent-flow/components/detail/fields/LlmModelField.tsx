@@ -621,7 +621,10 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
             null
           }
           metaItems={[
-            <ContextMarker value={selectedModel?.effectiveContextWindow} />
+            <ContextMarker
+              key="context-window"
+              value={selectedModel?.effectiveContextWindow}
+            />
           ]}
         />
         <span

@@ -1,7 +1,8 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   render,
   act,
+  cleanup,
   screen,
   waitFor,
   fireEvent,
@@ -125,7 +126,7 @@ const page = {
   overwrite_on_plugin_upgrade: true,
   code_modules: []
 };
-function renderSurface(
+async function renderSurface(
   children: import('react').ReactNode,
   client = new QueryClient({
     defaultOptions: {
@@ -134,13 +135,16 @@ function renderSurface(
     }
   })
 ) {
-  return render(
+  return renderSettled(
     <App>
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <QueryClientProvider client={client}>
+        <ObserveQueries />
+        {children}
+      </QueryClientProvider>
     </App>
   );
 }
-function renderPage(route_id = page.route_id) {
+async function renderPage(route_id = page.route_id) {
   return renderSurface(<PluginSettingsPage route_id={route_id} />);
 }
 
@@ -160,14 +164,12 @@ describe('AC-009/012 plugin settings published page', () => {
       me: null
     });
   });
-  afterEach(() => {
-    resetAuthStore();
-  });
+  afterEach(cleanupSurface);
   test('publishes the active language and updates mounted plugins without a user locale preference', async () => {
     api.fetchConsolePluginSettingsPage.mockResolvedValue({ ...page,
       source: 'export default function Settings({ctx}) { return <h1>{ctx.ui.locale}</h1>; }'
     });
-    renderPage();
+    await renderPage();
     const text = () => screen.getByTestId('plugin-settings-page').shadowRoot?.textContent;
     await waitFor(() => expect(text()).toContain('en_US'));
     await act(async () => { await i18n.changeLanguage('zh_Hans'); });
@@ -206,7 +208,7 @@ describe('AC-009/012 plugin settings published page', () => {
   });
   test('compiles and renders the authorized published source through the actual portal', async () => {
     api.fetchConsolePluginSettingsPage.mockResolvedValue(page);
-    renderPage();
+    await renderPage();
     await waitFor(() => {
       expect(
         screen.getByTestId('plugin-settings-page').shadowRoot?.textContent
@@ -228,9 +230,10 @@ describe('AC-009/012 plugin settings published page', () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } }
     });
-    const view = render(
+    const view = await renderSettled(
       <App>
         <QueryClientProvider client={client}>
+          <ObserveQueries />
           <PluginSettingsPage route_id="previous" />
         </QueryClientProvider>
       </App>
@@ -243,6 +246,7 @@ describe('AC-009/012 plugin settings published page', () => {
     view.rerender(
       <App>
         <QueryClientProvider client={client}>
+          <ObserveQueries />
           <PluginSettingsPage route_id={page.route_id} />
         </QueryClientProvider>
       </App>
@@ -252,10 +256,12 @@ describe('AC-009/012 plugin settings published page', () => {
         screen.getByTestId('plugin-settings-page').shadowRoot?.textContent
       ).toContain('Published preferences')
     );
-    resolvePrevious({
-      ...page,
-      route_id: 'previous',
-      source: 'export default () => <p>Old route</p>'
+    await act(async () => {
+      resolvePrevious({
+        ...page,
+        route_id: 'previous',
+        source: 'export default () => <p>Old route</p>'
+      });
     });
     await waitFor(() =>
       expect(
@@ -278,7 +284,7 @@ describe('AC-009/012 plugin settings published page', () => {
       ...page,
       source: 'export default function broken({'
     });
-    renderPage();
+    await renderPage();
     await screen.findByRole('alert');
     expect(
       screen.queryByTestId('plugin-settings-page')
@@ -291,7 +297,7 @@ describe('AC-009/012 plugin settings published page', () => {
     'does not render a template when the page read rejects with %s',
     async (status) => {
       api.fetchConsolePluginSettingsPage.mockRejectedValue({ status });
-      renderPage();
+      await renderPage();
       await screen.findByRole('alert');
       expect(
         screen.queryByTestId('plugin-settings-page')
@@ -316,9 +322,7 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       me: null
     });
   });
-  afterEach(() => {
-    resetAuthStore();
-  });
+  afterEach(cleanupSurface);
 
   test('AC-007 refreshes an open managed page and template catalogue after activation without replacing the editor draft', async () => {
     const upgradedSource =
@@ -418,7 +422,7 @@ describe('AC-012/014 template editor and formal activation entry', () => {
     ];
     for (const key of inactiveKeys)
       client.setQueryData(key, { version: '1.0.0' });
-    renderSurface(
+    await renderSurface(
       <>
         <SettingsExtensionCenterSection category="installed" />
         <PluginSettingsPage route_id={page.route_id} />
@@ -435,12 +439,12 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       ).toContain('Published preferences')
     );
     const row = await screen.findByRole('row', { name: /Acme preferences/ });
-    fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+    await click(within(row).getByRole('button', { name: 'Edit' }));
     const draftSource = 'export default () => <p>Unsaved local draft</p>';
-    fireEvent.change(screen.getByRole('textbox', { name: 'Template source' }), {
+    await change(screen.getByRole('textbox', { name: 'Template source' }), {
       target: { value: draftSource }
     });
-    fireEvent.click(activation);
+    await click(activation);
     await waitFor(() =>
       expect(api.enableConsoleInstalledExtension).toHaveBeenCalledWith(
         'installation-2',
@@ -496,9 +500,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
         ]
       });
       api.updateConsoleUiTemplate.mockResolvedValue({ id: 'template-1' });
-      renderSurface(<CodeTemplatesTab canManage />);
+      await renderSurface(<CodeTemplatesTab canManage />);
       const row = await screen.findByRole('row', { name: /Acme preferences/ });
-      fireEvent.click(
+      await click(
         within(row).getByRole('button', {
           name: locale === 'en_US' ? 'Edit' : /^编\s*辑$/
         })
@@ -514,11 +518,11 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       );
       expect(warning).toHaveTextContent('acme.preferences');
       expect(warning).toHaveTextContent('1.0.0');
-      fireEvent.change(
+      await change(
         screen.getByRole('textbox', { name: 'Template source' }),
         { target: { value: 'export default () => <p>My edit</p>' } }
       );
-      fireEvent.click(screen.getByRole('button', { name: 'Save source' }));
+      await click(screen.getByRole('button', { name: 'Save source' }));
       await waitFor(() =>
         expect(api.updateConsoleUiTemplate).toHaveBeenCalledWith(
           'template-1',
@@ -605,9 +609,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
           return { id: 'enable-task', status: 'completed' };
         }
       );
-      renderSurface(<SettingsExtensionCenterSection category="installed" />);
+      await renderSurface(<SettingsExtensionCenterSection category="installed" />);
       const row = await screen.findByRole('row', { name: /preferences/ });
-      fireEvent.click(
+      await click(
         within(row).getByRole('button', {
           name: locale === 'en_US' ? 'View' : '查看'
         })
@@ -622,7 +626,7 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       expect(
         within(currentVersion).getByRole('button', { name: label })
       ).toBeDisabled();
-      fireEvent.click(within(nextVersion).getByRole('button', { name: label }));
+      await click(within(nextVersion).getByRole('button', { name: label }));
       await waitFor(() =>
         expect(api.enableConsoleInstalledExtension).toHaveBeenCalledWith(
           'installation-2',
@@ -683,7 +687,7 @@ describe('AC-012/014 template editor and formal activation entry', () => {
         limit: 20,
         next_cursor: null
       });
-      renderSurface(<SettingsExtensionCenterSection category="installed" />);
+      await renderSurface(<SettingsExtensionCenterSection category="installed" />);
       expect(
         await screen.findByTestId('plugin-runtime-status')
       ).toHaveTextContent(label);
@@ -735,14 +739,14 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       });
       return { id: 'enable-task', status: 'completed' };
     });
-    renderSurface(<SettingsExtensionCenterSection category="installed" />);
+    await renderSurface(<SettingsExtensionCenterSection category="installed" />);
     const warning = await screen.findByTestId(
       'plugin-settings-upgrade-warning'
     );
     expect(warning).toHaveTextContent('at restart');
     expect(warning).toHaveTextContent('overwrite your edits');
     const control = await screen.findByRole('switch');
-    fireEvent.click(control);
+    await click(control);
     await waitFor(() =>
       expect(api.enableConsoleInstalledExtension).toHaveBeenCalledWith(
         'installation-2',
@@ -763,3 +767,44 @@ describe('AC-012/014 template editor and formal activation entry', () => {
     );
   });
 });
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+  });
+  return view;
+}
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+
+const mountedClients = new Set<QueryClient>();
+function ObserveQueries() {
+  mountedClients.add(useQueryClient());
+  return null;
+}
+async function cleanupSurface() {
+  try {
+    await waitFor(() => {
+      for (const client of mountedClients) {
+        expect(client.isFetching()).toBe(0);
+        expect(client.isMutating()).toBe(0);
+      }
+    });
+  } finally {
+    cleanup();
+    for (const client of mountedClients) client.clear();
+    mountedClients.clear();
+    await act(async () => {
+      resetAuthStore();
+    });
+  }
+}

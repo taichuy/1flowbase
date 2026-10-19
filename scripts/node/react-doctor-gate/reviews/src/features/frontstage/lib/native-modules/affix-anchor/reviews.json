@@ -1,0 +1,33 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/lib/native-modules/affix-anchor/native-affix-runtime.tsx",
+      "rule": "react-doctor/no-react19-deprecated-apis",
+      "sourceSha256": "a7c2e8c34c1d175d5386a3209149bf098355a5a0c7c19a25b7a2e53404fffcee",
+      "reason": "forwardRef/useContext remain supported React 19 APIs. The native/mock ABI explicitly consumes their ref/context behavior; this is only a migration hint. The affix native module uses forwardRef/useImperativeHandle to expose the Antd Affix imperative contract and useContext to consume its native surface. Both APIs remain supported in React 19; this migration hint does not identify a removed API or broken ref lifetime.",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-affix-runtime.test.tsx", "sha256": "abd69a650a2e4290c5d67b2db99ac896f6a4e04a35ae5c7924d3f9eccccd7dc3"}]
+    },
+    {
+      "file": "web/app/src/features/frontstage/lib/native-modules/affix-anchor/native-anchor-runtime.tsx",
+      "rule": "react-doctor/no-generic-handler-names",
+      "sourceSha256": "bf0cefa5e6a36123066f5fbf7c3d3f53b5f4f42bf2ad708cd756af818d47a607",
+      "reason": "The handler is scoped to a single anchor click and immediately connected to that element; renaming does not correct behavior. native-anchor-runtime exports a native module factory/registration contract as well as private components. Anchor measurement reports DOM-derived geometry to its native owner after layout. handleClick is local to the anchor click semantics, not an ambiguous exported event multiplexer.",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-anchor-runtime.test.tsx", "sha256": "1ba30b09da4794b2f90ba6d87467c1c5778f5ea96155f34b8c9eb867a69d6899"}]
+    },
+    {
+      "file": "web/app/src/features/frontstage/lib/native-modules/affix-anchor/native-anchor-runtime.tsx",
+      "rule": "react-doctor/no-pass-live-state-to-parent",
+      "sourceSha256": "bf0cefa5e6a36123066f5fbf7c3d3f53b5f4f42bf2ad708cd756af818d47a607",
+      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. native-anchor-runtime exports a native module factory/registration contract as well as private components. Anchor measurement reports DOM-derived geometry to its native owner after layout. handleClick is local to the anchor click semantics, not an ambiguous exported event multiplexer.",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-anchor-runtime.test.tsx", "sha256": "1ba30b09da4794b2f90ba6d87467c1c5778f5ea96155f34b8c9eb867a69d6899"}]
+    },
+    {
+      "file": "web/app/src/features/frontstage/lib/native-modules/affix-anchor/native-anchor-runtime.tsx",
+      "rule": "react-doctor/only-export-components",
+      "sourceSha256": "bf0cefa5e6a36123066f5fbf7c3d3f53b5f4f42bf2ad708cd756af818d47a607",
+      "reason": "This module is a native runtime factory entrypoint; component-only Fast Refresh export conventions do not apply to its registration API. native-anchor-runtime exports a native module factory/registration contract as well as private components. Anchor measurement reports DOM-derived geometry to its native owner after layout. handleClick is local to the anchor click semantics, not an ambiguous exported event multiplexer.",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-anchor-runtime.test.tsx", "sha256": "1ba30b09da4794b2f90ba6d87467c1c5778f5ea96155f34b8c9eb867a69d6899"}]
+    }
+  ]
+}

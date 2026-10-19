@@ -10,7 +10,10 @@ test('production composition compiles and owns the effective distribution snapsh
   const registry = read(
     'api/apps/api-server/src/provider_runtime/distribution_registry.rs'
   );
-  const runtime = read('api/apps/api-server/src/provider_runtime/mod.rs');
+  const runtime = [
+    'api/apps/api-server/src/provider_runtime/mod.rs',
+    'api/apps/api-server/src/provider_runtime/provider_port.rs',
+  ].map(read).join('\n');
   assert.match(registry, /ProviderDistributionRuleRegistry::compile/u);
   assert.match(runtime, /provider_distribution_snapshot/u);
   assert.match(runtime, /with_runtime_package/u);

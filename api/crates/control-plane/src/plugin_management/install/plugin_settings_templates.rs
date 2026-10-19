@@ -21,3 +21,39 @@ pub(super) fn prepare_settings_templates(
     native.validate_package_settings_pages(manifest)?;
     super::projections::load_plugin_settings_templates(manifest, package_root)
 }
+
+// Preparation only reads the staging path and builds owned commit input. Await
+// validation and asset reads before publishing; detached reads cannot commit.
+pub(super) async fn prepare_installation_commit(
+    package_root: &Path,
+    node_id: &str,
+    installation: super::PreparedPluginInstallationInput,
+    manifest: &PluginManifestV1,
+    package_catalog: Option<super::UpsertPluginPackageCatalogProjectionInput>,
+) -> Result<super::CommitPluginInstallationInput> {
+    let package_root = package_root.to_path_buf();
+    let node_id = node_id.to_owned();
+    let manifest = manifest.clone();
+    run_preparation(move || {
+        super::prepare_installation_commit_blocking(
+            &package_root,
+            &node_id,
+            installation,
+            &manifest,
+            package_catalog,
+        )
+    })
+    .await
+}
+
+async fn run_preparation<T: Send + 'static>(
+    prepare: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    tokio::task::spawn_blocking(prepare)
+        .await
+        .context("plugin installation preparation task failed")?
+}
+
+#[cfg(test)]
+#[path = "_tests/settings_preparation.rs"]
+mod tests;

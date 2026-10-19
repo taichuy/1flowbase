@@ -72,7 +72,7 @@
     },
     {
       "target": "storage-durable-postgres:lib",
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2325_keyset_history_crosses_filtered_pages_and_subscriber_boundary",
       "expected": 1,
       "ac": [
@@ -83,7 +83,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_governance_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_governance_tests.rs",
       "name": "_tests::extension_bus::managed_governance_tests::root_2325_http_history_cursor_and_authorization",
       "expected": 1,
       "ac": [

@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/shared/ui/data-table/_tests/DataTableLayout.test.tsx",
+      "rule": "react-doctor/prefer-tag-over-role",
+      "sourceSha256": "bd248d56fcab23a6bad032b6a0dda96cb809fb27e1e403d2d1de29f1b44ce4de",
+      "reason": "The role=table div is the deliberately minimal list fixture supplied to DataTableLayout in its unit test. It asserts the wrapper renders the provided child slot; it is not a product table implementation or interactive replacement for native table markup.",
+      "evidence": [{"file": "web/app/src/shared/ui/data-table/DataTableLayout.tsx", "sha256": "7e20009b0089aa6f81ed6ea64381122d84c46eee173360fc7a476ad15b0c45d4"}, {"file": "web/app/src/shared/ui/data-table/DataTableRowActions.tsx", "sha256": "50b0e54d22f8a8d20eec47f2913d0f8cb4b0b9ae655e10b0b0763c3c429b9816"}, {"file": "web/app/src/shared/ui/data-table/_tests/DataTable.test.tsx", "sha256": "380649aff7ae6a924d0653b3237926a983d22e681098c954f5ea1238f3f12e95"}, {"file": "web/app/src/shared/ui/data-table/_tests/DataTableLayout.test.tsx", "sha256": "bd248d56fcab23a6bad032b6a0dda96cb809fb27e1e403d2d1de29f1b44ce4de"}, {"file": "web/app/src/shared/ui/section-page-layout/_tests/section-page-layout.test.tsx", "sha256": "107f712f87ac31b6970cfd2c743b4184b125ed6b6a7da31add6df8321f1d2f1a"}]
+    }
+  ]
+}

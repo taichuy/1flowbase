@@ -7,7 +7,7 @@ const { parseCliArgs, resetAccountPassword } = require('./core.js');
 const { validateAppliedMigrations } = require('./migration-validation.js');
 
 function usage(write = (value) => process.stdout.write(value)) {
-  write(`Usage: node scripts/node/reset-account-password.js [options]
+  write(`Usage: node scripts/node/reset-account-password/cli.js [options]
 
 Options:
   --account <account>       Account to reset; defaults to BOOTSTRAP_ROOT_ACCOUNT

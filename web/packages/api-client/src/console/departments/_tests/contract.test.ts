@@ -11,7 +11,7 @@ import {
   replaceConsoleMemberDepartments,
   updateConsoleDepartment
 } from '../index';
-import { listConsoleMembers } from '../../../console-members';
+import { listConsoleMembers } from '../../identity/members';
 describe('department wire contract', () => {
   test('reads official access independently of the department list', async () => {
     await expect(getConsoleDepartmentAccess()).resolves.toMatchObject({

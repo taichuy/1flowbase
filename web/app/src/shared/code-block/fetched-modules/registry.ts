@@ -26,6 +26,12 @@ export function createFetchedNativeReactModuleRegistry({
   revokeObjectURL?: (url: string) => void;
 }): { registry: NativeReactModuleRegistry; dispose(): void } {
   const host = hostRegistryFactory([]);
+  const hostExportsBySource = new Map<string, Set<string>>();
+  for (const definition of host.definitions) {
+    if (!hostExportsBySource.has(definition.module_source)) {
+      hostExportsBySource.set(definition.module_source, new Set(definition.exports));
+    }
+  }
   const sources = new Set<string>();
   const controller = new AbortController();
   const urls = new Set<string>();
@@ -59,20 +65,18 @@ export function createFetchedNativeReactModuleRegistry({
       throw new Error('Invalid frontend module declaration.');
     }
     sources.add(module.source);
-    const hostDefinition = host.definitions.find(
-      ({ module_source }) => module_source === module.source
-    );
+    const hostExports = hostExportsBySource.get(module.source);
     if (module.binding === 'host') {
       if (
-        !hostDefinition ||
+        !hostExports ||
         module.assets.length ||
-        module.exports.some((name) => !hostDefinition.exports.includes(name))
+        module.exports.some((name) => !hostExports.has(name))
       ) {
         throw new Error('Invalid host frontend module declaration.');
       }
       continue;
     }
-    if (module.binding !== 'fetched' || hostDefinition)
+    if (module.binding !== 'fetched' || hostExports)
       throw new Error('Frontend module source collision.');
     const paths = new Set<string>();
     for (const asset of module.assets) {

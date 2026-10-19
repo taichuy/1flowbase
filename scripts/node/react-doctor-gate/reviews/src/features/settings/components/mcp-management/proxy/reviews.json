@@ -1,0 +1,33 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx",
+      "rule": "react-doctor/no-array-index-as-key",
+      "sourceSha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630",
+      "reason": "The list identity and mutable state contract are described in the file-specific rationale; a data-text key would not uniquely identify repeated entries. McpProxyMappingEditor is a controlled positional mapping pipeline. Each row reads value.mappings[index], updates that same index and has no row-local React state/ref. Duplicate local/remote paths are editable, so path text is not a stable unique key. Validity callback reports externally loaded invalid mappings as well as user edits.",
+      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx", "sha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx",
+      "rule": "react-doctor/no-array-index-key",
+      "sourceSha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630",
+      "reason": "Alias of no-array-index-as-key; the same source-level list identity analysis applies. McpProxyMappingEditor is a controlled positional mapping pipeline. Each row reads value.mappings[index], updates that same index and has no row-local React state/ref. Duplicate local/remote paths are editable, so path text is not a stable unique key. Validity callback reports externally loaded invalid mappings as well as user edits.",
+      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx", "sha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx",
+      "rule": "react-doctor/no-pass-data-to-parent",
+      "sourceSha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630",
+      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. McpProxyMappingEditor is a controlled positional mapping pipeline. Each row reads value.mappings[index], updates that same index and has no row-local React state/ref. Duplicate local/remote paths are editable, so path text is not a stable unique key. Validity callback reports externally loaded invalid mappings as well as user edits.",
+      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx", "sha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx",
+      "rule": "react-doctor/no-prop-callback-in-effect",
+      "sourceSha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630",
+      "reason": "Reporting validity on externally loaded state is required in addition to user event updates; calling only from local edit handlers misses that path. McpProxyMappingEditor is a controlled positional mapping pipeline. Each row reads value.mappings[index], updates that same index and has no row-local React state/ref. Duplicate local/remote paths are editable, so path text is not a stable unique key. Validity callback reports externally loaded invalid mappings as well as user edits.",
+      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/proxy/McpProxyMappingEditor.tsx", "sha256": "b8dce273e862e88a2b01f4ad4b0fba2cbd282bc11542eabbe6cafbc5e626e630"}]
+    }
+  ]
+}

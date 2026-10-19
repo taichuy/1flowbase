@@ -17,7 +17,7 @@ import {
   prepareNativeReactSource,
   type NativeReactModuleRegistryFactory
 } from '../../../shared/code-block/native-react-source-preparation';
-import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../frontstage/lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../frontstage/lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../frontstage/lib/native-trusted-block/unavailable-context';
 import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../frontstage/lib/page-document';

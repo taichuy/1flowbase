@@ -9,10 +9,15 @@ pub mod data_source_package;
 pub mod error;
 pub mod extension_bus;
 pub mod frontend_module_asset;
+#[path = "host_extensions/host_contract.rs"]
 pub mod host_contract;
+#[path = "host_extensions/host_extension_contribution.rs"]
 pub mod host_extension_contribution;
+#[path = "host_extensions/host_extension_dropin.rs"]
 pub mod host_extension_dropin;
+#[path = "host_extensions/host_extension_manifest.rs"]
 pub mod host_extension_manifest;
+#[path = "host_extensions/host_extension_registry.rs"]
 pub mod host_extension_registry;
 pub mod installation;
 pub mod managed_schema;

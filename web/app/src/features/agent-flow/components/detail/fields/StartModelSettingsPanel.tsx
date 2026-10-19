@@ -12,6 +12,7 @@ import type {
 import { FloatingSettingsPanel } from '../FloatingSettingsPanel';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { defaultLlmMaxOutputTokens } from '../../../lib/model-options';
+import { useStableListItemKeys } from '../../../hooks/interactions/use-stable-list-item-keys';
 
 type StartModelSettingsPanelProps = {
   mode: 'create' | 'edit';
@@ -199,6 +200,10 @@ export function StartModelSettingsPanel({
   onClose,
   onSave
 }: StartModelSettingsPanelProps) {
+  const supportedEfforts = uniqueDraftEffortList(
+    model.reasoning?.supported_efforts
+  );
+  const effortKeys = useStableListItemKeys('supported-effort', supportedEfforts.length);
   const title =
     mode === 'create'
       ? i18nText('agentFlow', 'auto.add_new_model')
@@ -229,6 +234,14 @@ export function StartModelSettingsPanel({
   }
 
   function patchSupportedEfforts(supported_efforts: string[]) {
+    const seen = new Set<string>();
+    const duplicateIndices: number[] = [];
+    supported_efforts.forEach((value, index) => {
+      const effort = value.trim();
+      if (effort && seen.has(effort)) duplicateIndices.push(index);
+      if (effort) seen.add(effort);
+    });
+    duplicateIndices.reverse().forEach((index) => effortKeys.removeItemKey(index));
     const efforts = uniqueDraftEffortList(supported_efforts);
     const selectableEfforts = efforts.filter(Boolean);
     const currentDefault = model.reasoning?.default_effort;
@@ -249,6 +262,7 @@ export function StartModelSettingsPanel({
   }
 
   function removeSupportedEffort(index: number) {
+    effortKeys.removeItemKey(index);
     patchSupportedEfforts(
       uniqueDraftEffortList(model.reasoning?.supported_efforts).filter(
         (_, effortIndex) => effortIndex !== index
@@ -309,9 +323,6 @@ export function StartModelSettingsPanel({
     });
   }
 
-  const supportedEfforts = uniqueDraftEffortList(
-    model.reasoning?.supported_efforts
-  );
   const selectableSupportedEfforts = supportedEfforts.filter(Boolean);
   const defaultEffortOptions = effortOptions(selectableSupportedEfforts);
 
@@ -529,7 +540,7 @@ export function StartModelSettingsPanel({
             {supportedEfforts.map((effort, index) => (
               <div
                 className="agent-flow-start-input-fields__option-row"
-                key={`supported-effort-${index}`}
+                key={effortKeys.itemKeys[index]}
               >
                 <Input
                   aria-label={i18nText(

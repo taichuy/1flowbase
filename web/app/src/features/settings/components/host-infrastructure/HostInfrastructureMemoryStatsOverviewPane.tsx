@@ -634,17 +634,17 @@ function MemoryServiceBreakdownPane({
                   >
                     <Space size={4} wrap>
                       {item.capabilities?.list_entries ? (
-                        <Tag color="cyan" style={{ fontSize: 10, margin: 0 }}>
+                        <Tag color="cyan" style={{ margin: 0 }}>
                           {i18nText('settings', 'auto.view_entry')}
                         </Tag>
                       ) : null}
                       {item.capabilities?.list_tree ? (
-                        <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
+                        <Tag color="purple" style={{ margin: 0 }}>
                           {i18nText('settings', 'auto.tree_navigation')}
                         </Tag>
                       ) : null}
                       {item.capabilities?.reveal_value ? (
-                        <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
+                        <Tag color="orange" style={{ margin: 0 }}>
                           {i18nText('settings', 'auto.value_audit')}
                         </Tag>
                       ) : null}

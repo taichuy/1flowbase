@@ -274,14 +274,20 @@ pub struct ContributionAuthorizationResponse {
     pub authorizations: Vec<ContributionPermissionAuthorizationResponse>,
 }
 
-impl From<domain::PluginContributionAuthoritySnapshot> for ContributionAuthorizationResponse {
-    fn from(value: domain::PluginContributionAuthoritySnapshot) -> Self {
-        Self {
+impl TryFrom<domain::PluginContributionAuthoritySnapshot> for ContributionAuthorizationResponse {
+    type Error = crate::error_response::ApiError;
+
+    fn try_from(value: domain::PluginContributionAuthoritySnapshot) -> Result<Self, Self::Error> {
+        Ok(Self {
             installation_id: value.installation_id,
             workspace_id: value.workspace_id,
             revision: value.revision,
-            authorizations: value.authorizations.into_iter().map(Into::into).collect(),
-        }
+            authorizations: value
+                .authorizations
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, _>>()?,
+        })
     }
 }
 
@@ -312,9 +318,13 @@ pub struct ContributionPermissionAuthorizationResponse {
     pub revision: i64,
 }
 
-impl From<domain::PluginContributionAuthorization> for ContributionPermissionAuthorizationResponse {
-    fn from(value: domain::PluginContributionAuthorization) -> Self {
-        Self {
+impl TryFrom<domain::PluginContributionAuthorization>
+    for ContributionPermissionAuthorizationResponse
+{
+    type Error = crate::error_response::ApiError;
+
+    fn try_from(value: domain::PluginContributionAuthorization) -> Result<Self, Self::Error> {
+        Ok(Self {
             id: value.id,
             installation_id: value.installation_id,
             workspace_id: value.workspace_id,
@@ -331,10 +341,10 @@ impl From<domain::PluginContributionAuthorization> for ContributionPermissionAut
             .into(),
             granted_by: value.granted_by,
             revoked_by: value.revoked_by,
-            granted_at: super::format_time(value.granted_at),
-            revoked_at: value.revoked_at.map(super::format_time),
+            granted_at: super::format_time(value.granted_at)?,
+            revoked_at: value.revoked_at.map(super::format_time).transpose()?,
             revision: value.revision,
-        }
+        })
     }
 }
 

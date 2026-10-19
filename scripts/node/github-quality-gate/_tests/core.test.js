@@ -66,13 +66,13 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
     scope: 'coverage-backend-api-server-sharded-3-of-4',
   }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow.js'), 'shard', 'api-server', '3', '4'],
+    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow', 'cli.js'), 'shard', 'api-server', '3', '4'],
     cwd: repoRoot,
   });
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'coverage-backend-api-server-merge' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow.js'), 'merge', 'api-server', '4'],
+    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow', 'cli.js'), 'merge', 'api-server', '4'],
     cwd: repoRoot,
   });
 
@@ -147,13 +147,13 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'backend-consistency' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'verify-backend-consistency.js')],
+    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'quality', 'verify-backend-consistency.js')],
     cwd: repoRoot,
   });
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'backend-consistency-api' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'verify-backend-consistency.js'), 'api'],
+    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'quality', 'verify-backend-consistency.js'), 'api'],
     cwd: repoRoot,
   });
 
@@ -165,13 +165,13 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'container-images' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'container-image-security.js')],
+    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'quality', 'container-image-security.js')],
     cwd: repoRoot,
   });
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'release-rollback' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'release-rollback-gate.js')],
+    args: [path.join(repoRoot, 'scripts', 'node', 'release-rollback-gate', 'cli.js')],
     cwd: repoRoot,
   });
 
@@ -757,7 +757,7 @@ test('runQualityGate strips ANSI control sequences from published failure excerp
       return {
         status: 1,
         stdout: '\u001b[2mdist/\u001b[22m\u001b[36masset.js\u001b[39m\n',
-        stderr: '\u001b[31mDiff in api/apps/api-server/src/_tests/config_tests.rs:77\u001b[39m\n',
+        stderr: '\u001b[31mDiff in api/apps/api-server/src/_tests/host_boot/config_tests.rs:77\u001b[39m\n',
       };
     },
     createIssueImpl(issue) {
@@ -774,7 +774,7 @@ test('runQualityGate strips ANSI control sequences from published failure excerp
   assert.equal(createdIssues.length, 1);
   assert.doesNotMatch(createdIssues[0].body, /\u001b\[/u);
   assert.match(createdIssues[0].body, /dist\/asset\.js/u);
-  assert.match(createdIssues[0].body, /Diff in api\/apps\/api-server\/src\/_tests\/config_tests\.rs:77/u);
+  assert.match(createdIssues[0].body, /Diff in api\/apps\/api-server\/src\/_tests\/host_boot\/config_tests\.rs:77/u);
 });
 
 test('runQualityGate publishes the rust failure block when cargo stderr hides it at the tail', async () => {

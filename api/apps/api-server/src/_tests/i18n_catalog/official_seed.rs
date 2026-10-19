@@ -102,7 +102,7 @@ fn ac_002_rejects_non_plain_text_before_database_binding() {
 
 #[test]
 fn ac_006_official_loader_has_only_embedded_byte_sources() {
-    let loader_source = include_str!("../../official_i18n_catalog_seed.rs");
+    let loader_source = include_str!("../../catalog_sources/official_i18n_catalog_seed.rs");
 
     assert!(loader_source.contains("include_bytes!"));
     assert!(!loader_source.contains("reqwest"));

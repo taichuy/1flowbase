@@ -41,15 +41,15 @@ export function ApplicationTemplateCatalogPanel({
     name: string;
     body: ApplicationTemplateReference;
   }>();
-  const previousPages = useRef(
-    new Map<string, { cursor?: string; page: number }>()
-  );
+  const previousPagesRef = useRef<Map<string, { cursor?: string; page: number }> | null>(null);
+  if (previousPagesRef.current === null) previousPagesRef.current = new Map();
+  const previousPages = previousPagesRef.current;
   useEffect(() => {
     setSearchText(q ?? '');
-    previousPages.current.clear();
-  }, [q]);
+    previousPages.clear();
+  }, [q, previousPages]);
   const currentPage = cursor
-    ? (previousPages.current.get(cursor)?.page ?? 2)
+    ? (previousPages.get(cursor)?.page ?? 2)
     : 1;
   const goTo = (nextCursor?: string, query = q) =>
     void navigate({
@@ -207,13 +207,13 @@ export function ApplicationTemplateCatalogPanel({
                 onPreviousPage: () =>
                   goTo(
                     cursor
-                      ? previousPages.current.get(cursor)?.cursor
+                      ? previousPages.get(cursor)?.cursor
                       : undefined
                   ),
                 onNextPage: () => {
                   const nextCursor = catalog.data?.next_cursor;
                   if (!nextCursor) return;
-                  previousPages.current.set(nextCursor, {
+                  previousPages.set(nextCursor, {
                     cursor,
                     page: currentPage + 1
                   });

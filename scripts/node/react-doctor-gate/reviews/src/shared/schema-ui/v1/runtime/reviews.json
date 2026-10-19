@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/shared/schema-ui/v1/runtime/SchemaRenderer.tsx",
+      "rule": "react-doctor/no-render-in-render",
+      "sourceSha256": "2a4013e7e12239a512d66b1652f8a4d2a3a4b25b871381c5aea292b6da44ee8d",
+      "reason": "The named render helper is called as an ordinary function returning ReactNode, not instantiated as a new component type. It has no nested hook owner and therefore does not remount a subtree on each parent render.",
+      "evidence": [{"file": "web/app/src/features/agent-flow/components/detail/NodeDetailHeader.tsx", "sha256": "013a3c61ce8fcc3f9b6ae70d4e43bcdd608caf65874dfcb10430fbc2dfe56c9b"}, {"file": "web/app/src/features/agent-flow/components/detail/tabs/NodeLastRunTab.tsx", "sha256": "29b7be30bd9c0d617bf218f0edaa2d9d65663fadaa2ddf1862686f53ee82458d"}, {"file": "web/app/src/features/agent-flow/components/inspector/NodeInspector.tsx", "sha256": "6b620dded60bf1947c857b5facfdfcf8f69609850588cd5b65e79d73aa52d7ee"}, {"file": "web/app/src/features/agent-flow/components/nodes/AgentFlowNodeCard.tsx", "sha256": "4f021ce885774cc17f69035b9701d8f73641f86fee1b7f24036af4c3ac8f55b1"}, {"file": "web/app/src/shared/schema-ui/v1/_tests/overlay-shell.test.tsx", "sha256": "45ee69d1535a19f1583203dc3af6567848d59d19cbe26bdd2913f1f4c318c291"}, {"file": "web/app/src/shared/schema-ui/v1/_tests/schema-form-drawer.test.tsx", "sha256": "99acb9460f798b164b453c839ae8cfd6dc077912de8d158bc6ab2523938c0e37"}, {"file": "web/app/src/shared/schema-ui/v1/_tests/schema-runtime.test.tsx", "sha256": "a8a606320278cc0a7f10ffb17c2c737d119e8598d79383e1b18cc1690a2e1a0b"}, {"file": "web/app/src/shared/schema-ui/v1/contracts/canvas-node-schema.ts", "sha256": "c70785cfd94a7570548a0ce4cd2e20d54c515ecfc59006a4fa51be651592643e"}, {"file": "web/app/src/shared/schema-ui/v1/registry/create-renderer-registry.ts", "sha256": "8ee07180ed4ed695246d7475076c288632e515b450318f2c80dc8a0c3ff64063"}, {"file": "web/app/src/shared/schema-ui/v1/runtime/SchemaRenderer.tsx", "sha256": "2a4013e7e12239a512d66b1652f8a4d2a3a4b25b871381c5aea292b6da44ee8d"}, {"file": "web/app/src/shared/schema-ui/v1/runtime/rule-evaluator.ts", "sha256": "8bb4b499d1b837844a9112a053948a027e30e1d208221922dfdbc203c3542c32"}]
+    }
+  ]
+}

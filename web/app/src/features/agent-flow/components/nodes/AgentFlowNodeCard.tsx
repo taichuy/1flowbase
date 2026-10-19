@@ -55,7 +55,7 @@ function unresolvedNodeInfo(config: Record<string, unknown>) {
   return { reason, originalType };
 }
 
-export function AgentFlowNodeCard({
+function useNodeCardInteractionController({
   data,
   selected
 }: NodeProps<AgentFlowCanvasNode>) {
@@ -402,6 +402,19 @@ export function AgentFlowNodeCard({
       </div>
     );
   }
+  return {
+    data, selected, minimumNodeHeight, showQuickActions, scheduleHideQuickActions,
+    isUnresolvedNode, unresolvedInfo, cardAdapter, quickActionsVisible, runNode,
+    menuItems, toolSourceHandles, renderToolHandle, sourceHandles, renderSourceHandle
+  };
+}
+
+export function AgentFlowNodeCard(props: Parameters<typeof useNodeCardInteractionController>[0]) {
+  const {
+    data, selected, minimumNodeHeight, showQuickActions, scheduleHideQuickActions,
+    isUnresolvedNode, unresolvedInfo, cardAdapter, quickActionsVisible, runNode,
+    menuItems, toolSourceHandles, renderToolHandle, sourceHandles, renderSourceHandle
+  } = useNodeCardInteractionController(props);
 
   return (
     <>

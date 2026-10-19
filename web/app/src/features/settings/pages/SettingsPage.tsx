@@ -20,11 +20,11 @@ import {
   settingsSectionItemsFromConsoleNavigation
 } from '../lib/settings-sections';
 import { PluginSettingsPage } from './settings-page/PluginSettingsPage';
-import { SettingsRouteShell } from './settings-page/SettingsRouteShell';
-import { SettingsSectionBody } from './settings-page/SettingsSectionBody';
-import { useSettingsSections } from './settings-page/use-settings-sections';
+import { SettingsRouteShell } from './settings-page/shell/SettingsRouteShell';
+import { SettingsSectionBody } from './settings-page/shell/SettingsSectionBody';
+import { useSettingsSections } from './settings-page/shell/use-settings-sections';
 import type { RolePermissionTab } from '../components/RolePermissionPanel';
-import type { SettingsExtensionCenterCategory } from '../api/extensions';
+import type { SettingsExtensionCenterCategory } from '../api/extensions/extensions';
 import type { NetworkCenterPage } from './network-center/NetworkCenterSection';
 
 function hasAnyPermission(permissions: string[], candidates: string[]) {

@@ -85,17 +85,27 @@ function inspectAuthenticationInvocationBoundary(relativePath, source) {
 
 function inspectInterfaceLifecycleBoundary(repoRoot) {
   const stream = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compat_sse.rs');
-  const openai = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/openai.rs');
+  const openai = [
+    'api/apps/api-server/src/routes/application_public_api/openai.rs',
+    'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch.rs',
+  ].map(relativePath => read(repoRoot, relativePath)).join('\n');
   const anthropic = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/anthropic.rs');
   const workflowExtension = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/ex.rs');
-  const contributions = read(repoRoot, 'api/apps/api-server/src/extension_bus/interface_contributions.rs');
+  const contributions = [
+    'api/apps/api-server/src/extension_bus/interface_contributions.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/provider_operations.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/network.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/plugins.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/mcp.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/system.rs',
+  ].map(relativePath => read(repoRoot, relativePath)).join('\n');
   const publicAuth = read(repoRoot, 'api/apps/api-server/src/routes/identity/auth.rs');
   const publicSignIn = read(repoRoot, 'api/apps/api-server/src/routes/identity/sign_in_interface.rs');
   const native = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/native.rs');
   const compatibility = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs');
   const mcp = read(repoRoot, 'api/apps/api-server/src/routes/mcp_protocol.rs');
   const apiServer = read(repoRoot, 'api/apps/api-server/src/lib.rs');
-  const endpointCatalog = read(repoRoot, 'api/apps/api-server/src/external_endpoint_catalog.rs');
+  const endpointCatalog = read(repoRoot, 'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs');
   const protocolSources = `${stream}\n${openai}\n${anthropic}`;
   const violations = inspectExternalRouteAssemblyBoundary(apiServer);
 

@@ -1,5 +1,6 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -139,41 +140,41 @@ beforeEach(() => {
   );
 });
 afterEach(async () => {
-  await appI18n.changeLanguage('zh_Hans');
+  cleanup();
+  await act(async () => {
+    await appI18n.changeLanguage('zh_Hans');
+    resetAuthStore();
+  });
   vi.restoreAllMocks();
   vi.useRealTimers();
-  resetAuthStore();
   vi.unstubAllGlobals();
 });
 
 test('persists a new instance before metadata-driven QR, retains edits and polls to authorized', async () => {
   vi.useFakeTimers();
-  render(
+  await renderSettled(
     <NotificationInstanceDrawer
       types={[type]}
       onClose={vi.fn()}
       onSaved={saved}
     />
   );
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
-  fireEvent.click(
+  await mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+  await click(
     screen.getByText('扫码渠道', {
       selector: '.ant-select-item-option-content'
     })
   );
-  fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+  await change(screen.getByRole('textbox', { name: '渠道名称' }), {
     target: { value: '新渠道' }
   });
-  fireEvent.change(screen.getByRole('textbox', { name: '服务地址' }), {
+  await change(screen.getByRole('textbox', { name: '服务地址' }), {
     target: { value: 'https://example.com/custom' }
   });
-  fireEvent.click(screen.getByRole('button', { name: '保存并扫码授权' }));
-  await act(async () => {
-    await Promise.resolve();
-  });
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(0);
-  });
+  await click(screen.getByRole('button', { name: '保存并扫码授权' }));
+  // beginOnMount deliberately schedules authorization at 0 ms after persistence.
+  // Advance only that startup task; the 5 s polling interval remains unelapsed.
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(screen.getByText('请扫码并在设备上确认授权。')).toBeInTheDocument();
   expect(
     document.querySelector('.notification-instance-drawer canvas')
@@ -232,7 +233,7 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
       finish = resolve;
     });
   vi.useFakeTimers();
-  render(
+  await renderSettled(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: pending }}
       types={[type]}
@@ -248,10 +249,7 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
     body: { type: 'poll' },
     signal: { aborted: false }
   });
-  fireEvent.click(screen.getByRole('button', { name: '取消授权' }));
-  await act(async () => {
-    await Promise.resolve();
-  });
+  await click(screen.getByRole('button', { name: '取消授权' }));
   expect(pollCommand?.signal?.aborted).toBe(true);
   expect(screen.getByText('未授权', { selector: 'span' })).toBeInTheDocument();
   await act(async () => {
@@ -263,7 +261,7 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
 test('unmount stops polling and aborts the request without cancelling backend authorization', async () => {
   poll = () => new Promise(() => {});
   vi.useFakeTimers();
-  const { unmount } = render(
+  const { unmount } = await renderSettled(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: pending }}
       types={[type]}
@@ -289,7 +287,7 @@ test('unmount stops polling and aborts the request without cancelling backend au
 });
 
 test('invalid authorization offers the declared reauthorization action independently of disabled status', async () => {
-  render(
+  await renderSettled(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: { status: 'invalid' } }}
       types={[type]}
@@ -300,14 +298,14 @@ test('invalid authorization offers the declared reauthorization action independe
   expect(
     screen.getByText('授权已失效', { selector: 'span' })
   ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '重新授权：扫码授权' }));
+  await click(screen.getByRole('button', { name: '重新授权：扫码授权' }));
   await screen.findByText('请扫码并在设备上确认授权。');
   expect(commands[0]?.body).toEqual({ type: 'begin', action: 'scan' });
   expect(commands[0]?.path).toContain('instance-1/authorization');
 });
 
 test('legacy null authorization preserves schema editing and normal save-and-close', async () => {
-  render(
+  await renderSettled(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: null }}
       types={[{ ...type, authorization: undefined }]}
@@ -319,10 +317,10 @@ test('legacy null authorization preserves schema editing and normal save-and-clo
   expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
     type.display_name
   );
-  fireEvent.change(screen.getByRole('textbox', { name: '服务地址' }), {
+  await change(screen.getByRole('textbox', { name: '服务地址' }), {
     target: { value: 'https://example.com/edited' }
   });
-  fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+  await click(screen.getByRole('button', { name: '保存修改' }));
   await waitFor(() => expect(saved).toHaveBeenCalledWith());
   expect(commands[0]?.body).toEqual({
     display_name: '我的渠道',
@@ -334,7 +332,7 @@ test('legacy null authorization preserves schema editing and normal save-and-clo
 });
 
 test('locale refresh preserves the edited notification config and display name through save', async () => {
-  render(
+  await renderSettled(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: null }}
       types={[{ ...type, authorization: undefined }]}
@@ -342,16 +340,16 @@ test('locale refresh preserves the edited notification config and display name t
       onSaved={saved}
     />
   );
-  fireEvent.change(screen.getByRole('textbox', { name: '服务地址' }), {
+  await change(screen.getByRole('textbox', { name: '服务地址' }), {
     target: { value: 'https://example.com/locale-draft' }
   });
-  fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+  await change(screen.getByRole('textbox', { name: '渠道名称' }), {
     target: { value: 'Draft across locales' }
   });
   await act(async () => { await appI18n.changeLanguage('en_US'); });
   expect(screen.getByRole('textbox', { name: 'Channel name' })).toHaveValue('Draft across locales');
   expect(screen.getByDisplayValue('https://example.com/locale-draft')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await click(screen.getByRole('button', { name: 'Save changes' }));
   await waitFor(() => expect(saved).toHaveBeenCalledWith());
   expect(commands[0]?.body).toEqual({
     display_name: 'Draft across locales',
@@ -366,7 +364,7 @@ test('authorization errors remain safe and do not claim a backend status change'
       throw new Error('SECRET_TOKEN raw provider exception');
     })
   );
-  render(
+  await renderSettled(
     <NotificationInstanceDrawer
       instance={instance}
       types={[type]}
@@ -374,7 +372,7 @@ test('authorization errors remain safe and do not claim a backend status change'
       onSaved={saved}
     />
   );
-  fireEvent.click(screen.getByRole('button', { name: '扫码授权' }));
+  await click(screen.getByRole('button', { name: '扫码授权' }));
   await screen.findByText('授权操作未完成，请重试。');
   expect(screen.getByText('未授权', { selector: 'span' })).toBeInTheDocument();
   expect(
@@ -422,7 +420,7 @@ const subscriptionCases: Array<{
 test.each(subscriptionCases)(
   'shows independent backend subscription state $label and its supplied times',
   async ({ delivery_window, label, english }) => {
-    render(
+    await renderSettled(
       <NotificationAuthorization
         instance_id={instance.id}
         descriptor={type.authorization!}
@@ -465,7 +463,7 @@ test.each(subscriptionCases)(
 
 test('manual Maintain refresh updates the window without reauthorizing, enabling or polling', async () => {
   vi.useFakeTimers();
-  render(
+  await renderSettled(
     <NotificationAuthorization
       instance_id={instance.id}
       descriptor={type.authorization!}
@@ -477,10 +475,7 @@ test('manual Maintain refresh updates the window without reauthorizing, enabling
     />
   );
   expect(screen.getByText('订阅已过期')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /刷新状态/ }));
-  await act(async () => {
-    await Promise.resolve();
-  });
+  await click(screen.getByRole('button', { name: /刷新状态/ }));
   expect(screen.getByText('订阅有效/可发送')).toBeInTheDocument();
   expect(
     screen.getByText(
@@ -501,8 +496,8 @@ test('manual Maintain refresh updates the window without reauthorizing, enabling
 
 test.each(['unauthorized', 'pending', 'invalid'] as const)(
   'does not offer subscription refresh for %s authorization',
-  (status) => {
-    render(
+  async (status) => {
+    await renderSettled(
       <NotificationAuthorization
         instance_id={instance.id}
         descriptor={type.authorization!}
@@ -516,8 +511,8 @@ test.each(['unauthorized', 'pending', 'invalid'] as const)(
   }
 );
 
-test('authorization without a delivery window keeps generic messaging without inventing a subscription', () => {
-  render(
+test('authorization without a delivery window keeps generic messaging without inventing a subscription', async () => {
+  await renderSettled(
     <NotificationAuthorization
       instance_id={instance.id}
       descriptor={type.authorization!}
@@ -537,7 +532,7 @@ test('failed Maintain preserves authorization and subscription evidence without 
       throw new Error('SECRET_TOKEN');
     })
   );
-  render(
+  await renderSettled(
     <NotificationAuthorization
       instance_id={instance.id}
       descriptor={type.authorization!}
@@ -548,10 +543,33 @@ test('failed Maintain preserves authorization and subscription evidence without 
       onChanged={saved}
     />
   );
-  fireEvent.click(screen.getByRole('button', { name: /刷新状态/ }));
+  await click(screen.getByRole('button', { name: /刷新状态/ }));
   await screen.findByText('授权操作未完成，请重试。');
   expect(screen.getByText('已授权')).toBeInTheDocument();
   expect(screen.getByText('订阅状态待确认')).toBeInTheDocument();
   expect(screen.queryByText('SECRET_TOKEN')).not.toBeInTheDocument();
   expect(saved).not.toHaveBeenCalled();
 });
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+  });
+  return view;
+}
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
+  await act(async () => {
+    fireEvent.mouseDown(...args);
+  });
+}

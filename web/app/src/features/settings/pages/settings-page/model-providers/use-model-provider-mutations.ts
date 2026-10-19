@@ -31,8 +31,8 @@ import {
   type SettingsPluginCompatibilityOverride,
   upgradeSettingsPluginFamilyLatest,
   uploadSettingsPluginPackage
-} from '../../../api/plugins';
-import { formatPluginAvailabilityStatus } from '../../../components/model-providers/plugin-installation-status';
+} from '../../../api/extensions/plugins';
+import { formatPluginAvailabilityStatus } from '../../../components/model-providers/installation/plugin-installation-status';
 import {
   formatTrustLabel,
   isTaskSucceeded,

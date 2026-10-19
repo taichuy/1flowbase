@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/_tests/model-usage-report/retained-report.test.tsx",
+      "rule": "react-doctor/no-eval",
+      "sourceSha256": "9da722df96c5a672254eaa5f1efb2759b3e6f220eda705d57c0b0dbefd428bdc",
+      "reason": "retained-report.test 从仓库受控 authored source 提取 useReport 再 new Function 注入 React，测试真实交付 hook，无用户字符串或生产 eval。 仅 fixture 执行仓库受控源，非用户字符串，无生产 eval 路径；测试目的为执行真实交付 hook。",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/model-usage-report/retained-report.test.tsx", "sha256": "9da722df96c5a672254eaa5f1efb2759b3e6f220eda705d57c0b0dbefd428bdc"}]
+    }
+  ]
+}

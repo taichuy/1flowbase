@@ -148,7 +148,7 @@ export function McpDirectoryTree({
         );
       }}
       icon={(nodeProps) => {
-        const key = 'key' in nodeProps ? nodeProps.key : undefined;
+        const key = nodeProps.eventKey;
         if (!key) return null;
         const [type] = String(key).split(':');
         if (type === 'instance') {

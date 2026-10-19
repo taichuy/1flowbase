@@ -2,7 +2,7 @@ import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
 import { App, Button, Tooltip, Typography } from 'antd';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { MouseEvent as ReactMouseEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 import {
   fetchRuntimeDebugArtifact,
@@ -26,9 +26,13 @@ interface AgentFlowVariableCachePanelProps {
   onClose: () => void;
   onReset: () => void;
   onResizeStart: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onResizeKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
+  minHeight: number;
+  maxHeight: number;
   onSelectedChange: (value: SelectedVariableInfo | null) => void;
   onSelectedValueChange: (key: string, value: unknown) => void;
   onSidebarResizeStart: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onSidebarResizeKeyDown?: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   rightOffset: number;
   selectedVariable: SelectedVariableInfo | null;
   sidebarMaxWidth: number;
@@ -45,9 +49,13 @@ export function AgentFlowVariableCachePanel({
   onClose,
   onReset,
   onResizeStart,
+  onResizeKeyDown,
+  minHeight,
+  maxHeight,
   onSelectedChange,
   onSelectedValueChange,
   onSidebarResizeStart,
+  onSidebarResizeKeyDown,
   rightOffset,
   selectedVariable,
   sidebarMaxWidth,
@@ -72,6 +80,11 @@ export function AgentFlowVariableCachePanel({
         aria-orientation="horizontal"
         className="agent-flow-editor__variable-cache-resize-handle"
         onMouseDown={onResizeStart}
+        onKeyDown={onResizeKeyDown}
+        tabIndex={0}
+        aria-valuenow={height}
+        aria-valuemin={minHeight}
+        aria-valuemax={maxHeight}
         role="separator"
       />
       <header className="agent-flow-editor__variable-cache-header">
@@ -149,6 +162,7 @@ export function AgentFlowVariableCachePanel({
           sidebarMinWidth={sidebarMinWidth}
           sidebarMaxWidth={sidebarMaxWidth}
           onSidebarResizeStart={onSidebarResizeStart}
+          onSidebarResizeKeyDown={onSidebarResizeKeyDown}
         />
       </div>
     </section>

@@ -102,10 +102,11 @@ export function useNotificationInbox(open: boolean) {
     onSuccess: (requestScope) =>
       client.invalidateQueries({ queryKey: notificationQueryKey(requestScope) })
   });
+  const resetWrite = write.reset;
   useEffect(() => {
     setStored(initialState(scope));
     setConnection({ scope, connected: false });
-    write.reset();
+    resetWrite();
     if (!authenticated) return;
     return subscribeNotificationChanges(
       () =>
@@ -114,9 +115,7 @@ export function useNotificationInbox(open: boolean) {
         }),
       (connected) => setConnection({ scope, connected })
     );
-    // Mutation reset is scoped to the session, not each observer update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, client, scope]);
+  }, [authenticated, client, resetWrite, scope]);
   const paginate = (
     section: 'channels' | 'messages',
     direction: 'next' | 'previous'
@@ -161,7 +160,7 @@ export function useNotificationInbox(open: boolean) {
     connected: connection.scope === scope && connection.connected,
     read_status: state.read_status,
     setReadStatus: (read_status: NotificationReadStatus) => {
-      write.reset();
+      resetWrite();
       update((current) => ({
         ...current,
         read_status,
@@ -170,7 +169,7 @@ export function useNotificationInbox(open: boolean) {
       }));
     },
     select: (selected?: NotificationChannel) => {
-      write.reset();
+      resetWrite();
       update((current) => ({ ...current, selected, messages: firstPage() }));
     },
     markRead: (id: string) =>

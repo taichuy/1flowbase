@@ -31,11 +31,45 @@ pub(crate) struct SharedWorkerCapacity {
     changed: Arc<Notify>,
 }
 
-#[derive(Debug)]
 pub(crate) struct SharedInvocationPermit {
     capacity: SharedWorkerCapacity,
     pid: u32,
     ticket: u64,
+    rss: Arc<dyn Fn(u32) -> Option<u64> + Send + Sync>,
+}
+
+impl std::fmt::Debug for SharedInvocationPermit {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SharedInvocationPermit")
+            .field("pid", &self.pid)
+            .field("ticket", &self.ticket)
+            .finish_non_exhaustive()
+    }
+}
+
+// Retain accounting until sampling finishes. If the runtime discards queued
+// cleanup, or the sampler panics, this owner still retires the reservation.
+struct PendingRelease {
+    capacity: SharedWorkerCapacity,
+    pid: u32,
+    ticket: Option<u64>,
+}
+
+impl PendingRelease {
+    fn complete(mut self, rss: Option<u64>) {
+        if let Some(ticket) = self.ticket.take() {
+            self.capacity.release(self.pid, ticket, rss);
+        }
+    }
+}
+
+impl Drop for PendingRelease {
+    fn drop(&mut self) {
+        if let Some(ticket) = self.ticket.take() {
+            self.capacity.release(self.pid, ticket, None);
+        }
+    }
 }
 
 fn rss_bytes(pid: u32) -> Option<u64> {
@@ -102,28 +136,72 @@ impl SharedWorkerCapacity {
         recheck: std::time::Duration,
     ) -> FrameworkResult<SharedInvocationPermit>
     where
-        A: Fn() -> FrameworkResult<u64>,
-        R: Fn(u32) -> Option<u64>,
+        A: Fn() -> FrameworkResult<u64> + Send + Sync + 'static,
+        R: Fn(u32) -> Option<u64> + Send + Sync + 'static,
     {
+        let available_bytes = Arc::new(available_bytes);
+        let rss = Arc::new(rss);
         let started = std::time::Instant::now();
         loop {
             let changed = self.changed.notified();
             tokio::pin!(changed);
             changed.as_mut().enable();
-            let available = available_bytes()?;
-            let measured_rss = rss(pid)
+            let mut pids = {
+                let workers = self.workers.lock().map_err(|_| {
+                    transport_binding_error("shared worker admission state is unavailable")
+                })?;
+                workers.keys().copied().collect::<Vec<_>>()
+            };
+            pids.push(pid);
+            pids.sort_unstable();
+            pids.dedup();
+            let sample_available = available_bytes.clone();
+            let sample_rss = rss.clone();
+            // Both OS memory queries and per-process IO run outside the executor
+            // and accounting lock. Cancellation during sampling cannot admit a call.
+            let (available, measurements) = tokio::time::timeout_at(
+                deadline,
+                tokio::task::spawn_blocking(move || -> FrameworkResult<_> {
+                    let available = sample_available()?;
+                    let measurements = pids
+                        .into_iter()
+                        .map(|pid| (pid, sample_rss(pid)))
+                        .collect::<HashMap<_, _>>();
+                    Ok((available, measurements))
+                }),
+            )
+            .await
+            .map_err(|_| admission_timeout())?
+            .map_err(|_| transport_binding_error("shared worker memory sampling failed"))??;
+            if tokio::time::Instant::now() >= deadline {
+                return Err(admission_timeout());
+            }
+            let measured_rss = measurements
+                .get(&pid)
+                .copied()
+                .flatten()
                 .ok_or_else(|| transport_binding_error("shared worker RSS is unavailable"))?;
             {
                 let mut workers = self.workers.lock().map_err(|_| {
                     transport_binding_error("shared worker admission state is unavailable")
                 })?;
-                workers.retain(|pid, worker| !worker.active.is_empty() || rss(*pid).is_some());
+                // A worker added while sampling has no measurement yet: keep its
+                // identity and charge all reservations without any sampled credit.
+                workers.retain(|pid, worker| {
+                    !worker.active.is_empty() || !matches!(measurements.get(pid), Some(None))
+                });
                 let mut outstanding = 0_u64;
                 for (observed_pid, worker) in workers.iter() {
                     // Keep reservations when measurement disappears until all
                     // owners have finished cancellation/exit cleanup.
-                    outstanding = outstanding
-                        .saturating_add(unobserved(worker, rss(*observed_pid).unwrap_or(0)));
+                    outstanding = outstanding.saturating_add(unobserved(
+                        worker,
+                        measurements
+                            .get(observed_pid)
+                            .copied()
+                            .flatten()
+                            .unwrap_or(0),
+                    ));
                 }
                 let worker = workers.entry(pid).or_default();
                 let reservation = (request_bytes as u64)
@@ -164,6 +242,7 @@ impl SharedWorkerCapacity {
                         capacity: self.clone(),
                         pid,
                         ticket,
+                        rss: rss.clone(),
                     });
                 }
             }
@@ -179,13 +258,13 @@ impl SharedWorkerCapacity {
     }
 }
 
-impl Drop for SharedInvocationPermit {
-    fn drop(&mut self) {
-        if let Ok(mut workers) = self.capacity.workers.lock() {
-            if let Some(worker) = workers.get_mut(&self.pid) {
+impl SharedWorkerCapacity {
+    fn release(&self, pid: u32, ticket: u64, rss: Option<u64>) {
+        if let Ok(mut workers) = self.workers.lock() {
+            if let Some(worker) = workers.get_mut(&pid) {
                 let active = worker.active.len().max(1) as u64;
-                if let Some(reservation) = worker.active.remove(&self.ticket) {
-                    if let Some(rss) = rss_bytes(self.pid) {
+                if let Some(reservation) = worker.active.remove(&ticket) {
+                    if let Some(rss) = rss {
                         worker.observed_increment = worker
                             .observed_increment
                             .max(rss.saturating_sub(reservation.rss_at_admission) / active);
@@ -193,7 +272,28 @@ impl Drop for SharedInvocationPermit {
                 }
             }
         }
-        self.capacity.changed.notify_waiters();
+        self.changed.notify_waiters();
+    }
+}
+
+impl Drop for SharedInvocationPermit {
+    fn drop(&mut self) {
+        let pending = PendingRelease {
+            capacity: self.capacity.clone(),
+            pid: self.pid,
+            ticket: Some(self.ticket),
+        };
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let rss = self.rss.clone();
+            // No IO in Drop or under the accounting mutex. The detached owner
+            // keeps the reservation charged until its final RSS observation.
+            let _cleanup = runtime.spawn_blocking(move || {
+                let measured = rss(pending.pid);
+                pending.complete(measured);
+            });
+        }
+        // Without a runtime, PendingRelease's Drop does bookkeeping only, with
+        // no sample (the same accounting fallback as an unavailable process).
     }
 }
 
@@ -279,7 +379,7 @@ mod tests {
                         TEST_PID,
                         request_bytes,
                         tokio::time::Instant::now() + std::time::Duration::from_secs(1),
-                        || Ok(available),
+                        move || Ok(available),
                         |_| Some(1024),
                         std::time::Duration::from_secs(1),
                     )
@@ -301,7 +401,7 @@ mod tests {
                 TEST_PID,
                 request_bytes,
                 tokio::time::Instant::now() + std::time::Duration::from_secs(1),
-                || Ok(available),
+                move || Ok(available),
                 |_| Some(1024),
                 std::time::Duration::from_secs(1),
             )
@@ -368,3 +468,7 @@ mod tests {
             .is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "shared_capacity/_tests/sampling.rs"]
+mod sampling_tests;

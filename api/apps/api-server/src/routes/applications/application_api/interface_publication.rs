@@ -483,7 +483,7 @@ impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOut
                             .map_err(map_publication_not_found)?;
                         ApplicationPublicationOutput::Publication(to_publication_response(
                             publication,
-                        ))
+                        )?)
                     }
                     ApplicationPublicationInput::Publish {
                         application_id,
@@ -500,7 +500,7 @@ impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOut
                             .await?;
                         ApplicationPublicationOutput::Publication(to_publication_response(
                             publication,
-                        ))
+                        )?)
                     }
                     ApplicationPublicationInput::Unpublish { application_id } => {
                         ApplicationPublicationService::new(actor_store)

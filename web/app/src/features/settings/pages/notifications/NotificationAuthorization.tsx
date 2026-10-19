@@ -147,9 +147,7 @@ export function NotificationAuthorization({
                 {t('delivery_window_refresh')}
               </Button>
             )}
-            {descriptor.actions
-              .filter((action) => action.kind === 'qr_code')
-              .map((action) => (
+            {descriptor.actions.flatMap((action) => action.kind === 'qr_code' ? [
                 <Button
                   key={action.code}
                   type={authorized ? 'text' : 'default'}
@@ -170,7 +168,7 @@ export function NotificationAuthorization({
                     ? t('reauthorize')
                     : action.label}
                 </Button>
-              ))}
+              ] : [])}
           </div>
         )}
       </div>

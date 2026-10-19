@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/McpToolsTab/use-mcp-tools-catalog.ts",
+      "rule": "react-doctor/no-derived-state",
+      "sourceSha256": "dc08e1ebc7eb181ca0a2a5b33fb5e83f1278927d7eb779856eb5e3e3297bb7ef",
+      "reason": "web/app/src/features/settings/components/mcp-management/McpToolsTab/use-mcp-tools-catalog.ts:128（react-doctor/no-derived-state）：effect 将越界 routeState.page 修正为后端 total 计算后的 pageCount，并 replace URL history；这同时同步浏览器路由，不是仅在 local state 存一个可派生数字。guard page<=pageCount 防循环，服务端数据量变化没有单个用户事件可替代。",
+      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/McpToolsTab.tsx", "sha256": "d4bf2a4afbe557c754c69027bf45fa9382f4b784a319ee900c5439b957539d6d"}, {"file": "web/app/src/features/settings/components/mcp-management/McpToolsTab/_tests/return-defaults-ui.test.tsx", "sha256": "e21a96642291aacfbf8f2a23dd292940f533d035b0e4206a5685fdc25e56622f"}, {"file": "web/app/src/features/settings/components/mcp-management/McpToolsTab/use-mcp-tools-catalog.ts", "sha256": "dc08e1ebc7eb181ca0a2a5b33fb5e83f1278927d7eb779856eb5e3e3297bb7ef"}]
+    }
+  ]
+}

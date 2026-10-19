@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -128,16 +129,16 @@ test('switches plugin metadata while an edit drawer is open and preserves user n
     authorization: { status: 'authorized' }
   };
   renderUI(<NotificationsPage />);
-  fireEvent.click(
+  await click(
     await screen.findByRole('button', { name: 'User supplied 渠道' })
   );
   expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
     '插件通知'
   );
-  fireEvent.change(screen.getByRole('textbox', { name: '插件服务地址' }), {
+  await change(screen.getByRole('textbox', { name: '插件服务地址' }), {
     target: { value: 'https://draft.example' }
   });
-  fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+  await change(screen.getByRole('textbox', { name: '渠道名称' }), {
     target: { value: 'User supplied 新名称' }
   });
   const reads = calls.filter((call) => call.url.endsWith('/types')).length;
@@ -160,13 +161,15 @@ test('switches plugin metadata while an edit drawer is open and preserves user n
     reads
   );
   expect(plugin.display_name).toBe('Raw plugin name');
-  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await click(screen.getByRole('button', { name: 'Save changes' }));
   await waitFor(() =>
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
       display_name: 'User supplied 新名称',
       config_json: { endpoint: 'https://draft.example' }
     })
   );
+  await screen.findByRole('button', { name: 'User supplied 新名称' });
+  await waitForRequests();
 });
 let instance: NotificationInstance;
 let catalog: NotificationType[];
@@ -184,6 +187,29 @@ let calls: Array<{
   body?: Record<string, unknown>;
 }>;
 let client: QueryClient;
+// rc-field-form validates in microtasks after DOM events. Await that work before
+// the next interaction; HTTP completion is asserted separately by each scenario.
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
+  await act(async () => {
+    fireEvent.mouseDown(...args);
+  });
+}
+async function waitForRequests() {
+  await waitFor(() => {
+    expect(client.isFetching()).toBe(0);
+    expect(client.isMutating()).toBe(0);
+  });
+}
 function renderUI(ui: ReactNode) {
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
@@ -359,10 +385,23 @@ beforeEach(() => {
   );
 });
 afterEach(async () => {
-  await appI18n.changeLanguage('zh_Hans');
-  client?.clear();
-  resetAuthStore();
-  vi.unstubAllGlobals();
+  try {
+    // A visible retained snapshot can precede mutation/refetch completion.
+    await waitForRequests();
+  } finally {
+    // Unsubscribe mounted pages and portals before changing global language/auth.
+    // This must not depend on Testing Library's auto-cleanup hook ordering.
+    cleanup();
+    await act(async () => {
+      await appI18n.changeLanguage('zh_Hans');
+      client?.clear();
+      resetAuthStore();
+    });
+    vi.unstubAllGlobals();
+    for (const source of SignalStream.instances) {
+      expect(source.close).toHaveBeenCalledOnce();
+    }
+  }
 });
 
 describe('notification management and inbox AC-001/003/004/006', () => {
@@ -380,21 +419,24 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
     );
-    fireEvent.click(await screen.findByRole('button', { name: /新增/ }));
+    await click(await screen.findByRole('button', { name: /新增/ }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '提交' })).toBeDisabled();
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+    await mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
     expect(screen.queryByText('Unavailable external')).not.toBeInTheDocument();
-    fireEvent.click(
+    await click(
       screen.getByText('系统通知', {
         selector: '.ant-select-item-option-content'
       })
     );
-    fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+    await change(screen.getByRole('textbox', { name: '渠道名称' }), {
       target: { value: 'New notifications' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    await click(screen.getByRole('button', { name: '提交' }));
     await screen.findByRole('button', { name: 'New notifications' });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
     expect(calls.find((call) => call.method === 'POST')?.body).toEqual({
       type_code: 'system',
       installation_id: null,
@@ -423,18 +465,21 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
     );
-    fireEvent.click(await screen.findByRole('button', { name: /新增/ }));
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
-    fireEvent.click(
+    await click(await screen.findByRole('button', { name: /新增/ }));
+    await mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+    await click(
       screen.getByText('Mail B', {
         selector: '.ant-select-item-option-content'
       })
     );
-    fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+    await change(screen.getByRole('textbox', { name: '渠道名称' }), {
       target: { value: 'Team mail' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    await click(screen.getByRole('button', { name: '提交' }));
     await screen.findByRole('button', { name: 'Team mail' });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
     expect(calls.find((call) => call.method === 'POST')?.body).toMatchObject({
       type_code: 'acme/mail',
       installation_id: 'installation-b'
@@ -463,37 +508,40 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
     );
-    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
-    fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+    await click(screen.getByRole('button', { name: /新增/ }));
+    await change(screen.getByRole('textbox', { name: '渠道名称' }), {
       target: { value: 'Shared channel name' }
     });
-    const choose = (label: string) => {
-      fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
-      fireEvent.click(
+    const choose = async (label: string) => {
+      await mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+      await click(
         screen.getByText(label, { selector: '.ant-select-item-option-content' })
       );
     };
-    choose('First type');
-    fireEvent.change(screen.getByLabelText('访问令牌'), {
+    await choose('First type');
+    await change(screen.getByLabelText('访问令牌'), {
       target: { value: 'must-not-leak' }
     });
-    choose('Second type');
+    await choose('Second type');
     expect(screen.getByRole('textbox', { name: '渠道名称' })).toHaveValue(
       'Shared channel name'
     );
     expect(screen.queryByLabelText('访问令牌')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Second token')).toHaveValue('');
-    fireEvent.change(screen.getByLabelText('Second token'), {
+    await change(screen.getByLabelText('Second token'), {
       target: { value: 'discard-this-too' }
     });
-    choose('First type');
+    await choose('First type');
     expect(screen.getByLabelText('访问令牌')).toHaveValue('');
-    choose('Second type');
-    fireEvent.change(screen.getByLabelText('Second token'), {
+    await choose('Second type');
+    await change(screen.getByLabelText('Second token'), {
       target: { value: 'second-only' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    await click(screen.getByRole('button', { name: '提交' }));
     await screen.findByRole('button', { name: 'Shared channel name' });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
     expect(calls.find((call) => call.method === 'POST')?.body).toEqual({
       type_code: 'vendor/other',
       installation_id: 'other-installation',
@@ -504,12 +552,12 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   test('applies canonical query conditions and renders backend results, then clears the conditions', async () => {
     renderUI(<NotificationsPage />);
     await screen.findByRole('button', { name: '系统站内通知' });
-    fireEvent.click(screen.getByRole('button', { name: /筛选/ }));
-    fireEvent.change(await screen.findByRole('textbox', { name: '渠道名称' }), {
+    await click(screen.getByRole('button', { name: /筛选/ }));
+    await change(await screen.findByRole('textbox', { name: '渠道名称' }), {
       target: { value: 'does not exist' }
     });
     filteredInstances = [];
-    fireEvent.click(screen.getByRole('button', { name: /^应\s*用$/u }));
+    await click(screen.getByRole('button', { name: /^应\s*用$/u }));
     await screen.findByText('暂无通知渠道');
     const filtered = calls.find((call) => call.url.includes('display_name='));
     expect(
@@ -517,8 +565,8 @@ describe('notification management and inbox AC-001/003/004/006', () => {
         'display_name'
       )
     ).toBe('does not exist');
-    fireEvent.click(screen.getByRole('button', { name: /筛选/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /^清\s*除$/u }));
+    await click(screen.getByRole('button', { name: /筛选/ }));
+    await click(await screen.findByRole('button', { name: /^清\s*除$/u }));
     await screen.findByRole('button', { name: '系统站内通知' });
     expect(screen.getByRole('button', { name: /筛选/ })).toHaveTextContent(
       '筛选'
@@ -529,17 +577,20 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   });
   test('edits the real settings drawer, preserves omitted secrets, and reloads saved names', async () => {
     renderUI(<NotificationsPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /^编\s*辑$/u }));
+    await click(await screen.findByRole('button', { name: /^编\s*辑$/u }));
     const name = await screen.findByRole('textbox', { name: '渠道名称' });
-    fireEvent.change(name, { target: { value: '团队通知' } });
+    await change(name, { target: { value: '团队通知' } });
     const token = document.querySelector('input[type="password"]');
     expect(token).toBeInstanceOf(HTMLInputElement);
     expect(token).toHaveValue('');
-    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+    await click(screen.getByRole('button', { name: '保存修改' }));
     await screen.findByRole('button', { name: '团队通知' });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
     const patch = calls.find((call) => call.method === 'PATCH');
     expect(patch?.body).toEqual({ display_name: '团队通知', config_json: {} });
-    fireEvent.click(screen.getByRole('button', { name: /^编\s*辑$/u }));
+    await click(screen.getByRole('button', { name: /^编\s*辑$/u }));
     expect(
       await screen.findByRole('textbox', { name: '渠道名称' })
     ).toHaveValue('团队通知');
@@ -554,7 +605,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     expect(
       screen.queryByRole('button', { name: /^停\s*用$/u })
     ).not.toBeInTheDocument();
-    fireEvent.click(toggle);
+    await click(toggle);
     await waitFor(() => expect(toggle).not.toBeChecked());
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
       status: 'disabled'
@@ -563,7 +614,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
       screen.getByRole('button', { name: '系统站内通知' })
     ).toBeInTheDocument();
     await waitFor(() => expect(toggle).toBeEnabled());
-    fireEvent.click(toggle);
+    await click(toggle);
     await waitFor(() => expect(toggle).toBeChecked());
     expect(
       calls.filter((call) => call.method === 'PATCH').at(-1)?.body
@@ -579,11 +630,14 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     const toggle = await screen.findByRole('switch', {
       name: '系统站内通知: 状态'
     });
-    fireEvent.click(toggle);
+    await click(toggle);
     await waitFor(() => expect(toggle).toBeDisabled());
     expect(toggle).toBeChecked();
     expect(instance.status).toBe('enabled');
-    finishRequest();
+    await act(async () => {
+      finishRequest();
+      await statusRequest;
+    });
     await screen.findByText('通知实例操作失败，请刷新后重试。');
     expect(toggle).toBeChecked();
     expect(toggle).toBeEnabled();
@@ -591,22 +645,23 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   });
   test('marks messages read through HTTP and refetches after both a signal and reconnect', async () => {
     const view = renderUI(<NotificationBell />);
-    fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
-    fireEvent.click(
+    await click(screen.getByRole('menuitem', { name: '通知消息' }));
+    await click(
       await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
     );
     await screen.findByText('发布完成');
-    fireEvent.click(screen.getByRole('button', { name: '标为已读' }));
+    await click(screen.getByRole('button', { name: '标为已读' }));
     await screen.findByText('已读', {
       exact: true,
       selector: '.ant-badge-status-text'
     });
     const source = SignalStream.instances[0];
     expect(source.options).toEqual({ withCredentials: true });
+    await waitForRequests();
     const before = calls.filter((call) =>
       call.url.includes('/messages?')
     ).length;
-    act(() => {
+    await act(async () => {
       source.refresh?.();
     });
     await waitFor(() =>
@@ -614,10 +669,11 @@ describe('notification management and inbox AC-001/003/004/006', () => {
         calls.filter((call) => call.url.includes('/messages?')).length
       ).toBeGreaterThan(before)
     );
+    await waitForRequests();
     const after = calls.filter((call) =>
       call.url.includes('/messages?')
     ).length;
-    act(() => {
+    await act(async () => {
       source.onerror?.();
       source.onopen?.();
     });
@@ -632,17 +688,18 @@ describe('notification management and inbox AC-001/003/004/006', () => {
         selector: '.ant-badge-status-text'
       })
     ).toBeInTheDocument();
+    await waitForRequests();
     view.unmount();
     expect(source.close).toHaveBeenCalledOnce();
   });
   test('surfaces backend refusal without pretending the recipient read state changed', async () => {
     rejectRead = true;
     renderUI(<NotificationBell />);
-    fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
-    fireEvent.click(
+    await click(screen.getByRole('menuitem', { name: '通知消息' }));
+    await click(
       await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
     );
-    fireEvent.click(await screen.findByRole('button', { name: '标为已读' }));
+    await click(await screen.findByRole('button', { name: '标为已读' }));
     await screen.findByText('消息操作失败，请刷新后重试。');
     expect(
       screen.getByText('未读', {
@@ -657,22 +714,22 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   });
   test('marks all read and closes the previous actor connection when session scope changes', async () => {
     renderUI(<NotificationBell />);
-    fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
-    fireEvent.click(
+    await click(screen.getByRole('menuitem', { name: '通知消息' }));
+    await click(
       await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
     );
     await screen.findByText('发布完成');
-    fireEvent.click(screen.getByRole('button', { name: '全部已读' }));
+    await click(screen.getByRole('button', { name: '全部已读' }));
     await screen.findByText('已读', {
       exact: true,
       selector: '.ant-badge-status-text'
     });
     const source = SignalStream.instances[0];
-    act(() =>
+    await act(async () => {
       useAuthStore.setState({
         actor: { ...useAuthStore.getState().actor!, id: 'user-2' }
-      })
-    );
+      });
+    });
     await waitFor(() => expect(source.close).toHaveBeenCalledOnce());
     expect(SignalStream.instances).toHaveLength(2);
   });
@@ -680,8 +737,8 @@ describe('notification management and inbox AC-001/003/004/006', () => {
 
 test('selects channels without writes, confines all-read to the selected channel and permits marking unread', async () => {
   renderUI(<NotificationBell />);
-  fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
-  fireEvent.click(
+  await click(screen.getByRole('menuitem', { name: '通知消息' }));
+  await click(
     await screen.findByRole('button', { name: /另一渠道.*另一消息摘要/ })
   );
   await screen.findByText('另一渠道消息');
@@ -689,22 +746,24 @@ test('selects channels without writes, confines all-read to the selected channel
     screen.getByRole('button', { name: '另一渠道消息' })
   ).toBeInTheDocument();
   expect(calls.filter((call) => call.method === 'POST')).toHaveLength(0);
-  fireEvent.click(screen.getByRole('button', { name: '全部已读' }));
+  await click(screen.getByRole('button', { name: '全部已读' }));
   await waitFor(() =>
     expect(calls.find((call) => call.method === 'POST')?.url).toContain(
       '/channels/instance-2/read-all'
     )
   );
+  await waitForRequests();
+  expect(secondReadAt).not.toBeNull();
   expect(read_at).toBeNull();
   expect(calls.some((call) => call.url.endsWith('/messages/read-all'))).toBe(
     false
   );
-  fireEvent.click(
+  await click(
     screen.getByRole('button', { name: /系统站内通知.*最新消息摘要/ })
   );
-  fireEvent.click(await screen.findByRole('button', { name: '发布完成' }));
+  await click(await screen.findByRole('button', { name: '发布完成' }));
   await screen.findByRole('button', { name: '标为未读' });
-  fireEvent.click(screen.getByRole('button', { name: '标为未读' }));
+  await click(screen.getByRole('button', { name: '标为未读' }));
   await screen.findByRole('button', { name: '标为已读' });
   expect(read_at).toBeNull();
   expect(
@@ -714,8 +773,8 @@ test('selects channels without writes, confines all-read to the selected channel
 test('filters both backend lists and resets both cursor pages', async () => {
   serverPagination = true;
   renderUI(<NotificationBell />);
-  fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
-  fireEvent.click(
+  await click(screen.getByRole('menuitem', { name: '通知消息' }));
+  await click(
     await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
   );
   await screen.findByRole('button', { name: '发布完成' });
@@ -723,7 +782,7 @@ test('filters both backend lists and resets both cursor pages', async () => {
   await waitFor(() =>
     expect(screen.getAllByRole('button', { name: '下一页' })[1]).toBeEnabled()
   );
-  fireEvent.click(screen.getAllByRole('button', { name: '下一页' })[1]);
+  await click(screen.getAllByRole('button', { name: '下一页' })[1]);
   await waitFor(() => {
     const request = calls.filter((call) => call.url.includes('/messages?')).at(-1)!;
     expect(new URL(request.url, 'http://localhost').searchParams.get('cursor')).toBe('message-next');
@@ -732,9 +791,9 @@ test('filters both backend lists and resets both cursor pages', async () => {
   await waitFor(() =>
     expect(screen.getAllByRole('button', { name: '下一页' })[0]).toBeEnabled()
   );
-  fireEvent.click(screen.getAllByRole('button', { name: '下一页' })[0]);
+  await click(screen.getAllByRole('button', { name: '下一页' })[0]);
   await screen.findByRole('button', { name: /另一渠道.*另一消息摘要/ });
-  fireEvent.click(screen.getByRole('tab', { name: '未读' }));
+  await click(screen.getByRole('tab', { name: '未读' }));
   await waitFor(() => {
     for (const path of ['/channels?', '/messages?']) {
       const call = calls.filter((call) => call.url.includes(path)).at(-1)!;
@@ -749,20 +808,21 @@ test('filters both backend lists and resets both cursor pages', async () => {
 });
 test('clears the previous workspace selection before requesting scoped snapshots', async () => {
   renderUI(<NotificationBell />);
-  fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
-  fireEvent.click(
+  await click(screen.getByRole('menuitem', { name: '通知消息' }));
+  await click(
     await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
   );
   await screen.findByRole('button', { name: '发布完成' });
+  await waitForRequests();
   const count = calls.length;
-  act(() =>
+  await act(async () => {
     useAuthStore.setState({
       actor: {
         ...useAuthStore.getState().actor!,
         current_workspace_id: 'workspace-2'
       }
-    })
-  );
+    });
+  });
   await screen.findByText('请选择通知渠道');
   await waitFor(() => expect(SignalStream.instances).toHaveLength(2));
   expect(
@@ -776,26 +836,26 @@ test('clears the previous workspace selection before requesting scoped snapshots
 test('preserves the HTTP snapshot after a failed page fetch and does not falsify failed channel or unread writes', async () => {
   serverPagination = true;
   renderUI(<NotificationBell />);
-  fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
-  fireEvent.click(
+  await click(screen.getByRole('menuitem', { name: '通知消息' }));
+  await click(
     await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
   );
   await screen.findByRole('button', { name: '发布完成' });
   rejectRead = true;
-  fireEvent.click(screen.getByRole('button', { name: '全部已读' }));
+  await click(screen.getByRole('button', { name: '全部已读' }));
   await screen.findByText('消息操作失败，请刷新后重试。');
   expect(read_at).toBeNull();
   expect(screen.getByRole('button', { name: '发布完成' })).toBeInTheDocument();
   rejectRead = false;
-  fireEvent.click(screen.getByRole('button', { name: '发布完成' }));
+  await click(screen.getByRole('button', { name: '发布完成' }));
   await screen.findByRole('button', { name: '标为未读' });
   rejectRead = true;
-  fireEvent.click(screen.getByRole('button', { name: '标为未读' }));
+  await click(screen.getByRole('button', { name: '标为未读' }));
   await screen.findByText('消息操作失败，请刷新后重试。');
   expect(read_at).not.toBeNull();
   expect(screen.getByRole('button', { name: '标为未读' })).toBeInTheDocument();
   rejectSnapshots = true;
-  fireEvent.click(screen.getAllByRole('button', { name: '下一页' })[1]);
+  await click(screen.getAllByRole('button', { name: '下一页' })[1]);
   await waitFor(() =>
     expect(calls.some((call) => call.url.includes('cursor=message-next'))).toBe(
       true

@@ -44,7 +44,7 @@ const membersApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../api/billing', () => billingApi);
-vi.mock('../api/members', () => membersApi);
+vi.mock('../api/identity-access/members', () => membersApi);
 
 import { AppProviders } from '../../../app/AppProviders';
 import { loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';

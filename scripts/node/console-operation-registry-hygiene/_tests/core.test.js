@@ -174,6 +174,61 @@ test('healthy compiled fixture settles route, locale, migration, and diff checks
   assert.ok(report.checks.diff.compared_operation_count > 0);
 });
 
+test('optional role-permission split sources preserve legacy-map diagnostics when present', (t) => {
+  const repoRoot = createFixtureRepo();
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  writeText(
+    repoRoot,
+    'web/app/src/features/settings/components/role-permissions/console-policy-draft.ts',
+    'const RESOURCE_MAP = {};\n'
+  );
+  const inventory = collectConsoleOperationRegistryInventory({
+    repoRoot,
+    compiledInventoryPath: 'tmp/current.json',
+    baselineInventoryPath: 'tmp/baseline.json',
+    localeDir: 'web/locales',
+  });
+  const report = evaluateConsoleOperationRegistryHygiene({
+    repoRoot,
+    inventory,
+    compiledChecks: passingCompiledChecks(),
+  });
+
+  assert.equal(report.summary.errors, 0);
+  assert.ok(report.findings.some((finding) => (
+    finding.rule === 'frontend-role-permission-legacy-map'
+      && finding.subject === 'RESOURCE_MAP'
+  )));
+});
+
+test('missing compiled operation owner and unregistered route owner remain errors without optional split sources', (t) => {
+  const repoRoot = createFixtureRepo();
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const current = readFixture();
+  delete current.operations[0].owner;
+  current.route_assembly[0].ownership = {
+    kind: 'console_operation',
+    operation_id: 'unregistered.owner',
+  };
+  writeJson(repoRoot, 'tmp/current.json', current);
+  const inventory = collectConsoleOperationRegistryInventory({
+    repoRoot,
+    compiledInventoryPath: 'tmp/current.json',
+    baselineInventoryPath: 'tmp/baseline.json',
+    localeDir: 'web/locales',
+  });
+  const report = evaluateConsoleOperationRegistryHygiene({
+    repoRoot,
+    inventory,
+    compiledChecks: passingCompiledChecks(),
+  });
+
+  for (const rule of ['compiled-operation-contract-incomplete', 'compiled-route-owner-missing']) {
+    assert.ok(report.findings.some((finding) => finding.rule === rule && finding.severity === 'error'), rule);
+  }
+  assert.ok(report.summary.errors > 0);
+});
+
 test('missing compiled snapshot fails closed even when authoritative assembly tests pass', () => {
   const report = evaluateConsoleOperationRegistryHygiene({
     repoRoot: '/repo-root',

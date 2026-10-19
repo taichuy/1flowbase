@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/_tests/RetainedFrontstagePages.test.tsx",
+      "rule": "react-doctor/no-react19-deprecated-apis",
+      "sourceSha256": "2c2becc81568b310efa8c2256f5406eb3f91ea5aba5cfb4f4cedbf66f49595a7",
+      "reason": "RetainedFrontstagePages fixture 用 React19 支持的 useContext 观察 runtime activity/protection provider。 命中 useContext，React19 仍正式支持；use API 不使 useContext 废弃。",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/frontstage-page-content-fixtures.ts", "sha256": "a06c1f27b8ae057e9289b087e9e929eeefb84bf2647010a130d2e479dc5ef1b8"}, {"file": "web/app/src/features/frontstage/lib/page-canvas/runtime-activity.tsx", "sha256": "c6877d2f695dcb4d46a7a4d32aa098f52fc5b3c7eaeab03b5722bd354cd57dba"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/page-props.ts", "sha256": "83cf8cdb47d740d9359c829ecab4f65339cfffc25cad11525fe1741be7a82d41"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/RetainedFrontstagePages.tsx", "sha256": "36b1468d05ba4976668dc398eb4efae3d17c46b8ba6da6adb4758d61f13c043e"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/retention-memory.ts", "sha256": "05d9968d6f00a11b3b5074ed76bd4cb6695589b21f8b1e4d93e4e4313fd61574"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/retention-policy.ts", "sha256": "76bf3695036d5dbbe48f844f1157f8e80fc65ad05af7ab307189d8858cc89d1c"}, {"file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/retention-protection.tsx", "sha256": "3c15fa50b63a3cbc4635df61e57cd51e085390d638bb3f7b7c2188942ddca8ce"}]
+    }
+  ]
+}

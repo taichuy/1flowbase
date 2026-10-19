@@ -166,6 +166,21 @@ describe('BlockSchemaTreePanel', () => {
     expect(onOpenBlock).toHaveBeenCalledWith('child-page');
   });
 
+  test('opens the keyboard-selected node and keeps action clicks from opening it', async () => {
+    const { onOpenBlock } = renderPanel();
+    await screen.findByText('Root page');
+    const tree = screen.getByRole('tree');
+    fireEvent.keyDown(tree, { key: 'Home' });
+    fireEvent.keyDown(tree, { key: ' ' });
+    expect(onOpenBlock).toHaveBeenCalledWith('root-page');
+    onOpenBlock.mockClear();
+    const create = screen.getByRole('button', { name: /新增子区块|Create child/u });
+    fireEvent.keyDown(create, { key: ' ' });
+    expect(onOpenBlock).not.toHaveBeenCalled();
+    fireEvent.click(create);
+    expect(onOpenBlock).not.toHaveBeenCalled();
+  });
+
   test('AC-005 keeps expanded branches when the current block moves to an ancestor and uses compact indentation', async () => {
     api.fetchFrontstageBlockAncestors.mockImplementation(
       async (_workspaceId: string, _pageId: string, blockId: string) =>

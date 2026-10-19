@@ -65,7 +65,7 @@ import {
   countIssuesByNodeId,
   getDocumentWithLatestViewport
 } from '../../agent-flow/components/editor/canvas-frame/document';
-import { buildNodePickerOptions } from '../../flow-editor';
+import { buildNodePickerOptions } from '../../flow-editor/authoring/plugin-node-picker';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 import { validateWorkflowDocument } from '../lib/validate-document';
 import { WorkflowOverlay } from './WorkflowOverlay';
@@ -109,7 +109,7 @@ interface WorkflowCanvasFrameProps {
   ) => Promise<ConsoleApplicationOrchestrationState>;
 }
 
-export function WorkflowCanvasFrame({
+function useWorkflowCanvasController({
   applicationId,
   applicationName,
   initialEnvironmentVariables,
@@ -373,6 +373,33 @@ export function WorkflowCanvasFrame({
       )
     });
   }
+  return {
+    applicationName, applicationId, autosaveIntervalMs, autosaveStatus, issueErrorCount,
+    isPublished, publishMutation, revertToDraftMutation, workingDocument, triggerContext,
+    navigate, setPanelState, historyOpen, setEnvironmentVariablesOpen, openHistory,
+    issuesOpen, draftSync, confirmRevertToDraft, activeContainerId, navigation,
+    issueCountByNodeId, nodePickerOptions, viewportSnapshotRef, viewportGetterRef,
+    selectedNodeId, nodeDetailLayout, isResizingNodeDetail, boundedNodeDetailWidth,
+    handleNodeDetailResizeKeyDown, handleNodeDetailResizeStart, nodeDetailTab,
+    environmentVariables, issues, detailActions, setNodeDetailTab,
+    environmentVariablesOpen, environmentVariablesMutation, versions,
+    userProtectionLimit, isRestoringVersion, versionMetadataMutation
+  };
+}
+
+export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasController>[0]) {
+  const {
+    applicationName, applicationId, autosaveIntervalMs, autosaveStatus, issueErrorCount,
+    isPublished, publishMutation, revertToDraftMutation, workingDocument, triggerContext,
+    navigate, setPanelState, historyOpen, setEnvironmentVariablesOpen, openHistory,
+    issuesOpen, draftSync, confirmRevertToDraft, activeContainerId, navigation,
+    issueCountByNodeId, nodePickerOptions, viewportSnapshotRef, viewportGetterRef,
+    selectedNodeId, nodeDetailLayout, isResizingNodeDetail, boundedNodeDetailWidth,
+    handleNodeDetailResizeKeyDown, handleNodeDetailResizeStart, nodeDetailTab,
+    environmentVariables, issues, detailActions, setNodeDetailTab,
+    environmentVariablesOpen, environmentVariablesMutation, versions,
+    userProtectionLimit, isRestoringVersion, versionMetadataMutation
+  } = useWorkflowCanvasController(props);
 
   return (
     <section
@@ -493,9 +520,8 @@ export function WorkflowCanvasFrame({
         {environmentVariablesOpen ? (
           <AgentFlowSideDock
             className="agent-flow-editor__variables-dock"
-            resizeLabel="Adjust environment variables width"
+            resizable={false}
             width={ENVIRONMENT_DOCK_WIDTH}
-            onResizeStart={() => undefined}
           >
             <Suspense
               fallback={
@@ -519,12 +545,8 @@ export function WorkflowCanvasFrame({
         {historyOpen ? (
           <AgentFlowSideDock
             className="agent-flow-editor__history-dock"
-            resizeLabel={i18nText(
-              'agentFlow',
-              'auto.adjust_historical_version_width'
-            )}
+            resizable={false}
             width={HISTORY_DOCK_WIDTH}
-            onResizeStart={() => undefined}
           >
             <Suspense
               fallback={

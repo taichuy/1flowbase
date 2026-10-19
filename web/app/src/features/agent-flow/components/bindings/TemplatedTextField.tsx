@@ -39,6 +39,8 @@ interface TemplatedTextFieldProps {
   onDragStart?: () => void;
 }
 
+const EMPTY_OPTIONS: FlowSelectorOption[] = [];
+
 export function TemplatedTextField({
   label,
   labelContent,
@@ -48,7 +50,7 @@ export function TemplatedTextField({
   displayMode = 'block',
   ariaLabel,
   placeholder,
-  options = [],
+  options = EMPTY_OPTIONS,
   value,
   onChange,
   onDragEnd,

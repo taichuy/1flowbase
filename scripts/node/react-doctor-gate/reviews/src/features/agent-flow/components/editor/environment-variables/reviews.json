@@ -1,0 +1,33 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx",
+      "rule": "react-doctor/no-adjust-state-on-prop-change",
+      "sourceSha256": "30b26b562990d2d97f8ad9d395f5c65362e75041831753320f631fe446891e29",
+      "reason": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx:552（react-doctor/no-adjust-state-on-prop-change）：editInJson 是用户选择的编辑模式，effect 仅在 valueType 改变时回到结构化编辑；它不是 valueType 的恒等副本。类型改变可来自外部 schema 变更，不能只放本组件某个事件中；数字/布尔分支本身直接按新 valueType 渲染，未把旧模式当旧业务值提交。",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/editor/application-environment-variables-panel.test.tsx", "sha256": "e2327e076e9b67e56ea8ee767ed4c6923616282ae70c194d0fda27356a22a16a"}, {"file": "web/app/src/features/agent-flow/components/editor/ApplicationEnvironmentVariablesPanel.tsx", "sha256": "44da1bba6fd234519cb104adbd2b3c146d1b4509d42be274c9997a724d4b5a1b"}, {"file": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx", "sha256": "30b26b562990d2d97f8ad9d395f5c65362e75041831753320f631fe446891e29"}]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx",
+      "rule": "react-doctor/no-derived-state",
+      "sourceSha256": "30b26b562990d2d97f8ad9d395f5c65362e75041831753320f631fe446891e29",
+      "reason": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx:169（react-doctor/no-derived-state）：EnvironmentVariableValueEditor 保存未提交 JSON 文本/对象字段行/数组输入草稿，并由 onChange/onApply 更新，lastEmittedValueRef 阻止父级回声覆盖编辑。prop effect 负责外部 value/type 更新；不能每 render 从 value 派生，JSON 输入可能尚未合法且空 key 行也未映射到对象。行身份问题另记 F7。 web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx:220（react-doctor/no-derived-state）：EnvironmentVariableValueEditor 保存未提交 JSON 文本/对象字段行/数组输入草稿，并由 onChange/onApply 更新，lastEmittedValueRef 阻止父级回声覆盖编辑。prop effect 负责外部 value/type 更新；不能每 render 从 value 派生，JSON 输入可能尚未合法且空 key 行也未映射到对象。行身份问题另记 F7。 web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx:433（react-doctor/no-derived-state）：EnvironmentVariableValueEditor 保存未提交 JSON 文本/对象字段行/数组输入草稿，并由 onChange/onApply 更新，lastEmittedValueRef 阻止父级回声覆盖编辑。prop effect 负责外部 value/type 更新；不能每 render 从 value 派生，JSON 输入可能尚未合法且空 key 行也未映射到对象。行身份问题另记 F7。",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/editor/application-environment-variables-panel.test.tsx", "sha256": "e2327e076e9b67e56ea8ee767ed4c6923616282ae70c194d0fda27356a22a16a"}, {"file": "web/app/src/features/agent-flow/components/editor/ApplicationEnvironmentVariablesPanel.tsx", "sha256": "44da1bba6fd234519cb104adbd2b3c146d1b4509d42be274c9997a724d4b5a1b"}, {"file": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx", "sha256": "30b26b562990d2d97f8ad9d395f5c65362e75041831753320f631fe446891e29"}]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx",
+      "rule": "react-doctor/no-derived-state-effect",
+      "sourceSha256": "30b26b562990d2d97f8ad9d395f5c65362e75041831753320f631fe446891e29",
+      "reason": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx:168（react-doctor/no-derived-state-effect）：EnvironmentVariableValueEditor 保存未提交 JSON 文本/对象字段行/数组输入草稿，并由 onChange/onApply 更新，lastEmittedValueRef 阻止父级回声覆盖编辑。prop effect 负责外部 value/type 更新；不能每 render 从 value 派生，JSON 输入可能尚未合法且空 key 行也未映射到对象。行身份问题另记 F7。 web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx:551（react-doctor/no-derived-state-effect）：editInJson 是用户选择的编辑模式，effect 仅在 valueType 改变时回到结构化编辑；它不是 valueType 的恒等副本。类型改变可来自外部 schema 变更，不能只放本组件某个事件中；数字/布尔分支本身直接按新 valueType 渲染，未把旧模式当旧业务值提交。",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/editor/application-environment-variables-panel.test.tsx", "sha256": "e2327e076e9b67e56ea8ee767ed4c6923616282ae70c194d0fda27356a22a16a"}, {"file": "web/app/src/features/agent-flow/components/editor/ApplicationEnvironmentVariablesPanel.tsx", "sha256": "44da1bba6fd234519cb104adbd2b3c146d1b4509d42be274c9997a724d4b5a1b"}, {"file": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx", "sha256": "30b26b562990d2d97f8ad9d395f5c65362e75041831753320f631fe446891e29"}]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx",
+      "rule": "react-doctor/no-reset-all-state-on-prop-change",
+      "sourceSha256": "30b26b562990d2d97f8ad9d395f5c65362e75041831753320f631fe446891e29",
+      "reason": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx:551（react-doctor/no-reset-all-state-on-prop-change）：editInJson 是用户选择的编辑模式，effect 仅在 valueType 改变时回到结构化编辑；它不是 valueType 的恒等副本。类型改变可来自外部 schema 变更，不能只放本组件某个事件中；数字/布尔分支本身直接按新 valueType 渲染，未把旧模式当旧业务值提交。",
+      "evidence": [{"file": "web/app/src/features/agent-flow/_tests/editor/application-environment-variables-panel.test.tsx", "sha256": "e2327e076e9b67e56ea8ee767ed4c6923616282ae70c194d0fda27356a22a16a"}, {"file": "web/app/src/features/agent-flow/components/editor/ApplicationEnvironmentVariablesPanel.tsx", "sha256": "44da1bba6fd234519cb104adbd2b3c146d1b4509d42be274c9997a724d4b5a1b"}, {"file": "web/app/src/features/agent-flow/components/editor/environment-variables/EnvironmentVariableValueEditor.tsx", "sha256": "30b26b562990d2d97f8ad9d395f5c65362e75041831753320f631fe446891e29"}]
+    }
+  ]
+}

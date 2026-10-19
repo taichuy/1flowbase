@@ -45,12 +45,14 @@ function dependencyLabel(
   return dependency.dependency.node_type ?? dependency.dependency.kind;
 }
 
+const EMPTY_INTEGRITY_WARNINGS: string[] = [];
+
 export function ApplicationTemplateImportModal({
   open,
   preview,
   name,
   importing,
-  integrityWarnings = [],
+  integrityWarnings = EMPTY_INTEGRITY_WARNINGS,
   onNameChange,
   onCancel,
   onImport

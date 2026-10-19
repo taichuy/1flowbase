@@ -16,7 +16,122 @@ fn compiled_llm_runtime_accepts_legacy_payload_without_provider_display_name() {
     }))
     .unwrap();
 
+    assert_eq!(runtime.provider_instance_id, "provider-main");
     assert_eq!(runtime.provider_instance_display_name, "");
+    assert_eq!(runtime.protocol, "openai_chat");
+    assert!(runtime.routing.is_none());
+    assert_eq!(
+        serde_json::to_value(&runtime).unwrap(),
+        json!({
+            "provider_instance_id": "provider-main",
+            "provider_code": "openai_compatible",
+            "protocol": "openai_chat",
+            "model": "legacy-model"
+        })
+    );
+}
+
+fn failover_runtime_wire() -> serde_json::Value {
+    json!({
+        "provider_instance_id": "provider-primary",
+        "provider_instance_display_name": "Primary provider",
+        "provider_code": "openai_compatible",
+        "protocol": "openai_chat",
+        "model": "primary-model",
+        "routing": {
+            "routing_mode": "failover_queue",
+            "fixed_model_target": null,
+            "queue_template_id": "queue-template",
+            "queue_snapshot_id": "queue-snapshot",
+            "queue_targets": [
+                {
+                    "provider_instance_id": "provider-primary",
+                    "provider_instance_display_name": "Primary provider",
+                    "provider_code": "openai_compatible",
+                    "protocol": "openai_chat",
+                    "upstream_model_id": "primary-model"
+                },
+                {
+                    "provider_instance_id": "provider-backup",
+                    "provider_instance_display_name": "Backup provider",
+                    "provider_code": "anthropic",
+                    "protocol": "anthropic_messages",
+                    "upstream_model_id": "backup-model"
+                }
+            ],
+            "distribution_rule": "retry_round_robin",
+            "distribution_key": "queue-distribution",
+            "context_policy": { "integration_context": "disabled" },
+            "stream_policy": { "mode": "buffered" }
+        }
+    })
+}
+
+#[test]
+fn compiled_llm_runtime_roundtrips_current_nonempty_failover_wire_fields() {
+    let wire = failover_runtime_wire();
+    let runtime: CompiledLlmRuntime = serde_json::from_value(wire.clone()).unwrap();
+
+    assert!(!runtime.targets_main_instance());
+    let serialized = serde_json::to_value(&runtime).unwrap();
+    assert_eq!(serialized, wire);
+    assert_eq!(
+        serde_json::from_value::<CompiledLlmRuntime>(serialized).unwrap(),
+        runtime
+    );
+}
+
+#[test]
+fn compiled_llm_runtime_roundtrips_main_wire_with_omitted_live_fields() {
+    let wire = json!({
+        "provider_code": "openai_compatible",
+        "model": "main-model"
+    });
+    let runtime: CompiledLlmRuntime = serde_json::from_value(wire.clone()).unwrap();
+
+    assert_eq!(runtime.provider_instance_id, "");
+    assert_eq!(runtime.provider_instance_display_name, "");
+    assert_eq!(runtime.protocol, "");
+    assert!(runtime.routing.is_none());
+    assert!(runtime.targets_main_instance());
+    let serialized = serde_json::to_value(&runtime).unwrap();
+    assert_eq!(serialized, wire);
+    assert_eq!(
+        serde_json::from_value::<CompiledLlmRuntime>(serialized).unwrap(),
+        runtime
+    );
+}
+
+#[test]
+fn compiled_llm_runtime_rejects_wrong_wire_types_and_missing_required_fields() {
+    for (pointer, invalid_value) in [
+        ("/provider_instance_id", json!(42)),
+        ("/provider_instance_id", json!(null)),
+        ("/provider_instance_display_name", json!(false)),
+        ("/protocol", json!(["openai_chat"])),
+        ("/routing", json!("failover_queue")),
+        ("/routing/routing_mode", json!("unknown_mode")),
+        (
+            "/routing/queue_targets/0/provider_instance_id",
+            json!({ "id": "provider-primary" }),
+        ),
+    ] {
+        let mut wire = failover_runtime_wire();
+        *wire.pointer_mut(pointer).unwrap() = invalid_value;
+        assert!(
+            serde_json::from_value::<CompiledLlmRuntime>(wire).is_err(),
+            "wrong wire type or enum at {pointer} must be rejected"
+        );
+    }
+
+    for required_field in ["provider_code", "model"] {
+        let mut wire = failover_runtime_wire();
+        wire.as_object_mut().unwrap().remove(required_field);
+        assert!(
+            serde_json::from_value::<CompiledLlmRuntime>(wire).is_err(),
+            "missing required field {required_field} must be rejected"
+        );
+    }
 }
 
 #[test]

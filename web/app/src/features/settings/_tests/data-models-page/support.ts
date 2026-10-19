@@ -1,11 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Grid } from 'antd';
 import { createElement } from 'react';
 import { expect, vi } from 'vitest';
@@ -246,12 +239,12 @@ const dataModelsApi = vi.hoisted(() => ({
   fetchSettingsDataModelOpenApiDocument: vi.fn()
 }));
 
-vi.mock('../../api/members', () => membersApi);
-vi.mock('../../api/roles', () => rolesApi);
-vi.mock('../../api/permissions', () => permissionsApi);
+vi.mock('../../api/identity-access/members', () => membersApi);
+vi.mock('../../api/identity-access/roles', () => rolesApi);
+vi.mock('../../api/identity-access/permissions', () => permissionsApi);
 vi.mock('../../api/api-docs', () => docsApi);
 vi.mock('../../api/model-providers', () => modelProvidersApi);
-vi.mock('../../api/plugins', () => pluginsApi);
+vi.mock('../../api/extensions/plugins', () => pluginsApi);
 vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../../api/file-management', () => fileManagementApi);
 vi.mock('../../api/host-infrastructure', () => hostInfrastructureApi);
@@ -264,9 +257,17 @@ vi.mock('@scalar/api-reference-react', () => ({
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { AppRouterProvider } from '../../../../app/router';
-import { i18nText } from '../../../../shared/i18n/text';
+import '../../../../shared/i18n/text';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
+import '../../components/data-models/DataModelFormDrawer';
+
+// Collect the real lazy route modules after API mocks and i18n are registered.
+// Chunk transformation belongs to collection; UI/query readiness stays in tests.
+await Promise.all([
+  import('../../../../app-shell/AppShellFrame'),
+  import('../../pages/SettingsPage'),
+  import('../../pages/settings-page/SettingsDataModelsSection')
+]);
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 const antdStaticMessageWarning =
@@ -357,12 +358,14 @@ function authenticate() {
   });
 }
 
-export function renderApp(pathname: string) {
+export function createAppView(pathname: string) {
   window.history.pushState({}, '', pathname);
 
-  return render(
-    createElement(AppProviders, null, createElement(AppRouterProvider))
-  );
+  return createElement(AppProviders, null, createElement(AppRouterProvider));
+}
+
+export function renderApp(pathname: string) {
+  return render(createAppView(pathname));
 }
 
 export function setDataModelsPageBreakpoint(breakpoint: { md: boolean }) {
@@ -1088,13 +1091,4 @@ export function cleanupDataModelsPageTest() {
   }
 }
 
-export {
-  DataModelFormDrawer,
-  dataModelsApi,
-  fireEvent,
-  i18nText,
-  render,
-  screen,
-  waitFor,
-  within
-};
+export { dataModelsApi };

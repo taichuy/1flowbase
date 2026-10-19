@@ -71,12 +71,31 @@ interface NodePickerPopoverProps {
   placement?: 'top' | 'bottom' | 'left' | 'right' | 'rightTop';
 }
 
+function resolvePopupContainer(triggerNode: HTMLElement) {
+  const canvas = triggerNode.closest<HTMLElement>('.agent-flow-canvas');
+
+  if (!canvas) {
+    return document.body;
+  }
+
+  const canvasRect = canvas.getBoundingClientRect();
+
+  canvas.style.setProperty(
+    '--agent-flow-node-picker-height',
+    `${Math.floor(canvasRect.height * 0.8)}px`
+  );
+
+  return canvas;
+}
+
+const EMPTY_OPTIONS: NodePickerOption[] = [];
+
 export function NodePickerPopover({
   ariaLabel,
   open,
   onOpenChange,
   onPickNode,
-  options = [],
+  options = EMPTY_OPTIONS,
   buttonClassName,
   buttonContent = '+',
   children,
@@ -101,22 +120,20 @@ export function NodePickerPopover({
   );
   const groupedBuiltinOptions = useMemo(
     () =>
-      BUILTIN_NODE_PICKER_GROUPS.map((group) => {
+      BUILTIN_NODE_PICKER_GROUPS.flatMap((group) => {
         const groupSearchText =
           `${group.title} ${group.description}`.toLowerCase();
         const groupMatchesSearch =
           normalizedSearchValue.length > 0 &&
           groupSearchText.includes(normalizedSearchValue);
-        const groupedOptions = builtinOptions
-          .filter((option) => option.category === group.key)
-          .filter(
-            (option) =>
-              groupMatchesSearch ||
-              matchesNodePickerSearch(option, normalizedSearchValue)
-          );
+        const groupedOptions = builtinOptions.filter((option) =>
+          option.category === group.key && (
+            groupMatchesSearch || matchesNodePickerSearch(option, normalizedSearchValue)
+          )
+        );
 
-        return { ...group, options: groupedOptions };
-      }).filter((group) => group.options.length > 0),
+        return groupedOptions.length > 0 ? [{ ...group, options: groupedOptions }] : [];
+      }),
     [builtinOptions, normalizedSearchValue]
   );
   const groupedBuiltinOptionKeys = new Set(
@@ -141,22 +158,6 @@ export function NodePickerPopover({
     onOpenChange(false);
   }
 
-  function resolvePopupContainer(triggerNode: HTMLElement) {
-    const canvas = triggerNode.closest<HTMLElement>('.agent-flow-canvas');
-
-    if (!canvas) {
-      return document.body;
-    }
-
-    const canvasRect = canvas.getBoundingClientRect();
-
-    canvas.style.setProperty(
-      '--agent-flow-node-picker-height',
-      `${Math.floor(canvasRect.height * 0.8)}px`
-    );
-
-    return canvas;
-  }
 
   return (
     <Popover

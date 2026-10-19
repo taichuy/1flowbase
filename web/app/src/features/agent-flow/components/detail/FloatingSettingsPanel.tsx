@@ -5,6 +5,7 @@ import {
   useId,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject
@@ -523,6 +524,69 @@ export function FloatingSettingsPanel({
     window.addEventListener('mouseup', cleanup);
   }
 
+  function moveWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const directions: Record<string, readonly [number, number]> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1]
+    };
+    const direction = directions[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const bounds = resolveBounds(panelContainer);
+    setPanelPosition((position) =>
+      clampDraggedPosition(
+        {
+          left: position.left + direction[0]! * 16,
+          top: position.top + direction[1]! * 16
+        },
+        bounds,
+        rect.width || FALLBACK_VISIBLE_DRAG_HANDLE_SIZE,
+        rect.height || FALLBACK_VISIBLE_DRAG_HANDLE_SIZE,
+        margin
+      )
+    );
+  }
+
+  function resizeWithKeyboard(
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    edge: FloatingPanelResizeEdge | 'bottom'
+  ) {
+    const horizontal = edge !== 'bottom';
+    if (
+      horizontal
+        ? event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'
+        : event.key !== 'ArrowUp' && event.key !== 'ArrowDown'
+    )
+      return;
+    event.preventDefault();
+    event.stopPropagation();
+    const delta =
+      (event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1) * 16;
+    const bounds = resolveBounds(panelContainer);
+    if (edge === 'bottom') {
+      setPanelHeight(
+        clampHeight(panelHeight + delta, bounds, panelPosition, minHeight, margin)
+      );
+    } else if (edge === 'right') {
+      setPanelWidth(
+        clampWidth(panelWidth + delta, bounds, panelPosition, minWidth, margin)
+      );
+    } else {
+      const right = panelPosition.left + panelWidth;
+      const width = clamp(
+        panelWidth - delta,
+        minWidth,
+        Math.max(minWidth, right - margin)
+      );
+      setPanelWidth(width);
+      setPanelPosition((position) => ({ ...position, left: right - width }));
+    }
+  }
+
   if (!open) {
     return null;
   }
@@ -550,6 +614,10 @@ export function FloatingSettingsPanel({
           className="agent-flow-model-settings__drag-handle"
           data-testid={dragHandleTestId}
           onMouseDown={startDrag}
+          onKeyDown={moveWithKeyboard}
+          role="button"
+          tabIndex={0}
+          aria-label={title}
         >
           <HolderOutlined
             aria-hidden="true"
@@ -581,6 +649,10 @@ export function FloatingSettingsPanel({
         className="agent-flow-model-settings__resize-handle agent-flow-model-settings__resize-handle--left"
         data-testid={leftResizeHandleTestId}
         onMouseDown={(event) => startResize(event, 'left')}
+        onKeyDown={(event) => resizeWithKeyboard(event, 'left')}
+        tabIndex={0}
+        aria-valuenow={panelWidth}
+        aria-valuemin={minWidth}
         role="separator"
       />
 
@@ -592,6 +664,10 @@ export function FloatingSettingsPanel({
         className="agent-flow-model-settings__resize-handle agent-flow-model-settings__resize-handle--right"
         data-testid={rightResizeHandleTestId}
         onMouseDown={(event) => startResize(event, 'right')}
+        onKeyDown={(event) => resizeWithKeyboard(event, 'right')}
+        tabIndex={0}
+        aria-valuenow={panelWidth}
+        aria-valuemin={minWidth}
         role="separator"
       />
 
@@ -603,6 +679,10 @@ export function FloatingSettingsPanel({
         className="agent-flow-model-settings__resize-handle agent-flow-model-settings__resize-handle--bottom"
         data-testid={bottomResizeHandleTestId}
         onMouseDown={startBottomResize}
+        onKeyDown={(event) => resizeWithKeyboard(event, 'bottom')}
+        tabIndex={0}
+        aria-valuenow={panelHeight}
+        aria-valuemin={minHeight}
         role="separator"
       />
 

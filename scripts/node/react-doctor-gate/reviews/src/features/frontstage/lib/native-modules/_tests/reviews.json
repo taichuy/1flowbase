@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/lib/native-modules/_tests/antd-locale-modules.test.ts",
+      "rule": "react-doctor/no-eval",
+      "sourceSha256": "b69a4da07b375a3228ace2fa28bd543cb7a7ff7b289272a2f81ca189f797de72",
+      "reason": "new Function evaluates the trusted Rollup-generated locale fixture chunk with explicit exports in a test. This exercises generated module exports; it is not a product execution path accepting user-supplied code.",
+      "evidence": [{"file": "web/app/build/native-antd-es-modules.ts", "sha256": "87704a6131ab0c77d8108d7262b62f5ab1625a866e02cfbbd6d9925e44ca0d2a"}, {"file": "web/app/src/features/frontstage/lib/native-modules/_tests/antd-locale-modules.test.ts", "sha256": "b69a4da07b375a3228ace2fa28bd543cb7a7ff7b289272a2f81ca189f797de72"}, {"file": "web/app/src/features/frontstage/lib/native-modules/_tests/antd-style-static-styles.test.ts", "sha256": "f8d484890fa21e1c375082124ef4ef26068831fd9b8d00123ba4f9ed4ad3c833"}, {"file": "web/app/src/features/frontstage/lib/native-modules/_tests/countup.test.tsx", "sha256": "09867cfa55860b5e9374ae1dacfd1e300498c231907bc0f702e71a05a9504c8e"}]
+    }
+  ]
+}

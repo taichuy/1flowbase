@@ -3,10 +3,8 @@ import { useLayoutEffect, useRef } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
 import { resetFrontstageRuntimeObservations } from '../lib/page-canvas/runtime-observation';
-import {
-  frontstageNativeReactArtifactCache,
-  type FrontstageNativeReactArtifactCache
-} from '../lib/runtime-cache';
+import { frontstageNativeReactArtifactCache } from '../lib/runtime-cache/default-cache';
+import type { FrontstageNativeReactArtifactCache } from '../lib/runtime-cache/native-react-artifact-cache';
 
 export interface FrontstageRuntimeCacheLifecycleOptions {
   nativeReactArtifactCache?: Pick<

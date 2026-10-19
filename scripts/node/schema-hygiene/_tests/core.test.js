@@ -954,11 +954,9 @@ test('default schema hygiene config distinguishes bounded system catalog state f
     'provider_protocol_capsules',
   ]) {
     const table = report.tables.find((candidate) => candidate.name === tableName);
-    assert.deepEqual(
-      table.findings.map((finding) => finding.rule),
-      ['managed-table-needs-owner-review'],
-    );
-    assert.deepEqual(table.platformReadiness.recommendedActions, ['needs_owner_review']);
+    assert.deepEqual(table.findings, [], `${tableName} must retain its bounded owner contract`);
+    assert.equal(table.platformReadiness.severity, 'ok');
+    assert.equal(table.platformReadiness.recommendedActions.includes('needs_owner_review'), false);
   }
 
   assert.equal(report.summary.errors, 0);
@@ -1164,7 +1162,7 @@ test('default schema hygiene validates flow-run-owned runtime tables by their re
   }
 
   assert.equal(report.tables.find((table) => table.name === 'client_trajectory_captures').profile, 'managed_table');
-  assert.equal(report.tables.find((table) => table.name === 'provider_protocol_capsules').profile, 'managed_table');
+  assert.equal(report.tables.find((table) => table.name === 'provider_protocol_capsules').profile, 'flow_run_owned_table');
   assert.equal(report.summary.errors, 0);
 });
 

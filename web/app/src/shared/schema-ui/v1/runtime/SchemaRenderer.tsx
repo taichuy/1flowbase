@@ -7,6 +7,7 @@ import type {
   SchemaViewBlock
 } from '../contracts/canvas-node-schema';
 import { evaluateSchemaRule } from './rule-evaluator';
+import { keyedSchemaBlocks } from './schema-block-keys';
 import type { RendererRegistry, SchemaAdapter } from '../registry/create-renderer-registry';
 
 export interface SchemaRendererProps {
@@ -24,6 +25,9 @@ export interface SchemaBlockRendererProps {
   values?: Record<string, unknown>;
   capabilities?: readonly string[];
 }
+
+const EMPTY_CAPABILITIES: readonly string[] = [];
+const EMPTY_VALUES: Record<string, unknown> = {};
 
 function shouldRenderBlock(
   block: SchemaBlock,
@@ -89,16 +93,13 @@ function renderBlock(
       return (
         <section data-schema-block="section">
           <h3>{block.title}</h3>
-          {block.blocks.map((childBlock, index) => (
-            <SchemaRenderer
-              key={`${block.title}-${index}`}
-              adapter={adapter}
-              blocks={[childBlock]}
-              registry={registry}
-              values={values}
-              capabilities={capabilities}
-            />
-          ))}
+          <SchemaRenderer
+            adapter={adapter}
+            blocks={block.blocks}
+            registry={registry}
+            values={values}
+            capabilities={capabilities}
+          />
         </section>
       );
     case 'stack':
@@ -106,16 +107,13 @@ function renderBlock(
     case 'tabs':
       return (
         <div data-schema-block={block.kind}>
-          {block.blocks.map((childBlock, index) => (
-            <SchemaRenderer
-              key={`${block.kind}-${index}`}
-              adapter={adapter}
-              blocks={[childBlock]}
-              registry={registry}
-              values={values}
-              capabilities={capabilities}
-            />
-          ))}
+          <SchemaRenderer
+            adapter={adapter}
+            blocks={block.blocks}
+            registry={registry}
+            values={values}
+            capabilities={capabilities}
+          />
         </div>
       );
     default:
@@ -128,16 +126,16 @@ export function SchemaRenderer({
   blocks,
   registry,
   values,
-  capabilities = []
+  capabilities = EMPTY_CAPABILITIES
 }: SchemaRendererProps) {
   const resolvedValues =
-    values ?? ((adapter.getDerived('rootValues') as Record<string, unknown> | null) ?? {});
+    values ?? ((adapter.getDerived('rootValues') as Record<string, unknown> | null) ?? EMPTY_VALUES);
 
   return (
     <>
-      {blocks.map((block, index) => (
+      {keyedSchemaBlocks(blocks).map(({ block, key }) => (
         <SchemaBlockRenderer
-          key={index}
+          key={key}
           adapter={adapter}
           block={block}
           registry={registry}
@@ -149,12 +147,12 @@ export function SchemaRenderer({
   );
 }
 
-export function SchemaBlockRenderer({
+function SchemaBlockRenderer({
   adapter,
   block,
   registry,
-  values = {},
-  capabilities = []
+  values = EMPTY_VALUES,
+  capabilities = EMPTY_CAPABILITIES
 }: SchemaBlockRendererProps) {
   return <>{renderBlock(block, adapter, registry, values, capabilities)}</>;
 }

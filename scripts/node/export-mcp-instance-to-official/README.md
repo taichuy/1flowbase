@@ -5,7 +5,7 @@ This CLI authenticates with a temporary owner session, exports exactly one MCP i
 The CLI always requests the `official_builtin` export profile. It keeps static built-in APIs, built-in Data Model CRUD APIs, and upstream MCP proxy tools. It excludes published Workflow interfaces under `/api/ex/*` and CRUD APIs generated for workspace-created Data Models. An interface wrapper whose source cannot be classified stops the export instead of being published.
 
 ```bash
-node scripts/node/export-mcp-instance-to-official.js \
+node scripts/node/export-mcp-instance-to-official/cli.js \
   --instance-id 1flowbase \
   --target /home/taichuy/git/1flowbase-official-plugins/mcp/@taichuy/1flowbase_zh_hans \
   --api-base-url http://127.0.0.1:7800

@@ -1,0 +1,290 @@
+import { Suspense, lazy, type ReactNode } from 'react';
+
+import { useNavigate } from '@tanstack/react-router';
+
+import { LoadingState } from '../../../../../shared/ui/loading-state/LoadingState';
+import type { RolePermissionTab } from '../../../components/RolePermissionPanel';
+import { SettingsSectionSurface } from '../../../components/SettingsSectionSurface';
+import type { SettingsSectionKey } from '../../../lib/settings-sections';
+import type { SettingsExtensionCenterCategory } from '../../../api/extensions/extensions';
+import type { NetworkCenterPage } from '../../network-center/NetworkCenterSection';
+
+const NotificationsPage = lazy(() =>
+  import('../../notifications/NotificationsPage').then((module) => ({
+    default: module.NotificationsPage
+  }))
+);
+
+const MemberSettingsTabs = lazy(() =>
+  import('../MemberSettingsTabs').then((module) => ({
+    default: module.MemberSettingsTabs
+  }))
+);
+const RolePermissionPanel = lazy(() =>
+  import('../../../components/RolePermissionPanel').then((module) => ({
+    default: module.RolePermissionPanel
+  }))
+);
+const SystemRuntimePanel = lazy(() =>
+  import('../../../components/SystemRuntimePanel').then((module) => ({
+    default: module.SystemRuntimePanel
+  }))
+);
+const SettingsAuthCenterSection = lazy(() =>
+  import('../SettingsAuthCenterSection').then((module) => ({
+    default: module.SettingsAuthCenterSection
+  }))
+);
+const SettingsDataModelsSection = lazy(() =>
+  import('../SettingsDataModelsSection').then((module) => ({
+    default: module.SettingsDataModelsSection
+  }))
+);
+const SettingsFilesSection = lazy(() =>
+  import('../SettingsFilesSection').then((module) => ({
+    default: module.SettingsFilesSection
+  }))
+);
+
+const ApiDocsPanel = lazy(() =>
+  import('../../../components/ApiDocsPanel').then((module) => ({
+    default: module.ApiDocsPanel
+  }))
+);
+const PersonalAccessTokensPanel = lazy(() =>
+  import('../../../components/PersonalAccessTokensPanel').then((module) => ({
+    default: module.PersonalAccessTokensPanel
+  }))
+);
+const ModelProviderSettingsTabs = lazy(() =>
+  import('../ModelProviderSettingsTabs').then((module) => ({
+    default: module.ModelProviderSettingsTabs
+  }))
+);
+const SettingsExtensionCenterSection = lazy(() =>
+  import('../SettingsExtensionCenterSection').then((module) => ({
+    default: module.SettingsExtensionCenterSection
+  }))
+);
+const SettingsMcpManagementSection = lazy(() =>
+  import('../SettingsMcpManagementSection').then((module) => ({
+    default: module.SettingsMcpManagementSection
+  }))
+);
+const HostInfrastructureMemoryObservationPanel = lazy(() =>
+  import('../../../components/host-infrastructure/HostInfrastructureMemoryObservationPanel').then(
+    (module) => ({
+      default: module.HostInfrastructureMemoryObservationPanel
+    })
+  )
+);
+const ApplicationManagementPanel = lazy(() =>
+  import('../../../components/application-management/ApplicationManagementPanel').then(
+    (module) => ({
+      default: module.ApplicationManagementPanel
+    })
+  )
+);
+
+const SystemBackupsPanel = lazy(() =>
+  import('../../../components/system-backups/SystemBackupsPanel').then(
+    (module) => ({
+      default: module.SystemBackupsPanel
+    })
+  )
+);
+const I18nCatalogPage = lazy(() =>
+  import('../../i18n-catalog/I18nCatalogPage').then((module) => ({
+    default: module.I18nCatalogPage
+  }))
+);
+const UiManagementPanel = lazy(() =>
+  import('../../../components/ui-management/UiManagementPanel').then((module) => ({
+    default: module.UiManagementPanel
+  }))
+);
+const NetworkCenterSection = lazy(() =>
+  import('../../network-center/NetworkCenterSection').then((module) => ({
+    default: module.NetworkCenterSection
+  }))
+);
+
+function SettingsSectionFallback() {
+  return <LoadingState compact />;
+}
+
+function SettingsSectionBoundary({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<SettingsSectionFallback />}>{children}</Suspense>;
+}
+
+interface SettingsSectionAccess {
+  isRoot: boolean;
+  permissions: string[];
+  canManageMembers: boolean;
+  canManageRoles: boolean;
+  canManageDataModels: boolean;
+  canManageModelProviders: boolean;
+  canManageHostInfrastructure: boolean;
+  canManageMcpManagement: boolean;
+  canManageUiManagement: boolean;
+}
+
+export function SettingsSectionBody({
+  sectionKey,
+  access,
+  modelProviderTab = 'providers',
+  rolePermissionTab = 'console-policy',
+  networkCenterPage = 'proxy-types',
+  extensionCenterCategory = 'installed',
+  extensionCenterCursor,
+  extensionCenterQ
+}: {
+  sectionKey: SettingsSectionKey;
+  access: SettingsSectionAccess;
+  modelProviderTab?: 'providers' | 'pricing' | 'request-logs';
+  rolePermissionTab?: RolePermissionTab;
+  networkCenterPage?: NetworkCenterPage;
+  extensionCenterCategory?: SettingsExtensionCenterCategory;
+  extensionCenterCursor?: string;
+  extensionCenterQ?: string;
+}) {
+  const navigate = useNavigate();
+
+  switch (sectionKey) {
+    case 'notifications':
+      return (
+        <SettingsSectionBoundary>
+          <NotificationsPage />
+        </SettingsSectionBoundary>
+      );
+    case 'applications':
+      return (
+        <SettingsSectionBoundary>
+          <ApplicationManagementPanel />
+        </SettingsSectionBoundary>
+      );
+    case 'backups':
+      return (
+        <SettingsSectionBoundary>
+          <SystemBackupsPanel />
+        </SettingsSectionBoundary>
+      );
+    case 'extension-center':
+      return (
+        <SettingsSectionBoundary>
+          <SettingsExtensionCenterSection
+            category={extensionCenterCategory}
+            cursor={extensionCenterCursor}
+            q={extensionCenterQ}
+            canManageUiComponents={access.canManageUiManagement}
+          />
+        </SettingsSectionBoundary>
+      );
+    case 'members':
+      return (
+        <SettingsSectionBoundary>
+          <MemberSettingsTabs canManageMembers={access.canManageMembers} />
+        </SettingsSectionBoundary>
+      );
+    case 'system-runtime':
+      return (
+        <SettingsSectionBoundary>
+          <SystemRuntimePanel />
+        </SettingsSectionBoundary>
+      );
+    case 'files':
+      return (
+        <SettingsSectionBoundary>
+          <SettingsFilesSection
+            isRoot={access.isRoot}
+            permissions={access.permissions}
+          />
+        </SettingsSectionBoundary>
+      );
+    case 'model-providers':
+      return (
+        <SettingsSectionBoundary>
+          <ModelProviderSettingsTabs
+            activeTab={modelProviderTab}
+            canManage={access.canManageModelProviders}
+          />
+        </SettingsSectionBoundary>
+      );
+    case 'data-models':
+      return (
+        <SettingsSectionBoundary>
+          <SettingsDataModelsSection canManage={access.canManageDataModels} />
+        </SettingsSectionBoundary>
+      );
+    case 'network-center':
+      return (
+        <SettingsSectionBoundary>
+          <NetworkCenterSection page={networkCenterPage} />
+        </SettingsSectionBoundary>
+      );
+    case 'mcp-management':
+      return (
+        <SettingsSectionBoundary>
+          <SettingsMcpManagementSection
+            canManage={access.canManageMcpManagement}
+          />
+        </SettingsSectionBoundary>
+      );
+    case 'ui-management':
+      return (
+        <SettingsSectionBoundary>
+          <UiManagementPanel canManage={access.canManageUiManagement} />
+        </SettingsSectionBoundary>
+      );
+    case 'memory-observation':
+      return (
+        <SettingsSectionBoundary>
+          <SettingsSectionSurface heightMode="fill">
+            <HostInfrastructureMemoryObservationPanel
+              canManage={access.canManageHostInfrastructure}
+            />
+          </SettingsSectionSurface>
+        </SettingsSectionBoundary>
+      );
+    case 'i18n':
+      return (
+        <SettingsSectionBoundary>
+          <I18nCatalogPage />
+        </SettingsSectionBoundary>
+      );
+    case 'roles':
+      return (
+        <SettingsSectionBoundary>
+          <RolePermissionPanel
+            canManageRoles={access.canManageRoles}
+            activePermissionTab={rolePermissionTab}
+            onPermissionTabChange={(tab, navigationMode) =>
+              navigate({
+                to: `/settings/roles/${tab}`,
+                replace: navigationMode === 'replace'
+              })
+            }
+          />
+        </SettingsSectionBoundary>
+      );
+    case 'api-key-authentication':
+      return (
+        <SettingsSectionBoundary>
+          <PersonalAccessTokensPanel />
+        </SettingsSectionBoundary>
+      );
+    case 'auth-center':
+      return (
+        <SettingsSectionBoundary>
+          <SettingsAuthCenterSection />
+        </SettingsSectionBoundary>
+      );
+    case 'docs':
+    default:
+      return (
+        <SettingsSectionBoundary>
+          <ApiDocsPanel />
+        </SettingsSectionBoundary>
+      );
+  }
+}

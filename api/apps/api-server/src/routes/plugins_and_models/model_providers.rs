@@ -84,12 +84,12 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .merge(settings_routes::route_assembly())
 }
 
-fn format_time(value: time::OffsetDateTime) -> String {
-    value.format(&Rfc3339).unwrap()
+fn format_time(value: time::OffsetDateTime) -> Result<String, ApiError> {
+    Ok(value.format(&Rfc3339)?)
 }
 
-fn format_optional_time(value: Option<time::OffsetDateTime>) -> Option<String> {
-    value.map(format_time)
+fn format_optional_time(value: Option<time::OffsetDateTime>) -> Result<Option<String>, ApiError> {
+    value.map(format_time).transpose()
 }
 
 fn parse_rfc3339_time(raw: &str) -> Result<time::OffsetDateTime, ApiError> {
@@ -300,8 +300,10 @@ fn to_plugin_form_schema_response(schema: PluginFormSchema) -> PluginFormSchemaR
     }
 }
 
-fn to_catalog_response(entry: ModelProviderCatalogEntry) -> ModelProviderCatalogEntryResponse {
-    ModelProviderCatalogEntryResponse {
+fn to_catalog_response(
+    entry: ModelProviderCatalogEntry,
+) -> Result<ModelProviderCatalogEntryResponse, ApiError> {
+    Ok(ModelProviderCatalogEntryResponse {
         installation_id: entry.installation_id.to_string(),
         provider_code: entry.provider_code,
         plugin_id: entry.plugin_id,
@@ -336,8 +338,8 @@ fn to_catalog_response(entry: ModelProviderCatalogEntry) -> ModelProviderCatalog
             .collect(),
         catalog_refresh_status: entry.catalog_refresh_status,
         catalog_last_error_message: entry.catalog_last_error_message,
-        catalog_refreshed_at: format_optional_time(entry.catalog_refreshed_at),
-    }
+        catalog_refreshed_at: format_optional_time(entry.catalog_refreshed_at)?,
+    })
 }
 
 fn provider_operational_capability(value: ProviderOperationalCapability) -> String {
@@ -390,12 +392,12 @@ fn to_auth_projection_response(
 
 fn to_authenticate_response(
     result: AuthenticateModelProviderInstanceResult,
-) -> AuthenticateModelProviderInstanceResponse {
-    AuthenticateModelProviderInstanceResponse {
+) -> Result<AuthenticateModelProviderInstanceResponse, ApiError> {
+    Ok(AuthenticateModelProviderInstanceResponse {
         instance: to_instance_response(ModelProviderInstanceView {
             instance: result.instance,
             cache: None,
-        }),
+        })?,
         status: provider_auth_status(result.result.status),
         message: result.result.message,
         user_action: result
@@ -409,22 +411,22 @@ fn to_authenticate_response(
                 poll_interval_seconds: action.poll_interval_seconds,
                 prompt: action.prompt,
             }),
-    }
+    })
 }
 
 fn to_catalog_view_response(
     locale_meta: LocaleMetaResponse,
     catalog: ModelProviderCatalogView,
-) -> ModelProviderCatalogResponse {
-    ModelProviderCatalogResponse {
+) -> Result<ModelProviderCatalogResponse, ApiError> {
+    Ok(ModelProviderCatalogResponse {
         locale_meta,
         i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),
         entries: catalog
             .entries
             .into_iter()
             .map(to_catalog_response)
-            .collect(),
-    }
+            .collect::<Result<Vec<_>, _>>()?,
+    })
 }
 
 fn to_runtime_model_descriptor_response(
@@ -448,13 +450,15 @@ fn to_runtime_model_descriptor_response(
     }
 }
 
-fn to_instance_response(view: ModelProviderInstanceView) -> ModelProviderInstanceResponse {
+fn to_instance_response(
+    view: ModelProviderInstanceView,
+) -> Result<ModelProviderInstanceResponse, ApiError> {
     let model_count = view
         .cache
         .as_ref()
         .and_then(|cache| cache.models_json.as_array().map(|items| items.len()))
         .unwrap_or(0);
-    ModelProviderInstanceResponse {
+    Ok(ModelProviderInstanceResponse {
         id: view.instance.id.to_string(),
         installation_id: view.instance.installation_id.to_string(),
         provider_code: view.instance.provider_code,
@@ -485,22 +489,23 @@ fn to_instance_response(view: ModelProviderInstanceView) -> ModelProviderInstanc
             .cache
             .as_ref()
             .and_then(|cache| cache.last_error_message.clone()),
-        catalog_refreshed_at: view
-            .cache
-            .as_ref()
-            .and_then(|cache| format_optional_time(cache.refreshed_at)),
+        catalog_refreshed_at: format_optional_time(
+            view.cache.as_ref().and_then(|cache| cache.refreshed_at),
+        )?,
         model_count,
-    }
+    })
 }
 
-fn to_validate_response(result: ValidateModelProviderResult) -> ValidateModelProviderResponse {
-    ValidateModelProviderResponse {
+fn to_validate_response(
+    result: ValidateModelProviderResult,
+) -> Result<ValidateModelProviderResponse, ApiError> {
+    Ok(ValidateModelProviderResponse {
         instance: to_instance_response(ModelProviderInstanceView {
             instance: result.instance,
             cache: Some(result.cache),
-        }),
+        })?,
         output: result.output,
-    }
+    })
 }
 
 fn to_balance_response(result: ModelProviderBalanceResult) -> ModelProviderBalanceResponse {
@@ -665,19 +670,19 @@ fn to_main_model_routing_policy(
 
 fn to_model_catalog_response(
     catalog: ModelProviderModelCatalog,
-) -> ModelProviderModelCatalogResponse {
-    ModelProviderModelCatalogResponse {
+) -> Result<ModelProviderModelCatalogResponse, ApiError> {
+    Ok(ModelProviderModelCatalogResponse {
         provider_instance_id: catalog.provider_instance_id.to_string(),
         refresh_status: catalog.refresh_status.as_str().to_string(),
         source: catalog.source.as_str().to_string(),
         last_error_message: catalog.last_error_message,
-        refreshed_at: format_optional_time(catalog.refreshed_at),
+        refreshed_at: format_optional_time(catalog.refreshed_at)?,
         models: catalog
             .models
             .into_iter()
             .map(to_runtime_model_descriptor_response)
             .collect(),
-    }
+    })
 }
 
 fn to_option_response(
@@ -870,8 +875,8 @@ pub async fn clear_request_logs_batch(
 
 fn to_request_log_response(
     record: control_plane::ports::ModelProviderRequestLogRecord,
-) -> ModelProviderRequestLogResponse {
-    ModelProviderRequestLogResponse {
+) -> Result<ModelProviderRequestLogResponse, ApiError> {
+    Ok(ModelProviderRequestLogResponse {
         attempt_id: record.attempt_id.to_string(),
         flow_run_id: record.flow_run_id.to_string(),
         node_run_id: record.node_run_id.map(|id| id.to_string()),
@@ -904,12 +909,12 @@ fn to_request_log_response(
         input_cache_hit_tokens: record.input_cache_hit_tokens,
         cache_write_tokens: record.cache_write_tokens,
         input_cache_hit_rate: record.input_cache_hit_rate,
-        started_at: format_time(record.started_at),
-        first_token_at: format_optional_time(record.first_token_at),
-        finished_at: format_optional_time(record.finished_at),
+        started_at: format_time(record.started_at)?,
+        first_token_at: format_optional_time(record.first_token_at)?,
+        finished_at: format_optional_time(record.finished_at)?,
         time_to_first_token_ms: record.time_to_first_token_ms,
         total_duration_ms: record.total_duration_ms,
-    }
+    })
 }
 
 #[utoipa::path(
@@ -1416,7 +1421,8 @@ mod request_log_response_tests {
                 finished_at: Some(started_at),
                 time_to_first_token_ms: Some(3350),
                 total_duration_ms: Some(7426),
-            });
+            })
+            .expect("representable request log timestamps");
 
         assert_eq!(response.node_run_id, Some(node_run_id.to_string()));
         assert_eq!(response.time_to_first_token_ms, Some(3350));
@@ -1431,3 +1437,7 @@ mod request_log_response_tests {
         assert_eq!(response.currency_code.as_deref(), Some("USD"));
     }
 }
+
+#[cfg(test)]
+#[path = "model_providers/_tests/time_response.rs"]
+mod time_response_tests;

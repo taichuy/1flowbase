@@ -180,6 +180,7 @@ export function MovePageModal({
 
   // Materialize only the expanded node's direct children, without recursively
   // constructing collapsed descendants from the cached backend navigation tree.
+  const expandedKeySet = new Set(expandedKeys);
   const treeNodes = (
     nodes: FrontStageTreeNode[],
     parentId: string | null
@@ -216,7 +217,7 @@ export function MovePageModal({
             position: item.kind === 'group' ? 'inside' : 'after'
           })
         ),
-        children: expandedKeys.includes(item.id)
+        children: expandedKeySet.has(item.id)
           ? treeNodes(item.children ?? [], item.id)
           : undefined
       });

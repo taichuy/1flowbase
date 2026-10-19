@@ -11,7 +11,7 @@ import {
 } from 'antd';
 
 import { ScrollableSurface } from '../../../../shared/ui/scrollable-surface/ScrollableSurface';
-import type { SettingsPluginFamilyEntry } from '../../api/plugins';
+import type { SettingsPluginFamilyEntry } from '../../api/extensions/plugins';
 import type { SettingsModelProviderCatalogEntry } from '../../api/model-providers';
 import { ModelProviderOverviewSummary } from '../../pages/settings-page/model-providers/ModelProviderOverviewSummary';
 import { i18nText } from '../../../../shared/i18n/text';

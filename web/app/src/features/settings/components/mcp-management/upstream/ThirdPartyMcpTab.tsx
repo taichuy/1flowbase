@@ -255,7 +255,7 @@ function SchemaFields({ schema }: { schema: unknown }) {
   );
 }
 
-export function ThirdPartyMcpTab({
+function useUpstreamMcpController({
   canManage,
   onImported
 }: {
@@ -672,6 +672,23 @@ export function ThirdPartyMcpTab({
       )
     }
   ];
+  return {
+    connectionsQuery, canManage, setEditingConnection, form, setConnectionModalOpen,
+    columns, connectionModalOpen, editingConnection, saveMutation, testMutation,
+    testCurrentForm, authType, testResultOpen, setTestResultOpen, message,
+    discoverConnection, selectedToolNames, importMutation, setDiscoverConnection,
+    discoverMutation, toolKeyword, setToolKeyword, discoveryColumns, filteredTools
+  };
+}
+
+export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpController>[0]) {
+  const {
+    connectionsQuery, canManage, setEditingConnection, form, setConnectionModalOpen,
+    columns, connectionModalOpen, editingConnection, saveMutation, testMutation,
+    testCurrentForm, authType, testResultOpen, setTestResultOpen,
+    discoverConnection, selectedToolNames, importMutation, setDiscoverConnection,
+    discoverMutation, toolKeyword, setToolKeyword, discoveryColumns, filteredTools
+  } = useUpstreamMcpController(props);
 
   if (connectionsQuery.isLoading) {
     return <LoadingState compact />;

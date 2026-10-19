@@ -374,10 +374,19 @@ function collectLocaleSources(repoRoot, localeDir) {
 }
 
 function collectSourceFiles(repoRoot, sourceFiles = SOURCE_SCAN_FILES) {
-  return Object.fromEntries(Object.entries(sourceFiles).map(([key, filePath]) => [
-    key,
-    readOptionalTextFile(repoRoot, filePath),
-  ]));
+  return Object.fromEntries(Object.entries(sourceFiles).map(([key, filePath]) => {
+    const source = readOptionalTextFile(repoRoot, filePath);
+    if (key === 'rolePermissionPanel' && filePath === DEFAULT_ROLE_PERMISSION_PANEL_FILE && source?.source) {
+      const rolePermissionDirectory = path.join(path.dirname(filePath), 'role-permissions');
+      const relatedSources = [
+        'console-policy-draft.ts',
+        'console-policy-catalog-table.tsx',
+      ].map((name) => readOptionalTextFile(repoRoot, path.join(rolePermissionDirectory, name))?.source)
+        .filter(Boolean);
+      return [key, { ...source, source: [source.source, ...relatedSources].join('\n') }];
+    }
+    return [key, source];
+  }));
 }
 
 function collectConsoleOperationRegistryInventory({

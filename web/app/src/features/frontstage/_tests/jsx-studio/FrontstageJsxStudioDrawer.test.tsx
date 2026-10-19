@@ -1,8 +1,4 @@
-import { setImmediate } from 'node:timers/promises';
-
-import {
-  // eslint-disable-next-line testing-library/no-manual-cleanup -- Explicit teardown drains React scheduler work before jsdom removes window.
-  cleanup,
+import { act,
   fireEvent,
   render as testingRender,
   screen,
@@ -12,7 +8,7 @@ import {
 import { App } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { ConsoleFrontstageComponent } from '@1flowbase/api-client';
 import {
@@ -28,18 +24,23 @@ import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/Frontstag
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
-const render = (ui: ReactElement) =>
-  testingRender(ui, {
-    wrapper: ({ children }) => (
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <App>{children}</App>
-      </QueryClientProvider>
-    )
+async function renderSettled(ui: ReactElement) {
+  let view!: ReturnType<typeof testingRender>;
+  await act(async () => {
+    view = testingRender(ui, {
+      wrapper: ({ children }) => (
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <App>{children}</App>
+        </QueryClientProvider>
+      )
+    });
   });
+  return view;
+}
 const templateApi = vi.hoisted(() => ({
   createSettingsUiTemplate: vi.fn(),
   settingsUiTemplatesQueryKey: ['settings', 'ui-management', 'templates']
@@ -152,47 +153,61 @@ vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
 vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
   loadMonacoEditorModule: () => import('@monaco-editor/react')
 }));
-vi.mock('@monaco-editor/react', () => ({
-  default: ({
-    beforeMount,
-    value,
-    onChange,
-    onMount,
-    options
-  }: {
-    beforeMount?: (monaco: unknown) => void;
-    value?: string;
-    onChange?: (value?: string) => void;
-    onMount?: (editor: unknown, monaco: unknown) => void;
-    options?: { editContext?: boolean };
-  }) => {
-    const monaco = {
-      MarkerSeverity: { Error: 8 },
-      editor: { setModelMarkers: monacoHook.setModelMarkers },
-      languages: {
-        typescript: {
-          JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
-          ModuleResolutionKind: { NodeJs: 'node-js' },
-          ScriptTarget: { ES2022: 'es2022' },
-          typescriptDefaults: {
-            addExtraLib: monacoHook.addExtraLib,
-            setCompilerOptions: monacoHook.setCompilerOptions
+vi.mock('@monaco-editor/react', async () => {
+  const { useEffect, useRef, useState } = await import('react');
+  return {
+    default: function MockMonacoEditor({
+      beforeMount,
+      value,
+      onChange,
+      onMount,
+      options
+    }: {
+      beforeMount?: (monaco: unknown) => void;
+      value?: string;
+      onChange?: (value?: string) => void;
+      onMount?: (editor: unknown, monaco: unknown) => void;
+      options?: { editContext?: boolean };
+    }) {
+      const [mount] = useState(() => {
+        const monaco = {
+          MarkerSeverity: { Error: 8 },
+          editor: { setModelMarkers: monacoHook.setModelMarkers },
+          languages: {
+            typescript: {
+              JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
+              ModuleResolutionKind: { NodeJs: 'node-js' },
+              ScriptTarget: { ES2022: 'es2022' },
+              typescriptDefaults: {
+                addExtraLib: monacoHook.addExtraLib,
+                setCompilerOptions: monacoHook.setCompilerOptions
+              }
+            }
           }
-        }
-      }
-    };
-    beforeMount?.(monaco);
-    onMount?.(monacoEditor, monaco);
-    return (
-      <textarea
-        aria-label="JSX source"
-        data-edit-context={String(options?.editContext)}
-        value={value}
-        onChange={(event) => onChange?.(event.target.value)}
-      />
-    );
-  }
-}));
+        };
+        const editor = monacoEditor;
+        return { beforeMount, onMount, editor, monaco };
+      });
+      // Monaco retains initial mount callbacks; prop updates do not remount it.
+      const mounted = useRef(false);
+      useEffect(() => {
+        if (mounted.current) return;
+        mounted.current = true;
+        mount.beforeMount?.(mount.monaco);
+        mount.onMount?.(mount.editor, mount.monaco);
+      }, [mount]);
+
+      return (
+        <textarea
+          aria-label="JSX source"
+          data-edit-context={String(options?.editContext)}
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+        />
+      );
+    }
+  };
+});
 
 const block: FrontstageBlockInstance = {
   id: 'orders-block',
@@ -255,13 +270,7 @@ const buttonComponent = {
 } satisfies ConsoleFrontstageComponent;
 
 describe('FrontstageJsxStudioDrawer', () => {
-  afterEach(async () => {
-    cleanup();
-    // React's scheduler may enqueue a follow-up Immediate while processing the
-    // first one. Drain both turns before Vitest removes the jsdom window.
-    await setImmediate();
-    await setImmediate();
-  });
+
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -409,8 +418,8 @@ describe('FrontstageJsxStudioDrawer', () => {
     });
   });
 
-  test('AC-004/009 exposes block tree without the legacy child-container write rail', () => {
-    render(
+  test('AC-004/009 exposes block tree without the legacy child-container write rail', async () => {
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="code"
@@ -434,7 +443,7 @@ describe('FrontstageJsxStudioDrawer', () => {
   test('keeps Monaco visible while configuration and interface resources share one Studio', async () => {
     const onSaveBlock = vi.fn().mockResolvedValue(true);
 
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="configuration"
@@ -465,13 +474,11 @@ describe('FrontstageJsxStudioDrawer', () => {
       interfaceCapabilitiesHook.useFrontstageInterfaceCapabilities
     ).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: '接口' }));
-    fireEvent.click(
-      await screen.findByText(
+    await domEvents.click(screen.getByRole('button', { name: '接口' }));
+    await domEvents.click(await screen.findByText(
         '/api/runtime/models/application_conversations/list'
-      )
-    );
-    fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
+      ));
+    await domEvents.click(screen.getByRole('button', { name: '插入代码' }));
 
     await waitFor(() =>
       expect(antdAppMocks.success).toHaveBeenCalledWith('接口代码已插入')
@@ -479,7 +486,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(onSaveBlock).not.toHaveBeenCalled();
   });
 
-  test('AC-001 attributes a Monaco change to the block identified by its model path', () => {
+  test('AC-001 attributes a Monaco change to the block identified by its model path', async () => {
     const setDraft = vi.fn();
     const rootTab = {
       block_id: 'root',
@@ -518,7 +525,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       }
     });
 
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="code"
@@ -531,7 +538,7 @@ describe('FrontstageJsxStudioDrawer', () => {
         onSaveBlock={vi.fn()}
       />
     );
-    fireEvent.change(screen.getByRole('textbox', { name: 'JSX source' }), {
+    await domEvents.change(screen.getByRole('textbox', { name: 'JSX source' }), {
       target: { value: 'child draft' }
     });
 
@@ -584,7 +591,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       isLoading: false
     });
 
-    const view = render(
+    const view = await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="code"
@@ -605,24 +612,25 @@ describe('FrontstageJsxStudioDrawer', () => {
       within(editorPanel as HTMLElement).queryByText('代码模板')
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '代码模板' }));
+    await domEvents.click(screen.getByRole('button', { name: '代码模板' }));
     expect(
       screen.getByRole('heading', { name: '代码模板' })
     ).toBeInTheDocument();
     expect(screen.getByText('Dashboard · 2.1.0 · 默认')).toBeInTheDocument();
     expect(screen.queryByText('Other template')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Dashboard · 2.1.0 · 默认'));
-    fireEvent.click(screen.getByRole('button', { name: '替换当前代码' }));
+    await domEvents.click(screen.getByText('Dashboard · 2.1.0 · 默认'));
+    await domEvents.click(screen.getByRole('button', { name: '替换当前代码' }));
     expect(await screen.findAllByText('替换当前代码？')).not.toHaveLength(0);
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: '替换当前代码？' })).getByRole(
+    await domEvents.click(within(screen.getByRole('dialog', { name: '替换当前代码？' })).getByRole(
         'button',
         { name: /^替\s*换$/ }
-      )
-    );
+      ));
 
     await waitFor(() => expect(setDraft).toHaveBeenCalledWith(templateSource));
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal-confirm')).not.toBeInTheDocument()
+    );
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -634,7 +642,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       draft,
       dirty: true
     });
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="templates"
@@ -647,15 +655,10 @@ describe('FrontstageJsxStudioDrawer', () => {
         onSaveBlock={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: '保存为页面模板' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存为页面模板' }));
     const dialog = screen.getByRole('dialog', { name: '保存为页面模板' });
-    fireEvent.change(
-      within(dialog).getByRole('textbox', { name: '模板名称' }),
-      { target: { value: '  我的模板  ' } }
-    );
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '保存模板草稿' })
-    );
+    await domEvents.change(within(dialog).getByRole('textbox', { name: '模板名称' }), { target: { value: '  我的模板  ' } });
+    await domEvents.click(within(dialog).getByRole('button', { name: '保存模板草稿' }));
     await waitFor(() =>
       expect(templateApi.createSettingsUiTemplate).toHaveBeenCalledWith(
         {
@@ -681,7 +684,7 @@ describe('FrontstageJsxStudioDrawer', () => {
 
   test('AC-003 validates the name and retains input after a rejected save', async () => {
     templateApi.createSettingsUiTemplate.mockRejectedValue({ status: 403 });
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="templates"
@@ -694,27 +697,23 @@ describe('FrontstageJsxStudioDrawer', () => {
         onSaveBlock={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: '保存为页面模板' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存为页面模板' }));
     const dialog = screen.getByRole('dialog', { name: '保存为页面模板' });
     const input = within(dialog).getByRole('textbox', { name: '模板名称' });
-    fireEvent.change(input, { target: { value: '   ' } });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '保存模板草稿' })
-    );
+    await domEvents.change(input, { target: { value: '   ' } });
+    await domEvents.click(within(dialog).getByRole('button', { name: '保存模板草稿' }));
     expect(await screen.findByText('请输入模板名称')).toBeInTheDocument();
     expect(templateApi.createSettingsUiTemplate).not.toHaveBeenCalled();
-    fireEvent.change(input, { target: { value: '保留这个名称' } });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '保存模板草稿' })
-    );
+    await domEvents.change(input, { target: { value: '保留这个名称' } });
+    await domEvents.click(within(dialog).getByRole('button', { name: '保存模板草稿' }));
     expect(await screen.findByText('没有创建模板的权限')).toBeInTheDocument();
     expect(input).toHaveValue('保留这个名称');
     expect(dialog).toBeInTheDocument();
   });
 
-  test('AC-004 disables template creation without management permission', () => {
+  test('AC-004 disables template creation without management permission', async () => {
     templateAuth.me.permissions = [];
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="templates"
@@ -732,8 +731,8 @@ describe('FrontstageJsxStudioDrawer', () => {
     ).toBeDisabled();
   });
 
-  test('resizes the resource panel horizontally without resizing the Studio window', () => {
-    render(
+  test('resizes the resource panel horizontally without resizing the Studio window', async () => {
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="interfaces"
@@ -758,22 +757,22 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(workspace?.style.getPropertyValue('--resource-panel-width')).toBe(
       '320px'
     );
-    fireEvent.mouseDown(resizeHandle, { clientX: 500 });
-    fireEvent.mouseMove(document, { clientX: 400 });
-    fireEvent.mouseUp(document);
+    await domEvents.mouseDown(resizeHandle, { clientX: 500 });
+    await domEvents.mouseMove(document, { clientX: 400 });
+    await domEvents.mouseUp(document);
     expect(workspace?.style.getPropertyValue('--resource-panel-width')).toBe(
       '420px'
     );
     expect(dialog).toHaveStyle({ width: '1080px' });
 
-    fireEvent.keyDown(resizeHandle, { key: 'ArrowRight' });
+    await domEvents.keyDown(resizeHandle, { key: 'ArrowRight' });
     expect(workspace?.style.getPropertyValue('--resource-panel-width')).toBe(
       '380px'
     );
   });
 
-  test('preserves JSX in Monaco because Page Runtime owns TSX compilation', () => {
-    render(
+  test('preserves JSX in Monaco because Page Runtime owns TSX compilation', async () => {
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="code"
@@ -818,7 +817,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       onClose: vi.fn(),
       onSaveBlock: vi.fn()
     };
-    const view = render(<FrontstageJsxStudioDrawer {...props} />);
+    const view = await renderSettled(<FrontstageJsxStudioDrawer {...props} />);
 
     expect(monacoHook.setModelMarkers).toHaveBeenLastCalledWith(
       model,
@@ -909,7 +908,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       save: vi.fn().mockResolvedValue(undefined)
     });
 
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="components"
@@ -923,7 +922,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       />
     );
     const row = screen.getByText('Button').closest('tr');
-    fireEvent.click(within(row!).getByRole('button', { name: '插入' }));
+    await domEvents.click(within(row!).getByRole('button', { name: '插入' }));
 
     await waitFor(() =>
       expect(monacoEditor.executeEdits).toHaveBeenCalledTimes(1)
@@ -935,7 +934,7 @@ describe('FrontstageJsxStudioDrawer', () => {
   test('AC-004 saves fixed block height from the configuration section', async () => {
     const onSaveBlock = vi.fn().mockResolvedValue(true);
 
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="configuration"
@@ -949,12 +948,12 @@ describe('FrontstageJsxStudioDrawer', () => {
       />
     );
 
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '高度模式' }));
-    fireEvent.click(await screen.findByText('固定高度'));
-    fireEvent.change(screen.getByRole('spinbutton', { name: '固定高度' }), {
+    await domEvents.mouseDown(screen.getByRole('combobox', { name: '高度模式' }));
+    await domEvents.click(await screen.findByText('固定高度'));
+    await domEvents.change(screen.getByRole('spinbutton', { name: '固定高度' }), {
       target: { value: '360' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存配置' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
@@ -965,7 +964,7 @@ describe('FrontstageJsxStudioDrawer', () => {
   test('AC-003 does not save the host block title into runtime props', async () => {
     const onSaveBlock = vi.fn().mockResolvedValue(true);
     const onSaveBlockTitle = vi.fn().mockResolvedValue(true);
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="configuration"
@@ -980,10 +979,10 @@ describe('FrontstageJsxStudioDrawer', () => {
       />
     );
 
-    fireEvent.change(screen.getByRole('textbox', { name: '标题' }), {
+    await domEvents.change(screen.getByRole('textbox', { name: '标题' }), {
       target: { value: 'K7M2PX9Q' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存配置' }));
 
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0].props).not.toHaveProperty('title');
@@ -992,7 +991,7 @@ describe('FrontstageJsxStudioDrawer', () => {
 
   test('AC-006 declares a typed output port from the variables section', async () => {
     const onSaveBlock = vi.fn().mockResolvedValue(true);
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="variables"
@@ -1006,10 +1005,10 @@ describe('FrontstageJsxStudioDrawer', () => {
         onSaveBlock={onSaveBlock}
       />
     );
-    fireEvent.change(screen.getByRole('textbox', { name: '输出端口' }), {
+    await domEvents.change(screen.getByRole('textbox', { name: '输出端口' }), {
       target: { value: 'total' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '添加端口' }));
+    await domEvents.click(screen.getByRole('button', { name: '添加端口' }));
     await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
     expect(onSaveBlock.mock.calls[0]?.[0]).toMatchObject({
       ports: { outputs: [{ name: 'total', schema: { type: 'string' } }] }
@@ -1032,7 +1031,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       save
     });
 
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="code"
@@ -1074,24 +1073,22 @@ describe('FrontstageJsxStudioDrawer', () => {
         name: /保\s*存/
       })
     ).not.toHaveClass('ant-btn-primary');
-    fireEvent.click(
-      within(windowHeader as HTMLElement).getByRole('button', {
+    await domEvents.click(within(windowHeader as HTMLElement).getByRole('button', {
         name: '上下文'
-      })
-    );
+      }));
     expect(setDraft).toHaveBeenCalledWith(
       expect.stringContaining('@1flowbase-context')
     );
-    fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
+    await domEvents.click(screen.getByRole('button', { name: /^运\s*行$/ }));
     expect(
       screen.getByText('Preview 1: export default {}')
     ).toBeInTheDocument();
     expect(save).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await domEvents.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   });
 
-  test('does not expose migration, upgrade, or dependency state UI for legacy rows', () => {
+  test('does not expose migration, upgrade, or dependency state UI for legacy rows', async () => {
     const source = 'export default function Legacy() { return <div />; }';
     const saveActiveDraft = vi.fn().mockResolvedValue(undefined);
     const activeTab = {
@@ -1126,7 +1123,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       handleDeletedBlock: vi.fn().mockResolvedValue('converged')
     });
 
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="code"
@@ -1142,11 +1139,11 @@ describe('FrontstageJsxStudioDrawer', () => {
 
     expect(screen.queryByText(/迁移|升级|可执行依赖/u)).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await domEvents.click(screen.getByRole('button', { name: /保\s*存/ }));
     expect(saveActiveDraft).not.toHaveBeenCalled();
   });
 
-  test('D4-AC-006 preserves controlled legacy source and blocks save/run with the stable diagnostic', () => {
+  test('D4-AC-006 preserves controlled legacy source and blocks save/run with the stable diagnostic', async () => {
     const legacySource = `async function main(ctx) { return { view: null, outputs: {} }; }
 export default { main } satisfies BlockModule;`;
     const save = vi.fn();
@@ -1168,7 +1165,7 @@ export default { main } satisfies BlockModule;`;
     const model = {};
     monacoEditor.getModel.mockReturnValue(model);
 
-    render(
+    await renderSettled(
       <FrontstageJsxStudioDrawer
         open
         initialSection="code"
@@ -1196,8 +1193,8 @@ export default { main } satisfies BlockModule;`;
       ]
     );
     expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
-    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await domEvents.click(screen.getByRole('button', { name: /^运\s*行$/ }));
+    await domEvents.click(screen.getByRole('button', { name: /保\s*存/ }));
     expect(save).not.toHaveBeenCalled();
     expect(runPanel.mock.calls.at(-1)?.[0]).toMatchObject({
       code: legacySource,
@@ -1205,3 +1202,18 @@ export default { main } satisfies BlockModule;`;
     });
   });
 });
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+const domEvents = {
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
+  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args)),
+  mouseDown: (...args: Parameters<typeof fireEvent.mouseDown>) => dispatch(() => fireEvent.mouseDown(...args)),
+  mouseMove: (...args: Parameters<typeof fireEvent.mouseMove>) => dispatch(() => fireEvent.mouseMove(...args)),
+  mouseUp: (...args: Parameters<typeof fireEvent.mouseUp>) => dispatch(() => fireEvent.mouseUp(...args)),
+  keyDown: (...args: Parameters<typeof fireEvent.keyDown>) => dispatch(() => fireEvent.keyDown(...args))
+};

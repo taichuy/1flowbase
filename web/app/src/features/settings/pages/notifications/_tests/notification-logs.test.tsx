@@ -1,5 +1,6 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -78,23 +79,49 @@ beforeEach(() => {
   );
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
-function renderLogs() {
-  return render(
-    <QueryClientProvider client={client}>
-      <NotificationLogs />
-    </QueryClientProvider>
-  );
+// Await the asynchronous work triggered by each real DOM event.
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
+  await act(async () => {
+    fireEvent.mouseDown(...args);
+  });
+}
+
+async function renderLogs() {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(
+      <QueryClientProvider client={client}>
+        <NotificationLogs />
+      </QueryClientProvider>
+    );
+  });
+  return view;
 }
 afterEach(async () => {
-  await appI18n.changeLanguage('zh_Hans');
-  client.clear();
-  resetAuthStore();
-  vi.unstubAllGlobals();
+  try {
+    await waitFor(() => {
+      expect(client.isFetching()).toBe(0);
+      expect(client.isMutating()).toBe(0);
+    });
+  } finally {
+    cleanup();
+    await act(async () => {
+      await appI18n.changeLanguage('zh_Hans');
+      client.clear();
+      resetAuthStore();
+    });
+    vi.unstubAllGlobals();
+  }
 });
 test('uses backend pages and exposes only safe, plain-text log detail', async () => {
-  renderLogs();
+  await renderLogs();
   await screen.findByText('Delivery channel');
-  fireEvent.click(screen.getByRole('button', { name: '详情' }));
+  await click(screen.getByRole('button', { name: '详情' }));
   await screen.findByText('Plain title');
   expect(screen.getByRole('textbox', { name: '日志 ID' })).toHaveValue('log-1');
   expect(screen.getByRole('textbox', { name: '日志 ID' })).toHaveAttribute(
@@ -113,8 +140,11 @@ test('uses backend pages and exposes only safe, plain-text log detail', async ()
   expect(
     screen.queryByRole('button', { name: /重试|删除/ })
   ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-  fireEvent.click(screen.getByTitle('2'));
+  await click(screen.getByRole('button', { name: 'Close' }));
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  );
+  await click(screen.getByTitle('2'));
   await screen.findByText('Second page channel');
   expect(
     calls.some(
@@ -123,10 +153,10 @@ test('uses backend pages and exposes only safe, plain-text log detail', async ()
   ).toBe(true);
 });
 test('sends source filter to the server and resets the page', async () => {
-  renderLogs();
+  await renderLogs();
   await screen.findByText('Delivery channel');
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: '触发来源' }));
-  fireEvent.click(await screen.findByText('API 调用'));
+  await mouseDown(screen.getByRole('combobox', { name: '触发来源' }));
+  await click(await screen.findByText('API 调用'));
   await waitFor(() =>
     expect(
       calls.some((input) => {
@@ -138,23 +168,28 @@ test('sends source filter to the server and resets the page', async () => {
 });
 
 test('hides failure reasons for successful delivery and retains a safe reason for an unknown result', async () => {
-  renderLogs();
+  await renderLogs();
   await screen.findByText('Delivery channel');
   detail = { ...log, status: 'success', failure_code: 'input_invalid' };
-  fireEvent.click(screen.getByRole('button', { name: '详情' }));
+  await click(screen.getByRole('button', { name: '详情' }));
   await screen.findByText('Plain title');
   const success = within(screen.getByRole('dialog'));
   expect(success.getByText('发送成功')).toBeInTheDocument();
   expect(success.queryByText('失败原因')).not.toBeInTheDocument();
   expect(success.queryByText('消息输入或收件人无效')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  await click(screen.getByRole('button', { name: 'Close' }));
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  );
   detail = {
     ...log,
     status: 'unknown',
     failure_code: 'provider_result_unknown'
   };
-  await client.invalidateQueries({ queryKey: ['notifications'] });
-  fireEvent.click(screen.getByRole('button', { name: '详情' }));
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['notifications'] });
+  });
+  await click(screen.getByRole('button', { name: '详情' }));
   await screen.findByText('供应商发送结果未确认');
   const unknown = within(screen.getByRole('dialog'));
   expect(unknown.getByText('结果待确认')).toBeInTheDocument();
@@ -208,7 +243,7 @@ test.each([
 ])(
   'renders safe translated reason for %s without provider diagnostics',
   async (failure_code, label, english) => {
-    renderLogs();
+    await renderLogs();
     await screen.findByText('Delivery channel');
     detail = {
       ...log,
@@ -218,7 +253,7 @@ test.each([
       // An unexpected extra field must never become a default UI diagnostic.
       ...{ provider_error: 'SECRET_TOKEN raw provider exception' }
     };
-    fireEvent.click(screen.getByRole('button', { name: '详情' }));
+    await click(screen.getByRole('button', { name: '详情' }));
     await screen.findByText(label);
     const drawer = within(screen.getByRole('dialog'));
     expect(drawer.getByText(label)).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -50,7 +50,7 @@ export interface FileTableViewProps {
 }
 
 /** Host owns authenticated multipart requests; Blocks only select a file table. */
-export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProps) {
+function useFileTableController({ fileTableCode, toolbarExtra }: FileTableViewProps) {
   const { message } = App.useApp();
   const { getPrefixCls } = useContext(ConfigProvider.ConfigContext);
   const uploadPrefixCls = getPrefixCls('upload');
@@ -79,13 +79,13 @@ export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProp
     tableId: string;
     workspaceId: string | undefined;
   }>();
-  const uploads = useRef(new Set<AbortController>());
+  const [uploads] = useState(() => new Set<AbortController>());
   useEffect(() => {
-    const controllers = uploads.current;
+    const controllers = uploads;
     return () => {
       for (const controller of controllers) controller.abort();
     };
-  }, [workspaceId, fileTableCode]);
+  }, [workspaceId, fileTableCode, uploads]);
 
   const tables = useQuery({
     queryKey: ['files', 'tables', workspaceId],
@@ -271,7 +271,7 @@ export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProp
 
   const customRequest: UploadProps['customRequest'] = (request) => {
     const controller = new AbortController();
-    uploads.current.add(controller);
+    uploads.add(controller);
     async function upload() {
       if (!table || !csrfToken || !(request.file instanceof File)) {
         throw new Error(i18nText('frontstage', 'files.upload_unavailable'));
@@ -306,12 +306,27 @@ export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProp
         message.error(failure.message);
       })
       .finally(() => {
-        uploads.current.delete(controller);
+        uploads.delete(controller);
       });
     return { abort: () => controller.abort() };
   };
 
   const error = tables.error ?? records.error;
+  return {
+    error, message, tables, table, columns, configuration, records, page, pageSize,
+    setPage, setPageSize, setSort, search, setSearch, csrfToken, setUploadOpen,
+    toolbarExtra, shareTarget, workspaceId, filename, setShareTarget, uploadOpen,
+    surface, uploading, setFileList, fileList, customRequest, uploadPrefixCls
+  };
+}
+
+export function FileTableView(props: Parameters<typeof useFileTableController>[0]) {
+  const {
+    error, tables, table, columns, configuration, records, page, pageSize,
+    setPage, setPageSize, setSort, search, setSearch, csrfToken, setUploadOpen,
+    toolbarExtra, shareTarget, workspaceId, setShareTarget, uploadOpen,
+    surface, uploading, setFileList, fileList, customRequest, uploadPrefixCls
+  } = useFileTableController(props);
   return (
     <div className="file-table-view">
       {error ? <Alert showIcon type="error" title={error.message} /> : null}

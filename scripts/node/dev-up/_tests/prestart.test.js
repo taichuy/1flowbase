@@ -41,7 +41,7 @@ test('AC-001 resets the api root password through Node without compiling Rust', 
         description: 'api-server development root password reset',
         command: process.execPath,
         args: [
-          path.join(tempRepoRoot, 'scripts', 'node', 'reset-account-password.js'),
+          path.join(tempRepoRoot, 'scripts', 'node', 'reset-account-password', 'cli.js'),
           '--if-missing',
           'skip',
         ],
@@ -169,7 +169,7 @@ test('AC-003 surfaces a failed api root password reset', async () => {
 
   assert.equal(commandCalls.length, 1);
   assert.equal(commandCalls[0].command, process.execPath);
-  assert.equal(path.basename(commandCalls[0].args[0]), 'reset-account-password.js');
+  assert.equal(commandCalls[0].args[0], path.join(tempRepoRoot, 'scripts', 'node', 'reset-account-password', 'cli.js'));
   assert.equal(commandCalls[0].options.captureOutput, true);
   assert.deepEqual(composeCalls, []);
   assert.equal(

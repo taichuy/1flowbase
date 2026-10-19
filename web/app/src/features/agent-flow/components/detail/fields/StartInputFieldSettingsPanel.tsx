@@ -2,6 +2,7 @@ import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Input, InputNumber, Select, Switch, Typography } from 'antd';
 import type { RefObject } from 'react';
+import { useStableListItemKeys } from '../../../hooks/interactions/use-stable-list-item-keys';
 
 import type { ConsoleApplicationNodeContractField } from '@1flowbase/api-client';
 
@@ -52,7 +53,7 @@ function normalizeOptions(options: string[] | undefined) {
   return nextOptions;
 }
 
-export function StartInputFieldSettingsPanel({
+function useStartInputSettingsController({
   mode,
   field,
   inputTypeContract,
@@ -69,6 +70,7 @@ export function StartInputFieldSettingsPanel({
       ? i18nText('agentFlow', 'auto.add_new_input_field')
       : i18nText('agentFlow', 'auto.edit_input_field_alt');
   const options = normalizeOptions(field.options);
+  const optionKeys = useStableListItemKeys('start-input-option', options.length);
   const showDefaultValue =
     isStringDefaultType(field.inputType) ||
     field.inputType === 'number' ||
@@ -95,6 +97,7 @@ export function StartInputFieldSettingsPanel({
   }
 
   function removeOption(index: number) {
+    optionKeys.removeItemKey(index);
     const nextOptions = options.filter(
       (_, optionIndex) => optionIndex !== index
     );
@@ -106,6 +109,19 @@ export function StartInputFieldSettingsPanel({
         : undefined
     });
   }
+  return {
+    title, triggerRef, onClose, onSave, inputTypeContract, options, inputTypeOptions,
+    field, onChange, handleTypeChange, sourceOptions, sourceContract, optionKeys,
+    updateOption, removeOption, showDefaultValue
+  };
+}
+
+export function StartInputFieldSettingsPanel(props: Parameters<typeof useStartInputSettingsController>[0]) {
+  const {
+    title, triggerRef, onClose, onSave, inputTypeContract, options, inputTypeOptions,
+    field, onChange, handleTypeChange, sourceOptions, sourceContract, optionKeys,
+    updateOption, removeOption, showDefaultValue
+  } = useStartInputSettingsController(props);
 
   return (
     <FloatingSettingsPanel
@@ -206,7 +222,7 @@ export function StartInputFieldSettingsPanel({
               {options.map((option, index) => (
                 <div
                   className="agent-flow-start-input-fields__option-row"
-                  key={index}
+                  key={optionKeys.itemKeys[index]}
                 >
                   <Input
                     aria-label={i18nText(
@@ -239,7 +255,10 @@ export function StartInputFieldSettingsPanel({
                 )}
                 icon={<PlusOutlined />}
                 size="small"
-                onClick={() => onChange({ options: [...options, ''] })}
+                onClick={() => {
+                  optionKeys.insertItemKey();
+                  onChange({ options: [...options, ''] });
+                }}
               >
                 {i18nText('agentFlow', 'auto.new_options')}
               </Button>
@@ -301,10 +320,10 @@ export function StartInputFieldSettingsPanel({
               <Select
                 allowClear
                 aria-label={i18nText('agentFlow', 'auto.input_field_value')}
-                options={options
-                  .map((option) => option.trim())
-                  .filter(Boolean)
-                  .map((option) => ({ value: option, label: option }))}
+                options={options.flatMap((option) => {
+                  const value = option.trim();
+                  return value ? [{ value, label: value }] : [];
+                })}
                 value={
                   typeof field.defaultValue === 'string'
                     ? field.defaultValue

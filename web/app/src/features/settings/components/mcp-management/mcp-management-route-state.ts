@@ -1,4 +1,4 @@
-export const mcpManagementTabKeys = [
+const mcpManagementTabKeys = [
   'instances',
   'tools',
   'third-party'
@@ -6,7 +6,7 @@ export const mcpManagementTabKeys = [
 
 export type McpManagementTabKey = (typeof mcpManagementTabKeys)[number];
 
-export const defaultMcpManagementTabKey: McpManagementTabKey = 'instances';
+const defaultMcpManagementTabKey: McpManagementTabKey = 'instances';
 
 type HistoryUpdateMode = 'push' | 'replace';
 

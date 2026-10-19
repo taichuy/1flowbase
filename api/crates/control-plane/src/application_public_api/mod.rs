@@ -17,11 +17,16 @@ pub mod protocol_translation;
 pub mod publications;
 mod published_plan;
 mod published_publication;
+#[path = "workflow/published_workflow_operation.rs"]
 pub mod published_workflow_operation;
 pub mod run_service;
+#[path = "workflow/workflow_extension.rs"]
 pub mod workflow_extension;
+#[path = "workflow/workflow_invocation.rs"]
 pub mod workflow_invocation;
+#[path = "workflow/workflow_schedule.rs"]
 pub mod workflow_schedule;
+#[path = "workflow/workflow_start_http_inputs.rs"]
 pub mod workflow_start_http_inputs;
 
 use crate::{

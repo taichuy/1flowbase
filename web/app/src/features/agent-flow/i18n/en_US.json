@@ -518,7 +518,6 @@
     "node_output": "node output",
     "declarative_node_placeholders_plugins": "Declarative node capabilities from plugins.",
     "source": "{{value1}} source",
-    "plugin_node_meta_summary": "Declarative nodes from capability plugins that can be explicitly selected and executed by workflows.",
     "variable": "Variable {{value1}}",
     "end_time": "end time",
     "user_input": "user input",

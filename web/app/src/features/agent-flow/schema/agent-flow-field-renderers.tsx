@@ -163,19 +163,19 @@ const StartModelListField = lazyField(
   'StartModelListField'
 );
 const HttpRequestBodyField = lazyField(
-  () => import('../components/detail/fields/HttpRequestBodyField'),
+  () => import('../components/detail/fields/http-request/HttpRequestBodyField'),
   'HttpRequestBodyField'
 );
 const HttpRequestCurlImportField = lazyField(
-  () => import('../components/detail/fields/HttpRequestCurlImportField'),
+  () => import('../components/detail/fields/http-request/HttpRequestCurlImportField'),
   'HttpRequestCurlImportField'
 );
 const HttpRequestKeyValuesField = lazyField(
-  () => import('../components/detail/fields/HttpRequestKeyValuesField'),
+  () => import('../components/detail/fields/http-request/HttpRequestKeyValuesField'),
   'HttpRequestKeyValuesField'
 );
 const HttpRequestTemplateInput = lazyField(
-  () => import('../components/detail/fields/HttpRequestTemplateInput'),
+  () => import('../components/detail/fields/http-request/HttpRequestTemplateInput'),
   'HttpRequestTemplateInput'
 );
 

@@ -307,7 +307,8 @@ impl ConsoleInterfacePort<WorkflowScheduleInput, WorkflowScheduleOutput>
                                 application_id,
                             })
                             .await?
-                            .map(to_workflow_schedule_trigger_response);
+                            .map(to_workflow_schedule_trigger_response)
+                            .transpose()?;
                         WorkflowScheduleOutput::Optional(trigger)
                     }
                     WorkflowScheduleInput::Replace {
@@ -326,7 +327,7 @@ impl ConsoleInterfacePort<WorkflowScheduleInput, WorkflowScheduleOutput>
                             .await?;
                         WorkflowScheduleOutput::Required(to_workflow_schedule_trigger_response(
                             trigger,
-                        ))
+                        )?)
                     }
                 };
                 Ok(output)

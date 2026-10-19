@@ -110,5 +110,5 @@ impl Drop for OwnedPermit {
 }
 
 #[cfg(test)]
-#[path = "_tests/managed_operation_lifetime.rs"]
+#[path = "_tests/extension_repositories/managed_operation_lifetime.rs"]
 mod tests;

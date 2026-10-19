@@ -1,114 +1,210 @@
 {
+  "version": "rust-backend-reviews/v1",
   "allowedFindings": [
     {
+      "id": "fixed-supported-runtime-target",
       "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/official_plugin_registry.rs",
-      "line": 74,
-      "snippet": "RuntimeTarget::from_rust_target_triple(\"x86_64-unknown-linux-musl\").unwrap()"
+      "file": "api/apps/api-server/src/catalog_sources/official_plugin_registry.rs",
+      "snippet": "RuntimeTarget::from_rust_target_triple(\"x86_64-unknown-linux-musl\").unwrap()",
+      "reason": "build_catalog_snapshot unwraps only the fixed x86_64-unknown-linux-musl literal. RuntimeTarget::from_rust_target_triple matches this exact literal to Ok; runtime caller data cannot change that argument.",
+      "source_sha256": "abe1865561e5c2ef5fd471588eda85a3be65cec13563a0afddb4b31ec8c14db2",
+      "evidence": [
+        {
+          "file": "api/crates/extension-contracts/src/runtime_target.rs",
+          "sha256": "63fd8db499b1aae8bfa2721d85dbacedc1df5d5ad9d9fea0f97de2521dda0f46",
+          "reason": "from_rust_target_triple has an explicit Ok arm for this exact fixed literal; unsupported strings return Err separately."
+        }
+      ]
     },
     {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/application_api.rs",
-      "line": 193,
-      "snippet": "value.map(|value| value.format(&Rfc3339).unwrap())"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/application_api.rs",
-      "line": 197,
-      "snippet": "value.format(&Rfc3339).unwrap()"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/application_orchestration.rs",
-      "line": 88,
-      "snippet": "updated_at: state.draft.updated_at.format(&Rfc3339).unwrap(),"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/application_orchestration.rs",
-      "line": 101,
-      "snippet": "created_at: version.created_at.format(&Rfc3339).unwrap(),"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/applications.rs",
-      "line": 218,
-      "snippet": "updated_at: variable.updated_at.format(&Rfc3339).unwrap(),"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/applications.rs",
-      "line": 245,
-      "snippet": "updated_at: application.updated_at.format(&Rfc3339).unwrap(),"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/applications/applications.rs",
-      "line": 302,
-      "snippet": "updated_at: application.updated_at.format(&Rfc3339).unwrap(),"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/plugins_and_models/data_sources.rs",
-      "line": 175,
-      "snippet": "value.format(&Rfc3339).unwrap()"
-    },
-    {
+      "id": "json-model-provider-catalog",
       "rule": "no-production-escape",
       "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers.rs",
-      "line": 374,
-      "snippet": "value.format(&Rfc3339).unwrap()"
+      "snippet": "i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),",
+      "reason": "to_catalog_view_response converts catalog.i18n_catalog, whose exact type is BTreeMap<String, BTreeMap<String, serde_json::Value>>. It has string keys and already-representable JSON values, with no custom fallible serializer.",
+      "source_sha256": "2cdd18313cc16e9b5d93ac546d473e177d2ec30d12fedcf9e523b36a237f5762",
+      "evidence": [
+        {
+          "file": "api/crates/control-plane/src/presentation_catalogs/i18n.rs",
+          "sha256": "d49bdb2036377fab5d09f32adefb030acfd52185e8f0b811c906e2e6d61e1d66",
+          "reason": "I18nCatalog alias fixes both map-key layers to String and the leaf to serde_json::Value."
+        },
+        {
+          "file": "api/crates/control-plane/src/model_provider.rs",
+          "sha256": "9452d40ad96b0a5c5e16aea09641dcdba3c03993de7ef7e08008b153a9bafebe",
+          "reason": "ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
+        },
+        {
+          "file": "api/crates/control-plane/src/model_provider/catalog.rs",
+          "sha256": "8193e70b1fa3776a9d325904d2cce27e8e84d6211827cee4630883f83dc40824",
+          "reason": "Catalog and options builders populate the typed catalog through the existing i18n merge helpers."
+        }
+      ]
     },
     {
+      "id": "json-model-provider-options",
       "rule": "no-production-escape",
       "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers.rs",
-      "line": 623,
-      "snippet": "i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),"
+      "snippet": "i18n_catalog: serde_json::to_value(options.i18n_catalog).unwrap(),",
+      "reason": "to_options_view_response converts options.i18n_catalog, whose exact type is BTreeMap<String, BTreeMap<String, serde_json::Value>>. It has string keys and already-representable JSON values, with no custom fallible serializer.",
+      "source_sha256": "2cdd18313cc16e9b5d93ac546d473e177d2ec30d12fedcf9e523b36a237f5762",
+      "evidence": [
+        {
+          "file": "api/crates/control-plane/src/presentation_catalogs/i18n.rs",
+          "sha256": "d49bdb2036377fab5d09f32adefb030acfd52185e8f0b811c906e2e6d61e1d66",
+          "reason": "I18nCatalog alias fixes both map-key layers to String and the leaf to serde_json::Value."
+        },
+        {
+          "file": "api/crates/control-plane/src/model_provider.rs",
+          "sha256": "9452d40ad96b0a5c5e16aea09641dcdba3c03993de7ef7e08008b153a9bafebe",
+          "reason": "ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
+        },
+        {
+          "file": "api/crates/control-plane/src/model_provider/catalog.rs",
+          "sha256": "8193e70b1fa3776a9d325904d2cce27e8e84d6211827cee4630883f83dc40824",
+          "reason": "Catalog and options builders populate the typed catalog through the existing i18n merge helpers."
+        }
+      ]
     },
     {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers.rs",
-      "line": 787,
-      "snippet": "i18n_catalog: serde_json::to_value(options.i18n_catalog).unwrap(),"
-    },
-    {
-      "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/plugins_and_models/plugins.rs",
-      "line": 285,
-      "snippet": "value.format(&Rfc3339).unwrap()"
-    },
-    {
+      "id": "internal-data-source-ciphertext",
       "rule": "no-sensitive-serialize",
       "file": "api/crates/domain/src/data_source.rs",
-      "line": 82,
-      "snippet": "pub encrypted_secret_json: serde_json::Value,"
+      "snippet": "pub encrypted_secret_json: serde_json::Value,",
+      "reason": "DataSourceSecretRecord serializes encrypted persistence data, not a public credential response: encrypted_secret_json is created by encrypt_secret_json before storage, and API responses select explicit non-secret fields.",
+      "source_sha256": "f7465a8f1b157e2e7385a8446bbfa2ea49549da5f990101dd42fb34b437ab95d",
+      "evidence": [
+        {
+          "file": "api/crates/storage/durable/postgres/src/data_source_repository/mod.rs",
+          "sha256": "1d3357fc7081fc19511a7430d30b7bd24e0dcd622297b28b56dcdcedf09e94d5",
+          "reason": "upsert_secret/rotation encrypt plaintext before SQL binding; record mapper returns ciphertext representation."
+        },
+        {
+          "file": "api/crates/storage/durable/postgres/src/secret_crypto/mod.rs",
+          "sha256": "a1c164915b0ab6d33fe613595ce38e4207a80fa7c9996fef04189bf792adfb1b",
+          "reason": "encrypt_secret_json returns algorithm/nonce/ciphertext envelope; plaintext requires the master-key decrypt path."
+        },
+        {
+          "file": "api/apps/api-server/src/routes/plugins_and_models/data_sources.rs",
+          "sha256": "bdd6b237794f7ae9defdd04bf57ca7a16bb339094bd7ee4d9ad4912f652953f4",
+          "reason": "Explicit data-source response types and mappers do not expose encrypted_secret_json or serialize DataSourceSecretRecord as a public response."
+        }
+      ]
     },
     {
+      "id": "internal-model-provider-ciphertext",
       "rule": "no-sensitive-serialize",
       "file": "api/crates/domain/src/model_provider.rs",
-      "line": 457,
-      "snippet": "pub encrypted_secret_json: serde_json::Value,"
+      "snippet": "pub encrypted_secret_json: serde_json::Value,",
+      "reason": "ModelProviderSecretRecord is the internal encrypted repository record. Upsert/rotation encrypt before persistence; public instance DTO has configured presentation fields and no encrypted_secret_json.",
+      "source_sha256": "c759f7efe2567c6aeb325b95dd22f3229f464d8998466b225865dc1af425d2ed",
+      "evidence": [
+        {
+          "file": "api/crates/storage/durable/postgres/src/model_provider_repository.rs",
+          "sha256": "18292bf082d33041e64275843d8b2c5a99300d6990adaac4b532460cb39e55f4",
+          "reason": "Secret upsert and rotation call encrypt_secret_json before SQL binding; decrypt is explicit on secret retrieval."
+        },
+        {
+          "file": "api/crates/storage/durable/postgres/src/secret_crypto/mod.rs",
+          "sha256": "a1c164915b0ab6d33fe613595ce38e4207a80fa7c9996fef04189bf792adfb1b",
+          "reason": "Encryption returns an algorithm/nonce/ciphertext envelope, not serialized plaintext."
+        },
+        {
+          "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs",
+          "sha256": "9566aee1ecd35849ed790690f790291a6e94653bf83ef08908e4e1fe908d664f",
+          "reason": "ModelProviderInstanceResponse is explicit and omits encrypted_secret_json; it does not serialize the secret persistence record."
+        }
+      ]
     },
     {
-      "rule": "blocking-in-async-context",
-      "file": "api/apps/api-server/src/runtime_activity.rs",
-      "line": 628,
-      "snippet": "let status = std::fs::read_to_string(\"/proc/self/statm\").ok()?;",
-      "reason": "Linux RSS telemetry reads a tiny procfs file during runtime activity summary sampling; not a durable storage or external request dependency."
-    },
-    {
-      "rule": "blocking-in-async-context",
-      "file": "api/crates/runtime-profile/src/fingerprint.rs",
-      "line": 58,
-      "snippet": "std::fs::read_to_string(path)",
-      "reason": "Host fingerprint detection runs during local runtime profile identification and reads machine-id once; keep synchronous unless it moves into a hot request path."
-    },
-    {
+      "id": "private-oauth-approval-persistence",
       "rule": "no-sensitive-serialize",
       "file": "api/crates/control-plane/src/mcp_oauth/mod.rs",
       "snippet": "token_hash: String,",
-      "reason": "Private Approval persistence payload is serialized only into McpOAuthRepository state; the one-way approval hash never enters AuthorizationView, VerificationView or TokenResponse. Required for atomic browser-bound one-time consent consumption; public credential DTOs remain blocked."
+      "reason": "Private Approval persistence payload is serialized only into McpOAuthRepository state. token_hash is a one-way approval-token hash, checked with browser/request bindings and atomically consumed; AuthorizationView, VerificationView and TokenResponse do not expose this field.",
+      "source_sha256": "9ffc18d7f8d5120d40ac6c37f5bc16fad83f1bdc64c13c1e9e7c9caecad7e328",
+      "evidence": [
+        {
+          "file": "api/crates/storage/durable/postgres/src/integration_repositories/mcp_oauth_repository.rs",
+          "sha256": "aa0e4a65900152c19a6bdf254122d21ac593c2b4ac1359b476ba3fe2c994c6d3",
+          "reason": "oauth_put/get/consume implement expiring internal state storage and expected-value one-time consumption, distinct from public OAuth DTO projection."
+        }
+      ]
+    },
+    {
+      "id": "host-fingerprint-construction",
+      "rule": "blocking-in-async-context",
+      "file": "api/crates/runtime-profile/src/fingerprint.rs",
+      "snippet": "std::fs::read_to_string(path)",
+      "reason": "read_first_non_empty reads fixed machine-id paths during RuntimeProfileCollector construction. collect() reuses the stored host_fingerprint; runtime profile requests do not call this detector.",
+      "source_sha256": "8a849abad79fbd4d673f12b3fe429cc23621f70ddecd1f6acfd22266b3f86c68",
+      "evidence": [
+        {
+          "file": "api/crates/runtime-profile/src/profile.rs",
+          "sha256": "00dc6e6193a3fc54c8556e3da8ed48adb04b03ed40010746acde7be1a8b3f8ac",
+          "reason": "new_with_sample_source calls detect_host_fingerprint once; collect clones stored host_fingerprint."
+        },
+        {
+          "file": "api/apps/api-server/src/runtime_profile_client/mod.rs",
+          "sha256": "1b114bb4a9c1c2c0e71841e1221c5ef9cbaea7e9bd87931217735c52b7dcafbb",
+          "reason": "HostApiRuntimeProfileCollector constructs a shared collector and collects through that instance."
+        },
+        {
+          "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
+          "sha256": "f65dc109bae04ca3cddc87341b2ebe129ba01395f0affc88a0af8d471a86e805",
+          "reason": "RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
+        }
+      ]
+    },
+    {
+      "id": "managed-executable-blocking-pool",
+      "rule": "blocking-in-async-context",
+      "file": "api/crates/runtime-extension-host/src/managed_worker/binding.rs",
+      "snippet": "let bytes = match std::fs::read(&self.runtime_executable) {",
+      "reason": "LoadedManagedBinding::verify_executable performs a blocking immutable-artifact read and fingerprint check. RuntimeExtensionHost::verify_managed_executable moves the owned binding into spawn_blocking under the existing hash-budget permit before managed admission.",
+      "source_sha256": "4c619fcf07baaf1c7b83b89485e3be77c141825aac8a57360da5f5f807ace55e",
+      "evidence": [
+        {
+          "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
+          "sha256": "f65dc109bae04ca3cddc87341b2ebe129ba01395f0affc88a0af8d471a86e805",
+          "reason": "verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
+        }
+      ]
+    },
+    {
+      "id": "native-settings-preparation-blocking-pool",
+      "rule": "blocking-in-async-context",
+      "file": "api/crates/control-plane/src/plugin_management/install/plugin_settings_templates.rs",
+      "snippet": "&std::fs::read_to_string(&native_path)",
+      "reason": "prepare_settings_templates native declaration read is part of prepare_installation_commit_blocking. The async prepare_installation_commit wrapper owns its inputs and invokes this body via run_preparation -> spawn_blocking; all install call sites await preparation before publish.",
+      "source_sha256": "655b8d35e342fb6bede5815af3e377075b9930ce2b44ea4c0279155ca8af866b",
+      "evidence": [
+        {
+          "file": "api/crates/control-plane/src/plugin_management/install.rs",
+          "sha256": "ba92e4d65888e5cc41a7c6b0e3bf815a3a841d6f9ea22e0c2037a75d827b5ce9",
+          "reason": "Seven install call sites await the async preparation wrapper; the private blocking body calls prepare_settings_templates and only constructs owned commit input before publish_installation."
+        },
+        {
+          "file": "api/crates/control-plane/src/plugin_management/install/projections.rs",
+          "sha256": "4ea4c985950fc7606978cbbbacf50e158da2158e746aebbc1f94056475e52217",
+          "reason": "load_plugin_settings_templates reads immutable page sources as part of the same blocking preparation; no installation publication or API response happens in this helper."
+        }
+      ]
+    },
+    {
+      "id": "shared-worker-rss-blocking-pool",
+      "rule": "blocking-in-async-context",
+      "file": "api/crates/runtime-extension-host/src/provider_host/session_workers/shared_capacity.rs",
+      "snippet": "let status = std::fs::read_to_string(format!(\"/proc/{pid}/status\")).ok()?;",
+      "reason": "rss_bytes is called by injected sampling closures on spawn_blocking, before the shared accounting lock. Admission samples known PIDs on the blocking pool under the existing request deadline; permit Drop transfers its ticket to PendingRelease and schedules blocking RSS observation before IO-free release/notify. No process IO occurs in the executor thread or capacity lock.",
+      "source_sha256": "fbe7c469de0eafaa85c0f9d34ba3cc6e0951dc54821160f2e772531e162e28bf",
+      "evidence": [
+        {
+          "file": "api/crates/runtime-extension-host/src/provider_host/session_workers.rs",
+          "sha256": "b07024f4961f0f430921e9a05e6e57016b6a5a6ed500960c6d6eebb19e425335",
+          "reason": "acquire_shared_invocation computes request identity/size and awaits SharedWorkerCapacity::acquire; it does not call rss_bytes directly or perform sampling under its registry lock."
+        }
+      ]
     }
   ]
 }

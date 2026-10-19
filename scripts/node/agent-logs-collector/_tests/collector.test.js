@@ -7,7 +7,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { collect } = require('../collector');
 const codex = require('../adapters/codex');
-const { parse } = require('../../agent-logs-collector');
+const { parse } = require('../cli');
 const timestamp = '2026-10-07T08:00:00.123Z';
 const row = (type, payload, extra = {}) => ({ timestamp, type, payload, ...extra });
 const meta = (id = 'session-a', extra = {}) => row('session_meta', { id, model_provider: 'local-provider', ...extra });

@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const { createHash } = require('node:crypto');
 const path = require('node:path');
 const { maskRustText, maskTestOnlyItems } = require('./source.js');
 const { sensitiveOccurrences } = require('./sensitive.js');
@@ -126,37 +127,138 @@ function scanRustSource({ relativePath, content }) {
   return findings;
 }
 
-function loadBaseline(repoRoot) {
-  const baselinePath = path.join(repoRoot, 'scripts', 'node', 'check-rust-backend', 'baseline.json');
-
-  if (!fs.existsSync(baselinePath)) {
-    return new Set();
-  }
-
-  const parsed = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
-  return new Map(
-    (parsed.allowedFindings || []).map((entry) => [findingKey(entry), entry.reason || null])
-  );
-}
+const BASELINE_FILE = 'scripts/node/check-rust-backend/baseline.json';
+const REVIEW_VERSION = 'rust-backend-reviews/v1';
+const REVIEW_RULES = new Set([
+  'no-production-escape', 'no-sensitive-serialize', 'no-sensitive-logging',
+  'blocking-in-async-context',
+]);
+const SHA256 = /^[a-f0-9]{64}$/u;
 
 function findingKey(finding) {
-  return [
-    finding.rule,
-    finding.file,
-    finding.snippet,
-  ].join('\u0000');
+  return [finding.rule, finding.file, finding.snippet].join('\u0000');
 }
 
-function applyBaseline(findings, baseline) {
-  return findings.map((finding) => {
-    const key = findingKey(finding);
-    const suppressed = baseline.has(key);
+function reviewDiagnostic(entry, rule, problems) {
+  return {
+    severity: 'warning', rule,
+    file: typeof entry?.file === 'string' ? entry.file : BASELINE_FILE,
+    line: 1,
+    message: `Baseline review ${entry?.id || '(unidentified)'} not applied: ${problems.join('; ')}`,
+    snippet: typeof entry?.snippet === 'string' ? entry.snippet : '',
+    suppressed: false,
+    reviewId: entry?.id || null,
+    reviewProblems: problems,
+  };
+}
+
+function loadBaseline(repoRoot) {
+  const baselinePath = path.join(repoRoot, BASELINE_FILE);
+  if (!fs.existsSync(baselinePath)) return { entries: [], diagnostics: [] };
+  try {
+    const parsed = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+    if (parsed.version !== REVIEW_VERSION || !Array.isArray(parsed.allowedFindings)) {
+      throw new Error(`expected ${REVIEW_VERSION} and allowedFindings array`);
+    }
+    return { entries: parsed.allowedFindings, diagnostics: [] };
+  } catch (error) {
+    return { entries: [], diagnostics: [reviewDiagnostic(null,
+      'invalid-baseline-review', [`invalid baseline document: ${error.message}`])] };
+  }
+}
+
+function reviewPath(file) {
+  return typeof file === 'string' && file.startsWith('api/') && file.endsWith('.rs')
+    && !file.includes('\\') && !file.split('/').some((part) => part === '..' || part === '.')
+    && path.posix.normalize(file) === file;
+}
+
+function validateReview(entry, repoRoot, hashes) {
+  const problems = [];
+  const nonempty = (value) => typeof value === 'string' && value.trim().length > 0;
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return ['review must be an object'];
+  if (!nonempty(entry.id)) problems.push('missing review id');
+  if (!REVIEW_RULES.has(entry.rule)) problems.push('unknown diagnostic rule');
+  if (!nonempty(entry.snippet)) problems.push('missing exact diagnostic snippet');
+  if (!nonempty(entry.reason)) problems.push('missing source-specific reason');
+  if (Object.hasOwn(entry, 'line')) problems.push('historical line is not review evidence');
+
+  function bind(file, expectedHash, label) {
+    if (!reviewPath(file)) { problems.push(`${label} must be a canonical api Rust path`); return; }
+    if (!SHA256.test(expectedHash || '')) { problems.push(`${label} lacks a full SHA256`); return; }
+    if (!hashes.has(file)) {
+      try {
+        const absolute = fs.realpathSync(path.join(repoRoot, file));
+        const relative = path.relative(fs.realpathSync(repoRoot), absolute);
+        if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
+          throw new Error('path escapes repository');
+        }
+        hashes.set(file, { hash: createHash('sha256').update(fs.readFileSync(absolute)).digest('hex') });
+      } catch (error) { hashes.set(file, { error: error.message }); }
+    }
+    const actual = hashes.get(file);
+    if (actual.error) problems.push(`${label} unavailable: ${file}`);
+    else if (actual.hash !== expectedHash) problems.push(`${label} SHA256 changed: ${file}`);
+  }
+  bind(entry.file, entry.source_sha256, 'finding source');
+  if (!Array.isArray(entry.evidence) || entry.evidence.length === 0) {
+    problems.push('missing caller/type/owner evidence');
+  } else {
+    const evidencePaths = new Set();
+    for (const evidence of entry.evidence) {
+      if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
+        problems.push('evidence must be an object'); continue;
+      }
+      if (!nonempty(evidence.reason)) problems.push('missing evidence-specific reason');
+      if (evidencePaths.has(evidence.file)) problems.push('duplicate evidence file');
+      evidencePaths.add(evidence.file);
+      bind(evidence.file, evidence.sha256, 'review evidence');
+    }
+    if (!entry.evidence.some((item) => item?.file !== entry.file)) {
+      problems.push('evidence must include a separate caller/type/owner source');
+    }
+  }
+  return problems;
+}
+
+function applyBaseline(findings, baseline, repoRoot) {
+  const liveKeys = new Set(findings.map(findingKey));
+  const reviews = new Map();
+  const diagnostics = [...baseline.diagnostics];
+  const hashes = new Map();
+  const ids = new Map();
+  const keys = new Map();
+  for (const entry of baseline.entries) {
+    const key = findingKey(entry || {});
+    ids.set(entry?.id, (ids.get(entry?.id) || 0) + 1);
+    keys.set(key, (keys.get(key) || 0) + 1);
+  }
+  for (const entry of baseline.entries) {
+    const problems = validateReview(entry, repoRoot, hashes);
+    const key = findingKey(entry || {});
+    if (ids.get(entry?.id) !== 1 || keys.get(key) !== 1) problems.push('duplicate review id or diagnostic key');
+    const retired = !liveKeys.has(key);
+    if (retired) problems.push('exact upstream diagnostic is no longer present; retire this review');
+    if (problems.length) {
+      diagnostics.push(reviewDiagnostic(entry,
+        retired ? 'retired-baseline-review' : 'invalid-baseline-review', problems));
+    } else reviews.set(key, entry);
+  }
+  const annotated = findings.map((finding) => {
+    const review = reviews.get(findingKey(finding));
     return {
-      ...finding,
-      suppressed,
-      ...(suppressed && baseline.get(key) ? { suppressionReason: baseline.get(key) } : {}),
+      ...finding, suppressed: Boolean(review),
+      ...(review ? {
+        suppressionReason: review.reason,
+        reviewId: review.id,
+        source_sha256: review.source_sha256,
+        reviewEvidence: review.evidence,
+      } : {}),
     };
   });
+  // Keep original severity, message and snippet even when reviewed. Review
+  // failures are additional diagnostics, never replacements for upstream output.
+  return [...annotated, ...diagnostics];
 }
 
 function collectRustBackendFindings({ repoRoot = getRepoRoot(), includeSuppressed = false } = {}) {
@@ -171,7 +273,7 @@ function collectRustBackendFindings({ repoRoot = getRepoRoot(), includeSuppresse
       });
     })
     .flat();
-  const annotated = applyBaseline(findings, baseline);
+  const annotated = applyBaseline(findings, baseline, repoRoot);
 
   if (includeSuppressed) {
     return annotated;

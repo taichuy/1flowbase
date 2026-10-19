@@ -454,7 +454,7 @@ pub(crate) async fn install_uploaded_artifact(
                 application_action: installation.application_action.as_str().to_string(),
                 application_status: default_application_status(installation.application_action)
                     .to_string(),
-                installation: to_local_inventory_entry(installation),
+                installation: to_local_inventory_entry(installation)?,
                 local_artifact_was_present: true,
                 node_plugin_installation_id,
                 managed_schema_preview,
@@ -520,7 +520,7 @@ pub(crate) async fn install_uploaded_artifact(
             application_action: installation.application_action.as_str().to_string(),
             application_status: default_application_status(installation.application_action)
                 .to_string(),
-            installation: to_local_inventory_entry(installation.clone()),
+            installation: to_local_inventory_entry(installation.clone())?,
             local_artifact_was_present: false,
             node_plugin_installation_id: Some(installation.id.to_string()),
             managed_schema_preview,
@@ -568,7 +568,7 @@ pub(crate) async fn install_uploaded_artifact(
     Ok(ExtensionInstallOutcome::Created(ExtensionInstallResponse {
         application_action: installation.application_action.as_str().to_string(),
         application_status: default_application_status(installation.application_action).to_string(),
-        installation: to_local_inventory_entry(installation),
+        installation: to_local_inventory_entry(installation)?,
         local_artifact_was_present,
         node_plugin_installation_id,
         managed_schema_preview: None,

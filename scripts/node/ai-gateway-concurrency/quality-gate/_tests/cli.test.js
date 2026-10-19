@@ -329,7 +329,7 @@ test("issue_1743 quality gate selects the Anthropic reasoning round-trip fixture
     },
     {
       packageName: "api-server",
-      source: "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/forwarding.rs",
+      source: "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/forwarding/_tests/anthropic_projection.rs",
       names: [
         "issue_1743_anthropic_stream_uses_canonical_reasoning_and_visible_text",
       ],

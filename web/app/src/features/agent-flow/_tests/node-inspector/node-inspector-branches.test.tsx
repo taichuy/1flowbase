@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
@@ -104,9 +104,7 @@ describe('NodeInspector branches', () => {
       ) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
-    fireEvent.click(
-      addElseIfButton
-    );
+    await domEvents.click(addElseIfButton);
 
     const elseIfBranch = await screen.findByTestId(
       'if-else-branch-else-if-1'
@@ -121,11 +119,9 @@ describe('NodeInspector branches', () => {
       })
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      within(screen.getByTestId('if-else-branch-if')).getByRole('button', {
+    await domEvents.click(within(screen.getByTestId('if-else-branch-if')).getByRole('button', {
         name: /新增条件组/
-      })
-    );
+      }));
 
     expect(
       within(screen.getByTestId('if-else-branch-if')).getAllByTestId(
@@ -185,9 +181,7 @@ describe('NodeInspector branches', () => {
 
     const ifBranch = await screen.findByTestId('if-else-branch-if');
 
-    fireEvent.click(
-      within(ifBranch).getByRole('button', { name: /新增条件$/ })
-    );
+    await domEvents.click(within(ifBranch).getByRole('button', { name: /新增条件$/ }));
 
     await openSelect('分支-if-0-comparator');
     expect(await screen.findByTitle('为空')).toBeInTheDocument();
@@ -262,9 +256,7 @@ describe('NodeInspector branches', () => {
 
     const ifBranch = await screen.findByTestId('if-else-branch-if');
 
-    fireEvent.click(
-      within(ifBranch).getByRole('button', { name: /新增条件$/ })
-    );
+    await domEvents.click(within(ifBranch).getByRole('button', { name: /新增条件$/ }));
 
     await openSelect('分支-if-0-left');
     await selectOption('Start');
@@ -273,8 +265,8 @@ describe('NodeInspector branches', () => {
     await selectOption('等于');
     const rightInput = await screen.findByLabelText('分支-if-0-right');
 
-    rightInput.focus();
-    fireEvent.change(rightInput, {
+    await dispatch(() => rightInput.focus());
+    await domEvents.change(rightInput, {
       target: { value: '5' }
     });
 
@@ -358,3 +350,14 @@ describe('NodeInspector branches', () => {
     );
   });
 });
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+const domEvents = {
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
+  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args))
+};

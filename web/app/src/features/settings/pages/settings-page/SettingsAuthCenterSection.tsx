@@ -1,7 +1,7 @@
 import BarsOutlined from '@ant-design/icons/es/icons/BarsOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
-import { useMemo, useState, type DragEvent } from 'react';
+import { useMemo, useRef, useState, type DragEvent } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -41,7 +41,7 @@ import {
   updateSettingsAuthCenterLoginEntryConfig,
   updateSettingsAuthCenterLoginEntryPublicUiBlock,
   type SettingsAuthCenterOverview
-} from '../../api/auth-center';
+} from '../../api/identity-access/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { LoginEntryUiBlockStudio } from '../../components/auth-center/LoginEntryUiBlockStudio';
 
@@ -232,9 +232,7 @@ export function SettingsAuthCenterSection() {
   >(null);
   const [lifecycleForm] = Form.useForm<LoginEntryLifecycleFormValues>();
   const [isLifecycleModalOpen, setLifecycleModalOpen] = useState(false);
-  const [draggedLoginEntryId, setDraggedLoginEntryId] = useState<
-    string | null
-  >(null);
+  const draggedLoginEntryId = useRef<string | null>(null);
   const [dragOverLoginEntryId, setDragOverLoginEntryId] = useState<
     string | null
   >(null);
@@ -498,7 +496,7 @@ export function SettingsAuthCenterSection() {
     !reorderMutation.isPending &&
     (overviewQuery.data?.login_entries.length ?? 0) > 1;
   const getDraggedLoginEntryId = (event: DragEvent<HTMLElement>) =>
-    draggedLoginEntryId ||
+    draggedLoginEntryId.current ||
     event.dataTransfer.getData(AUTH_CENTER_DRAG_DATA_TYPE);
   const dropLoginEntryBeforeTarget = (
     sourceLoginEntryId: string,
@@ -557,14 +555,14 @@ export function SettingsAuthCenterSection() {
               }}
               onDragEnd={(event) => {
                 event.stopPropagation();
-                setDraggedLoginEntryId(null);
+                draggedLoginEntryId.current = null;
                 setDragOverLoginEntryId(null);
               }}
               onDragStart={(event) => {
                 event.stopPropagation();
                 event.dataTransfer.effectAllowed = 'move';
                 event.dataTransfer.setData(AUTH_CENTER_DRAG_DATA_TYPE, row.id);
-                setDraggedLoginEntryId(row.id);
+                draggedLoginEntryId.current = row.id;
               }}
             />
           </Tooltip>
@@ -740,7 +738,7 @@ export function SettingsAuthCenterSection() {
               onDrop: (event) => {
                 event.preventDefault();
                 const sourceLoginEntryId = getDraggedLoginEntryId(event);
-                setDraggedLoginEntryId(null);
+                draggedLoginEntryId.current = null;
                 setDragOverLoginEntryId(null);
                 if (
                   !sourceLoginEntryId ||

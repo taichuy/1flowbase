@@ -1,6 +1,6 @@
-import {
-  act,
+import { act,
   fireEvent,
+  getConfig,
   render,
   waitFor,
   within
@@ -13,7 +13,7 @@ import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
 import { ConfigProvider, type DropdownProps } from 'antd';
 
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
-import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-adapter/native-trusted-block-react-adapter';
 
 describe('native block Dropdown runtime adapter', () => {
   const showPopover = vi.fn();
@@ -27,12 +27,13 @@ describe('native block Dropdown runtime adapter', () => {
   });
 
   afterEach(async () => {
-    if (vi.isFakeTimers()) {
-      await act(async () => {
-        await vi.runOnlyPendingTimersAsync();
-      });
-      vi.useRealTimers();
-    }
+    await act(async () => {
+      // Release only the render owners created by this fixture before its resource teardown.
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
+      if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
+    });
+    if (vi.isFakeTimers()) vi.useRealTimers();
     document.body.replaceChildren();
     showPopover.mockReset();
     hidePopover.mockReset();
@@ -46,7 +47,7 @@ describe('native block Dropdown runtime adapter', () => {
     const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
     const root = document.createElement('div');
     document.body.append(root);
-    const view = render(
+    const view = await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:1"
@@ -67,11 +68,9 @@ describe('native block Dropdown runtime adapter', () => {
       return root.shadowRoot as ShadowRoot;
     });
 
-    fireEvent.click(
-      within(shadowRoot as unknown as HTMLElement).getByRole('button', {
+    await domEvents.click(within(shadowRoot as unknown as HTMLElement).getByRole('button', {
         name: 'Open menu'
-      })
-    );
+      }));
 
     const layer = await waitFor(() => {
       const node = shadowRoot.querySelector<HTMLElement>(
@@ -88,7 +87,7 @@ describe('native block Dropdown runtime adapter', () => {
       document.body.querySelector('[data-flowbase-native-overlay-layer]')
     ).toBeNull();
 
-    view.unmount();
+    await dispatch(() => view.unmount());
     expect(layer.isConnected).toBe(false);
   });
 
@@ -114,7 +113,7 @@ describe('native block Dropdown runtime adapter', () => {
         </Dropdown>
       );
     };
-    const view = render(
+    const view = await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:stable"
@@ -127,11 +126,11 @@ describe('native block Dropdown runtime adapter', () => {
     const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
     const queries = within(shadowRoot as unknown as HTMLElement);
     const firstTrigger = queries.getByRole('button', { name: 'Open menu' });
-    fireEvent.click(firstTrigger);
+    await domEvents.click(firstTrigger);
     await queries.findByText('Profile');
     expect(showPopover).toHaveBeenCalledTimes(1);
 
-    view.rerender(
+    await dispatch(() => view.rerender(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:stable"
@@ -140,7 +139,7 @@ describe('native block Dropdown runtime adapter', () => {
         component={Block}
         ctx={createContext()}
       />
-    );
+    ));
 
     await waitFor(() => expect(hidePopover).toHaveBeenCalledTimes(1));
     const secondTrigger = queries.getByRole('button', { name: 'Open menu' });
@@ -148,7 +147,7 @@ describe('native block Dropdown runtime adapter', () => {
     expect(mounted).toHaveBeenCalledTimes(1);
     expect(unmounted).not.toHaveBeenCalled();
 
-    fireEvent.click(secondTrigger);
+    await domEvents.click(secondTrigger);
     await waitFor(() => expect(showPopover).toHaveBeenCalledTimes(2));
     expect(queries.getByText('Profile')).toBeVisible();
   });
@@ -160,7 +159,7 @@ describe('native block Dropdown runtime adapter', () => {
     const root = document.createElement('div');
     document.body.append(root);
     const onOpenChange = vi.fn();
-    render(
+    await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:hover"
@@ -180,14 +179,14 @@ describe('native block Dropdown runtime adapter', () => {
     const queries = within(shadowRoot as unknown as HTMLElement);
     const trigger = queries.getByRole('button', { name: 'Hover menu' });
 
-    fireEvent.pointerOver(trigger);
+    await domEvents.pointerOver(trigger);
     const menuItem = await queries.findByText('Profile');
     expect(onOpenChange).toHaveBeenCalledTimes(1);
     expect(onOpenChange).toHaveBeenLastCalledWith(true, {
       source: 'trigger'
     });
 
-    fireEvent.click(menuItem);
+    await domEvents.click(menuItem);
     await waitFor(() =>
       expect(onOpenChange).toHaveBeenLastCalledWith(false, { source: 'menu' })
     );
@@ -200,7 +199,7 @@ describe('native block Dropdown runtime adapter', () => {
     const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
     const root = document.createElement('div');
     document.body.append(root);
-    render(
+    await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:authored-delay"
@@ -217,9 +216,7 @@ describe('native block Dropdown runtime adapter', () => {
       />
     );
     const queries = within(root.shadowRoot as unknown as HTMLElement);
-    fireEvent.pointerOver(
-      queries.getByRole('button', { name: 'Delayed menu' })
-    );
+    await domEvents.pointerOver(queries.getByRole('button', { name: 'Delayed menu' }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);
     });
@@ -233,14 +230,14 @@ describe('native block Dropdown runtime adapter', () => {
   test.each(['hover', 'click', 'keyboard'] as const)(
     'I1924-AC-002/004 keeps a cascading submenu inside the Block top-layer surface and reopens by %s',
     async (reopenBy) => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
       const onOpenChange = vi.fn();
       const registry = createFrontstageNativeReactModuleRegistry();
       const antdModule = await registry.load('antd');
       const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
+      vi.useFakeTimers({ shouldAdvanceTime: true });
       const root = document.createElement('div');
       document.body.append(root);
-      render(
+      const view = await renderSettled(
         <FrontstageNativeTrustedBlockPortalHost
           root={root}
           renderEpoch="dropdown:cascading"
@@ -250,6 +247,7 @@ describe('native block Dropdown runtime adapter', () => {
             <ConfigProvider theme={{ token: { motion: false } }}>
               <Dropdown
                 trigger={['hover', 'click']}
+                mouseEnterDelay={0.1}
                 onOpenChange={onOpenChange}
                 menu={{
                   subMenuOpenDelay: 0,
@@ -273,20 +271,21 @@ describe('native block Dropdown runtime adapter', () => {
       const queries = within(shadowRoot as unknown as HTMLElement);
 
       const trigger = queries.getByRole('button', { name: 'Cascading menu' });
-      fireEvent.pointerOver(trigger);
-      const submenuTitle = await queries.findByText('sub menu');
-      fireEvent.mouseEnter(
-        submenuTitle.closest('[role="menuitem"]') as HTMLElement
-      );
-
-      const child = await queries.findByText('child menu item');
+      await domEvents.pointerOver(trigger);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      const submenuTitle = await findDropdownText(queries, 'sub menu');
+      await domEvents.mouseEnter(submenuTitle.closest('[role="menuitem"]') as HTMLElement);
+      const child = await findDropdownText(queries, 'child menu item');
       const layer = shadowRoot.querySelector<HTMLElement>(
         '[data-flowbase-native-overlay-layer]'
       );
       expect(child.closest('[data-flowbase-native-overlay-layer]')).toBe(layer);
 
-      fireEvent.click(child);
-      // Flush the pending default hover delay: closure must remain stable.
+      await domEvents.click(child);
+      // Advance the authored hover delay and queued motion callbacks under act.
+      // Menu dismissal must still win over the old hover intent.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(200);
       });
@@ -304,15 +303,23 @@ describe('native block Dropdown runtime adapter', () => {
         trigger
       );
       if (reopenBy === 'hover') {
-        fireEvent.pointerOver(trigger);
+        await domEvents.pointerOver(trigger);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(100);
+        });
       } else {
         if (reopenBy === 'keyboard') {
-          fireEvent.keyDown(trigger, { key: 'Enter' });
+          await domEvents.keyDown(trigger, { key: 'Enter' });
         } else {
-          fireEvent.pointerDown(trigger);
+          await domEvents.pointerDown(trigger);
         }
-        fireEvent.click(trigger);
+        await domEvents.click(trigger);
       }
+      // Reopening schedules CSSMotion RAF work even with CSS animation disabled.
+      // Own that clock turn before waitFor and teardown can yield outside act.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
       await waitFor(() =>
         expect(layer).toHaveAttribute(
           'data-flowbase-native-overlay-state',
@@ -322,6 +329,7 @@ describe('native block Dropdown runtime adapter', () => {
       expect(onOpenChange).toHaveBeenLastCalledWith(true, {
         source: 'trigger'
       });
+      view.unmount();
     }
   );
 
@@ -336,7 +344,7 @@ describe('native block Dropdown runtime adapter', () => {
         <button type="button">Controlled menu</button>
       </Dropdown>
     );
-    const view = render(
+    const view = await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:controlled"
@@ -353,7 +361,7 @@ describe('native block Dropdown runtime adapter', () => {
     );
     expect(layer).toHaveAttribute('data-flowbase-native-overlay-state', 'open');
 
-    view.rerender(
+    await dispatch(() => view.rerender(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:controlled"
@@ -362,7 +370,7 @@ describe('native block Dropdown runtime adapter', () => {
         component={Block}
         ctx={createContext()}
       />
-    );
+    ));
 
     await waitFor(() =>
       expect(layer).toHaveAttribute(
@@ -406,7 +414,7 @@ describe('native block Dropdown runtime adapter', () => {
       const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
       const root = document.createElement('div');
       document.body.append(root);
-      render(
+      await renderSettled(
         <FrontstageNativeTrustedBlockPortalHost
           root={root}
           renderEpoch="dropdown:virtual-anchor"
@@ -451,7 +459,7 @@ describe('native block Dropdown runtime adapter', () => {
 
       containingBlockLeft = 150;
       containingBlockTop = 250;
-      window.dispatchEvent(new Event('scroll'));
+      await dispatch(() => window.dispatchEvent(new Event('scroll')));
 
       await waitFor(() => {
         expect(anchor.getBoundingClientRect()).toMatchObject({
@@ -472,7 +480,7 @@ describe('native block Dropdown runtime adapter', () => {
     const root = document.createElement('div');
     document.body.append(root);
 
-    render(
+    await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:public-ref"
@@ -540,3 +548,42 @@ function createContext(): BlockContextSeed {
     ui: {}
   };
 }
+
+async function findDropdownText(queries: ReturnType<typeof within>, text: string) {
+  // Fixed increments guarantee a finite budget even if a timer reschedules at 0ms.
+  const frameMs = 16;
+  for (let elapsed = 0; elapsed <= getConfig().asyncUtilTimeout; elapsed += frameMs) {
+    const element = queries.queryByText(text);
+    if (element) return element;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(frameMs);
+    });
+  }
+  return queries.getByText(text);
+}
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+// Explicit render owners for this fixture; other test roots remain RTL-owned.
+const mountedViews = new Set<ReturnType<typeof render>>();
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
+  return view;
+}
+
+const domEvents = {
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
+  pointerOver: (...args: Parameters<typeof fireEvent.pointerOver>) => dispatch(() => fireEvent.pointerOver(...args)),
+  mouseEnter: (...args: Parameters<typeof fireEvent.mouseEnter>) => dispatch(() => fireEvent.mouseEnter(...args)),
+  keyDown: (...args: Parameters<typeof fireEvent.keyDown>) => dispatch(() => fireEvent.keyDown(...args)),
+  pointerDown: (...args: Parameters<typeof fireEvent.pointerDown>) => dispatch(() => fireEvent.pointerDown(...args))
+};

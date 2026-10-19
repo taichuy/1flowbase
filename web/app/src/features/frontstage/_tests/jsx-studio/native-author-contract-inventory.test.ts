@@ -41,13 +41,12 @@ describe('Native React author contract inventory', () => {
   });
 
   test('R5-AC-005 has no frontend default catalog id or template registry', () => {
-    const frontstagePage = readFileSync(
-      resolve(
-        repoRoot,
-        'web/app/src/features/frontstage/pages/FrontStagePage.tsx'
-      ),
-      'utf8'
-    );
+    const frontstagePage = [
+      'web/app/src/features/frontstage/pages/FrontStagePage.tsx',
+      'web/app/src/features/frontstage/pages/frontstage-page/controllers/use-frontstage-design-persistence.ts'
+    ]
+      .map((file) => readFileSync(resolve(repoRoot, file), 'utf8'))
+      .join('\n');
 
     expect(frontstagePage).not.toContain('DEFAULT_JS_BLOCK_CATALOG_ENTRY_ID');
     expect(
@@ -93,7 +92,7 @@ describe('Native React author contract inventory', () => {
     const renderer = readFileSync(
       resolve(
         repoRoot,
-        'web/app/src/features/frontstage/lib/native-trusted-block-react-adapter.tsx'
+        'web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx'
       ),
       'utf8'
     );
@@ -120,13 +119,12 @@ describe('Native React author contract inventory', () => {
   });
 
   test('R8-AC-001/006 retires the production Add Block selection surface', () => {
-    const frontstagePage = readFileSync(
-      resolve(
-        repoRoot,
-        'web/app/src/features/frontstage/pages/FrontStagePage.tsx'
-      ),
-      'utf8'
-    );
+    const frontstagePage = [
+      'web/app/src/features/frontstage/pages/FrontStagePage.tsx',
+      'web/app/src/features/frontstage/pages/frontstage-page/controllers/use-frontstage-design-persistence.ts'
+    ]
+      .map((file) => readFileSync(resolve(repoRoot, file), 'utf8'))
+      .join('\n');
 
     expect(frontstagePage).not.toMatch(
       /AddBlockCatalogPickerDrawer|isBlockCatalogPickerOpen|handleSelectBlockCatalogEntry/u

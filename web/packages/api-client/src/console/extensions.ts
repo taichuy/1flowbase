@@ -1,11 +1,11 @@
 import { ApiClientError } from '../errors';
 import { apiFetch } from '../transport';
 import { apiUpload, type ApiUploadProgress } from '../transport/upload';
-import type { ConsolePluginTask } from '../console-plugins';
+import type { ConsolePluginTask } from './administration/plugins';
 import type {
   ConsoleMcpBundleImportReport,
   ConsoleMcpBundlePreview
-} from '../console-mcp-management';
+} from './administration/mcp-management';
 
 export type ConsoleExtensionCategory =
   | 'agent-flow'

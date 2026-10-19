@@ -50,7 +50,7 @@ export function editorStateToText(editorState: EditorState) {
   );
 }
 
-export function getCollapsedTextSelection() {
+function getCollapsedTextSelection() {
   const selection = $getSelection();
 
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) {

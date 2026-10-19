@@ -37,21 +37,6 @@ export function parseTemplateSelectorTokens(value: string): string[][] {
   return selectors;
 }
 
-export function dedupeSelectors(selectors: string[][]): string[][] {
-  const seen = new Set<string>();
-
-  return selectors.filter((selector) => {
-    const key = selector.join('\u0000');
-
-    if (seen.has(key)) {
-      return false;
-    }
-
-    seen.add(key);
-    return true;
-  });
-}
-
 export function getTemplateSelectorLabel(
   selector: string[],
   options: FlowSelectorOption[]
@@ -83,7 +68,7 @@ export function remapTemplateSelectorTokens(
   );
 }
 
-export function getTemplateSelectorTokenMatch(value: string) {
+function getTemplateSelectorTokenMatch(value: string) {
   TEMPLATE_SELECTOR_REGEX.lastIndex = 0;
 
   const match = TEMPLATE_SELECTOR_REGEX.exec(value);

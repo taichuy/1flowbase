@@ -126,7 +126,7 @@ function NativeLogsSurface({
           <style data-application-logs-overlay-styles>{styles}</style>,
           surface.overlayHost.container
         )}
-        <div
+        <section
           style={{
             height:
               allocatedHeight && allocatedHeight > 0
@@ -134,7 +134,6 @@ function NativeLogsSurface({
                 : preferredHeight
           }}
           className="application-logs-native"
-          role="region"
           aria-label={
             props.applicationIds
               ? t('logs.all_agent_flow_applications')
@@ -145,7 +144,7 @@ function NativeLogsSurface({
             {...props}
             overlayContainer={surface.overlayHost.container}
           />
-        </div>
+        </section>
       </App>
     </ConfigProvider>
   );

@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 
 extern crate self as api_server;
+#[path = "boot_composition/managed_publication.rs"]
 mod managed_publication;
 mod managed_service_mcp;
 mod managed_services;
@@ -11,28 +12,42 @@ pub mod app_state;
 pub(crate) mod application_log_exchange;
 pub mod application_public_docs;
 pub mod config;
+#[path = "console_contracts/console_operation_compilation.rs"]
 pub(crate) mod console_operation_compilation;
 pub mod console_policy_migration;
+#[path = "console_contracts/console_surface_registry.rs"]
 pub mod console_surface_registry;
 pub mod error_response;
 pub mod extension_bus;
+#[path = "console_contracts/external_endpoint_catalog.rs"]
 pub(crate) mod external_endpoint_catalog;
+#[path = "console_contracts/external_route_assembly.rs"]
 pub(crate) mod external_route_assembly;
+#[path = "boot_composition/host_extension_boot.rs"]
 pub mod host_extension_boot;
+#[path = "boot_composition/host_extension_loader.rs"]
 pub mod host_extension_loader;
 pub mod host_extensions;
 pub mod host_infrastructure;
+#[path = "boot_composition/host_route_registry.rs"]
 pub mod host_route_registry;
+#[path = "boot_composition/host_worker_registry.rs"]
 pub mod host_worker_registry;
 pub mod middleware;
+#[path = "catalog_sources/model_pricing_catalog.rs"]
 pub(crate) mod model_pricing_catalog;
 pub mod network_egress_client;
 pub mod network_egress_probe;
 mod notification_runtime;
+#[path = "catalog_sources/official_extension_catalog.rs"]
 pub mod official_extension_catalog;
+#[path = "catalog_sources/official_i18n_catalog_seed.rs"]
 pub mod official_i18n_catalog_seed;
+#[path = "catalog_sources/official_i18n_catalog_source.rs"]
 pub mod official_i18n_catalog_source;
+#[path = "catalog_sources/official_mcp_bundles.rs"]
 pub mod official_mcp_bundles;
+#[path = "catalog_sources/official_plugin_registry.rs"]
 pub mod official_plugin_registry;
 pub mod openapi;
 pub mod openapi_docs;
@@ -47,6 +62,7 @@ pub mod runtime_profile_client;
 pub mod runtime_registry_sync;
 pub mod system_backup;
 pub mod system_recovery;
+#[path = "catalog_sources/ui_component_catalog_source.rs"]
 pub mod ui_component_catalog_source;
 pub mod workers;
 

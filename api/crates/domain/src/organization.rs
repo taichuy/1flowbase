@@ -48,5 +48,5 @@ impl MemberDepartments {
 }
 
 #[cfg(test)]
-#[path = "_tests/organization_tests.rs"]
+#[path = "_tests/identity/organization_tests.rs"]
 mod tests;

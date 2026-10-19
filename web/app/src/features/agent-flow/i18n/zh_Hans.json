@@ -518,7 +518,6 @@
     "node_output": "节点输出",
     "declarative_node_placeholders_plugins": "来自插件的声明式节点能力。",
     "source": "{{value1}}来源",
-    "plugin_node_meta_summary": "来自 capability plugin 的声明式节点，可被工作流显式选择并执行。",
     "variable": "变量 {{value1}}",
     "end_time": "结束时间",
     "user_input": "用户输入",

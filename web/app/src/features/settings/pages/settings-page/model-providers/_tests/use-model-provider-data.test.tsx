@@ -42,7 +42,7 @@ const pluginsApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../../api/model-providers', () => modelProvidersApi);
-vi.mock('../../../../api/plugins', () => pluginsApi);
+vi.mock('../../../../api/extensions/plugins', () => pluginsApi);
 
 function createQueryClient() {
   return new QueryClient({

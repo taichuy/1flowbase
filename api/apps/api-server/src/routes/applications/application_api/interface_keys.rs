@@ -334,7 +334,10 @@ impl ConsoleInterfacePort<ApplicationApiKeyInput, ApplicationApiKeyOutput>
                             })
                             .await?;
                         ApplicationApiKeyOutput::List(
-                            values.into_iter().map(to_api_key_response).collect(),
+                            values
+                                .into_iter()
+                                .map(to_api_key_response)
+                                .collect::<Result<Vec<_>, _>>()?,
                         )
                     }
                     ApplicationApiKeyInput::Create {
@@ -352,7 +355,7 @@ impl ConsoleInterfacePort<ApplicationApiKeyInput, ApplicationApiKeyOutput>
                         ApplicationApiKeyOutput::Created(to_created_api_key_response(
                             result.api_key,
                             result.token,
-                        ))
+                        )?)
                     }
                     ApplicationApiKeyInput::Revoke {
                         application_id,

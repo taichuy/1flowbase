@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/upstream/ThirdPartyMcpTab.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "569c236c4f79ded856e92752bdfe4ee0374a8eb7ae7f318986b1a1aab9131c63",
+      "reason": "useUpstreamMcpController已隔离connections查询、save/test/discovery/import mutation和结果状态；导出ThirdPartyMcpTab只组合同一个上游连接工作区的表格、连接表单、测试结果与工具发现dialog。请求与状态owner没有混进第二资源域，模块不导出hook/常量混合HMR边界；仅删除真实未消费的view.message解构，不能凭UI长度再改变连接/导入流程。",
+      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/_tests/third-party-mcp-tab.test.tsx", "sha256": "7ef6c9ee0f73692c7cb425ee2229611f8b4e8abc67891929f4f709ea20a0cd6c"}, {"file": "web/app/src/features/settings/components/mcp-management/upstream/ThirdPartyMcpTab.tsx", "sha256": "569c236c4f79ded856e92752bdfe4ee0374a8eb7ae7f318986b1a1aab9131c63"}]
+    }
+  ]
+}

@@ -114,6 +114,81 @@ describe('portable template flow', () => {
       mcp_shared_tool_impacts: []
     });
   });
+  test('clears a failed file read when a new template is selected in the same dialog', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    const invalid = new File(['bad'], 'invalid.json');
+    Object.defineProperty(invalid, 'text', {
+      value: () => Promise.reject(new Error('unreadable'))
+    });
+    const onClose = vi.fn();
+    const wrap = (
+      file?: File,
+      template?: { name: string; body: typeof body }
+    ) => (
+      <App>
+        <QueryClientProvider client={client}>
+          <SystemTemplateDialog
+            mode="import"
+            file={file}
+            template={template}
+            onClose={onClose}
+          />
+        </QueryClientProvider>
+      </App>
+    );
+    const { rerender, unmount } = render(wrap(invalid));
+    const error = appI18n.t('invalid_file', { ns: 'settingsSystemTemplates' });
+    expect(await screen.findByText(error)).toBeInTheDocument();
+    rerender(wrap(undefined, { name: 'next.json', body }));
+    await waitFor(() =>
+      expect(screen.queryByText(error)).not.toBeInTheDocument()
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Confirm installation' })
+      ).toBeEnabled()
+    );
+    unmount();
+    client.clear();
+  });
+
+  test('cancels a pending read when switching to a preloaded template', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    });
+    const pending = new File(['pending'], 'pending.json');
+    Object.defineProperty(pending, 'text', {
+      value: () => new Promise<string>(() => {})
+    });
+    const onClose = vi.fn();
+    const wrap = (template?: { name: string; body: typeof body }) => (
+      <App>
+        <QueryClientProvider client={client}>
+          <SystemTemplateDialog
+            mode="import"
+            file={pending}
+            template={template}
+            onClose={onClose}
+          />
+        </QueryClientProvider>
+      </App>
+    );
+    const { rerender, unmount } = render(wrap());
+    expect(screen.getByText('pending.json')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Install template' })).not.toBeInTheDocument();
+    expect(api.previewSystemTemplate).not.toHaveBeenCalled();
+    rerender(wrap({ name: 'ready.json', body }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Confirm installation' })
+      ).toBeEnabled()
+    );
+    unmount();
+    client.clear();
+  });
+
   test('export starts with no selected objects', async () => {
     setup();
     fireEvent.click(screen.getByRole('button', { name: 'Export template' }));

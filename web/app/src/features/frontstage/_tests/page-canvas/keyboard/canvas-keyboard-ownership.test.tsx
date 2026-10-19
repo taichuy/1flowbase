@@ -1,5 +1,4 @@
-import {
-  act,
+import { act,
   fireEvent,
   render,
   screen,
@@ -27,7 +26,7 @@ async function mount(
 ) {
   const block = runtimeBlock('Keyboard');
   const select = vi.fn();
-  const view = render(
+  const view = await renderSettled(
     <PageCanvas
       content={pageContentWithBlocks([block])}
       isDesignMode={isDesignMode}
@@ -86,12 +85,28 @@ describe('I2019 canvas keyboard ownership', () => {
         >
           edit
         </div>
-        <div data-testid="custom" role="slider" tabIndex={0}>
+        <div
+          data-testid="custom"
+          role="slider"
+          aria-label="Custom value"
+          aria-valuenow={50}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-orientation="horizontal"
+          tabIndex={0}
+        >
           custom widget
         </div>
       </div>
     ));
     const target = await queries.findByTestId(kind);
+    if (kind === 'custom') {
+      expect(target).toHaveAccessibleName('Custom value');
+      expect(target).toHaveAttribute('aria-valuenow', '50');
+      expect(target).toHaveAttribute('aria-valuemin', '0');
+      expect(target).toHaveAttribute('aria-valuemax', '100');
+      expect(target).toHaveAttribute('aria-orientation', 'horizontal');
+    }
     for (const key of ['Enter', ' ']) {
       const event = new KeyboardEvent('keydown', {
         key,
@@ -99,7 +114,7 @@ describe('I2019 canvas keyboard ownership', () => {
         composed: true,
         cancelable: true
       });
-      act(() => target.dispatchEvent(event));
+      await act(async () => { target.dispatchEvent(event); });
       expect(event.defaultPrevented).toBe(false);
     }
     expect(select).not.toHaveBeenCalled();
@@ -111,9 +126,9 @@ describe('I2019 canvas keyboard ownership', () => {
       return <Button onClick={() => setCount(count + 1)}>count:{count}</Button>;
     });
     const button = await queries.findByRole('button');
-    button.focus();
-    fireEvent.keyDown(button, { key: 'Enter', composed: true });
-    fireEvent.click(button, { detail: 0, composed: true });
+    await dispatch(() => button.focus());
+    await domEvents.keyDown(button, { key: 'Enter', composed: true });
+    await domEvents.click(button, { detail: 0, composed: true });
     expect(button).toHaveTextContent('count:1');
     expect(select).not.toHaveBeenCalled();
   });
@@ -127,10 +142,10 @@ describe('I2019 canvas keyboard ownership', () => {
       />
     ));
     const combo = await queries.findByRole('combobox');
-    combo.focus();
-    fireEvent.keyDown(combo, { key: 'ArrowDown', keyCode: 40 });
-    fireEvent.keyDown(combo, { key: 'ArrowDown', keyCode: 40 });
-    fireEvent.keyDown(combo, { key: 'Enter', keyCode: 13 });
+    await dispatch(() => combo.focus());
+    await domEvents.keyDown(combo, { key: 'ArrowDown', keyCode: 40 });
+    await domEvents.keyDown(combo, { key: 'ArrowDown', keyCode: 40 });
+    await domEvents.keyDown(combo, { key: 'Enter', keyCode: 13 });
     expect(
       queries.getByText('two', { selector: '[title=two]' })
     ).toBeInTheDocument();
@@ -142,7 +157,7 @@ describe('I2019 canvas keyboard ownership', () => {
       createPortal(<textarea aria-label="portal prompt" />, document.body)
     );
     const field = await screen.findByRole('textbox', { name: 'portal prompt' });
-    field.focus();
+    await dispatch(() => field.focus());
     expect(fireEvent.keyDown(field, { key: 'Enter', composed: true })).toBe(
       true
     );
@@ -180,18 +195,18 @@ describe('I2019 canvas keyboard ownership', () => {
       const button = await queries.findByRole('button', {
         name: 'open dialog'
       });
-      button.focus();
-      fireEvent.click(button, { detail: 0, composed: true });
+      await dispatch(() => button.focus());
+      await domEvents.click(button, { detail: 0, composed: true });
       const dialog = await queries.findByRole('dialog');
       await waitFor(() => expect(dialog).toBeVisible());
       const field = await queries.findByRole('textbox', {
         name: 'dialog prompt'
       });
-      field.focus();
+      await dispatch(() => field.focus());
       expect(fireEvent.keyDown(field, { key: 'Enter', composed: true })).toBe(
         true
       );
-      fireEvent.keyDown(field, { key: 'Escape', keyCode: 27, composed: true });
+      await domEvents.keyDown(field, { key: 'Escape', keyCode: 27, composed: true });
       // An unconditional Modal retains its hidden DOM after closing.
       await waitFor(() => expect(dialog).not.toBeVisible());
       await waitFor(() =>
@@ -205,7 +220,7 @@ describe('I2019 canvas keyboard ownership', () => {
     'AC-003 selects only the focused canvas entrance with %j',
     async (key) => {
       const { slot, select } = await mount(() => null);
-      slot.focus();
+      await dispatch(() => slot.focus());
       expect(fireEvent.keyDown(slot, { key })).toBe(false);
       expect(select).toHaveBeenCalledExactlyOnceWith('block-1');
     }
@@ -222,7 +237,7 @@ describe('I2019 canvas keyboard ownership', () => {
     'AC-003 does not consume composition or modified keys %j',
     async (modifiers) => {
       const { slot, select } = await mount(() => null);
-      slot.focus();
+      await dispatch(() => slot.focus());
       expect(fireEvent.keyDown(slot, { key: 'Enter', ...modifiers })).toBe(
         true
       );
@@ -232,14 +247,14 @@ describe('I2019 canvas keyboard ownership', () => {
 
   test('AC-003 does not re-consume a prevented event', async () => {
     const { slot, select } = await mount(() => null);
-    slot.focus();
+    await dispatch(() => slot.focus());
     const event = new KeyboardEvent('keydown', {
       key: 'Enter',
       bubbles: true,
       cancelable: true
     });
     event.preventDefault();
-    fireEvent(slot, event);
+    await domEvents.fire(slot, event);
     expect(select).not.toHaveBeenCalled();
   });
 });
@@ -338,3 +353,21 @@ function pageContentWithBlocks(
     }
   });
 }
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(...args); });
+  return view;
+}
+
+const domEvents = {
+  keyDown: (...args: Parameters<typeof fireEvent.keyDown>) => dispatch(() => fireEvent.keyDown(...args)),
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
+  fire: (...args: Parameters<typeof fireEvent>) => dispatch(() => fireEvent(...args))
+};

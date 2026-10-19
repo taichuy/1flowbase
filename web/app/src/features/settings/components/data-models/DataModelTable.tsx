@@ -101,7 +101,7 @@ function getStatusTag(status: string) {
   }
 }
 
-export function DataModelTable({
+function useDataModelTableController({
   models,
   selectedSource,
   selectedModelId,
@@ -268,6 +268,21 @@ export function DataModelTable({
       }
     }
   ];
+  return {
+    selectedSource, canManage, setDrawerState, updateDefaultsMutation, useMobileList,
+    loading, columns, models, selectedModelId, onSelectModel, onEditModel,
+    setDeleteTarget, drawerState, compatibleTemplatesQuery, message, saving,
+    onCreateModel, onUpdateModel, deleteTarget, onDeleteModel
+  };
+}
+
+export function DataModelTable(props: Parameters<typeof useDataModelTableController>[0]) {
+  const {
+    selectedSource, canManage, setDrawerState, updateDefaultsMutation, useMobileList,
+    loading, columns, models, selectedModelId, onSelectModel, onEditModel,
+    setDeleteTarget, drawerState, compatibleTemplatesQuery, saving,
+    onCreateModel, onUpdateModel, deleteTarget, onDeleteModel
+  } = useDataModelTableController(props);
 
   return (
     <Flex vertical gap={16} className="data-model-panel__table-container">
@@ -396,7 +411,7 @@ export function DataModelTable({
                   </Typography.Text>
                   {model.source_kind === 'external_source' &&
                   model.external_resource_key ? (
-                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 'var(--ant-font-size-sm, 12px)' }}>
                       {i18nText('settings', 'auto.external_resource_key')}：
                       {model.external_resource_key}
                     </Typography.Text>

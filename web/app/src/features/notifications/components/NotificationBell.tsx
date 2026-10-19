@@ -26,7 +26,7 @@ import {
 } from '../lib/inbox-split-ratio';
 import './notification-bell.css';
 
-export function NotificationBell() {
+function useNotificationBellController() {
   const { t } = useTranslation('notifications');
   const [open, setOpen] = useState(false);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
@@ -48,6 +48,17 @@ export function NotificationBell() {
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+  return {
+    inbox, open, setOpen, t, observeWorkspace, compact, setSplitRatio, channelWidth,
+    workspaceWidth
+  };
+}
+
+export function NotificationBell() {
+  const {
+    inbox, open, setOpen, t, observeWorkspace, compact, setSplitRatio, channelWidth,
+    workspaceWidth
+  } = useNotificationBellController();
   if (!inbox.authenticated) return null;
   const failed =
     inbox.channels.isError ||

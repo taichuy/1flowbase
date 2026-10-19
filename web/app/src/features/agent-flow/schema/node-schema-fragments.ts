@@ -60,12 +60,6 @@ const CONTRACT_FIELD_RENDERER_ALLOWLIST = new Set([
   'http_request_curl_import'
 ]);
 
-export function registerContractFieldRenderers(rendererNames: string[]) {
-  for (const rendererName of rendererNames) {
-    CONTRACT_FIELD_RENDERER_ALLOWLIST.add(rendererName);
-  }
-}
-
 function createFieldBlock(field: NodeDefinitionField): SchemaFieldBlock {
   const block: SchemaFieldBlock = {
     kind: 'field',
@@ -180,7 +174,7 @@ function buildSharedOutputVariableBlocks(
 function splitBlocksByPath(sections: SchemaSectionBlock[], paths: Set<string>) {
   const extractedBlocksByPath = new Map<string, SchemaFieldBlock>();
   const remainingSections = sections
-    .map((section) => {
+    .flatMap((section) => {
       const remainingBlocks = section.blocks.filter((block) => {
         if (block.kind === 'field' && paths.has(block.path)) {
           extractedBlocksByPath.set(block.path, block);
@@ -190,9 +184,8 @@ function splitBlocksByPath(sections: SchemaSectionBlock[], paths: Set<string>) {
         return true;
       });
 
-      return { ...section, blocks: remainingBlocks };
-    })
-    .filter((section) => section.blocks.length > 0);
+      return remainingBlocks.length > 0 ? [{ ...section, blocks: remainingBlocks }] : [];
+    });
 
   const extractedBlocks = [...paths]
     .map((path) => extractedBlocksByPath.get(path))
@@ -249,42 +242,38 @@ export function buildNodeCardBlocks(nodeType: FlowNodeType): SchemaBlock[] {
 export function buildCommonConfigBlocks(nodeType: FlowNodeType): SchemaBlock[] {
   const contract = getBuiltinNodeRuntimeContract(nodeType);
   const contractSections = (contract?.panel.sections ?? [])
-    .filter((section) => {
+    .flatMap((section) => {
       if (
         section.key === 'basics' ||
         (section.key === 'outputs' &&
           !isEditableOutputContractNodeType(nodeType))
       ) {
-        return false;
+        return [];
       }
 
       if (nodeType === 'llm' && section.key === 'advanced') {
-        return false;
+        return [];
       }
 
-      return true;
-    })
-    .map(createContractSectionBlock)
-    .filter((section): section is SchemaSectionBlock => section !== null);
+      const block = createContractSectionBlock(section);
+      return block === null ? [] : [block];
+    });
   const definitionSections = contractSections?.length
     ? contractSections
     : getNodeDefinitionSections(nodeType)
-        .filter((section) => {
+        .flatMap((section) => {
           if (
             section.key === 'basics' ||
             (section.key === 'outputs' &&
               !isEditableOutputContractNodeType(nodeType))
           ) {
-            return false;
+            return [];
           }
 
           if (nodeType === 'llm' && section.key === 'advanced') {
-            return false;
+            return [];
           }
 
-          return true;
-        })
-        .flatMap((section) => {
           return [createSectionBlock(section.title, section.fields)];
         });
   const { remainingSections, extractedBlocks } =

@@ -155,6 +155,7 @@ import {
 } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
 import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { getNativeSearchLandmark } from './support/native-search-landmark';
 
 function applicationRunsPage<T>(
   items: T[],
@@ -407,7 +408,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
 
     expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
 
-    const filters = screen.getByRole('search');
+    const filters = getNativeSearchLandmark();
     const sortControl = within(filters).getByTestId(
       'application-logs-sort-control'
     );

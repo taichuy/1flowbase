@@ -2,9 +2,9 @@ import type { FlowBinding, FlowNodeOutputDocument } from '@1flowbase/flow-schema
 
 import { i18nText } from '../../../../shared/i18n/text';
 
-export const HTTP_REQUEST_DEFAULT_TIMEOUT_MS = 30000;
+const HTTP_REQUEST_DEFAULT_TIMEOUT_MS = 30000;
 export const HTTP_REQUEST_RESPONSE_BYTES_STEP = 1024 * 1024;
-export const HTTP_REQUEST_DEFAULT_MAX_RESPONSE_BYTES =
+const HTTP_REQUEST_DEFAULT_MAX_RESPONSE_BYTES =
   6 * HTTP_REQUEST_RESPONSE_BYTES_STEP;
 export const HTTP_REQUEST_MAX_RESPONSE_BYTES =
   10 * HTTP_REQUEST_RESPONSE_BYTES_STEP;

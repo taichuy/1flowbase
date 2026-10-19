@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/lib/native-modules/notification/runtime.tsx",
+      "rule": "react-doctor/exhaustive-deps",
+      "sourceSha256": "2d7999101f227925124e256166462bfe8e93ef02978d5dc7d60e9b3ed9206e31",
+      "reason": "active is a mutable factory lexical binding, not component state. The mount layout effect marks the existing runtime active once. createBlockNotificationRuntime has factory-scoped mutable active/api bindings. Lifecycle activates the factory and registers surface effect-resource disposal; cleanup destroys the current factory API. Those bindings are not reactive component props and cannot form meaningful React dependencies. Cleanup must destroy the factory current notification API and unregister its captured surface registration; depending on mutable api/active would not subscribe to assignment and would not improve ownership. createBlockNotificationRuntime has factory-scoped mutable active/api bindings. Lifecycle activates the factory and registers surface effect-resource disposal; cleanup destroys the current factory API. Those bindings are not reactive component props and cannot form meaningful React dependencies.",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-notification-runtime.test.tsx", "sha256": "13056def8bdc433f24835d79e896262616459efc9aee89e57123e7bbf363d1db"}, {"file": "web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx", "sha256": "4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"}]
+    }
+  ]
+}

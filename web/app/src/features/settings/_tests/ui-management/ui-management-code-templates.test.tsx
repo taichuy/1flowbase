@@ -1,7 +1,9 @@
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import '../../../../test/fixtures/rc-util-unique-ids';
 
 import { App } from 'antd';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -172,14 +174,52 @@ import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { UiManagementPanel } from '../../components/ui-management/UiManagementPanel';
 
-function renderPanel() {
-  return render(
-    <AppProviders>
-      <App>
-        <UiManagementPanel canManage />
-      </App>
-    </AppProviders>
-  );
+// Await the asynchronous work triggered by each real DOM event.
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
+  await act(async () => {
+    fireEvent.mouseDown(...args);
+  });
+}
+
+const mountedViews = new Set<ReturnType<typeof render>>();
+const mountedClients = new Set<QueryClient>();
+function ObserveQueries() {
+  mountedClients.add(useQueryClient());
+  return null;
+}
+async function waitForRequests() {
+  await waitFor(() => {
+    for (const client of mountedClients) {
+      expect(client.isFetching()).toBe(0);
+      expect(client.isMutating()).toBe(0);
+    }
+  });
+}
+
+async function renderPanel() {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(
+      <AppProviders>
+        <ObserveQueries />
+        <App>
+          <UiManagementPanel canManage />
+        </App>
+      </AppProviders>
+    );
+    mountedViews.add(view);
+  });
+  return view;
 }
 
 function studioSourceText(source: string) {
@@ -269,19 +309,29 @@ describe('UiManagementPanel code templates', () => {
     });
   });
 
-  afterEach(() => {
-    resetAuthStore();
-    vi.clearAllMocks();
+  afterEach(async () => {
+    try {
+      await waitForRequests();
+    } finally {
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
+      for (const client of mountedClients) client.clear();
+      mountedClients.clear();
+      await act(async () => {
+        resetAuthStore();
+      });
+      vi.clearAllMocks();
+    }
   });
 
   test('AC-DELETE-002 permanently deletes a managed template and refreshes the list', async () => {
-    renderPanel();
+    await renderPanel();
     const name = await screen.findByText('自定义区块');
     expect(
       screen.queryByRole('button', { name: '显示归档' })
     ).not.toBeInTheDocument();
     const row = name.closest('tr')!;
-    fireEvent.click(within(row).getByRole('button', { name: /删\s*除/ }));
+    await click(within(row).getByRole('button', { name: /删\s*除/ }));
     const dialog = await screen.findByRole('dialog', { name: '删除模板？' });
     expect(dialog).toHaveTextContent('全部修订');
     expect(uiManagementApi.deleteSettingsUiTemplate).not.toHaveBeenCalled();
@@ -292,7 +342,7 @@ describe('UiManagementPanel code templates', () => {
         managed: []
       });
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    await click(within(dialog).getByRole('button', { name: /删\s*除/ }));
     await waitFor(() =>
       expect(screen.queryByText('自定义区块')).not.toBeInTheDocument()
     );
@@ -307,28 +357,28 @@ describe('UiManagementPanel code templates', () => {
     uiManagementApi.deleteSettingsUiTemplate.mockRejectedValueOnce(
       new Error('删除失败')
     );
-    renderPanel();
+    await renderPanel();
     const row = (await screen.findByText('自定义区块')).closest('tr')!;
-    fireEvent.click(within(row).getByRole('button', { name: /删\s*除/ }));
+    await click(within(row).getByRole('button', { name: /删\s*除/ }));
     let dialog = await screen.findByRole('dialog', { name: '删除模板？' });
-    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    await click(within(dialog).getByRole('button', { name: /取\s*消/ }));
     await waitFor(() =>
       expect(
         screen.queryByRole('dialog', { name: '删除模板？' })
       ).not.toBeInTheDocument()
     );
     expect(uiManagementApi.deleteSettingsUiTemplate).not.toHaveBeenCalled();
-    fireEvent.click(within(row).getByRole('button', { name: /删\s*除/ }));
+    await click(within(row).getByRole('button', { name: /删\s*除/ }));
     dialog = await screen.findByRole('dialog', { name: '删除模板？' });
-    fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    await click(within(dialog).getByRole('button', { name: /删\s*除/ }));
     expect(await screen.findByText('删除失败')).toBeInTheDocument();
     expect(screen.getByText('自定义区块')).toBeInTheDocument();
     expect(dialog).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    await click(within(dialog).getByRole('button', { name: /取\s*消/ }));
   });
 
   test('AC-001 keeps the registered official template read-only while exposing view, copy, and default actions', async () => {
-    renderPanel();
+    await renderPanel();
 
     expect(await screen.findByText('官方区块')).toBeInTheDocument();
     const officialRow = screen.getByText('官方区块').closest('tr');
@@ -340,7 +390,7 @@ describe('UiManagementPanel code templates', () => {
       within(officialRow!).queryByRole('button', { name: /删\s*除/ })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: /查\s*看/ })[0]!);
+    await click(screen.getAllByRole('button', { name: /查\s*看/ })[0]!);
     expect(screen.getByTestId('ui-code-template-studio')).toHaveTextContent(
       'studio-readonly'
     );
@@ -350,16 +400,16 @@ describe('UiManagementPanel code templates', () => {
   });
 
   test('AC-002 copies an official template snapshot into an independent managed draft', async () => {
-    renderPanel();
+    await renderPanel();
     await screen.findByText('官方区块');
 
-    fireEvent.click(screen.getAllByRole('button', { name: /复\s*制/ })[0]!);
+    await click(screen.getAllByRole('button', { name: /复\s*制/ })[0]!);
     expect(screen.getByTestId('studio-source')).toHaveTextContent(
       studioSourceText(officialSource)
     );
     expect(screen.getByLabelText('名称')).toHaveValue('官方区块 - 副本');
-    fireEvent.click(screen.getByRole('button', { name: 'change-source' }));
-    fireEvent.click(screen.getByRole('button', { name: 'studio-save' }));
+    await click(screen.getByRole('button', { name: 'change-source' }));
+    await click(screen.getByRole('button', { name: 'studio-save' }));
 
     await waitFor(() =>
       expect(uiManagementApi.createSettingsUiTemplate).toHaveBeenCalledWith(
@@ -376,14 +426,14 @@ describe('UiManagementPanel code templates', () => {
   });
 
   test('AC-003 copies the latest managed revision and edits managed templates in the same studio', async () => {
-    renderPanel();
+    await renderPanel();
     await screen.findByText('自定义区块');
 
-    fireEvent.click(screen.getAllByRole('button', { name: /复\s*制/ })[1]!);
+    await click(screen.getAllByRole('button', { name: /复\s*制/ })[1]!);
     expect(screen.getByTestId('studio-source')).toHaveTextContent(
       studioSourceText(managedSource)
     );
-    fireEvent.click(screen.getByRole('button', { name: 'studio-save' }));
+    await click(screen.getByRole('button', { name: 'studio-save' }));
     await waitFor(() =>
       expect(uiManagementApi.createSettingsUiTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -394,7 +444,7 @@ describe('UiManagementPanel code templates', () => {
       )
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
+    await click(screen.getByRole('button', { name: /编\s*辑/ }));
     expect(screen.getByTestId('studio-source')).toHaveTextContent(
       studioSourceText(managedSource)
     );
@@ -404,10 +454,10 @@ describe('UiManagementPanel code templates', () => {
   });
 
   test('AC-004 starts new templates from a registered contribution instead of raw locator inputs', async () => {
-    renderPanel();
+    await renderPanel();
     await screen.findByText('官方区块');
 
-    fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+    await click(screen.getByRole('button', { name: '新建模板' }));
 
     expect(screen.getByTestId('ui-code-template-studio')).toBeInTheDocument();
     expect(screen.getByTestId('studio-editor-header')).toBeEmptyDOMElement();
@@ -415,10 +465,10 @@ describe('UiManagementPanel code templates', () => {
     expect(screen.getByTestId('studio-source')).toHaveTextContent(
       studioSourceText(officialSource)
     );
-    fireEvent.change(screen.getByLabelText('名称'), {
+    await change(screen.getByLabelText('名称'), {
       target: { value: '新模板' }
     });
-    fireEvent.click(screen.getByRole('button', { name: 'studio-save' }));
+    await click(screen.getByRole('button', { name: 'studio-save' }));
     await waitFor(() =>
       expect(uiManagementApi.createSettingsUiTemplate).toHaveBeenCalledWith(
         {
@@ -444,9 +494,11 @@ describe('UiManagementPanel code templates', () => {
         resolveTemplates = resolve;
       })
     );
-    renderPanel();
+    await renderPanel();
     expect(screen.getByRole('button', { name: '新建模板' })).toBeDisabled();
-    resolveTemplates({ official: [], managed: [], default_template: null });
+    await act(async () => {
+      resolveTemplates({ official: [], managed: [], default_template: null });
+    });
     await waitFor(() =>
       expect(
         document.querySelector('.ant-spin-spinning')
@@ -461,7 +513,7 @@ describe('UiManagementPanel code templates', () => {
       ...initial,
       default_template: null
     });
-    renderPanel();
+    await renderPanel();
     await screen.findByText('官方区块');
     expect(screen.getByRole('button', { name: '新建模板' })).toBeDisabled();
   });
@@ -480,16 +532,16 @@ describe('UiManagementPanel code templates', () => {
         ...initial.official
       ]
     });
-    renderPanel();
+    await renderPanel();
     await screen.findByText('官方区块');
-    fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+    await click(screen.getByRole('button', { name: '新建模板' }));
     expect(screen.getByTestId('studio-source')).toHaveTextContent(
       studioSourceText(officialSource)
     );
-    fireEvent.change(screen.getByLabelText('名称'), {
+    await change(screen.getByLabelText('名称'), {
       target: { value: '默认代码区块' }
     });
-    fireEvent.click(screen.getByRole('button', { name: 'studio-save' }));
+    await click(screen.getByRole('button', { name: 'studio-save' }));
     await waitFor(() =>
       expect(uiManagementApi.createSettingsUiTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -516,18 +568,18 @@ describe('UiManagementPanel code templates', () => {
         }
       ]
     });
-    renderPanel();
+    await renderPanel();
     await screen.findByText('官方区块');
-    fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+    await click(screen.getByRole('button', { name: '新建模板' }));
     expect(screen.getByLabelText('所属区块')).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByLabelText('所属区块'));
-    fireEvent.click(
+    await mouseDown(screen.getByLabelText('所属区块'));
+    await click(
       await screen.findByText('另一种区块 · other-provider/other-block')
     );
-    fireEvent.change(screen.getByLabelText('名称'), {
+    await change(screen.getByLabelText('名称'), {
       target: { value: '多类型模板' }
     });
-    fireEvent.click(screen.getByRole('button', { name: 'studio-save' }));
+    await click(screen.getByRole('button', { name: 'studio-save' }));
     await waitFor(() =>
       expect(uiManagementApi.createSettingsUiTemplate).toHaveBeenCalledWith(
         {
@@ -543,14 +595,14 @@ describe('UiManagementPanel code templates', () => {
   });
 
   test('AC-006 runs an unsaved template draft through the registered block runtime', async () => {
-    renderPanel();
+    await renderPanel();
     await screen.findByText('自定义区块');
 
-    fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'change-source' }));
+    await click(screen.getByRole('button', { name: /编\s*辑/ }));
+    await click(screen.getByRole('button', { name: 'change-source' }));
     const runButton = screen.getByRole('button', { name: 'studio-run' });
     await waitFor(() => expect(runButton).toBeEnabled());
-    fireEvent.click(runButton);
+    await click(runButton);
 
     expect(await screen.findByText('Template preview run')).toBeInTheDocument();
     expect(
@@ -612,10 +664,10 @@ describe('UiManagementPanel code templates', () => {
       items: [],
       loading: true
     });
-    renderPanel();
+    await renderPanel();
     await screen.findByText('自定义区块');
 
-    fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
+    await click(screen.getByRole('button', { name: /编\s*辑/ }));
 
     const studioProps = sourceStudio.render.mock.calls.at(-1)?.[0] as {
       editorDiagnostics: Array<{ message: string }>;
@@ -627,12 +679,12 @@ describe('UiManagementPanel code templates', () => {
   });
 
   test('AC-005 switches the configurable default between managed and official templates', async () => {
-    const view = renderPanel();
+    const view = await renderPanel();
     await screen.findByText('官方区块');
 
     const defaultButtons = screen.getAllByRole('button', { name: '默认' });
     expect(defaultButtons[0]).toBeDisabled();
-    fireEvent.click(defaultButtons[1]!);
+    await click(defaultButtons[1]!);
     await waitFor(() =>
       expect(uiManagementApi.setSettingsUiTemplateDefault).toHaveBeenCalledWith(
         'managed-1',
@@ -640,6 +692,7 @@ describe('UiManagementPanel code templates', () => {
       )
     );
 
+    await waitForRequests();
     view.unmount();
     uiManagementApi.fetchSettingsUiTemplates.mockResolvedValue({
       official: [
@@ -675,9 +728,9 @@ describe('UiManagementPanel code templates', () => {
         }
       ]
     });
-    renderPanel();
+    await renderPanel();
     await screen.findByText('官方区块');
-    fireEvent.click(screen.getAllByRole('button', { name: '默认' })[0]!);
+    await click(screen.getAllByRole('button', { name: '默认' })[0]!);
     await waitFor(() =>
       expect(
         uiManagementApi.resetSettingsUiTemplateDefault

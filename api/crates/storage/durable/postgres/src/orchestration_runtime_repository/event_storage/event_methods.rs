@@ -1,0 +1,553 @@
+impl PgControlPlaneStore {
+    async fn append_run_event(
+        &self,
+        input: &AppendRunEventInput,
+    ) -> Result<domain::RunEventRecord> {
+        let mut tx = self.pool().begin().await?;
+
+        lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
+        let scope_id = flow_run_scope_id_for_update(&mut tx, input.flow_run_id).await?;
+        lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
+        let next_sequence = next_event_sequence(&mut tx, input.flow_run_id).await?;
+        let resume_timeline_description = resume_timeline_description(&input.payload);
+        let row = sqlx::query(
+            r#"
+            insert into flow_run_events (
+                id,
+                scope_id,
+                flow_run_id,
+                node_run_id,
+                sequence,
+                event_type,
+                payload,
+                resume_timeline_description,
+                resume_timeline_description_projected
+            , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, ($7::jsonb -> 0), $8, true, jsonb_strip_nulls(jsonb_build_object('payload', ($7::jsonb -> 1))) )
+            returning
+                id,
+                flow_run_id,
+                node_run_id,
+                sequence,
+                event_type,
+                runtime_original_json(payload, flow_run_events.raw_json_payloads, 'payload') as payload,
+                created_at
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(scope_id)
+        .bind(input.flow_run_id)
+        .bind(input.node_run_id)
+        .bind(next_sequence)
+        .bind(&input.event_type)
+        .bind(lossless_json_parameter(&(&input.payload)))
+        .bind(resume_timeline_description)
+        .fetch_one(&mut *tx)
+        .await?;
+        let event = map_run_event_record(row);
+        tx.commit().await?;
+        Ok(event)
+    }
+
+    async fn append_run_events(
+        &self,
+        inputs: &[AppendRunEventInput],
+    ) -> Result<Vec<domain::RunEventRecord>> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+        if inputs
+            .iter()
+            .any(|input| input.flow_run_id != inputs[0].flow_run_id)
+        {
+            let mut records = Vec::with_capacity(inputs.len());
+            for input in inputs {
+                records.push(self.append_run_event(input).await?);
+            }
+            return Ok(records);
+        }
+
+        let mut tx = self.pool().begin().await?;
+
+        lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
+        lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
+        let first_sequence = next_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
+        let scope_id = flow_run_scope_id_for_update(&mut tx, inputs[0].flow_run_id).await?;
+        // PostgreSQL encodes the bind count as u16; each event binds 10 columns.
+        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 10;
+        let mut records = Vec::with_capacity(inputs.len());
+        for (chunk_index, chunk) in inputs.chunks(MAX_BATCH_ROWS).enumerate() {
+            let mut builder = QueryBuilder::<Postgres>::new(
+                r#"
+                insert into flow_run_events (
+                    id,
+                    scope_id,
+                    flow_run_id,
+                    node_run_id,
+                    sequence,
+                    event_type,
+                    payload,
+                    resume_timeline_description,
+                    resume_timeline_description_projected,
+                    raw_json_payloads
+                ) "#,
+            );
+            builder.push_values(chunk.iter().enumerate(), |mut row, (index, input)| {
+                let (projection, originals) = lossless_json_columns("payload", &input.payload);
+                row.push_bind(Uuid::now_v7())
+                    .push_bind(scope_id)
+                    .push_bind(input.flow_run_id)
+                    .push_bind(input.node_run_id)
+                    .push_bind(first_sequence + (chunk_index * MAX_BATCH_ROWS + index) as i64)
+                    .push_bind(&input.event_type)
+                    .push_bind(projection)
+                    .push_bind(resume_timeline_description(&input.payload))
+                    .push_bind(true)
+                    .push_bind(originals);
+            });
+            builder.push(
+                r#"
+                returning
+                    id,
+                    flow_run_id,
+                    node_run_id,
+                    sequence,
+                    event_type,
+                    runtime_original_json(payload, flow_run_events.raw_json_payloads, 'payload') as payload,
+                    created_at
+                "#,
+            );
+            let rows = builder.build().fetch_all(&mut *tx).await?;
+            records.extend(rows.into_iter().map(map_run_event_record));
+        }
+        tx.commit().await?;
+        records.sort_by_key(|record| record.sequence);
+        Ok(records)
+    }
+
+    async fn append_runtime_span(
+        &self,
+        input: &AppendRuntimeSpanInput,
+    ) -> Result<domain::RuntimeSpanRecord> {
+        let row = sqlx::query(
+            r#"
+            insert into runtime_spans (
+                id,
+                flow_run_id,
+                node_run_id,
+                parent_span_id,
+                kind,
+                name,
+                status,
+                capability_id,
+                input_ref,
+                output_ref,
+                error_payload,
+                metadata,
+                started_at,
+                finished_at
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            returning
+                id,
+                flow_run_id,
+                node_run_id,
+                parent_span_id,
+                kind,
+                name,
+                status,
+                capability_id,
+                input_ref,
+                output_ref,
+                error_payload,
+                metadata,
+                started_at,
+                finished_at
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.flow_run_id)
+        .bind(input.node_run_id)
+        .bind(input.parent_span_id)
+        .bind(input.kind.as_str())
+        .bind(&input.name)
+        .bind(input.status.as_str())
+        .bind(input.capability_id.as_deref())
+        .bind(input.input_ref.as_deref())
+        .bind(input.output_ref.as_deref())
+        .bind(&input.error_payload)
+        .bind(&input.metadata)
+        .bind(input.started_at)
+        .bind(input.finished_at)
+        .fetch_one(self.pool())
+        .await?;
+
+        map_runtime_span_record(row)
+    }
+
+    async fn append_runtime_event(
+        &self,
+        input: &AppendRuntimeEventInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        let mut tx = self.pool().begin().await?;
+        if native_projection_queue_event(&input.event_type) {
+            lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
+        }
+        lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
+        lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
+        let next_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
+        observation_bodies::lock_native_batch(&mut tx, std::slice::from_ref(input)).await?;
+        let (payload, observation_body_content_id, observation_body_manifest_id) =
+            observation_bodies::archive_payload(&mut tx, input).await?;
+        let row = sqlx::query(
+            r#"
+            insert into runtime_events (
+                id,
+                flow_run_id,
+                node_run_id,
+                span_id,
+                parent_span_id,
+                sequence,
+                event_type,
+                layer,
+                source,
+                trust_level,
+                item_id,
+                ledger_ref,
+                payload,
+                visibility,
+                durability
+            , raw_json_payloads, observation_body_content_id, observation_body_manifest_id) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ($13::jsonb -> 0), $14, $15, jsonb_strip_nulls(jsonb_build_object('payload', ($13::jsonb -> 1))), $16, $17 )
+            returning
+                id,
+                flow_run_id,
+                node_run_id,
+                span_id,
+                parent_span_id,
+                sequence,
+                event_type,
+                layer,
+                source,
+                trust_level,
+                item_id,
+                ledger_ref,
+                runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
+                visibility,
+                durability,
+                created_at
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.flow_run_id)
+        .bind(input.node_run_id)
+        .bind(input.span_id)
+        .bind(input.parent_span_id)
+        .bind(next_sequence)
+        .bind(&input.event_type)
+        .bind(input.layer.as_str())
+        .bind(input.source.as_str())
+        .bind(input.trust_level.as_str())
+        .bind(input.item_id)
+        .bind(input.ledger_ref.as_deref())
+        .bind(lossless_json_parameter(&payload))
+        .bind(input.visibility.as_str())
+        .bind(input.durability.as_str())
+        .bind(observation_body_content_id)
+        .bind(observation_body_manifest_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let event = map_runtime_event_record(row)?;
+        if input.event_type == "provider_output_item_done" {
+            Self::refresh_completed_output_projection(&mut tx, input.flow_run_id).await?;
+        }
+        tx.commit().await?;
+        Ok(event)
+    }
+
+    async fn append_runtime_events(
+        &self,
+        inputs: &[AppendRuntimeEventInput],
+    ) -> Result<Vec<domain::RuntimeEventRecord>> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+        if inputs
+            .iter()
+            .any(|input| input.flow_run_id != inputs[0].flow_run_id)
+        {
+            let mut records = Vec::with_capacity(inputs.len());
+            for input in inputs {
+                records.push(self.append_runtime_event(input).await?);
+            }
+            return Ok(records);
+        }
+
+        let mut tx = self.pool().begin().await?;
+        if inputs
+            .iter()
+            .any(|input| native_projection_queue_event(&input.event_type))
+        {
+            lock_application_run_native_projection(&mut tx, inputs[0].flow_run_id).await?;
+        }
+        lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
+        lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
+        let first_sequence = next_runtime_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
+        observation_bodies::lock_native_batch(&mut tx, inputs).await?;
+        // PostgreSQL encodes the bind count as u16; each event binds 18 columns.
+        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 18;
+        let mut records = Vec::with_capacity(inputs.len());
+        let mut sequence = first_sequence;
+        for chunk in inputs.chunks(MAX_BATCH_ROWS) {
+            let mut sequences = Vec::with_capacity(chunk.len());
+            for input in chunk {
+                sequences.push(sequence);
+                sequence = sequence
+                    .checked_add(1 + observation_bodies::occurrence_count(input)?)
+                    .ok_or_else(|| anyhow!("runtime event sequence overflow"))?;
+            }
+            let mut builder = QueryBuilder::<Postgres>::new(
+                r#"
+                insert into runtime_events (
+                    id,
+                    flow_run_id,
+                    node_run_id,
+                    span_id,
+                    parent_span_id,
+                    sequence,
+                    event_type,
+                    layer,
+                    source,
+                    trust_level,
+                    item_id,
+                    ledger_ref,
+                    payload,
+                    visibility,
+                    durability,
+                    raw_json_payloads,
+                    observation_body_content_id,
+                    observation_body_manifest_id
+                ) "#,
+            );
+            let mut archived = Vec::with_capacity(chunk.len());
+            for input in chunk {
+                archived.push(observation_bodies::archive_payload(&mut tx, input).await?);
+            }
+            builder.push_values(
+                chunk.iter().zip(archived.iter()).enumerate(),
+                |mut row, (index, (input, (payload, content_id, manifest_id)))| {
+                    let (projection, originals) = lossless_json_columns("payload", payload);
+                    row.push_bind(Uuid::now_v7())
+                        .push_bind(input.flow_run_id)
+                        .push_bind(input.node_run_id)
+                        .push_bind(input.span_id)
+                        .push_bind(input.parent_span_id)
+                        .push_bind(sequences[index])
+                        .push_bind(&input.event_type)
+                        .push_bind(input.layer.as_str())
+                        .push_bind(input.source.as_str())
+                        .push_bind(input.trust_level.as_str())
+                        .push_bind(input.item_id)
+                        .push_bind(input.ledger_ref.as_deref())
+                        .push_bind(projection)
+                        .push_bind(input.visibility.as_str())
+                        .push_bind(input.durability.as_str())
+                        .push_bind(originals)
+                        .push_bind(*content_id)
+                        .push_bind(*manifest_id);
+                },
+            );
+            builder.push(
+                r#"
+                returning
+                    id,
+                    flow_run_id,
+                    node_run_id,
+                    span_id,
+                    parent_span_id,
+                    sequence,
+                    event_type,
+                    layer,
+                    source,
+                    trust_level,
+                    item_id,
+                    ledger_ref,
+                    runtime_event_original_payload(payload, runtime_events.raw_json_payloads, flow_run_id) as payload,
+                    visibility,
+                    durability,
+                    created_at
+                "#,
+            );
+            let rows = builder.build().fetch_all(&mut *tx).await?;
+            records.extend(
+                rows.into_iter()
+                    .map(map_runtime_event_record)
+                    .collect::<Result<Vec<_>>>()?,
+            );
+        }
+        if inputs
+            .iter()
+            .any(|input| input.event_type == "provider_output_item_done")
+        {
+            Self::refresh_completed_output_projection(&mut tx, inputs[0].flow_run_id).await?;
+        }
+        tx.commit().await?;
+        records.sort_by_key(|record| record.sequence);
+        Ok(records)
+    }
+
+    async fn append_runtime_item(
+        &self,
+        input: &AppendRuntimeItemInput,
+    ) -> Result<domain::RuntimeItemRecord> {
+        let row = sqlx::query(
+            r#"
+            insert into runtime_items (
+                id,
+                flow_run_id,
+                span_id,
+                kind,
+                status,
+                source_event_id,
+                input_ref,
+                output_ref,
+                usage_ledger_id,
+                trust_level
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            returning
+                id,
+                flow_run_id,
+                span_id,
+                kind,
+                status,
+                source_event_id,
+                input_ref,
+                output_ref,
+                usage_ledger_id,
+                trust_level,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.flow_run_id)
+        .bind(input.span_id)
+        .bind(input.kind.as_str())
+        .bind(input.status.as_str())
+        .bind(input.source_event_id)
+        .bind(input.input_ref.as_deref())
+        .bind(input.output_ref.as_deref())
+        .bind(input.usage_ledger_id)
+        .bind(input.trust_level.as_str())
+        .fetch_one(self.pool())
+        .await?;
+
+        map_runtime_item_record(row)
+    }
+
+    async fn append_context_projection(
+        &self,
+        input: &AppendContextProjectionInput,
+    ) -> Result<domain::ContextProjectionRecord> {
+        let row = sqlx::query(
+            r#"
+            insert into runtime_context_projections (
+                id,
+                flow_run_id,
+                node_run_id,
+                llm_turn_span_id,
+                projection_kind,
+                merge_stage_ref,
+                source_transcript_ref,
+                source_item_refs,
+                compaction_event_id,
+                summary_version,
+                model_input_ref,
+                model_input_hash,
+                compacted_summary_ref,
+                previous_projection_id,
+                token_estimate,
+                provider_continuation_metadata
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            returning
+                id,
+                flow_run_id,
+                node_run_id,
+                llm_turn_span_id,
+                projection_kind,
+                merge_stage_ref,
+                source_transcript_ref,
+                source_item_refs,
+                compaction_event_id,
+                summary_version,
+                model_input_ref,
+                model_input_hash,
+                compacted_summary_ref,
+                previous_projection_id,
+                token_estimate,
+                provider_continuation_metadata,
+                created_at
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.flow_run_id)
+        .bind(input.node_run_id)
+        .bind(input.llm_turn_span_id)
+        .bind(&input.projection_kind)
+        .bind(input.merge_stage_ref.as_deref())
+        .bind(input.source_transcript_ref.as_deref())
+        .bind(&input.source_item_refs)
+        .bind(input.compaction_event_id)
+        .bind(input.summary_version.as_deref())
+        .bind(&input.model_input_ref)
+        .bind(&input.model_input_hash)
+        .bind(input.compacted_summary_ref.as_deref())
+        .bind(input.previous_projection_id)
+        .bind(input.token_estimate)
+        .bind(&input.provider_continuation_metadata)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(map_context_projection_record(row))
+    }
+}
+
+// Mirrors enqueue_application_run_trace_refresh's structural event boundary.
+// Token deltas have no shared queue/projection writes and avoid log-context reads.
+fn native_projection_queue_event(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "provider_output_item_done"
+            | "provider_protocol_integrity"
+            | "visible_internal_llm_tool_completed"
+            | "visible_internal_llm_tool_failed"
+    )
+}
+
+async fn lock_open_flow_run_for_event_append(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    flow_run_id: Uuid,
+) -> Result<()> {
+    let status = sqlx::query_scalar::<_, String>(
+        "select status from flow_runs where id = $1 for no key update",
+    )
+    .bind(flow_run_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+    if matches!(
+        status.as_str(),
+        "succeeded" | "incomplete" | "failed" | "cancelled"
+    ) {
+        return Err(ControlPlaneError::Conflict("flow_run_terminal").into());
+    }
+    Ok(())
+}
+
+fn resume_timeline_description(payload: &serde_json::Value) -> Option<&str> {
+    ["resume_request_id", "callback_task_id"]
+        .into_iter()
+        .find_map(|key| {
+            payload
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+        })
+}

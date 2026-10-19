@@ -215,7 +215,7 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
   assert.match(workflow, /merge-multiple: false/u);
   assert.match(
     workflow,
-    /node scripts\/node\/cli\/github-quality-gate-aggregate\.js/u,
+    /node scripts\/node\/cli\/quality\/github-quality-gate-aggregate\.js/u,
   );
 });
 
@@ -450,244 +450,10 @@ test("API coverage sharding is enforced after structural equivalence is proven",
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: '[^']*coverage-backend-api-server-merge(?:,|')/u);
 });
 
-test("React Doctor keeps current debt as a narrow baseline", () => {
+test("React Doctor config forbids rule, file, and override suppressions", () => {
   const config = readReactDoctorConfig();
 
-  assert.deepEqual(config.ignore.overrides, [
-    {
-      files: ["src/features/frontstage/pages/FrontStagePage.tsx"],
-      rules: [
-        "react-doctor/exhaustive-deps",
-        "react-doctor/no-adjust-state-on-prop-change",
-        "react-doctor/no-cascading-set-state",
-        "react-doctor/no-chain-state-updates",
-        "react-doctor/no-derived-state",
-        "react-doctor/no-effect-chain",
-        "react-doctor/no-event-handler",
-        "react-doctor/no-prop-callback-in-effect",
-        "react-doctor/no-inline-exhaustive-style",
-        "react-doctor/no-giant-component",
-        "react-doctor/no-many-boolean-props",
-        "react-doctor/prefer-useReducer",
-        "react-doctor/no-derived-state-effect",
-        "react-doctor/no-render-in-render",
-      ],
-    },
-    {
-      files: [
-        "src/features/agent-flow/_tests/editor/agent-flow-canvas-interactions.test.tsx",
-      ],
-      rules: ["react-doctor/no-prop-callback-in-effect"],
-    },
-    {
-      files: ["src/features/agent-flow/_tests/node-inspector/support.tsx"],
-      rules: [
-        "react-doctor/no-pass-data-to-parent",
-        "react-doctor/no-prop-callback-in-effect",
-        "react-doctor/only-export-components",
-      ],
-    },
-    {
-      files: [
-        "src/features/frontstage/_tests/browser-fixtures/native-react-trial-fixture.tsx",
-      ],
-      rules: [
-        "react-doctor/no-multi-comp",
-        "react-doctor/only-export-components",
-        "react-doctor/prefer-useReducer",
-      ],
-    },
-    {
-      files: ["src/features/agent-flow/components/editor/AgentFlowCanvas.tsx"],
-      rules: [
-        "react-doctor/no-pass-data-to-parent",
-        "react-doctor/no-prop-callback-in-effect",
-      ],
-    },
-    {
-      files: [
-        "src/features/agent-flow/components/editor/AgentFlowCanvasFrame.tsx",
-      ],
-      rules: [
-        "react-doctor/no-giant-component",
-        "react-doctor/prefer-useReducer",
-        "react-doctor/query-mutation-missing-invalidation",
-        "react-doctor/no-initialize-state",
-        "react-doctor/prefer-tag-over-role",
-      ],
-    },
-    {
-      files: ["src/features/agent-flow/components/nodes/AgentFlowNodeCard.tsx"],
-      rules: [
-        "react-doctor/no-giant-component",
-        "react-doctor/prefer-tag-over-role",
-      ],
-    },
-    {
-      files: [
-        "src/features/applications/components/api/ApplicationApiKeysPanel.tsx",
-      ],
-      rules: ["react-doctor/prefer-module-scope-pure-function"],
-    },
-    {
-      files: ["src/features/applications/pages/ApplicationLogsPage.tsx"],
-      rules: [
-        "react-doctor/no-adjust-state-on-prop-change",
-        "react-doctor/no-cascading-set-state",
-        "react-doctor/no-chain-state-updates",
-        "react-doctor/no-derived-state-effect",
-        "react-doctor/no-giant-component",
-        "react-doctor/prefer-tag-over-role",
-        "react-doctor/prefer-useReducer",
-      ],
-    },
-    {
-      files: ["src/features/applications/pages/ApplicationMonitoringPage.tsx"],
-      rules: ["react-doctor/no-giant-component"],
-    },
-    {
-      files: ["src/features/auth/pages/SignInPage.tsx"],
-      rules: ["react-doctor/no-event-handler"],
-    },
-    {
-      files: [
-        "src/features/frontstage/components/FrontStagePageTreeSidebar.tsx",
-      ],
-      rules: [
-        "react-doctor/click-events-have-key-events",
-        "react-doctor/client-localstorage-no-version",
-        "react-doctor/no-noninteractive-element-interactions",
-        "react-doctor/no-render-in-render",
-        "react-doctor/no-static-element-interactions",
-      ],
-    },
-    {
-      files: [
-        "src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
-      ],
-      rules: [
-        "react-doctor/click-events-have-key-events",
-        "react-doctor/no-derived-state",
-        "react-doctor/no-giant-component",
-        "react-doctor/no-static-element-interactions",
-        "react-doctor/prefer-useReducer",
-      ],
-    },
-    {
-      files: [
-        "src/features/settings/components/host-infrastructure/HostInfrastructureMemoryObservationPanel.tsx",
-      ],
-      rules: [
-        "react-doctor/exhaustive-deps",
-        "react-doctor/js-combine-iterations",
-        "react-doctor/no-cascading-set-state",
-        "react-doctor/no-chain-state-updates",
-        "react-doctor/no-derived-state-effect",
-        "react-doctor/no-giant-component",
-        "react-doctor/no-static-element-interactions",
-        "react-doctor/no-tiny-text",
-        "react-doctor/prefer-tag-over-role",
-        "react-doctor/prefer-use-effect-event",
-        "react-doctor/prefer-useReducer",
-        "react-doctor/query-mutation-missing-invalidation",
-      ],
-    },
-    {
-      files: [
-        "src/features/settings/components/billing/PricingCatalogPanel.tsx",
-      ],
-      rules: ["react-doctor/jsx-no-jsx-as-prop"],
-    },
-    {
-      files: [
-        "src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx",
-      ],
-      rules: [
-        "react-doctor/jsx-no-jsx-as-prop",
-        "react-doctor/no-giant-component",
-        "react-doctor/prefer-useReducer",
-        "react-doctor/no-inline-exhaustive-style",
-      ],
-    },
-    {
-      files: [
-        "src/features/settings/components/MemberManagementPanel.tsx",
-        "src/features/settings/components/PersonalAccessTokensPanel.tsx",
-        "src/features/settings/components/mcp-management/McpManagementPanel.tsx",
-        "src/features/settings/components/model-providers/ModelProviderCatalogPanel.tsx",
-        "src/features/settings/pages/settings-page/SettingsModelProvidersSection.tsx",
-      ],
-      rules: ["react-doctor/no-giant-component"],
-    },
-    {
-      files: [
-        "src/features/settings/components/mcp-management/McpInstancesTab.tsx",
-      ],
-      rules: [
-        "react-doctor/no-giant-component",
-        "react-doctor/prefer-useReducer",
-      ],
-    },
-    {
-      files: [
-        "src/features/settings/components/mcp-management/McpToolsTab.tsx",
-      ],
-      rules: [
-        "react-doctor/jsx-no-jsx-as-prop",
-        "react-doctor/design-no-vague-button-label",
-        "react-doctor/no-derived-state",
-        "react-doctor/no-giant-component",
-      ],
-    },
-    {
-      files: [
-        "src/features/settings/components/model-providers/ModelProviderInstanceDrawer.tsx",
-      ],
-      rules: [
-        "react-doctor/no-adjust-state-on-prop-change",
-        "react-doctor/no-cascading-set-state",
-        "react-doctor/no-chain-state-updates",
-        "react-doctor/no-derived-state",
-        "react-doctor/no-event-handler",
-        "react-doctor/no-giant-component",
-        "react-doctor/prefer-useReducer",
-        "react-doctor/rerender-state-only-in-handlers",
-      ],
-    },
-    {
-      files: [
-        "src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
-      ],
-      rules: [
-        "react-doctor/async-defer-await",
-        "react-doctor/js-combine-iterations",
-        "react-doctor/jsx-no-jsx-as-prop",
-        "react-doctor/no-adjust-state-on-prop-change",
-        "react-doctor/no-cascading-set-state",
-        "react-doctor/no-derived-state",
-        "react-doctor/no-giant-component",
-        "react-doctor/prefer-useReducer",
-        "react-doctor/query-mutation-missing-invalidation",
-      ],
-    },
-    {
-      files: ["src/shared/ui/api-docs/ApiDocsExplorer.tsx"],
-      rules: [
-        "react-doctor/no-adjust-state-on-prop-change",
-        "react-doctor/no-derived-state",
-        "react-doctor/no-event-handler",
-        "react-doctor/no-giant-component",
-        "react-doctor/no-pass-data-to-parent",
-        "react-doctor/no-prop-callback-in-effect",
-        "react-doctor/no-render-in-render",
-        "react-doctor/prefer-module-scope-pure-function",
-      ],
-    },
-    {
-      files: ["src/shared/ui/api-docs/_tests/ApiDocsExplorer.test.tsx"],
-      rules: ["react-doctor/anchor-is-valid"],
-    },
-  ]);
+  assert.deepEqual(config, { ignore: { overrides: [] } });
 });
 
 test("GitHub automation docs describe latest-only issue publishing", () => {
@@ -891,7 +657,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /INPUT_EXPECTED_SCOPES: .*ai-gateway-protocol-conformance/u);
   assert.match(
     workflow,
-    /node scripts\/node\/cli\/github-quality-gate-aggregate\.js/u,
+    /node scripts\/node\/cli\/quality\/github-quality-gate-aggregate\.js/u,
   );
   assert.match(workflow, /name: test-governance-repo-tooling/u);
   assert.match(workflow, /name: test-governance-repo-frontend/u);

@@ -11,8 +11,8 @@ import {
   settingsMemberRoleOptionsQueryKey,
   type DepartmentInput,
   type SettingsDepartment
-} from '../../api/departments';
-import { settingsMembersQueryKey } from '../../api/members';
+} from '../../api/identity-access/departments';
+import { settingsMembersQueryKey } from '../../api/identity-access/members';
 
 const ORGANIZATION_PARENT_VALUE = 'organization-browse-root';
 

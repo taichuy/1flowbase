@@ -1,0 +1,19 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/settings/components/organization/DepartmentEditorDrawer.tsx",
+      "rule": "react-doctor/js-combine-iterations",
+      "sourceSha256": "0316aa7a077aa625df6b0ea3bcf8ea441bce7d8abc26a6409ba3e5307270b8d8",
+      "reason": "Select options exclude the currently edited department ID to prevent choosing self as parent before mapping unchanged backend identifiers to label/value. These paginated option transformations are linear and side-effect-free; combining passes does not remove a repeated lookup or fix a behavioral failure. Select options exclude the protected root role code from assignable role choices before mapping unchanged backend identifiers to label/value. These paginated option transformations are linear and side-effect-free; combining passes does not remove a repeated lookup or fix a behavioral failure.",
+      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/DepartmentEditorDrawer.test.tsx", "sha256": "08710941018ec9f048ed5c920ef7213b008303c9943296dfb65e376dbb72c14e"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx",
+      "rule": "react-doctor/query-mutation-missing-invalidation",
+      "sourceSha256": "8bfaa7730382a5c2adb15abf4f14bd19f45622b438bf098ba86235c85f1bbe79",
+      "reason": "The mutation delegates success invalidation to refresh, which invalidates both department and member query prefixes; the rule does not follow the helper. DepartmentManagementPanel delete mutation uses onSuccess: refresh; refresh invalidates both settingsDepartmentsQueryKey and settingsMembersQueryKey through Promise.all. Department-tree and member queries share these prefixes, so invalidation exists across the helper boundary.",
+      "evidence": [{"file": "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx", "sha256": "8bfaa7730382a5c2adb15abf4f14bd19f45622b438bf098ba86235c85f1bbe79"}, {"file": "web/app/src/features/settings/components/organization/_tests/DepartmentManagementPanel.test.tsx", "sha256": "e0ca246e6a5d42bb6473ef48d63fce621cd03028117bf798d9bfe28fefa2b4f5"}]
+    }
+  ]
+}

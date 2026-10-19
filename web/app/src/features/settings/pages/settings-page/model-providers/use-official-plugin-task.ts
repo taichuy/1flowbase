@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 
-import { fetchSettingsPluginTask } from '../../../api/plugins';
+import { fetchSettingsPluginTask } from '../../../api/extensions/plugins';
 import {
   isTaskSucceeded,
   isTaskTerminal,
@@ -54,8 +54,7 @@ export function useOfficialPluginTask({
   }, [
     officialInstallState.taskId,
     pluginTaskQuery.data,
-    pluginTaskQuery.fetchStatus,
-    refetchOfficialInstallTask
+    pluginTaskQuery.fetchStatus
   ]);
 
   useEffect(() => {

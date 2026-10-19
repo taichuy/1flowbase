@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Checkbox, Select, Space, Table, Typography } from 'antd';
@@ -17,7 +17,7 @@ import {
   settingsRoleDataPolicyQueryKey,
   type SettingsRoleDataPolicyScope,
   type SettingsRoleDataPolicyOverrideScope
-} from '../../api/roles';
+} from '../../api/identity-access/roles';
 
 interface DefaultPolicyFormState {
   can_view: boolean;
@@ -141,7 +141,11 @@ interface DefaultPolicyRow {
   scopeValue?: SettingsRoleDataPolicyScope;
 }
 
-export function RoleDataPolicySection({
+export function RoleDataPolicySection(props: RoleDataPolicySectionProps) {
+  return <RoleDataPolicyDraft key={props.roleCode} {...props} />;
+}
+
+function RoleDataPolicyDraft({
   roleCode,
   canEdit,
   section,
@@ -149,12 +153,30 @@ export function RoleDataPolicySection({
 }: RoleDataPolicySectionProps) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
-  const [defaultPolicy, setDefaultPolicy] = useState<DefaultPolicyFormState>(
-    DEFAULT_POLICY_FORM_STATE
-  );
-  const [modelPolicyById, setModelPolicyById] = useState<
-    Record<string, ModelPolicyFormState>
+  // Only locally edited fields belong to the draft. Untouched fields follow
+  // the current server snapshot without resetting unsaved edits on refetch.
+  const [defaultEdits, setDefaultEdits] = useState<
+    Partial<DefaultPolicyFormState>
   >({});
+  const [modelEdits, setModelEdits] = useState<
+    Record<string, Partial<ModelPolicyFormState>>
+  >({});
+  const editRevision = useRef(0);
+  const [defaultEditRevisions] = useState(
+    () => new Map<keyof DefaultPolicyFormState, number>()
+  );
+  const [modelEditRevisions] = useState(
+    () => new Map<string, Map<keyof ModelPolicyFormState, number>>()
+  );
+
+  function recordModelEdit(modelId: string, key: keyof ModelPolicyFormState) {
+    let revisions = modelEditRevisions.get(modelId);
+    if (!revisions) {
+      revisions = new Map();
+      modelEditRevisions.set(modelId, revisions);
+    }
+    revisions.set(key, ++editRevision.current);
+  }
 
   const dataPolicyQuery = useQuery({
     queryKey: settingsRoleDataPolicyQueryKey(roleCode),
@@ -167,86 +189,102 @@ export function RoleDataPolicySection({
     queryFn: fetchSettingsAllDataModels
   });
 
-  useEffect(() => {
-    const fetchedPolicy = dataPolicyQuery.data;
-    if (!fetchedPolicy) {
-      return;
-    }
-
-    setDefaultPolicy({
-      can_view: fetchedPolicy.default_policy.can_view,
-      can_create: fetchedPolicy.default_policy.can_create,
-      can_update: fetchedPolicy.default_policy.can_update,
-      can_delete: fetchedPolicy.default_policy.can_delete,
-      default_view_scope: fetchedPolicy.default_policy.default_view_scope,
-      default_update_scope: fetchedPolicy.default_policy.default_update_scope,
-      default_delete_scope: fetchedPolicy.default_policy.default_delete_scope
-    });
-  }, [dataPolicyQuery.data]);
-
-  useEffect(() => {
-    const fetchedPolicy = dataPolicyQuery.data;
-    const fetchedModels = dataModelsQuery.data;
-    if (!fetchedPolicy || !fetchedModels) {
-      return;
-    }
-
-    const fetchedModelPolicyById = new Map(
-      fetchedPolicy.model_policies.map((policy) => [
-        policy.data_model_id,
-        policy
-      ])
+  const fetchedPolicy = dataPolicyQuery.data;
+  const ready =
+    fetchedPolicy?.role_code === roleCode && Boolean(dataModelsQuery.data);
+  const defaultPolicy = useMemo<DefaultPolicyFormState>(
+    () => ({
+      ...(fetchedPolicy?.default_policy ?? DEFAULT_POLICY_FORM_STATE),
+      ...defaultEdits
+    }),
+    [fetchedPolicy, defaultEdits]
+  );
+  const modelPolicyById = useMemo(() => {
+    const policies: Record<string, ModelPolicyFormState> = {};
+    const fetchedModelPolicies = new Map(
+      fetchedPolicy?.model_policies.map((policy) => [policy.data_model_id, policy]) ?? []
     );
-    const nextModelPolicyById: Record<string, ModelPolicyFormState> = {};
-
-    fetchedModels.forEach((model) => {
-      const policy = fetchedModelPolicyById.get(model.id);
-      nextModelPolicyById[model.id] = {
+    for (const model of dataModelsQuery.data ?? []) {
+      const policy = fetchedModelPolicies.get(model.id);
+      policies[model.id] = {
         data_model_id: model.id,
         can_create_override: policy?.can_create_override ?? null,
         view_scope_override: policy?.view_scope_override ?? null,
         update_scope_override: policy?.update_scope_override ?? null,
-        delete_scope_override: policy?.delete_scope_override ?? null
+        delete_scope_override: policy?.delete_scope_override ?? null,
+        ...modelEdits[model.id]
       };
-    });
+    }
+    return policies;
+  }, [fetchedPolicy, dataModelsQuery.data, modelEdits]);
 
-    setModelPolicyById(nextModelPolicyById);
-  }, [dataModelsQuery.data, dataPolicyQuery.data]);
+  function createSubmission() {
+    const modelRevisions = new Map<
+      string,
+      Map<keyof ModelPolicyFormState, number>
+    >();
+    for (const model of dataModelsQuery.data ?? []) {
+      const revisions = modelEditRevisions.get(model.id);
+      if (revisions) modelRevisions.set(model.id, new Map(revisions));
+    }
+    return {
+      defaultRevisions: new Map(defaultEditRevisions),
+      modelRevisions,
+      input: {
+        default_policy: defaultPolicy,
+        model_policies: (dataModelsQuery.data ?? []).map((model) => {
+          const policy = modelPolicyById[model.id];
+          return {
+            data_model_id: model.id,
+            can_create_override: policy?.can_create_override ?? null,
+            view_scope_override: policy?.view_scope_override ?? null,
+            update_scope_override: policy?.update_scope_override ?? null,
+            delete_scope_override: policy?.delete_scope_override ?? null
+          };
+        })
+      }
+    };
+  }
 
   const replaceDataPolicyMutation = useMutation({
-    mutationFn: async () => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
+    mutationFn: async (submission: ReturnType<typeof createSubmission>) => {
+      if (!canEdit || !ready) {
+        throw new Error('role data policy is not ready for editing');
       }
-
-      return replaceSettingsRoleDataPolicy(
-        roleCode,
-        {
-          default_policy: defaultPolicy,
-          model_policies: (dataModelsQuery.data ?? []).map((model) => {
-            const policy = modelPolicyById[model.id] ?? {
-              data_model_id: model.id,
-              can_create_override: null,
-              view_scope_override: null,
-              update_scope_override: null,
-              delete_scope_override: null
-            };
-
-            return {
-              data_model_id: model.id,
-              can_create_override: policy.can_create_override,
-              view_scope_override: policy.view_scope_override,
-              update_scope_override: policy.update_scope_override,
-              delete_scope_override: policy.delete_scope_override
-            };
-          })
-        },
-        csrfToken
-      );
+      if (!csrfToken) throw new Error('missing csrf token');
+      return replaceSettingsRoleDataPolicy(roleCode, submission.input, csrfToken);
     },
-    onSuccess: async () => {
+    onSuccess: async (savedPolicy, submission) => {
+      // Publish the server-confirmed snapshot before refetching. A failed GET
+      // must not expose the pre-save cache when submitted revisions retire.
+      queryClient.setQueryData(
+        settingsRoleDataPolicyQueryKey(roleCode),
+        savedPolicy
+      );
       await queryClient.invalidateQueries({
         queryKey: settingsRoleDataPolicyQueryKey(roleCode)
+      });
+      // Retire only revisions included in this successful request. A newer
+      // edit (even to the same value) must remain a local draft.
+      setDefaultEdits((current) => {
+        const next = { ...current };
+        for (const [key, revision] of submission.defaultRevisions) {
+          if (defaultEditRevisions.get(key) === revision) delete next[key];
+        }
+        return next;
+      });
+      setModelEdits((current) => {
+        const next = { ...current };
+        for (const [modelId, revisions] of submission.modelRevisions) {
+          const edits = { ...current[modelId] };
+          for (const [key, revision] of revisions) {
+            if (modelEditRevisions.get(modelId)?.get(key) === revision)
+              delete edits[key];
+          }
+          if (Object.keys(edits).length) next[modelId] = edits;
+          else delete next[modelId];
+        }
+        return next;
       });
     }
   });
@@ -255,7 +293,8 @@ export function RoleDataPolicySection({
     key: 'can_view' | 'can_create' | 'can_update' | 'can_delete',
     checked: boolean
   ) => {
-    setDefaultPolicy((current) => ({
+    defaultEditRevisions.set(key, ++editRevision.current);
+    setDefaultEdits((current) => ({
       ...current,
       [key]: checked
     }));
@@ -268,7 +307,8 @@ export function RoleDataPolicySection({
       | 'default_delete_scope',
     scope: SettingsRoleDataPolicyScope
   ) => {
-    setDefaultPolicy((current) => ({
+    defaultEditRevisions.set(key, ++editRevision.current);
+    setDefaultEdits((current) => ({
       ...current,
       [key]: scope
     }));
@@ -282,23 +322,11 @@ export function RoleDataPolicySection({
       | 'delete_scope_override',
     scope: SettingsRoleDataPolicyOverrideScope
   ) => {
-    setModelPolicyById((current) => {
-      const currentPolicy = current[modelId] ?? {
-        data_model_id: modelId,
-        can_create_override: null,
-        view_scope_override: null,
-        update_scope_override: null,
-        delete_scope_override: null
-      };
-
-      return {
-        ...current,
-        [modelId]: {
-          ...currentPolicy,
-          [key]: scope
-        }
-      };
-    });
+    recordModelEdit(modelId, key);
+    setModelEdits((current) => ({
+      ...current,
+      [modelId]: { ...current[modelId], [key]: scope }
+    }));
   };
 
   const defaultPolicyRows = useMemo<DefaultPolicyRow[]>(
@@ -342,7 +370,7 @@ export function RoleDataPolicySection({
         <Checkbox
           aria-label={`${row.label} ${i18nText("settings", "auto.enabled")}`}
           checked={row.enabled}
-          disabled={!canEdit}
+          disabled={!canEdit || !ready}
           onChange={(event) => {
             setDefaultPermission(row.permissionKey, event.target.checked);
           }}
@@ -357,7 +385,7 @@ export function RoleDataPolicySection({
         return scopeKey ? (
           <Select
             aria-label={`${row.label} ${i18nText("settings", "auto.scope")}`}
-            disabled={!canEdit || !row.enabled}
+            disabled={!canEdit || !ready || !row.enabled}
             onChange={(scope) => {
               setDefaultScope(scopeKey, scope);
             }}
@@ -387,7 +415,7 @@ export function RoleDataPolicySection({
     return (
       <Select
         aria-label={`${actionLabel} ${model.title}`}
-        disabled={!canEdit}
+        disabled={!canEdit || !ready}
         onChange={(scope) => {
           const nextScope: SettingsRoleDataPolicyOverrideScope =
             scope === 'inherit' ? null : (scope as SettingsRoleDataPolicyScope);
@@ -401,23 +429,11 @@ export function RoleDataPolicySection({
   };
 
   const setModelCreateOverride = (modelId: string, checked: boolean) => {
-    setModelPolicyById((current) => {
-      const currentPolicy = current[modelId] ?? {
-        data_model_id: modelId,
-        can_create_override: null,
-        view_scope_override: null,
-        update_scope_override: null,
-        delete_scope_override: null
-      };
-
-      return {
-        ...current,
-        [modelId]: {
-          ...currentPolicy,
-          can_create_override: checked
-        }
-      };
-    });
+    recordModelEdit(modelId, 'can_create_override');
+    setModelEdits((current) => ({
+      ...current,
+      [modelId]: { ...current[modelId], can_create_override: checked }
+    }));
   };
 
   const columns: ColumnsType<SettingsDataModel & { policy: ModelPolicyFormState }> =
@@ -442,7 +458,7 @@ export function RoleDataPolicySection({
             checked={
               model.policy.can_create_override ?? defaultPolicy.can_create
             }
-            disabled={!canEdit}
+            disabled={!canEdit || !ready}
             onChange={(event) => {
               setModelCreateOverride(model.id, event.target.checked);
             }}
@@ -487,7 +503,9 @@ export function RoleDataPolicySection({
         id={formId}
         onSubmit={(event) => {
           event.preventDefault();
-          replaceDataPolicyMutation.mutate();
+          if (canEdit && ready && !replaceDataPolicyMutation.isPending) {
+            replaceDataPolicyMutation.mutate(createSubmission());
+          }
         }}
       >
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>

@@ -74,7 +74,7 @@ function distributionRuleOptions(currentRule: DistributionRule) {
   return options;
 }
 
-export function ModelProviderInstancesModal({
+function useProviderInstancesController({
   open,
   catalogEntry,
   providerDisplayName,
@@ -263,6 +263,25 @@ export function ModelProviderInstancesModal({
   const editingPolicy = mainInstance?.model_routing_policies.find(
     (policy) => policy.model_id === editingGroup?.model_id
   );
+  return {
+    open, title, onClose, versionSwitchNotice, mainInstanceLabel, includedCount,
+    aggregatedModelCount, mainInstance, canManage, updatingMainInstance,
+    onToggleAutoIncludeNewInstances, modelGroups, modelGroupColumns, instances,
+    updatingInstanceId, onToggleIncludedInMain, onEdit, onRefreshCandidates,
+    refreshingCandidates, onRefreshModels, refreshing, onDelete, deleting, editingGroup,
+    editingPolicy, setEditingGroup, onSaveRoutingPolicy
+  };
+}
+
+export function ModelProviderInstancesModal(props: Parameters<typeof useProviderInstancesController>[0]) {
+  const {
+    open, title, onClose, versionSwitchNotice, mainInstanceLabel, includedCount,
+    aggregatedModelCount, mainInstance, canManage, updatingMainInstance,
+    onToggleAutoIncludeNewInstances, modelGroups, modelGroupColumns, instances,
+    updatingInstanceId, onToggleIncludedInMain, onEdit, onRefreshCandidates,
+    refreshingCandidates, onRefreshModels, refreshing, onDelete, deleting, editingGroup,
+    editingPolicy, setEditingGroup, onSaveRoutingPolicy
+  } = useProviderInstancesController(props);
 
   return (
     <>

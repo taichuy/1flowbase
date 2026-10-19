@@ -378,18 +378,18 @@ fn parse_expires_at(raw: Option<String>) -> Result<Option<OffsetDateTime>, ApiEr
     .transpose()
 }
 
-fn format_optional_time(value: Option<OffsetDateTime>) -> Option<String> {
-    value.map(|value| value.format(&Rfc3339).unwrap())
+fn format_optional_time(value: Option<OffsetDateTime>) -> Result<Option<String>, ApiError> {
+    value.map(format_time).transpose()
 }
 
-fn format_time(value: OffsetDateTime) -> String {
-    value.format(&Rfc3339).unwrap()
+fn format_time(value: OffsetDateTime) -> Result<String, ApiError> {
+    Ok(value.format(&Rfc3339)?)
 }
 
 fn to_workflow_schedule_trigger_response(
     trigger: WorkflowScheduleTriggerRecord,
-) -> WorkflowScheduleTriggerResponse {
-    WorkflowScheduleTriggerResponse {
+) -> Result<WorkflowScheduleTriggerResponse, ApiError> {
+    Ok(WorkflowScheduleTriggerResponse {
         id: trigger.id,
         workspace_id: trigger.workspace_id,
         application_id: trigger.application_id,
@@ -399,41 +399,43 @@ fn to_workflow_schedule_trigger_response(
         input_payload: trigger.input_payload,
         created_by: trigger.created_by,
         updated_by: trigger.updated_by,
-        created_at: format_time(trigger.created_at),
-        updated_at: format_time(trigger.updated_at),
-    }
+        created_at: format_time(trigger.created_at)?,
+        updated_at: format_time(trigger.updated_at)?,
+    })
 }
 
-fn to_api_key_response(api_key: domain::ApiKeyRecord) -> ApplicationApiKeyResponse {
-    ApplicationApiKeyResponse {
+fn to_api_key_response(
+    api_key: domain::ApiKeyRecord,
+) -> Result<ApplicationApiKeyResponse, ApiError> {
+    Ok(ApplicationApiKeyResponse {
         id: api_key.id,
         name: api_key.name,
         token_prefix: api_key.token_prefix,
         creator_user_id: api_key.creator_user_id,
         enabled: api_key.enabled,
-        expires_at: format_optional_time(api_key.expires_at),
-        last_used_at: format_optional_time(api_key.last_used_at),
-        created_at: format_time(api_key.created_at),
-        updated_at: format_time(api_key.updated_at),
-    }
+        expires_at: format_optional_time(api_key.expires_at)?,
+        last_used_at: format_optional_time(api_key.last_used_at)?,
+        created_at: format_time(api_key.created_at)?,
+        updated_at: format_time(api_key.updated_at)?,
+    })
 }
 
 fn to_created_api_key_response(
     api_key: domain::ApiKeyRecord,
     token: String,
-) -> CreatedApplicationApiKeyResponse {
-    CreatedApplicationApiKeyResponse {
+) -> Result<CreatedApplicationApiKeyResponse, ApiError> {
+    Ok(CreatedApplicationApiKeyResponse {
         id: api_key.id,
         name: api_key.name,
         token,
         token_prefix: api_key.token_prefix,
         creator_user_id: api_key.creator_user_id,
         enabled: api_key.enabled,
-        expires_at: format_optional_time(api_key.expires_at),
-        last_used_at: format_optional_time(api_key.last_used_at),
-        created_at: format_time(api_key.created_at),
-        updated_at: format_time(api_key.updated_at),
-    }
+        expires_at: format_optional_time(api_key.expires_at)?,
+        last_used_at: format_optional_time(api_key.last_used_at)?,
+        created_at: format_time(api_key.created_at)?,
+        updated_at: format_time(api_key.updated_at)?,
+    })
 }
 
 fn to_mapping_config(body: ApplicationApiMappingBody) -> ApplicationApiMappingConfig {
@@ -514,11 +516,11 @@ fn to_extension_body(config: WorkflowExtensionApiConfig) -> WorkflowExtensionApi
 
 fn to_publication_response(
     publication: ApplicationPublicationVersionRecord,
-) -> ApplicationPublicationResponse {
+) -> Result<ApplicationPublicationResponse, ApiError> {
     let operation = PublishedWorkflowOperation::from_publication(publication.clone())
         .ok()
         .map(to_published_workflow_operation_response);
-    ApplicationPublicationResponse {
+    Ok(ApplicationPublicationResponse {
         id: publication.id,
         application_id: publication.application_id,
         flow_id: publication.flow_id,
@@ -555,8 +557,8 @@ fn to_publication_response(
             )
             .collect(),
         created_by: publication.created_by,
-        created_at: format_time(publication.created_at),
-    }
+        created_at: format_time(publication.created_at)?,
+    })
 }
 
 fn to_published_workflow_operation_response(
@@ -1113,3 +1115,7 @@ pub async fn get_application_api_docs_operation_openapi(
     .await?;
     Ok(Json(output.into_openapi()?))
 }
+
+#[cfg(test)]
+#[path = "application_api/_tests/time_response.rs"]
+mod time_response_tests;

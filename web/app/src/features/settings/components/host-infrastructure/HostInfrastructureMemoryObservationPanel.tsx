@@ -67,6 +67,8 @@ import {
 } from './host-infrastructure-memory-tree';
 
 const MEMORY_STATS_TAB_KEY = 'stats-overview';
+const MIN_MEMORY_TREE_WIDTH = 260;
+const MAX_MEMORY_TREE_WIDTH = 600;
 
 export function HostInfrastructureMemoryObservationPanel({
   canManage
@@ -108,8 +110,8 @@ export function HostInfrastructureMemoryObservationPanel({
     }
     const deltaX = e.clientX - dragInfoRef.current.startX;
     const newWidth = Math.max(
-      260,
-      Math.min(600, dragInfoRef.current.startWidth + deltaX)
+      MIN_MEMORY_TREE_WIDTH,
+      Math.min(MAX_MEMORY_TREE_WIDTH, dragInfoRef.current.startWidth + deltaX)
     );
     setSidebarWidth(newWidth);
   }, []);
@@ -743,6 +745,42 @@ export function HostInfrastructureMemoryObservationPanel({
 
                       <div
                         className="host-memory-panel__resize-handle"
+                        role="separator"
+                        tabIndex={0}
+                        aria-label={i18nText(
+                          'settings',
+                          'auto.currently_observable_memory_contract'
+                        )}
+                        aria-orientation="vertical"
+                        aria-valuenow={sidebarWidth}
+                        aria-valuemin={MIN_MEMORY_TREE_WIDTH}
+                        aria-valuemax={MAX_MEMORY_TREE_WIDTH}
+                        onKeyDown={(event) => {
+                          if (
+                            ![
+                              'ArrowLeft',
+                              'ArrowRight',
+                              'Home',
+                              'End'
+                            ].includes(event.key)
+                          )
+                            return;
+                          event.preventDefault();
+                          setSidebarWidth((current) => {
+                            if (event.key === 'Home')
+                              return MIN_MEMORY_TREE_WIDTH;
+                            if (event.key === 'End')
+                              return MAX_MEMORY_TREE_WIDTH;
+                            return Math.max(
+                              MIN_MEMORY_TREE_WIDTH,
+                              Math.min(
+                                MAX_MEMORY_TREE_WIDTH,
+                                current +
+                                  (event.key === 'ArrowRight' ? 24 : -24)
+                              )
+                            );
+                          });
+                        }}
                         onMouseDown={startResizing}
                       />
 

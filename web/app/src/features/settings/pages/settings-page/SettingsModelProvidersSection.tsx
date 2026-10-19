@@ -14,9 +14,9 @@ import { useAuthStore } from '../../../../state/auth-store';
 import { ModelProviderCatalogPanel } from '../../components/model-providers/ModelProviderCatalogPanel';
 import { ModelProviderInstanceDrawer } from '../../components/model-providers/ModelProviderInstanceDrawer';
 import { ModelProviderInstancesModal } from '../../components/model-providers/ModelProviderInstancesModal';
-import { OfficialPluginInstallPanel } from '../../components/model-providers/OfficialPluginInstallPanel';
-import { confirmOfficialPluginUpgrade } from '../../components/model-providers/official-plugin-upgrade-confirmation';
-import { PluginUploadInstallModal } from '../../components/model-providers/PluginUploadInstallModal';
+import { OfficialPluginInstallPanel } from '../../components/model-providers/installation/OfficialPluginInstallPanel';
+import { confirmOfficialPluginUpgrade } from '../../components/model-providers/installation/official-plugin-upgrade-confirmation';
+import { PluginUploadInstallModal } from '../../components/model-providers/installation/PluginUploadInstallModal';
 import {
   settingsModelProviderCatalogQueryKey,
   settingsModelProviderInstancesQueryKey,
@@ -27,7 +27,7 @@ import {
   settingsOfficialPluginsQueryKey,
   settingsPluginFamiliesQueryKey,
   type SettingsPluginFamilyEntry
-} from '../../api/plugins';
+} from '../../api/extensions/plugins';
 import '../../components/model-providers/model-provider-panel.css';
 import {
   getErrorMessage,

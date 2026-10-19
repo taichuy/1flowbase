@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/lib/native-modules/effects/cssinjs-runtime.tsx",
+      "rule": "react-doctor/no-react19-deprecated-apis",
+      "sourceSha256": "d688896173c736f780aa1730bbd48c78b112332eba855bcf65995ce0f6b0cbf3",
+      "reason": "web/app/src/features/frontstage/lib/native-modules/effects/cssinjs-runtime.tsx:6（react-doctor/no-react19-deprecated-apis）：forwardRef/useContext 在当前 React 19 仍是受支持的 API；forwardRef 继续向 Monaco/CanvasHandle/overlay 转发 ref，useContext 读取所选 runtime provider。没有新建组件类型或丢失 ref 的证据；替换为 React.use 不改变当前行为，也不能修复此告警所暗示的错误。此结论只支持保留具体 API，不声称永不迁移。",
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-affix-runtime.test.tsx", "sha256": "abd69a650a2e4290c5d67b2db99ac896f6a4e04a35ae5c7924d3f9eccccd7dc3"}, {"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-anchor-runtime.test.tsx", "sha256": "1ba30b09da4794b2f90ba6d87467c1c5778f5ea96155f34b8c9eb867a69d6899"}, {"file": "web/app/src/features/frontstage/lib/native-modules/_tests/declarations.test.ts", "sha256": "1ae5479ae06a2b01179610d12a1092262ecf9fe73d684c6d5ab0d68b240caad0"}, {"file": "web/app/src/features/frontstage/lib/native-modules/effects/_tests/effects-runtime.test.tsx", "sha256": "cd3a790be66e8ab4bbfddd18072ce6d304db0f7ff49dd7ceb985577439e29ed6"}, {"file": "web/app/src/features/frontstage/lib/native-modules/effects/cssinjs-runtime.tsx", "sha256": "d688896173c736f780aa1730bbd48c78b112332eba855bcf65995ce0f6b0cbf3"}, {"file": "web/app/src/features/frontstage/lib/native-modules/registry.ts", "sha256": "ced03a7829464b9baa19163b54ad9e60f03d3d5c1f576c360fa0e57630317b58"}, {"file": "web/app/src/shared/code-block/_tests/native-react-source-preparation.test.ts", "sha256": "5759f40f600a586862fb9d80d2aa9be66fde1da8ae50dc52f4dbf1f1bd8ce970"}]
+    }
+  ]
+}

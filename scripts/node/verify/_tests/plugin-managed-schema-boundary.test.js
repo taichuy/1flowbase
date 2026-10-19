@@ -7,7 +7,10 @@ const root = path.resolve(__dirname, '../../../..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('PDM boundary keeps manifest as the single additive declaration', () => {
-  const manifest = read('api/crates/extension-package-runtime/src/manifest_v1.rs');
+  const manifest = [
+    'api/crates/extension-package-runtime/src/manifest_v1.rs',
+    'api/crates/extension-package-runtime/src/manifest_v1/frontend_blocks.rs',
+  ].map(read).join('\n');
   const compiler = read('api/crates/plugin-framework/src/managed_schema/mod.rs');
   const adapter = read('api/crates/storage/durable/postgres/src/managed_schema_repository.rs');
 
@@ -40,6 +43,6 @@ test('PDM production path consumes compiler, preview, apply, and retain lifecycl
 });
 
 test('PDM ports do not expose SQL, connection, or runtime transport details', () => {
-  const contract = read('api/crates/control-plane-contracts/src/ports/managed_schema.rs');
+  const contract = read('api/crates/control-plane-contracts/src/ports/extension_ports/managed_schema.rs');
   assert.doesNotMatch(contract, /sqlx|PgPool|Connection|raw_sql|local_path|stdio|http|grpc/i);
 });

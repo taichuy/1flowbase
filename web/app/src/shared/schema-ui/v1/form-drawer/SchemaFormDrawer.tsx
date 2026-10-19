@@ -105,6 +105,9 @@ export interface SchemaFormDrawerProps {
   footerAlign?: 'start' | 'end';
 }
 
+const EMPTY_EXTRA_ACTIONS: SchemaFormDrawerAction[] = [];
+const EMPTY_STATUS_MESSAGES: SchemaFormDrawerStatusMessage[] = [];
+
 const DEFAULT_SCHEMA_FORM_DRAWER_WIDTH = 560;
 const DEFAULT_SCHEMA_FORM_DRAWER_MIN_WIDTH = 360;
 const DEFAULT_SCHEMA_FORM_DRAWER_MAX_WIDTH = 960;
@@ -172,7 +175,7 @@ export function SchemaFormDrawer({
   defaultWidth,
   disabled = false,
   extra,
-  extraActions = [],
+  extraActions = EMPTY_EXTRA_ACTIONS,
   footerAlign = 'start',
   initialValues,
   leadingContent,
@@ -189,7 +192,7 @@ export function SchemaFormDrawer({
   resizeLabel = '调整抽屉宽度',
   rootClassName,
   schema,
-  statusMessages = [],
+  statusMessages = EMPTY_STATUS_MESSAGES,
   submitDisabled = false,
   submitText,
   submitting,
@@ -310,6 +313,14 @@ export function SchemaFormDrawer({
     if (!open) {
       return;
     }
+    // setFieldsValue merges: clear omitted values when the owner switches records
+    // without resetFields, which would remount custom field controls.
+    const clearedValues = Object.fromEntries(
+      Object.keys(form.getFieldsValue(true)).map((key) => [key, undefined])
+    );
+    // Clear first: Antd also deep-merges object values, so combining the
+    // clearing patch with the new record would retain omitted nested keys.
+    form.setFieldsValue(clearedValues);
     form.setFieldsValue(resolvedInitialValues);
     setSubmitError(null);
   }, [form, open, resolvedInitialValues]);

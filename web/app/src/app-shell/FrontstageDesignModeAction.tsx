@@ -1,5 +1,5 @@
-import { Menu, Tooltip } from 'antd';
-import { useEffect } from 'react';
+import { Menu, Tooltip, type MenuProps } from 'antd';
+import { useEffect, type AriaAttributes, type AriaRole } from 'react';
 
 import { useAuthStore } from '../state/auth-store';
 import { useFrontstageDesignModeStore } from '../state/frontstage-design-mode-store';
@@ -72,11 +72,30 @@ function FrontstageDesignModeActionBase() {
     ? i18nText('appShell', 'auto.exit_design_mode')
     : i18nText('appShell', 'auto.enter_design_mode');
 
-  const handleClick = () => {
+  const handleDesignModeMenuClick = () => {
     toggleDesignMode();
   };
 
   const selectedKeys = isDesignMode ? ['design-mode'] : [];
+  // rc-menu forwards these native item attributes; Ant Design's item data
+  // type omits them, so validate both the data shape and native ARIA contract.
+  const designModeItem: NonNullable<MenuProps['items']>[number] &
+    AriaAttributes & { role: AriaRole } = {
+    key: 'design-mode',
+    role: 'menuitemcheckbox',
+    'aria-label': label,
+    'aria-checked': isDesignMode,
+    className: isDesignMode
+      ? 'app-shell-design-mode-button ant-menu-item-selected'
+      : 'app-shell-design-mode-button',
+    label: (
+      <span
+        className="app-shell-design-block"
+      >
+        UI
+      </span>
+    )
+  };
 
   return (
     <Tooltip title={label}>
@@ -85,25 +104,8 @@ function FrontstageDesignModeActionBase() {
         mode="horizontal"
         selectable={false}
         selectedKeys={selectedKeys}
-        items={[
-          {
-            key: 'design-mode',
-            className: isDesignMode
-              ? 'app-shell-design-mode-button ant-menu-item-selected'
-              : 'app-shell-design-mode-button',
-            label: (
-              <span
-                className="app-shell-design-block"
-                aria-label={label}
-                role="button"
-                aria-pressed={isDesignMode}
-              >
-                UI
-              </span>
-            )
-          }
-        ]}
-        onClick={handleClick}
+        items={[designModeItem]}
+        onClick={handleDesignModeMenuClick}
         disabledOverflow
       />
     </Tooltip>

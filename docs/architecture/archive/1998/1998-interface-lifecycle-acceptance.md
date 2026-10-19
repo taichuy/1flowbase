@@ -40,7 +40,7 @@ A1–A4 继续使用 #1999/#2000 已提交的 endpoint、WebMCP、finalization�
 P6 的断言以基线源码与既有测试为依据，不能只比较两个新路径：
 
 - `api-server/src/_tests/route_docs/docs_routes.rs::create_model`：POST 路径、请求字段、HTTP 201 与 `data.id`。
-- `api-server/src/_tests/mcp_protocol_routes.rs::ac_001_runtime_mcp_write_uses_server_delegation_without_browser_csrf` 与 `ac_002_runtime_mcp_write_keeps_console_operation_authorization`：成功业务 DTO 与 `403 / target_authorization / console_operation_permission_denied`。
+- `api-server/src/_tests/mcp_routes/mcp_protocol_routes.rs::ac_001_runtime_mcp_write_uses_server_delegation_without_browser_csrf` 与 `ac_002_runtime_mcp_write_keeps_console_operation_authorization`：成功业务 DTO 与 `403 / target_authorization / console_operation_permission_denied`。
 - `routes/plugins_and_models/model_definitions.rs::{CreateModelDefinitionBody,ModelDefinitionResponse}`、`response.rs::ApiSuccess`、`error_response.rs::ErrorBody`：required input、响应 key 集合与 envelope。
 - `routes/settings/mcp_management/debug_execute.rs::build_interface_arguments`、`routes/mcp_protocol/virtual_ui.rs::interface_error`：缺失 required mapping 的 `mcp_arguments` 分类。HTTP 保持基线 required String DTO 的 Axum Json ingress 拒绝。
 - 原 `main_source_defaults` migration 的 published 默认值与 DTO runtime availability 映射保持固定预期。

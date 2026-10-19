@@ -8,7 +8,7 @@ import {
   fetchSettingsDepartments,
   settingsDepartmentsQueryKey,
   type SettingsDepartment
-} from '../../api/departments';
+} from '../../api/identity-access/departments';
 export function useDepartmentOptions(
   selected_ids: string[],
   initial: SettingsDepartment[] = [],

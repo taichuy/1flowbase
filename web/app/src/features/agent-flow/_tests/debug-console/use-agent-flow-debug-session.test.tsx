@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import {
   afterEach,
@@ -20,12 +20,14 @@ import { useAgentFlowDebugSession } from '../../hooks/runtime/useAgentFlowDebugS
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
 function createQueryClient() {
-  return new QueryClient({
+  const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false }
     }
   });
+  mountedClients.add(client);
+  return client;
 }
 
 function createWrapper(queryClient: QueryClient) {
@@ -221,6 +223,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
+  for (const client of mountedClients) client.clear();
+  mountedClients.clear();
   vi.restoreAllMocks();
 });
 
@@ -410,7 +415,7 @@ describe('useAgentFlowDebugSession', () => {
       { wrapper: createWrapper(queryClient) }
     );
 
-    act(() => {
+    await act(async () => {
       result.current.resetVariableCache();
     });
     await act(async () => {
@@ -814,7 +819,7 @@ describe('useAgentFlowDebugSession', () => {
       await view.result.current.submitPrompt('请总结退款政策');
     });
 
-    act(() => {
+    await act(async () => {
       view.result.current.setVariableCacheValue(
         'node-llm.text',
         '手动调试缓存'
@@ -981,9 +986,9 @@ test('#2018 AC-107 preview MCP selection reaches both stream and fallback and re
   const start = vi
     .spyOn(runtimeApi, 'startFlowDebugRun')
     .mockResolvedValue(createSucceededRunDetail());
-  vi.spyOn(runtimeApi, 'fetchDebugVariableSnapshot').mockResolvedValue({
-    variable_cache: {}
-  });
+  const snapshots = vi
+    .spyOn(runtimeApi, 'fetchDebugVariableSnapshot')
+    .mockResolvedValue({ variable_cache: {} });
   const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
   const { result, rerender } = renderHook(
     ({ applicationId }) =>
@@ -993,7 +998,7 @@ test('#2018 AC-107 preview MCP selection reaches both stream and fallback and re
       wrapper: createWrapper(createQueryClient())
     }
   );
-  act(() => result.current.setMcpInstanceIds(['preview-mcp']));
+  await act(async () => result.current.setMcpInstanceIds(['preview-mcp']));
   await act(async () => {
     await result.current.submitPrompt('Test MCP');
   });
@@ -1005,6 +1010,25 @@ test('#2018 AC-107 preview MCP selection reaches both stream and fallback and re
     mcp_instance_ids: ['preview-mcp'],
     document
   });
+  type VariableSnapshot = Awaited<
+    ReturnType<typeof runtimeApi.fetchDebugVariableSnapshot>
+  >;
+  let completeApplicationSnapshot!: (snapshot: VariableSnapshot) => void;
+  const applicationSnapshot = new Promise<VariableSnapshot>((resolve) => {
+    completeApplicationSnapshot = resolve;
+  });
+  snapshots.mockImplementation(async (applicationId) => {
+    if (applicationId === 'app-2') return applicationSnapshot;
+    return { variable_cache: {} };
+  });
   rerender({ applicationId: 'app-2' });
+  await waitFor(() => expect(snapshots).toHaveBeenLastCalledWith('app-2'));
+  // Complete the new scope's actual restore request within its async act owner.
+  await act(async () => {
+    completeApplicationSnapshot({ variable_cache: {} });
+    await applicationSnapshot;
+  });
   expect(result.current.mcp_instance_ids).toEqual([]);
 });
+
+const mountedClients = new Set<QueryClient>();

@@ -57,7 +57,7 @@ These are disjoint endpoint categories, not a restriction to one Binding per Int
 
 HTTP/SSE/WebSocket and MCP/WebMCP retain their input, error and streaming contracts. WebMCP owns its outer lifecycle; downstream invocations are related by lineage and cannot finalize it on its behalf. A runtime worker is an execution target after Dispatch; a background worker or scheduler is an active caller. Their complete ingress set, System Principal and durable retry/ACK responsibilities require explicit ownership and evidence.
 
-Source entry points: [route assembly](../../api/apps/api-server/src/external_route_assembly.rs), [endpoint catalog](../../api/apps/api-server/src/external_endpoint_catalog.rs), [WebMCP interface](../../api/apps/api-server/src/routes/webmcp/interface.rs).
+Source entry points: [route assembly](../../api/apps/api-server/src/console_contracts/external_route_assembly.rs), [endpoint catalog](../../api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs), [WebMCP interface](../../api/apps/api-server/src/routes/webmcp/interface.rs).
 
 ### Provider session ownership
 

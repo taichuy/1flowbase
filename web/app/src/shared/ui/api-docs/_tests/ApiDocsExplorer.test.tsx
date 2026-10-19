@@ -1,4 +1,4 @@
-import {
+import { act,
   fireEvent,
   render,
   screen,
@@ -13,6 +13,7 @@ vi.mock('@scalar/api-reference-react', () => ({
       {JSON.stringify(configuration)}
       <a
         className="endpoint"
+        href="#operation-create-chat-completion"
         onClick={() => {
           window.location.hash = 'operation-create-chat-completion';
         }}
@@ -108,6 +109,8 @@ const operationsByCategory = {
   }
 };
 
+const mountedViews = new Set<ReturnType<typeof render>>();
+
 describe('ApiDocsExplorer', () => {
   beforeEach(async () => {
     window.history.replaceState(null, '', '/?language=zh-Hans');
@@ -115,8 +118,12 @@ describe('ApiDocsExplorer', () => {
   });
 
   afterEach(async () => {
-    window.history.replaceState(null, '', '/');
-    await appI18n.changeLanguage('en_US');
+    for (const view of mountedViews) view.unmount();
+    mountedViews.clear();
+    await act(async () => {
+      window.history.replaceState(null, '', '/');
+      await appI18n.changeLanguage('en_US');
+    });
   });
 
   test('loads the next operations page when the selected category list scrolls near the bottom', async () => {
@@ -155,7 +162,7 @@ describe('ApiDocsExplorer', () => {
       }
     );
 
-    render(
+    await renderSettled(
       <AppProviders>
         <ApiDocsExplorer
           queryState={{
@@ -208,7 +215,7 @@ describe('ApiDocsExplorer', () => {
       value: 700,
       configurable: true
     });
-    fireEvent.scroll(scrollArea);
+    await domEvents.scroll(scrollArea);
 
     expect(
       await screen.findByRole('button', { name: /get \/api\/v1\/items\/24/i })
@@ -220,26 +227,43 @@ describe('ApiDocsExplorer', () => {
   });
 
   test('keeps the operation search input focused while the filtered list reloads', async () => {
+    const filteredPage = {
+      ...operationsByCategory['application-native-api'],
+      operations: operationsByCategory['application-native-api'].operations.filter(
+        (operation) => operation.id === 'get_native_run'
+      ),
+      total: 1,
+      offset: 0,
+      limit: 20,
+      has_more: false,
+      next_offset: null
+    };
+    let completeSearch!: () => void;
+    const pendingSearch = new Promise<typeof filteredPage>((resolve) => {
+      completeSearch = () => resolve(filteredPage);
+    });
     const fetchCategoryOperations = vi.fn(
       (
         categoryId: string,
         request?: { offset?: number; limit?: number; q?: string | null }
       ) =>
-        Promise.resolve({
-          ...operationsByCategory[
-            categoryId as keyof typeof operationsByCategory
-          ],
-          total: operationsByCategory[
-            categoryId as keyof typeof operationsByCategory
-          ].operations.length,
-          offset: request?.offset ?? 0,
-          limit: request?.limit ?? 20,
-          has_more: false,
-          next_offset: null
-        })
+        request?.q === 's'
+          ? pendingSearch
+          : Promise.resolve({
+              ...operationsByCategory[
+                categoryId as keyof typeof operationsByCategory
+              ],
+              total: operationsByCategory[
+                categoryId as keyof typeof operationsByCategory
+              ].operations.length,
+              offset: request?.offset ?? 0,
+              limit: request?.limit ?? 20,
+              has_more: false,
+              next_offset: null
+            })
     );
 
-    render(
+    await renderSettled(
       <AppProviders>
         <ApiDocsExplorer
           queryState={{
@@ -271,8 +295,8 @@ describe('ApiDocsExplorer', () => {
     const searchInput = await screen.findByRole('textbox', {
       name: '搜索接口'
     });
-    searchInput.focus();
-    fireEvent.change(searchInput, { target: { value: 's' } });
+    await dispatch(() => searchInput.focus());
+    await domEvents.change(searchInput, { target: { value: 's' } });
 
     expect(searchInput).toHaveFocus();
     await waitFor(() => {
@@ -281,6 +305,23 @@ describe('ApiDocsExplorer', () => {
         { offset: 0, limit: 20, q: 's' }
       );
     });
+    expect(searchInput).toHaveFocus();
+
+    await act(async () => {
+      completeSearch();
+      await pendingSearch;
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /post \/api\/agent\/v1\/runs/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', {
+          name: /get \/api\/agent\/v1\/runs\/\{run_id\}/i
+        })
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('textbox', { name: '搜索接口' })).toBe(searchInput);
     expect(searchInput).toHaveFocus();
   });
 
@@ -291,7 +332,7 @@ describe('ApiDocsExplorer', () => {
       )
     );
 
-    render(
+    await renderSettled(
       <AppProviders>
         <ApiDocsExplorer
           queryState={{ categoryId: null, operationId: null }}
@@ -363,7 +404,7 @@ describe('ApiDocsExplorer', () => {
     );
     const onQueryStateChange = vi.fn();
 
-    render(
+    await renderSettled(
       <AppProviders>
         <ApiDocsExplorer
           queryState={{
@@ -402,7 +443,11 @@ describe('ApiDocsExplorer', () => {
     const operationLink = await within(scalarViewer).findByText(
       '/v1/chat/completions'
     );
-    fireEvent.click(operationLink);
+    expect(operationLink.closest('a')).toHaveAttribute(
+      'href',
+      '#operation-create-chat-completion'
+    );
+    await domEvents.click(operationLink);
 
     expect(copyTextToClipboard).toHaveBeenCalledWith(
       'POST /v1/chat/completions'
@@ -410,3 +455,24 @@ describe('ApiDocsExplorer', () => {
     expect(window.location.hash).toBe('');
   });
 });
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
+  return view;
+}
+
+const domEvents = {
+  scroll: (...args: Parameters<typeof fireEvent.scroll>) => dispatch(() => fireEvent.scroll(...args)),
+  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args)),
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args))
+};

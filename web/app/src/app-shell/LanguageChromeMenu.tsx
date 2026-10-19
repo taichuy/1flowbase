@@ -22,7 +22,7 @@ export function LanguageChromeMenu() {
   const me = useAuthStore((state) => state.me);
   const setMe = useAuthStore((state) => state.setMe);
 
-  const handleClick: MenuProps['onClick'] = ({ key }) => {
+  const handleLanguageMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (!(key in PROFILE_LOCALE_BY_MENU_KEY)) {
       return;
     }
@@ -71,7 +71,7 @@ export function LanguageChromeMenu() {
       className="app-shell-language-menu"
       mode="horizontal"
       selectable={false}
-      onClick={handleClick}
+      onClick={handleLanguageMenuClick}
       items={[
         {
           key: 'language',

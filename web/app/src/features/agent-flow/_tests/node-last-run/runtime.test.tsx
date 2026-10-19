@@ -296,7 +296,13 @@ describe('node last run runtime', () => {
     // This fixture verifies preview contracts; cold lazy readiness has its own route tests.
     await Promise.all([
       loadApplicationI18nResources(),
-      import('../../components/detail/NodeDetailPanel')
+      import('../../components/detail/NodeDetailPanel'),
+      import('../../components/bindings/TemplatedTextField'),
+      import('../../components/detail/fields/LlmModelField'),
+      import('../../components/detail/fields/LlmMcpInstancesField'),
+      import('../../components/detail/fields/LlmToolRegistrationsField'),
+      import('../../components/detail/fields/LlmPromptMessagesField'),
+      import('../../components/detail/fields/LlmResponseFormatField')
     ]);
   });
 

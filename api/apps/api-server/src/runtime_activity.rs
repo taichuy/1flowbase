@@ -284,10 +284,32 @@ impl ApplicationRuntimeActivityTracker {
         }
     }
 
-    pub fn snapshot(
+    pub async fn snapshot(
         &self,
         application_id: Uuid,
         instance_started_at: OffsetDateTime,
+    ) -> ApplicationRuntimeActivitySnapshot {
+        self.snapshot_sampled(application_id, instance_started_at, process_rss_bytes)
+            .await
+    }
+
+    async fn snapshot_sampled(
+        &self,
+        application_id: Uuid,
+        instance_started_at: OffsetDateTime,
+        sample: impl FnOnce() -> Option<u64> + Send + 'static,
+    ) -> ApplicationRuntimeActivitySnapshot {
+        // Sample afresh for this request, before taking the activity lock. A
+        // failed sampler remains optional telemetry, never a fabricated zero.
+        let process_rss_bytes = tokio::task::spawn_blocking(sample).await.ok().flatten();
+        self.snapshot_with_rss(application_id, instance_started_at, process_rss_bytes)
+    }
+
+    fn snapshot_with_rss(
+        &self,
+        application_id: Uuid,
+        instance_started_at: OffsetDateTime,
+        process_rss_bytes: Option<u64>,
     ) -> ApplicationRuntimeActivitySnapshot {
         let snapshot_at = OffsetDateTime::now_utc();
         let mut inner = self.lock_inner();
@@ -338,9 +360,7 @@ impl ApplicationRuntimeActivityTracker {
             age_distribution,
             long_connection_age_distribution,
             pressure,
-            resources: ApplicationRuntimeActivityResources {
-                process_rss_bytes: process_rss_bytes(),
-            },
+            resources: ApplicationRuntimeActivityResources { process_rss_bytes },
         }
     }
 
@@ -630,9 +650,12 @@ fn format_time(value: OffsetDateTime) -> String {
 fn process_rss_bytes() -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
-        let status = std::fs::read_to_string("/proc/self/statm").ok()?;
-        let pages = status.split_whitespace().nth(1)?.parse::<u64>().ok()?;
-        Some(pages * 4096)
+        // sysinfo reports bytes using the host's page size. Do not convert
+        // statm pages with an assumed Linux page size.
+        let pid = sysinfo::get_current_pid().ok()?;
+        let mut system = sysinfo::System::new();
+        system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+        system.process(pid).map(|process| process.memory())
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -676,8 +699,8 @@ mod tests {
         assert_eq!(current_application_id(), None);
     }
 
-    #[test]
-    fn tracker_reports_active_counts_peaks_and_recent_outcomes_without_payloads() {
+    #[tokio::test]
+    async fn tracker_reports_active_counts_peaks_and_recent_outcomes_without_payloads() {
         let tracker = ApplicationRuntimeActivityTracker::default();
         let application_id = Uuid::now_v7();
         let started_at = OffsetDateTime::now_utc();
@@ -687,7 +710,7 @@ mod tests {
         let model = tracker.start(application_id, ApplicationActivityKind::ModelRequest);
         model.finish(ApplicationActivityFinish::Failed);
 
-        let snapshot = tracker.snapshot(application_id, started_at);
+        let snapshot = tracker.snapshot(application_id, started_at).await;
         assert_eq!(snapshot.meta.scope, "current_instance");
         assert_eq!(snapshot.meta.storage, "memory");
         assert_eq!(snapshot.active.total, 2);
@@ -702,14 +725,14 @@ mod tests {
 
         drop(http);
         sse.finish(ApplicationActivityFinish::Disconnected);
-        let snapshot = tracker.snapshot(application_id, started_at);
+        let snapshot = tracker.snapshot(application_id, started_at).await;
         assert_eq!(snapshot.active.total, 0);
         assert_eq!(snapshot.rolling_minute.completed, 1);
         assert_eq!(snapshot.rolling_minute.disconnected, 1);
     }
 
-    #[test]
-    fn tracker_recovers_poisoned_lock_without_panicking() {
+    #[tokio::test]
+    async fn tracker_recovers_poisoned_lock_without_panicking() {
         let tracker = ApplicationRuntimeActivityTracker::default();
         let poisoned_tracker = tracker.clone();
         let poison_result = std::thread::spawn(move || {
@@ -726,19 +749,19 @@ mod tests {
         let started_at = OffsetDateTime::now_utc();
         let guard = tracker.start(application_id, ApplicationActivityKind::HttpRequest);
 
-        let snapshot = tracker.snapshot(application_id, started_at);
+        let snapshot = tracker.snapshot(application_id, started_at).await;
         assert_eq!(snapshot.active.total, 1);
         assert_eq!(snapshot.active.http_requests, 1);
 
         drop(guard);
 
-        let snapshot = tracker.snapshot(application_id, started_at);
+        let snapshot = tracker.snapshot(application_id, started_at).await;
         assert_eq!(snapshot.active.total, 0);
         assert_eq!(snapshot.rolling_minute.completed, 1);
     }
 
-    #[test]
-    fn tracker_reports_multi_window_health_without_request_history() {
+    #[tokio::test]
+    async fn tracker_reports_multi_window_health_without_request_history() {
         let tracker = ApplicationRuntimeActivityTracker::default();
         let application_id = Uuid::now_v7();
         let started_at = OffsetDateTime::now_utc();
@@ -798,7 +821,7 @@ mod tests {
             );
         }
 
-        let snapshot = tracker.snapshot(application_id, started_at);
+        let snapshot = tracker.snapshot(application_id, started_at).await;
 
         assert_eq!(snapshot.windows.one_minute.completed, 7);
         assert_eq!(snapshot.windows.five_minutes.completed, 47);
@@ -811,3 +834,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "runtime_activity/_tests/sampling.rs"]
+mod sampling_tests;

@@ -182,18 +182,18 @@ pub struct CompiledLlmRouteTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledLlmRuntime {
-    // @field-contract-compat source=compiled_plan_v2 alias=provider_instance_id remove_by=2027-02-11
+    // Main plans omit this until live resolution; failover plans freeze the first target identity.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub provider_instance_id: String,
-    // @field-contract-compat source=compiled_plan_v2 alias=provider_instance_display_name remove_by=2027-02-11
+    // Main plans and older payloads may omit the name; failover plans retain the frozen display name.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub provider_instance_display_name: String,
     pub provider_code: String,
-    // @field-contract-compat source=compiled_plan_v2 alias=protocol remove_by=2027-02-11
+    // Main plans resolve the protocol live; failover plans freeze it alongside the target identity.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub protocol: String,
     pub model: String,
-    // @field-contract-compat source=compiled_plan_v2 alias=routing remove_by=2027-02-11
+    // Main plans may omit routing; failover plans retain the frozen queue and its execution policies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub routing: Option<CompiledLlmRouting>,
 }

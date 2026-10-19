@@ -25,6 +25,15 @@ export function createFrontstageSignalGraph(
     blocks.map((block) => [block.id, new Set<string>()])
   );
   const diagnostics: FrontstageSignalGraphDiagnostic[] = [];
+  const outputsByBlockId = new Map<string, Map<string, FrontstageBlockOutputPort>>();
+  for (const [id, source] of byId) {
+    const outputs = new Map<string, FrontstageBlockOutputPort>();
+    for (const output of source.ports?.outputs ?? []) {
+      if (!outputs.has(output.name)) outputs.set(output.name, output);
+    }
+    outputsByBlockId.set(id, outputs);
+  }
+
 
   for (const block of blocks) {
     for (const input of block.ports?.inputs ?? []) {
@@ -41,9 +50,7 @@ export function createFrontstageSignalGraph(
         );
         continue;
       }
-      const output = source.ports?.outputs.find(
-        (candidate) => candidate.name === input.source?.output
-      );
+      const output = outputsByBlockId.get(source.id)?.get(input.source.output);
       if (!output) {
         diagnostics.push(
           issue(
@@ -75,12 +82,12 @@ export function createFrontstageSignalGraph(
     dependencies
   );
   if (order.length !== blocks.length) {
-    for (const blockId of blocks
-      .map((block) => block.id)
-      .filter((id) => !order.includes(id))) {
+    const orderedIds = new Set(order);
+    for (const block of blocks) {
+      if (orderedIds.has(block.id)) continue;
       diagnostics.push({
         code: 'cycle',
-        block_id: blockId,
+        block_id: block.id,
         message: 'Signal dependency cycle is not allowed.'
       });
     }
@@ -88,7 +95,7 @@ export function createFrontstageSignalGraph(
   return { order, dependencies, diagnostics };
 }
 
-export function isSignalSchemaAssignable(
+function isSignalSchemaAssignable(
   output: FrontstageBlockOutputPort,
   input: FrontstageBlockInputPort
 ): boolean {

@@ -23,7 +23,7 @@
 | 命令 | 主要覆盖面 | 什么时候优先跑 | 不替代什么 |
 | --- | --- | --- | --- |
 | `node scripts/node/test-scripts.js [filter]` | `scripts/node` 自身脚本与编排逻辑 | 改了 Node 验证脚本、CLI 编排、治理脚本 | 不替代前后端业务回归 |
-| `node scripts/node/cli/test-contracts.js` | 共享 DTO / consumer contract / style-boundary contract consumer | 改共享 console API DTO、settings / agent-flow provider consumer、`style-boundary` registry 或其他跨消费者契约 | 不替代页面质量和后端分层回归 |
+| `node scripts/node/cli/quality/test-contracts.js` | 共享 DTO / consumer contract / style-boundary contract consumer | 改共享 console API DTO、settings / agent-flow provider consumer、`style-boundary` registry 或其他跨消费者契约 | 不替代页面质量和后端分层回归 |
 | `node scripts/node/test-frontend.js fast` | 前端快速回归 | 需要仓库级前端快检，但还没到 full gate | 不替代移动端/真实运行态证据 |
 | `node scripts/node/test-frontend.js full` | 前端 lint、test、build、style-boundary full gate | 要给前端结论兜底，或 `verify-repo` 前置确认 | 不替代具体页面走查和截图证据 |
 | `node scripts/node/tooling.js gate-router [--staged]` | 根据 changed files 输出非阻塞质量门禁建议；提交前 hook 使用 `--staged`，线上 `repo-tooling` 使用 branch diff | 需要在开发阶段提示“本次改动应该跑哪些相关门禁”，但不想阻塞提交 | 不替代实际运行被建议的门禁 |

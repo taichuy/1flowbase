@@ -1,6 +1,6 @@
 import type { Layout, LayoutItem } from 'react-grid-layout';
 
-export function allocateFrontstageRowWidths(
+function allocateFrontstageRowWidths(
   items: readonly LayoutItem[],
   columns: number
 ): number[] | null {

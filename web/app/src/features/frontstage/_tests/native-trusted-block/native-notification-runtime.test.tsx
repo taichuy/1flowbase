@@ -5,7 +5,7 @@ import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
 
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
-import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-adapter/native-trusted-block-react-adapter';
 
 describe('native block notification effect scope', () => {
   const showPopover = vi.fn();

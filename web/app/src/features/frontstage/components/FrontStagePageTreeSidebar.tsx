@@ -27,6 +27,7 @@ import {
   projectNavigationPosition
 } from '../lib/navigation-drag/projection';
 import { PageTreeIcon } from '../lib/page-tree-icons/registry';
+import { readCollapsedGroups, writeCollapsedGroups } from '../lib/page-tree-state/collapsed-groups';
 
 type FrontStagePageTreeSidebarProps = {
   pageTree: FrontStageTreeNode[];
@@ -84,11 +85,15 @@ function renderNodeIcon(node: FrontStageTreeNode) {
   return <PageTreeIcon name={node.icon} />;
 }
 
+// The treeitem owns selection and roving focus; descendant action controls keep
+// native activation. Keyboard handling never bubbles into an ancestor treeitem.
 function renderTreeNode({
   node,
   pageTree,
   level,
   selectedPageId,
+  tabStopNodeId,
+  onFocusNode,
   canEdit,
   isOperationPending,
   collapsedGroupIds,
@@ -113,6 +118,8 @@ function renderTreeNode({
   pageTree: FrontStageTreeNode[];
   level: number;
   selectedPageId: string | null;
+  tabStopNodeId: string | null;
+  onFocusNode: (nodeId: string) => void;
   canEdit: boolean;
   isOperationPending: boolean;
   collapsedGroupIds: Set<string>;
@@ -388,15 +395,19 @@ function renderTreeNode({
   const nodeContent = (
     <div className="frontstage-page-tree-sidebar__node-main">
       {node.kind === 'group' && (
-        <span
+        <button
+          type="button"
+          aria-label={title}
+          aria-expanded={!isCollapsed}
           className="frontstage-page-tree-sidebar__chevron"
+          onKeyDown={(event) => event.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             toggleGroupCollapse(node.id);
           }}
         >
           {isCollapsed ? <RightOutlined /> : <DownOutlined />}
-        </span>
+        </button>
       )}
       {renderNodeIcon(node)}
       <span className="frontstage-page-tree-sidebar__node-copy">
@@ -436,24 +447,72 @@ function renderTreeNode({
       onDragOver={(event) => updateDropIndicator(event)}
       onDrop={handleDrop}
       onClick={(e) => {
+        const target = e.target as Element;
+        if (target.closest('[role="treeitem"]') !== e.currentTarget ||
+          target.closest('button, a, input, select, textarea, [role="button"], [role="switch"], [role="menuitem"]')) return;
         e.stopPropagation();
+        e.currentTarget.focus();
         if (isPageNode) {
           onSelectPage(node.id);
         } else {
           toggleGroupCollapse(node.id);
         }
       }}
-      role={isPageNode ? 'button' : undefined}
-      tabIndex={isPageNode ? 0 : -1}
+      role="treeitem"
+      aria-label={title}
+      aria-selected={isSelected}
+      aria-expanded={node.kind === 'group' ? !isCollapsed || isInsideDropTarget : undefined}
+      aria-level={level + 1}
+      tabIndex={tabStopNodeId === node.id ? 0 : -1}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget) onFocusNode(node.id);
+      }}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          if (isPageNode) {
-            onSelectPage(node.id);
-          } else {
-            toggleGroupCollapse(node.id);
-          }
+        // Nested treeitems and row action controls own their own keyboard events.
+        if (event.target !== event.currentTarget) return;
+        const current = event.currentTarget;
+        const tree = current.closest('[role="tree"]');
+        const items = Array.from(tree?.querySelectorAll<HTMLElement>('[role="treeitem"]') ?? []);
+        const index = items.indexOf(current);
+        let destination: HTMLElement | undefined | null;
+        switch (event.key) {
+          case 'Enter':
+          case ' ':
+            if (isPageNode) onSelectPage(node.id);
+            else toggleGroupCollapse(node.id);
+            break;
+          case 'ArrowDown':
+            destination = items[Math.min(index + 1, items.length - 1)];
+            break;
+          case 'ArrowUp':
+            destination = items[Math.max(index - 1, 0)];
+            break;
+          case 'Home':
+            destination = items[0];
+            break;
+          case 'End':
+            destination = items[items.length - 1];
+            break;
+          case 'ArrowRight':
+            if (node.kind === 'group' && isCollapsed && !isInsideDropTarget) {
+              toggleGroupCollapse(node.id);
+            } else {
+              destination = current.querySelector<HTMLElement>(':scope > [role="group"] > [role="treeitem"]');
+            }
+            break;
+          case 'ArrowLeft':
+            if (node.kind === 'group' && (!isCollapsed || isInsideDropTarget)) {
+              if (!isCollapsed) toggleGroupCollapse(node.id);
+            } else {
+              destination = current.parentElement?.closest<HTMLElement>('[role="treeitem"]');
+            }
+            break;
+          default:
+            return;
         }
+        event.preventDefault();
+        event.stopPropagation();
+        destination?.focus();
       }}
     >
       {dropIndicator?.targetNodeId === node.id &&
@@ -560,13 +619,15 @@ function renderTreeNode({
       (childNodes.length > 0 ||
         (canEdit && node.kind === 'group') ||
         isInsideDropTarget) ? (
-        <ul className="frontstage-page-tree-sidebar__children">
+        <ul className="frontstage-page-tree-sidebar__children" role="group">
           {childNodes.map((childNode) =>
             renderTreeNode({
               node: childNode,
               pageTree,
               level: level + 1,
               selectedPageId,
+              tabStopNodeId,
+              onFocusNode,
               canEdit,
               isOperationPending,
               collapsedGroupIds,
@@ -588,7 +649,7 @@ function renderTreeNode({
             })
           )}
           {isInsideDropTarget ? (
-            <li className="frontstage-page-tree-sidebar__drop-placeholder-item">
+            <li className="frontstage-page-tree-sidebar__drop-placeholder-item" role="none">
               <div
                 className="frontstage-page-tree-sidebar__drop-placeholder frontstage-page-tree-sidebar__drop-placeholder--inside"
                 onDragOver={(event) => updateDropIndicator(event, 'inside')}
@@ -633,20 +694,31 @@ export function FrontStagePageTreeSidebar({
   onSelectPage
 }: FrontStagePageTreeSidebarProps) {
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(
-    () => {
-      try {
-        const stored = localStorage.getItem('frontstage_collapsed_groups');
-        return stored ? new Set(JSON.parse(stored)) : new Set();
-      } catch {
-        return new Set();
-      }
-    }
+    () => readCollapsedGroups(localStorage)
   );
 
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] =
     useState<PageTreeDropIndicator | null>(null);
+
+  const visibleNodeIds: string[] = [];
+  const collectVisibleNodes = (nodes: FrontStageTreeNode[]) => {
+    for (const node of nodes) {
+      visibleNodeIds.push(node.id);
+      if (!collapsedGroupIds.has(node.id) ||
+        (dropIndicator?.targetNodeId === node.id && dropIndicator.position === 'inside')) {
+        collectVisibleNodes(node.children ?? []);
+      }
+    }
+  };
+  collectVisibleNodes(pageTree);
+  const tabStopNodeId = focusedNodeId && visibleNodeIds.includes(focusedNodeId)
+    ? focusedNodeId
+    : selectedPageId && visibleNodeIds.includes(selectedPageId)
+      ? selectedPageId
+      : visibleNodeIds[0] ?? null;
 
   const toggleGroupCollapse = (groupId: string) => {
     setCollapsedGroupIds((prev) => {
@@ -656,10 +728,7 @@ export function FrontStagePageTreeSidebar({
       } else {
         next.add(groupId);
       }
-      localStorage.setItem(
-        'frontstage_collapsed_groups',
-        JSON.stringify(Array.from(next))
-      );
+      writeCollapsedGroups(localStorage, next);
       return next;
     });
   };
@@ -694,13 +763,19 @@ export function FrontStagePageTreeSidebar({
           setDropIndicator(null);
       }}
     >
-      <ul className="frontstage-page-tree-sidebar__tree">
+      <ul
+        className="frontstage-page-tree-sidebar__tree"
+        role="tree"
+        aria-label={i18nText('frontstage', 'auto.page_node')}
+      >
         {pageTree.map((node) =>
           renderTreeNode({
             node,
             pageTree,
             level: 0,
             selectedPageId,
+            tabStopNodeId,
+            onFocusNode: setFocusedNodeId,
             canEdit,
             isOperationPending,
             collapsedGroupIds,

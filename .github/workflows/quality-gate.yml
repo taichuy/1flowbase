@@ -952,7 +952,7 @@ jobs:
           INPUT_SCOPE: coverage-backend-api-server-merge
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-        run: node scripts/node/cli/github-quality-gate.js
+        run: node scripts/node/cli/quality/github-quality-gate.js
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -1089,7 +1089,7 @@ jobs:
           pattern: "test-governance-!(artifacts)"
           path: tmp/test-governance/parallel
           merge-multiple: false
-      - run: node scripts/node/cli/github-quality-gate-aggregate.js
+      - run: node scripts/node/cli/quality/github-quality-gate-aggregate.js
         env:
           GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
           GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}

@@ -76,19 +76,18 @@ export function scenarioChunkManifestPlugin(): Plugin {
     name: '1flowbase-scenario-chunk-manifest',
     generateBundle(_options, bundle) {
       const chunks = Object.values(bundle)
-        .filter((output) => output.type === 'chunk')
-        .filter((chunk) =>
-          [...SCENARIO_CHUNK_NAMES].some(
+        .flatMap((chunk) => {
+          if (chunk.type !== 'chunk' || ![...SCENARIO_CHUNK_NAMES].some(
             (name) => chunk.name === name || chunk.name.startsWith(`${name}~`)
-          )
-        )
-        .map((chunk) => ({
-          file: chunk.fileName,
-          name: chunk.name,
-          dynamicImports: [...chunk.dynamicImports].sort(),
-          imports: [...chunk.imports].sort(),
-          moduleCount: Object.keys(chunk.modules).length
-        }))
+          )) return [];
+          return [{
+            file: chunk.fileName,
+            name: chunk.name,
+            dynamicImports: [...chunk.dynamicImports].sort(),
+            imports: [...chunk.imports].sort(),
+            moduleCount: Object.keys(chunk.modules).length
+          }];
+        })
         .sort((left, right) => left.file.localeCompare(right.file));
       this.emitFile({
         type: 'asset',

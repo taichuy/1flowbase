@@ -11,6 +11,7 @@ import {
   Typography
 } from 'antd';
 import { useEffect, useRef, useState } from 'react';
+import { useStableListItemKeys } from '../../../hooks/interactions/use-stable-list-item-keys';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 const scalarObjectValueTypes = ['string', 'number', 'boolean'] as const;
@@ -209,6 +210,7 @@ function ObjectValueEditor({
   ariaLabelPrefix = i18nText('agentFlow', 'auto.object')
 }: ObjectValueEditorProps) {
   const [rows, setRows] = useState(() => createObjectRows(value));
+  const rowKeys = useStableListItemKeys('environment-object-field', rows.length);
   const lastEmittedValueRef = useRef<unknown>(value);
 
   useEffect(() => {
@@ -232,7 +234,7 @@ function ObjectValueEditor({
   return (
     <div className="agent-flow-editor__env-value-rows">
       {rows.map((row, index) => (
-        <div className="agent-flow-editor__env-object-row" key={index}>
+        <div className="agent-flow-editor__env-object-row" key={rowKeys.itemKeys[index]}>
           <Input
             aria-label={i18nText('agentFlow', 'auto.key', {
               value1: ariaLabelPrefix,
@@ -345,11 +347,10 @@ function ObjectValueEditor({
             disabled={rows.length === 1}
             icon={<DeleteOutlined />}
             type="text"
-            onClick={() =>
-              updateRows(
-                rows.filter((_, candidateIndex) => candidateIndex !== index)
-              )
-            }
+            onClick={() => {
+              rowKeys.removeItemKey(index);
+              updateRows(rows.filter((_, candidateIndex) => candidateIndex !== index));
+            }}
           />
         </div>
       ))}
@@ -414,6 +415,7 @@ function ArrayValueEditor({
   const [items, setItems] = useState(() =>
     normalizeArrayValue(valueType, value)
   );
+  const itemKeys = useStableListItemKeys('environment-array-item', items.length);
   const lastEmittedValueRef = useRef<unknown>(value);
   const previousValueTypeRef = useRef(valueType);
 
@@ -443,7 +445,7 @@ function ArrayValueEditor({
   return (
     <div className="agent-flow-editor__env-value-rows">
       {items.map((item, index) => (
-        <div className="agent-flow-editor__env-array-row" key={index}>
+        <div className="agent-flow-editor__env-array-row" key={itemKeys.itemKeys[index]}>
           <Typography.Text
             className="agent-flow-editor__env-array-index"
             type="secondary"
@@ -519,11 +521,10 @@ function ArrayValueEditor({
             disabled={items.length === 1}
             icon={<DeleteOutlined />}
             type="text"
-            onClick={() =>
-              updateItems(
-                items.filter((_, candidateIndex) => candidateIndex !== index)
-              )
-            }
+            onClick={() => {
+              itemKeys.removeItemKey(index);
+              updateItems(items.filter((_, candidateIndex) => candidateIndex !== index));
+            }}
           />
         </div>
       ))}

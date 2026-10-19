@@ -13,7 +13,7 @@ import { JsxStudioPreviewConsole } from '../../../components/jsx-studio/JsxStudi
 import { JsxStudioRunPanel } from '../../../components/jsx-studio/JsxStudioRunPanel';
 import { createStudioRunConsoleStore } from '../../../components/jsx-studio/studio-run-console';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../../lib/block-catalog';
-import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../../lib/native-trusted-block-runtime-factory';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../../lib/native-adapter/native-trusted-block-runtime-factory';
 import { createFrontstageJsxEditorProjection } from '../../../lib/jsx-studio/editor-projection';
 import type { FrontstageBlockInstance } from '../../../lib/page-document';
 

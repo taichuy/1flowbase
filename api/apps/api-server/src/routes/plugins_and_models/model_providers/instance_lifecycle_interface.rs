@@ -739,7 +739,10 @@ impl ProviderInstanceLifecycleAdapter {
                     .list_instances(user_id)
                     .await?;
                 Ok(ProviderInstanceLifecycleOutput::Instances(
-                    instances.into_iter().map(to_instance_response).collect(),
+                    instances
+                        .into_iter()
+                        .map(to_instance_response)
+                        .collect::<Result<Vec<_>, _>>()?,
                 ))
             }
             ProviderInstanceLifecycleInput::Create(body) => {
@@ -761,7 +764,7 @@ impl ProviderInstanceLifecycleAdapter {
                     })
                     .await?;
                 Ok(ProviderInstanceLifecycleOutput::Instance(
-                    to_instance_response(created),
+                    to_instance_response(created)?,
                 ))
             }
             ProviderInstanceLifecycleInput::Update { id, body } => {
@@ -783,7 +786,7 @@ impl ProviderInstanceLifecycleAdapter {
                     })
                     .await?;
                 Ok(ProviderInstanceLifecycleOutput::Instance(
-                    to_instance_response(updated),
+                    to_instance_response(updated)?,
                 ))
             }
             ProviderInstanceLifecycleInput::Validate { id } => {
@@ -792,7 +795,7 @@ impl ProviderInstanceLifecycleAdapter {
                     .validate_instance(user_id, parse_uuid(&id, "id")?)
                     .await?;
                 Ok(ProviderInstanceLifecycleOutput::Validation(
-                    to_validate_response(result),
+                    to_validate_response(result)?,
                 ))
             }
             ProviderInstanceLifecycleInput::Delete { id } => {

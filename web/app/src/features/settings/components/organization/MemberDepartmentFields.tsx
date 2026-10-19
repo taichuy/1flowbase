@@ -2,7 +2,7 @@ import { Button } from 'antd';
 import { useDepartmentOptions } from '../../hooks/organization/useDepartmentOptions';
 import { Form, Select, Typography } from 'antd';
 import type { FormInstance } from 'antd';
-import type { SettingsDepartment } from '../../api/departments';
+import type { SettingsDepartment } from '../../api/identity-access/departments';
 import { i18nText } from '../../../../shared/i18n/text';
 export function MemberDepartmentFields({
   form,
@@ -16,6 +16,21 @@ export function MemberDepartmentFields({
   const department_ids: string[] = Form.useWatch('department_ids', form) ?? [];
   const options = useDepartmentOptions(department_ids, departments);
   const available = options.departments;
+  const selectedIds = new Set(department_ids);
+  const selectedDepartments = available.reduce<{
+    options: Array<{ value: string; label: string }>;
+    inheritedRoles: SettingsDepartment[];
+  }>(
+    (selected, department) => {
+      if (selectedIds.has(department.id)) {
+        selected.options.push({ value: department.id, label: department.name });
+        if (department.role_codes.length > 0)
+          selected.inheritedRoles.push(department);
+      }
+      return selected;
+    },
+    { options: [], inheritedRoles: [] }
+  );
   return (
     <>
       <Form.Item
@@ -78,28 +93,17 @@ export function MemberDepartmentFields({
       >
         <Select
           disabled={disabled || !department_ids.length}
-          options={available
-            .filter((department) => department_ids.includes(department.id))
-            .map((department) => ({
-              value: department.id,
-              label: department.name
-            }))}
+          options={selectedDepartments.options}
         />
       </Form.Item>
       <Typography.Paragraph type="secondary">
         {i18nText('settings', 'organization.inherited_roles_hint')}
       </Typography.Paragraph>
-      {available
-        .filter(
-          (department) =>
-            department_ids.includes(department.id) &&
-            department.role_codes.length > 0
-        )
-        .map((department) => (
-          <Typography.Paragraph type="secondary" key={department.id}>
-            {department.name}: {department.role_codes.join(', ')}
-          </Typography.Paragraph>
-        ))}
+      {selectedDepartments.inheritedRoles.map((department) => (
+        <Typography.Paragraph type="secondary" key={department.id}>
+          {department.name}: {department.role_codes.join(', ')}
+        </Typography.Paragraph>
+      ))}
     </>
   );
 }

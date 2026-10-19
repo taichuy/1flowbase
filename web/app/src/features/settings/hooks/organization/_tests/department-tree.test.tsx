@@ -10,7 +10,7 @@ import {
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { useState } from 'react';
 const fetchDepartments = vi.hoisted(() => vi.fn());
-vi.mock('../../../api/departments', () => ({
+vi.mock('../../../api/identity-access/departments', () => ({
   fetchSettingsDepartments: fetchDepartments,
   settingsDepartmentsQueryKey: ['settings', 'departments']
 }));

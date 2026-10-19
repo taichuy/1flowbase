@@ -127,7 +127,10 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
 });
 
 test('Delivery 1944 routes cannot inject decision or hook plans and plugin decisions only see bounded facts', () => {
-  const kernel = read('api/crates/interface-runtime/src/invocation.rs');
+  const kernel = [
+    'api/crates/interface-runtime/src/invocation.rs',
+    'api/crates/interface-runtime/src/invocation/kernel.rs',
+  ].map(read).join('\n');
   const decision = read('api/crates/interface-runtime/src/decision.rs');
   const routes = [
     'api/apps/api-server/src/routes/identity/auth.rs',
@@ -220,7 +223,10 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
     'api/crates/storage/durable/postgres/migrations/20260828100000_create_lifecycle_outbox.sql',
   );
   const runtimeCargo = read('api/crates/interface-runtime/Cargo.toml');
-  const kernel = read('api/crates/interface-runtime/src/invocation.rs');
+  const kernel = [
+    'api/crates/interface-runtime/src/invocation.rs',
+    'api/crates/interface-runtime/src/invocation/kernel.rs',
+  ].map(read).join('\n');
 
   assert.match(boot, /compile_complete_console_snapshot/u);
   assert.match(read('api/apps/api-server/src/routes/console_interface.rs'), /\.invoke::<I, O, ConsoleInterfaceTargetError>/u);
@@ -241,7 +247,14 @@ test('retired provider configuration is absent while observation uses the compil
   const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
   const http = read('api/apps/api-server/src/routes/settings/host_infrastructure.rs');
   const consoleInterface = read('api/apps/api-server/src/routes/console_interface.rs');
-  const contributions = read('api/apps/api-server/src/extension_bus/interface_contributions.rs');
+  const contributions = [
+    'api/apps/api-server/src/extension_bus/interface_contributions.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/provider_operations.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/network.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/plugins.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/mcp.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/system.rs',
+  ].map(read).join('\n');
   assert.doesNotMatch(boot + http + contributions, /invoke_providers_view|providers_view_query|interface_provider_config/u);
   assert.match(http, /get_host_infrastructure_memory_overview/u);
   assert.match(http, /console_interface::invoke/u);

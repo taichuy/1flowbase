@@ -246,14 +246,14 @@ separate `cargo check` step supplies compilation evidence only.
 | `repo-backend-check-runtime-storage` | `node scripts/node/verify-backend.js check runtime-storage` |
 | `repo-backend-check-apps` | `node scripts/node/verify-backend.js check apps` |
 | `backend` | `node scripts/node/verify-backend.js` |
-| `backend-consistency` | `node scripts/node/cli/verify-backend-consistency.js` |
+| `backend-consistency` | `node scripts/node/cli/quality/verify-backend-consistency.js` |
 | `coverage` | `node scripts/node/verify-coverage.js all` |
 | `coverage-frontend` | `node scripts/node/verify-coverage.js frontend` |
 | `coverage-backend` | `node scripts/node/verify-coverage.js backend` |
 | `coverage-backend-control-plane` | `node scripts/node/verify-coverage.js backend control-plane` |
 | `coverage-backend-storage-postgres` | `node scripts/node/verify-coverage.js backend storage-postgres` |
 | `coverage-backend-api-server` | `node scripts/node/verify-coverage.js backend api-server` |
-| `container-images` | `node scripts/node/cli/container-image-security.js` |
+| `container-images` | `node scripts/node/cli/quality/container-image-security.js` |
 
 Use `ci` for the full online repository quality gate. The local `node scripts/node/verify-ci.js`
 entry still runs the same gates serially for environments that need one local command, but the

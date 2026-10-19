@@ -23,7 +23,6 @@ export {
   buildNodePickerOptions,
   getNodePickerOptionKey,
   getNodePickerOptionNodeType,
-  toPluginContributionPickerOption,
   type NodePickerOption
 } from './authoring/plugin-node-picker';
 export {

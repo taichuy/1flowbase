@@ -20,7 +20,7 @@ import {
   fetchSettingsPluginFamilies,
   settingsOfficialPluginsQueryKey,
   settingsPluginFamiliesQueryKey
-} from '../../../api/plugins';
+} from '../../../api/extensions/plugins';
 import {
   EMPTY_MODEL_PROVIDER_CATALOG,
   EMPTY_MODEL_PROVIDER_INSTANCES,
@@ -108,12 +108,20 @@ export function useModelProviderData({
   const currentCatalogEntriesByProviderCode = useMemo(() => {
     const grouped: Record<string, (typeof catalogEntries)[number] | null> = {};
 
+    const firstCatalogEntryByProviderCode = new Map<
+      string,
+      (typeof catalogEntries)[number]
+    >();
+    for (const entry of catalogEntries) {
+      if (!firstCatalogEntryByProviderCode.has(entry.provider_code)) {
+        firstCatalogEntryByProviderCode.set(entry.provider_code, entry);
+      }
+    }
+
     for (const family of families) {
       grouped[family.provider_code] =
         catalogEntriesByInstallationId[family.current_installation_id] ??
-        catalogEntries.find(
-          (entry) => entry.provider_code === family.provider_code
-        ) ??
+        firstCatalogEntryByProviderCode.get(family.provider_code) ??
         null;
     }
 
