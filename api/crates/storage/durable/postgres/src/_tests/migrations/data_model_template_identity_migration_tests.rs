@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 const MIGRATION_VERSION: i64 = 20260810100000;
 const MIGRATION_SQL: &str =
-    include_str!("../../migrations/20260810100000_add_data_model_template_identity.sql");
+    include_str!("../../../migrations/20260810100000_add_data_model_template_identity.sql");
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")

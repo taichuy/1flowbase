@@ -758,7 +758,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_006_transaction_targets",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "ac": [
         "AC-006"
       ],
@@ -769,7 +769,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_claim_fencing_and_paused_backlog",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "ac": [
         "AC-007"
       ],
@@ -783,7 +783,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_concurrent_ack_rollup",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "ac": [
         "AC-007"
       ],
@@ -797,7 +797,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_delivery_migration_preserves_old_targets",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
       "ac": [
         "AC-007"
       ],
@@ -822,7 +822,7 @@
       "target": "storage-durable-postgres:lib",
       "name": "managed_operation_lifetime::tests::root_2007_ac_010_lane_budgets_owned_operation_shutdown",
       "expected": 1,
-      "source": "api/crates/storage/durable/postgres/src/_tests/managed_operation_lifetime.rs",
+      "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/managed_operation_lifetime.rs",
       "ac": [
         "AC-010"
       ],

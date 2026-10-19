@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 const MIGRATION_VERSION: i64 = 20260722100000;
 const MIGRATION_SQL: &str =
-    include_str!("../../migrations/20260722100000_migrate_llm_max_output_tokens.sql");
+    include_str!("../../../migrations/20260722100000_migrate_llm_max_output_tokens.sql");
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")

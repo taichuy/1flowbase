@@ -464,8 +464,8 @@ async fn root_2007_ac_007_delivery_migration_preserves_old_targets() {
         .unwrap();
     let pool = database.connect().await.unwrap();
     for migration in [
-        include_str!("../../migrations/20260828100000_create_lifecycle_outbox.sql"),
-        include_str!("../../migrations/20260828190000_add_lifecycle_subscriber_deliveries.sql"),
+        include_str!("../../../migrations/20260828100000_create_lifecycle_outbox.sql"),
+        include_str!("../../../migrations/20260828190000_add_lifecycle_subscriber_deliveries.sql"),
     ] {
         sqlx::raw_sql(migration).execute(&pool).await.unwrap();
     }
@@ -473,7 +473,7 @@ async fn root_2007_ac_007_delivery_migration_preserves_old_targets() {
     sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,graph_fingerprint) values ($1,$1,'old.fact','v1','old',now(),'old-graph')").bind(event).execute(&pool).await.unwrap();
     sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version,status,claimed_by,claimed_at,delivered_at,attempt_count) values ($1,'pending','old-handler','old-version','pending',null,null,null,0),($1,'claimed','old-handler','old-version','claimed',$1,now(),null,2),($1,'delivered','old-handler','old-version','delivered',null,null,now(),3)").bind(event).execute(&pool).await.unwrap();
     sqlx::raw_sql(include_str!(
-        "../../migrations/20260908030000_managed_event_delivery_state.sql"
+        "../../../migrations/20260908030000_managed_event_delivery_state.sql"
     ))
     .execute(&pool)
     .await

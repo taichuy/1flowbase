@@ -47,7 +47,7 @@ async fn publisher_cutover_migration_marks_only_unified_legacy_runtime_receipts_
     }
 
     let migration_sql = include_str!(
-        "../../../migrations/20260804010000_mark_publisher_cutover_legacy_manifest_compatibility.up.sql"
+        "../../../../migrations/20260804010000_mark_publisher_cutover_legacy_manifest_compatibility.up.sql"
     );
     sqlx::raw_sql(migration_sql).execute(&pool).await.unwrap();
     sqlx::raw_sql(migration_sql).execute(&pool).await.unwrap();

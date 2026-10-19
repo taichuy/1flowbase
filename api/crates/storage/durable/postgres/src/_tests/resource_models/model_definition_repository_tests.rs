@@ -12,11 +12,11 @@ use extension_contracts::LifecycleContract;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
-#[path = "model_definition_repository/file_template.rs"]
+#[path = "../model_definition_repository/file_template.rs"]
 mod file_template;
 
 const BUILTIN_SYSTEM_TABLE_CONTRACT_METADATA_SQL: &str = include_str!(
-    "../../migrations/20260630104000_preserve_builtin_system_table_contract_metadata.sql"
+    "../../../migrations/20260630104000_preserve_builtin_system_table_contract_metadata.sql"
 );
 
 fn base_database_url() -> String {

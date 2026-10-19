@@ -6,10 +6,10 @@ use uuid::Uuid;
 
 const MIGRATION_VERSION: i64 = 20260728120000;
 const MIGRATION_SQL: &str =
-    include_str!("../../migrations/20260728120000_restore_legacy_protocol_context_defaults.sql");
+    include_str!("../../../migrations/20260728120000_restore_legacy_protocol_context_defaults.sql");
 const COMPATIBILITY_BACKFILL_VERSION: i64 = 20260729090000;
 const COMPATIBILITY_BACKFILL_SQL: &str =
-    include_str!("../../migrations/20260729090000_backfill_responses_compatibility_mode.sql");
+    include_str!("../../../migrations/20260729090000_backfill_responses_compatibility_mode.sql");
 const START_VARIABLE_MIGRATION_VERSION: i64 = 20260731200000;
 
 struct SeededFlow {

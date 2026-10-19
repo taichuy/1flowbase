@@ -5,9 +5,9 @@ use uuid::Uuid;
 
 const CLEANUP_MIGRATION_VERSION: i64 = 20260817140000;
 const LEGACY_MIGRATION_SQL: &str =
-    include_str!("../../migrations/20260817130000_backfill_legacy_model_pricing_rules.sql");
+    include_str!("../../../migrations/20260817130000_backfill_legacy_model_pricing_rules.sql");
 const CLEANUP_MIGRATION_SQL: &str =
-    include_str!("../../migrations/20260817140000_replace_generated_zero_pricing_rules.sql");
+    include_str!("../../../migrations/20260817140000_replace_generated_zero_pricing_rules.sql");
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
