@@ -22,11 +22,11 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "list_application_runs"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/summary_responses.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/response_projection/summary_responses.rs",
           "functionName": "application_runs_created_after"
         }
       ],
@@ -140,7 +140,7 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "list_application_conversation_messages"
         }
       ],
@@ -187,7 +187,7 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "get_application_run_trace_tree"
         }
       ],
@@ -232,7 +232,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/runs/{run_id}/trace-tree/nodes",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
         "functionName": "get_application_run_trace_node_children"
       },
       "repository": {
@@ -241,7 +241,7 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers/trace_projection_payloads.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers/trace_projection_payloads.rs",
           "functionName": "application_run_trace_children_page_size"
         }
       ],
@@ -297,11 +297,11 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "get_runtime_debug_stream"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
           "functionName": "debug_run_stream_from_sequence"
         }
       ],
@@ -349,7 +349,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/orchestration/runs/{run_id}/debug-stream",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
         "functionName": "subscribe_flow_debug_run_stream"
       },
       "repository": {
@@ -362,7 +362,7 @@
           "functionName": "subscribe_stream"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
           "functionName": "debug_run_stream_from_sequence"
         }
       ],
@@ -457,7 +457,7 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
           "functionName": "resolve_runtime_debug_artifacts"
         }
       ],
@@ -504,7 +504,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/orchestration/debug-artifacts/{artifact_id}",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
         "functionName": "get_runtime_debug_artifact"
       },
       "repository": {

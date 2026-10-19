@@ -295,7 +295,7 @@ fn run_conversation_messages_endpoint_reads_projection_without_full_detail_fallb
 #[test]
 fn trace_projection_status_read_never_rebuilds_or_reads_source() {
     let source = application_runtime_function_source(
-        include_str!("../log_handlers.rs"),
+        include_str!("../handlers/log_handlers.rs"),
         "async fn read_application_run_trace_projection_status",
     );
     assert!(source.contains("get_application_run_trace_read_status"));
