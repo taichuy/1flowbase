@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { createHash } = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -207,7 +208,7 @@ test('main writes a report and fails when error findings exist', async () => {
   );
 });
 
-test('baseline suppression survives unrelated line shifts', async () => {
+test('source-bound review matches complete current content without historical line metadata', async () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-rust-gate-baseline-'));
   fs.mkdirSync(path.join(repoRoot, 'api', 'crates', 'domain', 'src'), { recursive: true });
   fs.mkdirSync(path.join(repoRoot, 'scripts', 'node', 'check-rust-backend'), { recursive: true });
@@ -219,16 +220,26 @@ test('baseline suppression survives unrelated line shifts', async () => {
       'pub fn existing() { Some(1).unwrap(); }',
     ].join('\n')
   );
+  fs.writeFileSync(path.join(repoRoot, 'api/crates/domain/src/caller.rs'), 'fn caller() { existing(); }\n');
   fs.writeFileSync(
     path.join(repoRoot, 'scripts', 'node', 'check-rust-backend', 'baseline.json'),
     JSON.stringify({
+      version: 'rust-backend-reviews/v1',
       allowedFindings: [
         {
+          id: 'constant-fixture',
           rule: 'no-production-escape',
           file: 'api/crates/domain/src/existing.rs',
-          line: 1,
           snippet: 'pub fn existing() { Some(1).unwrap(); }',
-          reason: 'existing panic cleanup is tracked separately',
+          reason: 'the fixed Some literal cannot be None in this fixture',
+          source_sha256: createHash('sha256').update(fs.readFileSync(
+            path.join(repoRoot, 'api/crates/domain/src/existing.rs')
+          )).digest('hex'),
+          evidence: [{
+            file: 'api/crates/domain/src/caller.rs',
+            sha256: createHash('sha256').update('fn caller() { existing(); }\n').digest('hex'),
+            reason: 'fixture caller reaches the exact fixed-literal function',
+          }],
         },
       ],
     })
@@ -238,7 +249,7 @@ test('baseline suppression survives unrelated line shifts', async () => {
 
   assert.equal(findings.length, 1);
   assert.equal(findings[0].suppressed, true);
-  assert.equal(findings[0].suppressionReason, 'existing panic cleanup is tracked separately');
+  assert.equal(findings[0].suppressionReason, 'the fixed Some literal cannot be None in this fixture');
 });
 
 test('every current Rust baseline exception matches a live finding', () => {
@@ -253,6 +264,8 @@ test('every current Rust baseline exception matches a live finding', () => {
   const stale = baseline.allowedFindings.filter((entry) => !liveKeys.has(key(entry)));
 
   assert.deepEqual(stale, [], 'retired code must retire its Rust lint exception');
+  assert.deepEqual(findings.filter((item) => /^(?:invalid|retired)-baseline-review$/u.test(item.rule)), []);
+  assert.equal(findings.filter((item) => item.suppressed).length, baseline.allowedFindings.length);
 });
 
 test('current api routes do not contain active blocking IO warnings', () => {
@@ -292,7 +305,8 @@ test('OAuth consent hash persistence exception does not exempt response credenti
     const baselineDir = path.join(fixtureRoot, 'scripts/node/check-rust-backend');
     fs.mkdirSync(baselineDir, { recursive: true });
     fs.copyFileSync(path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json'), path.join(baselineDir, 'baseline.json'));
-    const rejected = collectRustBackendFindings({ repoRoot: fixtureRoot });
+    const rejected = collectRustBackendFindings({ repoRoot: fixtureRoot })
+      .filter((item) => item.rule === 'no-sensitive-serialize');
     assert.equal(rejected.length, 1);
     assert.equal(rejected[0].rule, 'no-sensitive-serialize');
     assert.equal(rejected[0].suppressed, false);
