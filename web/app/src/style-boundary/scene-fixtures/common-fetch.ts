@@ -106,7 +106,7 @@ export function getStyleBoundaryCommonResponse(
             item_id: 'embedded-apps',
             route_id: 'embedded-apps',
             parent_item_id: null,
-            label_key: 'auto.subsystem',
+            label_key: 'embeddedApps:auto.subsystem',
             navigation_slot: 'primary',
             order: 3
           },

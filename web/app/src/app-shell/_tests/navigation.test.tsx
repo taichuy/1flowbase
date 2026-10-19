@@ -47,7 +47,7 @@ import {
 const primaryRouteRecords = {
   'embedded-apps': {
     path: '/embedded-apps',
-    label_key: 'auto.subsystem'
+    label_key: 'embeddedApps:auto.subsystem'
   }
 } as const;
 
