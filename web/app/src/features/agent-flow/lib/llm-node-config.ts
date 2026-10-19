@@ -83,7 +83,7 @@ export const DEFAULT_LLM_PARAMETERS: LlmNodeParameters = {
   items: {}
 };
 
-export const DEFAULT_LLM_RESPONSE_FORMAT: LlmNodeResponseFormat = {
+const DEFAULT_LLM_RESPONSE_FORMAT: LlmNodeResponseFormat = {
   mode: 'text'
 };
 
@@ -95,7 +95,7 @@ export const DEFAULT_LLM_INTERNAL_LLM_NODE_POLICY: LlmInternalLlmNodePolicy =
 export const DEFAULT_LLM_EXTERNAL_TOOL_POLICY: LlmExternalToolPolicy =
   'forbidden';
 export const DEFAULT_LLM_TOOL_MODE: LlmToolMode = 'agent';
-export const LLM_TOOL_IDENTIFIER_MAX_LENGTH = 64;
+const LLM_TOOL_IDENTIFIER_MAX_LENGTH = 64;
 const LLM_TOOL_SOURCE_HANDLE_PREFIX = 'visible_internal_llm_tool:';
 
 function isRecord(value: unknown): value is Record<string, unknown> {

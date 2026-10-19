@@ -45,7 +45,7 @@ export interface FrontstageJsBlockCapabilityHandlers {
   revokeDraftRun(runId: string): void;
 }
 
-export function getFrontstageJsBlockCapabilityApiBaseUrl(
+function getFrontstageJsBlockCapabilityApiBaseUrl(
   locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'
     ? window.location
     : undefined

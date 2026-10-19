@@ -1,24 +1,14 @@
-import {
-  clamp,
-  clampWindowWorkspaceRect,
-  getWindowWorkspaceViewport
-} from '../../../../shared/ui/window-workspace/window-workspace-geometry';
+import { clampWindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-geometry';
 import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
 
 export type FloatingWindowRect = WindowWorkspaceRect;
-
-export const FLOATING_WINDOW_MARGIN = 8;
 export const DEFAULT_MIN_WIDTH = 360;
 export const DEFAULT_MIN_HEIGHT = 320;
 
 const FLOATING_WINDOW_WIDTH_STORAGE_PREFIX =
   'applicationLogsFloatingWindowWidth';
 
-export { clamp };
 
-export function getViewportSize() {
-  return getWindowWorkspaceViewport();
-}
 
 export function clampRect(
   rect: FloatingWindowRect,

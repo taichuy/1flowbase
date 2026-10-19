@@ -109,22 +109,6 @@ export function isTaskSucceeded(status: string | null | undefined) {
   return status === 'success' || status === 'succeeded';
 }
 
-export function parseTaskDetailString(
-  detail: Record<string, unknown>,
-  key: string
-) {
-  const value = detail[key];
-  return typeof value === 'string' ? value : null;
-}
-
-export function parseTaskDetailNumber(
-  detail: Record<string, unknown>,
-  key: string
-) {
-  const value = detail[key];
-  return typeof value === 'number' ? value : null;
-}
-
 export function formatTrustLabel(trustLevel: string) {
   switch (trustLevel) {
     case 'verified_official':

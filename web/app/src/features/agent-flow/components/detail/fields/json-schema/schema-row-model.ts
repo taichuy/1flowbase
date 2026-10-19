@@ -82,7 +82,7 @@ export function stringifySchema(schema: Record<string, unknown>) {
   return JSON.stringify(schema, null, 2);
 }
 
-export function schemaFieldType(value: unknown): SchemaFieldType {
+function schemaFieldType(value: unknown): SchemaFieldType {
   return ['string', 'number', 'boolean', 'object', 'array'].includes(
     String(value)
   )
@@ -90,7 +90,7 @@ export function schemaFieldType(value: unknown): SchemaFieldType {
     : 'string';
 }
 
-export function schemaArrayItemType(
+function schemaArrayItemType(
   schema: Record<string, unknown> | undefined
 ): SchemaArrayItemType {
   if (schema?.type === 'string' || schema?.type === 'number') {
@@ -100,7 +100,7 @@ export function schemaArrayItemType(
   return 'object';
 }
 
-export function schemaEnumValues(
+function schemaEnumValues(
   schema: Record<string, unknown> | undefined,
   valueType: SchemaEnumValueType
 ) {
@@ -171,7 +171,7 @@ export function schemaEnumValueTypeFromArrayOption(
   return value === 'array_number' ? 'number' : 'string';
 }
 
-export function propertySchemaForType(
+function propertySchemaForType(
   type: Exclude<SchemaFieldType, 'array'>
 ): Record<string, unknown> {
   if (type === 'object') {
@@ -181,7 +181,7 @@ export function propertySchemaForType(
   return { type };
 }
 
-export function schemaRowsFromObjectSchema(schema: unknown): SchemaFieldRow[] {
+function schemaRowsFromObjectSchema(schema: unknown): SchemaFieldRow[] {
   if (!isRecord(schema)) {
     return [];
   }
@@ -198,7 +198,7 @@ export function schemaRowsFromObjectSchema(schema: unknown): SchemaFieldRow[] {
   );
 }
 
-export function schemaRowFromProperty(
+function schemaRowFromProperty(
   key: string,
   property: unknown,
   required: boolean
@@ -276,7 +276,7 @@ export function schemaRowsFromSchema(schema: unknown): SchemaFieldRow[] {
   return schemaRowsFromObjectSchema(root);
 }
 
-export function withDescription(
+function withDescription(
   schema: Record<string, unknown>,
   description: string
 ) {
@@ -292,7 +292,7 @@ export function withDescription(
   return nextSchema;
 }
 
-export function compatibleBaseSchema(row: SchemaFieldRow) {
+function compatibleBaseSchema(row: SchemaFieldRow) {
   if (row.type === 'array') {
     return row.baseSchema?.type === row.type &&
       schemaArrayItemType(
@@ -318,7 +318,7 @@ export function typedEnumValues(
   return enumValues;
 }
 
-export function withTypedEnum(
+function withTypedEnum(
   schema: Record<string, unknown>,
   enumValues: string[] | undefined,
   valueType: SchemaEnumValueType | undefined
@@ -340,7 +340,7 @@ export function withTypedEnum(
   return nextSchema;
 }
 
-export function propertySchemaFromRow(
+function propertySchemaFromRow(
   row: SchemaFieldRow
 ): Record<string, unknown> {
   const baseSchema = compatibleBaseSchema(row);

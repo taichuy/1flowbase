@@ -19,7 +19,7 @@ export type PageSelectionResolution = {
   shouldNavigate: boolean;
 };
 
-export function collectTreeNodeIds(nodes: FrontStageTreeNode[]): Set<string> {
+function collectTreeNodeIds(nodes: FrontStageTreeNode[]): Set<string> {
   const nodeIds = new Set<string>();
 
   const visit = (items: FrontStageTreeNode[]) => {
@@ -79,7 +79,7 @@ function getNextNodeTitleIndex(
   return maxIndex + 1;
 }
 
-export function getNextNodeId(nodes: FrontStageTreeNode[]): string {
+function getNextNodeId(nodes: FrontStageTreeNode[]): string {
   const nextId = generateNodeId();
 
   const existingIds = collectTreeNodeIds(nodes);
@@ -88,14 +88,6 @@ export function getNextNodeId(nodes: FrontStageTreeNode[]): string {
   }
 
   return getNextNodeId(nodes);
-}
-
-export function getNextPageTitleIndex(nodes: FrontStageTreeNode[]): number {
-  return getNextNodeTitleIndex(nodes, 'page', i18nText("frontstage", "auto.new_page_prefix"));
-}
-
-export function getNextGroupTitleIndex(nodes: FrontStageTreeNode[]): number {
-  return getNextNodeTitleIndex(nodes, 'group', i18nText("frontstage", "auto.group"));
 }
 
 export function createPageNode(
@@ -138,7 +130,7 @@ export function findNodeById(
   return null;
 }
 
-export function isPageInTree(
+function isPageInTree(
   nodes: FrontStageTreeNode[],
   targetPageId: string
 ): boolean {
@@ -338,19 +330,4 @@ export function insertPageIntoGroup(
         : node.children
     };
   });
-}
-
-export function canMoveNode(
-  nodes: FrontStageTreeNode[],
-  targetNodeId: string
-): { canMoveUp: boolean; canMoveDown: boolean } {
-  const index = nodes.findIndex((node) => node.id === targetNodeId);
-  if (index < 0) {
-    return { canMoveUp: false, canMoveDown: false };
-  }
-
-  return {
-    canMoveUp: index > 0,
-    canMoveDown: index < nodes.length - 1
-  };
 }

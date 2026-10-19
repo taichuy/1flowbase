@@ -247,7 +247,7 @@ function roundIndex(round: Record<string, unknown>, fallbackIndex: number) {
   return fallbackIndex;
 }
 
-export function readLlmRoundsFromDebugPayload(
+function readLlmRoundsFromDebugPayload(
   debugPayload: unknown
 ): Record<string, unknown>[] {
   if (!isRecord(debugPayload)) {
@@ -255,17 +255,6 @@ export function readLlmRoundsFromDebugPayload(
   }
 
   return recordArray(debugPayload.llm_rounds);
-}
-
-export function readLlmRoundsArtifactRef(debugPayload: unknown): string | null {
-  if (!isRecord(debugPayload)) {
-    return null;
-  }
-
-  const llmRounds = debugPayload.llm_rounds;
-  return isRuntimeDebugArtifactPreview(llmRounds)
-    ? llmRounds.artifact_ref
-    : null;
 }
 
 function callbackStatusValue(
@@ -384,21 +373,6 @@ export function readLlmToolCallbackDetail(
         'detail_artifact_ref'
       ]) ?? null,
     detailRef: firstStringField(loadedPayload, ['detail_ref'])
-  };
-}
-
-export function debugPayloadWithLoadedLlmRounds(
-  debugPayload: unknown,
-  loadedPayload: unknown
-): Record<string, unknown> {
-  const loadedRounds =
-    isRecord(loadedPayload) && Array.isArray(loadedPayload.llm_rounds)
-      ? loadedPayload.llm_rounds
-      : loadedPayload;
-
-  return {
-    ...(isRecord(debugPayload) ? debugPayload : {}),
-    llm_rounds: loadedRounds
   };
 }
 

@@ -31,7 +31,7 @@ function workflowTriggerOutputs(triggerType: unknown) {
   return outputs;
 }
 
-export function getWorkflowVariableSources(
+function getWorkflowVariableSources(
   workflowTriggerContext: unknown
 ): AuthoringVariableSource[] {
   const triggerType =

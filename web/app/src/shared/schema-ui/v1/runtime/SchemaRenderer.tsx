@@ -149,7 +149,7 @@ export function SchemaRenderer({
   );
 }
 
-export function SchemaBlockRenderer({
+function SchemaBlockRenderer({
   adapter,
   block,
   registry,

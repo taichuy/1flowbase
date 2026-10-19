@@ -5,7 +5,7 @@ import type {
   StyleBoundaryRuntimeScene
 } from './types';
 
-export function getSceneManifest(): StyleBoundaryManifestScene[] {
+function getSceneManifest(): StyleBoundaryManifestScene[] {
   return manifest as StyleBoundaryManifestScene[];
 }
 

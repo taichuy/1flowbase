@@ -182,7 +182,7 @@ export function StatusIcon({ status }: { status: string }) {
   );
 }
 
-export function NodeTypeIcon({ nodeType }: { nodeType: string }) {
+function NodeTypeIcon({ nodeType }: { nodeType: string }) {
   return (
     <span
       aria-label={i18nText('agentFlow', 'auto.node_type_alt', {

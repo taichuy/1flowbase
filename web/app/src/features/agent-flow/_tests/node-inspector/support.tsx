@@ -1,14 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 
-import { readFileSync } from 'node:fs';
+import 'node:fs';
 
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { vi } from 'vitest';
 
@@ -19,23 +13,20 @@ import {
 } from '@1flowbase/flow-schema';
 import { AppProviders } from '../../../../app/AppProviders';
 import { appI18n } from '../../../../shared/i18n/app-i18n';
-import {
-  modelProviderOptionsContract,
-  modelProviderOptionsProviders
-} from '../../../../test/model-provider-contract-fixtures';
+import { modelProviderOptionsProviders } from '../../../../test/model-provider-contract-fixtures';
 
 import { createEdgeDocument } from '../../lib/document/edge-factory';
 import { createNodeDocument } from '../../lib/document/node-factory';
 import * as dataModelOptionsApi from '../../api/data-model-options';
 import * as modelProviderOptionsApi from '../../api/model-provider-options';
-import { TemplatedNamedBindingsField } from '../../components/bindings/TemplatedNamedBindingsField';
-import { NodeDetailPanel } from '../../components/detail/NodeDetailPanel';
-import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
-import { NodeInspector } from '../../components/inspector/NodeInspector';
+import '../../components/bindings/TemplatedNamedBindingsField';
+import '../../components/detail/NodeDetailPanel';
+import '../../components/detail/tabs/NodeConfigTab';
+import '../../components/inspector/NodeInspector';
 import * as nodeSchemaAdapterApi from '../../schema/node-schema-adapter';
 import * as nodeSchemaRegistry from '../../schema/node-schema-registry';
-import { validateDocument } from '../../lib/validate-document';
-import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import '../../lib/validate-document';
+import '../../store/editor/AgentFlowEditorStoreProvider';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { selectWorkingDocument } from '../../store/editor/selectors';
 
@@ -68,7 +59,7 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 
 export const primaryProviderOption = modelProviderOptionsProviders[0];
-export const primaryProviderFirstGroup = primaryProviderOption.model_groups[0];
+const primaryProviderFirstGroup = primaryProviderOption.model_groups[0];
 export const primaryProviderFirstModel = primaryProviderFirstGroup.model;
 export const fetchModelProviderOptionsSpy = vi.spyOn(
   modelProviderOptionsApi,
@@ -510,17 +501,3 @@ export async function setupNodeInspectorTest() {
   resolveAgentFlowNodeSchemaSpy.mockClear();
   createAgentFlowNodeSchemaAdapterSpy.mockClear();
 }
-
-export { fireEvent, readFileSync, screen, waitFor, within };
-export {
-  AgentFlowEditorStoreProvider,
-  NodeConfigTab,
-  NodeDetailPanel,
-  NodeInspector,
-  TemplatedNamedBindingsField,
-  createDefaultAgentFlowDocument,
-  modelProviderOptionsContract,
-  nodeSchemaAdapterApi,
-  nodeSchemaRegistry,
-  validateDocument
-};

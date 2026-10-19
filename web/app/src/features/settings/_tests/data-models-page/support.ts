@@ -1,11 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Grid } from 'antd';
 import { createElement } from 'react';
 import { expect, vi } from 'vitest';
@@ -264,9 +257,9 @@ vi.mock('@scalar/api-reference-react', () => ({
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { AppRouterProvider } from '../../../../app/router';
-import { i18nText } from '../../../../shared/i18n/text';
+import '../../../../shared/i18n/text';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
+import '../../components/data-models/DataModelFormDrawer';
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 const antdStaticMessageWarning =
@@ -1088,13 +1081,4 @@ export function cleanupDataModelsPageTest() {
   }
 }
 
-export {
-  DataModelFormDrawer,
-  dataModelsApi,
-  fireEvent,
-  i18nText,
-  render,
-  screen,
-  waitFor,
-  within
-};
+export { dataModelsApi };

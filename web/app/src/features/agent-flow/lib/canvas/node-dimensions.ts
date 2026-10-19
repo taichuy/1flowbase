@@ -8,7 +8,7 @@ import {
 
 export const CANVAS_NODE_WIDTH = 196;
 export const CANVAS_NODE_BASE_HEIGHT = 96;
-export const CANVAS_NODE_SOURCE_HANDLE_PITCH = 32;
+const CANVAS_NODE_SOURCE_HANDLE_PITCH = 32;
 
 export function getCanvasNodeMinimumHeight(sourceHandleCount: number) {
   const visibleSourceHandleCount = Math.max(1, sourceHandleCount);
@@ -19,7 +19,7 @@ export function getCanvasNodeMinimumHeight(sourceHandleCount: number) {
   );
 }
 
-export function getCanvasNodeSourceHandleCount(
+function getCanvasNodeSourceHandleCount(
   node: Pick<FlowNodeDocument, 'type' | 'config' | 'bindings'>
 ) {
   const branchHandleIds =
