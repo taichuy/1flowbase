@@ -6,7 +6,7 @@
       "rule": "react-doctor/prefer-module-scope-pure-function",
       "sourceSha256": "e18db4a93423dae5abd9bd57d423511d3ceb36ef9217dfe09b5bf78ece0b394a",
       "reason": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx:114（react-doctor/prefer-module-scope-pure-function）：本地函数仅把传入数值格式化、window.location.assign 或 mask token 文本，使用点是同步调用/局部 event 闭包；函数本身不传给 memoized child，且未在 hot collection 内重复创建。模块化是代码整理选择，不能把局部分配直接认定为可见重绘错误。",
-      "evidence": [{"file": "web/app/src/features/applications/_tests/application-api-page.test.tsx", "sha256": "469881793078f57801d5c0d08433b9d12c12a4475141f44b672646449f8c1d5d"}, {"file": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx", "sha256": "e18db4a93423dae5abd9bd57d423511d3ceb36ef9217dfe09b5bf78ece0b394a"}, {"file": "web/app/src/features/applications/pages/ApplicationApiPage.tsx", "sha256": "b4f2799e04e01e00ad2b7739c2910749c711f6cb2a141bdac54338b9d0ef31f2"}]
+      "evidence": [{"file": "web/app/src/features/applications/_tests/application-api-page.test.tsx", "sha256": "77c5cb5be2a30220a4a627e0720bd22a2646431eccb169bef9dc539f7086f6bf"}, {"file": "web/app/src/features/applications/components/api/ApplicationApiKeysPanel.tsx", "sha256": "e18db4a93423dae5abd9bd57d423511d3ceb36ef9217dfe09b5bf78ece0b394a"}, {"file": "web/app/src/features/applications/pages/ApplicationApiPage.tsx", "sha256": "b4f2799e04e01e00ad2b7739c2910749c711f6cb2a141bdac54338b9d0ef31f2"}]
     }
   ]
 }

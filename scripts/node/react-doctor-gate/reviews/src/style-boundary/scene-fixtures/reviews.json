@@ -6,7 +6,7 @@
       "rule": "react-doctor/no-multi-comp",
       "sourceSha256": "459b85d6044ab94ec9e649527a6755894b8c5ed744a0fa7eb4997623e21d2c1f",
       "reason": "The components are cohesive private provider/consumer or explicitly separate scene fixtures; no shared state/lifecycle defect is identified. Notification scene fixtures export two deliberately separate tiny notification scenarios consumed by the style-boundary scene registry. Keeping scene exports in the same fixture module does not share React state or create a production component ownership conflict.",
-      "evidence": [{"file": "web/app/src/style-boundary/_tests/registry.test.tsx", "sha256": "142ec95c6b3d0f5a011e1a0dd07fb31d2f2016e98fa34d78126baf195fedfada"}]
+      "evidence": [{"file": "web/app/src/style-boundary/_tests/registry.test.tsx", "sha256": "1497db3ab1775300d5f252fd2b32d1a5eb011f389d2c2cbbb31f22922cf50958"}]
     }
   ]
 }
