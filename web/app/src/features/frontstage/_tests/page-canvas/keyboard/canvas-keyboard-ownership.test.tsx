@@ -1,5 +1,4 @@
-import { cleanup,
-  act,
+import { act,
   fireEvent,
   render,
   screen,
@@ -9,7 +8,7 @@ import { cleanup,
 import { Input, Select, Modal, Button } from 'antd';
 import { useState, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { FrontstagePageContent } from '../../../api/page-content';
 import { PageCanvas } from '../../../components/PageCanvas';
@@ -372,5 +371,3 @@ const domEvents = {
   click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
   fire: (...args: Parameters<typeof fireEvent>) => dispatch(() => fireEvent(...args))
 };
-
-afterEach(() => { cleanup(); });

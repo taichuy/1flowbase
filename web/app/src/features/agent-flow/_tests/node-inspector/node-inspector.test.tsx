@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 
 import { useState } from 'react';
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { modelProviderOptionsContract } from '../../../../test/model-provider-contract-fixtures';
@@ -1300,5 +1300,3 @@ const domEvents = {
   mouseMove: (...args: Parameters<typeof fireEvent.mouseMove>) => dispatch(() => fireEvent.mouseMove(...args)),
   mouseUp: (...args: Parameters<typeof fireEvent.mouseUp>) => dispatch(() => fireEvent.mouseUp(...args))
 };
-
-afterEach(() => { cleanup(); });

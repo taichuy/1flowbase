@@ -256,16 +256,13 @@ describe('AppShellFrame', () => {
         settingsTrigger.compareDocumentPosition(helpTrigger) &
           Node.DOCUMENT_POSITION_FOLLOWING
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-      expect(designButton).toHaveAttribute('aria-checked', 'false');
+      expect(designButton).not.toBeChecked();
     });
 
     await domEvents.click(screen.getByLabelText('Enter design mode'));
 
     expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(true);
-    expect(screen.getByLabelText('Exit design mode')).toHaveAttribute(
-      'aria-checked',
-      'true'
-    );
+    expect(screen.getByLabelText('Exit design mode')).toBeChecked();
   });
 
   test('BGP-008 preloads design mode after the critical route grace window', async () => {

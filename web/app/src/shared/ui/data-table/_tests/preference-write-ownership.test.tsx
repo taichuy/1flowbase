@@ -54,7 +54,7 @@ describe('data table preference write ownership', () => {
     window.localStorage.setItem('first', JSON.stringify(table(['name'])));
     window.localStorage.setItem('second', JSON.stringify(table(['owner'])));
     const write = vi.spyOn(Storage.prototype, 'setItem');
-    const { result, rerender } = renderHook(
+    const { result, rerender, unmount } = renderHook(
       ({ storageKey }) =>
         usePersistedDataTableConfiguration({ storageKey, columns }),
       { initialProps: { storageKey: 'first' } }
@@ -77,12 +77,13 @@ describe('data table preference write ownership', () => {
     expect(JSON.parse(window.localStorage.getItem('first')!)).toEqual(
       table(['name'])
     );
+    unmount();
     write.mockRestore();
   });
 
   it('hydrates server meta without PATCH and saves a user edit once', async () => {
     patchUserPreferences.mockResolvedValue(profile(['name', 'owner']));
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useUserPreferenceDataTableConfiguration({
         preferenceKey: 'first',
         columns
@@ -111,10 +112,12 @@ describe('data table preference write ownership', () => {
     });
     expect(patchUserPreferences).toHaveBeenCalledTimes(1);
     expect(result.current.visibleColumnKeys).toEqual(['name', 'owner']);
+    // Release auth-store subscriptions before afterEach resets the session.
+    unmount();
   });
 
   it('cancels a pending edit when the table owner changes', async () => {
-    const { result, rerender } = renderHook(
+    const { result, rerender, unmount } = renderHook(
       ({ preferenceKey }) =>
         useUserPreferenceDataTableConfiguration({ preferenceKey, columns }),
       { initialProps: { preferenceKey: 'first' } }
@@ -126,5 +129,7 @@ describe('data table preference write ownership', () => {
     });
     expect(patchUserPreferences).not.toHaveBeenCalled();
     expect(result.current.visibleColumnKeys).toEqual(['name', 'owner']);
+    // Release auth-store subscriptions before afterEach resets the session.
+    unmount();
   });
 });

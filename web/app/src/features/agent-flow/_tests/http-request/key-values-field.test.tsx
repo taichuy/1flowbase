@@ -1,12 +1,11 @@
-import { cleanup,
-  act,
+import { act,
   fireEvent,
   render,
   screen,
   waitFor
 } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import type { FlowBinding } from '@1flowbase/flow-schema';
 import { HttpRequestBodyField } from '../../components/detail/fields/http-request/HttpRequestBodyField';
@@ -186,5 +185,3 @@ const domEvents = {
   click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
   change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args))
 };
-
-afterEach(() => { cleanup(); });

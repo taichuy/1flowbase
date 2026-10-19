@@ -1,5 +1,4 @@
 import { act,
-  cleanup,
   fireEvent,
   render as testingRender,
   screen,
@@ -9,7 +8,7 @@ import { act,
 import { App } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { ConsoleFrontstageComponent } from '@1flowbase/api-client';
 import {
@@ -252,7 +251,7 @@ const buttonComponent = {
 } satisfies ConsoleFrontstageComponent;
 
 describe('FrontstageJsxStudioDrawer', () => {
-  afterEach(() => { cleanup(); });
+
 
   beforeEach(async () => {
     vi.clearAllMocks();

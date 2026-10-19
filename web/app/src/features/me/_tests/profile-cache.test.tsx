@@ -22,14 +22,19 @@ vi.mock('../../../shared/ui/section-page-layout/SectionPageLayout', () => ({
 vi.mock('../components/ProfileForm', () => ({
   ProfileForm: ({
     me,
-    onSubmit
+    onSubmit,
+    submitting
   }: {
     me: ConsoleMe;
-    onSubmit: (input: unknown) => void;
+    onSubmit: (input: unknown) => Promise<void>;
+    submitting: boolean;
   }) => (
     <div>
       <span>{me.name}</span>
-      <button onClick={() => onSubmit({ name: 'Saved profile' })}>
+      <button
+        disabled={submitting}
+        onClick={() => onSubmit({ name: 'Saved profile' })}
+      >
         Save profile
       </button>
     </div>
@@ -72,16 +77,24 @@ describe('profile cache coherence', () => {
     const wrapper = ({ children }: PropsWithChildren) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
-    const first = render(<MePage requestedSectionKey="profile" />, { wrapper });
+    const view = render(<MePage requestedSectionKey="profile" />, { wrapper });
     fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
     await waitFor(() =>
       expect(client.getQueryData(['me', 'profile'])).toEqual(saved)
     );
     expect(useAuthStore.getState().me).toEqual(saved);
-    first.unmount();
-    render(<MePage requestedSectionKey="profile" />, { wrapper });
+    await waitFor(() => {
+      expect(screen.getByText('Saved profile')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save profile' })).toBeEnabled();
+    });
+    view.unmount();
+    const { unmount: unmountRemounted } = render(<MePage requestedSectionKey="profile" />, {
+      wrapper
+    });
     expect(screen.getByText('Saved profile')).toBeInTheDocument();
     expect(useAuthStore.getState().me).toEqual(saved);
+    // Unsubscribe both query and auth observers before resetting their owners.
+    unmountRemounted();
     client.clear();
   });
 });

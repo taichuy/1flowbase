@@ -981,7 +981,9 @@ describe('FrontStagePage - runtime canvas state', () => {
       }
     ]);
 
-    expect(screen.getByRole('list')).toHaveTextContent(/我的自定义主页/, { normalizeWhitespace: false });
+    expect(
+      screen.getByRole('tree', { name: i18nText('frontstage', 'auto.page_node') })
+    ).toContainElement(screen.getByRole('treeitem', { name: '我的自定义主页' }));
     expect(
       screen.getByRole('heading', { name: '我的自定义主页' })
     ).toBeInTheDocument();

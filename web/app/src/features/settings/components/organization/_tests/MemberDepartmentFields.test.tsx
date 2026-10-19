@@ -1,5 +1,4 @@
-import { cleanup,
-  act,
+import { act,
   fireEvent,
   render,
   screen,
@@ -73,7 +72,9 @@ describe('member department invariants', () => {
     }));
   });
   afterEach(() => {
-    cleanup();
+    // Release only the render owners created by this fixture before its resource teardown.
+    for (const view of mountedViews) view.unmount();
+    mountedViews.clear();
     vi.useRealTimers();
   });
   test('retains and resolves existing selections absent from the first page', async () => {
@@ -159,9 +160,15 @@ async function dispatch<T>(event: () => T) {
   return result;
 }
 
+// Explicit render owners for this fixture; other test roots remain RTL-owned.
+const mountedViews = new Set<ReturnType<typeof render>>();
+
 async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(...args); });
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
   return view;
 }
 

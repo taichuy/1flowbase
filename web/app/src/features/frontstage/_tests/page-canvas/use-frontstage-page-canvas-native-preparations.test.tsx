@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const nativeRuntime = vi.hoisted(() => ({
   evaluate: vi.fn(async (artifact: unknown, _registry?: unknown) => ({
@@ -494,5 +494,3 @@ function createArtifact(
     }
   } as unknown as NativeReactComponentArtifact;
 }
-
-afterEach(() => { cleanup(); });

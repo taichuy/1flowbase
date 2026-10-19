@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { createRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -21,7 +21,9 @@ describe('native block generic AntD overlay host', () => {
   });
 
   afterEach(() => {
-    cleanup();
+    // Release only the render owners created by this fixture before its resource teardown.
+    for (const view of mountedViews) view.unmount();
+    mountedViews.clear();
     document.body.replaceChildren();
     vi.restoreAllMocks();
     showPopover.mockReset();
@@ -552,9 +554,15 @@ async function dispatch<T>(event: () => T) {
   return result;
 }
 
+// Explicit render owners for this fixture; other test roots remain RTL-owned.
+const mountedViews = new Set<ReturnType<typeof render>>();
+
 async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(...args); });
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
   return view;
 }
 

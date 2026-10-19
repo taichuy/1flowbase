@@ -1,5 +1,5 @@
-import { act, cleanup, fireEvent, screen } from '@testing-library/react';
-import { afterEach, describe, expect, test } from 'vitest';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { describe, expect, test } from 'vitest';
 import type { ReactElement } from 'react';
 import { createTestMemoryRouter } from '../../../test/renderers/create-test-memory-router';
 
@@ -208,7 +208,3 @@ async function click(...args: Parameters<typeof fireEvent.click>) {
     fireEvent.click(...args);
   });
 }
-
-afterEach(() => {
-  cleanup();
-});

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { beforeEach, describe, expect, test } from 'vitest';
 
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
@@ -361,5 +361,3 @@ const domEvents = {
   click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
   change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args))
 };
-
-afterEach(() => { cleanup(); });

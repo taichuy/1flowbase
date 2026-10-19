@@ -1,5 +1,5 @@
 import { Modal } from 'antd';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { modelProviderCatalogEntries } from '../../../../../test/model-provider-contract-fixtures';
@@ -12,7 +12,6 @@ const accountOperationCatalogEntry = {
 
 describe('ModelProviderAccountOperationsCard', () => {
   afterEach(() => {
-    cleanup();
     vi.restoreAllMocks();
   });
 

@@ -1,7 +1,6 @@
 import { i18nText } from '../../../../../../shared/i18n/text';
 /* eslint-disable @typescript-eslint/no-unused-vars -- shared MCP panel fixture inventory is intentionally broader than each scenario file. */
-import { cleanup,
-  act,
+import { act,
   fireEvent,
   render,
   screen,
@@ -1436,9 +1435,15 @@ async function dispatch<T>(event: () => T) {
   return result;
 }
 
+// Explicit render owners for this fixture; other test roots remain RTL-owned.
+const mountedViews = new Set<ReturnType<typeof render>>();
+
 async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(...args); });
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
   return view;
 }
 
@@ -1449,6 +1454,8 @@ const domEvents = {
 };
 
 afterEach(() => {
-  cleanup();
+  // Release only the render owners created by this fixture before its resource teardown.
+  for (const view of mountedViews) view.unmount();
+  mountedViews.clear();
   for (const editor of vditorMock.instances) expect(editor.destroy).toHaveBeenCalledOnce();
 });

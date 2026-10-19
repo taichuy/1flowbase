@@ -1,5 +1,4 @@
-import { cleanup,
-  act,
+import { act,
   fireEvent,
   getConfig,
   render,
@@ -29,7 +28,9 @@ describe('native block Dropdown runtime adapter', () => {
 
   afterEach(async () => {
     await act(async () => {
-      cleanup();
+      // Release only the render owners created by this fixture before its resource teardown.
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
       if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
     });
     if (vi.isFakeTimers()) vi.useRealTimers();
@@ -236,7 +237,7 @@ describe('native block Dropdown runtime adapter', () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       const root = document.createElement('div');
       document.body.append(root);
-      await renderSettled(
+      const view = await renderSettled(
         <FrontstageNativeTrustedBlockPortalHost
           root={root}
           renderEpoch="dropdown:cascading"
@@ -314,6 +315,11 @@ describe('native block Dropdown runtime adapter', () => {
         }
         await domEvents.click(trigger);
       }
+      // Reopening schedules CSSMotion RAF work even with CSS animation disabled.
+      // Own that clock turn before waitFor and teardown can yield outside act.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
       await waitFor(() =>
         expect(layer).toHaveAttribute(
           'data-flowbase-native-overlay-state',
@@ -323,6 +329,7 @@ describe('native block Dropdown runtime adapter', () => {
       expect(onOpenChange).toHaveBeenLastCalledWith(true, {
         source: 'trigger'
       });
+      view.unmount();
     }
   );
 
@@ -561,9 +568,15 @@ async function dispatch<T>(event: () => T) {
   return result;
 }
 
+// Explicit render owners for this fixture; other test roots remain RTL-owned.
+const mountedViews = new Set<ReturnType<typeof render>>();
+
 async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(...args); });
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
   return view;
 }
 

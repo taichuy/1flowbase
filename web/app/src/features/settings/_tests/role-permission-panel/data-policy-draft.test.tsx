@@ -58,10 +58,10 @@ function setup(
       </QueryClientProvider>
     );
   }
-  const result = render(view('member'));
+  const { rerender } = render(view('member'));
   return {
     client,
-    switchRole: (roleCode: string) => result.rerender(view(roleCode))
+    switchRole: (roleCode: string) => rerender(view(roleCode))
   };
 }
 
