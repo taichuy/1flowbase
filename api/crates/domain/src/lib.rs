@@ -5,26 +5,35 @@ pub mod application;
 pub mod audit;
 pub mod auth;
 pub mod base;
+#[path = "modeling_types/builtin_data_model.rs"]
 pub mod builtin_data_model;
 pub mod console_policy;
 pub mod data_source;
+#[path = "extension_models/extension_installation.rs"]
 pub mod extension_installation;
 pub mod file_management;
 pub mod flow;
 pub mod frontend_block_catalog;
 pub mod frontstage;
+#[path = "extension_models/host_extension.rs"]
 pub mod host_extension;
 pub mod i18n_catalog;
+#[path = "extension_models/js_dependency.rs"]
 pub mod js_dependency;
 pub mod mcp_bundle;
 pub mod mcp_management;
 pub mod model_provider;
+#[path = "modeling_types/modeling.rs"]
 pub mod modeling;
 pub mod network_egress;
+#[path = "extension_models/node_contribution.rs"]
 pub mod node_contribution;
 pub mod orchestration;
+#[path = "extension_models/plugin_worker.rs"]
 pub mod plugin_worker;
+#[path = "modeling_types/resource.rs"]
 pub mod resource;
+#[path = "modeling_types/resource_filter.rs"]
 pub mod resource_filter;
 pub mod runtime_observability;
 pub mod scope;
@@ -226,6 +235,7 @@ mod attribution_exports_tests {
     }
 }
 
+#[path = "extension_models/plugin_contribution_authority.rs"]
 pub mod plugin_contribution_authority;
 pub use plugin_contribution_authority::*;
 
