@@ -66,13 +66,13 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
     scope: 'coverage-backend-api-server-sharded-3-of-4',
   }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow.js'), 'shard', 'api-server', '3', '4'],
+    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow', 'cli.js'), 'shard', 'api-server', '3', '4'],
     cwd: repoRoot,
   });
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'coverage-backend-api-server-merge' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow.js'), 'merge', 'api-server', '4'],
+    args: [path.join(repoRoot, 'scripts', 'node', 'coverage-shadow', 'cli.js'), 'merge', 'api-server', '4'],
     cwd: repoRoot,
   });
 
@@ -171,7 +171,7 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'release-rollback' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'release-rollback-gate.js')],
+    args: [path.join(repoRoot, 'scripts', 'node', 'release-rollback-gate', 'cli.js')],
     cwd: repoRoot,
   });
 

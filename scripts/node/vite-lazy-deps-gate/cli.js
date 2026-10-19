@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { main } = require('./vite-lazy-deps-gate/core.js');
+const { main } = require('./core.js');
 
 if (require.main === module) {
   Promise.resolve()

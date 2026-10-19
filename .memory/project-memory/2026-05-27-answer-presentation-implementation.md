@@ -63,7 +63,7 @@ AI 在当前 `main` 工作分支落地 issue `#497` 的核心实现，用户后�
 - `cargo test -p api-server run_detail_response_`
 - `pnpm --filter @1flowbase/web exec ../../scripts/node/exec-with-real-node.sh ../../scripts/node/cli/run-frontend-vitest.js run src/features/agent-flow/_tests/debug-console/run-detail-mapper.test.ts src/features/agent-flow/_tests/debug-console/debug-conversation-log-panel.test.tsx`
 - `pnpm --filter @1flowbase/api-client build`
-- `node scripts/node/cli/test-contracts.js`
+- `node scripts/node/cli/quality/test-contracts.js`
 - `node scripts/node/tooling.js check-rust-backend`
 - `pnpm --filter @1flowbase/web exec ../../scripts/node/exec-with-real-node.sh ../../scripts/node/cli/run-frontend-vitest.js run src/features/agent-flow/_tests/validate-document.test.ts`
 - `pnpm --filter @1flowbase/web exec prettier --check src/features/agent-flow/lib/validate-document.ts src/features/agent-flow/_tests/validate-document.test.ts`

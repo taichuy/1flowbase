@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { writeContainerImageSecurityReports } = require('../container-image-security/core.js');
+const { writeContainerImageSecurityReports } = require('../../container-image-security/core.js');
 
 function main(_argv = [], deps = {}) {
   const result = writeContainerImageSecurityReports({

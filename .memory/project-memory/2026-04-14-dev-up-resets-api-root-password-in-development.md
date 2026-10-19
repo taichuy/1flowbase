@@ -19,7 +19,7 @@ decision_policy: verify_before_decision
 scope:
   - scripts/node/dev-up/env.js
   - scripts/node/dev-up/_tests/prestart.test.js
-  - scripts/node/reset-account-password.js
+  - scripts/node/reset-account-password/cli.js
   - scripts/node/reset-account-password/
 ---
 

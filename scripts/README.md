@@ -137,16 +137,16 @@ node scripts/node/dev-up.js stop
 - 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
 - 仓库资源配置面向当前 24 GiB / 16 vCPU 虚拟机：开发父组 CPUQuota=1200%，不限制内存；Rust 子组 MemoryHigh=16G、MemoryMax=18G、swap=1G、Cargo jobs=2。软阈值高于此前约 5 GiB 的编译工作集，避免持续触发内存回收；硬上限给桌面及其他工具留出余量。较小内存机器需要按容量调整自己的配置，不能直接沿用此预算；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
 
-### `node scripts/node/reset-account-password.js [options]`
+### `node scripts/node/reset-account-password/cli.js [options]`
 
 直接读取当前 worktree 的 `api/apps/api-server/.env`，并在开发数据库中重置指定账号的密码。
 
 ```bash
 # 使用 BOOTSTRAP_ROOT_ACCOUNT / BOOTSTRAP_ROOT_PASSWORD
-node scripts/node/reset-account-password.js
+node scripts/node/reset-account-password/cli.js
 
 # 重置其他已存在账号
-node scripts/node/reset-account-password.js --account alice --password '<new-password>'
+node scripts/node/reset-account-password/cli.js --account alice --password '<new-password>'
 ```
 
 脚本使用与后端一致的 Argon2id 参数，更新密码时同时递增 `session_version`。账号或数据表不存在时默认失败；`dev-up` 显式使用 `--if-missing skip`，把空库 root 创建交给 API bootstrap。生产环境禁止执行。
@@ -217,7 +217,7 @@ CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" \
 
 只有开发者主动排查资源问题时，才在 `.1flowbase.verify.local.json` 显式覆盖并发值；仓库本地默认不降载。
 
-### `node scripts/node/cli/test-contracts.js`
+### `node scripts/node/cli/quality/test-contracts.js`
 
 运行跨消费者契约测试，当前聚焦模型供应商配置相关契约。
 
@@ -240,21 +240,21 @@ node scripts/node/test-scripts.js page-debug
 node scripts/node/test-scripts.js verify-backend runtime-gate
 ```
 
-### `node scripts/node/vite-lazy-deps-gate.js`
+### `node scripts/node/vite-lazy-deps-gate/cli.js`
 
 检查 `React.lazy(() => import(...))` 子图中的 lazy-only 裸 npm 依赖是否已写入
 `web/app/vite.config.ts` 的 `optimizeDeps.include`，并检查 route-owned lazy import
 是否有 `scripts/node/vite-lazy-deps-gate/manifest.json` smoke 覆盖。
 
 ```bash
-node scripts/node/vite-lazy-deps-gate.js
-node scripts/node/vite-lazy-deps-gate.js --smoke --web-base-url http://127.0.0.1:3100
+node scripts/node/vite-lazy-deps-gate/cli.js
+node scripts/node/vite-lazy-deps-gate/cli.js --smoke --web-base-url http://127.0.0.1:3100
 ```
 
 默认只跑静态检查；`--smoke` 才启动 Playwright 并访问 manifest 中的路径，捕获 Vite dev
 `504 Outdated Optimize Dep` 和 `Failed to fetch dynamically imported module`。
 
-### `node scripts/node/dev-experience.js`
+### `node scripts/node/dev-experience/cli.js`
 
 开发服务器生命周期与模块图性能门禁。默认静态检查源码模块图、禁止高扇出图标 namespace
 导入，并验证 `antd` 与 `@ant-design/icons` 预打包配置；`--smoke` 对真实开发服务器
@@ -263,8 +263,8 @@ Smoke 会复用 `page-debug` 的临时 console session owner，从当前数据�
 页面和 Workflow 应用，逐路由断言 ready selector、最终 URL、console/page error，并在结束时回收 session。
 
 ```bash
-node scripts/node/dev-experience.js
-node scripts/node/dev-experience.js --smoke --web-base-url http://127.0.0.1:3100
+node scripts/node/dev-experience/cli.js
+node scripts/node/dev-experience/cli.js --smoke --web-base-url http://127.0.0.1:3100
 ```
 
 ## Verification Scripts
@@ -450,14 +450,14 @@ node scripts/node/verify-state-protocols.js --skip-live-acp
 
 ## MCP Publishing
 
-### `node scripts/node/export-mcp-instance-to-official.js --instance-id <id> --target <absolute-path>`
+### `node scripts/node/export-mcp-instance-to-official/cli.js --instance-id <id> --target <absolute-path>`
 
 将一个 MCP 实例同步到官方插件源码目录。脚本使用临时 owner session，自动递增目标 Bundle 的 patch 版本，调用官方仓库校验器，并原子替换目标目录；不会 commit 或 push。
 
 官方发布导出只保留内置静态 API、内置数据表 CRUD 和上游 MCP Proxy Tool；自动排除 `/api/ex/*` Workflow 与工作区自建数据表生成的 CRUD Tool。完整参数和失败保护说明见 [`scripts/node/export-mcp-instance-to-official/README.md`](node/export-mcp-instance-to-official/README.md)。
 
 ```bash
-node scripts/node/export-mcp-instance-to-official.js \
+node scripts/node/export-mcp-instance-to-official/cli.js \
   --instance-id 1flowbase \
   --target /home/taichuy/git/1flowbase-official-plugins/mcp/@taichuy/1flowbase_zh_hans \
   --api-base-url http://127.0.0.1:7800

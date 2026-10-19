@@ -4,7 +4,7 @@ const {
   buildBackendConsistencyCommands: buildCommands,
   runBackendConsistency: main,
   runBackendConsistencyCommandSequence,
-} = require('../verify/index.js');
+} = require('../../verify/index.js');
 
 if (require.main === module) {
   Promise.resolve()

@@ -4,8 +4,8 @@ const {
   buildCargoCommandEnv,
   getRepoRoot,
   runManagedCommandSequence,
-} = require('../testing/warning-capture.js');
-const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
+} = require('../../testing/warning-capture.js');
+const { loadVerifyRuntimeConfig } = require('../../testing/verify-runtime.js');
 
 function buildCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
   return [
@@ -42,7 +42,7 @@ async function main(_argv = [], deps = {}) {
     env,
     scope: 'verify-openapi',
     lockMode: 'heavy',
-    commandDisplay: 'node scripts/node/cli/verify-openapi.js',
+    commandDisplay: 'node scripts/node/cli/quality/verify-openapi.js',
     runtimeConfig,
     commands: buildCommands({
       cargoJobs: runtimeConfig.backend.cargoJobs,

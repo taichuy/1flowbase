@@ -1,32 +1,49 @@
 #!/usr/bin/env node
 
+const path = require('node:path');
+
 const {
   parseBooleanInput,
-  runQualityGate,
-} = require('../github-quality-gate/core.js');
+  runQualityGateAggregate,
+} = require('../../github-quality-gate/core.js');
+
+function parseExpectedScopes(value) {
+  if (!value) {
+    return null;
+  }
+
+  return value
+    .split(',')
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+}
 
 function readInputs(env = process.env) {
+  const expectedScopes = parseExpectedScopes(env.INPUT_EXPECTED_SCOPES);
+
   return {
-    scope: env.INPUT_SCOPE || 'ci',
+    artifactRoot: env.INPUT_ARTIFACT_ROOT || path.join('tmp', 'test-governance', 'parallel'),
     reportType: env.INPUT_REPORT_TYPE || 'ci',
     publishIssue: parseBooleanInput(env.INPUT_PUBLISH_ISSUE),
+    publishPrComment: parseBooleanInput(env.INPUT_PUBLISH_PR_COMMENT),
+    prNumber: env.INPUT_PR_NUMBER ? Number.parseInt(env.INPUT_PR_NUMBER, 10) : 0,
     githubToken: env.INPUT_GITHUB_TOKEN || '',
     environmentName: env.INPUT_ENVIRONMENT || '',
+    ...(expectedScopes ? { expectedScopes } : {}),
   };
 }
 
 async function main(_argv = [], deps = {}) {
   const env = deps.env || process.env;
   const inputs = readInputs(env);
-  const result = await runQualityGate({
+  const result = await runQualityGateAggregate({
     ...inputs,
     env,
     repoRoot: deps.repoRoot,
-    spawnSyncImpl: deps.spawnSyncImpl,
     createIssueImpl: deps.createIssueImpl,
     listOpenQualityGateIssuesImpl: deps.listOpenQualityGateIssuesImpl,
     closeIssueImpl: deps.closeIssueImpl,
-    writeStdout: deps.writeStdout,
+    upsertPrCommentImpl: deps.upsertPrCommentImpl,
     writeStderr: deps.writeStderr,
   });
 
@@ -40,12 +57,13 @@ if (require.main === module) {
       process.exitCode = status;
     })
     .catch((error) => {
-      process.stderr.write(`[1flowbase-quality-gate] ${error.message}\n`);
+      process.stderr.write(`[1flowbase-quality-gate-aggregate] ${error.message}\n`);
       process.exitCode = 1;
     });
 }
 
 module.exports = {
   main,
+  parseExpectedScopes,
   readInputs,
 };

@@ -63,7 +63,7 @@ R = {规则 r | r 与 C 相关}
 | 页面 / 壳层 / 样式 / 第三方 slot | [frontend-quality-gates](references/frontend/frontend-quality-gates.md)，结合 DESIGN.md；`check-style-boundary` 只证明样式边界 |
 | 层级、入口、同类对象交互 | [interaction-architecture-gate](../frontend-development/references/interaction-architecture-gate.md) |
 | 页面运行态与认证浏览器 | [browser-verification](../frontend-development/references/browser-verification.md)，`page-debug`；无运行态证据则限制视觉结论 |
-| 共享 DTO / consumer / style-boundary mock | `node scripts/node/cli/test-contracts.js` 或等价定向 consumer 证据，并核对仓库 gate 接入 |
+| 共享 DTO / consumer / style-boundary mock | `node scripts/node/cli/quality/test-contracts.js` 或等价定向 consumer 证据，并核对仓库 gate 接入 |
 | i18n 资源、语言切换、key 引用 | [i18n-hygiene-gate](references/frontend/i18n-hygiene-gate.md)，运行或读取有效 `i18n-hygiene`，保留动态 key 原因 |
 | 后端 API / 状态 / 插件 / 上游错误 contract | [backend-regression-steps](references/backend/backend-regression-steps.md)；认证运行态使用 `api-debug` session owner |
 | 入口装配、认证、Kernel、stream 或协议等价 | [interface-lifecycle-gate](references/backend/interface-lifecycle-gate.md) → 架构相关章节，取有限真实边界证据 |

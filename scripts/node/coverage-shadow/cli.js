@@ -5,12 +5,12 @@ const path = require('node:path');
 const {
   mergeApiServerShadow,
   runApiServerShard,
-} = require('./coverage-shadow/core.js');
+} = require('./core.js');
 
 function main(argv = process.argv.slice(2), env = process.env) {
   const [operation, packageName, indexOrCount, maybeCount, monolithicShaPath] = argv;
   if (packageName !== 'api-server') throw new Error(`unsupported coverage shadow package: ${packageName || ''}`);
-  const repoRoot = path.resolve(__dirname, '..', '..');
+  const repoRoot = path.resolve(__dirname, '..', '..', '..');
   if (operation === 'shard') {
     runApiServerShard({
       repoRoot,

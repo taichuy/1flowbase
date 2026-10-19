@@ -61,7 +61,7 @@ function listSourceFiles(root) {
 }
 
 function resolveRelativeImport(importer, specifier) {
-  if (!specifier.startsWith(".")) {
+  if (!specifier.startsWith("./cli")) {
     return null;
   }
   const base = path.resolve(path.dirname(importer), specifier);
@@ -1211,7 +1211,7 @@ async function main(argv = [], deps = {}) {
     deps.writeStdout || ((text) => process.stdout.write(text));
   if (options.help) {
     writeStdout(
-      "Usage: node scripts/node/dev-experience.js [--smoke] [--web-base-url <url>] [--public-web-base-url <url>]\n",
+      "Usage: node scripts/node/dev-experience/cli.js [--smoke] [--web-base-url <url>] [--public-web-base-url <url>]\n",
     );
     return 0;
   }

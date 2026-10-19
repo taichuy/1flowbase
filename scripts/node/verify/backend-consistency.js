@@ -100,7 +100,7 @@ function runBackendConsistencyCommandSequence(sequenceOptions) {
 async function runBackendConsistency(argv = [], deps = {}) {
   if (argv.includes('-h') || argv.includes('--help')) {
     (deps.writeStdout || ((text) => process.stdout.write(text)))(
-      'Usage: node scripts/node/cli/verify-backend-consistency.js [control-runtime|storage|api]\n'
+      'Usage: node scripts/node/cli/quality/verify-backend-consistency.js [control-runtime|storage|api]\n'
         + 'Runs targeted backend Rust data/state consistency regression suites.\n'
     );
     return 0;
@@ -121,7 +121,7 @@ async function runBackendConsistency(argv = [], deps = {}) {
     env,
     scope: group ? `verify-backend-consistency-${group}` : 'verify-backend-consistency',
     lockMode: 'heavy',
-    commandDisplay: `node scripts/node/cli/verify-backend-consistency.js${group ? ` ${group}` : ''}`,
+    commandDisplay: `node scripts/node/cli/quality/verify-backend-consistency.js${group ? ` ${group}` : ''}`,
     runtimeConfig,
     commands: buildBackendConsistencyCommands({
       cargoJobs: runtimeConfig.backend.cargoJobs,

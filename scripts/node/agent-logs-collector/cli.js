@@ -2,9 +2,9 @@
 'use strict';
 const path = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
-const { collect } = require('./agent-logs-collector/collector');
+const { collect } = require('./collector');
 const HELP = `Agent Logs source CLI (Node.js 20+; no npm release package is assumed)
-Usage: node scripts/node/agent-logs-collector.js import|watch --endpoint URL --source PATH [options]
+Usage: node scripts/node/agent-logs-collector/cli.js import|watch --endpoint URL --source PATH [options]
   --endpoint URL  Exact ingest URL, e.g. https://host/api/logs/v1/events
   --source PATH   Explicit Codex .jsonl file or recursively scanned directory
   --state PATH    Durable checkpoint (default: .agent-logs-collector-state.json in cwd)
@@ -14,8 +14,8 @@ Usage: node scripts/node/agent-logs-collector.js import|watch --endpoint URL --s
   --interval-ms N Watch polling interval (default: 2000)
 Credential: FLOWBASE_AGENT_LOGS_API_KEY environment variable; never a CLI argument.
 Examples:
-  node scripts/node/agent-logs-collector.js import --endpoint https://host/api/logs/v1/events --source /chosen/codex --state /private/collector.json
-  node scripts/node/agent-logs-collector.js watch --endpoint https://host/api/logs/v1/events --source /chosen/codex/sessions --state /private/collector.json
+  node scripts/node/agent-logs-collector/cli.js import --endpoint https://host/api/logs/v1/events --source /chosen/codex --state /private/collector.json
+  node scripts/node/agent-logs-collector/cli.js watch --endpoint https://host/api/logs/v1/events --source /chosen/codex/sessions --state /private/collector.json
 Select the Codex root to include both sessions and archived_sessions.
 `;
 function parse(argv) {

@@ -58,7 +58,7 @@ function readWebPackageInfo(repoRoot) {
 function packageRoot(specifier) {
   if (
     !specifier
-    || specifier.startsWith('.')
+    || specifier.startsWith('./cli')
     || specifier.startsWith('/')
     || specifier.startsWith('node:')
     || specifier.startsWith('\0')
@@ -145,7 +145,7 @@ function collectDynamicImportSpecifiers(source) {
 }
 
 function resolveSourceFile(importerPath, specifier) {
-  if (!specifier.startsWith('.')) {
+  if (!specifier.startsWith('./cli')) {
     return null;
   }
 
@@ -810,7 +810,7 @@ function parseCliArgs(argv = []) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    'Usage: node scripts/node/vite-lazy-deps-gate.js [--manifest <path>] [--smoke] [--web-base-url <url>] [--storage-state <path>] [--include-fixture-routes]\n'
+    'Usage: node scripts/node/vite-lazy-deps-gate/cli.js [--manifest <path>] [--smoke] [--web-base-url <url>] [--storage-state <path>] [--include-fixture-routes]\n'
   );
 }
 

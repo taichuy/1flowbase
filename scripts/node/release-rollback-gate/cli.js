@@ -4,7 +4,7 @@ const {
   parseCliArgs,
   runRollbackGate,
   usage,
-} = require('./release-rollback-gate/core.js');
+} = require('./core.js');
 
 async function main(argv = process.argv.slice(2), deps = {}) {
   const options = parseCliArgs(argv, deps.env || process.env);

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildCommands, main } = require('../../cli/verify-openapi.js');
+const { buildCommands, main } = require('../../cli/quality/verify-openapi.js');
 
 test('buildCommands targets api-server OpenAPI alignment tests', () => {
   assert.deepEqual(buildCommands({ cargoJobs: 3, cargoTestThreads: 1 }), [
@@ -53,7 +53,7 @@ test('main routes OpenAPI verification through the heavy managed gate', async ()
   assert.equal(status, 0);
   assert.equal(capturedOptions.scope, 'verify-openapi');
   assert.equal(capturedOptions.lockMode, 'heavy');
-  assert.equal(capturedOptions.commandDisplay, 'node scripts/node/cli/verify-openapi.js');
+  assert.equal(capturedOptions.commandDisplay, 'node scripts/node/cli/quality/verify-openapi.js');
   assert.deepEqual(
     capturedOptions.commands,
     buildCommands({ cargoJobs: 2, cargoTestThreads: 1 })
