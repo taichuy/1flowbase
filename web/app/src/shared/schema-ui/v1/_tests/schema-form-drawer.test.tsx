@@ -125,6 +125,79 @@ describe('SchemaFormDrawer', () => {
     expect(await screen.findByText('标识不能为空')).toBeInTheDocument();
   });
 
+  test('clears omitted optional values when switching records without remounting controls', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const props = { open: true, title: 'Edit record', schema, onSubmit };
+    const { rerender } = render(
+      <SchemaFormDrawer
+        {...props}
+        initialValues={{ name: 'first', description: 'private-old-value' }}
+      />
+    );
+    const description = screen.getByLabelText('说明');
+    expect(description).toHaveValue('private-old-value');
+
+    rerender(
+      <SchemaFormDrawer {...props} initialValues={{ name: 'second' }} />
+    );
+
+    await waitFor(() => expect(description).toHaveValue(''));
+    expect(screen.getByLabelText('说明')).toBe(description);
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ name: 'second' });
+    expect(onSubmit.mock.calls[0][0].description).toBeUndefined();
+  });
+
+  test('replaces nested record values without retaining omitted keys or remounting controls', async () => {
+    const inspectValues = vi.fn();
+    const props = {
+      open: true,
+      title: 'Nested record',
+      schema,
+      onSubmit: vi.fn(),
+      extraActions: [
+        {
+          key: 'inspect',
+          label: 'Inspect values',
+          onClick: inspectValues
+        }
+      ]
+    };
+    const { rerender } = render(
+      <SchemaFormDrawer
+        {...props}
+        initialValues={{
+          name: 'first',
+          profile: { name: 'old', optional: 'secret' }
+        }}
+      />
+    );
+    const name = screen.getByLabelText('标识');
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect values' }));
+    expect(inspectValues.mock.calls[0][0].getValues().profile).toEqual({
+      name: 'old',
+      optional: 'secret'
+    });
+
+    rerender(
+      <SchemaFormDrawer
+        {...props}
+        initialValues={{
+          name: 'second',
+          profile: { name: 'new' }
+        }}
+      />
+    );
+
+    await waitFor(() => expect(name).toHaveValue('second'));
+    expect(screen.getByLabelText('标识')).toBe(name);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect values' }));
+    expect(inspectValues.mock.calls[1][0].getValues().profile).toEqual({
+      name: 'new'
+    });
+  });
+
   test('blocks submit when onBeforeSubmit returns false', async () => {
     const onBeforeSubmit = vi.fn().mockResolvedValue(false);
     const onSubmit = vi.fn();

@@ -484,6 +484,56 @@ describe('EmbeddedAgentAssistant', () => {
     expect(controller.signal.aborted).toBe(true);
   });
 
+  test('resizes the history pane with focused arrow keys and persists the conversation width', async () => {
+    await renderSettled(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    await domEvents.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    await domEvents.click(await findReadyHistoryButton());
+    const sidebar = await screen.findByTestId(
+      'embedded-agent-assistant-history'
+    );
+    const divider = screen.getByTestId(
+      'embedded-agent-assistant-history-resize'
+    );
+    const assistantWindow = screen.getByTestId(
+      'embedded-agent-assistant-preview'
+    );
+    const initialWidth = Number.parseFloat(sidebar.style.width);
+    const windowWidth = Number.parseFloat(assistantWindow.style.width);
+    expect(divider).toHaveAttribute('tabindex', '0');
+    await act(async () => {
+      divider.focus();
+    });
+    expect(divider).toHaveFocus();
+    await domEvents.fire(
+      divider,
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
+    );
+    expect(sidebar).toHaveStyle({ width: `${initialWidth + 10}px` });
+    expect(Number.parseFloat(assistantWindow.style.width)).toBe(windowWidth);
+    const widerHistory = JSON.parse(
+      window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
+    );
+    await domEvents.fire(
+      divider,
+      new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })
+    );
+    expect(sidebar).toHaveStyle({ width: `${initialWidth}px` });
+    const restoredHistory = JSON.parse(
+      window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
+    );
+    expect(restoredHistory.conversationWidth).toBe(
+      widerHistory.conversationWidth + 10
+    );
+  });
+
   test('AC-005 assigns each horizontal resize edge to its nearest pane', async () => {
     await renderSettled(
       <AppProviders>

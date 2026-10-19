@@ -891,12 +891,13 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   >({});
   const autoAllocatedHeightEpochsRef = useRef(autoAllocatedHeightEpochs);
   const autoHeightScopeRef = useRef(content?.page.id);
-  const autoHeightBatchRef = useRef(
-    new FrontstageAutoHeightBatch({
+  const autoHeightBatchRef = useRef<FrontstageAutoHeightBatch | null>(null);
+  if (autoHeightBatchRef.current === null) {
+    autoHeightBatchRef.current = new FrontstageAutoHeightBatch({
       settleMs: FRONTSTAGE_AUTO_HEIGHT_SETTLE_MS,
       settleFrames: FRONTSTAGE_AUTO_HEIGHT_SETTLE_FRAMES
-    })
-  );
+    });
+  }
   const autoHeightFrameRef = useRef<number | null>(null);
   const pendingScrollAnchorRef = useRef<FrontstageScrollAnchor | null>(null);
   const layouts = useMemo(() => {
@@ -992,7 +993,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
       height: number,
       context: FrontstageIntrinsicMeasurementContext
     ) => {
-      autoHeightBatchRef.current.measure(
+      autoHeightBatchRef.current!.measure(
         blockId,
         height,
         context,
@@ -1002,9 +1003,9 @@ export const PageCanvas: FC<PageCanvasProps> = ({
       const flush = (nowMs: number) => {
         autoHeightFrameRef.current = null;
         const currentRows = autoRowsRef.current;
-        const nextRows = autoHeightBatchRef.current.commit(currentRows, nowMs);
+        const nextRows = autoHeightBatchRef.current!.commit(currentRows, nowMs);
         const committedMeasurements =
-          autoHeightBatchRef.current.takeCommittedMeasurements();
+          autoHeightBatchRef.current!.takeCommittedMeasurements();
         if (committedMeasurements.length > 0) {
           const currentEpochs = autoAllocatedHeightEpochsRef.current;
           let nextEpochs: Record<string, number> | null = null;
@@ -1067,7 +1068,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
           autoRowsRef.current = nextRows;
           setAutoRows(nextRows);
         }
-        if (autoHeightBatchRef.current.hasPendingMeasurements()) {
+        if (autoHeightBatchRef.current!.hasPendingMeasurements()) {
           autoHeightFrameRef.current = requestAnimationFrame(flush);
         }
       };

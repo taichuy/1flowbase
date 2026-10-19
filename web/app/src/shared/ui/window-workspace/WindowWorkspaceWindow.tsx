@@ -6,12 +6,14 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode
 } from 'react';
 
 import {
   clampWindowWorkspaceRect,
   fitWindowWorkspaceRect,
+  getWindowWorkspaceViewport,
   WINDOW_WORKSPACE_MIN_HEIGHT,
   WINDOW_WORKSPACE_MIN_WIDTH
 } from './window-workspace-geometry';
@@ -187,6 +189,38 @@ export function WindowWorkspaceWindow({
       edge
     );
 
+  const resizeWithKeyboard = (
+    edge: WindowWorkspaceResizeEdge,
+    event: ReactKeyboardEvent
+  ) => {
+    const horizontal = edge === 'left' || edge === 'right';
+    const delta = horizontal
+      ? event.key === 'ArrowLeft'
+        ? -10
+        : event.key === 'ArrowRight'
+          ? 10
+          : 0
+      : event.key === 'ArrowUp'
+        ? -10
+        : event.key === 'ArrowDown'
+          ? 10
+          : 0;
+    if (delta === 0) return;
+    event.preventDefault();
+    onActivate();
+    const start = currentRectRef.current;
+    const next =
+      edge === 'left'
+        ? { ...start, left: start.left + delta, width: start.width - delta }
+        : edge === 'right'
+          ? { ...start, width: start.width + delta }
+          : edge === 'top'
+            ? { ...start, top: start.top + delta, height: start.height - delta }
+            : { ...start, height: start.height + delta };
+    setRect(next, edge);
+    onInteractionEnd?.(currentRectRef.current);
+  };
+
   const windowZIndex = zIndex ?? (active ? 1051 : 1050);
   const style: CSSProperties = {
     left: currentRect.left,
@@ -231,6 +265,21 @@ export function WindowWorkspaceWindow({
             .filter(Boolean)
             .join(' ')}
           role="separator"
+          aria-valuenow={
+            edge === 'left' || edge === 'right'
+              ? currentRect.width
+              : currentRect.height
+          }
+          aria-valuemin={
+            edge === 'left' || edge === 'right' ? minWidth : minHeight
+          }
+          aria-valuemax={
+            edge === 'left' || edge === 'right'
+              ? Math.max(minWidth, getWindowWorkspaceViewport().width - 16)
+              : Math.max(minHeight, getWindowWorkspaceViewport().height - 16)
+          }
+          tabIndex={0}
+          onKeyDown={(event) => resizeWithKeyboard(edge, event)}
           onMouseDown={(event) => resize(edge, event)}
         />
       ))}

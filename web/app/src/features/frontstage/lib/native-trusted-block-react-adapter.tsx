@@ -123,6 +123,9 @@ const sharedModuleStyleSheets = new WeakMap<
   Map<string, CSSStyleSheet>
 >();
 
+const EMPTY_MODULE_ASSETS: readonly NativeReactResolvedModuleAsset[] = [];
+const EMPTY_MODULE_SOURCES: readonly string[] = [];
+
 export interface FrontstageNativeTrustedBlockPortalHostProps {
   root: Element;
   renderEpoch: string;
@@ -148,8 +151,8 @@ export function FrontstageNativeTrustedBlockPortalHost({
   plan,
   component: BlockComponent,
   ctx,
-  moduleAssets = [],
-  moduleSources = [],
+  moduleAssets = EMPTY_MODULE_ASSETS,
+  moduleSources = EMPTY_MODULE_SOURCES,
   providerScope,
   providerWrapper,
   onRuntimeError,

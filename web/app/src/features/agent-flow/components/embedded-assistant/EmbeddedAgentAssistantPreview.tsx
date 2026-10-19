@@ -161,14 +161,16 @@ function assistantConversationKey(item: {
     : `legacy:${item.legacy_flow_run_id}`;
 }
 
+const assistantConversationDateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric'
+});
+
 function assistantConversationGroup(updatedAt: string) {
   const date = new Date(updatedAt);
   return Number.isNaN(date.getTime())
     ? i18nText('appShell', 'auto.assistant_history')
-    : new Intl.DateTimeFormat(undefined, {
-        month: 'short',
-        day: 'numeric'
-      }).format(date);
+    : assistantConversationDateFormatter.format(date);
 }
 
 function upsertAssistantConversation(
@@ -1015,6 +1017,26 @@ export function EmbeddedAgentAssistantPreview({
                   data-testid="embedded-agent-assistant-history-resize"
                   hidden={mobile || historyFullView}
                   role="separator"
+                  aria-valuenow={historyWidth}
+                  aria-valuemin={ASSISTANT_HISTORY_MIN_WIDTH}
+                  aria-valuemax={assistantHistoryMaxWidth()}
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
+                      return;
+                    event.preventDefault();
+                    const delta = event.key === 'ArrowLeft' ? -10 : 10;
+                    const nextWidth = Math.min(
+                      Math.max(
+                        ASSISTANT_HISTORY_MIN_WIDTH,
+                        historyWidthRef.current + delta
+                      ),
+                      assistantHistoryMaxWidth()
+                    );
+                    historyWidthRef.current = nextWidth;
+                    setHistoryWidth(nextWidth);
+                    persistAssistantWindowSize(assistantWindowRectRef.current);
+                  }}
                   onMouseDown={startHistoryResize}
                 />
               </aside>

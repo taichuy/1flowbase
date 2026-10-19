@@ -294,9 +294,8 @@ export function NativeTrajectoryWorkspace({
         }}
       />
       <div className="provider-trajectory__split" ref={split}>
-        <div
+        <section
           className="provider-trajectory__ledger"
-          role="region"
           aria-label={i18nText('agentFlow', 'trajectory.steps')}
         >
           {pages.isLoading ? (
@@ -411,7 +410,7 @@ export function NativeTrajectoryWorkspace({
               }}
             />
           ) : null}
-        </div>
+        </section>
         {selectedStep ? (
           <aside
             className="provider-trajectory__inspector"

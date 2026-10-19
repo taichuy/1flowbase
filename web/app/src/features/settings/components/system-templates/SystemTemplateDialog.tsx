@@ -91,6 +91,9 @@ export function SystemTemplateDialog({
     reading || previewMutation.isPending || installMutation.isPending;
   const { mutate: previewFile } = previewMutation;
   useEffect(() => {
+    setFileError(false);
+    setReading(false);
+    setImportFile(undefined);
     if (template) {
       setImportFile(template);
       previewFile(template.body);

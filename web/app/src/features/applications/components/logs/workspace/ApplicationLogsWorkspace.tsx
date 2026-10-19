@@ -619,9 +619,9 @@ export function ApplicationLogsWorkspace({
     setExportingSelectedRuns(true);
     try {
       const groups = new Map<string, string[]>();
+      const runsById = new Map(runs.map((run) => [run.id, run]));
       for (const runId of runIds) {
-        const owner =
-          applicationId || runs.find((run) => run.id === runId)!.application_id;
+        const owner = applicationId || runsById.get(runId)!.application_id;
         groups.set(owner, [...(groups.get(owner) ?? []), runId]);
       }
       for (const [owner, ownerRunIds] of groups) {
@@ -1038,9 +1038,8 @@ export function ApplicationLogsWorkspace({
           }
         />
       )}
-      <div
+      <search
         className={`application-logs-page__filters${mobileFiltersExpanded ? ' application-logs-page__filters--expanded' : ''}`}
-        role="search"
       >
         <AutosizeSelect<ApplicationLogTimeRange>
           aria-label={t('auto.time_range')}
@@ -1207,7 +1206,7 @@ export function ApplicationLogsWorkspace({
             configuration={runsTableConfiguration}
           />
         </div>
-      </div>
+      </search>
     </div>
   );
   const logsList = (
