@@ -493,7 +493,7 @@ function hasMutableJsxListKey(line) {
   );
 }
 
-function scanSourceFile({ relativePath, content }) {
+function scanSourceFile({ relativePath, content, today = new Date().toISOString().slice(0, 10) }) {
   const lines = content.split(/\r?\n/u);
   const findings = [];
   const testPath = isTestPath(relativePath);
@@ -518,13 +518,26 @@ function scanSourceFile({ relativePath, content }) {
       isCodeFile(relativePath) &&
       FIELD_CONTRACT_COMPAT_MARKER_TEXT.test(debtScanText.text)
     ) {
+      const marker = /@field-contract-compat\s+source=(\S+)\s+alias=(\S+)\s+remove_by=(\d{4}-\d{2}-\d{2})(?=\s|$)/u.exec(debtScanText.text);
+      const deadline = marker?.[3];
+      const parsedDeadline = deadline ? new Date(`${deadline}T00:00:00Z`) : null;
+      const validDeadline = parsedDeadline && !Number.isNaN(parsedDeadline.valueOf())
+        && parsedDeadline.toISOString().slice(0, 10) === deadline;
+      const invalid = !marker || !validDeadline;
+      const expired = !invalid && deadline < today;
       findings.push(
         createFinding({
-          rule: "field-contract-compat-marker",
+          severity: invalid || expired ? "error" : "warning",
+          rule: invalid ? "invalid-field-contract-compat-marker"
+            : expired ? "expired-field-contract-compat-marker"
+              : "field-contract-compat-marker",
           file: relativePath,
           line: lineNumber,
-          message:
-            "front-back field compatibility alias must stay visible in QA reports until removed",
+          message: invalid
+            ? "field compatibility requires source, alias and a real remove_by calendar date"
+            : expired
+              ? "field compatibility review deadline has passed; resolve the contract and migration evidence"
+              : "front-back field compatibility alias must stay visible in QA reports until removed",
           snippet: line,
         }),
       );
@@ -665,6 +678,7 @@ function collectLinePressureFindings({ relativePath, content }) {
 
   return [
     createFinding({
+      severity: lines > 1500 && !relativePath.startsWith("api/vendor/") ? "error" : "warning",
       rule: testPath ? "test-file-size-pressure" : "file-size-pressure",
       file: relativePath,
       message:
@@ -697,6 +711,7 @@ function collectDirectoryPressureFindings(files) {
     .sort((left, right) => right[1] - left[1])
     .map(([directory, count]) =>
       createFinding({
+        severity: directory.startsWith("api/vendor/") ? "warning" : "error",
         rule: "directory-pressure",
         file: directory,
         message:

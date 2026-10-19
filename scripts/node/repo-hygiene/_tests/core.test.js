@@ -155,6 +155,7 @@ test("scanSourceFile reports low-value test smells as advisory findings", () => 
 
 test("scanSourceFile reports front-back field contract compatibility markers as warnings", () => {
   const findings = scanSourceFile({
+    today: "2026-06-01",
     relativePath: "web/app/src/features/example/api/example.ts",
     content: [
       "export function adaptExample(payload) {",
@@ -173,6 +174,7 @@ test("scanSourceFile reports front-back field contract compatibility markers as 
 
 test("compatibility warnings identify comments rather than marker literals", () => {
   const findings = scanSourceFile({
+    today: "2026-10-19",
     relativePath: "scripts/node/example.js",
     content: [
       "const pattern =",
@@ -533,4 +535,55 @@ test("main writes an advisory report and only fails on blocking findings", async
     ),
     true,
   );
+});
+
+
+test("compatibility deadlines reject expired and malformed markers without hiding live contracts", () => {
+  const findings = scanSourceFile({
+    relativePath: "web/app/src/features/example/api/compat.ts",
+    today: "2026-10-19",
+    content: [
+      "// @field-contract-compat source=a alias=b remove_by=2026-10-18",
+      "// @field-contract-compat source=a alias=b remove_by=2026-10-19",
+      "// @field-contract-compat source=a alias=b remove_by=2026-10-20",
+      "// @field-contract-compat source=a alias=b remove_by=2026-02-30",
+      "// @field-contract-compat source=a alias=b",
+    ].join("\n"),
+  });
+  assert.deepEqual(findings.map(({ rule, severity }) => [rule, severity]), [
+    ["expired-field-contract-compat-marker", "error"],
+    ["field-contract-compat-marker", "warning"],
+    ["field-contract-compat-marker", "warning"],
+    ["invalid-field-contract-compat-marker", "error"],
+    ["invalid-field-contract-compat-marker", "error"],
+  ]);
+});
+
+test("structure hard limits preserve early warnings and exact vendor ownership", () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oneflowbase-structure-boundary-"));
+  try {
+    const source = (count) => "export const value = 1;\n".repeat(count);
+    writeFile(repoRoot, "web/app/src/early.ts", source(1200));
+    writeFile(repoRoot, "web/app/src/boundary.ts", source(1500));
+    writeFile(repoRoot, "web/app/src/too_large.ts", source(1501));
+    writeFile(repoRoot, "api/vendor/upstream/source.rs", "// upstream\n".repeat(1501));
+    writeFile(repoRoot, "api/crates/vendor_named/src/source.rs", "// first party\n".repeat(1501));
+    for (const [directory, count] of [["at_limit", 15], ["over_limit", 16]]) {
+      for (let index = 0; index < count; index += 1) {
+        writeFile(repoRoot, `web/app/src/${directory}/file_${index}.ts`, "export {};\n");
+      }
+    }
+    const findings = collectRepoHygieneFindings({ repoRoot });
+    const size = new Map(findings.filter(({ rule }) => rule === "file-size-pressure")
+      .map(({ file, severity }) => [file, severity]));
+    assert.equal(size.get("web/app/src/early.ts"), "warning");
+    assert.equal(size.get("web/app/src/boundary.ts"), "warning");
+    assert.equal(size.get("web/app/src/too_large.ts"), "error");
+    assert.equal(size.get("api/vendor/upstream/source.rs"), "warning");
+    assert.equal(size.get("api/crates/vendor_named/src/source.rs"), "error");
+    assert.deepEqual(findings.filter(({ rule }) => rule === "directory-pressure")
+      .map(({ file, severity }) => [file, severity]), [["web/app/src/over_limit", "error"]]);
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
 });

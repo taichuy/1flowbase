@@ -169,7 +169,7 @@ test('AC-003 surfaces a failed api root password reset', async () => {
 
   assert.equal(commandCalls.length, 1);
   assert.equal(commandCalls[0].command, process.execPath);
-  assert.equal(path.basename(commandCalls[0].args[0]), 'cli.js');
+  assert.equal(commandCalls[0].args[0], path.join(tempRepoRoot, 'scripts', 'node', 'reset-account-password', 'cli.js'));
   assert.equal(commandCalls[0].options.captureOutput, true);
   assert.deepEqual(composeCalls, []);
   assert.equal(
