@@ -120,22 +120,20 @@ export function NodePickerPopover({
   );
   const groupedBuiltinOptions = useMemo(
     () =>
-      BUILTIN_NODE_PICKER_GROUPS.map((group) => {
+      BUILTIN_NODE_PICKER_GROUPS.flatMap((group) => {
         const groupSearchText =
           `${group.title} ${group.description}`.toLowerCase();
         const groupMatchesSearch =
           normalizedSearchValue.length > 0 &&
           groupSearchText.includes(normalizedSearchValue);
-        const groupedOptions = builtinOptions
-          .filter((option) => option.category === group.key)
-          .filter(
-            (option) =>
-              groupMatchesSearch ||
-              matchesNodePickerSearch(option, normalizedSearchValue)
-          );
+        const groupedOptions = builtinOptions.filter((option) =>
+          option.category === group.key && (
+            groupMatchesSearch || matchesNodePickerSearch(option, normalizedSearchValue)
+          )
+        );
 
-        return { ...group, options: groupedOptions };
-      }).filter((group) => group.options.length > 0),
+        return groupedOptions.length > 0 ? [{ ...group, options: groupedOptions }] : [];
+      }),
     [builtinOptions, normalizedSearchValue]
   );
   const groupedBuiltinOptionKeys = new Set(

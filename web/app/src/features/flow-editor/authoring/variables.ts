@@ -71,8 +71,7 @@ export function listAuthoringVariableOptions(
   );
   const upstream = collectUpstreamNodeIds(document, nodeId);
   const nodeOptions = document.graph.nodes
-    .filter((node) => upstream.has(node.id))
-    .flatMap((node) =>
+    .flatMap((node) => upstream.has(node.id) ?
       getVariableOutputs(node).map((output) => ({
         nodeId: node.id,
         nodeLabel: node.alias,
@@ -81,7 +80,7 @@ export function listAuthoringVariableOptions(
         valueType: output.valueType,
         value: [node.id, output.key],
         displayLabel: `${node.alias}.${output.title}`
-      }))
+      })) : []
     );
 
   return [...sourceOptions, ...nodeOptions];

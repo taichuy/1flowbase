@@ -310,9 +310,10 @@ export function typedEnumValues(
   valueType: SchemaEnumValueType
 ) {
   if (valueType === 'number') {
-    return enumValues
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value));
+    return enumValues.flatMap((value) => {
+      const numericValue = Number(value);
+      return Number.isFinite(numericValue) ? [numericValue] : [];
+    });
   }
 
   return enumValues;
@@ -396,18 +397,15 @@ export function objectSchemaFromRows(
   rows: SchemaFieldRow[],
   baseSchema?: Record<string, unknown>
 ) {
-  const visibleRows = rows
-    .map((row) => ({
-      ...row,
-      key: row.key.trim()
-    }))
-    .filter((row) => row.key.length > 0);
-  const properties = Object.fromEntries(
-    visibleRows.map((row) => [row.key, propertySchemaFromRow(row)])
-  );
-  const required = visibleRows
-    .filter((row) => row.required)
-    .map((row) => row.key);
+  const propertyEntries: Array<[string, ReturnType<typeof propertySchemaFromRow>]> = [];
+  const required: string[] = [];
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (!key) continue;
+    propertyEntries.push([key, propertySchemaFromRow({ ...row, key })]);
+    if (row.required) required.push(key);
+  }
+  const properties = Object.fromEntries(propertyEntries);
 
   return {
     ...(baseSchema ?? {}),

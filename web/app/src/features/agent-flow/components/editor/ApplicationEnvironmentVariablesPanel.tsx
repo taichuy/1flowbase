@@ -205,9 +205,9 @@ export function ApplicationEnvironmentVariablesPanel({
   const existingNames = useMemo(
     () =>
       new Set(
-        draftVariables
-          .filter((_, index) => index !== editingIndex)
-          .map((variable) => variable.name)
+        draftVariables.flatMap((variable, index) =>
+          index !== editingIndex ? [variable.name] : []
+        )
       ),
     [draftVariables, editingIndex]
   );

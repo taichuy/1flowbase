@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Alert, Input, Modal, Space, Table, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -190,16 +191,18 @@ export function ApplicationArchiveImportModal({
               entry.preview.unresolved_nodes.length > 0,
             expandedRowRender: (entry) => (
               <Space orientation="vertical">
-                {entry.preview.dependencies
-                  .filter((d) => d.status !== 'ready')
-                  .map((dependency, index) => (
-                    <Typography.Text key={index}>
+                {entry.preview.dependencies.reduce<ReactNode[]>((items, dependency) => {
+                  if (dependency.status === 'ready') return items;
+                  items.push(
+                    <Typography.Text key={items.length}>
                       {dependency.dependency.node_type ??
                         dependency.dependency.provider_code ??
                         dependency.dependency.plugin_id}
                       : {dependency.reason}
                     </Typography.Text>
-                  ))}
+                  );
+                  return items;
+                }, [])}
                 {entry.preview.unresolved_nodes.map((node) => (
                   <Typography.Text key={node.node_id}>
                     {node.alias}: {node.reason}

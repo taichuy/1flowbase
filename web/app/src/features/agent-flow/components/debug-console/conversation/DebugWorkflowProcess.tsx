@@ -92,9 +92,9 @@ export function DebugWorkflowProcess({
     [traceGroups]
   );
   const automaticDetailKeys = useMemo(() => {
-    const keys = traceGroups
-      .filter((group) => (toolCallbackCounts.get(group.key) ?? 0) > 0)
-      .map((group) => group.key);
+    const keys = traceGroups.flatMap((group) =>
+      (toolCallbackCounts.get(group.key) ?? 0) > 0 ? [group.key] : []
+    );
     const reasoningLlmGroup = reasoning?.trim()
       ? [...traceGroups]
           .reverse()

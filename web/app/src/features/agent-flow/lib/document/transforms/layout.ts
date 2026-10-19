@@ -426,9 +426,9 @@ export function arrangeCanvasLeftToRight(
     outgoingTargetsByNodeId.get(edge.source)?.push(edge.target);
   }
 
-  const queue = containerNodes
-    .filter((node) => (incomingCountByNodeId.get(node.id) ?? 0) === 0)
-    .map((node) => node.id);
+  const queue = containerNodes.flatMap((node) =>
+    (incomingCountByNodeId.get(node.id) ?? 0) === 0 ? [node.id] : []
+  );
   const remainingIncomingCountByNodeId = new Map(incomingCountByNodeId);
   let visitedCount = 0;
 

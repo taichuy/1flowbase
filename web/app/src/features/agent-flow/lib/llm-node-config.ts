@@ -111,7 +111,7 @@ function recordArray(value: unknown): Array<Record<string, unknown>> {
     return [];
   }
 
-  return value.filter(isRecord).map((item) => ({ ...item }));
+  return value.flatMap((item) => isRecord(item) ? [{ ...item }] : []);
 }
 
 export function createLlmToolSourceHandleId(connectorId: string) {

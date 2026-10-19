@@ -10,11 +10,10 @@ import { isFrontstageNativeReactResolvedDeclarationSource } from './resolved-dep
 export const FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS: readonly BlockSourceExtraLib[] =
   [
     ...resolvedDependencyDeclarations,
-    ...FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS.filter(
-      ({ module_source }) =>
-        !isFrontstageNativeReactResolvedDeclarationSource(module_source) &&
-        !DAYJS_DECLARATION_SOURCES.includes(module_source)
-    ).map(({ module_source, exports }) =>
-      createFrontendModuleExtraLib(module_source, exports)
+    ...FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS.flatMap(({ module_source, exports }) =>
+      !isFrontstageNativeReactResolvedDeclarationSource(module_source) &&
+      !DAYJS_DECLARATION_SOURCES.includes(module_source)
+        ? [createFrontendModuleExtraLib(module_source, exports)]
+        : []
     )
   ];

@@ -307,10 +307,10 @@ export function StartInputFieldSettingsPanel({
               <Select
                 allowClear
                 aria-label={i18nText('agentFlow', 'auto.input_field_value')}
-                options={options
-                  .map((option) => option.trim())
-                  .filter(Boolean)
-                  .map((option) => ({ value: option, label: option }))}
+                options={options.flatMap((option) => {
+                  const value = option.trim();
+                  return value ? [{ value, label: value }] : [];
+                })}
                 value={
                   typeof field.defaultValue === 'string'
                     ? field.defaultValue

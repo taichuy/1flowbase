@@ -87,14 +87,11 @@ export async function pruneDevGenerationCaches(
   return withGenerationLock(root, async (directory) => {
     const candidates = fs
       .readdirSync(directory, { withFileTypes: true })
-      .filter(
-        (entry) => entry.isDirectory() && GENERATION_PATTERN.test(entry.name)
-      )
-      .map((entry) => ({
+      .flatMap((entry) => entry.isDirectory() && GENERATION_PATTERN.test(entry.name) ? [{
         generation: entry.name,
         directory: path.join(directory, entry.name),
         modifiedAt: fs.statSync(path.join(directory, entry.name)).mtimeMs
-      }))
+      }] : [])
       .sort((left, right) => right.modifiedAt - left.modifiedAt);
     const recent = [
       ...new Set([

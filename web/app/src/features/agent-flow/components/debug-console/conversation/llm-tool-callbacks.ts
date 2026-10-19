@@ -524,8 +524,9 @@ function parsedResultFromCallbackPayload(
     'execution',
     'execution_status'
   ]
-    .filter((key) => Object.prototype.hasOwnProperty.call(callbackPayload, key))
-    .map((key) => [key, callbackPayload[key]] as const);
+    .flatMap((key) => Object.prototype.hasOwnProperty.call(callbackPayload, key)
+      ? [[key, callbackPayload[key]] as const]
+      : []);
 
   return Object.fromEntries(parsedEntries);
 }
@@ -540,11 +541,11 @@ export function collectLlmToolCallbacksFromDebugPayloads(
   debugPayloads: unknown[]
 ): LlmToolCallback[] {
   const routeTracesById = new Map<string, LlmToolRouteTraceSummary>();
-  debugPayloads
-    .flatMap(readVisibleInternalRouteTraces)
-    .forEach(({ id, trace }) => {
+  for (const payload of debugPayloads) {
+    for (const { id, trace } of readVisibleInternalRouteTraces(payload)) {
       routeTracesById.set(id, trace);
-    });
+    }
+  }
   const callbacks = mergeLlmToolCallbacks([
     ...debugPayloads.flatMap(readIndexedToolCallbacks),
     ...collectLlmToolCallbacksFromRounds(
