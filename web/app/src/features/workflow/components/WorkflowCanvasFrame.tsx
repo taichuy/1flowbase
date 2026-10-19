@@ -65,7 +65,7 @@ import {
   countIssuesByNodeId,
   getDocumentWithLatestViewport
 } from '../../agent-flow/components/editor/canvas-frame/document';
-import { buildNodePickerOptions } from '../../flow-editor';
+import { buildNodePickerOptions } from '../../flow-editor/authoring/plugin-node-picker';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 import { validateWorkflowDocument } from '../lib/validate-document';
 import { WorkflowOverlay } from './WorkflowOverlay';
