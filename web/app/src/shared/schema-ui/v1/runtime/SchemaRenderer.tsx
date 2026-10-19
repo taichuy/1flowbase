@@ -25,6 +25,9 @@ export interface SchemaBlockRendererProps {
   capabilities?: readonly string[];
 }
 
+const EMPTY_CAPABILITIES: readonly string[] = [];
+const EMPTY_VALUES: Record<string, unknown> = {};
+
 function shouldRenderBlock(
   block: SchemaBlock,
   values: Record<string, unknown>,
@@ -128,10 +131,10 @@ export function SchemaRenderer({
   blocks,
   registry,
   values,
-  capabilities = []
+  capabilities = EMPTY_CAPABILITIES
 }: SchemaRendererProps) {
   const resolvedValues =
-    values ?? ((adapter.getDerived('rootValues') as Record<string, unknown> | null) ?? {});
+    values ?? ((adapter.getDerived('rootValues') as Record<string, unknown> | null) ?? EMPTY_VALUES);
 
   return (
     <>
@@ -153,8 +156,8 @@ function SchemaBlockRenderer({
   adapter,
   block,
   registry,
-  values = {},
-  capabilities = []
+  values = EMPTY_VALUES,
+  capabilities = EMPTY_CAPABILITIES
 }: SchemaBlockRendererProps) {
   return <>{renderBlock(block, adapter, registry, values, capabilities)}</>;
 }

@@ -88,12 +88,14 @@ function resolvePopupContainer(triggerNode: HTMLElement) {
   return canvas;
 }
 
+const EMPTY_OPTIONS: NodePickerOption[] = [];
+
 export function NodePickerPopover({
   ariaLabel,
   open,
   onOpenChange,
   onPickNode,
-  options = [],
+  options = EMPTY_OPTIONS,
   buttonClassName,
   buttonContent = '+',
   children,

@@ -146,11 +146,13 @@ type EditingInputField = {
   field: FlowStartInputField;
 };
 
+const EMPTY_SOURCE_OPTIONS: StartInputSourceOption[] = [];
+
 export function StartInputFieldsField({
   contractKind,
   title,
   value,
-  sourceOptions = [],
+  sourceOptions = EMPTY_SOURCE_OPTIONS,
   inputTypeContract,
   sourceContract,
   onChange

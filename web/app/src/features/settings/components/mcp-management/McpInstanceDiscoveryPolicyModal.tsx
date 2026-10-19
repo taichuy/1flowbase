@@ -70,8 +70,10 @@ function parseReturnFields(value: string) {
   }
 }
 
+const EMPTY_RETURN_FIELDS: string[] = [];
+
 function ReturnFieldsEditor({
-  value = [],
+  value = EMPTY_RETURN_FIELDS,
   onChange,
   onValidityChange
 }: {
