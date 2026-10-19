@@ -51,8 +51,10 @@ pub use crate::code_runtime::{
 
 pub mod ai_native_recovery;
 pub mod branching;
+#[path = "execution_engine/llm_operations/compact_operation.rs"]
 mod compact_operation;
 mod http_request;
+#[path = "execution_engine/llm_operations/llm_callbacks.rs"]
 mod llm_callbacks;
 mod llm_context;
 mod llm_error_payloads;
@@ -62,9 +64,12 @@ pub use native_inference_recovery::{
     recover_native_inference_with_runtime_context_and_lifecycle,
     validate_native_inference_recovery_scope,
 };
+#[path = "execution_engine/llm_operations/llm_invocation.rs"]
 mod llm_invocation;
 pub(crate) mod llm_metrics;
+#[path = "execution_engine/llm_operations/llm_node_outputs.rs"]
 mod llm_node_outputs;
+#[path = "execution_engine/llm_operations/llm_parameters.rs"]
 mod llm_parameters;
 mod node_failure_policy;
 mod provider_routing;
@@ -859,6 +864,7 @@ fn successful_flow_stop_reason(node_traces: &[NodeExecutionTrace]) -> ExecutionS
     }
 }
 
+#[path = "execution_engine/llm_operations/llm_executor.rs"]
 mod llm_executor;
 pub use llm_executor::execute_llm_node;
 pub(super) use llm_executor::execute_llm_node_provider_round;
