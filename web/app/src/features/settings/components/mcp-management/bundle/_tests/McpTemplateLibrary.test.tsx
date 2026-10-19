@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from 'antd';
-import {
+import { act, cleanup,
   fireEvent,
   render,
   screen,
@@ -8,7 +8,7 @@ import {
   within
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
@@ -72,10 +72,11 @@ function authenticate() {
   });
 }
 
-function renderLibrary() {
+async function renderLibrary() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   });
+  mountedClients.add(client);
   const wrapper = ({ children }: { children: ReactNode }) => (
     <AppI18nProvider>
       <App>
@@ -83,7 +84,7 @@ function renderLibrary() {
       </App>
     </AppI18nProvider>
   );
-  return render(<McpTemplateLibrary variant="compact" />, { wrapper });
+  return await renderSettled(<McpTemplateLibrary variant="compact" />, { wrapper });
 }
 
 describe('McpTemplateLibrary', () => {
@@ -136,10 +137,10 @@ describe('McpTemplateLibrary', () => {
         }
       ]
     });
-    renderLibrary();
+    await renderLibrary();
 
     expect(api.refreshSettingsMcpTemplateLibrary).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole('button', { name: '刷新模板库' }));
+    await domEvents.click(await screen.findByRole('button', { name: '刷新模板库' }));
     await waitFor(() =>
       expect(api.refreshSettingsMcpTemplateLibrary).toHaveBeenCalledWith()
     );
@@ -156,15 +157,16 @@ describe('McpTemplateLibrary', () => {
           finishFirst = resolve;
         })
     );
-    renderLibrary();
+    await renderLibrary();
 
     const syncButtons = await screen.findAllByRole('button', { name: '同步' });
-    fireEvent.click(syncButtons[0]);
+    await domEvents.click(syncButtons[0]);
     await waitFor(() => expect(syncButtons[0]).toHaveClass('ant-btn-loading'));
     expect(syncButtons[1]).not.toHaveClass('ant-btn-loading');
-    fireEvent.click(syncButtons[1]);
+    await domEvents.click(syncButtons[1]);
     expect(api.syncSettingsMcpTemplateLibraryBundle).toHaveBeenCalledTimes(2);
-    finishFirst();
+    await act(async () => { finishFirst(); });
+    await waitFor(() => expect(syncButtons[0]).not.toHaveClass('ant-btn-loading'));
   });
 
   test('AC-005 imports current local content and shows update/shared Tool impact', async () => {
@@ -222,17 +224,17 @@ describe('McpTemplateLibrary', () => {
       ...review,
       status: 'completed'
     });
-    renderLibrary();
+    await renderLibrary();
 
     const row = await screen.findByRole('row', {
       name: /taichuy\/1flowbase_zh_hans/
     });
-    fireEvent.click(within(row).getByRole('button', { name: '导入' }));
+    await domEvents.click(within(row).getByRole('button', { name: '导入' }));
     expect(await screen.findByText('覆盖更新')).toBeInTheDocument();
     expect(screen.getByText(/system.get_runtime/)).toBeInTheDocument();
     expect(api.syncSettingsMcpTemplateLibraryBundle).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: '确认导入并覆盖' }));
+    await domEvents.click(screen.getByRole('button', { name: '确认导入并覆盖' }));
     await waitFor(() =>
       expect(api.importSettingsMcpTemplateLibraryBundle).toHaveBeenCalledWith(
         'taichuy',
@@ -242,4 +244,36 @@ describe('McpTemplateLibrary', () => {
       )
     );
   });
+});
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(...args); });
+  return view;
+}
+
+const domEvents = {
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args))
+};
+
+const mountedClients = new Set<QueryClient>();
+afterEach(async () => {
+  try {
+    await waitFor(() => {
+      for (const client of mountedClients) {
+        expect(client.isFetching()).toBe(0);
+        expect(client.isMutating()).toBe(0);
+      }
+    });
+  } finally {
+    cleanup();
+    for (const client of mountedClients) client.clear();
+    mountedClients.clear();
+  }
 });

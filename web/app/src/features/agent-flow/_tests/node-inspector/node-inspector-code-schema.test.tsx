@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
@@ -115,18 +115,18 @@ describe('NodeInspector code schema', () => {
       /输入变量-0-name|input variables-0-name/
     );
     inputVariableName.focus();
-    fireEvent.change(inputVariableName, {
+    await domEvents.change(inputVariableName, {
       target: { value: 'score_1' }
     });
     expect(
       screen.getByLabelText(/输入变量-0-name|input variables-0-name/)
     ).toHaveFocus();
-    fireEvent.change(codeEditor, {
+    await domEvents.change(codeEditor, {
       target: { value: 'return { risk_score: inputs.score };' }
     });
     const outputVariableName = screen.getByLabelText('输出变量名 1');
     outputVariableName.focus();
-    fireEvent.change(outputVariableName, {
+    await domEvents.change(outputVariableName, {
       target: { value: 'risk_score' }
     });
     expect(screen.getByLabelText('输出变量名 1')).toHaveFocus();
@@ -193,7 +193,7 @@ describe('NodeInspector code schema', () => {
     expect(await screen.findByLabelText('输出变量名 1')).toHaveValue(
       'chat_history'
     );
-    fireEvent.click(screen.getByRole('button', { name: '编辑 JSON Schema' }));
+    await domEvents.click(screen.getByRole('button', { name: '编辑 JSON Schema' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'JSON Schema' });
     expect(dialog).toHaveClass('agent-flow-model-settings__panel');
@@ -204,22 +204,20 @@ describe('NodeInspector code schema', () => {
     expect(screen.getByLabelText('Schema 字段名 1')).toHaveValue('role');
     expect(screen.getByLabelText('Schema 字段名 2')).toHaveValue('content');
 
-    fireEvent.click(screen.getByRole('button', { name: '添加 Schema 字段' }));
+    await domEvents.click(screen.getByRole('button', { name: '添加 Schema 字段' }));
     const schemaFieldNameInput = screen.getByLabelText('Schema 字段名 3');
     schemaFieldNameInput.focus();
-    fireEvent.change(schemaFieldNameInput, {
+    await domEvents.change(schemaFieldNameInput, {
       target: { value: 'metadata' }
     });
     expect(screen.getByLabelText('Schema 字段名 3')).toHaveFocus();
     await openSelect('Schema 字段类型 3');
     await selectOption('Object');
-    fireEvent.click(
-      screen.getByRole('button', { name: '添加 metadata 子字段' })
-    );
-    fireEvent.change(screen.getByLabelText('Schema 字段名 3.1'), {
+    await domEvents.click(screen.getByRole('button', { name: '添加 metadata 子字段' }));
+    await domEvents.change(screen.getByLabelText('Schema 字段名 3.1'), {
       target: { value: 'source' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(getCodeNode(latestDocument).outputs[0].jsonSchema).toMatchObject({
@@ -281,9 +279,9 @@ describe('NodeInspector code schema', () => {
     expect(await screen.findByLabelText('输出变量名 1')).toHaveValue(
       'chat_history'
     );
-    fireEvent.click(screen.getByRole('button', { name: '编辑 JSON Schema' }));
-    fireEvent.click(await screen.findByRole('tab', { name: 'JSON 解析' }));
-    fireEvent.change(await screen.findByLabelText('JSON Schema 内容'), {
+    await domEvents.click(screen.getByRole('button', { name: '编辑 JSON Schema' }));
+    await domEvents.click(await screen.findByRole('tab', { name: 'JSON 解析' }));
+    await domEvents.change(await screen.findByLabelText('JSON Schema 内容'), {
       target: {
         value: JSON.stringify(
           {
@@ -298,7 +296,7 @@ describe('NodeInspector code schema', () => {
         )
       }
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(getCodeNode(latestDocument).outputs[0]).toMatchObject({
@@ -343,11 +341,9 @@ describe('NodeInspector code schema', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '编辑 JSON Schema' })
-    );
-    fireEvent.click(await screen.findByRole('tab', { name: 'JSON 解析' }));
-    fireEvent.change(await screen.findByLabelText('JSON Schema 内容'), {
+    await domEvents.click(await screen.findByRole('button', { name: '编辑 JSON Schema' }));
+    await domEvents.click(await screen.findByRole('tab', { name: 'JSON 解析' }));
+    await domEvents.change(await screen.findByLabelText('JSON Schema 内容'), {
       target: {
         value: JSON.stringify(
           {
@@ -366,13 +362,13 @@ describe('NodeInspector code schema', () => {
         )
       }
     });
-    fireEvent.click(screen.getByRole('tab', { name: 'Schema 字段' }));
+    await domEvents.click(screen.getByRole('tab', { name: 'Schema 字段' }));
 
     await waitFor(() => {
       expect(screen.getByLabelText('Schema 字段名 1')).toHaveValue('role');
       expect(screen.getByLabelText('Schema 字段名 2')).toHaveValue('content');
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(getCodeNode(latestDocument).outputs[0]).toMatchObject({
@@ -456,16 +452,14 @@ describe('NodeInspector code schema', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '编辑 JSON Schema' })
-    );
-    fireEvent.click(await screen.findByRole('tab', { name: 'JSON 解析' }));
-    fireEvent.change(await screen.findByLabelText('JSON Schema 内容'), {
+    await domEvents.click(await screen.findByRole('button', { name: '编辑 JSON Schema' }));
+    await domEvents.click(await screen.findByRole('tab', { name: 'JSON 解析' }));
+    await domEvents.change(await screen.findByLabelText('JSON Schema 内容'), {
       target: {
         value: JSON.stringify(mediaToolSchema, null, 2)
       }
     });
-    fireEvent.click(screen.getByRole('tab', { name: 'Schema 字段' }));
+    await domEvents.click(screen.getByRole('tab', { name: 'Schema 字段' }));
 
     await waitFor(() => {
       expect(screen.getByLabelText('Schema 字段名 1')).toHaveValue('task');
@@ -512,14 +506,14 @@ describe('NodeInspector code schema', () => {
       })
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Schema 枚举值 2.2.1'), {
+    await domEvents.change(screen.getByLabelText('Schema 枚举值 2.2.1'), {
       target: { value: 'uploaded_file' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '添加 source 枚举值' }));
-    fireEvent.change(screen.getByLabelText('Schema 枚举值 2.2.2'), {
+    await domEvents.click(screen.getByRole('button', { name: '添加 source 枚举值' }));
+    await domEvents.change(screen.getByLabelText('Schema 枚举值 2.2.2'), {
       target: { value: 'workspace_path' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(getCodeNode(latestDocument).outputs[0]).toMatchObject({
@@ -585,9 +579,7 @@ describe('NodeInspector code schema', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '编辑 JSON Schema' })
-    );
+    await domEvents.click(await screen.findByRole('button', { name: '编辑 JSON Schema' }));
 
     expect(await screen.findByLabelText('Schema 字段名 1')).toHaveValue('tags');
     expect(screen.getByLabelText('Schema 枚举字段名 1')).toHaveValue('enum');
@@ -601,10 +593,10 @@ describe('NodeInspector code schema', () => {
 
     await openSelect('Schema 字段类型 1');
     await selectOption('Array<Number>');
-    fireEvent.change(screen.getByLabelText('Schema 枚举值 1.1'), {
+    await domEvents.change(screen.getByLabelText('Schema 枚举值 1.1'), {
       target: { value: '7' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await domEvents.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(getCodeNode(latestDocument).outputs[0]).toMatchObject({
@@ -627,3 +619,16 @@ describe('NodeInspector code schema', () => {
     });
   });
 });
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+const domEvents = {
+  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args)),
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args))
+};
+
+afterEach(() => { cleanup(); });

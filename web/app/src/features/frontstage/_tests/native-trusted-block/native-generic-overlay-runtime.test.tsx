@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { createRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -21,6 +21,7 @@ describe('native block generic AntD overlay host', () => {
   });
 
   afterEach(() => {
+    cleanup();
     document.body.replaceChildren();
     vi.restoreAllMocks();
     showPopover.mockReset();
@@ -37,7 +38,7 @@ describe('native block generic AntD overlay host', () => {
     const root = document.createElement('div');
     document.body.append(root);
 
-    render(
+    await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="generic-overlay:matrix"
@@ -120,7 +121,7 @@ describe('native block generic AntD overlay host', () => {
       );
     };
 
-    render(
+    await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="drawer:release-top-layer"
@@ -136,7 +137,7 @@ describe('native block generic AntD overlay host', () => {
       '[data-flowbase-native-overlay-layer="drawer-release-top-layer"]'
     )!;
 
-    fireEvent.click(queries.getByRole('button', { name: 'Open Drawer' }));
+    await domEvents.click(queries.getByRole('button', { name: 'Open Drawer' }));
     await waitFor(() => {
       expect(layer).toHaveAttribute(
         'data-flowbase-native-overlay-state',
@@ -153,7 +154,7 @@ describe('native block generic AntD overlay host', () => {
       height: '100vh'
     });
 
-    fireEvent.click(queries.getByRole('button', { name: 'Close Drawer' }));
+    await domEvents.click(queries.getByRole('button', { name: 'Close Drawer' }));
     await waitFor(
       () => {
         expect(layer).toHaveAttribute(
@@ -165,7 +166,7 @@ describe('native block generic AntD overlay host', () => {
     );
     expect(hidePopover).toHaveBeenCalledOnce();
 
-    fireEvent.click(queries.getByRole('button', { name: 'Open Drawer' }));
+    await domEvents.click(queries.getByRole('button', { name: 'Open Drawer' }));
     await waitFor(() => {
       expect(layer).toHaveAttribute(
         'data-flowbase-native-overlay-state',
@@ -188,7 +189,7 @@ describe('native block generic AntD overlay host', () => {
     const popoverRef = createRef<TooltipRef>();
     const tooltipRef = createRef<TooltipRef>();
 
-    render(
+    await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="generic-overlay:surface-anchor"
@@ -218,8 +219,8 @@ describe('native block generic AntD overlay host', () => {
     tooltipRef.current!.forceAlign = tooltipAlign;
     const frames = installAnimationFrameQueue();
 
-    scrollOwner.dispatchEvent(new Event('scroll'));
-    scrollOwner.dispatchEvent(new Event('scroll'));
+    await dispatch(() => scrollOwner.dispatchEvent(new Event('scroll')));
+    await dispatch(() => scrollOwner.dispatchEvent(new Event('scroll')));
     expect(frames.callbacks).toHaveLength(1);
     frames.callbacks[0]();
     expect(popoverAlign).toHaveBeenCalledOnce();
@@ -249,7 +250,7 @@ describe('native block generic AntD overlay host', () => {
     const popoverRef = createRef<TooltipRef>();
     const tooltipRef = createRef<TooltipRef>();
 
-    render(
+    await renderSettled(
       <>
         <FrontstageNativeTrustedBlockPortalHost
           root={popoverRoot}
@@ -299,7 +300,7 @@ describe('native block generic AntD overlay host', () => {
     tooltipRef.current!.forceAlign = tooltipCommit;
     const frames = installAnimationFrameQueue();
 
-    popoverScrollOwner.dispatchEvent(new Event('scroll'));
+    await dispatch(() => popoverScrollOwner.dispatchEvent(new Event('scroll')));
     expect(frames.callbacks).toHaveLength(1);
     frames.callbacks[0]();
     expect(popoverCommit).toHaveBeenCalledOnce();
@@ -320,7 +321,7 @@ describe('native block generic AntD overlay host', () => {
     const closedRef = createRef<TooltipRef>();
     const authoredRef = createRef<TooltipRef>();
 
-    render(
+    await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="generic-overlay:surface-negative"
@@ -362,9 +363,11 @@ describe('native block generic AntD overlay host', () => {
     authoredRef.current!.forceAlign = authoredAlign;
     const frames = installAnimationFrameQueue();
 
-    scrollOwner.dispatchEvent(new Event('scroll'));
-    window.dispatchEvent(new Event('resize'));
-    frames.callbacks.forEach((callback) => callback());
+    await dispatch(() => scrollOwner.dispatchEvent(new Event('scroll')));
+    await dispatch(() => window.dispatchEvent(new Event('resize')));
+    await act(async () => {
+      frames.callbacks.forEach((callback) => callback());
+    });
     expect(closedAlign).not.toHaveBeenCalled();
     expect(authoredAlign).not.toHaveBeenCalled();
   });
@@ -385,7 +388,7 @@ describe('native block generic AntD overlay host', () => {
         <button type="button">Stale anchor</button>
       </antd.Tooltip>
     );
-    const view = render(
+    const view = await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="generic-overlay:stale"
@@ -401,7 +404,7 @@ describe('native block generic AntD overlay host', () => {
     const forceAlign = vi.fn();
     tooltipRef.current!.forceAlign = forceAlign;
     const frames = installAnimationFrameQueue();
-    scrollOwner.dispatchEvent(new Event('scroll'));
+    await dispatch(() => scrollOwner.dispatchEvent(new Event('scroll')));
     const staleGenerationCallback = frames.callbacks[0];
 
     view.rerender(
@@ -414,13 +417,13 @@ describe('native block generic AntD overlay host', () => {
         ctx={createContext()}
       />
     );
-    staleGenerationCallback();
+    await act(async () => { staleGenerationCallback(); });
     expect(forceAlign).not.toHaveBeenCalled();
 
-    scrollOwner.dispatchEvent(new Event('scroll'));
+    await dispatch(() => scrollOwner.dispatchEvent(new Event('scroll')));
     const staleDisposeCallback = frames.callbacks.at(-1)!;
     view.unmount();
-    staleDisposeCallback();
+    await act(async () => { staleDisposeCallback(); });
     expect(forceAlign).not.toHaveBeenCalled();
   });
 
@@ -433,7 +436,7 @@ describe('native block generic AntD overlay host', () => {
     const authoredContainer = document.createElement('div');
     document.body.append(root);
 
-    render(
+    await renderSettled(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="generic-overlay:authored"
@@ -523,8 +526,10 @@ function installAnimationFrameQueue() {
 }
 
 async function nextAnimationFrame(): Promise<void> {
-  await new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => resolve());
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
   });
 }
 
@@ -540,3 +545,19 @@ async function surfaceOverlayHost(
     return host as HTMLElement;
   });
 }
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(...args); });
+  return view;
+}
+
+const domEvents = {
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args))
+};

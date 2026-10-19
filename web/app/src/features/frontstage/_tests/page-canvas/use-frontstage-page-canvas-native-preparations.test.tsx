@@ -1,5 +1,5 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const nativeRuntime = vi.hoisted(() => ({
   evaluate: vi.fn(async (artifact: unknown, _registry?: unknown) => ({
@@ -125,7 +125,7 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
     expect(artifactCache.get).toHaveBeenCalledOnce();
 
     const before = result.current.preparations.getBlockSnapshot('block-1');
-    result.current.refreshBlock('block-1');
+    await act(async () => { result.current.refreshBlock('block-1'); });
 
     await waitFor(() => expect(fetchSource).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(compile).toHaveBeenCalledOnce());
@@ -373,7 +373,7 @@ test('returning to a retained page validates its browser copy without recompilin
   expect(result.current.preparations.getBlockSnapshot('block-1')).toBe(
     original
   );
-  result.current.refreshBlock('block-1');
+  await act(async () => { result.current.refreshBlock('block-1'); });
   await waitFor(() => expect(compile).toHaveBeenCalledOnce());
   await waitFor(() =>
     expect(
@@ -441,7 +441,7 @@ test('failed return validation retains the runtime behind an error until explici
   );
   expect(result.current.isValidating).toBe(false);
   offline = false;
-  act(() => result.current.retryValidation());
+  await act(async () => { result.current.retryValidation(); });
   await waitFor(() => expect(result.current.validationError).toBeNull());
   await waitFor(() => expect(result.current.isValidating).toBe(false));
   expect(fetchSource).toHaveBeenCalledTimes(3);
@@ -494,3 +494,5 @@ function createArtifact(
     }
   } as unknown as NativeReactComponentArtifact;
 }
+
+afterEach(() => { cleanup(); });

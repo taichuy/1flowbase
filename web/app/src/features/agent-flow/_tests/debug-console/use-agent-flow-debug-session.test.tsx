@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import {
   afterEach,
@@ -20,12 +20,14 @@ import { useAgentFlowDebugSession } from '../../hooks/runtime/useAgentFlowDebugS
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
 function createQueryClient() {
-  return new QueryClient({
+  const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false }
     }
   });
+  mountedClients.add(client);
+  return client;
 }
 
 function createWrapper(queryClient: QueryClient) {
@@ -221,6 +223,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
+  for (const client of mountedClients) client.clear();
+  mountedClients.clear();
   vi.restoreAllMocks();
 });
 
@@ -410,7 +415,7 @@ describe('useAgentFlowDebugSession', () => {
       { wrapper: createWrapper(queryClient) }
     );
 
-    act(() => {
+    await act(async () => {
       result.current.resetVariableCache();
     });
     await act(async () => {
@@ -814,7 +819,7 @@ describe('useAgentFlowDebugSession', () => {
       await view.result.current.submitPrompt('请总结退款政策');
     });
 
-    act(() => {
+    await act(async () => {
       view.result.current.setVariableCacheValue(
         'node-llm.text',
         '手动调试缓存'
@@ -993,7 +998,7 @@ test('#2018 AC-107 preview MCP selection reaches both stream and fallback and re
       wrapper: createWrapper(createQueryClient())
     }
   );
-  act(() => result.current.setMcpInstanceIds(['preview-mcp']));
+  await act(async () => result.current.setMcpInstanceIds(['preview-mcp']));
   await act(async () => {
     await result.current.submitPrompt('Test MCP');
   });
@@ -1008,3 +1013,5 @@ test('#2018 AC-107 preview MCP selection reaches both stream and fallback and re
   rerender({ applicationId: 'app-2' });
   expect(result.current.mcp_instance_ids).toEqual([]);
 });
+
+const mountedClients = new Set<QueryClient>();

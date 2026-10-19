@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const { getConsoleNavigation, patchUserPreferences, preloadDesignModeDemand } =
   vi.hoisted(() => ({
@@ -44,8 +44,8 @@ import {
 } from '../../state/frontstage-design-mode-store';
 import { AppShellFrame } from '../AppShellFrame';
 
-function renderShell(pathname: string) {
-  return render(
+async function renderShell(pathname: string) {
+  return await renderSettled(
     <AppProviders>
       <AppShellFrame pathname={pathname}>
         <main>Content</main>
@@ -127,14 +127,14 @@ describe('AppShellFrame', () => {
   });
 
   test('translates primary navigation labels at render time', async () => {
-    renderShell('/');
+    await renderShell('/');
 
     expect(await screen.findByText('settings')).toBeInTheDocument();
     expect(screen.queryByText('auto.settings')).not.toBeInTheDocument();
   });
 
   test('places the account menu after the secondary top actions', async () => {
-    renderShell('/settings/data-models');
+    await renderShell('/settings/data-models');
 
     await waitFor(() => {
       const accountLabel = screen.getByText('Root');
@@ -148,13 +148,13 @@ describe('AppShellFrame', () => {
   });
 
   test('places the AI assistant action beside the UI action', async () => {
-    renderShell('/');
+    await renderShell('/');
 
     expect(await screen.findByLabelText('AI assistant')).toBeInTheDocument();
   });
 
   test('places the language switcher between help and account', async () => {
-    renderShell('/settings/data-models');
+    await renderShell('/settings/data-models');
 
     await waitFor(() => {
       const helpTrigger = screen.getByLabelText('help');
@@ -173,7 +173,7 @@ describe('AppShellFrame', () => {
   });
 
   test('does not mark the language switcher as a selected navigation item', async () => {
-    const { container } = renderShell('/settings/data-models');
+    const { container } = await renderShell('/settings/data-models');
 
     expect(await screen.findByLabelText('Switch language')).toBeInTheDocument();
     expect(
@@ -186,10 +186,10 @@ describe('AppShellFrame', () => {
   });
 
   test('updates the current session locale from the language switcher', async () => {
-    renderShell('/settings/data-models');
+    await renderShell('/settings/data-models');
 
-    fireEvent.mouseEnter(await screen.findByLabelText('Switch language'));
-    fireEvent.click(await screen.findByText('English'));
+    await domEvents.mouseEnter(await screen.findByLabelText('Switch language'));
+    await domEvents.click(await screen.findByText('English'));
 
     await waitFor(() => {
       expect(useAuthStore.getState().me?.preferred_locale).toBe('en_US');
@@ -235,13 +235,13 @@ describe('AppShellFrame', () => {
       }
     });
 
-    renderShell('/settings/data-models');
+    await renderShell('/settings/data-models');
 
     expect(await screen.findByLabelText('Switch language')).toBeInTheDocument();
   });
 
   test('places frontstage design mode icon before settings and toggles shared state', async () => {
-    renderShell('/frontstage');
+    await renderShell('/frontstage');
 
     await waitFor(() => {
       const settingsTrigger = screen.getByLabelText('settings');
@@ -259,7 +259,7 @@ describe('AppShellFrame', () => {
       expect(designButton).toHaveAttribute('aria-pressed', 'false');
     });
 
-    fireEvent.click(screen.getByLabelText('Enter design mode'));
+    await domEvents.click(screen.getByLabelText('Enter design mode'));
 
     expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(true);
     expect(screen.getByLabelText('Exit design mode')).toHaveAttribute(
@@ -269,7 +269,7 @@ describe('AppShellFrame', () => {
   });
 
   test('BGP-008 preloads design mode after the critical route grace window', async () => {
-    renderShell('/');
+    await renderShell('/');
 
     await waitFor(
       () => {
@@ -303,14 +303,14 @@ describe('AppShellFrame', () => {
       } as Location
     });
 
-    renderShell('/');
+    await renderShell('/');
 
     await waitFor(() => {
       const designButton = screen.getByLabelText('Enter design mode');
       expect(designButton).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText('Enter design mode'));
+    await domEvents.click(screen.getByLabelText('Enter design mode'));
 
     expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(true);
     expect(locationSpy).not.toHaveBeenCalled();
@@ -402,5 +402,30 @@ describe('AppShellFrame', () => {
     expect(navigationSource).not.toContain('disabledOverflow');
     expect(menuRule).toContain('gap: 0;');
     expect(menuItemRule).toContain('padding-inline: 6px !important;');
+  });
+});
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(...args); });
+  return view;
+}
+
+const domEvents = {
+  mouseEnter: (...args: Parameters<typeof fireEvent.mouseEnter>) => dispatch(() => fireEvent.mouseEnter(...args)),
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args))
+};
+
+afterEach(async () => {
+  cleanup();
+  await act(async () => {
+    resetAuthStore();
+    resetFrontstageDesignModeStore();
   });
 });

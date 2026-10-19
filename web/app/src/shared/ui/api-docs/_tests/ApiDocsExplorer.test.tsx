@@ -1,4 +1,4 @@
-import {
+import { act, cleanup,
   fireEvent,
   render,
   screen,
@@ -115,8 +115,11 @@ describe('ApiDocsExplorer', () => {
   });
 
   afterEach(async () => {
-    window.history.replaceState(null, '', '/');
-    await appI18n.changeLanguage('en_US');
+    cleanup();
+    await act(async () => {
+      window.history.replaceState(null, '', '/');
+      await appI18n.changeLanguage('en_US');
+    });
   });
 
   test('loads the next operations page when the selected category list scrolls near the bottom', async () => {
@@ -155,7 +158,7 @@ describe('ApiDocsExplorer', () => {
       }
     );
 
-    render(
+    await renderSettled(
       <AppProviders>
         <ApiDocsExplorer
           queryState={{
@@ -208,7 +211,7 @@ describe('ApiDocsExplorer', () => {
       value: 700,
       configurable: true
     });
-    fireEvent.scroll(scrollArea);
+    await domEvents.scroll(scrollArea);
 
     expect(
       await screen.findByRole('button', { name: /get \/api\/v1\/items\/24/i })
@@ -239,7 +242,7 @@ describe('ApiDocsExplorer', () => {
         })
     );
 
-    render(
+    await renderSettled(
       <AppProviders>
         <ApiDocsExplorer
           queryState={{
@@ -272,7 +275,7 @@ describe('ApiDocsExplorer', () => {
       name: '搜索接口'
     });
     searchInput.focus();
-    fireEvent.change(searchInput, { target: { value: 's' } });
+    await domEvents.change(searchInput, { target: { value: 's' } });
 
     expect(searchInput).toHaveFocus();
     await waitFor(() => {
@@ -291,7 +294,7 @@ describe('ApiDocsExplorer', () => {
       )
     );
 
-    render(
+    await renderSettled(
       <AppProviders>
         <ApiDocsExplorer
           queryState={{ categoryId: null, operationId: null }}
@@ -363,7 +366,7 @@ describe('ApiDocsExplorer', () => {
     );
     const onQueryStateChange = vi.fn();
 
-    render(
+    await renderSettled(
       <AppProviders>
         <ApiDocsExplorer
           queryState={{
@@ -402,7 +405,7 @@ describe('ApiDocsExplorer', () => {
     const operationLink = await within(scalarViewer).findByText(
       '/v1/chat/completions'
     );
-    fireEvent.click(operationLink);
+    await domEvents.click(operationLink);
 
     expect(copyTextToClipboard).toHaveBeenCalledWith(
       'POST /v1/chat/completions'
@@ -410,3 +413,21 @@ describe('ApiDocsExplorer', () => {
     expect(window.location.hash).toBe('');
   });
 });
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(...args); });
+  return view;
+}
+
+const domEvents = {
+  scroll: (...args: Parameters<typeof fireEvent.scroll>) => dispatch(() => fireEvent.scroll(...args)),
+  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args)),
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args))
+};

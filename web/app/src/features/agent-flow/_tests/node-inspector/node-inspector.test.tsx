@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 
 import { useState } from 'react';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { modelProviderOptionsContract } from '../../../../test/model-provider-contract-fixtures';
@@ -76,7 +76,7 @@ describe('NodeInspector core', () => {
     const editor = await screen.findByDisplayValue(
       'select {{node-start.query}}'
     );
-    fireEvent.change(editor, {
+    await domEvents.change(editor, {
       target: { value: 'select * from users where id = {{node-start.query}}' }
     });
 
@@ -237,10 +237,10 @@ describe('NodeInspector core', () => {
 
     const header = screen.getByTestId('node-detail-header');
 
-    fireEvent.change(within(header).getByLabelText('节点别名'), {
+    await domEvents.change(within(header).getByLabelText('节点别名'), {
       target: { value: '入口节点' }
     });
-    fireEvent.change(within(header).getByLabelText('节点简介'), {
+    await domEvents.change(within(header).getByLabelText('节点简介'), {
       target: { value: '收集首轮用户输入并启动工作流。' }
     });
 
@@ -392,9 +392,7 @@ describe('NodeInspector core', () => {
       screen.queryByRole('columnheader', { name: '目标 LLM' })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: '编辑 inspect_visible_context' })
-    );
+    await domEvents.click(screen.getByRole('button', { name: '编辑 inspect_visible_context' }));
 
     const dialog = await screen.findByRole('dialog', { name: '编辑 工具注册' });
 
@@ -410,23 +408,23 @@ describe('NodeInspector core', () => {
       name: '保存工具'
     });
 
-    fireEvent.change(within(dialog).getByLabelText('工具标识'), {
+    await domEvents.change(within(dialog).getByLabelText('工具标识'), {
       target: { value: 'inspect-image' }
     });
     expect(saveToolButton).toBeDisabled();
     expect(
       within(dialog).getByText('仅支持 1-64 位数字、大小写字母、下划线。')
     ).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('工具标识'), {
+    await domEvents.change(within(dialog).getByLabelText('工具标识'), {
       target: { value: 'inspect_image' }
     });
-    fireEvent.change(within(dialog).getByLabelText('工具名称'), {
+    await domEvents.change(within(dialog).getByLabelText('工具名称'), {
       target: { value: 'inspect_image' }
     });
-    fireEvent.change(within(dialog).getByLabelText('描述'), {
+    await domEvents.change(within(dialog).getByLabelText('描述'), {
       target: { value: 'Inspect uploaded image' }
     });
-    fireEvent.click(internalLlmSwitch);
+    await domEvents.click(internalLlmSwitch);
     const toolModeSelect = within(dialog).getByRole('combobox', {
       name: '工具模式'
     });
@@ -434,7 +432,7 @@ describe('NodeInspector core', () => {
       internalLlmSwitch.compareDocumentPosition(toolModeSelect) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    fireEvent.click(saveToolButton);
+    await domEvents.click(saveToolButton);
 
     await waitFor(() => {
       expect(getLlmNodeConfig(latestDocument)).toEqual(
@@ -462,7 +460,7 @@ describe('NodeInspector core', () => {
     );
     expect(await screen.findByText('inspect_image')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '删除 inspect_image' }));
+    await domEvents.click(screen.getByRole('button', { name: '删除 inspect_image' }));
 
     await waitFor(() => {
       expect(getLlmNodeConfig(latestDocument)).toEqual(
@@ -546,9 +544,7 @@ describe('NodeInspector core', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '编辑 compare_panels' })
-    );
+    await domEvents.click(await screen.findByRole('button', { name: '编辑 compare_panels' }));
 
     const dialog = await screen.findByRole('dialog', { name: '编辑 工具注册' });
 
@@ -567,7 +563,7 @@ describe('NodeInspector core', () => {
       within(dialog).queryByRole('switch', { name: '开放外部工具' })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存工具' }));
+    await domEvents.click(within(dialog).getByRole('button', { name: '保存工具' }));
 
     await waitFor(() => {
       expect(getLlmNodeConfig(latestDocument)).toEqual(
@@ -657,9 +653,7 @@ describe('NodeInspector core', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '编辑 image_llm' })
-    );
+    await domEvents.click(await screen.findByRole('button', { name: '编辑 image_llm' }));
 
     const dialog = await screen.findByRole('dialog', { name: '编辑 工具注册' });
     const preconditionsEditor = within(dialog).getByTestId(
@@ -670,9 +664,7 @@ describe('NodeInspector core', () => {
     expect(preconditionsEditor).toHaveClass(
       'agent-flow-llm-tool-registration-preconditions'
     );
-    fireEvent.click(
-      within(preconditionsEditor).getByRole('tab', { name: 'JSON 解析' })
-    );
+    await domEvents.click(within(preconditionsEditor).getByRole('tab', { name: 'JSON 解析' }));
     const preconditionsInput =
       await within(preconditionsEditor).findByLabelText('前置拦截 JSON');
     expect(preconditionsInput).toHaveValue(
@@ -704,10 +696,8 @@ describe('NodeInspector core', () => {
       within(dialog).queryByDisplayValue('preconditions')
     ).not.toBeInTheDocument();
 
-    fireEvent.click(
-      within(dialog).getAllByRole('tab', { name: 'JSON 解析' })[1]
-    );
-    fireEvent.change(await within(dialog).findByLabelText('JSON Schema 内容'), {
+    await domEvents.click(within(dialog).getAllByRole('tab', { name: 'JSON 解析' })[1]);
+    await domEvents.change(await within(dialog).findByLabelText('JSON Schema 内容'), {
       target: {
         value: JSON.stringify(
           {
@@ -758,9 +748,7 @@ describe('NodeInspector core', () => {
         )
       }
     });
-    fireEvent.click(
-      within(dialog).getAllByRole('tab', { name: 'Schema 字段' })[1]
-    );
+    await domEvents.click(within(dialog).getAllByRole('tab', { name: 'Schema 字段' })[1]);
 
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Schema 字段名 1')).toHaveValue(
@@ -776,7 +764,7 @@ describe('NodeInspector core', () => {
         within(dialog).queryByDisplayValue('preconditions')
       ).not.toBeInTheDocument();
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存工具' }));
+    await domEvents.click(within(dialog).getByRole('button', { name: '保存工具' }));
 
     await waitFor(() => {
       expect(getLlmNodeConfig(latestDocument)).toEqual(
@@ -851,9 +839,7 @@ describe('NodeInspector core', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '编辑 image_llm' })
-    );
+    await domEvents.click(await screen.findByRole('button', { name: '编辑 image_llm' }));
 
     const dialog = await screen.findByRole('dialog', { name: '编辑 工具注册' });
     const preconditionsEditor = within(dialog).getByTestId(
@@ -865,23 +851,17 @@ describe('NodeInspector core', () => {
         '前置拦截 1 字段值 argument_path'
       )
     ).toHaveValue('media');
-    fireEvent.change(
-      within(preconditionsEditor).getByLabelText(
+    await domEvents.change(within(preconditionsEditor).getByLabelText(
         '前置拦截 1 字段值 argument_path'
-      ),
-      {
+      ), {
         target: { value: 'media' }
-      }
-    );
-    fireEvent.change(
-      within(preconditionsEditor).getByLabelText(
+      });
+    await domEvents.change(within(preconditionsEditor).getByLabelText(
         '前置拦截 1 字段值 media_kind'
-      ),
-      {
+      ), {
         target: { value: 'image' }
-      }
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存工具' }));
+      });
+    await domEvents.click(within(dialog).getByRole('button', { name: '保存工具' }));
 
     await waitFor(() => {
       expect(getLlmNodeConfig(latestDocument)).toEqual(
@@ -929,11 +909,9 @@ describe('NodeInspector core', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    fireEvent.click(
-      await screen.findByRole('button', {
+    await domEvents.click(await screen.findByRole('button', {
         name: '编辑 inspect_visible_context'
-      })
-    );
+      }));
 
     const dialog = await screen.findByRole('dialog', {
       name: '编辑 工具注册'
@@ -959,16 +937,16 @@ describe('NodeInspector core', () => {
     const fullPanelMaxLeft = window.innerWidth - panelWidth - margin;
     const fullPanelMaxTop = window.innerHeight - panelHeight - margin;
 
-    fireEvent.mouseDown(dragHandle, {
+    await domEvents.mouseDown(dragHandle, {
       button: 0,
       clientX: 24,
       clientY: 24
     });
-    fireEvent.mouseMove(window, {
+    await domEvents.mouseMove(window, {
       clientX: window.innerWidth + 200,
       clientY: 24
     });
-    fireEvent.mouseUp(window);
+    await domEvents.mouseUp(window);
 
     await waitFor(() =>
       expect(Number.parseFloat(dialog.style.left)).toBeGreaterThan(
@@ -984,16 +962,16 @@ describe('NodeInspector core', () => {
     );
     expect(panelLeft + panelWidth).toBeGreaterThan(window.innerWidth);
 
-    fireEvent.mouseDown(dragHandle, {
+    await domEvents.mouseDown(dragHandle, {
       button: 0,
       clientX: window.innerWidth - margin - 24,
       clientY: 24
     });
-    fireEvent.mouseMove(window, {
+    await domEvents.mouseMove(window, {
       clientX: window.innerWidth - margin - 24,
       clientY: window.innerHeight + 200
     });
-    fireEvent.mouseUp(window);
+    await domEvents.mouseUp(window);
 
     await waitFor(() =>
       expect(Number.parseFloat(dialog.style.top)).toBeGreaterThan(
@@ -1027,7 +1005,7 @@ describe('NodeInspector core', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText('输出变量名 1')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '输出变量' }));
+    await domEvents.click(screen.getByRole('button', { name: '输出变量' }));
 
     expect(screen.getByText('text')).toBeInTheDocument();
     expect(screen.getByText('usage')).toBeInTheDocument();
@@ -1112,7 +1090,7 @@ describe('NodeInspector core', () => {
       name: '转存为文件'
     });
     expect(storeResponseAsFileSwitch).not.toBeChecked();
-    fireEvent.click(storeResponseAsFileSwitch);
+    await domEvents.click(storeResponseAsFileSwitch);
     await waitFor(() => {
       const httpNode = latestDocument.graph.nodes.find(
         (node) => node.id === 'node-http-request'
@@ -1123,7 +1101,7 @@ describe('NodeInspector core', () => {
     expect(screen.getByLabelText('超时设置(ms)')).toBeInTheDocument();
     const maxResponseSizeInput = screen.getByLabelText('最大响应体(MB)');
     expect(maxResponseSizeInput).toHaveValue('6');
-    fireEvent.change(maxResponseSizeInput, { target: { value: '8' } });
+    await domEvents.change(maxResponseSizeInput, { target: { value: '8' } });
     await waitFor(() => {
       const httpNode = latestDocument.graph.nodes.find(
         (node) => node.id === 'node-http-request'
@@ -1135,21 +1113,21 @@ describe('NodeInspector core', () => {
     expect(screen.queryByText('headers')).not.toBeInTheDocument();
     expect(screen.queryByText('files')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '输出变量' }));
+    await domEvents.click(screen.getByRole('button', { name: '输出变量' }));
 
     expect(screen.getAllByText('body').length).toBeGreaterThan(0);
     expect(screen.getByText('status_code')).toBeInTheDocument();
     expect(screen.getByText('headers')).toBeInTheDocument();
     expect(screen.getByText('files')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '导入 cURL' }));
-    fireEvent.change(await screen.findByLabelText('cURL 命令'), {
+    await domEvents.click(screen.getByRole('button', { name: '导入 cURL' }));
+    await domEvents.change(await screen.findByLabelText('cURL 命令'), {
       target: {
         value:
           "curl -X POST 'https://api.example.com/orders?page=1' -H 'Authorization: Bearer token' -H 'Content-Type: application/json' -d '{\"query\":\"{{node-start.query}}\"}'"
       }
     });
-    fireEvent.click(screen.getByRole('button', { name: '导入请求' }));
+    await domEvents.click(screen.getByRole('button', { name: '导入请求' }));
 
     await waitFor(() => {
       const httpNode = latestDocument.graph.nodes.find(
@@ -1286,7 +1264,7 @@ describe('NodeInspector core', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '新增变量' }));
+    await domEvents.click(screen.getByRole('button', { name: '新增变量' }));
 
     expect(handleChange).toHaveBeenCalledWith([
       {
@@ -1300,11 +1278,27 @@ describe('NodeInspector core', () => {
     await renderWithProviders(<NamedBindingsFocusHarness />);
 
     const nameInput = screen.getByLabelText('bindings-0-name');
-    nameInput.focus();
-    fireEvent.change(nameInput, {
+    await dispatch(() => nameInput.focus());
+    await domEvents.change(nameInput, {
       target: { value: 'arg2' }
     });
 
     expect(screen.getByLabelText('bindings-0-name')).toHaveFocus();
   });
 });
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+const domEvents = {
+  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args)),
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
+  mouseDown: (...args: Parameters<typeof fireEvent.mouseDown>) => dispatch(() => fireEvent.mouseDown(...args)),
+  mouseMove: (...args: Parameters<typeof fireEvent.mouseMove>) => dispatch(() => fireEvent.mouseMove(...args)),
+  mouseUp: (...args: Parameters<typeof fireEvent.mouseUp>) => dispatch(() => fireEvent.mouseUp(...args))
+};
+
+afterEach(() => { cleanup(); });

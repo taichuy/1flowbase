@@ -1,4 +1,4 @@
-import {
+import { cleanup,
   act,
   fireEvent,
   render,
@@ -6,7 +6,7 @@ import {
   waitFor
 } from '@testing-library/react';
 import { useState } from 'react';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterEach, afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import type { FlowBinding } from '@1flowbase/flow-schema';
 import { HttpRequestBodyField } from '../../components/detail/fields/HttpRequestBodyField';
@@ -111,11 +111,11 @@ function HttpRequestFormDataHarness() {
 
 describe('HttpRequestKeyValuesField', () => {
   test('keeps focus on the key editor after the key name changes', async () => {
-    render(<HttpRequestKeyValuesHarness />);
+    await renderSettled(<HttpRequestKeyValuesHarness />);
 
     const keyEditor = screen.getByLabelText('Request Params-0-key');
 
-    keyEditor.focus();
+    await dispatch(() => keyEditor.focus());
     expect(keyEditor).toHaveFocus();
 
     const insertKeyVariableButton = screen.getAllByRole('button', {
@@ -126,32 +126,27 @@ describe('HttpRequestKeyValuesField', () => {
       throw new Error('expected key variable insert button');
     }
 
-    fireEvent.click(insertKeyVariableButton);
-    fireEvent.click(await screen.findByRole('option', { name: 'Start/query' }));
-
-    await act(async () => {
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 240);
-      });
-    });
+    await domEvents.click(insertKeyVariableButton);
+    await domEvents.click(await screen.findByRole('option', { name: 'Start/query' }));
 
     await waitFor(() => {
       expect(screen.getByTestId('params-value')).toHaveTextContent(
         '"name":"p{{node-start.query}}"'
       );
+      expect(keyEditor).toHaveFocus();
     });
     expect(keyEditor).toHaveFocus();
   });
 
   test('keeps focus on the form-data key input after the key name changes', async () => {
-    render(<HttpRequestFormDataHarness />);
+    await renderSettled(<HttpRequestFormDataHarness />);
 
     const keyInput = screen.getByDisplayValue('p');
 
-    keyInput.focus();
+    await dispatch(() => keyInput.focus());
     expect(keyInput).toHaveFocus();
 
-    fireEvent.change(keyInput, {
+    await domEvents.change(keyInput, {
       target: { value: 'pz' }
     });
 
@@ -163,3 +158,22 @@ describe('HttpRequestKeyValuesField', () => {
     expect(keyInput).toHaveFocus();
   });
 });
+
+async function dispatch<T>(event: () => T) {
+  let result!: T;
+  await act(async () => { result = event(); });
+  return result;
+}
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(...args); });
+  return view;
+}
+
+const domEvents = {
+  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
+  change: (...args: Parameters<typeof fireEvent.change>) => dispatch(() => fireEvent.change(...args))
+};
+
+afterEach(() => { cleanup(); });
