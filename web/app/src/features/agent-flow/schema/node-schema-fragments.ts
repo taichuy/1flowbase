@@ -60,12 +60,6 @@ const CONTRACT_FIELD_RENDERER_ALLOWLIST = new Set([
   'http_request_curl_import'
 ]);
 
-export function registerContractFieldRenderers(rendererNames: string[]) {
-  for (const rendererName of rendererNames) {
-    CONTRACT_FIELD_RENDERER_ALLOWLIST.add(rendererName);
-  }
-}
-
 function createFieldBlock(field: NodeDefinitionField): SchemaFieldBlock {
   const block: SchemaFieldBlock = {
     kind: 'field',

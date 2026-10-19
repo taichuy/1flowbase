@@ -7,6 +7,7 @@ import type {
   SchemaViewBlock
 } from '../contracts/canvas-node-schema';
 import { evaluateSchemaRule } from './rule-evaluator';
+import { keyedSchemaBlocks } from './schema-block-keys';
 import type { RendererRegistry, SchemaAdapter } from '../registry/create-renderer-registry';
 
 export interface SchemaRendererProps {
@@ -92,16 +93,13 @@ function renderBlock(
       return (
         <section data-schema-block="section">
           <h3>{block.title}</h3>
-          {block.blocks.map((childBlock, index) => (
-            <SchemaRenderer
-              key={`${block.title}-${index}`}
-              adapter={adapter}
-              blocks={[childBlock]}
-              registry={registry}
-              values={values}
-              capabilities={capabilities}
-            />
-          ))}
+          <SchemaRenderer
+            adapter={adapter}
+            blocks={block.blocks}
+            registry={registry}
+            values={values}
+            capabilities={capabilities}
+          />
         </section>
       );
     case 'stack':
@@ -109,16 +107,13 @@ function renderBlock(
     case 'tabs':
       return (
         <div data-schema-block={block.kind}>
-          {block.blocks.map((childBlock, index) => (
-            <SchemaRenderer
-              key={`${block.kind}-${index}`}
-              adapter={adapter}
-              blocks={[childBlock]}
-              registry={registry}
-              values={values}
-              capabilities={capabilities}
-            />
-          ))}
+          <SchemaRenderer
+            adapter={adapter}
+            blocks={block.blocks}
+            registry={registry}
+            values={values}
+            capabilities={capabilities}
+          />
         </div>
       );
     default:
@@ -138,9 +133,9 @@ export function SchemaRenderer({
 
   return (
     <>
-      {blocks.map((block, index) => (
+      {keyedSchemaBlocks(blocks).map(({ block, key }) => (
         <SchemaBlockRenderer
-          key={index}
+          key={key}
           adapter={adapter}
           block={block}
           registry={registry}

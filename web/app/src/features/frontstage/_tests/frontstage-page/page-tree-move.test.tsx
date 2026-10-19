@@ -148,14 +148,8 @@ function createSavedPageContentFromInput(
   });
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function getPageTreeItem(title: string) {
-  return screen.getByRole('button', {
-    name: new RegExp(`${escapeRegExp(title)}\\s+页面节点`)
-  });
+  return screen.getByRole('treeitem', { name: title });
 }
 
 async function clickAndFlush(element: HTMLElement) {
