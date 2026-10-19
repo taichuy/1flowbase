@@ -2,7 +2,7 @@
 title: "GitHub 项目观察库与日周月榜（连接器配置）"
 memory_type: project
 created_at: "2026-10-18 01"
-updated_at: "2026-10-18 23"
+updated_at: "2026-10-19 07"
 decision_policy: verify_before_decision
 status: delivered
 tags: [github, frontstage, connector, daily-report]
@@ -35,3 +35,7 @@ tags: [github, frontstage, connector, daily-report]
 - 2026-10-18 23 用户要求社区列表改为基础信息紧凑表格，已用连接器调整同一社区区块（修订`7be646ef90a70379bf3c60ed3aabfd7998a4c64ce48c3938cb2a6811cc4cea60`）：仓库/标题/Star/来源/收录时间/描述六列，每行42px，描述和标题单行省略，完整分析与备注继续在详情；Star为收录快照stars_total。小屏内部横向滚动保留六列。7组真实浏览器验收通过，0页面错误，筛选/详情/备注读取/PNG下载正常，无业务写入。只改社区UI配置，无工作流/数据/进程变更。最新样式证据`tmp/test-governance/github-observer/community-compact/report.md`；此前community-split宽摘要视觉已被本次取代。
 
 - 2026-10-18 23 社区表格累计Star按用户要求改为>=1000的一位小数k格式，悬停完整数字与收录日期；同一社区区块最新修订`5357c0359a412d48a4de7090135eb9f913cbcebd07f6570966a9235aa3ccfd50`。七项真实页面数据/显示/提示及42px行高断言通过，页面错误0；证据`tmp/test-governance/github-observer/community-stars/qa.json`。仅UI配置改动。
+
+- 2026-10-19 00 用户休息前明确要求新增报告页，参考route日报页面。已通过连接器交付github→报告：页面`01a14fc1-a65f-75ee-9c92-a7c891b6b286`、区块`01a14fc5-6e64-7690-90b9-b2c99228d51a`，新表gh_reports模型`01a14fbf-1e65-7315-b183-ac26431e17aa`；统一日报/周报/月报/其他，标题/周期/摘要/Markdown正文，新增/原记录修改/阅读/搜索/筛选/确认删除/Markdown导出。使用标准已认证动态CRUD，无新Workflow或调度。可视化与Markdown编辑预览，未保存确认、失败保留草稿；修复Vditor格式规范化误标记dirty，切换/保存前读取当前草稿。最终修订`ecdfd80022ab9e83aaca6e0b366d97972bdcdbd5583a461566a3a7d9c8bc0dce`。10组真实QA通过、0页面错误，14,364字符正文持久化，手机可读可编辑，测试记录全清理，新表0条；原五表及daily_reports15条全行hash保持一致。未改产品源码或重启服务。新页不使用旧榜单视口自算；旧日榜高度仍仅诊断，未扩大本轮范围。交付报告`tmp/test-governance/github-observer/report-library/report.md`。
+
+- 2026-10-19 07 用户纠正报告快速预览应为标题列表、标题检索、时间正反排序，并要求两个真正独立且可调宽的原生区块。已通过连接器将原报告区块改为目录，新增正文区块 `01a15159-a3e5-705e-a361-7570ea6455bc`；原页面和gh_reports表保留。桌面7/24+17/24，手机上下排列/点击阅读抽屉；高度直接消费平台available.height，一次性固有偏好560。选择与CRUD后刷新经端口联动。目录最终SHA `fa01377682f68c68e1ab6ffb30cd92a64003f9667288b3c58844207074a4bf5e`；正文SHA `e590691bd2f0a0ffdee09d7bee1bc2800bdd93ca400f26edab1c1446cea14064`。10组真实浏览器验收通过、0页面异常；35篇滚动/搜索/正反序和单篇CRUD测试数据全部移除。7表完整行hash前后一致，当前数量gh_reports0、projects27、observations50、daily46、weekly39、monthly26、参考daily_reports15。设计模式两块各有原生宽度拖拽手柄；未在UI中保存拖拽布局，实际拖拽持久化未另测。无产品源码、其他榜单、工作流/调度或进程变更。证据 `tmp/test-governance/github-observer/report-navigator/report.md`。此前report-library单区块布局已被本次替代，旧编辑器保护继续复用；未指定截止日期。
