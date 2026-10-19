@@ -64,6 +64,14 @@ The following operations live under `installed/{installation_id}` in Extension C
 
 Grant bodies identify contribution, permission, resource scope and permission contract/version. Revocation supplies `authorization_id` and `expected_revision`. Event publishing, subscription and owned-data writes need their respective contribution grants; granting a `.data` contribution does not authorize `.events` writes.
 
+### Managed external login authentication
+
+`authentication_providers` declares system-scoped login types, configuration forms and public login blocks. Execution uses the `1flowbase.authentication.provider` contribution. `authentication.verify` and `network.http.request` require separate, exact contribution grants. Installation does not grant authority; the existing activation owner prepares supported grants when root enables the extension. Authentication reuses managed workers, the six runtime ports and the Host HTTP service.
+
+The Host owns connection-bound encrypted secrets, the fixed public callback origin, state, PKCE, browser binding and one-time transaction claims. Anonymous authentication egress accepts only an active system authentication contribution and checks the current installation, version and grants without inventing a user actor. Raw codes, verifiers and cookies stay inside the trusted authentication boundary; business bindings receive verified identities. HTTP traces omit authorization and callback query parameters.
+
+The plugin verifies the upstream identity and first-registration eligibility. The Host resolves explicit bindings by stable external subject; existing bindings bypass signup and account-age gates. Unknown identities create an ordinary member, default role and external binding atomically only when registration is enabled, eligibility passes and the verified primary email is available without conflict. No password identity is created and matching emails never merge accounts. Linking an existing account requires its current session and CSRF authorization, with the original session checked again on callback. Disabled users, entries or plugins and revoked contribution grants must prevent session issuance.
+
 ## Frozen execution and transactions
 
 The original concrete entry is `model_definitions.create`, HTTP `POST /api/console/settings/data-models/model-definitions`. HTTP and MCP invoke the same typed Kernel. Authorization, Admission and Before can veto; After, Failure and Completion observe without replacing the primary result. Authentication stays in the trusted Host.
