@@ -113,6 +113,8 @@ test('pending exchange blocks backdrop and Escape dismissal until the download f
   const backdrop = dialog.closest<HTMLElement>('.ant-modal-wrap');
   expect(backdrop).not.toBeNull();
   expect(within(dialog).getByRole('button', { name: /^关\s*闭$/ })).toBeDisabled();
+  fireEvent.mouseDown(backdrop!);
+  fireEvent.mouseUp(backdrop!);
   fireEvent.click(backdrop!);
   fireEvent.keyDown(backdrop!, { key: 'Escape', keyCode: 27 });
   expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -127,6 +129,8 @@ test('pending exchange blocks backdrop and Escape dismissal until the download f
   await waitFor(() =>
     expect(within(dialog).getByRole('button', { name: /^关\s*闭$/ })).toBeEnabled()
   );
+  fireEvent.mouseDown(backdrop!);
+  fireEvent.mouseUp(backdrop!);
   fireEvent.click(backdrop!);
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 });
