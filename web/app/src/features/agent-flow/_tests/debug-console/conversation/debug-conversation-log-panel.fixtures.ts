@@ -1,4 +1,4 @@
-import type { AgentFlowDebugMessage } from '../../api/runtime';
+import type { AgentFlowDebugMessage } from '../../../api/runtime';
 
 export const assistantMessage: AgentFlowDebugMessage = {
   id: 'assistant-1',

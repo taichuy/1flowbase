@@ -1483,17 +1483,7 @@ async fn successful_live_debug_run_emits_flow_lifecycle_and_closes_runtime_strea
 #[path = "runtime_events/resource_budgets.rs"]
 mod resource_budgets;
 
-pub(super) struct UnusedTerminalWriter;
-
-#[async_trait::async_trait]
-impl control_plane::ports::RuntimeEventTerminalWriter for UnusedTerminalWriter {
-    async fn append_terminal_if_missing_and_close(
-        &self,
-        _event: control_plane::ports::RuntimeEventPayload,
-    ) -> anyhow::Result<control_plane::ports::AppendTerminalIfMissingAndCloseOutcome> {
-        anyhow::bail!("this fixture does not exercise subscription terminal writes")
-    }
-}
+pub(super) use support::UnusedTerminalWriter;
 
 #[path = "runtime_events/after_commit_lanes.rs"]
 mod after_commit_lanes;

@@ -1472,3 +1472,7 @@ mod callback_attach;
 
 #[path = "forwarding/_tests/anthropic_projection.rs"]
 mod anthropic_projection;
+
+#[path = "forwarding/_tests/executor_support.rs"]
+mod executor_support;
+use executor_support::RejectAttachExecutor;

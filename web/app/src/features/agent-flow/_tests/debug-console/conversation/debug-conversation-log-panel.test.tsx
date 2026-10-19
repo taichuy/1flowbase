@@ -1,4 +1,4 @@
-import { openPayloadSection } from './trajectory/navigation';
+import { openPayloadSection } from '../trajectory/navigation';
 import {
   fireEvent,
   render,
@@ -10,11 +10,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode, type ComponentProps, type ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { AgentFlowRunContext } from '../../api/runtime';
-import { AgentFlowDebugConsole } from '../../components/debug-console/AgentFlowDebugConsole';
-import { ConversationLogPanel } from '../../components/debug-console/ConversationLogPanel';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
-import { assistantMessage } from './debug-conversation-log-panel.fixtures';
+import type { AgentFlowRunContext } from '../../../api/runtime';
+import { AgentFlowDebugConsole } from '../../../components/debug-console/AgentFlowDebugConsole';
+import { ConversationLogPanel } from '../../../components/debug-console/ConversationLogPanel';
+import { appI18n } from '../../../../../shared/i18n/app-i18n';
+import { assistantMessage } from './debug-conversation-log-panel.fixtures.ts';
 const runContext: AgentFlowRunContext = {
   environmentLabel: 'draft',
   remembered: false,

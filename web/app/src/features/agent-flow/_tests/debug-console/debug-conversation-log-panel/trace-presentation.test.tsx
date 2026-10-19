@@ -23,7 +23,7 @@ import {
   multiLlmRunAssistantMessage,
   toolCallbackDetailPayload,
   truncatedLlmRoundsAssistantMessage
-} from '../debug-conversation-log-panel.fixtures';
+} from '../conversation/debug-conversation-log-panel.fixtures.ts';
 const runContext: AgentFlowRunContext = {
   environmentLabel: 'draft',
   remembered: false,

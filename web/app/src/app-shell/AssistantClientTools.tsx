@@ -20,10 +20,10 @@ export function AssistantClientToolProvider({ children }: PropsWithChildren) {
   const refreshTargetsRef = useRef<Map<string, AssistantRefreshTarget> | null>(
     null
   );
-  const refreshTargets = (refreshTargetsRef.current ??= new Map<
-    string,
-    AssistantRefreshTarget
-  >());
+  if (refreshTargetsRef.current === null) {
+    refreshTargetsRef.current = new Map<string, AssistantRefreshTarget>();
+  }
+  const refreshTargets = refreshTargetsRef.current;
   const snapshot = useCallback((): AssistantClientSnapshot => {
     const pathname = window.location.pathname;
     const routeId =

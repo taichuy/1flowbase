@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   AgentFlowDebugMessage,
   AgentFlowRunContext
-} from '../../api/runtime';
-import { DebugConversationPane } from '../../components/debug-console/conversation/DebugConversationPane';
-import { LlmToolTraceTree } from '../../components/debug-console/conversation/LlmToolTraceTree';
+} from '../../../api/runtime';
+import { DebugConversationPane } from '../../../components/debug-console/conversation/DebugConversationPane';
+import { LlmToolTraceTree } from '../../../components/debug-console/conversation/LlmToolTraceTree';
 
 const runContext: AgentFlowRunContext = {
   environmentLabel: 'draft',

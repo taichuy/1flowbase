@@ -1,6 +1,4 @@
-use super::support::{
-    after_commit_graph, after_commit_lane, durable_lane_event, AfterCommitBehavior,
-};
+use super::support::{after_commit_lane, durable_lane_event, AfterCommitBehavior};
 use super::*;
 
 #[tokio::test]

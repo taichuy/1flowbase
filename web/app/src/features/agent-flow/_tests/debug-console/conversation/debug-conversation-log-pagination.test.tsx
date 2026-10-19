@@ -3,8 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { ConversationLogPanel } from '../../components/debug-console/ConversationLogPanel';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import { ConversationLogPanel } from '../../../components/debug-console/ConversationLogPanel';
+import { appI18n } from '../../../../../shared/i18n/app-i18n';
 
 function createQueryClient() {
   return new QueryClient({

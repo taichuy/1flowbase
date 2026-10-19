@@ -121,3 +121,15 @@ pub(super) fn durable_lane_event(run_id: Uuid, sequence: i64) -> RuntimeEventEnv
         },
     )
 }
+
+pub(crate) struct UnusedTerminalWriter;
+
+#[async_trait::async_trait]
+impl control_plane::ports::RuntimeEventTerminalWriter for UnusedTerminalWriter {
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        _event: control_plane::ports::RuntimeEventPayload,
+    ) -> anyhow::Result<control_plane::ports::AppendTerminalIfMissingAndCloseOutcome> {
+        anyhow::bail!("this fixture does not exercise subscription terminal writes")
+    }
+}
