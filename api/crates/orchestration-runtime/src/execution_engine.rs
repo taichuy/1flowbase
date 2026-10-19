@@ -71,6 +71,8 @@ pub(crate) mod llm_metrics;
 mod llm_node_outputs;
 #[path = "execution_engine/llm_operations/llm_parameters.rs"]
 mod llm_parameters;
+#[path = "execution_engine/llm_operations/route_preflight.rs"]
+mod llm_route_preflight;
 mod node_failure_policy;
 mod provider_routing;
 mod run_input;
