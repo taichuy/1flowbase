@@ -27,6 +27,7 @@ import {
   projectNavigationPosition
 } from '../lib/navigation-drag/projection';
 import { PageTreeIcon } from '../lib/page-tree-icons/registry';
+import { readCollapsedGroups, writeCollapsedGroups } from '../lib/page-tree-state/collapsed-groups';
 
 type FrontStagePageTreeSidebarProps = {
   pageTree: FrontStageTreeNode[];
@@ -637,14 +638,7 @@ export function FrontStagePageTreeSidebar({
   onSelectPage
 }: FrontStagePageTreeSidebarProps) {
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(
-    () => {
-      try {
-        const stored = localStorage.getItem('frontstage_collapsed_groups');
-        return stored ? new Set(JSON.parse(stored)) : new Set();
-      } catch {
-        return new Set();
-      }
-    }
+    () => readCollapsedGroups(localStorage)
   );
 
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
@@ -660,10 +654,7 @@ export function FrontStagePageTreeSidebar({
       } else {
         next.add(groupId);
       }
-      localStorage.setItem(
-        'frontstage_collapsed_groups',
-        JSON.stringify(Array.from(next))
-      );
+      writeCollapsedGroups(localStorage, next);
       return next;
     });
   };
