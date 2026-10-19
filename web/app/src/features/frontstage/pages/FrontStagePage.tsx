@@ -527,7 +527,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     setSelectedBlockId(null);
     setIsJsxStudioOpen(false);
     setBlockSaveError(null);
-  }, [selectedPageId, tabId]);
+  }, [selectedPageId, tabId, setSavedPageContent, setBlockSaveError]);
 
   useEffect(() => {
     setSavedPageContent(null);
@@ -548,7 +548,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
 
       return hasCurrentBlock ? currentBlockId : null;
     });
-  }, [assemblyTargetId, rootBlocks]);
+  }, [assemblyTargetId, rootBlocks, setSavedPageContent]);
 
   useEffect(() => {
     if (!canShowSelectedBlockActions) {
@@ -635,7 +635,8 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     selectedPageId,
     workspaceId,
     setSelectedBlockId,
-    setIsJsxStudioOpen
+    setIsJsxStudioOpen,
+    setBlockSaveError
   ]);
 
   if (initialPageTree === undefined && isPageTreeLoading) {

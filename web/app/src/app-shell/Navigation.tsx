@@ -71,6 +71,7 @@ function topbarPageRoutes(
 
 function topbarNavigationItems({
   nodes,
+  topbarSiblings,
   pathname,
   useRouterLinks,
   workspaceId,
@@ -79,6 +80,7 @@ function topbarNavigationItems({
   translateText
 }: {
   nodes: FrontstagePageTreeNode[];
+  topbarSiblings: FrontstagePageTreeNode[];
   pathname: string;
   useRouterLinks: boolean;
   workspaceId?: string;
@@ -86,7 +88,6 @@ function topbarNavigationItems({
   onOpenMoveNode: (nodeId: string) => void;
   translateText: (text: string) => string;
 }): ItemType[] {
-  const topbarSiblings = nodes.filter((node) => node.placement === 'topbar');
   return nodes.reduce<ItemType[]>((items, node) => {
     if (node.placement !== 'topbar' || !node.slug) {
       return items;
@@ -328,6 +329,10 @@ export function Navigation({
   const selectedTopbarNode = (frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES).find(
     (node) => node.id === selectedDynamicRoute?.id
   );
+  const topbarSiblings = useMemo(
+    () => (frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES).filter((node) => node.placement === 'topbar'),
+    [frontstageNavigationQuery.data]
+  );
   const closeMobileNavigation = () => setIsMobileNavigationOpen(false);
   const items: MenuProps['items'] =
     consoleNavigationQuery.data === undefined
@@ -356,6 +361,7 @@ export function Navigation({
           })),
           ...topbarNavigationItems({
             nodes: frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES,
+            topbarSiblings,
             pathname,
             useRouterLinks,
             workspaceId,

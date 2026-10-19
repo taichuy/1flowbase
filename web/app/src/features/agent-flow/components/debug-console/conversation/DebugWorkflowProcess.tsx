@@ -126,7 +126,7 @@ export function DebugWorkflowProcess({
 
       return changed ? next : current;
     });
-  }, [automaticDetailKeys]);
+  }, [automaticDetailKeys, automaticallyExpandedNodeKeys]);
   const thoughtItems = useMemo<ThoughtChainItemType[]>(() => {
     const lastLlmIndex = traceGroups.reduce(
       (lastIndex, group, index) =>

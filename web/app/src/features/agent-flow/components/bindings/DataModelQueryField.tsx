@@ -238,11 +238,11 @@ function DataModelQueryConditionsField({
     while (keys.length < length) keys.push(`query-row-${nextKey.current++}`);
     keys.length = length;
   }
-  const filterRows = filterRows.map(({ filter, key }, index) => ({
+  const filterRows = query.filters.map((filter, index) => ({
     filter,
     key: filterKeys.current[index]!
   }));
-  const sortRows = sortRows.map(({ sort, key }, index) => ({
+  const sortRows = query.sorts.map((sort, index) => ({
     sort,
     key: sortKeys.current[index]!
   }));
@@ -253,7 +253,7 @@ function DataModelQueryConditionsField({
   return (
     <Flex aria-label={ariaLabel} vertical gap={12}>
       <Flex vertical gap={8}>
-        {query.filters.map((filter, index) => (
+        {filterRows.map(({ filter, key }, index) => (
           <Space.Compact key={key} block>
             <Select
               aria-label={i18nText('agentFlow', 'auto.filter_field', {
@@ -358,7 +358,7 @@ function DataModelQueryConditionsField({
         </Button>
       </Flex>
       <Flex vertical gap={8}>
-        {query.sorts.map((sort, index) => (
+        {sortRows.map(({ sort, key }, index) => (
           <Space.Compact key={key} block>
             <Select
               aria-label={i18nText('agentFlow', 'auto.sorting_field', {

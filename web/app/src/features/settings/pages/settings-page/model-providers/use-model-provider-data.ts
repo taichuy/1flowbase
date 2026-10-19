@@ -131,16 +131,6 @@ export function useModelProviderData({
   const familiesByProviderCode = useMemo(() => {
     const grouped: Record<string, (typeof families)[number]> = {};
 
-    const firstCatalogEntryByProviderCode = new Map<
-      string,
-      (typeof catalogEntries)[number]
-    >();
-    for (const entry of catalogEntries) {
-      if (!firstCatalogEntryByProviderCode.has(entry.provider_code)) {
-        firstCatalogEntryByProviderCode.set(entry.provider_code, entry);
-      }
-    }
-
     for (const family of families) {
       grouped[family.provider_code] = family;
     }

@@ -280,7 +280,7 @@ export function DataModelTable(props: Parameters<typeof useDataModelTableControl
   const {
     selectedSource, canManage, setDrawerState, updateDefaultsMutation, useMobileList,
     loading, columns, models, selectedModelId, onSelectModel, onEditModel,
-    setDeleteTarget, drawerState, compatibleTemplatesQuery, message, saving,
+    setDeleteTarget, drawerState, compatibleTemplatesQuery, saving,
     onCreateModel, onUpdateModel, deleteTarget, onDeleteModel
   } = useDataModelTableController(props);
 

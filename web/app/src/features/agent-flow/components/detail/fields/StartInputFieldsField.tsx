@@ -293,7 +293,7 @@ export function StartInputFieldsField(props: Parameters<typeof useStartInputFiel
   const {
     title, inputTypes, openAddPanel, triggerRef, fields, itemKeys, handleDrop,
     handleDragStart, draggingIndexRef, openEditPanel, variableNamespace, removeItemKey,
-    onChange, contractKind, expandedSystemKeys, toggleSystemVariable, value,
+    onChange, contractKind, expandedSystemKeys, toggleSystemVariable,
     floatingPanel
   } = useStartInputFieldsController(props);
 

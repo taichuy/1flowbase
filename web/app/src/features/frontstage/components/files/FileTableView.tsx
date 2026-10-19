@@ -85,7 +85,7 @@ function useFileTableController({ fileTableCode, toolbarExtra }: FileTableViewPr
     return () => {
       for (const controller of controllers) controller.abort();
     };
-  }, [workspaceId, fileTableCode]);
+  }, [workspaceId, fileTableCode, uploads]);
 
   const tables = useQuery({
     queryKey: ['files', 'tables', workspaceId],
@@ -322,9 +322,9 @@ function useFileTableController({ fileTableCode, toolbarExtra }: FileTableViewPr
 
 export function FileTableView(props: Parameters<typeof useFileTableController>[0]) {
   const {
-    error, message, tables, table, columns, configuration, records, page, pageSize,
+    error, tables, table, columns, configuration, records, page, pageSize,
     setPage, setPageSize, setSort, search, setSearch, csrfToken, setUploadOpen,
-    toolbarExtra, shareTarget, workspaceId, filename, setShareTarget, uploadOpen,
+    toolbarExtra, shareTarget, workspaceId, setShareTarget, uploadOpen,
     surface, uploading, setFileList, fileList, customRequest, uploadPrefixCls
   } = useFileTableController(props);
   return (

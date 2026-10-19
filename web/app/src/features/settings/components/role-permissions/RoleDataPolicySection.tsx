@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Checkbox, Select, Space, Table, Typography } from 'antd';
@@ -161,6 +161,22 @@ function RoleDataPolicyDraft({
   const [modelEdits, setModelEdits] = useState<
     Record<string, Partial<ModelPolicyFormState>>
   >({});
+  const editRevision = useRef(0);
+  const [defaultEditRevisions] = useState(
+    () => new Map<keyof DefaultPolicyFormState, number>()
+  );
+  const [modelEditRevisions] = useState(
+    () => new Map<string, Map<keyof ModelPolicyFormState, number>>()
+  );
+
+  function recordModelEdit(modelId: string, key: keyof ModelPolicyFormState) {
+    let revisions = modelEditRevisions.get(modelId);
+    if (!revisions) {
+      revisions = new Map();
+      modelEditRevisions.set(modelId, revisions);
+    }
+    revisions.set(key, ++editRevision.current);
+  }
 
   const dataPolicyQuery = useQuery({
     queryKey: settingsRoleDataPolicyQueryKey(roleCode),
@@ -202,43 +218,67 @@ function RoleDataPolicyDraft({
     return policies;
   }, [fetchedPolicy, dataModelsQuery.data, modelEdits]);
 
+  function createSubmission() {
+    const modelRevisions = new Map<
+      string,
+      Map<keyof ModelPolicyFormState, number>
+    >();
+    for (const model of dataModelsQuery.data ?? []) {
+      const revisions = modelEditRevisions.get(model.id);
+      if (revisions) modelRevisions.set(model.id, new Map(revisions));
+    }
+    return {
+      defaultRevisions: new Map(defaultEditRevisions),
+      modelRevisions,
+      input: {
+        default_policy: defaultPolicy,
+        model_policies: (dataModelsQuery.data ?? []).map((model) => {
+          const policy = modelPolicyById[model.id];
+          return {
+            data_model_id: model.id,
+            can_create_override: policy?.can_create_override ?? null,
+            view_scope_override: policy?.view_scope_override ?? null,
+            update_scope_override: policy?.update_scope_override ?? null,
+            delete_scope_override: policy?.delete_scope_override ?? null
+          };
+        })
+      }
+    };
+  }
+
   const replaceDataPolicyMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (submission: ReturnType<typeof createSubmission>) => {
       if (!canEdit || !ready) {
         throw new Error('role data policy is not ready for editing');
       }
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      return replaceSettingsRoleDataPolicy(
-        roleCode,
-        {
-          default_policy: defaultPolicy,
-          model_policies: (dataModelsQuery.data ?? []).map((model) => {
-            const policy = modelPolicyById[model.id] ?? {
-              data_model_id: model.id,
-              can_create_override: null,
-              view_scope_override: null,
-              update_scope_override: null,
-              delete_scope_override: null
-            };
-
-            return {
-              data_model_id: model.id,
-              can_create_override: policy.can_create_override,
-              view_scope_override: policy.view_scope_override,
-              update_scope_override: policy.update_scope_override,
-              delete_scope_override: policy.delete_scope_override
-            };
-          })
-        },
-        csrfToken
-      );
+      if (!csrfToken) throw new Error('missing csrf token');
+      return replaceSettingsRoleDataPolicy(roleCode, submission.input, csrfToken);
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, submission) => {
       await queryClient.invalidateQueries({
         queryKey: settingsRoleDataPolicyQueryKey(roleCode)
+      });
+      // Retire only revisions included in this successful request. A newer
+      // edit (even to the same value) must remain a local draft.
+      setDefaultEdits((current) => {
+        const next = { ...current };
+        for (const [key, revision] of submission.defaultRevisions) {
+          if (defaultEditRevisions.get(key) === revision) delete next[key];
+        }
+        return next;
+      });
+      setModelEdits((current) => {
+        const next = { ...current };
+        for (const [modelId, revisions] of submission.modelRevisions) {
+          const edits = { ...current[modelId] };
+          for (const [key, revision] of revisions) {
+            if (modelEditRevisions.get(modelId)?.get(key) === revision)
+              delete edits[key];
+          }
+          if (Object.keys(edits).length) next[modelId] = edits;
+          else delete next[modelId];
+        }
+        return next;
       });
     }
   });
@@ -247,6 +287,7 @@ function RoleDataPolicyDraft({
     key: 'can_view' | 'can_create' | 'can_update' | 'can_delete',
     checked: boolean
   ) => {
+    defaultEditRevisions.set(key, ++editRevision.current);
     setDefaultEdits((current) => ({
       ...current,
       [key]: checked
@@ -260,6 +301,7 @@ function RoleDataPolicyDraft({
       | 'default_delete_scope',
     scope: SettingsRoleDataPolicyScope
   ) => {
+    defaultEditRevisions.set(key, ++editRevision.current);
     setDefaultEdits((current) => ({
       ...current,
       [key]: scope
@@ -274,6 +316,7 @@ function RoleDataPolicyDraft({
       | 'delete_scope_override',
     scope: SettingsRoleDataPolicyOverrideScope
   ) => {
+    recordModelEdit(modelId, key);
     setModelEdits((current) => ({
       ...current,
       [modelId]: { ...current[modelId], [key]: scope }
@@ -380,6 +423,7 @@ function RoleDataPolicyDraft({
   };
 
   const setModelCreateOverride = (modelId: string, checked: boolean) => {
+    recordModelEdit(modelId, 'can_create_override');
     setModelEdits((current) => ({
       ...current,
       [modelId]: { ...current[modelId], can_create_override: checked }
@@ -454,7 +498,7 @@ function RoleDataPolicyDraft({
         onSubmit={(event) => {
           event.preventDefault();
           if (canEdit && ready && !replaceDataPolicyMutation.isPending) {
-            replaceDataPolicyMutation.mutate();
+            replaceDataPolicyMutation.mutate(createSubmission());
           }
         }}
       >

@@ -47,7 +47,7 @@ export function ApplicationTemplateCatalogPanel({
   useEffect(() => {
     setSearchText(q ?? '');
     previousPages.clear();
-  }, [q]);
+  }, [q, previousPages]);
   const currentPage = cursor
     ? (previousPages.get(cursor)?.page ?? 2)
     : 1;

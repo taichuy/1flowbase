@@ -64,18 +64,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function isRuntimeDebugArtifactPreview(value: unknown): value is {
-  __runtime_debug_artifact: true;
-  artifact_ref: string;
-  tool_callbacks?: unknown;
-} {
-  return (
-    isRecord(value) &&
-    value.__runtime_debug_artifact === true &&
-    typeof value.artifact_ref === 'string'
-  );
-}
-
 function firstRecordField(
   record: Record<string, unknown>,
   keys: string[]

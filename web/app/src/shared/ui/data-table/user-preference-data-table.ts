@@ -65,7 +65,8 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
     owner: string;
     state: DataTableState;
   } | null>(null);
-  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const saveQueue = useRef<Promise<void> | null>(null);
+  if (saveQueue.current === null) saveQueue.current = Promise.resolve();
   if (draft && draft.owner !== owner) setDraft(null);
   const state =
     draft?.owner === owner
@@ -121,7 +122,7 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
     let active = true;
     const timeout = window.setTimeout(() => {
       // Preserve edit order when a later debounce expires during an earlier request.
-      saveQueue.current = saveQueue.current.then(async () => {
+      saveQueue.current = saveQueue.current!.then(async () => {
         if (!active) return;
         try {
           const updatedMe = await patchUserPreferences(

@@ -685,7 +685,7 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
   const {
     connectionsQuery, canManage, setEditingConnection, form, setConnectionModalOpen,
     columns, connectionModalOpen, editingConnection, saveMutation, testMutation,
-    testCurrentForm, authType, testResultOpen, setTestResultOpen, message,
+    testCurrentForm, authType, testResultOpen, setTestResultOpen,
     discoverConnection, selectedToolNames, importMutation, setDiscoverConnection,
     discoverMutation, toolKeyword, setToolKeyword, discoveryColumns, filteredTools
   } = useUpstreamMcpController(props);
