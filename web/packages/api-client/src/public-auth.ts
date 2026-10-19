@@ -14,6 +14,7 @@ export interface PasswordSignInResponse {
 
 export interface PublicLoginEntry {
   id: string;
+  entry_action: 'render_ui' | 'external_login';
   auth_type: string;
   is_builtin: boolean;
   title: string;

@@ -42,6 +42,7 @@
     "provider_unavailable": "GitHub sign-in is temporarily unavailable. Try again later or choose another method.",
     "session_expired": "Your session expired while linking GitHub. Sign in again before retrying.",
     "user_disabled": "This local account is disabled. Contact your administrator.",
-    "failed": "GitHub sign-in did not complete. Try again or choose another method."
+    "failed": "GitHub sign-in did not complete. Try again or choose another method.",
+    "other_methods": "Other sign-in methods"
   }
 }

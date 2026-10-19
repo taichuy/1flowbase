@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
   navigateSpy,
+  externalRedirect,
   fetchCurrentMe,
   fetchCurrentSession,
   fetchLoginEntries,
@@ -10,6 +11,7 @@ const {
   publicAuthBlockControl
 } = vi.hoisted(() => ({
   navigateSpy: vi.fn(),
+  externalRedirect: vi.fn(),
   fetchCurrentMe: vi.fn(),
   fetchCurrentSession: vi.fn(),
   fetchLoginEntries: vi.fn(),
@@ -31,6 +33,10 @@ vi.mock('../api/session', () => ({
   fetchCurrentMe,
   fetchCurrentSession,
   fetchLoginEntries
+}));
+
+vi.mock('../lib/external-login', () => ({
+  redirectToExternalLogin: externalRedirect
 }));
 
 vi.mock('../components/PublicAuthBlock', () => ({
@@ -79,6 +85,7 @@ import { useAuthStore } from '../../../state/auth-store';
 import { SignInPage } from '../pages/SignInPage';
 
 const passwordInstance = {
+  entry_action: 'render_ui' as const,
   id: 'auth-password-local',
   auth_type: 'password-local',
   is_builtin: true,
@@ -94,6 +101,7 @@ describe('SignInPage', () => {
     window.localStorage.clear();
     window.history.pushState({}, '', '/sign-in');
     navigateSpy.mockReset();
+    externalRedirect.mockReset();
     fetchCurrentMe.mockReset();
     fetchCurrentSession.mockReset();
     fetchLoginEntries.mockReset();
@@ -359,6 +367,101 @@ describe('SignInPage', () => {
     expect(
       await screen.findByRole('form', { name: 'Escape password sign in' })
     ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('declarative authentication entry actions', () => {
+  const external = {
+    ...passwordInstance,
+    id: 'external-arbitrary-id',
+    auth_type: 'example/custom-provider',
+    is_builtin: false,
+    title: 'External account',
+    entry_action: 'external_login' as const
+  };
+  beforeEach(() => {
+    window.history.pushState({}, '', '/sign-in');
+    navigateSpy.mockReset();
+    externalRedirect.mockReset();
+    renderedBlocks.mockReset();
+    publicAuthBlockControl.suspend = false;
+    fetchLoginEntries.mockResolvedValue({
+      default_login_entry_id: passwordInstance.id,
+      login_entries: [passwordInstance, external]
+    });
+  });
+
+  test('one chooser click starts external authorization without routing to or mounting a block', async () => {
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
+    const button = await screen.findByRole('button', { name: external.title });
+    expect(externalRedirect).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(externalRedirect).toHaveBeenCalledExactlyOnceWith(external.id);
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(renderedBlocks).not.toHaveBeenCalled();
+    expect(button).toBeDisabled();
+    // Back-forward cache restores the page and allows another intentional click.
+    fireEvent(window, new Event('pageshow'));
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    expect(externalRedirect).toHaveBeenCalledTimes(2);
+  });
+
+  test.each(['single', 'deep-link', 'cancelled', 'failed'])(
+    '%s waits for an explicit click and never redirects on mount',
+    async (mode) => {
+      if (mode === 'single')
+        fetchLoginEntries.mockResolvedValue({
+          default_login_entry_id: external.id,
+          login_entries: [external]
+        });
+      if (mode === 'cancelled' || mode === 'failed')
+        window.history.pushState(
+          {},
+          '',
+          '/sign-in?auth_error=' +
+            (mode === 'cancelled' ? 'cancelled' : 'external_auth_failed')
+        );
+      render(
+        <AppProviders>
+          <SignInPage
+            loginEntryId={mode === 'deep-link' ? external.id : undefined}
+          />
+        </AppProviders>
+      );
+      const button = await screen.findByRole('button', {
+        name: external.title
+      });
+      expect(externalRedirect).not.toHaveBeenCalled();
+      expect(renderedBlocks).not.toHaveBeenCalled();
+      if (mode === 'cancelled' || mode === 'failed')
+        expect(screen.getByRole('alert')).toBeVisible();
+      fireEvent.click(button);
+      expect(externalRedirect).toHaveBeenCalledExactlyOnceWith(external.id);
+    }
+  );
+
+  test('navigation failure leaves an error and a working retry button', async () => {
+    externalRedirect.mockImplementationOnce(() => {
+      throw new Error('blocked');
+    });
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
+    const button = await screen.findByRole('button', { name: external.title });
+    fireEvent.click(button);
+    expect(screen.getByRole('alert')).toBeVisible();
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    expect(externalRedirect).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

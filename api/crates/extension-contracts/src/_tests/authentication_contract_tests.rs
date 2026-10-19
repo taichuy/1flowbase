@@ -107,3 +107,33 @@ fn authentication_descriptor_rejects_public_secret_controls_and_local_password_c
         );
     }
 }
+
+#[test]
+fn authentication_entry_action_is_explicit_finite_and_defaults_to_form() {
+    use crate::AuthenticationEntryAction;
+    let base = json!({"auth_type":"publisher/login","display_name":"External","config_schema":[],"default_public_ui_block":"form","public_variable_keys":[],"contribution_id":"fixture.auth"});
+    let form: AuthenticationProviderDescriptor = serde_json::from_value(base.clone()).unwrap();
+    assert_eq!(form.entry_action, AuthenticationEntryAction::RenderUi);
+    for (wire, action) in [
+        ("render_ui", AuthenticationEntryAction::RenderUi),
+        ("external_login", AuthenticationEntryAction::ExternalLogin),
+    ] {
+        let mut input = base.clone();
+        input["entry_action"] = json!(wire);
+        let descriptor: AuthenticationProviderDescriptor = serde_json::from_value(input).unwrap();
+        assert_eq!(descriptor.entry_action, action);
+        assert_eq!(
+            serde_json::to_value(descriptor).unwrap()["entry_action"],
+            wire
+        );
+    }
+    for unsupported in [
+        json!("javascript"),
+        json!({"url":"https://evil.example"}),
+        json!(null),
+    ] {
+        let mut input = base.clone();
+        input["entry_action"] = unsupported;
+        assert!(serde_json::from_value::<AuthenticationProviderDescriptor>(input).is_err());
+    }
+}

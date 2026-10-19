@@ -142,3 +142,5 @@ required 事件通道保留背压，诊断通道即使接收者丢弃也保留�
 缺少可靠历史 checksum 的旧安装不能凭当前 manifest 认领或回填内容身份，恢复请求明确拒绝。新版本仍按独立安装、候选精确授权及正式切换执行；root 显式切换可为目标安装准备授权，原版本授权不会自动授给候选，旧冻结投递也不转交新版本。
 
 历史投递归属依据已持久的安装身份、workspace 与冻结目标，不依赖当前 manifest 的 contribution 列表。停用及完整 host/composition 重启后，旧暂停记录仍可查、精确定位，并阻止删除所需制品；原 epoch 或执行图不可用时明确拒绝恢复。未知 legacy 记录保守保留并阻止清理，不能由新 manifest 推断归属。
+
+认证入口点击行为由 provider 的 `entry_action` 声明：`render_ui`（默认）显示 UI 区块，`external_login` 在用户点击时直接进入 Host 外部认证 start。公开 DTO 从当前有效 provider definition 投影此字段，不从入口名称、UI 源码或前端 auth_type 分支推断；挂载、单入口、直接链接与失败返回均不自动发起授权。

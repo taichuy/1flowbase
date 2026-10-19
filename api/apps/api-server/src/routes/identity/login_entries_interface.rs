@@ -51,7 +51,7 @@ impl InterfaceContract for PublicLoginEntriesOutput {
                 ("default_login_entry_id", mp::text_schema()),
                 (
                     "login_entries",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("auth_type",mp::text_schema()), ("is_builtin",serde_json::json!({"type":"boolean"})), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("sort_order",serde_json::json!({"type":"integer"})), ("public_ui_block",mp::object_schema(&[("byte_count",mp::count_schema())])), ("public_variables",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("auth_type",mp::text_schema()), ("entry_action",serde_json::json!({"type":"string","enum":["render_ui","external_login"]})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("sort_order",serde_json::json!({"type":"integer"})), ("public_ui_block",mp::object_schema(&[("byte_count",mp::count_schema())])), ("public_variables",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
                 ),
             ]),
         )]))
@@ -78,6 +78,7 @@ impl InterfaceContract for PublicLoginEntriesOutput {
                                 Some(mp::object_value(&[
                                     ("id", serde_json::Value::String((item).id.to_string())),
                                     ("auth_type", mp::text(&(item).auth_type)?),
+                                    ("entry_action", serde_json::json!(item.entry_action)),
                                     ("is_builtin", serde_json::Value::Bool((item).is_builtin)),
                                     (
                                         "title",

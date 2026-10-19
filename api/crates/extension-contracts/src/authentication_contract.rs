@@ -9,11 +9,23 @@ pub const AUTHENTICATION_POINT: &str = "1flowbase.authentication.provider";
 pub const AUTHENTICATION_PERMISSION: &str = "authentication.verify";
 pub const AUTHENTICATION_CONTRACT_V1: &str = "1";
 
+/// What an explicit click on a public authentication entry does. Missing declarations
+/// render the provider UI; discovery or mounting never starts authentication.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthenticationEntryAction {
+    #[default]
+    RenderUi,
+    ExternalLogin,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AuthenticationProviderDescriptor {
     pub auth_type: String,
     pub display_name: String,
+    #[serde(default)]
+    pub entry_action: AuthenticationEntryAction,
     pub config_schema: Vec<PluginFormFieldSchema>,
     pub default_public_ui_block: String,
     pub public_variable_keys: Vec<String>,

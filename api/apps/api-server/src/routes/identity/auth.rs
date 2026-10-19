@@ -40,6 +40,8 @@ pub struct AuthProviderResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PublicLoginEntryResponse {
     pub id: Uuid,
+    #[schema(value_type = String)]
+    pub entry_action: extension_contracts::AuthenticationEntryAction,
     pub auth_type: String,
     pub is_builtin: bool,
     pub title: String,
@@ -120,9 +122,11 @@ fn to_public_login_entry(
         return None;
     }
     let public_variables = registry.public_variables(&entry)?;
+    let entry_action = registry.definition(&entry.auth_type)?.entry_action;
 
     Some(PublicLoginEntryResponse {
         id: entry.id,
+        entry_action,
         auth_type: entry.auth_type,
         is_builtin: entry.is_builtin,
         title: entry.title,
@@ -539,3 +543,7 @@ where
     let _receipt = outcome.receipt().clone().projected();
     Ok(outcome.into_value())
 }
+
+#[cfg(test)]
+#[path = "../../_tests/identity_routes/entry_action.rs"]
+mod entry_action_tests;

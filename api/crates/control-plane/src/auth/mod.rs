@@ -159,6 +159,7 @@ impl PasswordLocalCredentialVerifier {
 #[derive(Debug, Clone)]
 pub struct AuthenticatorProviderDefinition {
     pub auth_type: String,
+    pub entry_action: extension_contracts::AuthenticationEntryAction,
     pub display_name: String,
     pub config_schema: serde_json::Value,
     pub default_public_ui_block: String,
@@ -197,6 +198,7 @@ impl AuthenticatorRegistry {
             "password-local".to_string(),
             AuthenticatorProviderDefinition {
                 auth_type: "password-local".to_string(),
+                entry_action: extension_contracts::AuthenticationEntryAction::RenderUi,
                 display_name: "Password".to_string(),
                 config_schema,
                 default_public_ui_block: public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK.to_string(),
@@ -233,6 +235,7 @@ impl AuthenticatorRegistry {
                 provider.auth_type.clone(),
                 AuthenticatorProviderDefinition {
                     auth_type: provider.auth_type.clone(),
+                    entry_action: extension_contracts::AuthenticationEntryAction::RenderUi,
                     display_name: provider.display_name.clone(),
                     config_schema,
                     default_public_ui_block: provider.default_public_ui_block.clone(),

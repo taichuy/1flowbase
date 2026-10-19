@@ -85,6 +85,7 @@ export function PublicAuthNativeFixture() {
       description: null,
       sort_order: 0,
       public_ui_block: activeSource,
+      entry_action: 'render_ui',
       public_variables: { self_registration_enabled: true }
     }),
     [activeSource]

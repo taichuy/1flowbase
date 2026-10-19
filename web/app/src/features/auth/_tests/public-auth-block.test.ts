@@ -17,6 +17,7 @@ import {
 } from '../components/public-auth-block-host';
 
 const instance = {
+  entry_action: 'render_ui' as const,
   id: 'auth-password-local',
   auth_type: 'password-local',
   is_builtin: true,

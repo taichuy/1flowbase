@@ -98,6 +98,7 @@ impl AuthenticatorRegistry {
                 provider.auth_type.clone(),
                 super::AuthenticatorProviderDefinition {
                     auth_type: provider.auth_type.clone(),
+                    entry_action: provider.entry_action,
                     display_name: provider.display_name.clone(),
                     public_variables_schema: super::public_variables_schema(
                         &config_schema,

@@ -42,6 +42,7 @@
     "provider_unavailable": "GitHub 登录暂不可用，请稍后重试或选择其他方式。",
     "session_expired": "绑定时的登录会话已失效，请重新登录后再绑定。",
     "user_disabled": "此本地账号已停用，请联系管理员。",
-    "failed": "GitHub 登录未完成，请重试或选择其他登录方式。"
+    "failed": "GitHub 登录未完成，请重试或选择其他登录方式。",
+    "other_methods": "其他登录方式"
   }
 }

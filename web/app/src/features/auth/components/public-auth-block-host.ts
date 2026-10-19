@@ -10,6 +10,7 @@ import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime/br
 import type { BlockContextOutputs } from '@1flowbase/page-protocol';
 
 import { getAuthApiBaseUrl } from '../api/session';
+import { redirectToExternalLogin } from '../lib/external-login';
 
 export function createPublicAuthInputs(
   loginEntryId: string,
@@ -61,14 +62,7 @@ export function createPublicAuthNativeBlockContextCapabilities(input: {
         if (!input.isCurrentInstance() || !input.loginEntryId) {
           throw new Error('This authentication entry is no longer active.');
         }
-        const url = new URL(
-          '/api/public/auth/external/start',
-          getAuthApiBaseUrl()
-        );
-        url.searchParams.set('login_entry_id', input.loginEntryId);
-        (input.redirect ?? ((target) => window.location.assign(target)))(
-          url.toString()
-        );
+        redirectToExternalLogin(input.loginEntryId, input.redirect);
       }
     }
   };

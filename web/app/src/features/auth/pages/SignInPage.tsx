@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -39,6 +40,7 @@ import {
   prefetchPublicAuthEntry,
   preloadPublicAuthRuntime
 } from '../lib/public-auth-loading';
+import { redirectToExternalLogin } from '../lib/external-login';
 import './sign-in-page.css';
 
 interface SignInPageProps {
@@ -68,6 +70,39 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
   const [loginEntries, setLoginEntries] = useState<PublicLoginEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [discoveryFailed, setDiscoveryFailed] = useState(false);
+  const [startingEntryId, setStartingEntryId] = useState<string | null>(null);
+  const [startFailed, setStartFailed] = useState(false);
+  const startingRef = useRef(false);
+
+  useEffect(() => {
+    const reset = () => {
+      startingRef.current = false;
+      setStartingEntryId(null);
+    };
+    window.addEventListener('pageshow', reset);
+    return () => window.removeEventListener('pageshow', reset);
+  }, []);
+
+  const activateLoginEntry = useCallback(
+    (entry: PublicLoginEntry) => {
+      if (startingRef.current) return;
+      if (entry.entry_action === 'external_login') {
+        startingRef.current = true;
+        setStartingEntryId(entry.id);
+        setStartFailed(false);
+        try {
+          redirectToExternalLogin(entry.id);
+        } catch {
+          startingRef.current = false;
+          setStartingEntryId(null);
+          setStartFailed(true);
+        }
+      } else {
+        void navigate({ to: '/sign-in', search: { login_entry_id: entry.id } });
+      }
+    },
+    [navigate]
+  );
   const selectedLoginEntry = useMemo(
     () =>
       loginEntries.length === 1
@@ -177,7 +212,33 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               }
             />
           ) : null}
+          {startFailed ? (
+            <Alert showIcon type="error" title={t('external_auth.failed')} />
+          ) : null}
           {loading ? <LoadingState compact /> : null}
+          {!loading && selectedLoginEntry?.entry_action === 'external_login' ? (
+            <div className="auth-sign-in-selector">
+              {loginEntrySelector ? (
+                <button
+                  className="auth-sign-in-selector-button"
+                  type="button"
+                  disabled={startingEntryId !== null}
+                  onClick={requestLoginEntrySelector}
+                >
+                  {t('external_auth.other_methods')}
+                </button>
+              ) : null}
+              <button
+                className="auth-sign-in-selector-button"
+                type="button"
+                disabled={startingEntryId !== null}
+                aria-busy={startingEntryId === selectedLoginEntry.id}
+                onClick={() => activateLoginEntry(selectedLoginEntry)}
+              >
+                {selectedLoginEntry.title}
+              </button>
+            </div>
+          ) : null}
           {loginEntries.length > 1 && !selectedLoginEntry ? (
             <div className="auth-sign-in-selector">
               {loginEntries.map((instance) => (
@@ -185,18 +246,17 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
                   key={instance.id}
                   className="auth-sign-in-selector-button"
                   type="button"
-                  onPointerEnter={() =>
-                    prefetchPublicAuthEntry(instance.public_ui_block)
-                  }
-                  onFocus={() =>
-                    prefetchPublicAuthEntry(instance.public_ui_block)
-                  }
-                  onClick={() =>
-                    void navigate({
-                      to: '/sign-in',
-                      search: { login_entry_id: instance.id }
-                    })
-                  }
+                  disabled={startingEntryId !== null}
+                  aria-busy={startingEntryId === instance.id}
+                  onPointerEnter={() => {
+                    if (instance.entry_action === 'render_ui')
+                      prefetchPublicAuthEntry(instance.public_ui_block);
+                  }}
+                  onFocus={() => {
+                    if (instance.entry_action === 'render_ui')
+                      prefetchPublicAuthEntry(instance.public_ui_block);
+                  }}
+                  onClick={() => activateLoginEntry(instance)}
                 >
                   {instance.title}
                 </button>
@@ -204,7 +264,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
             </div>
           ) : null}
           {!loading &&
-          selectedLoginEntry &&
+          selectedLoginEntry?.entry_action === 'render_ui' &&
           selectedInstanceUsesLegacyContract ? (
             <BuiltinPasswordSignIn
               loginEntryId={selectedLoginEntry.id}
@@ -213,7 +273,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
             />
           ) : null}
           {!loading &&
-          selectedLoginEntry &&
+          selectedLoginEntry?.entry_action === 'render_ui' &&
           !selectedInstanceUsesLegacyContract ? (
             <Suspense fallback={<LoadingState compact />}>
               <PublicAuthBlock
