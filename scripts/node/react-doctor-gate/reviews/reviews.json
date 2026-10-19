@@ -4,9 +4,9 @@
     {
       "file": "web/app/package.json",
       "rule": "deslop/unused-dependency",
-      "sourceSha256": "332b88ed486bc3a4306e8bd9946a29d45a45a9f3cdc1b698244777ffb5033f67",
+      "sourceSha256": "081407ca890da790cb4297403d3c26cfda0e30e8917ae354d4c5c56bb1031527",
       "reason": "web/app/package.json:1（deslop/unused-dependency）：is-mobile 被 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 按字符串消费；verifyCriticalInteropCache 检查其 CommonJS 优化产物。scripts/node/dev-up/_tests/vite-config-text.test.js 也断言该直接依赖。删除会破坏开发态 interop 合同。",
-      "evidence": [{"file": "web/app/package.json", "sha256": "332b88ed486bc3a4306e8bd9946a29d45a45a9f3cdc1b698244777ffb5033f67"}, {"file": "web/app/src/app/_tests/vite-config.test.ts", "sha256": "702f614d33d8228e091cde34fed9426886cef9604bebed8781251b6598fb74c0"}, {"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-runtime-factory.test.tsx", "sha256": "9af4d6d58059f5c566bfbc5fcead4f20bdce67bb641a66cbcaedcbcaf6c86518"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-runtime-compatibility.ts", "sha256": "c3f48b0c299b9a4ae0db04313db4bf747100ba6bb7da8175f4fdc4a63d6644df"}]
+      "evidence": [{"file": "web/app/package.json", "sha256": "081407ca890da790cb4297403d3c26cfda0e30e8917ae354d4c5c56bb1031527"}, {"file": "web/app/src/app/_tests/vite-config.test.ts", "sha256": "702f614d33d8228e091cde34fed9426886cef9604bebed8781251b6598fb74c0"}, {"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-runtime-factory.test.tsx", "sha256": "9af4d6d58059f5c566bfbc5fcead4f20bdce67bb641a66cbcaedcbcaf6c86518"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-runtime-compatibility.ts", "sha256": "c3f48b0c299b9a4ae0db04313db4bf747100ba6bb7da8175f4fdc4a63d6644df"}]
     }
   ]
 }

@@ -4,16 +4,16 @@
     {
       "file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "13902e37595ffbb6fa41b0e1b138187d414b940fc6119dbd0fba78b1c5180fe0",
+      "sourceSha256": "5109f44daa360f867a5b97fb27924802bd9aff091eaa4a0fd66711df51f4e6be",
       "reason": "This role expresses an asynchronous live region or custom adjustable separator/widget. The source below supplies the actual owner and keyboard contract; native output/hr/input would change that contract. This fixture intentionally includes a focusable custom role=slider widget alongside input/contenteditable/button to verify PageCanvas does not steal Enter/Space from inner interactive targets. It needs a complete slider ARIA value contract, while replacing it with input range would remove this custom-widget ownership case.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx", "sha256": "13902e37595ffbb6fa41b0e1b138187d414b940fc6119dbd0fba78b1c5180fe0"}]
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx", "sha256": "5109f44daa360f867a5b97fb27924802bd9aff091eaa4a0fd66711df51f4e6be"}]
     },
     {
       "file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx",
       "rule": "react-doctor/role-has-required-aria-props",
-      "sourceSha256": "13902e37595ffbb6fa41b0e1b138187d414b940fc6119dbd0fba78b1c5180fe0",
+      "sourceSha256": "5109f44daa360f867a5b97fb27924802bd9aff091eaa4a0fd66711df51f4e6be",
       "reason": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx:89（react-doctor/role-has-required-aria-props）：keyboard ownership fixture 当前 role=slider 已带 aria-valuenow（probe 后变化），用于验证编辑器不抢占控件按键；原 error 已不匹配当前源码。保留 slider 语义以维持负例边界。",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx", "sha256": "13902e37595ffbb6fa41b0e1b138187d414b940fc6119dbd0fba78b1c5180fe0"}]
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx", "sha256": "5109f44daa360f867a5b97fb27924802bd9aff091eaa4a0fd66711df51f4e6be"}]
     }
   ]
 }

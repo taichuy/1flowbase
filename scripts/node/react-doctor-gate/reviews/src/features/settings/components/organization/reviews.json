@@ -6,7 +6,7 @@
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "0316aa7a077aa625df6b0ea3bcf8ea441bce7d8abc26a6409ba3e5307270b8d8",
       "reason": "Select options exclude the currently edited department ID to prevent choosing self as parent before mapping unchanged backend identifiers to label/value. These paginated option transformations are linear and side-effect-free; combining passes does not remove a repeated lookup or fix a behavioral failure. Select options exclude the protected root role code from assignable role choices before mapping unchanged backend identifiers to label/value. These paginated option transformations are linear and side-effect-free; combining passes does not remove a repeated lookup or fix a behavioral failure.",
-      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/DepartmentEditorDrawer.test.tsx", "sha256": "f300fc454d2fe00abc75d8b3c50275f8a583801e9cfa68fb48a6d41e7ae2ca9f"}]
+      "evidence": [{"file": "web/app/src/features/settings/components/organization/_tests/DepartmentEditorDrawer.test.tsx", "sha256": "a3d115ed1732266c8c8f5d6beeeb80320d20daf341fdff9cc8dcf4574fe1ba2d"}]
     },
     {
       "file": "web/app/src/features/settings/components/organization/DepartmentManagementPanel.tsx",
@@ -20,7 +20,7 @@
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "3976cb857af343e4ec44de22a615c0be30f4884830e4a20625bd17dff6c5933b",
       "reason": "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx:96（react-doctor/js-combine-iterations）：probe 后 MemberDepartmentFields 已改为 selectedDepartments.options/inheritedRoles 的预先投影；原行81/92不再包含告警对应 filter/map 链，当前渲染只消费已计算数组。不得将旧 probe 行号当当前待修位置。 web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx:102（react-doctor/js-combine-iterations）：probe 后 MemberDepartmentFields 已改为 selectedDepartments.options/inheritedRoles 的预先投影；原行81/92不再包含告警对应 filter/map 链，当前渲染只消费已计算数组。不得将旧 probe 行号当当前待修位置。",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/member-management-panel.test.tsx", "sha256": "0204f00e307666807b09c819fb06adac1be21dbf5cff9f0b09d9ec23da975af5"}, {"file": "web/app/src/features/settings/components/MemberManagementPanel.tsx", "sha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0"}, {"file": "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx", "sha256": "3976cb857af343e4ec44de22a615c0be30f4884830e4a20625bd17dff6c5933b"}, {"file": "web/app/src/features/settings/components/organization/_tests/MemberDepartmentFields.test.tsx", "sha256": "f756810e0f59cfef90c3f137b66efb0167d872a89c23e51b36f6c96bc6b89d50"}]
+      "evidence": [{"file": "web/app/src/features/settings/_tests/member-management-panel.test.tsx", "sha256": "0204f00e307666807b09c819fb06adac1be21dbf5cff9f0b09d9ec23da975af5"}, {"file": "web/app/src/features/settings/components/MemberManagementPanel.tsx", "sha256": "9714e7da199184575fa9dc74d0d68b83fd063ad1bba80bb1b970303c1c85d9f0"}, {"file": "web/app/src/features/settings/components/organization/MemberDepartmentFields.tsx", "sha256": "3976cb857af343e4ec44de22a615c0be30f4884830e4a20625bd17dff6c5933b"}, {"file": "web/app/src/features/settings/components/organization/_tests/MemberDepartmentFields.test.tsx", "sha256": "868707077c595587a375e648bdb5271b673fcddc603c9698cc7a1cab7d4f19b1"}]
     }
   ]
 }

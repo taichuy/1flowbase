@@ -1,0 +1,12 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/notifications/components/NotificationBell.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "51150e0eda7a8fa086d209e1553805c88e8a6f440576266cddba0ee757926fd4",
+      "reason": "useNotificationBellController已拥有inbox请求、打开状态、ResizeObserver与分栏几何；NotificationBell只渲染一个通知Menu/PopupWorkspace内channel与message两pane及所属交互。没有第二个请求owner、导出混合常量或render内定义组件type；这个单一inbox视图的长度不证明状态/权限/接口归属缺陷。",
+      "evidence": [{"file": "web/app/src/features/notifications/components/NotificationBell.tsx", "sha256": "51150e0eda7a8fa086d209e1553805c88e8a6f440576266cddba0ee757926fd4"}, {"file": "web/app/src/features/notifications/hooks/use-notification-inbox.ts", "sha256": "9c8aa45331d56068937fc370f1a76a1fdf077aaf7555903006d3878cdc0fbc95"}]
+    }
+  ]
+}

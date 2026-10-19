@@ -94,6 +94,7 @@
     "scripts/node/react-doctor-gate/reviews/src/features/frontstage/pages/frontstage-page/workspace-shell/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/features/frontstage/pages/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/features/me/pages/reviews.json",
+    "scripts/node/react-doctor-gate/reviews/src/features/notifications/components/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/features/notifications/hooks/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/features/settings/_tests/application-management-page/reviews.json",
     "scripts/node/react-doctor-gate/reviews/src/features/settings/api/system-templates/reviews.json",

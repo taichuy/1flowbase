@@ -38,6 +38,13 @@
     },
     {
       "file": "web/app/src/features/settings/components/host-infrastructure/HostInfrastructureMemoryObservationPanel.tsx",
+      "rule": "react-doctor/prefer-tag-over-role",
+      "sourceSha256": "6e220f5a9b4e2970bb877d96703a9feb8331624e85ed7a4c9808e53ecea03922",
+      "reason": "memory tree/detail divider有真实sidebarWidth state、mouse resize、ArrowLeft/Right/Home/End与aria-valuenow/min/max；交互分隔条不是静态hr，保留separator是正确的可调整区域合同。",
+      "evidence": [{"file": "web/app/src/features/settings/components/host-infrastructure/HostInfrastructureMemoryObservationPanel.tsx", "sha256": "6e220f5a9b4e2970bb877d96703a9feb8331624e85ed7a4c9808e53ecea03922"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/host-infrastructure/HostInfrastructureMemoryObservationPanel.tsx",
       "rule": "react-doctor/prefer-use-effect-event",
       "sourceSha256": "6e220f5a9b4e2970bb877d96703a9feb8331624e85ed7a4c9808e53ecea03922",
       "reason": "contract 变化清空旧 cursor/search/tree，本地状态所属外部资源改变；30s interval 带 cleanup。revealMutation 返回授权 reveal 条目，只 setRevealedEntry，不写列表实体。 contractCode/autoRefresh 改变时需要清理和重建 interval，依赖定义真实订阅身份。",
