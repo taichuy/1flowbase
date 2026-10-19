@@ -24,6 +24,8 @@ Rust 文件按领域职责收纳物理子目录时，Cargo package identity、�
 
 规则自身需要合法反例与违规反例。删除旧断言的依据是当前 contract 和有效替代证据，不能只因为它失败，也不能反过来让产品兼容过期测试。规模、兼容与翻译 finding 都应保留实际 owner 和处置依据，不能通过扩大路径豁免或清空报告获得健康结论。
 
+前端测试生命周期规则由 [`testing-library-lifecycle-rules`](../../../scripts/node/testing-library-lifecycle-rules/index.js) 在原 ESLint namespace 下精化，上游 metadata、options、listeners 和其它诊断保留：直接 awaited async `act` 只有在真实 RTL `render/renderHook/fireEvent` binding 且不混入 `waitFor/findBy/user-event` 时接受；同步或未 await 的 scope、空 callback 与已异步包装的等待仍报告。手动 `cleanup` 只在其所有引用均归属可证明的 `afterEach`，并在同一顺序块（含 `finally` 或已 await 的 act）先卸载、再调用真实 auth/design store reset、QueryClient.clear 或应用 i18n.changeLanguage 时接受；独立 cleanup、mock restore、未知或条件 reset 不构成例外。renderer registry 只按已知 schema registry 工厂 import contract 区别于 RTL render；HMR 混合导出只接受 `_tests` 内直接导入 Vitest/RTL 的 unit harness，browser fixture 和产品模块不豁免。React 19 [Effect Event contract](https://react.dev/reference/react/useEffectEvent) 要求不纳入依赖且仅由 Effect 调用，并不保证函数 identity 稳定；针对旧 exhaustive-deps 的适配须证明真实 React binding、所有引用为 effect 内调用，且上游 missing 报告的建议仅增加这些 Event 名、不移除或改变其它依赖。上游 message/suggestion AST 文本契约不匹配、混合普通缺失项、普通 handler 或未知 binding 均保留报告。受控 Node 正反例随 `test-scripts` 自动发现；它们与线上真实 fixture 生命周期日志分别结算，不以 lint 通过代替异步行为取证。
+
 ## 前端异步与维护告警
 
 第一方 Hook 闭包、重复 React key、废弃组件参数与无效夹具属于可修问题，不能用“上游依赖告警”或“既有债”代替修复。Hook 依赖调整保留 locale、actor、workspace 与 policy 的实际失效语义；不能为了 lint 删除隔离键，也不能加入不稳定的整个 query/session 对象导致重复连接。React Refresh 的组件边界与纯逻辑分别维护，不以虚假导出或规则排除绕过。

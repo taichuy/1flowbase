@@ -5,6 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import testingLibrary from 'eslint-plugin-testing-library';
 import jestDom from 'eslint-plugin-jest-dom';
 import tseslint from 'typescript-eslint';
+import lifecycleRules from '../scripts/node/testing-library-lifecycle-rules/index.js';
 
 export default tseslint.config(
   {
@@ -23,8 +24,8 @@ export default tseslint.config(
       }
     },
     plugins: {
-      'react-hooks': reactHooks,
-      'react-refresh': reactRefresh
+      'react-hooks': lifecycleRules.refineReactHooksPlugin(reactHooks),
+      'react-refresh': lifecycleRules.refineReactRefreshPlugin(reactRefresh)
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
@@ -38,7 +39,7 @@ export default tseslint.config(
   {
     files: ['**/*.test.{ts,tsx}'],
     plugins: {
-      'testing-library': testingLibrary,
+      'testing-library': lifecycleRules.refineTestingLibraryPlugin(testingLibrary),
       'jest-dom': jestDom
     },
     rules: {
