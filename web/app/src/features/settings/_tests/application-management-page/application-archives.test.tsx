@@ -1,4 +1,5 @@
-import { AppProviders, ApplicationManagementPanel, applicationArchiveDownload, applicationManagementApi, applicationsApi, setupApplicationManagementFixture } from './fixture';
+import { AppProviders, applicationArchiveDownload, applicationManagementApi, applicationsApi, setupApplicationManagementFixture } from './fixture';
+import { ApplicationManagementPanel } from '../../components/application-management/ApplicationManagementPanel';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 

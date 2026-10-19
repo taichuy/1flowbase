@@ -1,4 +1,7 @@
-import { ApiClientError, AppProviders, ApplicationManagementPanel, applicationManagementApi, applicationsApi, applicationsPublicApi, membersApi, setupApplicationManagementFixture, useAuthStore } from './fixture';
+import { AppProviders, applicationManagementApi, applicationsApi, applicationsPublicApi, membersApi, setupApplicationManagementFixture } from './fixture';
+import { ApiClientError } from '@1flowbase/api-client';
+import { ApplicationManagementPanel } from '../../components/application-management/ApplicationManagementPanel';
+import { useAuthStore } from '../../../../state/auth-store';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 

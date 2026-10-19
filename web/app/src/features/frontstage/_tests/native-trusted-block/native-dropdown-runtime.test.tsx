@@ -229,11 +229,11 @@ describe('native block Dropdown runtime adapter', () => {
   test.each(['hover', 'click', 'keyboard'] as const)(
     'I1924-AC-002/004 keeps a cascading submenu inside the Block top-layer surface and reopens by %s',
     async (reopenBy) => {
-      vi.useFakeTimers();
       const onOpenChange = vi.fn();
       const registry = createFrontstageNativeReactModuleRegistry();
       const antdModule = await registry.load('antd');
       const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
+      vi.useFakeTimers({ shouldAdvanceTime: true });
       const root = document.createElement('div');
       document.body.append(root);
       await renderSettled(
@@ -543,15 +543,13 @@ function createContext(): BlockContextSeed {
 }
 
 async function findDropdownText(queries: ReturnType<typeof within>, text: string) {
-  const deadline = Date.now() + getConfig().asyncUtilTimeout;
-  // Drive only queued hover/motion work, stopping at the same bound as findBy.
-  while (
-    !queries.queryByText(text) &&
-    vi.getTimerCount() > 0 &&
-    Date.now() < deadline
-  ) {
+  // Fixed increments guarantee a finite budget even if a timer reschedules at 0ms.
+  const frameMs = 16;
+  for (let elapsed = 0; elapsed <= getConfig().asyncUtilTimeout; elapsed += frameMs) {
+    const element = queries.queryByText(text);
+    if (element) return element;
     await act(async () => {
-      await vi.advanceTimersToNextTimerAsync();
+      await vi.advanceTimersByTimeAsync(frameMs);
     });
   }
   return queries.getByText(text);

@@ -87,7 +87,11 @@ export function setupEmbeddedAssistantFixture() {
   beforeAll(async () => {
     await loadApplicationI18nResources();
     // These scenarios exercise the real preview after loading, not cold chunk timing.
-    await import('../../components/embedded-assistant/EmbeddedAgentAssistantPreview');
+    await Promise.all([
+      import('../../components/embedded-assistant/EmbeddedAgentAssistantPreview'),
+      import('../../components/assistant-plugin/AssistantPanelPlugin'),
+      import('../../components/embedded-assistant/AssistantRunActivityPanel')
+    ]);
   });
   beforeEach(() => {
     window.localStorage.removeItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY);

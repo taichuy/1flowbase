@@ -146,12 +146,14 @@ describe('role data policy draft ownership', () => {
         code: 'new_model'
       };
       // Simulate successful background query refreshes, not UI events.
-      act(() => {
+      await act(async () => {
         client.setQueryData(
           settingsRoleDataPolicyQueryKey('member'),
           refreshedPolicy
         );
         client.setQueryData(settingsAllDataModelsQueryKey, [models[0], added]);
+        // Query notification batching schedules the observer update on a timer.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
       });
       expect(
         screen.getByRole('checkbox', { name: checkboxName })

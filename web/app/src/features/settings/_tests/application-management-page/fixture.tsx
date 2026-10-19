@@ -1,4 +1,3 @@
-import { ApiClientError } from '@1flowbase/api-client';
 import { App } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { beforeAll, beforeEach, vi } from 'vitest';
@@ -126,7 +125,6 @@ import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 
 import { AppProviders as BaseAppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-import { ApplicationManagementPanel } from '../../components/application-management/ApplicationManagementPanel';
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
@@ -390,9 +388,6 @@ export function setupApplicationManagementFixture() {
 }
 
 export {
-  ApiClientError,
-  useAuthStore,
-  ApplicationManagementPanel,
   applicationManagementApi,
   applicationsApi,
   applicationArchiveDownload,

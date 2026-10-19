@@ -20,6 +20,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 vi.mock('../../../../../../../shared/ui/fixed-height-modal/FixedHeightModal', () => ({
   FixedHeightModal: ({
+    bodyHeader,
     children,
     className,
     footer,
@@ -28,6 +29,7 @@ vi.mock('../../../../../../../shared/ui/fixed-height-modal/FixedHeightModal', ()
     title,
     width
   }: {
+    bodyHeader?: ReactNode;
     children: ReactNode;
     className?: string;
     footer?: ReactNode;
@@ -43,6 +45,8 @@ vi.mock('../../../../../../../shared/ui/fixed-height-modal/FixedHeightModal', ()
         open
         style={{ width }}
       >
+        <div className="ant-modal-title">{title}</div>
+        {bodyHeader}
         <div
           className={scrollBodyClassName}
           data-testid="fixed-height-modal-scroll-body"

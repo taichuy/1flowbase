@@ -1,3 +1,4 @@
+import { i18nText } from '../../../../../../shared/i18n/text';
 /* eslint-disable @typescript-eslint/no-unused-vars -- shared MCP panel fixture inventory is intentionally broader than each scenario file. */
 import { cleanup,
   act,
@@ -983,7 +984,7 @@ describe('McpManagementPanel', () => {
 
     const dialog = await screen.findByRole('dialog');
     await clickSegmentedOption(dialog, 'input_mapping');
-    await domEvents.click(within(dialog).getByText('OK'));
+    await domEvents.click(within(dialog).getByRole('button', { name: i18nText('settings', 'auto.save') }));
 
     await waitFor(() => {
       expect(mcpManagementApi.updateSettingsMcpTool).toHaveBeenCalledWith(
@@ -1368,7 +1369,7 @@ describe('McpManagementPanel', () => {
       within(dialog).queryByText('mcp_get(tool_id)')
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByText('audit_policy')).not.toBeInTheDocument();
-    await domEvents.click(within(dialog).getByText('OK'));
+    await domEvents.click(within(dialog).getByRole('button', { name: i18nText('settings', 'auto.save') }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(

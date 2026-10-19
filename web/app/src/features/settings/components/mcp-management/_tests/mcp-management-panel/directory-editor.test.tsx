@@ -42,7 +42,9 @@ describe('McpManagementPanel', () => {
     ).toBeInTheDocument();
     await click(screen.getByRole('button', { name: '继续编辑' }));
     await waitFor(() =>
-      expect(screen.queryByText('放弃未保存的更改？')).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('dialog', { name: '放弃未保存的更改？' })
+      ).not.toBeInTheDocument()
     );
     expect(
       screen.getByRole('dialog', { name: '目录编辑' })
