@@ -1,7 +1,26 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { AnyRouter } from '@tanstack/react-router';
 import { Grid } from 'antd';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+
+const { sceneRouters } = vi.hoisted(() => ({
+  sceneRouters: new Set<AnyRouter>()
+}));
+
+// Observe the real router without replacing navigation, redirects or loaders.
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>();
+  return {
+    ...actual,
+    RouterProvider(props: ComponentProps<typeof actual.RouterProvider>) {
+      sceneRouters.add(props.router);
+      return <actual.RouterProvider {...props} />;
+    }
+  };
+});
 
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () => <div data-testid="style-boundary-scalar">Scalar</div>
@@ -12,26 +31,91 @@ import { appI18n } from '../../shared/i18n/app-i18n';
 import { renderReactFlowScene } from '../../test/renderers/render-react-flow-scene';
 import { StyleBoundaryHarness } from '../StyleBoundaryHarness';
 import { getRuntimeScene, getSceneIdsForFiles } from '../registry';
+import type { StyleBoundaryRuntimeScene } from '../types';
+import { resetAuthStore } from '../../state/auth-store';
+
+const sceneClients = new Set<QueryClient>();
+let originalFetch: typeof globalThis.fetch;
+function ObserveSceneQueries() {
+  sceneClients.add(useQueryClient());
+  return null;
+}
+
+async function renderScene(
+  scene: StyleBoundaryRuntimeScene,
+  { reactFlow = false } = {}
+) {
+  const ui = (
+    <AppProviders>
+      <ObserveSceneQueries />
+      <StyleBoundaryHarness scene={scene} />
+    </AppProviders>
+  );
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = reactFlow
+      ? renderReactFlowScene(ui, { withProviders: false })
+      : render(ui);
+  });
+  return view;
+}
+
+async function waitForSceneIdle() {
+  await waitFor(
+    () => {
+      for (const router of sceneRouters) {
+        expect(router.state.status).toBe('idle');
+        expect(router.state.isLoading).toBe(false);
+        expect(router.state.isTransitioning).toBe(false);
+        // Transitioner must commit the loaded location, including redirects.
+        expect(router.state.resolvedLocation?.href).toBe(
+          router.state.location.href
+        );
+      }
+      for (const client of sceneClients) {
+        expect(client.isFetching()).toBe(0);
+        expect(client.isMutating()).toBe(0);
+      }
+    },
+    { timeout: 10_000 }
+  );
+}
 
 describe('style boundary registry', () => {
   beforeEach(async () => {
+    sceneRouters.clear();
+    sceneClients.clear();
+    originalFetch = globalThis.fetch;
     window.history.replaceState(null, '', '/?language=zh-Hans');
-    await appI18n.changeLanguage('zh_Hans');
+    await act(async () => {
+      await appI18n.changeLanguage('zh_Hans');
+    });
   });
 
   afterEach(async () => {
-    window.history.replaceState(null, '', '/');
-    await appI18n.changeLanguage('en_US');
+    try {
+      // Shell headings and retained query data can appear before background work ends.
+      await waitForSceneIdle();
+    } finally {
+      // Release router subscriptions, query observers and portals before global resets.
+      cleanup();
+      for (const client of sceneClients) client.clear();
+      sceneClients.clear();
+      sceneRouters.clear();
+      await act(async () => {
+        resetAuthStore();
+        window.history.replaceState(null, '', '/');
+        await appI18n.changeLanguage('en_US');
+      });
+      globalThis.fetch = originalFetch;
+      vi.restoreAllMocks();
+    }
   });
 
   test('renders the account popup component scene and exposes scene metadata on window', async () => {
     const scene = getRuntimeScene('component.account-popup');
 
-    render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    await renderScene(scene);
 
     expect(await screen.findByText('个人资料')).toBeInTheDocument();
     expect(window.__STYLE_BOUNDARY__?.scene.id).toBe('component.account-popup');
@@ -221,11 +305,7 @@ describe('style boundary registry', () => {
   test('renders the home redirect fallback in the shared shell', async () => {
     const scene = getRuntimeScene('page.home');
 
-    render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    await renderScene(scene);
 
     expect(
       await screen.findByRole('heading', { name: '1flowbase' })
@@ -248,11 +328,7 @@ describe('style boundary registry', () => {
   test('renders the frontstage page scene with the shared section layout', async () => {
     const scene = getRuntimeScene('page.frontstage');
 
-    render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    await renderScene(scene);
 
     expect(
       await screen.findByRole('heading', { name: '1flowbase' })
@@ -266,7 +342,7 @@ describe('style boundary registry', () => {
   test('application detail scene save mock echoes the latest draft document', async () => {
     const scene = getRuntimeScene('page.application-detail');
 
-    renderReactFlowScene(<StyleBoundaryHarness scene={scene} />);
+    await renderScene(scene, { reactFlow: true });
 
     await screen.findByTestId(
       'agent-flow-editor-body',
@@ -307,14 +383,10 @@ describe('style boundary registry', () => {
   test('application detail scene reaches the editor shell instead of the error state', async () => {
     const scene = getRuntimeScene('page.application-detail');
     vi.spyOn(Grid, 'useBreakpoint').mockReturnValue({ lg: true } as never);
-    const consoleErrorSpy = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
-    const consoleWarnSpy = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined);
+    const consoleErrorSpy = vi.spyOn(console, 'error');
+    const consoleWarnSpy = vi.spyOn(console, 'warn');
 
-    renderReactFlowScene(<StyleBoundaryHarness scene={scene} />);
+    await renderScene(scene, { reactFlow: true });
 
     await waitFor(
       () => {
@@ -338,11 +410,7 @@ describe('style boundary registry', () => {
   test('renders the settings scene with canonical multi-provider contract data', async () => {
     const scene = getRuntimeScene('page.settings');
 
-    render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    await renderScene(scene);
 
     expect(
       await screen.findByRole(
@@ -375,11 +443,7 @@ describe('style boundary registry', () => {
   test('renders the settings applications scene with its management table', async () => {
     const scene = getRuntimeScene('page.settings-applications');
 
-    render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    await renderScene(scene);
 
     expect(
       await screen.findByText('Boundary Workflow', undefined, {
@@ -395,11 +459,7 @@ describe('style boundary registry', () => {
   test('renders the settings UI components scene with its shared data table', async () => {
     const scene = getRuntimeScene('page.settings-ui-components');
 
-    render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    await renderScene(scene);
 
     expect(
       await screen.findByText('DataTable', undefined, { timeout: 10_000 })
@@ -411,11 +471,7 @@ describe('style boundary registry', () => {
   test('renders the settings mcp management scene', async () => {
     const scene = getRuntimeScene('page.settings-mcp-management');
 
-    render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    await renderScene(scene);
 
     expect(await screen.findByText('Workspace Ops')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'MCP 实例' })).toBeInTheDocument();
@@ -424,11 +480,7 @@ describe('style boundary registry', () => {
 
   test('renders the settings API docs scene from the backend navigation fixture', async () => {
     const scene = getRuntimeScene('page.settings-docs');
-    const view = render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    const view = await renderScene(scene);
 
     await waitFor(() => {
       expect(
@@ -440,11 +492,7 @@ describe('style boundary registry', () => {
   test('seeds model provider instances with enabled model ids instead of validation history', async () => {
     const scene = getRuntimeScene('page.settings');
 
-    render(
-      <AppProviders>
-        <StyleBoundaryHarness scene={scene} />
-      </AppProviders>
-    );
+    await renderScene(scene);
 
     expect(
       await screen.findByRole(
