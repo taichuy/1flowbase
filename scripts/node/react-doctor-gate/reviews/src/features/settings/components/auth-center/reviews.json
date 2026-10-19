@@ -6,28 +6,28 @@
       "rule": "react-doctor/jsx-no-jsx-as-prop",
       "sourceSha256": "1ad2cbfb0b7e44f8c5043b4939d5ab061952b588692df84da2d033cec22a4a12",
       "reason": "The receiving shared component defines this named ReactNode slot; it is part of the layout API. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "a4871616ca94455f08df846e1a98ad1502696448ff87032c60cac70f63ddf464"}]
+      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "83ef6b799006c725acc67c37c402bc20eaf8c3f9994f5b857da9a2a84b70d808"}]
     },
     {
       "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
       "sourceSha256": "1ad2cbfb0b7e44f8c5043b4939d5ab061952b588692df84da2d033cec22a4a12",
       "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "a4871616ca94455f08df846e1a98ad1502696448ff87032c60cac70f63ddf464"}]
+      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "83ef6b799006c725acc67c37c402bc20eaf8c3f9994f5b857da9a2a84b70d808"}]
     },
     {
       "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "1ad2cbfb0b7e44f8c5043b4939d5ab061952b588692df84da2d033cec22a4a12",
       "reason": "The state retains draft/history/resource information beyond the latest input projection. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "a4871616ca94455f08df846e1a98ad1502696448ff87032c60cac70f63ddf464"}]
+      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "83ef6b799006c725acc67c37c402bc20eaf8c3f9994f5b857da9a2a84b70d808"}]
     },
     {
       "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
       "rule": "react-doctor/no-derived-useState",
       "sourceSha256": "1ad2cbfb0b7e44f8c5043b4939d5ab061952b588692df84da2d033cec22a4a12",
       "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot.",
-      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "a4871616ca94455f08df846e1a98ad1502696448ff87032c60cac70f63ddf464"}]
+      "evidence": [{"file": "web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx", "sha256": "83ef6b799006c725acc67c37c402bc20eaf8c3f9994f5b857da9a2a84b70d808"}]
     }
   ]
 }
