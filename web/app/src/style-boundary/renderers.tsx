@@ -1,17 +1,18 @@
 import {
   NotificationInboxStyleBoundaryScene,
   NotificationLogsStyleBoundaryScene,
-  NotificationSettingsStyleBoundaryScene,
+  NotificationSettingsStyleBoundaryScene
+} from './scene-fixtures/notifications';
+import { CollectorStyleBoundaryScene } from './scene-fixtures/collector';
+import { seedStyleBoundaryCollectorFetch } from './scene-fixtures/collector/data';
+import {
   seedStyleBoundaryNotificationFetch,
   seedStyleBoundaryNotificationSettingsFetch
-} from './scene-fixtures/notifications';
-import {
-  CollectorStyleBoundaryScene,
-  seedStyleBoundaryCollectorFetch
-} from './scene-fixtures/collector';
+} from './scene-fixtures/notifications/data';
 import { SettingsOrganizationStyleBoundaryScene } from './SettingsOrganizationStyleBoundaryScene';
 import { seedStyleBoundaryOrganizationFetch } from './scene-fixtures/settings/organization';
-import { useLayoutEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { AssistantPreviewScene } from './scene-fixtures/AssistantPreviewScene';
 import { Menu } from 'antd';
 
 import { AnonymousAppRuntime } from '../app/AnonymousAppRuntime';
@@ -21,12 +22,6 @@ import { createAccountMenuItems } from '../app-shell/account-menu-items';
 import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/AgentFlowEditorShell';
 import { VariableGroupsField } from '../features/agent-flow/components/bindings/VariableGroupsField';
 import type { FlowSelectorOption } from '../features/agent-flow/lib/selector-options';
-import { useWindowWorkspace } from '../shared/ui/window-workspace/WindowWorkspaceProvider';
-import {
-  ASSISTANT_WINDOW_ID,
-  initialAssistantWindowRect
-} from '../features/agent-flow/components/embedded-assistant/assistant-window-geometry';
-import { EmbeddedAgentAssistantPreview } from '../features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview';
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
@@ -64,28 +59,6 @@ function getAccountPopupChildren() {
   }
 
   return firstItem.children;
-}
-
-function AssistantPreviewScene() {
-  const { open, close } = useWindowWorkspace();
-  useLayoutEffect(() => {
-    open({
-      id: ASSISTANT_WINDOW_ID,
-      owner: 'embedded-agent-assistant',
-      parent_id: null,
-      rect: initialAssistantWindowRect(),
-      dirty: false
-    });
-    return () => close(ASSISTANT_WINDOW_ID);
-  }, [open, close]);
-
-  return (
-    <EmbeddedAgentAssistantPreview
-      open
-      pageKey="/style-boundary/embedded-agent-assistant-preview"
-      onClose={() => close(ASSISTANT_WINDOW_ID)}
-    />
-  );
 }
 
 function renderShellScene(pathname: string, page: ReactNode) {

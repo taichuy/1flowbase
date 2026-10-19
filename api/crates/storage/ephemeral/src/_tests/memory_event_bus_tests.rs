@@ -467,13 +467,12 @@ async fn admission_rejection_counts_failed_reserve_and_send_calls_only() {
         max_waiters: 0,
         ..limits()
     });
-    assert!(
-        bus.configure_budget(EventBusLimits {
+    assert!(bus
+        .configure_budget(EventBusLimits {
             max_items: 8,
             ..limits()
         })
-        .is_err()
-    );
+        .is_err());
     assert!(bus.open_consumer(&"x".repeat(65)).is_err());
     assert_eq!(bus.event_bus_snapshot().admission_rejected, 0);
     assert!(matches!(

@@ -8,7 +8,7 @@ import {
   type ReactNode
 } from 'react';
 import { useNativeBlockSurface } from '../native-block-surface-context';
-import { NativeBlockNotification } from '../native-notification-runtime';
+import { NativeBlockNotification } from './facade';
 
 type Api = ReturnType<typeof AntdNotification.useNotification>[0];
 type Config = Parameters<typeof AntdNotification.config>[0];

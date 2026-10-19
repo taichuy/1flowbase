@@ -43,7 +43,7 @@ function fixture(
       return () => {
         panelRef.current = null;
       };
-    }, []);
+    }, [ref]);
     return null;
   });
   const Motion = React.forwardRef<
@@ -58,7 +58,7 @@ function fixture(
       return () => {
         motionRef.current = null;
       };
-    }, []);
+    }, [ref]);
     return props.children({}, () => {});
   });
   const path = join(dialogRoot, format, 'Dialog/Content/index.js');

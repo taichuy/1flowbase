@@ -1,5 +1,6 @@
 import './navigation';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -435,6 +436,23 @@ test('imported records reuse total trajectory and lazy sections without a native
   expect(
     screen.queryByRole('button', { name: '打开内部调用' })
   ).not.toBeInTheDocument();
+  const requestsBeforeLocale = queryConversationClientTrajectory.mock.calls.length;
+  await act(async () => { await appI18n.changeLanguage('en_US'); });
+  expect(await screen.findByRole('button', { name: 'Tool call · exec_command' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Tool call #2')).toBeInTheDocument();
+  expect(queryConversationClientTrajectory).toHaveBeenCalledTimes(requestsBeforeLocale);
+
+});
+
+test('updates mounted client row and cached timeline labels on a locale change', async () => {
+  const { loadClientTrajectory } = fixture();
+  fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  await screen.findByRole('button', { name: '工具调用 · exec_command' });
+  const requests = loadClientTrajectory.mock.calls.length;
+  await act(async () => { await appI18n.changeLanguage('en_US'); });
+  expect(await screen.findByRole('button', { name: 'Tool call · exec_command' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Request #1')).toBeInTheDocument();
+  expect(loadClientTrajectory).toHaveBeenCalledTimes(requests);
 });
 
 test('canonical index preserves equal-sequence events and loads missing viewport windows by identity', async () => {

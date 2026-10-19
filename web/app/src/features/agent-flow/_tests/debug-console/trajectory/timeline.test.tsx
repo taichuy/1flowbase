@@ -2,11 +2,8 @@ import './navigation';
 import { Profiler, useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import {
-  TrajectoryTimeline,
-  inTrajectoryRange,
-  type TrajectoryRange
-} from '../../../components/debug-console/trajectory/TrajectoryTimeline';
+import { TrajectoryTimeline } from '../../../components/debug-console/trajectory/TrajectoryTimeline';
+import { inTrajectoryRange, type TrajectoryRange } from '../../../components/debug-console/trajectory/timeline-model';
 
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);

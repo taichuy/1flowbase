@@ -69,7 +69,7 @@ export function MemberSettingsTabs({
           ) : accessQuery.isError ? (
             <Alert
               type="error"
-              message={i18nText('settings', 'organization.load_error')}
+              title={i18nText('settings', 'organization.load_error')}
               action={
                 <Button onClick={() => void accessQuery.refetch()}>
                   {i18nText('settings', 'auto.retry_permission_data')}

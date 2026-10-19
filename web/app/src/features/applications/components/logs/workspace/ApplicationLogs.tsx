@@ -11,7 +11,7 @@ import {
   fetchApplications
 } from '../../../api/applications';
 import { useNativeBlockSurface } from '../../../../frontstage/lib/native-modules/native-block-surface-context';
-import { shadowViewerStyles } from '../ApplicationRunLogViewer';
+import { shadowViewerStyles } from '../application-run-viewer-styles';
 import { ApplicationLogsWorkspace } from './ApplicationLogsWorkspace';
 import tableStyles from '../../../../../shared/ui/data-table/data-table.css?inline';
 import columnSettingsStyles from '../../../../../shared/ui/data-table/data-table-column-settings.css?inline';
@@ -71,7 +71,7 @@ export function AllAgentFlowLogs({
       <Alert
         type="error"
         showIcon
-        message={t('auto.application_list_load_failed')}
+        title={t('auto.application_list_load_failed')}
         action={
           <Button onClick={() => void applicationsQuery.refetch()}>
             {t('auto.refresh_logs')}

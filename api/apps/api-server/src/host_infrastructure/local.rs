@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
-use plugin_framework::{HostExtensionRegistry, extension_bus::EffectiveExtensionGraph};
+use plugin_framework::{extension_bus::EffectiveExtensionGraph, HostExtensionRegistry};
 use storage_ephemeral::{
     MemoryDistributedLock, MemoryEventBus, MemoryProviderTransportStore, MemoryTaskQueue,
     MokaRateLimitStore, MokaSessionStore,
@@ -12,12 +12,12 @@ use time::Duration;
 use crate::extension_bus::CACHE_STORE_CONTRACT_ID;
 
 use super::{
-    DistributedLock, EventBus, HostInfrastructureRegistry, LocalRuntimeEventStream,
-    ProviderTransportStore, RateLimitStore, RuntimeEventStream, SESSION_STORE_NAMESPACE, TaskQueue,
     cache_store_activation::{
-        CacheStoreActivationFactoryRegistry, LOCAL_PROVIDER_CODE, LOCAL_PROVIDER_SOURCE,
         build_local_cache_store, builtin_cache_store_activation_factories,
+        CacheStoreActivationFactoryRegistry, LOCAL_PROVIDER_CODE, LOCAL_PROVIDER_SOURCE,
     },
+    DistributedLock, EventBus, HostInfrastructureRegistry, LocalRuntimeEventStream,
+    ProviderTransportStore, RateLimitStore, RuntimeEventStream, TaskQueue, SESSION_STORE_NAMESPACE,
 };
 
 const RATE_LIMIT_STORE_NAMESPACE: &str = "flowbase:rate-limit";

@@ -8,6 +8,7 @@ import {
   within
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { useState } from 'react';
 const fetchDepartments = vi.hoisted(() => vi.fn());
 vi.mock('../../../api/departments', () => ({
   fetchSettingsDepartments: fetchDepartments,
@@ -201,6 +202,50 @@ describe('organization lazy tree', () => {
     expect(within(screen.getByRole('tree')).getAllByText('组织')).toHaveLength(
       1
     );
+  });
+  test('keeps root and department pagers separate and selects backend IDs with reserved-looking names', async () => {
+    const onSelect = vi.fn();
+    const onExpand = vi.fn(async () => {});
+    const rootMore = vi.fn();
+    const childMore = vi.fn();
+    function Selector() {
+      const [selected, setSelected] = useState<string>();
+      return (
+        <OrganizationSelector
+          departments={[
+            department('root', 'Engineering', null, true),
+            department('more:root', 'Reserved-looking ID', 'root')
+          ]}
+          selected={selected}
+          onSelect={(id) => { setSelected(id); onSelect(id); }}
+          loading={false}
+          error={false}
+          onRetry={vi.fn()}
+          search=""
+          onSearch={vi.fn()}
+          onExpand={onExpand}
+          groups={[{ loadMore: rootMore }, { parent_id: 'root', loadMore: childMore }]}
+        />
+      );
+    }
+    render(<AppProviders><Selector /></AppProviders>);
+    const engineering = screen.getByText('Engineering');
+    fireEvent.click(engineering.closest('.ant-tree-treenode')!.querySelector('.ant-tree-switcher')!);
+    expect(onExpand).toHaveBeenCalledWith('root');
+    const pagers = screen.getAllByRole('button', { name: '加载更多' });
+    expect(pagers).toHaveLength(2);
+    fireEvent.click(pagers[0]);
+    expect(childMore).toHaveBeenCalledOnce();
+    expect(rootMore).not.toHaveBeenCalled();
+    fireEvent.click(pagers[1]);
+    expect(rootMore).toHaveBeenCalledOnce();
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(engineering);
+    expect(onSelect).toHaveBeenLastCalledWith('root');
+    fireEvent.click(screen.getByText('Reserved-looking ID'));
+    expect(onSelect).toHaveBeenLastCalledWith('more:root');
+    fireEvent.click(within(screen.getByRole('tree')).getByText('组织'));
+    expect(onSelect).toHaveBeenLastCalledWith(undefined);
   });
   test('searches the server, merges repeated context, and reloads after a stale cursor', async () => {
     render(

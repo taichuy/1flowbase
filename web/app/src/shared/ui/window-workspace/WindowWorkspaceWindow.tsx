@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -19,15 +17,9 @@ import {
 } from './window-workspace-geometry';
 import type { WindowWorkspaceRect } from './window-workspace-state';
 
+import { WindowWorkspaceOverlayZIndexContext } from './window-workspace-overlay-context';
+
 import './window-workspace.css';
-
-const WindowWorkspaceOverlayZIndexContext = createContext<number | undefined>(
-  undefined
-);
-
-export function useWindowWorkspaceOverlayZIndex(): number | undefined {
-  return useContext(WindowWorkspaceOverlayZIndexContext);
-}
 
 export type WindowWorkspaceResizeEdge = 'left' | 'right' | 'top' | 'bottom';
 

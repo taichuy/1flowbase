@@ -95,6 +95,46 @@ test('OTLP export groups the selection by owner and preserves a successful downl
   expect(save).toHaveBeenCalledOnce();
 });
 
+test('pending exchange blocks backdrop and Escape dismissal until the download finishes', async () => {
+  let finishDownload!: (value: {
+    blob: Blob;
+    filename: string;
+    contentType: string;
+  }) => void;
+  api.exportApplicationLogsOtlp.mockReturnValue(
+    new Promise((resolve) => {
+      finishDownload = resolve;
+    })
+  );
+  open([{ id: 'r1', application_id: 'app-a', log_conversation_id: 'c1' }]);
+  execute();
+
+  const dialog = screen.getByRole('dialog');
+  const backdrop = dialog.closest<HTMLElement>('.ant-modal-wrap');
+  expect(backdrop).not.toBeNull();
+  expect(within(dialog).getByRole('button', { name: /^关\s*闭$/ })).toBeDisabled();
+  fireEvent.mouseDown(backdrop!);
+  fireEvent.mouseUp(backdrop!);
+  fireEvent.click(backdrop!);
+  fireEvent.keyDown(backdrop!, { key: 'Escape', keyCode: 27 });
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(api.exportApplicationLogsOtlp).toHaveBeenCalledOnce();
+
+  finishDownload({
+    blob: new Blob(['{}']),
+    filename: 'completed.json',
+    contentType: 'application/json'
+  });
+  await screen.findByText('已下载 completed.json');
+  await waitFor(() =>
+    expect(within(dialog).getByRole('button', { name: /^关\s*闭$/ })).toBeEnabled()
+  );
+  fireEvent.mouseDown(backdrop!);
+  fireEvent.mouseUp(backdrop!);
+  fireEvent.click(backdrop!);
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
+
 test('OTLP file import uses the object unchanged and shows actual duplicate receipt', async () => {
   const otlp = { resourceSpans: [{ scopeSpans: [] }] };
   api.importApplicationLogsOtlp.mockResolvedValue({

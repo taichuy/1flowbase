@@ -1,5 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
+import type { ReactElement } from 'react';
+import { createTestMemoryRouter } from '../../../test/renderers/create-test-memory-router';
 
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
 import { renderReactFlowScene } from '../../../test/renderers/render-react-flow-scene';
@@ -9,6 +11,10 @@ import {
   createBuiltinCatalogNode,
   createWorkflowStartFieldContract
 } from '../../agent-flow/_tests/fixtures/application-node-catalog';
+
+async function renderWorkflowScene(ui: ReactElement) {
+  return renderReactFlowScene(await createTestMemoryRouter(ui));
+}
 
 function createWorkflowInitialState() {
   return {
@@ -55,8 +61,8 @@ const workflowNodeCatalog = createApplicationNodeCatalog([
 ]);
 
 describe('WorkflowEditor assembly', () => {
-  test('AC-001/002 renders workflow entry and terminal nodes with directional connectors', () => {
-    renderReactFlowScene(
+  test('AC-001/002 renders workflow entry and terminal nodes with directional connectors', async () => {
+    await renderWorkflowScene(
       <WorkflowEditorAssembly
         applicationId="app-1"
         applicationName="Ticket Workflow"
@@ -88,8 +94,8 @@ describe('WorkflowEditor assembly', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('keeps the workflow canvas as the layout root', () => {
-    renderReactFlowScene(
+  test('keeps the workflow canvas as the layout root', async () => {
+    await renderWorkflowScene(
       <WorkflowEditorAssembly
         applicationId="app-1"
         applicationName="Ticket Workflow"
@@ -107,7 +113,7 @@ describe('WorkflowEditor assembly', () => {
   });
 
   test('AC-001/005 uses workflow node picker options for workflow documents', async () => {
-    renderReactFlowScene(
+    await renderWorkflowScene(
       <WorkflowEditorAssembly
         applicationId="app-1"
         applicationName="Ticket Workflow"
@@ -137,8 +143,8 @@ describe('WorkflowEditor assembly', () => {
     ).not.toBeInTheDocument();
   }, 20_000);
 
-  test('AC-004 hides conversation tooling for workflow editors', () => {
-    renderReactFlowScene(
+  test('AC-004 hides conversation tooling for workflow editors', async () => {
+    await renderWorkflowScene(
       <WorkflowEditorAssembly
         applicationId="app-1"
         applicationName="Ticket Workflow"
@@ -166,7 +172,7 @@ describe('WorkflowEditor assembly', () => {
   }, 20_000);
 
   test('reuses the standard node detail shell without node preview actions', async () => {
-    renderReactFlowScene(
+    await renderWorkflowScene(
       <WorkflowEditorAssembly
         applicationId="app-1"
         applicationName="Ticket Workflow"

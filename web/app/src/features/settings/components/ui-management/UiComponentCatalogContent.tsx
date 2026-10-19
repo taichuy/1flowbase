@@ -129,7 +129,7 @@ export function UiComponentCatalogContent({
   return (
     <Flex vertical gap={16} style={{ width: '100%' }}>
       {failed ? (
-        <Alert type="error" showIcon message={t('catalog_request_failed')} />
+        <Alert type="error" showIcon title={t('catalog_request_failed')} />
       ) : null}
       <Flex align="center" gap={8} wrap>
         <Input.Search

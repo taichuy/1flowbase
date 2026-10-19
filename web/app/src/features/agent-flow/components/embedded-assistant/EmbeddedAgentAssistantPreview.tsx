@@ -44,7 +44,7 @@ import {
   type WindowWorkspaceResizeEdge
 } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import { getWindowWorkspaceViewport } from '../../../../shared/ui/window-workspace/window-workspace-geometry';
-import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
+import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/window-workspace-context';
 import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { PageReferenceDraftRow } from '../debug-console/conversation/PageReferenceTag';
 import { useAssistantPageReferenceSelection } from './useAssistantPageReferenceSelection';
@@ -326,6 +326,7 @@ export function EmbeddedAgentAssistantPreview({
     settings?.preference.application_id ?? null,
     clientTools
   );
+  const { resumeActiveRun, disconnectSession } = session;
   const activityMessage =
     session.messages.find(
       (message) =>
@@ -344,11 +345,11 @@ export function EmbeddedAgentAssistantPreview({
       return;
     }
     if (open) {
-      session.resumeActiveRun();
+      resumeActiveRun();
     } else {
-      session.disconnectSession();
+      disconnectSession();
     }
-  }, [open, session.disconnectSession, session.resumeActiveRun]);
+  }, [open, disconnectSession, resumeActiveRun]);
 
   useEffect(() => {
     if (open) {

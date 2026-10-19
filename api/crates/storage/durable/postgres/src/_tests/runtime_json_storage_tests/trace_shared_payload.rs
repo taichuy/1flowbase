@@ -35,8 +35,10 @@ fn trace_node(trace: Uuid) -> ApplicationRunTraceNodeProjectionInput {
 async fn shared_trace_write_payload_uses_the_existing_lossless_projection_and_raw_sidecar() {
     let (store, run, _, _) = seed().await;
     let trace = Uuid::now_v7();
-    let mut shared =
-        TraceProjectionWritePayload::from(json!({"id":"call-shared","callback_task_id":null}));
+    let mut shared = control_plane_contracts::ports::TraceProjectionSharedObject::from_fields([
+        ("id", json!("call-shared")),
+        ("callback_task_id", Value::Null),
+    ]);
     shared.set_shared_fields(
         &["request_payload", "tool_call"],
         json!({
@@ -51,7 +53,7 @@ async fn shared_trace_write_payload_uses_the_existing_lossless_projection_and_ra
         ]),
     );
     let cases = vec![
-        (shared, true),
+        (TraceProjectionWritePayload::from(shared), true),
         (TraceProjectionWritePayload::from(Value::Null), false),
         (
             json!([null, false, i64::MIN, u64::MAX, 1.25, 1e20]).into(),

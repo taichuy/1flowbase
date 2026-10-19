@@ -82,7 +82,7 @@ export function DepartmentEditorDrawer({
       }
       open
       onClose={onClose}
-      width={480}
+      size={480}
       styles={{ wrapper: { maxWidth: '100vw' } }}
       extra={
         <Button
@@ -97,7 +97,7 @@ export function DepartmentEditorDrawer({
       {save.isError ? (
         <Alert
           type="error"
-          message={i18nText('settings', 'organization.operation_error')}
+          title={i18nText('settings', 'organization.operation_error')}
         />
       ) : null}
       <Form

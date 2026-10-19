@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   Button,
@@ -594,20 +594,21 @@ function ModelProviderInstanceDrawerContent({
     mode === 'create'
       ? i18nText('settings', 'auto.api_key_authorization_configuration')
       : i18nText('settings', 'auto.edit_api_key_configuration');
-  const formSchema = (catalogEntry?.form_schema ?? []).filter(
-    (field) => !isPreviewOnlyField(field)
+  const formSchema = useMemo(
+    () => (catalogEntry?.form_schema ?? []).filter((field) => !isPreviewOnlyField(field)),
+    [catalogEntry?.form_schema]
   );
-  const editableConfigFields = formSchema.filter(
-    (field) => !(mode === 'edit' && field.field_type === 'secret')
+  const editableConfigFields = useMemo(
+    () => formSchema.filter((field) => !(mode === 'edit' && field.field_type === 'secret')),
+    [formSchema, mode]
   );
-  const configFieldNames = editableConfigFields.map(
-    (field) => ['config', field.key] as const
+  const configFieldNames = useMemo(
+    () => editableConfigFields.map((field) => ['config', field.key] as const),
+    [editableConfigFields]
   );
   const primaryConfigFields = formSchema.filter((field) => !field.advanced);
   const advancedConfigFields = formSchema.filter((field) => field.advanced);
-  function buildDraftConfig(
-    valuesConfig: Record<string, ModelProviderFormValue>
-  ) {
+  const buildDraftConfig = useCallback((valuesConfig: Record<string, ModelProviderFormValue>) => {
     const config: Record<string, unknown> = {};
 
     for (const field of editableConfigFields) {
@@ -633,7 +634,7 @@ function ModelProviderInstanceDrawerContent({
       }
     }
     return config;
-  }
+  }, [editableConfigFields, mode, catalogEntry, secretDrafts]);
 
   const runAuthenticationOperation = useCallback(
     async (operation: SettingsModelProviderAuthOperation) => {

@@ -3,7 +3,7 @@ use control_plane_contracts::ports::*;
 use extension_contracts::{
     AfterCommitFact, LifecycleContract, LifecycleFactId, LifecycleTransactionId,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::io::{Read, Write};
 use time::{Duration, OffsetDateTime};
 
@@ -146,11 +146,10 @@ async fn denied(repo: &PgSelectiveBackupRepository, bytes: Vec<u8>) {
             "invalid notification archive passed preflight"
         );
     }
-    assert!(
-        repo.restore(reader(bytes), "key", "key", true)
-            .await
-            .is_err()
-    );
+    assert!(repo
+        .restore(reader(bytes), "key", "key", true)
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -200,20 +199,18 @@ async fn selective_notification_compaction_old_full_restore_and_replay_cannot_re
                 target_count: 2
             }
         );
-        assert!(
-            store
-                .claim_lifecycle_facts(Uuid::now_v7(), 10, Duration::seconds(30))
-                .await
-                .unwrap()
-                .is_empty()
-        );
+        assert!(store
+            .claim_lifecycle_facts(Uuid::now_v7(), 10, Duration::seconds(30))
+            .await
+            .unwrap()
+            .is_empty());
     }
     assert_eq!(snapshot(&store, id).await, expected);
 }
 
 #[tokio::test]
-async fn selective_notification_compaction_rejects_pending_empty_body_or_incomplete_target_manifest()
- {
+async fn selective_notification_compaction_rejects_pending_empty_body_or_incomplete_target_manifest(
+) {
     let (repo, store, _, id) = notification().await;
     let full = capture(&repo, select("extension-center", true, true)).await;
     denied(
@@ -461,27 +458,23 @@ async fn current_backup_roundtrip_excludes_retired_ledger_and_preserves_model_so
         .read_to_string(&mut text)
         .unwrap();
     let header: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
-    assert!(
-        !header["tables"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|table| table["name"] == "legacy_event_recovery_ledger")
-    );
+    assert!(!header["tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|table| table["name"] == "legacy_event_recovery_ledger"));
     let lifecycle = header["tables"]
         .as_array()
         .unwrap()
         .iter()
         .find(|table| table["name"] == "lifecycle_outbox")
         .unwrap();
-    assert!(
-        !lifecycle["columns"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|column| column["name"] == "native_publication_version"
-                || column["name"] == "legacy_handoff_sequence")
-    );
+    assert!(!lifecycle["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|column| column["name"] == "native_publication_version"
+            || column["name"] == "legacy_handoff_sequence"));
     let preview = repo
         .preflight(reader(bytes.clone()), "key", "key")
         .await

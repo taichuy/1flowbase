@@ -27,7 +27,7 @@ import {
   type FrontstageJsxInsertion
 } from '../../../frontstage/lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../../frontstage/lib/page-document';
-import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block-react-adapter';
+import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block/unavailable-context';
 
 export interface LoginEntryUiBlockStudioProps {
   loginEntryId: string;

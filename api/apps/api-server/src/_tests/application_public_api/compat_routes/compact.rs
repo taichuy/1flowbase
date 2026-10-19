@@ -23,6 +23,62 @@ enum CompactFixtureMode {
     Success,
     ProviderFailure,
     LiveCallback,
+    InputFileBoundary,
+}
+
+// The canary error is emitted only after the selected native-capable provider
+// sees the original file reference. A generic network failure cannot satisfy it.
+#[test]
+fn d4_ac_016_openai_responses_input_file_reaches_the_selected_provider_capability_boundary() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_compact_published_app(
+            &app,
+            "OpenAI Responses Nested Input File App",
+            CompactFixtureMode::InputFileBoundary,
+        )
+        .await;
+        let before = flow_run_count(state.as_ref()).await;
+        let mut body = json!({
+            "model": "provider/custom-model:latest",
+            "input": [{
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_file", "file_id": "file_123"}]
+            }]
+        });
+        let response =
+            post_openai_responses(&app, "/v1/responses", &token, body.clone(), None).await;
+        let status = response.status();
+        let payload = response_json(response).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{payload}");
+        assert_eq!(
+            payload["error"]["code"], "provider_invalid_response",
+            "{payload}"
+        );
+        assert_eq!(
+            payload["error"]["message"], "D4 input_file file_123 reached selected native provider",
+            "{payload}"
+        );
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+
+        // Same route and provider, but a different file reference must not earn
+        // the accepted-payload canary, even though a second run still starts.
+        body["input"][0]["content"][0]["file_id"] = json!("file_wrong");
+        let response = post_openai_responses(&app, "/v1/responses", &token, body, None).await;
+        let status = response.status();
+        let payload = response_json(response).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{payload}");
+        assert_eq!(
+            payload["error"]["code"], "provider_upstream_error",
+            "{payload}"
+        );
+        assert_eq!(
+            payload["error"]["message"], "D4 native input_file fixture rejected wire payload",
+            "{payload}"
+        );
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 2);
+    });
 }
 
 #[test]
@@ -690,6 +746,7 @@ async fn create_compact_provider_instance(
         CompactFixtureMode::Success => "success",
         CompactFixtureMode::ProviderFailure => "provider_failure",
         CompactFixtureMode::LiveCallback => "live_callback",
+        CompactFixtureMode::InputFileBoundary => "input_file_boundary",
     };
     let create = app
         .clone()
@@ -928,6 +985,28 @@ switch (request.method) {
     break;
   case 'invoke': {
     const input = request.input ?? {};
+    if (input.provider_config?.test_compact_mode === 'input_file_boundary') {
+      const transport = input.native_transport;
+      const items = transport?.wire_body?.input;
+      const message = Array.isArray(items) && items.length === 1 ? items[0] : null;
+      const content = message?.content;
+      const file = Array.isArray(content) && content.length === 1 ? content[0] : null;
+      const accepted = (input.operation ?? 'generate') === 'generate'
+        && transport?.protocol === 'openai_responses'
+        && message?.type === 'message' && message?.role === 'user'
+        && Object.keys(message).length === 3
+        && file?.type === 'input_file' && file?.file_id === 'file_123'
+        && Object.keys(file).length === 2;
+      const error = accepted
+        ? { kind: 'provider_invalid_response', message: 'D4 input_file file_123 reached selected native provider' }
+        : { kind: 'provider_upstream_error', message: 'D4 native input_file fixture rejected wire payload' };
+      process.stdout.write([
+        { type: 'error', error },
+        { type: 'finish', reason: 'error' },
+        { type: 'result', result: { final_content: '', finish_reason: 'error' } }
+      ].map(line => JSON.stringify(line)).join('\n') + '\n');
+      process.exit(0);
+    }
     if (input.operation !== 'compact' && input.provider_config?.test_compact_mode === 'live_callback') {
       const preservedSummaryInput = input.native_transport?.wire_body?.input?.[0]?.content
         === 'changed-prefix-local-summary-canary';
@@ -1039,7 +1118,9 @@ process.stdout.write(JSON.stringify({ ok: true, result }));
             // capability. Only the live Generate callback fixture needs it.
             match mode {
                 CompactFixtureMode::LiveCallback => "true",
-                CompactFixtureMode::Success | CompactFixtureMode::ProviderFailure => "false",
+                CompactFixtureMode::Success
+                | CompactFixtureMode::ProviderFailure
+                | CompactFixtureMode::InputFileBoundary => "false",
             },
         ),
     )

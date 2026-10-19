@@ -130,7 +130,7 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
         <Alert
           showIcon
           type="success"
-          message={i18nText(
+          title={i18nText(
             'settings',
             'auto.billing_credit_operation_completed'
           )}
@@ -140,7 +140,7 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
         <Alert
           showIcon
           type="error"
-          message={i18nText('settings', 'auto.billing_credit_operation_failed')}
+          title={i18nText('settings', 'auto.billing_credit_operation_failed')}
         />
       ) : null}
       <Table

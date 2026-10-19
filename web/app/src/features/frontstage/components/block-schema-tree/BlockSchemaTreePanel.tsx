@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
-import { useWindowWorkspaceOverlayZIndex } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
+import { useWindowWorkspaceOverlayZIndex } from '../../../../shared/ui/window-workspace/window-workspace-overlay-context';
 import {
   fetchFrontstageBlockAncestors,
   fetchFrontstageBlockChildren,

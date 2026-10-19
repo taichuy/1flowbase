@@ -2,8 +2,8 @@
 use std::borrow::Cow;
 
 use control_plane_contracts::ports::{BillingRepository, CreditCommandInput, ReserveCreditInput};
-use serde_json::{Value, json};
-use sqlx::{PgPool, migrate::Migrator};
+use serde_json::{json, Value};
+use sqlx::{migrate::Migrator, PgPool};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -123,8 +123,8 @@ async fn seed_model(pool: &PgPool, delivered: bool) -> Uuid {
 }
 
 #[tokio::test]
-async fn legacy_retirement_refuses_nonempty_ledger_then_preserves_thirteen_sources_receipts_and_money()
- {
+async fn legacy_retirement_refuses_nonempty_ledger_then_preserves_thirteen_sources_receipts_and_money(
+) {
     let pool = old_database().await;
     seed_money(&pool).await;
     for _ in 0..13 {

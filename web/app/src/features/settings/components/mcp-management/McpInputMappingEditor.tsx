@@ -392,7 +392,7 @@ function InputMappingLayerSection({
   onRemoveMapping
 }: {
   mapping: McpInputMappingValue;
-  addableOptions: Array<{ label: string; value: string }>;
+  addableOptions: Array<{ key: string; label: string; value: string }>;
   pendingInterfaceParam: string | undefined;
   onPendingInterfaceParamChange: (value: string | undefined) => void;
   onAddMapping: (interfaceParam: string | undefined) => void;
@@ -779,13 +779,15 @@ export function McpInputMappingEditor({
     mapping.mappings.map((entry) => entry.interface_param)
   );
   const addableOptions = mapping.interface_parameters
+    .map((entry, index) => ({ entry, key: `interface-parameter:${index}:${entry.name}` }))
     .filter(
-      (entry) =>
+      ({ entry }) =>
         entry.name &&
         !mappedParameters.has(entry.name) &&
         (showCallParameters || entry.source?.kind !== 'mcp_call')
     )
-    .map((entry) => ({
+    .map(({ entry, key }) => ({
+      key,
       label: parameterOptionLabel(entry.name),
       value: entry.name
     }));

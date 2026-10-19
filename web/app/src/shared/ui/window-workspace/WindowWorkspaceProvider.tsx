@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode
-} from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 
 import {
   activateWindowWorkspaceEntry,
@@ -14,27 +7,13 @@ import {
   openWindowWorkspaceEntry,
   setWindowWorkspaceDirty,
   setWindowWorkspaceRect,
-  toggleWindowWorkspaceMaximized,
-  type WindowWorkspaceEntry,
-  type WindowWorkspaceRect,
-  type WindowWorkspaceState
+  toggleWindowWorkspaceMaximized
 } from './window-workspace-state';
 
-export interface WindowWorkspaceController {
-  state: WindowWorkspaceState;
-  open(
-    entry: Omit<WindowWorkspaceEntry, 'z_index' | 'maximized' | 'restore_rect'>
-  ): void;
-  activate(id: string): void;
-  close(id: string): void;
-  setDirty(id: string, dirty: boolean): void;
-  setRect(id: string, rect: WindowWorkspaceRect): void;
-  toggleMaximized(id: string, viewport: WindowWorkspaceRect): void;
-}
-
-const WindowWorkspaceContext = createContext<WindowWorkspaceController | null>(
-  null
-);
+import {
+  WindowWorkspaceContext,
+  type WindowWorkspaceController
+} from './window-workspace-context';
 
 export function WindowWorkspaceProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState(createWindowWorkspaceState);
@@ -86,16 +65,4 @@ export function WindowWorkspaceProvider({ children }: { children: ReactNode }) {
       {children}
     </WindowWorkspaceContext.Provider>
   );
-}
-
-export function useWindowWorkspace(): WindowWorkspaceController {
-  const workspace = useContext(WindowWorkspaceContext);
-  if (!workspace) {
-    throw new Error('WindowWorkspaceProvider is required.');
-  }
-  return workspace;
-}
-
-export function useOptionalWindowWorkspace(): WindowWorkspaceController | null {
-  return useContext(WindowWorkspaceContext);
 }

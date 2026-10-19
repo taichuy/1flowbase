@@ -52,9 +52,9 @@ pub mod workers;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
-use argon2::{Argon2, password_hash::PasswordHasher};
-use axum::{Json, Router, middleware as axum_middleware, routing::get};
+use anyhow::{anyhow, Result};
+use argon2::{password_hash::PasswordHasher, Argon2};
+use axum::{middleware as axum_middleware, routing::get, Json, Router};
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
     plugin_management::ready_current_node_plugin_installation,
@@ -66,12 +66,12 @@ use tower_http::{
     cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::{ApiState, build_official_i18n_catalog_update_service},
+    app_state::{build_official_i18n_catalog_update_service, ApiState},
     config::{ApiConfig, ApiEnvironment},
     host_extension_loader::{
         activate_prepared_host_extensions, prepare_host_extensions_at_startup,
@@ -1158,7 +1158,7 @@ pub fn init_tracing() {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_API_SERVER_ADDR, api_workspace_root, parse_bind_addr, resolve_system_backup_startup,
+        api_workspace_root, parse_bind_addr, resolve_system_backup_startup, DEFAULT_API_SERVER_ADDR,
     };
 
     #[test]

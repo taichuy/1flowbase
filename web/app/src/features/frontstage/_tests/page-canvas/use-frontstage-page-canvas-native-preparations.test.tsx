@@ -192,7 +192,9 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
         result.current.preparations.getBlockSnapshot('block-1')
       ).toMatchObject({ status: 'ready' })
     );
+    const originalScheduler = result.current.preparations;
     rerender({ registryFactory: factory('second-policy') });
+    expect(result.current.preparations).toBe(originalScheduler);
     await waitFor(() => expect(artifactCache.get).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(
@@ -202,6 +204,37 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
     expect(artifactCache.get.mock.calls[0][0].module_policy_sha256).not.toBe(
       artifactCache.get.mock.calls[1][0].module_policy_sha256
     );
+    expect(nativeRuntime.evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  test('actor and workspace switches discard scheduler, source copies and evaluated factories', async () => {
+    const artifact = createArtifact();
+    const basePlan = readPlan();
+    const fetchSource = vi.fn(async (_request: unknown, _signal: AbortSignal, _cached?: unknown) => ({
+      block_id: 'block-1', page_id: 'page-1', source_code: SOURCE, source_sha256: null
+    }));
+    const artifactCache = {
+      get: vi.fn(async (_identity: { actorId: string; workspaceId: string }) => ({ status: 'hit' as const, artifact })),
+      put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+    };
+    const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
+      definitions: [], load: vi.fn(async () => ({})), resolveModuleMap: vi.fn(async () => ({})), resolveModuleAssets: vi.fn(async () => [])
+    });
+    const { result, rerender } = renderHook(({ actorId, workspaceId }) =>
+      useFrontstagePageCanvasNativePreparations({
+        actorId, actorWorkspaceId: workspaceId,
+        readPlan: { ...basePlan, workspaceId, requests: basePlan.requests.map((request) => ({ ...request, workspaceId })) },
+        fetchSource, artifactCache, moduleRegistryFactory
+      }), { initialProps: { actorId: 'actor-1', workspaceId: 'workspace-1' } });
+    await waitFor(() => expect(result.current.preparations.getBlockSnapshot('block-1')).toMatchObject({ status: 'ready' }));
+    const first = result.current.preparations;
+    rerender({ actorId: 'actor-2', workspaceId: 'workspace-2' });
+    await waitFor(() => expect(result.current.preparations.getBlockSnapshot('block-1')).toMatchObject({ status: 'ready' }));
+    expect(result.current.preparations).not.toBe(first);
+    expect(artifactCache.get.mock.calls.map(([identity]) => [identity.actorId, identity.workspaceId])).toEqual([
+      ['actor-1', 'workspace-1'], ['actor-2', 'workspace-2']
+    ]);
+    expect(fetchSource.mock.calls.every((call) => call[2] === undefined)).toBe(true);
     expect(nativeRuntime.evaluate).toHaveBeenCalledTimes(2);
   });
 

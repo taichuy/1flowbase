@@ -6,13 +6,13 @@ mod plugin_identity;
 mod schema;
 mod validation;
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use archive::{Header, Record, Table};
 use async_trait::async_trait;
 use control_plane_contracts::{
     ports::{BackupComponentReader, BackupComponentWriter},
     system_backup::{
-        BackupComponentDescriptor, BackupComponentSource, BackupSourceError, selective::*,
+        selective::*, BackupComponentDescriptor, BackupComponentSource, BackupSourceError,
     },
 };
 use domain::{

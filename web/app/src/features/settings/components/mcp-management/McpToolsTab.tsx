@@ -80,10 +80,8 @@ import {
 } from './mcp-input-mapping-model';
 import { McpInputMappingEditor } from './McpInputMappingEditor';
 import { McpToolDebugPanel } from './McpToolDebugPanel';
-import {
-  McpProxyMappingEditor,
-  mcpProxyMappingIsValid
-} from './proxy/McpProxyMappingEditor';
+import { McpProxyMappingEditor } from './proxy/McpProxyMappingEditor';
+import { mcpProxyMappingIsValid } from './proxy/mcp-proxy-mapping-model';
 import { McpProxyToolDebugPanel } from './proxy/McpProxyToolDebugPanel';
 import { initialMcpToolsState, mcpToolsReducer } from './mcp-management-state';
 import {
@@ -92,7 +90,6 @@ import {
   statusColor
 } from './mcp-management-utils';
 import {
-  SelectedInterfaceOperationTitle,
   TOOL_FORM_STEPS,
   emptyObjectSchema,
   interfaceOptionLabel,
@@ -104,6 +101,7 @@ import {
   toolTypeLabel,
   type ToolFormValues
 } from './McpToolsTab/tool-editor-model';
+import { SelectedInterfaceOperationTitle } from './McpToolsTab/SelectedInterfaceOperationTitle';
 import { McpToolReturnDefaultsFields } from './McpToolsTab/McpToolReturnDefaultsFields';
 import {
   MCP_TOOLS_PAGE_SIZE,

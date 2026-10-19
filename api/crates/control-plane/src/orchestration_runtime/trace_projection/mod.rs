@@ -65,7 +65,7 @@ pub fn build_application_run_trace_projection_from_source(
         builder.push_stitched_context_group(current_node_groups.len(), &detail.stitched_trace)?;
     }
 
-    builder.apply_native_messages(detail);
+    builder.apply_native_messages(detail)?;
     Ok(builder.finish())
 }
 

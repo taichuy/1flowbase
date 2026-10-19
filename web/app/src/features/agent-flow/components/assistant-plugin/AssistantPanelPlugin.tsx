@@ -239,15 +239,15 @@ export function AssistantPanelPlugin({
                       percent={contextVisualPercent}
                       showInfo={false}
                       size={18}
-                      trailColor="var(--border-default)"
+                      railColor="var(--border-default)"
                       type="circle"
                     />
                   </span>
                 </Tooltip>
               ) : null}
               <Dropdown
-                overlayStyle={{
-                  zIndex: overlayZIndex
+                styles={{
+                  root: { zIndex: overlayZIndex }
                 }}
                 placement="topLeft"
                 trigger={['click']}

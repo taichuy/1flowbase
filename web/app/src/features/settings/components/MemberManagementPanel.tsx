@@ -743,7 +743,7 @@ export function MemberManagementPanel({
           {membersQuery.isError ? (
             <Alert
               type="error"
-              message={i18nText('settings', 'organization.members_error')}
+              title={i18nText('settings', 'organization.members_error')}
               action={
                 <Button onClick={() => void membersQuery.refetch()}>
                   {i18nText('settings', 'auto.retry_permission_data')}
@@ -762,7 +762,7 @@ export function MemberManagementPanel({
           ].some((mutation) => mutation.isError) ? (
             <Alert
               type="error"
-              message={i18nText('settings', 'organization.operation_error')}
+              title={i18nText('settings', 'organization.operation_error')}
             />
           ) : null}
           <div className="organization-table">

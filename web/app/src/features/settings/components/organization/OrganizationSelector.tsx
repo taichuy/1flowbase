@@ -17,12 +17,15 @@ import type { DepartmentTreeItem } from '../../api/departments';
 import { departmentTree, type DepartmentTreeRow } from './department-tree';
 import { i18nText } from '../../../../shared/i18n/text';
 import './organization-management.css';
-interface OrganizationNode {
+type OrganizationNode = {
   key: string;
   title: ReactNode;
   children?: OrganizationNode[];
   isLeaf?: boolean;
-}
+} & (
+  | { kind: 'department'; departmentId: string }
+  | { kind: 'root' | 'pagination'; departmentId?: never }
+);
 const ORGANIZATION_ROOT_KEY = 'organization-browse-root';
 export function OrganizationSelector({
   departments,
@@ -54,14 +57,15 @@ export function OrganizationSelector({
   ]);
   const searching = Boolean(search.trim());
   const { token } = theme.useToken();
-  const treeData = useMemo(() => {
+  const treeData = useMemo<OrganizationNode[]>(() => {
     const present = (rows: DepartmentTreeRow[]): OrganizationNode[] =>
       rows.flatMap((row) => {
         const children = present(row.children ?? []);
         const group = groups.find((group) => group.parent_id === row.id);
         if (group)
           children.push({
-            key: `more:${row.id}`,
+            key: `pagination:department:${row.id}`,
+            kind: 'pagination',
             title: (
               <Button
                 size="small"
@@ -77,7 +81,9 @@ export function OrganizationSelector({
           });
         return [
           {
-            key: row.id,
+            key: `department:${row.id}`,
+            kind: 'department',
+            departmentId: row.id,
             title: (
               <span className="organization-tree-label">
                 <FolderOutlined className="organization-tree-folder" />
@@ -94,7 +100,8 @@ export function OrganizationSelector({
     const rootGroup = groups.find((group) => !group.parent_id);
     if (rootGroup)
       roots.push({
-        key: 'more:root',
+        key: 'pagination:root',
+        kind: 'pagination',
         title: (
           <Button
             size="small"
@@ -111,6 +118,7 @@ export function OrganizationSelector({
     return [
       {
         key: ORGANIZATION_ROOT_KEY,
+        kind: 'root',
         isLeaf: false,
         title: (
           <span className="organization-tree-label">
@@ -123,7 +131,7 @@ export function OrganizationSelector({
         children: roots
       }
     ];
-  }, [departments, search, groups]);
+  }, [departments, groups]);
   return (
     <aside className="organization-sidebar">
       <div className="organization-toolbar">
@@ -153,7 +161,7 @@ export function OrganizationSelector({
       ) : error ? (
         <Alert
           type="error"
-          message={i18nText('settings', 'organization.load_error')}
+          title={i18nText('settings', 'organization.load_error')}
           action={
             <Button
               onClick={() => {
@@ -176,27 +184,25 @@ export function OrganizationSelector({
           }
         }}
       >
-        <Tree
+        <Tree<OrganizationNode>
           key={searching ? `search:${search.trim()}` : 'tree'}
           blockNode
           expandedKeys={
             searching
-              ? departments.map((item) => item.id).concat(ORGANIZATION_ROOT_KEY)
+              ? departments.map((item) => `department:${item.id}`).concat(ORGANIZATION_ROOT_KEY)
               : expandedKeys
           }
           autoExpandParent={false}
           onExpand={(keys, { expanded, node }) => {
             if (!searching) setExpandedKeys(keys);
-            if (expanded && !searching && node.key !== ORGANIZATION_ROOT_KEY)
-              void onExpand(String(node.key));
+            if (expanded && !searching && node.kind === 'department')
+              void onExpand(node.departmentId);
           }}
-          selectedKeys={[selected ?? ORGANIZATION_ROOT_KEY]}
+          selectedKeys={[selected === undefined ? ORGANIZATION_ROOT_KEY : `department:${selected}`]}
           treeData={treeData}
-          onSelect={(keys) => {
-            if (keys.length && !String(keys[0]).startsWith('more:'))
-              onSelect(
-                keys[0] === ORGANIZATION_ROOT_KEY ? undefined : String(keys[0])
-              );
+          onSelect={(keys, { node }) => {
+            if (keys.length && node.kind !== 'pagination')
+              onSelect(node.kind === 'root' ? undefined : node.departmentId);
           }}
         />
       </ConfigProvider>

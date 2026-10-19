@@ -549,7 +549,7 @@ export function SystemBackupsPanel() {
       <Drawer
         open={Boolean(detailId)}
         title={t('details')}
-        width={640}
+        size={640}
         onClose={() => setDetailId(undefined)}
       >
         {detail.data ? (

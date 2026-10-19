@@ -2,10 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
 
-import {
-  FrontstageWorkspaceShell,
-  useFrontstageWorkspace
-} from '../FrontstageWorkspaceShell';
+import { FrontstageWorkspaceShell } from '../FrontstageWorkspaceShell';
+import { useFrontstageWorkspace } from '../workspace-context';
 
 vi.mock('../../../../hooks/runtime-i18n/use-block-i18n', () => ({
   useBlockI18n: () => ({ t: (key: string) => key })

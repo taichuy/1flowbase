@@ -10,8 +10,17 @@ import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modu
 import { resolveNativeBlockScrollOwner } from '../../lib/native-modules/native-block-surface-context';
 import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
 
+const anchorRender = vi.hoisted(() => vi.fn());
+vi.mock('antd', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('antd')>();
+  const { createElement } = await import('react');
+  anchorRender.mockImplementation((props: AnchorProps) => createElement(actual.Anchor, props));
+  return { ...actual, Anchor: Object.assign(anchorRender, { Link: actual.Anchor.Link }) };
+});
+
 describe('native block Anchor runtime adapter', () => {
   beforeEach(() => {
+    anchorRender.mockClear();
     window.history.replaceState(null, '', '/native-anchor-test');
   });
 
@@ -198,6 +207,9 @@ describe('native block Anchor runtime adapter', () => {
     const fixture = await mountAnchorSurface('stable-horizontal', {
       direction: 'horizontal'
     });
+    const projectedItems = (anchorRender.mock.calls.at(-1)![0] as AnchorProps).items!;
+    expect(projectedItems).toHaveLength(2);
+    expect(projectedItems.every((item) => !Object.hasOwn(item, 'children'))).toBe(true);
     const firstTarget = fixture.shadowRoot.getElementById('part-1');
     const secondTarget = fixture.shadowRoot.getElementById('part-2');
     if (!firstTarget || !secondTarget) {
@@ -233,6 +245,24 @@ describe('native block Anchor runtime adapter', () => {
       })
     ).toBe(secondLink);
     expect(fixture.scroll).not.toHaveBeenCalled();
+  });
+
+  test('preserves nested vertical items without inventing children on local or external leaves', async () => {
+    const fixture = await mountAnchorSurface('nested-vertical', {
+      items: [
+        { key: 'parent', href: '#part-1', title: 'Part 1', children: [
+          { key: 'child', href: '#part-2', title: 'Part 2' }
+        ] },
+        { key: 'external', href: 'https://example.com/docs', title: 'External docs' }
+      ]
+    });
+    const items = (anchorRender.mock.calls.at(-1)![0] as AnchorProps).items!;
+    expect(Object.hasOwn(items[0], 'children')).toBe(true);
+    expect(items[0].children).toHaveLength(1);
+    expect(Object.hasOwn(items[0].children![0], 'children')).toBe(false);
+    expect(Object.hasOwn(items[1], 'children')).toBe(false);
+    expect(items[1].href).toBe('https://example.com/docs');
+    expect(within(fixture.anchorRoot as unknown as HTMLElement).getByRole('link', { name: 'Part 2' })).toBeVisible();
   });
 
   test('I1910-AC-012 lets the most recently entered Anchor own the surface layer and restores the previous owner on reverse scroll', async () => {
@@ -387,7 +417,7 @@ describe('native block Anchor runtime adapter', () => {
 
 async function mountAnchorSurface(
   suffix = 'default',
-  anchorProps: Pick<AnchorProps, 'affix' | 'direction' | 'onClick'> = {},
+  anchorProps: Pick<AnchorProps, 'affix' | 'direction' | 'onClick' | 'items'> = {},
   owner?: HTMLElement
 ) {
   const registry = createFrontstageNativeReactModuleRegistry();

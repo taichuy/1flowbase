@@ -1,5 +1,5 @@
 //! Trace write-only ownership. Domain reads and stored/wire JSON remain ordinary Value.
-use serde::{Serialize, Serializer, ser::SerializeMap};
+use serde::{ser::SerializeMap, Serialize, Serializer};
 use serde_json::Value;
 use std::{
     borrow::Cow,
@@ -12,8 +12,51 @@ use std::{
 #[derive(Debug, Clone)]
 pub enum TraceProjectionWritePayload {
     Plain(Value),
-    SharedObject(BTreeMap<String, Arc<Value>>),
+    SharedObject(TraceProjectionSharedObject),
 }
+
+/// A trace object whose explicitly named aliases share one body until mutation.
+/// Construction accepts fields, so inserting shared fields cannot encounter scalar JSON.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TraceProjectionSharedObject {
+    fields: BTreeMap<String, Arc<Value>>,
+}
+
+impl TraceProjectionSharedObject {
+    pub fn from_fields<K: Into<String>>(fields: impl IntoIterator<Item = (K, Value)>) -> Self {
+        Self {
+            fields: fields
+                .into_iter()
+                .map(|(key, value)| (key.into(), Arc::new(value)))
+                .collect(),
+        }
+    }
+
+    /// The caller identifies equal aliases; distinct existing fields are never deduplicated.
+    pub fn set_shared_fields(&mut self, keys: &[&str], value: Value) {
+        let shared = Arc::new(value);
+        for key in keys {
+            self.fields.insert((*key).to_owned(), Arc::clone(&shared));
+        }
+    }
+}
+
+impl From<TraceProjectionSharedObject> for TraceProjectionWritePayload {
+    fn from(object: TraceProjectionSharedObject) -> Self {
+        Self::SharedObject(object)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TraceProjectionObjectRequired;
+
+impl fmt::Display for TraceProjectionObjectRequired {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("shared trace fields require an object or null payload")
+    }
+}
+
+impl std::error::Error for TraceProjectionObjectRequired {}
 
 impl From<Value> for TraceProjectionWritePayload {
     fn from(value: Value) -> Self {
@@ -25,31 +68,32 @@ impl TraceProjectionWritePayload {
     pub fn get(&self, key: &str) -> Option<&Value> {
         match self {
             Self::Plain(value) => value.get(key),
-            Self::SharedObject(fields) => fields.get(key).map(Arc::as_ref),
+            Self::SharedObject(object) => object.fields.get(key).map(Arc::as_ref),
         }
     }
 
-    /// The caller explicitly identifies equal aliases; never deduplicate distinct fields.
-    /// A new owned body backs these fields directly, before ordinary JSON expansion.
-    pub fn set_shared_fields(&mut self, keys: &[&str], value: Value) {
-        if let Self::Plain(plain) = self {
-            let fields = match std::mem::take(plain) {
-                Value::Object(fields) => fields
-                    .into_iter()
-                    .map(|(key, value)| (key, Arc::new(value)))
-                    .collect(),
-                Value::Null => BTreeMap::new(),
-                _ => panic!("shared trace fields require an object payload"),
-            };
-            *self = Self::SharedObject(fields);
+    /// Null is an explicit empty-object seed, as with ordinary JSON field insertion.
+    /// Other non-object JSON is rejected without changing or discarding its value.
+    pub fn set_shared_fields(
+        &mut self,
+        keys: &[&str],
+        value: Value,
+    ) -> Result<(), TraceProjectionObjectRequired> {
+        match self {
+            Self::SharedObject(object) => object.set_shared_fields(keys, value),
+            Self::Plain(Value::Object(fields)) => {
+                let mut object = TraceProjectionSharedObject::from_fields(std::mem::take(fields));
+                object.set_shared_fields(keys, value);
+                *self = Self::SharedObject(object);
+            }
+            Self::Plain(Value::Null) => {
+                let mut object = TraceProjectionSharedObject::default();
+                object.set_shared_fields(keys, value);
+                *self = Self::SharedObject(object);
+            }
+            Self::Plain(_) => return Err(TraceProjectionObjectRequired),
         }
-        let Self::SharedObject(fields) = self else {
-            unreachable!()
-        };
-        let shared = Arc::new(value);
-        for key in keys {
-            fields.insert((*key).to_owned(), Arc::clone(&shared));
-        }
+        Ok(())
     }
 
     /// Only the per-content persistence boundary expands shared aliases to owned JSON.
@@ -57,8 +101,9 @@ impl TraceProjectionWritePayload {
     pub fn materialize_for_persistence(&self) -> Cow<'_, Value> {
         match self {
             Self::Plain(value) => Cow::Borrowed(value),
-            Self::SharedObject(fields) => Cow::Owned(Value::Object(
-                fields
+            Self::SharedObject(object) => Cow::Owned(Value::Object(
+                object
+                    .fields
                     .iter()
                     .map(|(key, value)| (key.clone(), value.as_ref().clone()))
                     .collect(),
@@ -71,9 +116,9 @@ impl Serialize for TraceProjectionWritePayload {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::Plain(value) => value.serialize(serializer),
-            Self::SharedObject(fields) => {
-                let mut object = serializer.serialize_map(Some(fields.len()))?;
-                for (key, value) in fields {
+            Self::SharedObject(shared) => {
+                let mut object = serializer.serialize_map(Some(shared.fields.len()))?;
+                for (key, value) in &shared.fields {
                     object.serialize_entry(key, value.as_ref())?;
                 }
                 object.end()
@@ -93,8 +138,9 @@ impl IndexMut<&str> for TraceProjectionWritePayload {
     fn index_mut(&mut self, key: &str) -> &mut Value {
         match self {
             Self::Plain(value) => &mut value[key],
-            Self::SharedObject(fields) => Arc::make_mut(
-                fields
+            Self::SharedObject(object) => Arc::make_mut(
+                object
+                    .fields
                     .entry(key.to_owned())
                     .or_insert_with(|| Arc::new(Value::Null)),
             ),
@@ -107,12 +153,13 @@ impl PartialEq for TraceProjectionWritePayload {
         match (self, other) {
             (Self::Plain(a), Self::Plain(b)) => a == b,
             (Self::SharedObject(a), Self::SharedObject(b)) => a == b,
-            (Self::Plain(value), Self::SharedObject(fields))
-            | (Self::SharedObject(fields), Self::Plain(value)) => {
+            (Self::Plain(value), Self::SharedObject(shared))
+            | (Self::SharedObject(shared), Self::Plain(value)) => {
                 value.as_object().is_some_and(|object| {
-                    object.len() == fields.len()
+                    object.len() == shared.fields.len()
                         && object.iter().all(|(key, value)| {
-                            fields
+                            shared
+                                .fields
                                 .get(key)
                                 .is_some_and(|shared| shared.as_ref() == value)
                         })

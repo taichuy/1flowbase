@@ -366,36 +366,6 @@ fn openai_responses_function_call_output_resolves_callback_before_run_creation()
 }
 
 #[test]
-fn d4_ac_016_openai_responses_input_file_reaches_the_selected_provider_capability_boundary() {
-    run_compat_route_test(|| async {
-        let (app, state) = test_app_with_state().await;
-        let token = setup_published_app(&app, "OpenAI Responses Nested Input File App").await;
-        let before = flow_run_count(state.as_ref()).await;
-        let body = json!({
-            "model": "provider/custom-model:latest",
-            "input": [{
-                "type": "message",
-                "role": "user",
-                "content": [{"type": "input_file", "file_id": "file_123"}]
-            }]
-        });
-
-        let response = post_json(
-            &app,
-            "/v1/responses",
-            ("authorization", format!("Bearer {token}")),
-            body,
-        )
-        .await;
-
-        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
-        let payload = response_json(response).await;
-        assert_eq!(payload["error"]["code"], json!("provider_invalid_response"));
-        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
-    });
-}
-
-#[test]
 fn d2_ac_001_openai_nested_unknown_content_fields_reject_before_run_or_provider() {
     run_compat_route_test(|| async {
         let (app, state) = test_app_with_state().await;

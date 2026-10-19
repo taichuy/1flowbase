@@ -22,7 +22,8 @@
       "web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSession.ts",
       "web/app/src/app-shell/AppShellFrame.tsx",
       "web/app/src/style-boundary/renderers.tsx",
-      "web/app/src/style-boundary/scene-fixtures.ts"
+      "web/app/src/style-boundary/scene-fixtures.ts",
+      "web/app/src/style-boundary/scene-fixtures/AssistantPreviewScene.tsx"
     ],
     "boundaryNodes": [
       {
@@ -2036,7 +2037,8 @@
       "web/app/src/features/applications/pages/ApplicationCollectorPage.tsx",
       "web/app/src/features/applications/components/collector/CollectorInstallation.tsx",
       "web/app/src/features/applications/components/collector/application-collector.css",
-      "web/app/src/style-boundary/scene-fixtures/collector.tsx"
+      "web/app/src/style-boundary/scene-fixtures/collector.tsx",
+      "web/app/src/style-boundary/scene-fixtures/collector/data.ts"
     ],
     "viewport": {
       "width": 1440,
@@ -2081,7 +2083,8 @@
       "web/app/src/features/applications/pages/ApplicationCollectorPage.tsx",
       "web/app/src/features/applications/components/collector/CollectorInstallation.tsx",
       "web/app/src/features/applications/components/collector/application-collector.css",
-      "web/app/src/style-boundary/scene-fixtures/collector.tsx"
+      "web/app/src/style-boundary/scene-fixtures/collector.tsx",
+      "web/app/src/style-boundary/scene-fixtures/collector/data.ts"
     ],
     "viewport": {
       "width": 390,
@@ -2126,7 +2129,8 @@
       "web/app/src/features/applications/pages/ApplicationCollectorPage.tsx",
       "web/app/src/features/applications/components/collector/CollectorInstallation.tsx",
       "web/app/src/features/applications/components/collector/application-collector.css",
-      "web/app/src/style-boundary/scene-fixtures/collector.tsx"
+      "web/app/src/style-boundary/scene-fixtures/collector.tsx",
+      "web/app/src/style-boundary/scene-fixtures/collector/data.ts"
     ],
     "viewport": {
       "width": 1440,
@@ -2181,7 +2185,8 @@
       "web/app/src/features/applications/pages/ApplicationCollectorPage.tsx",
       "web/app/src/features/applications/components/collector/CollectorInstallation.tsx",
       "web/app/src/features/applications/components/collector/application-collector.css",
-      "web/app/src/style-boundary/scene-fixtures/collector.tsx"
+      "web/app/src/style-boundary/scene-fixtures/collector.tsx",
+      "web/app/src/style-boundary/scene-fixtures/collector/data.ts"
     ],
     "viewport": {
       "width": 390,
@@ -2276,7 +2281,8 @@
       "web/app/src/features/notifications/components/NotificationBell.tsx",
       "web/app/src/features/notifications/components/notification-bell.css",
       "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
-      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
     ],
     "boundaryNodes": [
       {
@@ -2335,7 +2341,8 @@
       "web/app/src/features/notifications/components/NotificationBell.tsx",
       "web/app/src/features/notifications/components/notification-bell.css",
       "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
-      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
     ],
     "boundaryNodes": [
       {
@@ -2395,7 +2402,8 @@
       "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
       "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
       "web/app/src/features/settings/pages/notifications/notifications-page.css",
-      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
     ],
     "boundaryNodes": [
       {
@@ -2446,7 +2454,8 @@
       "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
       "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
       "web/app/src/features/settings/pages/notifications/notifications-page.css",
-      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
     ],
     "boundaryNodes": [
       {
@@ -2498,6 +2507,7 @@
       "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
       "web/app/src/features/settings/pages/notifications/notifications-page.css",
       "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts",
       "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx"
     ],
     "boundaryNodes": [
@@ -2545,6 +2555,7 @@
       "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
       "web/app/src/features/settings/pages/notifications/notifications-page.css",
       "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts",
       "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx"
     ],
     "boundaryNodes": [
@@ -2590,7 +2601,8 @@
       "web/app/src/features/notifications/components/NotificationBell.tsx",
       "web/app/src/features/notifications/components/notification-bell.css",
       "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
-      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
     ],
     "boundaryNodes": [
       {
@@ -2639,7 +2651,8 @@
       "web/app/src/features/notifications/components/NotificationBell.tsx",
       "web/app/src/features/notifications/components/notification-bell.css",
       "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
-      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
     ],
     "boundaryNodes": [
       {
@@ -2688,7 +2701,8 @@
       "web/app/src/features/notifications/components/NotificationBell.tsx",
       "web/app/src/features/notifications/components/notification-bell.css",
       "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
-      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/style-boundary/scene-fixtures/notifications/data.ts"
     ],
     "boundaryNodes": [
       {

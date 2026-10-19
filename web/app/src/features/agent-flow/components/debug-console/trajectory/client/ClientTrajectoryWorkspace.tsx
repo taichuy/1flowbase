@@ -16,24 +16,16 @@ import { formatDateTime } from '../../../../../../shared/i18n/format';
 import { ClientTrajectoryDetail } from './ClientTrajectoryDetail';
 import { categoryLabel, clientLane } from './presentation';
 import { integrityLabel } from '../trajectory-presentation';
-import {
-  TrajectoryTimeline,
-  inTrajectoryRange,
-  type TrajectoryRange
-} from '../TrajectoryTimeline';
+import { TrajectoryTimeline } from '../TrajectoryTimeline';
+import { inTrajectoryRange, type TrajectoryRange } from '../timeline-model';
 import { useTrajectoryWindow } from '../virtual/use-trajectory-window';
 import {
   TrajectoryVirtualList,
   type TrajectoryVirtualListRef
 } from '../virtual/TrajectoryVirtualList';
-import {
-  indexLane,
-  PendingClientRow,
-  clientRowKey,
-  virtualClientKey,
-  virtualClientEventKey
-} from './virtual-client-rows';
-import { appI18n } from '../../../../../../shared/i18n/app-i18n';
+import { PendingClientRow } from './virtual-client-rows';
+import { indexLane, clientRowKey, virtualClientKey, virtualClientEventKey } from './virtual-client-model';
+import { useTranslation } from 'react-i18next';
 import './client-trajectory.css';
 
 type Slot =
@@ -72,7 +64,8 @@ export function ClientTrajectoryWorkspace({
   options?: ClientTrajectoryOptions;
   onInternal?: (step: ClientTrajectoryStep, nodeRunId?: string) => void;
 }) {
-  const language = appI18n.resolvedLanguage ?? appI18n.language;
+  const { i18n } = useTranslation('agentFlow');
+  const language = i18n.resolvedLanguage ?? i18n.language;
   const [scope, setScope] = useState(nodeRunId);
   const [selected, setSelected] = useState<string | null>(
     options?.focus_step_id ?? null
@@ -158,7 +151,7 @@ export function ClientTrajectoryWorkspace({
     const labels = new Map<string, string>();
     return timelineItems.map((step) => {
       if (!labels.has(step.category))
-        labels.set(step.category, categoryLabel(step.category));
+        labels.set(step.category, categoryLabel(step.category, language));
       return {
         id: step.id,
         value: coordinates.get(step.id)!,
@@ -291,13 +284,13 @@ export function ClientTrajectoryWorkspace({
           className="provider-trajectory__row client-trajectory__row"
           data-lane={clientLane(step)}
           data-selected={selected === step.id || undefined}
-          aria-label={`${categoryLabel(step.category)} · ${step.namespace ? `${step.namespace}.${step.name}` : step.name}`}
+          aria-label={`${categoryLabel(step.category, language)} · ${step.namespace ? `${step.namespace}.${step.name}` : step.name}`}
           aria-pressed={selected === step.id}
           onClick={() => setSelected(step.id)}
         >
           <span className="provider-trajectory__marker" aria-hidden="true" />
           <span className="provider-trajectory__kind">
-            {categoryLabel(step.category)}
+            {categoryLabel(step.category, language)}
           </span>
           <span className="client-trajectory__summary">
             <strong>
@@ -350,7 +343,7 @@ export function ClientTrajectoryWorkspace({
               onClick={() => toggle(slot.id)}
             >
               {collapsed.has(slot.id) ? <RightOutlined /> : <DownOutlined />}
-              <span>{categoryLabel(slot.category)}</span>
+              <span>{categoryLabel(slot.category, language)}</span>
               <small>{slot.count}</small>
             </button>
           </div>
@@ -378,7 +371,7 @@ export function ClientTrajectoryWorkspace({
             aria-pressed={selected === root?.id}
             onClick={() => root && focus(root.id)}
           >
-            <strong>{categoryLabel('request')}</strong>
+            <strong>{categoryLabel('request', language)}</strong>
             <span>
               {fullRoot?.preview || (
                 <>

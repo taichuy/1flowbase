@@ -54,11 +54,9 @@ fn deadline() -> i64 {
         / 1_000_000) as i64
 }
 async fn count(pool: &sqlx::PgPool, table: &str) -> i64 {
-    assert!(
-        table
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-    );
+    assert!(table
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {table}")))
         .fetch_one(pool)
         .await
@@ -387,18 +385,11 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     assert_eq!(retried.len(), 1);
     let b_new = &retried[0];
     assert_ne!(b.claim_id, b_new.claim_id);
-    assert!(
-        store
-            .mark_lifecycle_fact_delivered(
-                b.event_id,
-                &b.subscriber_id,
-                worker,
-                b.claim_id.unwrap()
-            )
-            .await
-            .unwrap_err()
-            .is::<control_plane_contracts::ports::LifecycleClaimLost>()
-    );
+    assert!(store
+        .mark_lifecycle_fact_delivered(b.event_id, &b.subscriber_id, worker, b.claim_id.unwrap())
+        .await
+        .unwrap_err()
+        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
     // Mutation counter distinguishes receipt replay from another upsert of the same values.
     sqlx::query("create table effect_mutations (owner_table text not null)")
         .execute(&pool)
@@ -406,11 +397,9 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         .unwrap();
     sqlx::query("create function count_effect_mutation() returns trigger language plpgsql as $$ begin insert into effect_mutations values (tg_table_name); return new; end $$").execute(&pool).await.unwrap();
     for (_, table) in &tables {
-        assert!(
-            table
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        );
+        assert!(table
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
         sqlx::query(sqlx::AssertSqlSafe(format!("create trigger count_effect after insert or update on {table} for each row execute function count_effect_mutation()"))).execute(&pool).await.unwrap();
     }
     let barrier = Arc::new(tokio::sync::Barrier::new(2));
@@ -552,33 +541,29 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     );
     revoke.await.unwrap();
     assert!(delivery.deliver(b_new).await.is_err());
-    assert!(
-        store
-            .lock_contribution_authority(&b_subject)
-            .await
-            .unwrap()
-            .commit_owned_event_effect(
-                b_subject,
-                b.event_id,
-                MANAGED_PROCESSED_EVENT_ID.into(),
-                effect_operations(&fact.payload),
-                deadline()
-            )
-            .await
-            .is_err()
-    );
-    assert!(
-        store
-            .mark_lifecycle_fact_delivered(
-                b_new.event_id,
-                &b_new.subscriber_id,
-                worker,
-                b_new.claim_id.unwrap(),
-            )
-            .await
-            .unwrap_err()
-            .is::<control_plane_contracts::ports::LifecycleClaimLost>()
-    );
+    assert!(store
+        .lock_contribution_authority(&b_subject)
+        .await
+        .unwrap()
+        .commit_owned_event_effect(
+            b_subject,
+            b.event_id,
+            MANAGED_PROCESSED_EVENT_ID.into(),
+            effect_operations(&fact.payload),
+            deadline()
+        )
+        .await
+        .is_err());
+    assert!(store
+        .mark_lifecycle_fact_delivered(
+            b_new.event_id,
+            &b_new.subscriber_id,
+            worker,
+            b_new.claim_id.unwrap(),
+        )
+        .await
+        .unwrap_err()
+        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
     let revoked_and_unclaimed: bool = sqlx::query_scalar(
         "select status='paused' and pause_reason='authority_revoked' and paused_at is not null
             and claimed_by is null and claimed_at is null and claim_id is null

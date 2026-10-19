@@ -99,7 +99,7 @@ describe('native block Menu runtime adapter', () => {
     const Menu = antdModule.Menu as ComponentType<MenuProps>;
     const root = document.createElement('div');
     const authoredContainer = document.createElement('div');
-    document.body.append(root, authoredContainer);
+    document.body.append(root);
 
     render(
       <FrontstageNativeTrustedBlockPortalHost
@@ -108,7 +108,12 @@ describe('native block Menu runtime adapter', () => {
         plan={createPlan()}
         component={() => (
           <Menu
-            getPopupContainer={() => authoredContainer}
+            getPopupContainer={(trigger) => {
+                if (authoredContainer.getRootNode() !== trigger.getRootNode()) {
+                  trigger.getRootNode().appendChild(authoredContainer);
+                }
+                return authoredContainer;
+              }}
             mode="horizontal"
             openKeys={['resources']}
             items={[
@@ -128,6 +133,8 @@ describe('native block Menu runtime adapter', () => {
     await waitFor(() =>
       expect(within(authoredContainer).getByText('Docs')).toBeVisible()
     );
+    expect(authoredContainer.getRootNode()).toBe(shadowRoot);
+    expect(within(authoredContainer).getByText('Docs').getRootNode()).toBe(shadowRoot);
     expect(
       shadowRoot.querySelector('[data-flowbase-native-overlay-layer]')
     ).toHaveAttribute('data-flowbase-native-overlay-state', 'closed');

@@ -133,7 +133,7 @@ export function PersonalAccessTokensPanel() {
     }
   });
 
-  const revokeMutation = useMutation({
+  const { mutate: revokeToken, isPending: revokePending } = useMutation({
     mutationFn: async (apiKeyId: string) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
@@ -305,13 +305,13 @@ export function PersonalAccessTokensPanel() {
               okText={i18nText('settings', 'auto.confirm_delete')}
               cancelText={i18nText('settings', 'auto.cancel')}
               okButtonProps={{ danger: true }}
-              onConfirm={() => revokeMutation.mutate(token.id)}
+              onConfirm={() => revokeToken(token.id)}
             >
               <Button
                 danger
                 size="small"
                 icon={<DeleteOutlined />}
-                loading={revokeMutation.isPending}
+                loading={revokePending}
               >
                 {i18nText('settings', 'auto.delete')}
               </Button>
@@ -319,7 +319,7 @@ export function PersonalAccessTokensPanel() {
           )
       }
     ],
-    [revokeMutation.isPending, revokeMutation.mutate]
+    [revokePending, revokeToken]
   );
   const tableConfiguration = usePersistedDataTableConfiguration({
     columns,

@@ -266,29 +266,21 @@ async fn trace_projection_repository_queries_root_children_content_and_status() 
     .fetch_all(store.pool())
     .await
     .unwrap();
-    assert!(
-        index_names
-            .iter()
-            .any(|(_, name)| name == "application_run_trace_nodes_children_idx")
-    );
-    assert!(
-        index_names
-            .iter()
-            .any(|(_, name)| name == "application_run_trace_nodes_stable_locator_idx")
-    );
+    assert!(index_names
+        .iter()
+        .any(|(_, name)| name == "application_run_trace_nodes_children_idx"));
+    assert!(index_names
+        .iter()
+        .any(|(_, name)| name == "application_run_trace_nodes_stable_locator_idx"));
     assert!(index_names.iter().any(|(_, name)| {
         name == "application_run_trace_projection_statuses_scope_created_id_idx"
     }));
-    assert!(
-        index_names
-            .iter()
-            .any(|(_, name)| name == "application_run_trace_nodes_scope_created_id_idx")
-    );
-    assert!(
-        index_names.iter().any(|(_, name)| {
-            name == "application_run_trace_node_contents_scope_created_id_idx"
-        })
-    );
+    assert!(index_names
+        .iter()
+        .any(|(_, name)| name == "application_run_trace_nodes_scope_created_id_idx"));
+    assert!(index_names
+        .iter()
+        .any(|(_, name)| { name == "application_run_trace_node_contents_scope_created_id_idx" }));
 }
 
 #[tokio::test]
@@ -551,26 +543,22 @@ async fn issue_2106_trace_refresh_is_write_scheduled_and_revision_safe() {
         status.status,
         domain::ApplicationRunTraceProjectionStatus::Pending
     );
-    assert!(
-        store
-            .get_application_run_trace_read_status(Uuid::now_v7(), run.id, 15)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(store
+        .get_application_run_trace_read_status(Uuid::now_v7(), run.id, 15)
+        .await
+        .unwrap()
+        .is_none());
     let job = store
         .claim_application_run_trace_refresh()
         .await
         .unwrap()
         .unwrap();
     assert_eq!(job.flow_run_id, run.id);
-    assert!(
-        store
-            .claim_application_run_trace_refresh()
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(store
+        .claim_application_run_trace_refresh()
+        .await
+        .unwrap()
+        .is_none());
     // A source change during projection may not be lost by its older completion.
     sqlx::query("update flow_runs set updated_at=now() where id=$1")
         .bind(run.id)
@@ -605,13 +593,11 @@ async fn issue_2106_trace_refresh_is_write_scheduled_and_revision_safe() {
         .finish_application_run_trace_refresh(&newer, true)
         .await
         .unwrap();
-    assert!(
-        store
-            .claim_application_run_trace_refresh()
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(store
+        .claim_application_run_trace_refresh()
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]

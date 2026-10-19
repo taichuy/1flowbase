@@ -6,7 +6,6 @@ import type {
   SaveConsoleMcpToolBody,
   UpdateConsoleMcpToolBody
 } from '@1flowbase/api-client';
-import { Typography } from 'antd';
 import { i18nText } from '../../../../../shared/i18n/text';
 import type { McpInputMappingValue } from '../mcp-input-mapping-model';
 
@@ -103,17 +102,6 @@ export function toolSourceLabel(tool: ConsoleMcpTool) {
   return tool.execution_target.kind === 'mcp_proxy'
     ? `${tool.execution_target.upstream_connection_id} / ${tool.execution_target.remote_tool_name}`
     : tool.execution_target.interface_id;
-}
-
-export function SelectedInterfaceOperationTitle({
-  selectedInterface
-}: {
-  selectedInterface: ConsoleMcpInterfaceCapability | undefined;
-}) {
-  if (!selectedInterface) return null;
-  return (
-    <Typography.Text>{interfaceOptionLabel(selectedInterface)}</Typography.Text>
-  );
 }
 
 export function schemaMappingHasContent(value: unknown): boolean {

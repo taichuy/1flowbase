@@ -8,7 +8,7 @@ mod observation_bodies;
 mod trace_shared_payload;
 
 use control_plane_contracts::{application_public_runtime::*, ports::*};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use storage_durable_postgres::PgControlPlaneStore;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -346,16 +346,12 @@ async fn runtime_json_public_history_and_trace_restore_originals() {
         )
         .await
         .unwrap();
-    assert!(
-        history
-            .iter()
-            .any(|m| m.role == "user" && m.content == query)
-    );
-    assert!(
-        history
-            .iter()
-            .any(|m| m.role == "assistant" && m.content == answer)
-    );
+    assert!(history
+        .iter()
+        .any(|m| m.role == "user" && m.content == query));
+    assert!(history
+        .iter()
+        .any(|m| m.role == "assistant" && m.content == answer));
     let sidecar:Value=sqlx::query_scalar("select raw_json_payloads from application_conversation_messages where flow_run_id=$1 and role='user'").bind(run).fetch_one(store.pool()).await.unwrap();
     assert_eq!(
         serde_json::from_str::<String>(sidecar["content"].as_str().unwrap()).unwrap(),

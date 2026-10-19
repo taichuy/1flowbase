@@ -21,11 +21,8 @@ import {
   type NativeReactModuleRegistryFactory,
   type NativeReactSourcePreparationDiagnostic
 } from '../../../../shared/code-block/native-react-source-preparation';
-import {
-  createFrontstageUnavailableBlockContext,
-  FrontstageNativeTrustedBlockPortalHost,
-  type FrontstageNativeTrustedBlockReactComponent
-} from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../lib/native-trusted-block-react-adapter';
+import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block/unavailable-context';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';

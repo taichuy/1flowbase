@@ -5,8 +5,8 @@ use crate::{
 };
 use control_plane::{
     orchestration_runtime::trace_projection::{
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
         build_application_run_trace_projection_from_source,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     },
     ports::{OrchestrationRuntimeRepository, UpsertApplicationRunTraceProjectionStatusInput},
     system_recovery::SystemWriteOwner,

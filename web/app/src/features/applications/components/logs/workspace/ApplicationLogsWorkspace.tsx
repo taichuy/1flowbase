@@ -1,3 +1,9 @@
+import {
+  clearPersistedArchiveImportJob,
+  readPersistedArchiveImportJob,
+  writePersistedArchiveImportJob,
+  type PersistedRunArchiveImportJob
+} from './archive-import-persistence';
 import { useApplicationRunsQuery } from './use-application-runs-query';
 import {
   getViewportSize,
@@ -135,11 +141,6 @@ type RunArchiveImportState = {
   jobStatus?: string;
 };
 
-type PersistedRunArchiveImportJob = {
-  jobId: string;
-  fileName: string;
-};
-
 function buildArchiveImportStateFromPersistedJob(
   job: PersistedRunArchiveImportJob | null
 ): RunArchiveImportState | null {
@@ -234,63 +235,6 @@ function writeApplicationLogsSearchState(
     '',
     `${url.pathname}${url.search}${url.hash}`
   );
-}
-
-function archiveImportStorageKey(applicationId: string) {
-  return `1flowbase.application.${applicationId}.run_archive_import_job`;
-}
-
-function readPersistedArchiveImportJob(
-  applicationId: string
-): PersistedRunArchiveImportJob | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const storedText = window.localStorage.getItem(
-    archiveImportStorageKey(applicationId)
-  );
-  if (!storedText) {
-    return null;
-  }
-
-  try {
-    const parsedValue: unknown = JSON.parse(storedText);
-    if (
-      typeof parsedValue === 'object' &&
-      parsedValue !== null &&
-      typeof (parsedValue as PersistedRunArchiveImportJob).jobId === 'string' &&
-      typeof (parsedValue as PersistedRunArchiveImportJob).fileName === 'string'
-    ) {
-      return parsedValue as PersistedRunArchiveImportJob;
-    }
-  } catch {
-    window.localStorage.removeItem(archiveImportStorageKey(applicationId));
-  }
-
-  return null;
-}
-
-function writePersistedArchiveImportJob(
-  applicationId: string,
-  job: PersistedRunArchiveImportJob
-) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.setItem(
-    archiveImportStorageKey(applicationId),
-    JSON.stringify(job)
-  );
-}
-
-function clearPersistedArchiveImportJob(applicationId: string) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.removeItem(archiveImportStorageKey(applicationId));
 }
 
 export function ApplicationLogsWorkspace({
@@ -1069,7 +1013,7 @@ export function ApplicationLogsWorkspace({
       {Object.keys(statisticsFilters).length > 0 && (
         <Alert
           type="info"
-          message={t('statistics.active_filters')}
+          title={t('statistics.active_filters')}
           description={
             <>
               {statisticsFilters.started_from} – {statisticsFilters.started_to}

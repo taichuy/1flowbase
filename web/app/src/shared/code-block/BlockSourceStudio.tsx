@@ -9,11 +9,11 @@ import {
   fitWindowWorkspaceRect,
   getWindowWorkspaceViewport
 } from '../ui/window-workspace/window-workspace-geometry';
+import { WindowWorkspaceProvider } from '../ui/window-workspace/WindowWorkspaceProvider';
 import {
-  WindowWorkspaceProvider,
   useOptionalWindowWorkspace,
   useWindowWorkspace
-} from '../ui/window-workspace/WindowWorkspaceProvider';
+} from '../ui/window-workspace/window-workspace-context';
 import {
   closeWindowWorkspaceEntry,
   type WindowWorkspaceRect

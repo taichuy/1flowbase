@@ -4,9 +4,12 @@ const {
   buildCargoCommandEnv,
   getRepoRoot,
   runManagedCommandSequence,
+  runCommandSequence,
 } = require('../testing/warning-capture.js');
 const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
 const { resolveNodeBinaryFromPath } = require('../testing/node-runtime.js');
+
+const { requireExecutedCargoTests } = require('./cargo-test-results.js');
 
 const DEFAULT_STATE_PROTOCOL_MODEL = '1flowbase';
 const DEFAULT_STATE_PROTOCOL_OUT_DIR = path.join('tmp', 'test-governance', 'state-protocols', 'acp-claude');
@@ -201,6 +204,14 @@ async function runStateProtocols(argv = [], deps = {}) {
       cargoTestThreads: runtimeConfig.backend.cargoTestThreads,
       incremental: runtimeConfig.backend.incremental,
       options,
+    }),
+    runCommandSequenceImpl: (sequenceOptions) => runCommandSequence({
+      ...sequenceOptions,
+      onCommandComplete({ command, result }) {
+        if (command.label === 'state-protocol-anthropic-api-tests' && result.status === 0) {
+          requireExecutedCargoTests(`${result.stdout || ''}\n${result.stderr || ''}`);
+        }
+      },
     }),
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,

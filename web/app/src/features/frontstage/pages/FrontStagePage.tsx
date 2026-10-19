@@ -36,7 +36,7 @@ import {
 import { FrontstageRuntimeActivityContext } from '../lib/page-canvas/runtime-activity';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
-import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
+import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block/unavailable-context';
 import {
   createFrontstagePageDocument,
   createFrontstageBlockRuntimeDescriptor,
@@ -56,10 +56,7 @@ import type {
 } from '../lib/page-canvas/runtime-demand';
 import type { FrontstageNativeBlockContextHost } from '../lib/page-canvas/native-block-context-host';
 import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
-import {
-  createFrontstagePageSignalSession,
-  FrontstageSignalRuntimeCoordinator
-} from '../lib/page-canvas/signal-runtime';
+import { usePageSignals } from './frontstage-page/runtime-session/use-page-signals';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
@@ -76,11 +73,8 @@ import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
 import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMenu';
-import {
-  FrontstageWorkspaceShell,
-  useFrontstageWorkspace,
-  useOptionalFrontstageWorkspace
-} from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
+import { FrontstageWorkspaceShell } from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
+import { useFrontstageWorkspace, useOptionalFrontstageWorkspace } from './frontstage-page/workspace-shell/workspace-context';
 import { useFrontstageRetentionProtection } from './frontstage-page/runtime-session/retention-protection';
 import './frontstage-page.css';
 
@@ -235,32 +229,13 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     () => (displayedPageDocument?.blocks ?? []).map((block) => block.id),
     [displayedPageDocument?.blocks]
   );
-  const pageSignalSession = useMemo(
-    () => createFrontstagePageSignalSession(),
-    [activePageContent?.page.id]
-  );
-  const pageSignalCoordinator = useMemo(
-    () =>
-      displayedPageDocument && activePageContent
-        ? new FrontstageSignalRuntimeCoordinator(
-            displayedPageDocument.blocks,
-            activePageContent.tab.id,
-            pageSignalSession
-          )
-        : undefined,
-    [
-      activePageContent?.tab.id,
-      displayedPageDocument?.rootUid,
-      pageSignalSession
-    ]
-  );
-  useEffect(() => {
-    pageSignalCoordinator?.updateBlocks(displayedPageDocument?.blocks ?? []);
-  }, [displayedPageDocument?.blocks, pageSignalCoordinator]);
-  useEffect(
-    () => () => pageSignalCoordinator?.dispose(),
-    [pageSignalCoordinator]
-  );
+  const pageSignalCoordinator = usePageSignals({
+    pageId: activePageContent?.page.id,
+    tabId: activePageContent?.tab.id,
+    rootUid: displayedPageDocument?.rootUid,
+    blocks: displayedPageDocument?.blocks
+  });
+
   const jsBlockCapabilityHandlers = useMemo(
     () =>
       selectedPageId && tabId

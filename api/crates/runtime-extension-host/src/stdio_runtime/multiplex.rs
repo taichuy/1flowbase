@@ -485,7 +485,7 @@ impl MultiplexProviderWorker {
                     output_events.push(event);
                 }
                 MultiplexWorkerMessage::ResourceRetention { .. } => {
-                    return Err(transport_error("worker control on invocation lane"))
+                    return Err(transport_error("worker control on invocation lane"));
                 }
                 MultiplexWorkerMessage::Response { response, .. } => {
                     guard.armed = false;
@@ -1046,11 +1046,10 @@ mod exchange_host_services;
 fn exchange_service_response<T: serde::Serialize>(
     result: Result<T, extension_contracts::HostServiceError>,
 ) -> Value {
-    let value = match result {
+    match result {
         Ok(value) => serde_json::json!({"result":value}),
         Err(error) => serde_json::json!({"error":error}),
-    };
-    value
+    }
 }
 
 #[cfg(all(test, unix))]

@@ -1,3 +1,4 @@
+const { parseAlterTableDropConstraint, parseAlterTableRenameConstraint } = require('./constraint-actions.js');
 const { ownedTableFindings } = require('./ownership.js');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -717,20 +718,6 @@ function parseAlterTableAlterColumn(table, action) {
   return false;
 }
 
-function parseAlterTableDropConstraint(table, action) {
-  const match = /^drop\s+constraint\s+(?:if\s+exists\s+)?("[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)/iu.exec(action.trim());
-  if (!match) {
-    return false;
-  }
-  const constraintName = normalizeIdentifier(match[1]);
-  table.uniqueConstraints = table.uniqueConstraints.filter((constraint) => constraint.name !== constraintName);
-  table.foreignKeys = table.foreignKeys.filter((constraint) => constraint.name !== constraintName);
-  if (table.primaryKey && table.primaryKey.name === constraintName) {
-    table.primaryKey = null;
-  }
-  return true;
-}
-
 function parseAlterTableRenameTable({ context, table, tableName, action }) {
   const match = /^rename\s+to\s+("[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)$/iu.exec(action.trim());
   if (!match) {
@@ -769,9 +756,11 @@ function parseAlterTable(statement, context) {
     } else if (/^drop\s+column\b/iu.test(trimmed)) {
       parsed = parseAlterTableDropColumn(table, trimmed);
     } else if (/^drop\s+constraint\b/iu.test(trimmed)) {
-      parsed = parseAlterTableDropConstraint(table, trimmed);
+      parsed = parseAlterTableDropConstraint(table, trimmed, normalizeIdentifier);
     } else if (/^alter\s+column\b/iu.test(trimmed)) {
       parsed = parseAlterTableAlterColumn(table, trimmed);
+    } else if (/^rename\s+constraint\b/iu.test(trimmed)) {
+      parsed = parseAlterTableRenameConstraint(table, trimmed, normalizeIdentifier);
     } else if (/^rename\s+column\b/iu.test(trimmed)) {
       parsed = parseAlterTableRenameColumn(table, trimmed);
     } else if (/^rename\s+to\b/iu.test(trimmed)) {

@@ -263,7 +263,7 @@ pub trait BillingRepository: Send + Sync {
         idempotency_key: &str,
     ) -> anyhow::Result<()>;
     async fn reserve_credit(&self, input: &ReserveCreditInput)
-    -> anyhow::Result<CreditReservation>;
+        -> anyhow::Result<CreditReservation>;
     async fn settle_credit(
         &self,
         input: &SettleCreditInput,

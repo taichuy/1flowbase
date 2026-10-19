@@ -195,6 +195,8 @@ export function useTrajectoryWindow<
     getRowKey,
     windowPages
   ]);
+  const { isError: overviewIsError, refetch: refetchOverview } = overview;
+  const { isError: firstIsError, refetch: refetchFirst } = first;
   const retry = useCallback(() => {
     setWindows((previous) => ({
       scope,
@@ -202,14 +204,14 @@ export function useTrajectoryWindow<
       fetching: false,
       error: null
     }));
-    if (overview.isError) void overview.refetch();
-    if (first.isError) void first.refetch();
-  }, [scope, first.isError, first.refetch, overview.isError, overview.refetch]);
+    if (overviewIsError) void refetchOverview();
+    if (firstIsError) void refetchFirst();
+  }, [scope, firstIsError, refetchFirst, overviewIsError, refetchOverview]);
   const refetch = useCallback(async () => {
-    await Promise.all([overview.refetch(), first.refetch()]);
+    await Promise.all([refetchOverview(), refetchFirst()]);
     if (currentScope.current === scope)
       setWindows({ scope, pages: [], fetching: false, error: null });
-  }, [overview.refetch, first.refetch, scope]);
+  }, [refetchOverview, refetchFirst, scope]);
   return {
     overview,
     pages: {

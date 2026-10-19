@@ -31,7 +31,8 @@ function isRustTestPath(relativePath) {
 }
 
 function isSkippedRustPath(relativePath) {
-  return isRustTestPath(relativePath) || relativePath.startsWith('api/plugins/installed/');
+  return isRustTestPath(relativePath) || relativePath.startsWith('api/plugins/installed/')
+    || relativePath.startsWith('api/vendor/');
 }
 
 function walkFiles(currentDir, collected = []) {

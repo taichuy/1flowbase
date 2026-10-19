@@ -20,7 +20,7 @@ import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 
 import { assertSafeEChartOption } from './safe-option';
-import { useEChartResourceScope } from './lifecycle';
+import { useEChartResourceScope } from './lifecycle-context';
 import type { EChartOption, EChartValue } from './safe-option';
 
 echarts.use([

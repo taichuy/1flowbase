@@ -9,7 +9,7 @@ import {
   type SettingsConsolePolicyCatalog,
   type SettingsConsolePolicyCatalogLocale
 } from '../../api/permissions';
-import { reorderItems } from './SortablePolicyTable';
+import { reorderItems } from './policy-order';
 
 export function useConsoleSettingsOrder({
   canManageRoles,

@@ -316,7 +316,7 @@ describe('native block generic AntD overlay host', () => {
     const root = document.createElement('div');
     const authoredContainer = document.createElement('div');
     scrollOwner.append(root);
-    document.body.append(scrollOwner, authoredContainer);
+    document.body.append(scrollOwner);
     const closedRef = createRef<TooltipRef>();
     const authoredRef = createRef<TooltipRef>();
 
@@ -334,7 +334,12 @@ describe('native block generic AntD overlay host', () => {
               ref={authoredRef}
               open
               content="Authored Popover"
-              getPopupContainer={() => authoredContainer}
+              getPopupContainer={(trigger) => {
+                if (authoredContainer.getRootNode() !== trigger.getRootNode()) {
+                  trigger.getRootNode().appendChild(authoredContainer);
+                }
+                return authoredContainer;
+              }}
             >
               <button type="button">Authored anchor</button>
             </antd.Popover>
@@ -344,7 +349,9 @@ describe('native block generic AntD overlay host', () => {
       />
     );
 
-    await within(authoredContainer).findByText('Authored Popover');
+    const authoredPopup = await within(authoredContainer).findByText('Authored Popover');
+    expect(authoredContainer.getRootNode()).toBe(root.shadowRoot);
+    expect(authoredPopup.getRootNode()).toBe(root.shadowRoot);
     await waitFor(() => {
       expect(closedRef.current).not.toBeNull();
       expect(authoredRef.current).not.toBeNull();
@@ -424,7 +431,7 @@ describe('native block generic AntD overlay host', () => {
     )) as unknown as typeof import('antd');
     const root = document.createElement('div');
     const authoredContainer = document.createElement('div');
-    document.body.append(root, authoredContainer);
+    document.body.append(root);
 
     render(
       <FrontstageNativeTrustedBlockPortalHost
@@ -434,7 +441,12 @@ describe('native block generic AntD overlay host', () => {
         component={() => (
           <antd.Cascader
             open
-            getPopupContainer={() => authoredContainer}
+            getPopupContainer={(trigger) => {
+                if (authoredContainer.getRootNode() !== trigger.getRootNode()) {
+                  trigger.getRootNode().appendChild(authoredContainer);
+                }
+                return authoredContainer;
+              }}
             options={[{ value: 'authored', label: 'Authored option' }]}
           />
         )}
@@ -442,7 +454,9 @@ describe('native block generic AntD overlay host', () => {
       />
     );
 
-    await within(authoredContainer).findByText('Authored option');
+    const authoredPopup = await within(authoredContainer).findByText('Authored option');
+    expect(authoredContainer.getRootNode()).toBe(root.shadowRoot);
+    expect(authoredPopup.getRootNode()).toBe(root.shadowRoot);
     const layer = root.shadowRoot?.querySelector<HTMLElement>(
       '[data-flowbase-native-overlay-layer]'
     );
