@@ -22,56 +22,73 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
 vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
   loadMonacoEditorModule: () => import('@monaco-editor/react')
 }));
-vi.mock('@monaco-editor/react', () => ({
-  default: ({
-    beforeMount,
-    onMount,
-    options,
-    path,
-    value,
-    onChange
-  }: {
-    beforeMount?: (monaco: unknown) => void;
-    onMount?: (editor: unknown, monaco: unknown) => void;
-    options?: { ariaLabel?: string; readOnly?: boolean };
-    path?: string;
-    value?: string;
-    onChange?: (value: string) => void;
-  }) => {
-    const monaco = {
-      MarkerSeverity: { Error: 8 },
-      editor: { setModelMarkers: vi.fn() },
-      languages: {
-        typescript: {
-          JsxEmit: { Preserve: 'preserve' },
-          ModuleResolutionKind: { NodeJs: 'node-js' },
-          ScriptTarget: { ES2022: 'es2022' },
-          typescriptDefaults: {
-            addExtraLib: vi.fn(() => ({ dispose: vi.fn() })),
-            setCompilerOptions: vi.fn()
+vi.mock('@monaco-editor/react', async () => {
+  const { useEffect, useRef, useState } = await import('react');
+  return {
+    default: function MockMonacoEditor({
+      beforeMount,
+      onMount,
+      options,
+      path,
+      value,
+      onChange
+    }: {
+      beforeMount?: (monaco: unknown) => void;
+      onMount?: (editor: unknown, monaco: unknown) => void;
+      options?: { ariaLabel?: string; readOnly?: boolean };
+      path?: string;
+      value?: string;
+      onChange?: (value: string) => void;
+    }) {
+      const pathRef = useRef(path);
+      useEffect(() => {
+        pathRef.current = path;
+      }, [path]);
+      const [mount] = useState(() => {
+        const monaco = {
+          MarkerSeverity: { Error: 8 },
+          editor: { setModelMarkers: vi.fn() },
+          languages: {
+            typescript: {
+              JsxEmit: { Preserve: 'preserve' },
+              ModuleResolutionKind: { NodeJs: 'node-js' },
+              ScriptTarget: { ES2022: 'es2022' },
+              typescriptDefaults: {
+                addExtraLib: vi.fn(() => ({ dispose: vi.fn() })),
+                setCompilerOptions: vi.fn()
+              }
+            }
           }
-        }
-      }
-    };
-    const editor = {
-      getModel: () => ({
-        uri: { toString: () => path ?? 'file:///source.tsx' }
-      })
-    };
-    beforeMount?.(monaco);
-    onMount?.(editor, monaco);
-    return (
-      <textarea
-        aria-label={options?.ariaLabel}
-        data-read-only={options?.readOnly}
-        data-testid="block-source-editor"
-        readOnly={options?.readOnly}
-        value={value}
-        onChange={(event) => onChange?.(event.target.value)}
-      />
-    );
-  }
-}));
+        };
+        const editor = {
+          getModel: () => ({
+            uri: { toString: () => pathRef.current ?? 'file:///source.tsx' }
+          })
+        };
+        return { beforeMount, onMount, editor, monaco };
+      });
+      // Monaco retains initial mount callbacks; prop updates do not remount it.
+      const mounted = useRef(false);
+      useEffect(() => {
+        if (mounted.current) return;
+        mounted.current = true;
+        mount.beforeMount?.(mount.monaco);
+        mount.onMount?.(mount.editor, mount.monaco);
+      }, [mount]);
+
+      return (
+        <textarea
+          aria-label={options?.ariaLabel}
+          data-read-only={options?.readOnly}
+          data-testid="block-source-editor"
+          readOnly={options?.readOnly}
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+        />
+      );
+    }
+  };
+});
 
 // Component-record editing does not exercise Monaco's browser worker setup.
 vi.mock('../../../../shared/code-block/monaco-runtime', () => ({

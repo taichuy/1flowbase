@@ -69,49 +69,62 @@ vi.mock('../../frontstage/components/jsx-studio/JsxStudioRunPanel', () => ({
     return <div>Auth Studio Run</div>;
   }
 }));
-vi.mock('@monaco-editor/react', () => ({
-  default: ({
-    beforeMount,
-    onChange,
-    onMount,
-    value
-  }: {
-    beforeMount?: (monaco: unknown) => void;
-    onChange?: (value: string) => void;
-    onMount?: (editor: unknown, monaco: unknown) => void;
-    value?: string;
-  }) => {
-    const monaco = {
-      MarkerSeverity: { Error: 8 },
-      editor: { setModelMarkers: vi.fn() },
-      languages: {
-        typescript: {
-          JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
-          ModuleResolutionKind: { NodeJs: 'node-js' },
-          ScriptTarget: { ES2022: 'es2022' },
-          typescriptDefaults: {
-            addExtraLib: monacoHook.addExtraLib,
-            setCompilerOptions: monacoHook.setCompilerOptions
+vi.mock('@monaco-editor/react', async () => {
+  const { useEffect, useRef, useState } = await import('react');
+  return {
+    default: function MockMonacoEditor({
+      beforeMount,
+      onChange,
+      onMount,
+      value
+    }: {
+      beforeMount?: (monaco: unknown) => void;
+      onChange?: (value: string) => void;
+      onMount?: (editor: unknown, monaco: unknown) => void;
+      value?: string;
+    }) {
+      const [mount] = useState(() => {
+        const monaco = {
+          MarkerSeverity: { Error: 8 },
+          editor: { setModelMarkers: vi.fn() },
+          languages: {
+            typescript: {
+              JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
+              ModuleResolutionKind: { NodeJs: 'node-js' },
+              ScriptTarget: { ES2022: 'es2022' },
+              typescriptDefaults: {
+                addExtraLib: monacoHook.addExtraLib,
+                setCompilerOptions: monacoHook.setCompilerOptions
+              }
+            }
           }
-        }
-      }
-    };
-    const editor = {
-      getModel: () => ({
-        uri: { toString: () => 'file:///auth-center/password-local.tsx' }
-      })
-    };
-    beforeMount?.(monaco);
-    onMount?.(editor, monaco);
-    return (
-      <textarea
-        aria-label="TSX source"
-        value={value}
-        onChange={(event) => onChange?.(event.target.value)}
-      />
-    );
-  }
-}));
+        };
+        const editor = {
+          getModel: () => ({
+            uri: { toString: () => 'file:///auth-center/password-local.tsx' }
+          })
+        };
+        return { beforeMount, onMount, editor, monaco };
+      });
+      // Monaco retains initial mount callbacks; prop updates do not remount it.
+      const mounted = useRef(false);
+      useEffect(() => {
+        if (mounted.current) return;
+        mounted.current = true;
+        mount.beforeMount?.(mount.monaco);
+        mount.onMount?.(mount.editor, mount.monaco);
+      }, [mount]);
+
+      return (
+        <textarea
+          aria-label="TSX source"
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+        />
+      );
+    }
+  };
+});
 
 describe('LoginEntryUiBlockStudio', () => {
   beforeAll(async () => {

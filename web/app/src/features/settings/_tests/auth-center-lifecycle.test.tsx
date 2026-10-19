@@ -38,45 +38,68 @@ vi.mock('../../../shared/code-block/monaco-runtime', () => ({
   loadMonacoEditorModule: () => import('@monaco-editor/react')
 }));
 
-vi.mock('@monaco-editor/react', () => ({
-  default: ({
-    onMount,
-    path,
-    value,
-    onChange
-  }: {
-    onMount?: (editor: unknown, monaco: unknown) => void;
-    path?: string;
-    value?: string;
-    onChange?: (value: string) => void;
-  }) => {
-    onMount?.(
-      {
-        getModel: () => ({
-          uri: { toString: () => path ?? 'file:///auth-center/block.tsx' }
-        })
-      },
-      {
-        MarkerSeverity: { Error: 8 },
-        editor: { setModelMarkers: vi.fn() },
-        languages: {
-          typescript: {
-            typescriptDefaults: {
-              addExtraLib: vi.fn(() => ({ dispose: vi.fn() }))
+vi.mock('@monaco-editor/react', async () => {
+  const { useEffect, useRef, useState } = await import('react');
+  return {
+    default: function MockMonacoEditor({
+      beforeMount,
+      onMount,
+      path,
+      value,
+      onChange
+    }: {
+      beforeMount?: (monaco: unknown) => void;
+      onMount?: (editor: unknown, monaco: unknown) => void;
+      path?: string;
+      value?: string;
+      onChange?: (value: string) => void;
+    }) {
+      const pathRef = useRef(path);
+      useEffect(() => {
+        pathRef.current = path;
+      }, [path]);
+      const [mount] = useState(() => ({
+        beforeMount,
+        onMount,
+        editor: {
+          getModel: () => ({
+            uri: { toString: () => pathRef.current ?? 'file:///auth-center/block.tsx' }
+          })
+        },
+        monaco: {
+          MarkerSeverity: { Error: 8 },
+          editor: { setModelMarkers: vi.fn() },
+          languages: {
+            typescript: {
+              JsxEmit: { Preserve: 'preserve' },
+              ModuleResolutionKind: { NodeJs: 'node-js' },
+              ScriptTarget: { ES2022: 'es2022' },
+              typescriptDefaults: {
+                addExtraLib: vi.fn(() => ({ dispose: vi.fn() })),
+                setCompilerOptions: vi.fn()
+              }
             }
           }
         }
-      }
-    );
-    return (
-      <textarea
-        aria-label="区块源码"
-        value={value}
-        onChange={(event) => onChange?.(event.target.value)}
-      />
-    );
-  }
-}));
+      }));
+      // Monaco retains initial mount callbacks; prop updates do not remount it.
+      const mounted = useRef(false);
+      useEffect(() => {
+        if (mounted.current) return;
+        mounted.current = true;
+        mount.beforeMount?.(mount.monaco);
+        mount.onMount?.(mount.editor, mount.monaco);
+      }, [mount]);
+      return (
+        <textarea
+          aria-label="区块源码"
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+        />
+      );
+    }
+  };
+});
 
 import { AppProviders } from '../../../app/AppProviders';
 import { loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';

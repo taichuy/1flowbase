@@ -153,47 +153,61 @@ vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
 vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
   loadMonacoEditorModule: () => import('@monaco-editor/react')
 }));
-vi.mock('@monaco-editor/react', () => ({
-  default: ({
-    beforeMount,
-    value,
-    onChange,
-    onMount,
-    options
-  }: {
-    beforeMount?: (monaco: unknown) => void;
-    value?: string;
-    onChange?: (value?: string) => void;
-    onMount?: (editor: unknown, monaco: unknown) => void;
-    options?: { editContext?: boolean };
-  }) => {
-    const monaco = {
-      MarkerSeverity: { Error: 8 },
-      editor: { setModelMarkers: monacoHook.setModelMarkers },
-      languages: {
-        typescript: {
-          JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
-          ModuleResolutionKind: { NodeJs: 'node-js' },
-          ScriptTarget: { ES2022: 'es2022' },
-          typescriptDefaults: {
-            addExtraLib: monacoHook.addExtraLib,
-            setCompilerOptions: monacoHook.setCompilerOptions
+vi.mock('@monaco-editor/react', async () => {
+  const { useEffect, useRef, useState } = await import('react');
+  return {
+    default: function MockMonacoEditor({
+      beforeMount,
+      value,
+      onChange,
+      onMount,
+      options
+    }: {
+      beforeMount?: (monaco: unknown) => void;
+      value?: string;
+      onChange?: (value?: string) => void;
+      onMount?: (editor: unknown, monaco: unknown) => void;
+      options?: { editContext?: boolean };
+    }) {
+      const [mount] = useState(() => {
+        const monaco = {
+          MarkerSeverity: { Error: 8 },
+          editor: { setModelMarkers: monacoHook.setModelMarkers },
+          languages: {
+            typescript: {
+              JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
+              ModuleResolutionKind: { NodeJs: 'node-js' },
+              ScriptTarget: { ES2022: 'es2022' },
+              typescriptDefaults: {
+                addExtraLib: monacoHook.addExtraLib,
+                setCompilerOptions: monacoHook.setCompilerOptions
+              }
+            }
           }
-        }
-      }
-    };
-    beforeMount?.(monaco);
-    onMount?.(monacoEditor, monaco);
-    return (
-      <textarea
-        aria-label="JSX source"
-        data-edit-context={String(options?.editContext)}
-        value={value}
-        onChange={(event) => onChange?.(event.target.value)}
-      />
-    );
-  }
-}));
+        };
+        const editor = monacoEditor;
+        return { beforeMount, onMount, editor, monaco };
+      });
+      // Monaco retains initial mount callbacks; prop updates do not remount it.
+      const mounted = useRef(false);
+      useEffect(() => {
+        if (mounted.current) return;
+        mounted.current = true;
+        mount.beforeMount?.(mount.monaco);
+        mount.onMount?.(mount.editor, mount.monaco);
+      }, [mount]);
+
+      return (
+        <textarea
+          aria-label="JSX source"
+          data-edit-context={String(options?.editContext)}
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+        />
+      );
+    }
+  };
+});
 
 const block: FrontstageBlockInstance = {
   id: 'orders-block',
