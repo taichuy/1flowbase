@@ -1,4 +1,7 @@
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -85,19 +88,59 @@ function authenticate() {
   });
 }
 
-function renderPage() {
-  return render(
-    <AppProviders>
-      <App>
-        <ApplicationListPage />
-      </App>
-    </AppProviders>
-  );
+// Await the asynchronous work triggered by each real DOM event.
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
+  await act(async () => {
+    fireEvent.mouseDown(...args);
+  });
+}
+
+const mountedClients = new Set<QueryClient>();
+let expectedPendingMutations = 0;
+function ObserveQueries() {
+  mountedClients.add(useQueryClient());
+  return null;
+}
+async function waitForRequests() {
+  await waitFor(() => {
+    for (const client of mountedClients) {
+      expect(client.isFetching()).toBe(0);
+      // Two archive request-contract scenarios intentionally retain one pending
+      // mutation. All other query mutations must finish before unmounting.
+      expect(client.isMutating()).toBe(expectedPendingMutations);
+    }
+  });
+}
+
+async function renderPage() {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(
+      <AppProviders>
+        <ObserveQueries />
+        <App>
+          <ApplicationListPage />
+        </App>
+      </AppProviders>
+    );
+  });
+  return view;
 }
 
 describe('ApplicationListPage', () => {
   beforeAll(() => loadApplicationI18nResources());
   beforeEach(async () => {
+    expectedPendingMutations = 0;
     window.localStorage.clear();
     await appI18n.changeLanguage('zh_Hans');
     resetAuthStore();
@@ -273,11 +316,21 @@ describe('ApplicationListPage', () => {
   });
 
   afterEach(async () => {
-    await appI18n.changeLanguage('en_US');
+    try {
+      await waitForRequests();
+    } finally {
+      cleanup();
+      for (const client of mountedClients) client.clear();
+      mountedClients.clear();
+      await act(async () => {
+        resetAuthStore();
+        await appI18n.changeLanguage('en_US');
+      });
+    }
   });
 
   test('renders backend-driven type tabs and filters the list', async () => {
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
@@ -285,7 +338,7 @@ describe('ApplicationListPage', () => {
     expect(screen.getByText('AgentFlow')).toBeInTheDocument();
     expect(screen.getByText('工作流')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '工作流' }));
+    await click(screen.getByRole('button', { name: '工作流' }));
 
     await waitFor(
       () => {
@@ -297,21 +350,21 @@ describe('ApplicationListPage', () => {
   }, 15_000);
 
   test('creates a new tag from the card dialog and saves it back to the application', async () => {
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '管理标签-客服助手' }));
+    await click(screen.getByRole('button', { name: '管理标签-客服助手' }));
 
     const dialog = await screen.findByRole('dialog', undefined, {
       timeout: 10_000
     });
     expect(within(dialog).getByText('管理应用标签')).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('新标签名称'), {
+    await change(within(dialog).getByLabelText('新标签名称'), {
       target: { value: '内部' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: '创建标签' }));
+    await click(within(dialog).getByRole('button', { name: '创建标签' }));
 
     await waitFor(
       () => {
@@ -323,8 +376,8 @@ describe('ApplicationListPage', () => {
       { timeout: 10_000 }
     );
 
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: '内部' }));
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存标签' }));
+    await click(within(dialog).getByRole('checkbox', { name: '内部' }));
+    await click(within(dialog).getByRole('button', { name: '保存标签' }));
 
     await waitFor(
       () => {
@@ -343,15 +396,15 @@ describe('ApplicationListPage', () => {
   }, 15_000);
 
   test('edits application name and description from the card action', async () => {
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
     ).toBeInTheDocument();
-    fireEvent.mouseDown(
+    await mouseDown(
       screen.getByRole('button', { name: '更多操作-客服助手' })
     );
-    fireEvent.click(await screen.findByText('编辑信息'));
+    await click(await screen.findByText('编辑信息'));
 
     const dialog = await screen.findByRole('dialog', undefined, {
       timeout: 10_000
@@ -362,13 +415,13 @@ describe('ApplicationListPage', () => {
       {},
       { timeout: 10_000 }
     );
-    fireEvent.change(nameInput, {
+    await change(nameInput, {
       target: { value: '客服助手 Pro' }
     });
-    fireEvent.change(within(dialog).getByLabelText('简介'), {
+    await change(within(dialog).getByLabelText('简介'), {
       target: { value: '升级后的客服描述' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存修改' }));
+    await click(within(dialog).getByRole('button', { name: '保存修改' }));
 
     await waitFor(
       () => {
@@ -387,7 +440,7 @@ describe('ApplicationListPage', () => {
   }, 15_000);
 
   test('opens the application from the card link instead of a dedicated button', async () => {
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
@@ -405,16 +458,16 @@ describe('ApplicationListPage', () => {
   }, 15_000);
 
   test('copies application metadata from the card action', async () => {
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
     ).toBeInTheDocument();
-    fireEvent.mouseDown(
+    await mouseDown(
       screen.getByRole('button', { name: '更多操作-客服助手' })
     );
 
-    fireEvent.click(screen.getByText('复制'));
+    await click(screen.getByText('复制'));
 
     await waitFor(
       () => {
@@ -435,15 +488,16 @@ describe('ApplicationListPage', () => {
   }, 15_000);
 
   test('exports an AgentFlow template from the card action', async () => {
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
     ).toBeInTheDocument();
-    fireEvent.mouseDown(
+    await mouseDown(
       screen.getByRole('button', { name: '更多操作-客服助手' })
     );
-    fireEvent.click(screen.getByText('导出应用'));
+    expectedPendingMutations = 1;
+    await click(screen.getByText('导出应用'));
 
     await waitFor(
       () => {
@@ -456,7 +510,7 @@ describe('ApplicationListPage', () => {
   }, 15_000);
 
   test('AC-001 accepts an application JSON file and previews it for import', async () => {
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
@@ -470,7 +524,7 @@ describe('ApplicationListPage', () => {
       type: 'application/json'
     });
 
-    fireEvent.change(input, { target: { files: [file] } });
+    await change(input, { target: { files: [file] } });
 
     await waitFor(
       () => {
@@ -488,7 +542,8 @@ describe('ApplicationListPage', () => {
       within(dialog).getByText('共 1 个应用，确认名称后导入为草稿。')
     ).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '导入应用' }));
+    expectedPendingMutations = 1;
+    await click(within(dialog).getByRole('button', { name: '导入应用' }));
 
     await waitFor(
       () => {
@@ -522,16 +577,16 @@ describe('ApplicationListPage', () => {
         }
       ]
     });
-    renderPage();
+    await renderPage();
 
-    fireEvent.click(
+    await click(
       await screen.findByRole('button', { name: '从应用模板创建' })
     );
     const drawer = await screen.findByRole('dialog');
     expect(
       within(drawer).getByRole('link', { name: '管理本地模板' })
     ).toHaveAttribute('href', '/templates');
-    fireEvent.click(
+    await click(
       await within(drawer).findByRole('button', { name: '导入应用' })
     );
 
@@ -545,7 +600,7 @@ describe('ApplicationListPage', () => {
     );
     const importDialog = importTitle?.closest('[role="dialog"]') ?? null;
     expect(importDialog).not.toBeNull();
-    fireEvent.click(
+    await click(
       within(importDialog as HTMLElement).getByRole('button', {
         name: '导入应用'
       })
@@ -562,8 +617,8 @@ describe('ApplicationListPage', () => {
   }, 15_000);
 
   test('AC-007 empty local template picker links to the Agent Flow extension center', async () => {
-    renderPage();
-    fireEvent.click(
+    await renderPage();
+    await click(
       await screen.findByRole('button', { name: '从应用模板创建' })
     );
     expect(
@@ -574,15 +629,15 @@ describe('ApplicationListPage', () => {
   }, 15_000);
 
   test('confirms and deletes an application from the card action', async () => {
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
     ).toBeInTheDocument();
-    fireEvent.mouseDown(
+    await mouseDown(
       screen.getByRole('button', { name: '更多操作-客服助手' })
     );
-    fireEvent.click(await screen.findByText('删除'));
+    await click(await screen.findByText('删除'));
 
     const dialog = await screen.findByRole('dialog', undefined, {
       timeout: 10_000
@@ -590,7 +645,7 @@ describe('ApplicationListPage', () => {
     expect(
       within(dialog).getByText(/相关的编排、草稿、运行记录和标签绑定/)
     ).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    await click(within(dialog).getByRole('button', { name: /删\s*除/ }));
 
     await waitFor(
       () => {

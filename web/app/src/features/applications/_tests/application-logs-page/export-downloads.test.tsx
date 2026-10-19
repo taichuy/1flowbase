@@ -1,5 +1,6 @@
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
 vi.mock('antd', async (importOriginal) => {
@@ -259,14 +260,50 @@ function authenticate() {
   });
 }
 
-function renderLogsPage() {
-  return render(
-    <AppProviders>
-      <AntdApp>
-        <ApplicationLogsPage applicationId="app-1" />
-      </AntdApp>
-    </AppProviders>
-  );
+// Await the asynchronous work triggered by each real DOM event.
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
+  await act(async () => {
+    fireEvent.mouseDown(...args);
+  });
+}
+
+const mountedClients = new Set<QueryClient>();
+function ObserveQueries() {
+  mountedClients.add(useQueryClient());
+  return null;
+}
+async function waitForRequests() {
+  await waitFor(() => {
+    for (const client of mountedClients) {
+      expect(client.isFetching()).toBe(0);
+      expect(client.isMutating()).toBe(0);
+    }
+  });
+}
+
+async function renderLogsPage() {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(
+      <AppProviders>
+        <ObserveQueries />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
+      </AppProviders>
+    );
+  });
+  return view;
 }
 
 function getRunSelectionCheckbox(title: string) {
@@ -454,16 +491,25 @@ describe('ApplicationLogsPage - run export downloads', () => {
     });
   });
 
-  afterEach(() => {
-    resetAuthStore();
-    anchorClickSpy?.mockRestore();
-    anchorClickSpy = undefined;
-    dateNowSpy?.mockRestore();
-    dateNowSpy = undefined;
+  afterEach(async () => {
+    try {
+      await waitForRequests();
+    } finally {
+      cleanup();
+      for (const client of mountedClients) client.clear();
+      mountedClients.clear();
+      await act(async () => {
+        resetAuthStore();
+      });
+      anchorClickSpy?.mockRestore();
+      anchorClickSpy = undefined;
+      dateNowSpy?.mockRestore();
+      dateNowSpy = undefined;
+    }
   });
 
   test('exports only selected visible run ids from the current page', async () => {
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
     const exportButton = screen.getByRole('button', {
@@ -472,15 +518,15 @@ describe('ApplicationLogsPage - run export downloads', () => {
 
     expect(exportButton).toBeDisabled();
 
-    fireEvent.click(getRunSelectionCheckbox('退款总结'));
-    fireEvent.click(getRunSelectionCheckbox('天气查询'));
+    await click(getRunSelectionCheckbox('退款总结'));
+    await click(getRunSelectionCheckbox('天气查询'));
 
     await waitFor(() => expect(exportButton).toBeEnabled());
-    fireEvent.click(exportButton);
+    await click(exportButton);
     expect(
       runtimeApi.exportSelectedApplicationRunsTraceDumpZip
     ).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
+    await click(screen.getByRole('button', { name: '确认下载' }));
 
     await waitFor(() => {
       expect(
@@ -495,7 +541,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
   });
 
   test('does not render a selected run archive export action', async () => {
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
     expect(
@@ -510,7 +556,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
   });
 
   test('does not render a per-row run archive export action', async () => {
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
     expect(
@@ -539,10 +585,10 @@ describe('ApplicationLogsPage - run export downloads', () => {
       })
     );
 
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
-    fireEvent.click(getRunSelectionCheckbox('退款总结'));
+    await click(getRunSelectionCheckbox('退款总结'));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: '导出已选日志' })).toBeEnabled()
     );
@@ -550,20 +596,22 @@ describe('ApplicationLogsPage - run export downloads', () => {
     const exportButton = screen.getByRole('button', {
       name: '导出已选日志'
     });
-    fireEvent.click(exportButton);
+    await click(exportButton);
     expect(
       runtimeApi.exportSelectedApplicationRunsTraceDumpZip
     ).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
+    await click(screen.getByRole('button', { name: '确认下载' }));
 
     await waitFor(() => {
       expect(exportButton).toHaveClass('ant-btn-loading');
     });
 
-    resolveExport?.({
-      blob: new Blob(['zip'], { type: 'application/zip' }),
-      filename: 'selected-runs.zip',
-      contentType: 'application/zip'
+    await act(async () => {
+      resolveExport?.({
+        blob: new Blob(['zip'], { type: 'application/zip' }),
+        filename: 'selected-runs.zip',
+        contentType: 'application/zip'
+      });
     });
 
     await waitFor(() => {
@@ -579,31 +627,31 @@ describe('ApplicationLogsPage - run export downloads', () => {
       )
     );
 
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
     const exportButton = screen.getByRole('button', {
       name: '导出已选日志'
     });
 
-    fireEvent.click(getRunSelectionCheckbox('退款总结'));
+    await click(getRunSelectionCheckbox('退款总结'));
     await waitFor(() => expect(exportButton).toBeEnabled());
-    fireEvent.click(screen.getByText('2', { selector: 'li[title="2"] > a' }));
+    await click(screen.getByText('2', { selector: 'li[title="2"] > a' }));
     await waitFor(() => expect(exportButton).toBeDisabled());
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
-    fireEvent.click(getRunSelectionCheckbox('退款总结'));
+    await click(getRunSelectionCheckbox('退款总结'));
     await waitFor(() => expect(exportButton).toBeEnabled());
-    fireEvent.change(screen.getByPlaceholderText('搜索标题'), {
+    await change(screen.getByPlaceholderText('搜索标题'), {
       target: { value: '天气' }
     });
     await waitFor(() => expect(exportButton).toBeDisabled());
 
     expect(await screen.findByText('天气查询')).toBeInTheDocument();
-    fireEvent.click(getRunSelectionCheckbox('天气查询'));
+    await click(getRunSelectionCheckbox('天气查询'));
     await waitFor(() => expect(exportButton).toBeEnabled());
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '时间间隔' }));
-    fireEvent.click(
+    await mouseDown(screen.getByRole('combobox', { name: '时间间隔' }));
+    await click(
       await screen.findByText('所有时间', {
         selector: '.ant-select-item-option-content'
       })
@@ -611,9 +659,9 @@ describe('ApplicationLogsPage - run export downloads', () => {
     await waitFor(() => expect(exportButton).toBeDisabled());
 
     expect(await screen.findByText('天气查询')).toBeInTheDocument();
-    fireEvent.click(getRunSelectionCheckbox('天气查询'));
+    await click(getRunSelectionCheckbox('天气查询'));
     await waitFor(() => expect(exportButton).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '刷新日志' }));
+    await click(screen.getByRole('button', { name: '刷新日志' }));
     await waitFor(() => expect(exportButton).toBeDisabled());
   }, 10_000);
 
@@ -622,15 +670,15 @@ describe('ApplicationLogsPage - run export downloads', () => {
       new Error('export failed')
     );
 
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
-    fireEvent.click(getRunSelectionCheckbox('退款总结'));
+    await click(getRunSelectionCheckbox('退款总结'));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: '导出已选日志' })).toBeEnabled()
     );
-    fireEvent.click(screen.getByRole('button', { name: '导出已选日志' }));
-    fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
+    await click(screen.getByRole('button', { name: '导出已选日志' }));
+    await click(screen.getByRole('button', { name: '确认下载' }));
 
     expect(await screen.findByText('导出日志失败')).toBeInTheDocument();
     expect(createObjectUrlSpy).not.toHaveBeenCalled();
@@ -639,15 +687,15 @@ describe('ApplicationLogsPage - run export downloads', () => {
   test('requires csrf token before selected zip export', async () => {
     resetAuthStore();
 
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
-    fireEvent.click(getRunSelectionCheckbox('退款总结'));
+    await click(getRunSelectionCheckbox('退款总结'));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: '导出已选日志' })).toBeEnabled()
     );
-    fireEvent.click(screen.getByRole('button', { name: '导出已选日志' }));
-    fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
+    await click(screen.getByRole('button', { name: '导出已选日志' }));
+    await click(screen.getByRole('button', { name: '确认下载' }));
 
     expect(screen.getByRole('button', { name: '确认下载' })).toBeDisabled();
     expect(
@@ -657,7 +705,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
   });
 
   test('uploads an archive file, polls the import job and opens the target run', async () => {
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
     const importInput = screen.getByTestId(
@@ -671,7 +719,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
         })
       ]
     });
-    fireEvent.change(importInput);
+    await change(importInput);
 
     await waitFor(() => {
       expect(
@@ -718,7 +766,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
       configurable: true,
       value: {}
     });
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
     const importInput = screen.getByTestId(
@@ -732,7 +780,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
         })
       ]
     });
-    fireEvent.change(importInput);
+    await change(importInput);
 
     await waitFor(() => {
       expect(
@@ -756,6 +804,10 @@ describe('ApplicationLogsPage - run export downloads', () => {
       expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       'csrf-123'
     );
+    expect(await screen.findByText('已导入 1 条运行')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('complementary', { name: '运行详情' })
+    ).toBeInTheDocument();
   });
 
   test('resumes a persisted archive import job after returning to the page', async () => {
@@ -764,7 +816,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
       JSON.stringify({ jobId: 'job-1', fileName: 'archive.json' })
     );
 
-    renderLogsPage();
+    await renderLogsPage();
 
     await waitFor(() => {
       expect(
@@ -783,20 +835,20 @@ describe('ApplicationLogsPage - run export downloads', () => {
   });
 
   test('exports a single run from the conversation log floating window without composing trace content', async () => {
-    renderLogsPage();
+    await renderLogsPage();
 
     expect(await screen.findByText('退款总结')).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button', { name: '查看运行详情' })[0]);
+    await click(screen.getAllByRole('button', { name: '查看运行详情' })[0]);
     expect(
       await screen.findByRole('complementary', { name: '运行详情' })
     ).toBeInTheDocument();
-    fireEvent.click(
+    await click(
       (await screen.findAllByRole('button', { name: '查看对话日志' }))[0]
     );
     expect(
       await screen.findByRole('complementary', { name: '对话日志' })
     ).toBeInTheDocument();
-    fireEvent.click(
+    await click(
       await screen.findByRole('button', { name: '导出当前运行 JSON' })
     );
 
