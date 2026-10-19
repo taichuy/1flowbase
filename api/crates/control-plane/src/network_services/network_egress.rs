@@ -1,3 +1,4 @@
+#[path = "network_egress/proxy_edit.rs"]
 mod proxy_edit;
 pub use proxy_edit::{NetworkEgressProxyView, UpdateNetworkEgressProxyCommand};
 
