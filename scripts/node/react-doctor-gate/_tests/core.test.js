@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { sourceDigest } = require('../diagnostic-review.js');
 
 const {
   buildReactDoctorCommand,
@@ -65,6 +66,25 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
   assert.equal(resolveReactDoctorDiffBase({
     env: { REACT_DOCTOR_DIFF_BASE: 'base-sha' },
   }), 'base-sha');
+  const doctorOutput = {
+    summary: { totalDiagnosticCount: 2 },
+    diagnostics: ['a', 'b'].map((name) => ({
+      filePath: `src/features/${name}.tsx`, plugin: 'react-doctor', rule: 'no-event-handler', line: 1,
+    })),
+  };
+  const reviewDir = path.join(repoRoot, 'scripts/node/react-doctor-gate');
+  fs.mkdirSync(reviewDir, { recursive: true });
+  const source = 'export const value = 1;\n';
+  fs.mkdirSync(path.join(repoRoot, 'web/app/src/features'), { recursive: true });
+  for (const name of ['a', 'b']) fs.writeFileSync(path.join(repoRoot, `web/app/src/features/${name}.tsx`), source);
+  fs.writeFileSync(path.join(reviewDir, 'reviews.json'), JSON.stringify({
+    schemaVersion: 1, toolPackage: 'react-doctor@0.2.16',
+    reviews: doctorOutput.diagnostics.map(({ filePath }) => ({
+      file: `web/app/${filePath}`, rule: 'react-doctor/no-event-handler',
+      sourceSha256: sourceDigest(source), reason: 'External subscription cleanup is not a DOM interaction handler.',
+      evidence: [`web/app/${filePath}`],
+    })),
+  }));
   const calls = [];
   let stdout = '';
 
@@ -93,7 +113,7 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
       }
       return {
         status: 0,
-        stdout: JSON.stringify({ summary: { totalDiagnosticCount: 2 } }),
+        stdout: JSON.stringify(doctorOutput),
         stderr: '',
       };
     },
@@ -104,7 +124,7 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
   });
 
   assert.equal(status, 0);
-  assert.equal(stdout, JSON.stringify({ summary: { totalDiagnosticCount: 2 } }));
+  assert.equal(stdout, JSON.stringify(doctorOutput));
   assert.equal(calls.length, 5);
   assert.equal(calls.at(-1).command, 'npm');
   assert.deepEqual(calls.at(-1).args, [
@@ -129,7 +149,7 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
   const outputDir = path.join(repoRoot, 'tmp', 'test-governance');
   assert.equal(
     fs.readFileSync(path.join(outputDir, 'react-doctor.log'), 'utf8'),
-    JSON.stringify({ summary: { totalDiagnosticCount: 2 } }),
+    JSON.stringify(doctorOutput),
   );
   assert.match(
     fs.readFileSync(path.join(outputDir, 'react-doctor.md'), 'utf8'),
@@ -139,6 +159,10 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
   const report = JSON.parse(fs.readFileSync(path.join(outputDir, 'react-doctor.json'), 'utf8'));
   assert.equal(report.status, 'passed');
   assert.equal(report.exitCode, 0);
+  assert.equal(report.toolExitCode, 0);
+  assert.equal(report.diagnosticReview.status, 'reviewed');
+  assert.equal(report.diagnosticReview.reviewed, 2);
+  assert.deepEqual(report.diagnosticReview.findings, []);
   assert.equal(report.baseSha, 'base-sha');
   assert.equal(report.candidateSha, 'candidate-sha');
   assert.deepEqual(report.changedFiles, [
