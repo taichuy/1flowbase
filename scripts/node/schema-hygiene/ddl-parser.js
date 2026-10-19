@@ -756,17 +756,36 @@ function parseDropIndex(statement, context) {
   }
 }
 
+function parseTransitionTables(raw) {
+  const tables = [];
+  let rest = (raw || '').trim();
+  while (rest) {
+    const match = /^(old|new)\s+table\s+(?:as\s+)?([a-zA-Z0-9_."$]+)(?:\s+|$)/iu.exec(rest);
+    if (!match || /^as$/iu.test(match[2])) return null;
+    const transition = { kind: match[1].toLowerCase(), name: normalizeIdentifier(match[2]) };
+    if (tables.some((table) => table.kind === transition.kind || table.name === transition.name)) return null;
+    tables.push(transition);
+    rest = rest.slice(match[0].length).trim();
+  }
+  return tables;
+}
+
 // Track current trigger attachments while replaying migrations. This projects
 // DDL identity and invocation shape; it does not verify PL/pgSQL function bodies.
 function parseCreateTrigger(statement, context) {
   const match = /^create\s+(?:or\s+replace\s+)?(constraint\s+)?trigger\s+([a-zA-Z0-9_."$]+)\s+(before|after|instead\s+of)\s+([\s\S]+?)\s+on\s+([a-zA-Z0-9_."$]+)\s+([\s\S]+?)\s+execute\s+(?:function|procedure)\s+([a-zA-Z0-9_."$]+)\s*\(([\s\S]*)\)$/iu.exec(statement);
-  const row = match && /^(?:(?:not\s+)?deferrable\s+)?(?:initially\s+(?:deferred|immediate)\s+)?for\s+each\s+(row|statement)(?:\s+when\s*\(([\s\S]*)\))?$/iu.exec(match[6].trim());
+  const row = match && /^(?:(?:not\s+)?deferrable\s+)?(?:initially\s+(?:deferred|immediate)\s+)?(?:referencing\s+([\s\S]+?)\s+)?for\s+each\s+(row|statement)(?:\s+when\s*\(([\s\S]*)\))?$/iu.exec(match[6].trim());
   const events = match && match[4].split(/\s+or\s+/iu).map((raw) => {
     const event = /^(insert|delete|truncate|update)(?:\s+of\s+([a-zA-Z0-9_."$,\s]+))?$/iu.exec(raw.trim());
     if (!event || (event[2] && event[1].toLowerCase() !== 'update')) return null;
     return { event: event[1].toLowerCase(), columns: event[2] ? parseColumnList(event[2]) : [] };
   });
-  if (!match || !row || events.some((event) => !event)) {
+  const transitionTables = row && parseTransitionTables(row[1]);
+  const invalidTransition = transitionTables?.length && (match[3].toLowerCase() !== 'after'
+    || Boolean(match[1]) || events.length !== 1 || !events[0] || events[0].columns.length
+    || transitionTables.some((table) => !(table.kind === 'new' ? ['insert', 'update'] : ['delete', 'update'])
+      .includes(events[0].event)));
+  if (!match || !row || events.some((event) => !event) || !transitionTables || invalidTransition) {
     context.parseErrors.push(createParseError(context, 'unsupported-create-trigger', statement));
     return;
   }
@@ -775,7 +794,7 @@ function parseCreateTrigger(statement, context) {
   if (!table) return;
   const trigger = {
     name: normalizeIdentifier(match[2]), timing: match[3].toLowerCase().replace(/\s+/gu, ' '),
-    events, forEach: row[1].toLowerCase(), when: row[2]?.trim() || null,
+    events, forEach: row[2].toLowerCase(), when: row[3]?.trim() || null, transitionTables,
     constraint: Boolean(match[1]), function: normalizeIdentifier(match[7]),
     arguments: match[8].trim() ? splitTopLevel(match[8], ',').map((value) => value.trim()) : [],
     source: context.relativePath,

@@ -46,7 +46,8 @@ function ownedTableFindings(table, contract, tables = [table]) {
     const target = tables.find((candidate) => candidate.name === required.table);
     const present = (target?.triggers || []).some((trigger) => trigger.name === required.name
       && trigger.timing === required.timing && trigger.forEach === 'row'
-      && !trigger.when && !trigger.constraint && Array.isArray(trigger.arguments) && !trigger.arguments.length
+      && !trigger.when && !trigger.constraint && !(trigger.transitionTables || []).length
+      && Array.isArray(trigger.arguments) && !trigger.arguments.length
       && Array.isArray(trigger.events)
       && trigger.function === required.function
       && trigger.events.length === required.events.length
