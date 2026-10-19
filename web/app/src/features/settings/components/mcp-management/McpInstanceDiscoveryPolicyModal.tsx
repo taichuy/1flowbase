@@ -1,11 +1,8 @@
-import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
-import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Form,
-  Input,
   InputNumber,
   Col,
   Row,
@@ -29,6 +26,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import { JsonProtocolInlineEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonProtocolInlineEditor';
 import { stringifyJson } from './mcp-management-utils';
+import { ReturnFieldRows } from './discovery-policy/ReturnFieldRows';
 
 type DiscoveryPolicyFormValues = Omit<
   ConsoleMcpInstanceDiscoveryPolicy,
@@ -100,46 +98,7 @@ function ReturnFieldsEditor({
       onChange={(nextValue) => onChange?.(nextValue)}
       onValidityChange={onValidityChange}
       renderFields={({ value: fields, onChange: setFields }) => (
-        <div className="mcp-management__return-fields">
-          <div className="mcp-management__return-field-rows">
-            {fields.map((field, index) => (
-              <div key={index} className="mcp-management__return-field-row">
-                <Input
-                  aria-label={`${fieldLabel} ${index + 1}`}
-                  value={field}
-                  onChange={(event) => {
-                    const nextFields = [...fields];
-                    nextFields[index] = event.target.value;
-                    setFields(nextFields);
-                  }}
-                />
-                <Button
-                  danger
-                  type="text"
-                  aria-label={i18nText(
-                    'settingsMcpManagement',
-                    'auto.delete_list_return_field',
-                    { value1: field || index + 1 }
-                  )}
-                  icon={<DeleteOutlined />}
-                  onClick={() =>
-                    setFields(
-                      fields.filter((_, fieldIndex) => fieldIndex !== index)
-                    )
-                  }
-                />
-              </div>
-            ))}
-          </div>
-          <Button
-            block
-            type="dashed"
-            icon={<PlusOutlined />}
-            onClick={() => setFields([...fields, ''])}
-          >
-            {i18nText('settingsMcpManagement', 'auto.add_list_return_field')}
-          </Button>
-        </div>
+        <ReturnFieldRows fields={fields} fieldLabel={fieldLabel} onChange={setFields} />
       )}
     />
   );

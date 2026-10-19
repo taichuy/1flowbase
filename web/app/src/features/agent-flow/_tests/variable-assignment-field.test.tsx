@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { useState } from 'react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
-import { VariableAssignmentField } from '../components/bindings/VariableAssignmentField';
+import { VariableAssignmentField, type VariableAssignmentValue } from '../components/bindings/VariableAssignmentField';
 import type { FlowSelectorOption } from '../lib/selector-options';
 
 vi.mock('../components/bindings/TemplatedTextField', () => ({
@@ -68,4 +69,23 @@ describe('VariableAssignmentField', () => {
     ).toBeGreaterThan(0);
     expect(screen.queryByText('env.ApiBaseUrl')).not.toBeInTheDocument();
   });
+});
+
+
+test('keeps the surviving assignment editor mounted when deleting an earlier row', () => {
+  function Harness() {
+    const [value, setValue] = useState<VariableAssignmentValue[]>([
+      { path: ['conversation', 'ApiBaseUrl'], operator: 'set', value: { kind: 'templated_text', value: 'first' } },
+      { path: ['conversation', 'ApiBaseUrl'], operator: 'set', value: { kind: 'templated_text', value: 'second' } }
+    ]);
+    return <VariableAssignmentField ariaLabel="assignments" value={value}
+      conversationVariables={[{ name: 'ApiBaseUrl', valueType: 'string', description: '' }]}
+      selectorOptions={selectorOptions} onChange={setValue} />;
+  }
+  const { container } = render(<Harness />);
+  const survivor = screen.getByLabelText('assignments-1-value');
+  const first = container.querySelector('.agent-flow-variable-assignment-row')!;
+  fireEvent.click(within(first as HTMLElement).getByRole('button'));
+  expect(screen.getByLabelText('assignments-0-value')).toBe(survivor);
+  expect(survivor).toHaveValue('second');
 });

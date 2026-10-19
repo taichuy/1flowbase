@@ -1,4 +1,5 @@
 import { Button, Input, InputNumber, Select, Switch } from 'antd';
+import { useStableListItemKeys } from '../../hooks/interactions/use-stable-list-item-keys';
 
 import type { FlowSelectorOption } from '../../lib/selector-options';
 import type { AgentFlowConversationVariable } from '../../lib/variables/conversation-variables';
@@ -118,6 +119,7 @@ export function VariableAssignmentField({
   selectorOptions,
   onChange
 }: VariableAssignmentFieldProps) {
+  const rowKeys = useStableListItemKeys('variable-assignment', value.length);
   const targetOptions = conversationVariables.map((variable) => ({
     label: formatConversationVariableTitle(variable.name),
     value: variable.name
@@ -226,7 +228,7 @@ export function VariableAssignmentField({
     <div className="agent-flow-binding-list">
       {value.map((entry, index) => (
         <div
-          key={`${getTargetName(entry)}-${index}`}
+          key={rowKeys.itemKeys[index]}
           className="agent-flow-variable-assignment-row"
         >
           <Select
@@ -265,9 +267,10 @@ export function VariableAssignmentField({
           <Button
             danger
             type="text"
-            onClick={() =>
-              onChange(value.filter((_, itemIndex) => itemIndex !== index))
-            }
+            onClick={() => {
+              rowKeys.removeItemKey(index);
+              onChange(value.filter((_, itemIndex) => itemIndex !== index));
+            }}
           >
             {i18nText('agentFlow', 'auto.delete')}
           </Button>
@@ -275,7 +278,8 @@ export function VariableAssignmentField({
       ))}
       <Button
         type="dashed"
-        onClick={() =>
+        onClick={() => {
+          rowKeys.insertItemKey();
           onChange([
             ...value,
             {
@@ -284,8 +288,8 @@ export function VariableAssignmentField({
               source: null,
               value: null
             }
-          ])
-        }
+          ]);
+        }}
       >
         {i18nText('agentFlow', 'auto.add_variable_assignment')}
       </Button>
