@@ -22,9 +22,16 @@ pub struct AuthenticationProviderDescriptor {
 
 impl AuthenticationProviderDescriptor {
     pub fn validate(&self) -> Result<(), String> {
-        if self.auth_type.is_empty()
-            || !self.auth_type.bytes().all(|byte| {
-                byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
+        let segments = self.auth_type.split('/').collect::<Vec<_>>();
+        if segments.len() > 2
+            || segments.iter().any(|segment| {
+                segment.is_empty()
+                    || matches!(*segment, "." | "..")
+                    || !segment.bytes().all(|byte| {
+                        byte.is_ascii_lowercase()
+                            || byte.is_ascii_digit()
+                            || matches!(byte, b'.' | b'-' | b'_')
+                    })
             })
             || self.auth_type == "password-local"
             || self.display_name.trim().is_empty()
@@ -44,16 +51,21 @@ impl AuthenticationProviderDescriptor {
         let mut public_keys = std::collections::BTreeSet::new();
         for key in &self.public_variable_keys {
             let normalized = key.to_ascii_lowercase();
+            let field = self.config_schema.iter().find(|field| field.key == *key);
             if key.trim().is_empty()
                 || normalized.contains("secret")
                 || normalized.contains("password")
                 || !public_keys.insert(key)
-                || self
-                    .config_schema
-                    .iter()
-                    .any(|field| field.key == *key && field.control.as_deref() == Some("password"))
+                || field.is_none_or(|field| {
+                    field.field_type.eq_ignore_ascii_case("secret")
+                        || field.field_type.eq_ignore_ascii_case("password")
+                        || field
+                            .control
+                            .as_deref()
+                            .is_some_and(|control| control.eq_ignore_ascii_case("password"))
+                })
             {
-                return Err("authentication public variable keys must be unique and cannot expose secrets or passwords".into());
+                return Err("authentication public variable keys must be unique declared non-secret fields and cannot expose secrets or passwords".into());
             }
         }
         Ok(())

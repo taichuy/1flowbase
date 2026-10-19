@@ -40,7 +40,7 @@ fn authentication_wire_preserves_oauth_fields_and_external_identity_without_host
 
 #[test]
 fn authentication_descriptor_rejects_public_secret_controls_and_local_password_claims() {
-    let valid = json!({"auth_type":"github","display_name":"GitHub","config_schema":[{"key":"token","label":"Token","type":"string","control":"password"}],"default_public_ui_block":"github-login","public_variable_keys":["client_id"],"contribution_id":"fixture.auth"});
+    let valid = json!({"auth_type":"1flowbase/github-login","display_name":"GitHub","config_schema":[{"key":"client_id","label":"Client ID","type":"string"},{"key":"token","label":"Token","type":"string","control":"password"}],"default_public_ui_block":"github-login","public_variable_keys":["client_id"],"contribution_id":"fixture.auth"});
     let descriptor: AuthenticationProviderDescriptor =
         serde_json::from_value(valid.clone()).unwrap();
     descriptor.validate().unwrap();
@@ -54,12 +54,56 @@ fn authentication_descriptor_rejects_public_secret_controls_and_local_password_c
                 .is_err()
         );
     }
-    let mut value = valid;
-    value["auth_type"] = json!("password-local");
-    assert!(
+    for auth_type in [
+        "password-local",
+        "",
+        "/github-login",
+        "1flowbase/",
+        "../github-login",
+        "1flowbase/..",
+        "1flowbase/./github-login",
+        "1flowbase/github/login",
+    ] {
+        let mut value = valid.clone();
+        value["auth_type"] = json!(auth_type);
+        assert!(
+            serde_json::from_value::<AuthenticationProviderDescriptor>(value)
+                .unwrap()
+                .validate()
+                .is_err(),
+            "{auth_type} must be rejected"
+        );
+    }
+    for auth_type in [
+        "github",
+        "publisher.name/github-login",
+        "publisher_name/login-type",
+    ] {
+        let mut value = valid.clone();
+        value["auth_type"] = json!(auth_type);
         serde_json::from_value::<AuthenticationProviderDescriptor>(value)
+            .unwrap()
+            .validate()
+            .unwrap();
+    }
+    let mut undeclared = valid.clone();
+    undeclared["public_variable_keys"] = json!(["not_declared"]);
+    assert!(
+        serde_json::from_value::<AuthenticationProviderDescriptor>(undeclared)
             .unwrap()
             .validate()
             .is_err()
     );
+    for field_type in ["secret", "password"] {
+        let mut exposed = valid.clone();
+        exposed["config_schema"][0] = json!({"key":"api_key","label":"API Key","type":field_type});
+        exposed["public_variable_keys"] = json!(["api_key"]);
+        assert!(
+            serde_json::from_value::<AuthenticationProviderDescriptor>(exposed)
+                .unwrap()
+                .validate()
+                .is_err(),
+            "a harmless field name must not hide a {field_type} control"
+        );
+    }
 }
