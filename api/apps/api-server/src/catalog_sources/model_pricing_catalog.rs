@@ -15,7 +15,7 @@ const SOURCE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-source/v2";
 const INDEX_SCHEMA_VERSION: &str = "1flowbase.model-pricing-index/v2";
 const PAGE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-page/v2";
 const BUILTIN_ZERO_SOURCE: &[u8] =
-    include_bytes!("../resources/model-pricing/@zero/any/pricing.json");
+    include_bytes!("../../resources/model-pricing/@zero/any/pricing.json");
 
 #[derive(Debug, Deserialize)]
 struct CatalogSourceMetadata {

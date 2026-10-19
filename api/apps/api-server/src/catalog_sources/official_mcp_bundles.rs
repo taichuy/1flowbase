@@ -29,7 +29,7 @@ pub(crate) const BUNDLED_FRONTSTAGE_ORGANIZATION: &str = "1flowbase";
 pub(crate) const BUNDLED_FRONTSTAGE_BUNDLE_ID: &str = "frontstage_assistant";
 pub(crate) const BUNDLED_FRONTSTAGE_VERSION: &str = "1.2.0";
 const BUNDLED_FRONTSTAGE_PACKAGE_BYTES: &[u8] =
-    include_bytes!("../resources/mcp/frontstage-assistant.json");
+    include_bytes!("../../resources/mcp/frontstage-assistant.json");
 
 fn rewrite_github_release_url(url: &str, github_proxy_url: Option<&str>) -> String {
     let Some(github_proxy_url) = github_proxy_url

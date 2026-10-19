@@ -130,8 +130,8 @@ Schema 门禁对这些有限表使用具体字段/索引例外，并独立检查
 
 ### 源码入口
 
-- [external_route_assembly.rs](../../api/apps/api-server/src/external_route_assembly.rs)：挂载与 Inventory 同源构造。
-- [external_endpoint_catalog.rs](../../api/apps/api-server/src/external_endpoint_catalog.rs)：覆盖分类与发布校验。
+- [external_route_assembly.rs](../../api/apps/api-server/src/console_contracts/external_route_assembly.rs)：挂载与 Inventory 同源构造。
+- [external_endpoint_catalog.rs](../../api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs)：覆盖分类与发布校验。
 - [WebMCP interface](../../api/apps/api-server/src/routes/webmcp/interface.rs)：外层调用接入。
 
 

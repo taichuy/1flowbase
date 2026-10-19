@@ -13,9 +13,9 @@ use sha2::{Digest, Sha256};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
-pub(crate) const OFFICIAL_SEED_BYTES: &[u8] = include_bytes!("../resources/i18n/catalog-seed.json");
+pub(crate) const OFFICIAL_SEED_BYTES: &[u8] = include_bytes!("../../resources/i18n/catalog-seed.json");
 pub(crate) const OFFICIAL_SEED_SOURCE_BYTES: &[u8] =
-    include_bytes!("../resources/i18n/catalog-seed.source.json");
+    include_bytes!("../../resources/i18n/catalog-seed.source.json");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

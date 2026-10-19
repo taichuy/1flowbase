@@ -105,7 +105,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   const compatibility = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs');
   const mcp = read(repoRoot, 'api/apps/api-server/src/routes/mcp_protocol.rs');
   const apiServer = read(repoRoot, 'api/apps/api-server/src/lib.rs');
-  const endpointCatalog = read(repoRoot, 'api/apps/api-server/src/external_endpoint_catalog.rs');
+  const endpointCatalog = read(repoRoot, 'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs');
   const protocolSources = `${stream}\n${openai}\n${anthropic}`;
   const violations = inspectExternalRouteAssemblyBoundary(apiServer);
 

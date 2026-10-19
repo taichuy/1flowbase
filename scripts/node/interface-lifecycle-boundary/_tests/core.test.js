@@ -18,7 +18,7 @@ const sources = [
   'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs',
   'api/apps/api-server/src/routes/mcp_protocol.rs',
   'api/apps/api-server/src/lib.rs',
-  'api/apps/api-server/src/external_endpoint_catalog.rs',
+  'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs',
   'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/provider_operations.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/network.rs',

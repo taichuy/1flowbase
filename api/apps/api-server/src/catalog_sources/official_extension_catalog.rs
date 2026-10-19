@@ -30,7 +30,9 @@ use crate::{
     official_plugin_registry::rewrite_github_raw_url,
 };
 
+#[path = "official_extension_catalog/catalog_port.rs"]
 mod catalog_port;
+#[path = "official_extension_catalog/runtime_projection.rs"]
 mod runtime_projection;
 
 pub use runtime_projection::ApiOfficialRuntimeExtensionSource;

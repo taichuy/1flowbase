@@ -2,7 +2,7 @@
   "allowedFindings": [
     {
       "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/official_plugin_registry.rs",
+      "file": "api/apps/api-server/src/catalog_sources/official_plugin_registry.rs",
       "line": 74,
       "snippet": "RuntimeTarget::from_rust_target_triple(\"x86_64-unknown-linux-musl\").unwrap()"
     },
