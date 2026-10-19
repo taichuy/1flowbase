@@ -192,7 +192,9 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
         result.current.preparations.getBlockSnapshot('block-1')
       ).toMatchObject({ status: 'ready' })
     );
+    const originalScheduler = result.current.preparations;
     rerender({ registryFactory: factory('second-policy') });
+    expect(result.current.preparations).toBe(originalScheduler);
     await waitFor(() => expect(artifactCache.get).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(

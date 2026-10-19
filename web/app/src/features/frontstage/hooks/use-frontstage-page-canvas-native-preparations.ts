@@ -111,14 +111,19 @@ export function useFrontstagePageCanvasNativePreparations({
   compile = compileNativeReactComponentInBrowser,
   moduleRegistryFactory = createFrontstageNativeReactModuleRegistry
 }: UseFrontstagePageCanvasNativePreparationsInput): UseFrontstagePageCanvasNativePreparationsResult {
-  const preparationScope = useMemo(() => {
+  const preparationScope = useMemo(() => ({
+    actorId,
+    actorWorkspaceId,
+    scheduler: new FrontstageNativePreparationScheduler(maxConcurrent),
+    sourceCopies: new Map<string, NativePreparationSource>(),
+    compiledRefreshes: new Map<string, number>()
+  }), [actorId, actorWorkspaceId, maxConcurrent]);
+  const { scheduler, sourceCopies, compiledRefreshes } = preparationScope;
+  const moduleScope = useMemo(() => {
     const moduleDefinitions = moduleRegistryFactory().definitions;
     return {
-      actorId,
-      actorWorkspaceId,
-      scheduler: new FrontstageNativePreparationScheduler(maxConcurrent),
-      sourceCopies: new Map<string, NativePreparationSource>(),
-      compiledRefreshes: new Map<string, number>(),
+      actorId: preparationScope.actorId,
+      actorWorkspaceId: preparationScope.actorWorkspaceId,
       moduleDefinitions,
       modulePolicySha256: sha256Text(
         JSON.stringify(
@@ -138,17 +143,14 @@ export function useFrontstagePageCanvasNativePreparations({
       ),
       componentFactoryFlights: new Map<string, Promise<NativeComponentFlight>>()
     };
-  }, [actorId, actorWorkspaceId, maxConcurrent, moduleRegistryFactory]);
+  }, [preparationScope.actorId, preparationScope.actorWorkspaceId, moduleRegistryFactory]);
   const {
     actorId: scopedActorId,
     actorWorkspaceId: scopedWorkspaceId,
-    scheduler,
-    sourceCopies,
-    compiledRefreshes,
     moduleDefinitions,
     modulePolicySha256,
     componentFactoryFlights
-  } = preparationScope;
+  } = moduleScope;
   const wasActive = useRef(active);
   const needsReturnValidation = active && !wasActive.current;
   const [isValidating, setIsValidating] = useState(false);
