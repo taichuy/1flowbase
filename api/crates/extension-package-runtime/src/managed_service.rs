@@ -268,13 +268,6 @@ fn invalid(message: &str) -> PluginFrameworkError {
 
 pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> FrameworkResult<()> {
     let Some(service) = &manifest.managed_service else {
-        if manifest
-            .binding_targets
-            .iter()
-            .any(|scope| scope == "system")
-        {
-            return Err(invalid("system binding requires managed_service"));
-        }
         return Ok(());
     };
     if service.worker_idle_timeout_ms == Some(0)

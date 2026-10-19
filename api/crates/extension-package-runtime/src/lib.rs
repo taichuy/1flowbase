@@ -13,6 +13,7 @@ pub mod error {
         ExtensionContractErrorKind as PluginFrameworkErrorKind,
     };
 }
+mod authentication_manifest;
 pub mod managed_manifest;
 pub mod managed_service;
 pub mod manifest_v1;

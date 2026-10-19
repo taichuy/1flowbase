@@ -25,6 +25,7 @@ pub enum ManagedContributionPayload {
     ProviderDistributionRule { rule_id: String },
     DataModels,
     NotificationType { type_code: String },
+    AuthenticationProvider { auth_type: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -168,6 +169,7 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             return Err(invalid("duplicate notification type_code"));
         }
     }
+    crate::authentication_manifest::validate_authentication_manifest(manifest)?;
     let mut contributions = BTreeSet::new();
     for contribution in &module.contributions {
         if contribution.contributor_module_id != module.module_id
@@ -230,6 +232,11 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             type_code: descriptor.type_code.clone(),
         });
     }
+    for descriptor in &manifest.authentication_providers {
+        payloads.insert(ManagedContributionPayload::AuthenticationProvider {
+            auth_type: descriptor.auth_type.clone(),
+        });
+    }
     let mut bound_payloads = BTreeSet::new();
     let mut bindings = BTreeSet::new();
     for binding in &managed.execution_bindings {
@@ -252,6 +259,17 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
         {
             return Err(invalid(
                 "notification.send contribution requires a notification_type payload",
+            ));
+        }
+        if module.contributions.iter().any(|item| {
+            item.contribution_id == binding.contribution_id
+                && item.point_id.as_str() == extension_contracts::AUTHENTICATION_POINT
+        }) && !matches!(
+            binding.payload,
+            Some(ManagedContributionPayload::AuthenticationProvider { .. })
+        ) {
+            return Err(invalid(
+                "authentication.provider contribution requires an authentication_provider payload",
             ));
         }
         if binding.interface_protocol.is_some() {
@@ -363,7 +381,10 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             && !((manifest.managed_service.is_some()
                 || matches!(
                     binding.payload,
-                    Some(ManagedContributionPayload::NotificationType { .. })
+                    Some(
+                        ManagedContributionPayload::NotificationType { .. }
+                            | ManagedContributionPayload::AuthenticationProvider { .. }
+                    )
                 ))
                 && binding.execution_mode == PluginExecutionMode::ProcessPerCall
                 && binding.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1))

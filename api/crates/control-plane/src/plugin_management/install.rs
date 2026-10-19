@@ -258,6 +258,12 @@ fn prepare_installation_commit_blocking(
         installation.metadata_json["notification_types"] =
             serde_json::to_value(&manifest.notification_types)?;
     }
+    if !manifest.authentication_providers.is_empty() {
+        installation.metadata_json["authentication_providers"] =
+            serde_json::to_value(&manifest.authentication_providers)?;
+    }
+    installation.metadata_json["binding_targets"] =
+        serde_json::to_value(&manifest.binding_targets)?;
     if let Some(managed) = &manifest.managed {
         installation.metadata_json["managed"] = serde_json::to_value(managed)?;
     }

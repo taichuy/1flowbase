@@ -91,3 +91,143 @@ fn root_activation_does_not_invent_collections_or_override_host_capability_contr
         .declared_activation_grants(&installation, &declared)
         .is_err());
 }
+
+fn authentication_fixture() -> (
+    domain::PluginInstallationRecord,
+    plugin_framework::PluginManifestV1,
+) {
+    let (mut installation, mut manifest) = fixture();
+    installation.metadata_json = json!({"binding_targets":["system"]});
+    manifest.data_models.clear();
+    manifest.managed.as_mut().unwrap().module.contributions = vec![serde_json::from_value(json!({
+        "contribution_id":"managed_fixture.auth", "contributor_module_id":"managed_fixture",
+        "point_id":"1flowbase.authentication.provider", "contract_version":"1", "mode":"append",
+        "required_permissions":["authentication.verify", "network.http.request"]
+    }))
+    .unwrap()];
+    (installation, manifest)
+}
+
+#[test]
+fn authentication_activation_grants_exact_system_verification_and_http_permissions() {
+    let (installation, manifest) = authentication_fixture();
+    let policy = HostContributionGrantPolicy::root_composition();
+    let grants = policy
+        .declared_activation_grants(&installation, &manifest)
+        .unwrap();
+    assert_eq!(grants.len(), 2);
+    assert!(grants
+        .iter()
+        .all(|grant| grant.resource_scope == ContributionResourceScope::System));
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "authentication.verify"
+            && grant.permission_contract_id == "authentication"));
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "network.http.request"
+            && grant.permission_contract_id == "http-egress"));
+    let contribution = &manifest.managed.as_ref().unwrap().module.contributions[0];
+    let grant = &grants[0];
+    for invalid in [
+        GrantContributionPermission {
+            resource_scope: ContributionResourceScope::Workspace,
+            ..grant.clone()
+        },
+        GrantContributionPermission {
+            permission_contract_id: "managed-service".into(),
+            ..grant.clone()
+        },
+        GrantContributionPermission {
+            permission_contract_version: "2".into(),
+            ..grant.clone()
+        },
+        GrantContributionPermission {
+            permission: "credential.manage".into(),
+            ..grant.clone()
+        },
+    ] {
+        assert!(!policy.admits(&installation, contribution, &invalid));
+    }
+    let mut workspace = installation;
+    workspace.scope_id = domain::DEFAULT_SCOPE_ID;
+    workspace.metadata_json = json!({"binding_targets":["workspace"]});
+    assert!(policy
+        .declared_activation_grants(&workspace, &manifest)
+        .is_err());
+}
+
+#[test]
+fn authentication_effective_authority_rejects_missing_revoked_and_wrong_contribution_grants() {
+    let (installation, manifest) = authentication_fixture();
+    let policy = HostContributionGrantPolicy::root_composition();
+    let contribution = &manifest.managed.as_ref().unwrap().module.contributions[0];
+    let grants = policy
+        .declared_activation_grants(&installation, &manifest)
+        .unwrap();
+    let mut snapshot = domain::PluginContributionAuthoritySnapshot {
+        installation_id: installation.id,
+        workspace_id: domain::SYSTEM_SCOPE_ID,
+        revision: 1,
+        authorizations: grants
+            .iter()
+            .map(|grant| domain::PluginContributionAuthorization {
+                id: Uuid::now_v7(),
+                installation_id: installation.id,
+                workspace_id: domain::SYSTEM_SCOPE_ID,
+                contribution_id: grant.contribution_id.clone(),
+                point_id: contribution.point_id.as_str().into(),
+                permission: grant.permission.clone(),
+                resource_scope: grant.resource_scope.clone(),
+                permission_contract_id: grant.permission_contract_id.clone(),
+                permission_contract_version: grant.permission_contract_version.clone(),
+                status: domain::ContributionAuthorizationStatus::Active,
+                granted_by: Uuid::nil(),
+                revoked_by: None,
+                granted_at: time::OffsetDateTime::now_utc(),
+                revoked_at: None,
+                revision: 1,
+            })
+            .collect(),
+    };
+    assert_eq!(
+        policy
+            .effective_permissions(
+                &installation,
+                domain::SYSTEM_SCOPE_ID,
+                contribution,
+                &snapshot
+            )
+            .unwrap()
+            .len(),
+        2
+    );
+    snapshot.authorizations[0].status = domain::ContributionAuthorizationStatus::Revoked;
+    assert!(policy
+        .effective_permissions(
+            &installation,
+            domain::SYSTEM_SCOPE_ID,
+            contribution,
+            &snapshot
+        )
+        .is_err());
+    snapshot.authorizations[0].status = domain::ContributionAuthorizationStatus::Active;
+    snapshot.authorizations[0].contribution_id = "different.auth".into();
+    assert!(policy
+        .effective_permissions(
+            &installation,
+            domain::SYSTEM_SCOPE_ID,
+            contribution,
+            &snapshot
+        )
+        .is_err());
+    snapshot.authorizations.clear();
+    assert!(policy
+        .effective_permissions(
+            &installation,
+            domain::SYSTEM_SCOPE_ID,
+            contribution,
+            &snapshot
+        )
+        .is_err());
+}

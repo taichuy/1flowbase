@@ -1,4 +1,5 @@
 mod adapter_descriptor_tests;
+mod authentication_contract_tests;
 mod data_source_contract_tests;
 #[path = "managed_contributions/lifecycle_contract_tests.rs"]
 mod lifecycle_contract_tests;

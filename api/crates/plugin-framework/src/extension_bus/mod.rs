@@ -25,3 +25,6 @@ pub use managed_interface_plan::*;
 
 mod notification_plan;
 pub use notification_plan::*;
+
+mod authentication_plan;
+pub use authentication_plan::*;

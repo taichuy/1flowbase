@@ -39,6 +39,7 @@ pub use data_model_template_contract::*;
 pub use data_source_contract::*;
 pub use data_source_package::*;
 pub use error::*;
+pub use extension_contracts::authentication_contract::*;
 pub use extension_contracts::notification_contract::*;
 pub use extension_package_runtime::managed_manifest::{
     ManagedContributionExecutionBinding, ManagedContributionPayload, ManagedManifest,

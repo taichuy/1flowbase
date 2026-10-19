@@ -78,6 +78,13 @@ impl HostContributionGrantPolicy {
             point_contract_version: extension_contracts::NOTIFICATION_CONTRACT_V1,
             resource_scope: ContributionResourceScope::Workspace,
         });
+        rules.push(HostContributionPermissionRule {
+            point_id: extension_contracts::AUTHENTICATION_POINT.into(),
+            permission: extension_contracts::AUTHENTICATION_PERMISSION.into(),
+            permission_contract_id: "authentication",
+            point_contract_version: extension_contracts::AUTHENTICATION_CONTRACT_V1,
+            resource_scope: ContributionResourceScope::System,
+        });
         Self { rules }
     }
 
@@ -92,7 +99,7 @@ impl HostContributionGrantPolicy {
             base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
-                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1"
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1;authentication/v1"
                 ]
                 .concat()
             ))
@@ -154,6 +161,24 @@ impl HostContributionGrantPolicy {
         contribution: &plugin_framework::extension_bus::ContributionDescriptor,
         request: &GrantContributionPermission,
     ) -> bool {
+        if contribution.point_id.as_str() == extension_contracts::AUTHENTICATION_POINT {
+            return domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                == domain::SYSTEM_SCOPE_ID
+                && contribution.contract_version.as_str()
+                    == extension_contracts::AUTHENTICATION_CONTRACT_V1
+                && request.permission_contract_version == "1"
+                && request.resource_scope == ContributionResourceScope::System
+                && matches!(
+                    (
+                        request.permission.as_str(),
+                        request.permission_contract_id.as_str()
+                    ),
+                    (
+                        extension_contracts::AUTHENTICATION_PERMISSION,
+                        "authentication"
+                    ) | ("network.http.request", "http-egress")
+                );
+        }
         if contribution.point_id.as_str() == plugin_framework::MANAGED_SERVICE_POINT {
             let is_system =
                 domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)

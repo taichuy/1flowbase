@@ -4,6 +4,8 @@
 //! `plugin-framework`; this crate owns only canonical wire and runtime types.
 
 extern crate self as extension_contracts;
+pub mod authentication_contract;
+pub use authentication_contract::*;
 pub mod application_logs_contract;
 pub use application_logs_contract::*;
 #[path = "host_services/http_egress_contract.rs"]

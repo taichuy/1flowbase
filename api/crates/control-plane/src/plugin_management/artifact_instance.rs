@@ -153,6 +153,11 @@ where
                 if let Some(managed) = &manifest.managed {
                     metadata_json["managed"] = serde_json::to_value(managed)?;
                 }
+                if !manifest.authentication_providers.is_empty() {
+                    metadata_json["authentication_providers"] =
+                        serde_json::to_value(&manifest.authentication_providers)?;
+                }
+                metadata_json["binding_targets"] = serde_json::to_value(&manifest.binding_targets)?;
                 let installation = self
                     .repository
                     .upsert_installation(&UpsertPluginInstallationInput {
