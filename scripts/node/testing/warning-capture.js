@@ -22,10 +22,8 @@ const CARGO_LLVM_COV_INFO_LINE_PATTERN = /^info: (cargo-llvm-cov currently setti
 const PACKAGE_MANAGER_COMMAND_ECHO_PATTERN = /^\$\s+(?:\.{1,2}\/|[A-Za-z0-9_@./-]+)(?:\s|$)/u;
 const TURBO_VERSION_LINE_PATTERN = /^[•·]\s+turbo\s+\d+\.\d+\.\d+\s*$/u;
 const VITEST_STDERR_HEADER_PATTERN = /^stderr\s+\|/u;
-const REACT_ACT_WARNING_HEADER_PATTERN =
-  /^An update to .+ inside a test was not wrapped in act\(\.\.\.\)\.?$/u;
-const REACT_ACT_WARNING_END_PATTERN =
-  /^This ensures that you're testing the behavior the user would see in the browser\. Learn more at https:\/\/react\.dev\/link\/wrap-tests-with-act$/u;
+// React's runtime diagnostic is test-fidelity evidence, not successful-tool noise.
+const REACT_ACT_WARNING_PATTERN = /(?:An update to .+ inside a test was not wrapped in act|A suspended resource finished loading inside a test, but the event was not wrapped in act)\(\.\.\.\)/u;
 
 function getRepoRoot() {
   return path.resolve(__dirname, '..', '..', '..');
@@ -120,18 +118,10 @@ function filterSuccessfulWarningStderr(stderr) {
   }
 
   const retained = [];
-  let skippingReactActWarning = false;
   let pendingVitestHeader = null;
 
   for (const line of stderr.split(/\r?\n/u)) {
     const normalized = stripAnsiControlSequences(line).trim();
-
-    if (skippingReactActWarning) {
-      if (REACT_ACT_WARNING_END_PATTERN.test(normalized)) {
-        skippingReactActWarning = false;
-      }
-      continue;
-    }
 
     if (isKnownSuccessfulToolNoiseLine(line)) {
       continue;
@@ -139,11 +129,6 @@ function filterSuccessfulWarningStderr(stderr) {
 
     if (VITEST_STDERR_HEADER_PATTERN.test(normalized)) {
       pendingVitestHeader = line;
-      continue;
-    }
-
-    if (REACT_ACT_WARNING_HEADER_PATTERN.test(normalized)) {
-      skippingReactActWarning = true;
       continue;
     }
 
@@ -240,6 +225,13 @@ function runCommandSequence({
 
     if (result.status !== 0) {
       return result.status ?? 1;
+    }
+
+    if (REACT_ACT_WARNING_PATTERN.test(stripAnsiControlSequences(
+      `${result.stdout || ''}\n${result.stderr || ''}`,
+    ))) {
+      writeStderr(`[test-fidelity] ${command.label}: React work escaped the awaited act boundary; see the full command log.\n`);
+      return 1;
     }
   }
 
