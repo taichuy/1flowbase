@@ -134,3 +134,20 @@ describe('Frontstage page signals', () => {
     expect(rejected.snapshot).toBe(initial);
   });
 });
+
+
+test('signal output lookup preserves the first duplicate declaration and diagnostic order', () => {
+  const producer = block('producer', { inputs: [], outputs: [
+    { name: 'total', schema: { type: 'string' } },
+    { name: 'total', schema: totalSchema }
+  ] });
+  const consumer = block('consumer', { inputs: [
+    { name: 'first', schema: totalSchema, source: { block_id: 'producer', output: 'total', scope: 'tab' } },
+    { name: 'second', schema: totalSchema, source: { block_id: 'producer', output: 'total', scope: 'tab' } }
+  ], outputs: [] });
+  const graph = createFrontstageSignalGraph([consumer, producer]);
+  expect(graph.diagnostics.map(({ code, input }) => ({ code, input }))).toEqual([
+    { code: 'schema_incompatible', input: 'first' },
+    { code: 'schema_incompatible', input: 'second' }
+  ]);
+});

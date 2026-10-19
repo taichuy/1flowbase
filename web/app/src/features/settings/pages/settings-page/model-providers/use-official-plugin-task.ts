@@ -54,8 +54,7 @@ export function useOfficialPluginTask({
   }, [
     officialInstallState.taskId,
     pluginTaskQuery.data,
-    pluginTaskQuery.fetchStatus,
-    refetchOfficialInstallTask
+    pluginTaskQuery.fetchStatus
   ]);
 
   useEffect(() => {

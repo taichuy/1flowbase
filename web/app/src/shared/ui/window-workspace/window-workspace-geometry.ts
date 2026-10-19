@@ -1,9 +1,9 @@
 import type { WindowWorkspaceRect } from './window-workspace-state';
 
-export const WINDOW_WORKSPACE_MARGIN = 8;
+const WINDOW_WORKSPACE_MARGIN = 8;
 export const WINDOW_WORKSPACE_MIN_WIDTH = 360;
 export const WINDOW_WORKSPACE_MIN_HEIGHT = 320;
-export const WINDOW_WORKSPACE_VISIBLE_TITLE_HEIGHT = 48;
+const WINDOW_WORKSPACE_VISIBLE_TITLE_HEIGHT = 48;
 
 export interface WindowWorkspaceViewport {
   left: number;

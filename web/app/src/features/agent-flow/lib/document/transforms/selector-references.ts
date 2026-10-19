@@ -91,7 +91,7 @@ function transformStateWriteValueSelectorReferences(
   return value;
 }
 
-export function transformFlowBindingSelectorReferences(
+function transformFlowBindingSelectorReferences(
   binding: FlowBinding,
   transformSelector: SelectorReferenceTransform
 ): FlowBinding {

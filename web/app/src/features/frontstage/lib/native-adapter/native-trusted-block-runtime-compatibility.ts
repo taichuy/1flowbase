@@ -13,7 +13,7 @@ import {
 import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../../packages/ui/package.json';
 
-export const FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION =
+const FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION =
   '1.6.0';
 
 type FrontstageNativeTrustedBlockAllowedImport =

@@ -11,14 +11,6 @@ export type DataModelFlowNodeType =
   | 'data_model_update'
   | 'data_model_delete';
 
-export const DATA_MODEL_NODE_TYPES: DataModelFlowNodeType[] = [
-  'data_model_list',
-  'data_model_get',
-  'data_model_create',
-  'data_model_update',
-  'data_model_delete'
-];
-
 const DATA_MODEL_ACTION_BY_NODE_TYPE = {
   data_model_list: 'list',
   data_model_get: 'get',
@@ -27,7 +19,7 @@ const DATA_MODEL_ACTION_BY_NODE_TYPE = {
   data_model_delete: 'delete'
 } satisfies Record<DataModelFlowNodeType, DataModelNodeAction>;
 
-export const DATA_MODEL_NODE_LABELS = {
+const DATA_MODEL_NODE_LABELS = {
   data_model_list: 'Data Model List',
   data_model_get: 'Data Model Get',
   data_model_create: 'Data Model Create',
@@ -35,7 +27,7 @@ export const DATA_MODEL_NODE_LABELS = {
   data_model_delete: 'Data Model Delete'
 } satisfies Record<DataModelFlowNodeType, string>;
 
-export const defaultDataModelNodeConfig = { data_model_code: '' } as const;
+const defaultDataModelNodeConfig = { data_model_code: '' } as const;
 
 const DATA_MODEL_WRITE_ACTIONS = new Set<DataModelNodeAction>([
   'create',
@@ -67,7 +59,7 @@ const dataModelActionOutputs = {
   ]
 } satisfies Record<DataModelNodeAction, FlowNodeDocument['outputs']>;
 
-export function isDataModelFlowNodeType(
+function isDataModelFlowNodeType(
   nodeType: string
 ): nodeType is DataModelFlowNodeType {
   return Object.prototype.hasOwnProperty.call(
@@ -158,27 +150,27 @@ function createDataModelNodeDefinition({
   };
 }
 
-export const dataModelListNodeDefinition = createDataModelNodeDefinition({
+const dataModelListNodeDefinition = createDataModelNodeDefinition({
   label: DATA_MODEL_NODE_LABELS.data_model_list,
   fields: [dataModelQueryField]
 });
 
-export const dataModelGetNodeDefinition = createDataModelNodeDefinition({
+const dataModelGetNodeDefinition = createDataModelNodeDefinition({
   label: DATA_MODEL_NODE_LABELS.data_model_get,
   fields: [dataModelRecordIdField]
 });
 
-export const dataModelCreateNodeDefinition = createDataModelNodeDefinition({
+const dataModelCreateNodeDefinition = createDataModelNodeDefinition({
   label: DATA_MODEL_NODE_LABELS.data_model_create,
   fields: [dataModelPayloadField, dataModelSideEffectPolicyField]
 });
 
-export const dataModelUpdateNodeDefinition = createDataModelNodeDefinition({
+const dataModelUpdateNodeDefinition = createDataModelNodeDefinition({
   label: DATA_MODEL_NODE_LABELS.data_model_update,
   fields: [dataModelRecordIdField, dataModelPayloadField, dataModelSideEffectPolicyField]
 });
 
-export const dataModelDeleteNodeDefinition = createDataModelNodeDefinition({
+const dataModelDeleteNodeDefinition = createDataModelNodeDefinition({
   label: DATA_MODEL_NODE_LABELS.data_model_delete,
   fields: [dataModelRecordIdField, dataModelSideEffectPolicyField]
 });

@@ -11,7 +11,6 @@ import { styleBoundaryApplicationRunRecord, styleBoundaryMcpCatalog, styleBounda
 export {
   styleBoundaryMcpCatalog,
   styleBoundaryMcpInterfaceCapabilities,
-  styleBoundaryNodeContributions
 };
 
 export function seedStyleBoundaryAuth() {

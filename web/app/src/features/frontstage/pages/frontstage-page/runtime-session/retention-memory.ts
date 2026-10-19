@@ -1,5 +1,5 @@
 /** These are cache accounting bytes, never an estimate of renderer RSS. */
-export const RETENTION_SETTINGS_KEY = 'frontstage.retention.settings.v1';
+const RETENTION_SETTINGS_KEY = 'frontstage.retention.settings.v1';
 // Used only when no heap limit is exposed. This resource-policy fallback is
 // configurable per browser, not a page-count limit or a device RAM assumption.
 export const FALLBACK_RETENTION_COST_BYTES = 64 * 1024 * 1024;

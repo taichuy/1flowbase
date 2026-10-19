@@ -51,29 +51,3 @@ export function formatMcpDirectoryPath(
     groups
   );
 }
-
-export function formatMcpGroupEditorPath({
-  instanceName,
-  selectedDirectoryKey,
-  currentPath,
-  parentPath,
-  draftDisplayName,
-  groups
-}: {
-  instanceName: string;
-  selectedDirectoryKey: string;
-  currentPath: string | undefined;
-  parentPath: string | null;
-  draftDisplayName: string | undefined;
-  groups: Map<string, ConsoleMcpGroup>;
-}) {
-  if (selectedDirectoryKey.startsWith('group:')) {
-    return readablePath(instanceName || 'mcp', currentPath || '/', groups);
-  }
-  const parent = readablePath(
-    instanceName || 'mcp',
-    normalizeMcpDirectoryPath(parentPath || '/'),
-    groups
-  );
-  return `${parent === `${instanceName || 'mcp'} /` ? instanceName || 'mcp' : parent} / ${draftDisplayName?.trim() || i18nText('settingsMcpManagement', 'auto.unnamed')}`;
-}

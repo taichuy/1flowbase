@@ -31,6 +31,7 @@ import type { FlowSelectorOption } from '../../lib/selector-options';
 import { isOutputVariableKeyAllowed } from '../../lib/output-contract/variable-key';
 import { i18nText } from '../../../../shared/i18n/text';
 import { SelectorField } from './SelectorField';
+import { useStableListItemKeys } from '../../hooks/interactions/use-stable-list-item-keys';
 
 interface VariableGroupsFieldProps {
   ariaLabel: string;
@@ -403,6 +404,7 @@ export function VariableGroupsField({
   options,
   onChange
 }: VariableGroupsFieldProps) {
+  const groupKeys = useStableListItemKeys('variable-group', value.length);
   function updateGroup(index: number, group: FlowVariableGroupDocument) {
     onChange(replaceGroup(value, index, group));
   }
@@ -415,16 +417,17 @@ export function VariableGroupsField({
     >
       {value.map((group, groupIndex) => (
         <VariableGroupSection
-          key={`variable-group-${groupIndex}`}
+          key={groupKeys.itemKeys[groupIndex]}
           ariaLabel={ariaLabel}
           group={group}
           groupIndex={groupIndex}
           groups={value}
           options={options}
           onChange={(nextGroup) => updateGroup(groupIndex, nextGroup)}
-          onDelete={() =>
-            onChange(value.filter((_, index) => index !== groupIndex))
-          }
+          onDelete={() => {
+            groupKeys.removeItemKey(groupIndex);
+            onChange(value.filter((_, index) => index !== groupIndex));
+          }}
         />
       ))}
       <Button

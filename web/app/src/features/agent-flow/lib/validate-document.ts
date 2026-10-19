@@ -351,6 +351,11 @@ function validateVariableAggregatorGroups(
     environmentVariables,
     workflowTriggerContext
   );
+  const optionsBySelector = new Map<string, (typeof options)[number]>();
+  for (const option of options) {
+    const key = JSON.stringify(option.value);
+    if (!optionsBySelector.has(key)) optionsBySelector.set(key, option);
+  }
   const groupKeyCounts = new Map<string, number>();
 
   for (const group of binding.value) {
@@ -422,11 +427,7 @@ function validateVariableAggregatorGroups(
         continue;
       }
 
-      const selectedOption = options.find(
-        (option) =>
-          option.value.length === selector.length &&
-          option.value.every((segment, index) => segment === selector[index])
-      );
+      const selectedOption = optionsBySelector.get(JSON.stringify(selector));
       const declaredType = selectedOption?.valueType.startsWith('array[')
         ? 'array'
         : selectedOption?.valueType;

@@ -20,7 +20,6 @@ export {
 export { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../native-modules/registry';
 
 export {
-  FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION,
   getFrontstageNativeTrustedBlockRuntimeCompatibility,
   type FrontstageNativeTrustedBlockRuntimeCompatibilityManifest,
   type FrontstageNativeTrustedBlockRuntimeCompatibilityModule,

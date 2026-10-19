@@ -72,6 +72,11 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { downloadApplicationArchive } from '../../../applications/lib/template-download';
 import {
   DEBUG_CONSOLE_GAP,
+  DEBUG_CONSOLE_MIN_WIDTH,
+  CONVERSATION_LOG_MIN_WIDTH,
+  VARIABLES_DOCK_MIN_WIDTH,
+  HISTORY_DOCK_MIN_WIDTH,
+  VARIABLE_CACHE_MIN_HEIGHT,
   VARIABLE_CACHE_MIN_SIDEBAR_WIDTH
 } from './canvas-frame/layout';
 
@@ -390,7 +395,17 @@ export function AgentFlowCanvasFrame({
     handleVariableCacheResizeStart,
     handleVariableCacheSidebarResizeStart,
     handleVariablesDockResizeStart,
-    handleNodeDetailResizeKeyDown
+    maxDebugConsoleWidth,
+    maxConversationLogWidth,
+    maxVariablesDockWidth,
+    maxHistoryDockWidth,
+    handleDebugConsoleResizeKeyDown,
+    handleConversationLogResizeKeyDown,
+    handleVariablesDockResizeKeyDown,
+    handleHistoryDockResizeKeyDown,
+    handleVariableCacheSidebarResizeKeyDown,
+    handleNodeDetailResizeKeyDown,
+    handleVariableCacheResizeKeyDown
   } = useCanvasDockLayout({
     selectedNodeId,
     historyOpen,
@@ -614,6 +629,9 @@ export function AgentFlowCanvasFrame({
                   : i18nText('agentFlow', 'auto.adjust_system_variable_width')
             }
             width={boundedVariablesDockWidth}
+            minWidth={VARIABLES_DOCK_MIN_WIDTH}
+            maxWidth={maxVariablesDockWidth}
+            onResizeKeyDown={handleVariablesDockResizeKeyDown}
             onResizeStart={handleVariablesDockResizeStart}
           >
             {systemVariablesOpen ? (
@@ -706,9 +724,13 @@ export function AgentFlowCanvasFrame({
               onClose={() => setVariableCacheOpen(false)}
               onReset={handleResetVariableCache}
               onResizeStart={handleVariableCacheResizeStart}
+              onResizeKeyDown={handleVariableCacheResizeKeyDown}
+              minHeight={VARIABLE_CACHE_MIN_HEIGHT}
+              maxHeight={variableCacheMaxHeight}
               onSelectedChange={setSelectedVariable}
               onSelectedValueChange={handleVariableCacheValueChange}
               onSidebarResizeStart={handleVariableCacheSidebarResizeStart}
+              onSidebarResizeKeyDown={handleVariableCacheSidebarResizeKeyDown}
               rightOffset={variableCacheRightOffset}
               selectedVariable={selectedVariable}
               sidebarMaxWidth={variableCacheSidebarMaxWidth}
@@ -730,6 +752,9 @@ export function AgentFlowCanvasFrame({
               right: `${16 + boundedDebugConsoleWidth + DEBUG_CONSOLE_GAP}px`
             }}
             width={boundedConversationLogWidth}
+            minWidth={CONVERSATION_LOG_MIN_WIDTH}
+            maxWidth={maxConversationLogWidth}
+            onResizeKeyDown={handleConversationLogResizeKeyDown}
             onResizeStart={handleConversationLogResizeStart}
           >
             <Suspense
@@ -757,6 +782,9 @@ export function AgentFlowCanvasFrame({
             isResizing={isResizingDebugConsole}
             resizeLabel={i18nText('agentFlow', 'auto.adjust_preview_width')}
             width={boundedDebugConsoleWidth}
+            minWidth={DEBUG_CONSOLE_MIN_WIDTH}
+            maxWidth={maxDebugConsoleWidth}
+            onResizeKeyDown={handleDebugConsoleResizeKeyDown}
             onResizeStart={handleDebugConsoleResizeStart}
           >
             <Suspense
@@ -809,6 +837,9 @@ export function AgentFlowCanvasFrame({
               'auto.adjust_historical_version_width'
             )}
             width={boundedHistoryDockWidth}
+            minWidth={HISTORY_DOCK_MIN_WIDTH}
+            maxWidth={maxHistoryDockWidth}
+            onResizeKeyDown={handleHistoryDockResizeKeyDown}
             onResizeStart={handleHistoryDockResizeStart}
           >
             <Suspense

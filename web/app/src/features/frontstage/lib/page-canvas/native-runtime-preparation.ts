@@ -170,8 +170,8 @@ interface ScheduledPreparation {
   observedAtMs: number;
 }
 
-export const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 2;
-export const FRONTSTAGE_NATIVE_INTERACTION_LEASE_MS = 200;
+const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 2;
+const FRONTSTAGE_NATIVE_INTERACTION_LEASE_MS = 200;
 
 /** Owns one page's bounded Native React preparation queue; React roots belong to P2. */
 export class FrontstageNativePreparationScheduler implements FrontstageNativePreparationSource {

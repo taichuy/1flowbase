@@ -620,6 +620,14 @@ function buildPreviewValue(
   }
 }
 
+function indexPreviewNodes(document: FlowAuthoringDocument) {
+  const nodesById = new Map<string, (typeof document.graph.nodes)[number]>();
+  for (const node of document.graph.nodes) {
+    if (!nodesById.has(node.id)) nodesById.set(node.id, node);
+  }
+  return nodesById;
+}
+
 export function buildNodeDebugPreviewInput(
   document: FlowAuthoringDocument,
   nodeId: string
@@ -632,13 +640,12 @@ export function buildNodeDebugPreviewInput(
   }
 
   const selectors = collectNodeReferenceSelectors(node);
+  const nodesById = indexPreviewNodes(document);
 
   for (const selector of selectors) {
     const sourceNodeId = selector[0] ?? '';
     const outputKey = selectorOutputKey(selector);
-    const sourceNode = document.graph.nodes.find(
-      (entry) => entry.id === sourceNodeId
-    );
+    const sourceNode = nodesById.get(sourceNodeId);
     const sourceOutput = findNodeOutputBySelector(
       document,
       sourceNode,
@@ -707,15 +714,14 @@ export function buildNodeDebugPreviewPlan(
   }
 
   const selectors = collectNodeReferenceSelectors(node);
+  const nodesById = indexPreviewNodes(document);
   const visited = new Set<string>();
 
   for (const selector of selectors) {
     const sourceNodeId = selector[0] ?? '';
     const outputKey = selectorOutputKey(selector);
     const cacheKey = selector.join('.');
-    const sourceNode = document.graph.nodes.find(
-      (entry) => entry.id === sourceNodeId
-    );
+    const sourceNode = nodesById.get(sourceNodeId);
     const sourceOutput = findNodeOutputBySelector(
       document,
       sourceNode,
@@ -821,15 +827,14 @@ export function buildNodeDebugVariableConfirmationPlan(
   }
 
   const selectors = collectNodeReferenceSelectors(node);
+  const nodesById = indexPreviewNodes(document);
   const visited = new Set<string>();
 
   for (const selector of selectors) {
     const sourceNodeId = selector[0] ?? '';
     const outputKey = selectorOutputKey(selector);
     const cacheKey = selector.join('.');
-    const sourceNode = document.graph.nodes.find(
-      (entry) => entry.id === sourceNodeId
-    );
+    const sourceNode = nodesById.get(sourceNodeId);
     const sourceOutput = findNodeOutputBySelector(
       document,
       sourceNode,

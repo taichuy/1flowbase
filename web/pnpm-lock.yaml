@@ -278,9 +278,6 @@ importers:
       '@1flowbase/embed-sdk':
         specifier: workspace:*
         version: link:../packages/embed-sdk
-      '@1flowbase/embedded-contracts':
-        specifier: workspace:*
-        version: link:../packages/embedded-contracts
       '@1flowbase/flow-schema':
         specifier: workspace:^
         version: link:../packages/flow-schema
@@ -317,9 +314,6 @@ importers:
       '@ant-design/x-markdown':
         specifier: 2.9.0
         version: 2.9.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@dagrejs/dagre':
-        specifier: ^3.0.0
-        version: 3.0.0
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -332,15 +326,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.5)
-      '@lexical/plain-text':
-        specifier: ^0.43.0
-        version: 0.43.0
       '@lexical/react':
         specifier: ^0.43.0
         version: 0.43.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(yjs@13.6.30)
-      '@lexical/rich-text':
-        specifier: ^0.43.0
-        version: 0.43.0
       '@lexical/utils':
         specifier: ^0.43.0
         version: 0.43.0
@@ -389,9 +377,6 @@ importers:
       i18next:
         specifier: ^26.3.0
         version: 26.3.0(typescript@5.9.3)
-      i18next-resources-to-backend:
-        specifier: ^1.2.1
-        version: 1.2.2
       is-mobile:
         specifier: 5.0.0
         version: 5.0.0

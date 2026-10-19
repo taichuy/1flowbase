@@ -33,7 +33,7 @@ function schemaType(value: unknown) {
     : undefined;
 }
 
-export function inferJsonSchemaFromValue(value: unknown): Record<string, unknown> {
+function inferJsonSchemaFromValue(value: unknown): Record<string, unknown> {
   if (Array.isArray(value)) {
     return {
       type: 'array',
@@ -101,7 +101,7 @@ export function outputHasLlmContextSchema(
   );
 }
 
-export function isLlmContextJsonSchema(schema: unknown): boolean {
+function isLlmContextJsonSchema(schema: unknown): boolean {
   if (!isRecord(schema) || schemaType(schema) !== 'array') {
     return false;
   }

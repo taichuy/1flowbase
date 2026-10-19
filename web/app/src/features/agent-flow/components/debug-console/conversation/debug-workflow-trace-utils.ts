@@ -7,7 +7,7 @@ export interface AgentFlowTraceDisplayGroup {
   items: AgentFlowTraceItem[];
 }
 
-export function getTraceItemKey(item: AgentFlowTraceItem) {
+function getTraceItemKey(item: AgentFlowTraceItem) {
   return item.nodeRunId ?? item.nodeId;
 }
 
