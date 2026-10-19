@@ -67,7 +67,7 @@ function matchesCatalogOperationKind(
   return policyOperation.kind === catalogOperation.full_profile.kind;
 }
 
-function detailPolicyOperation(
+export function detailPolicyOperation(
   policyGroup: ConsolePolicyGroup,
   catalogOperation: ConsolePolicyCatalogOperation
 ): ConsolePolicyOperation {

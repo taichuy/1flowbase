@@ -1,3 +1,4 @@
+import escapeRegExp from 'lodash/escapeRegExp';
 import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import {
   act,

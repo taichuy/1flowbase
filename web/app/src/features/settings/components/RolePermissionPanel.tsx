@@ -21,7 +21,7 @@ import { i18nText } from '../../../shared/i18n/text';
 import { FALLBACK_APP_LOCALE, toAppLocale } from '../../../shared/i18n/locales';
 import { RoleDataPolicySection } from './role-permissions/RoleDataPolicySection';
 import { renderConsolePolicyCatalogTable } from './role-permissions/console-policy-catalog-table';
-import { disabledConsolePolicyGroup, materializeDetailPolicyOperations, sameConsolePolicyGroup, replaceConsolePolicyGroup, type ConsolePolicyCatalogGroup, type ConsolePolicyGroup, type ConsolePolicyRowOperation } from './role-permissions/console-policy-draft';
+import { detailPolicyOperation, disabledConsolePolicyGroup, materializeDetailPolicyOperations, sameConsolePolicyGroup, replaceConsolePolicyGroup, type ConsolePolicyCatalogGroup, type ConsolePolicyGroup, type ConsolePolicyRowOperation } from './role-permissions/console-policy-draft';
 import { useConsoleSettingsOrder } from './role-permissions/useConsoleSettingsOrder';
 import './role-permissions/role-permission-panel.css';
 
