@@ -144,5 +144,5 @@ impl FileReadCall {
 }
 
 #[cfg(test)]
-#[path = "_tests/file_read_callbacks.rs"]
+#[path = "_tests/host_services/file_read_callbacks.rs"]
 mod tests;

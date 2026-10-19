@@ -1032,15 +1032,15 @@ async fn execute_callback(
 }
 
 #[cfg(test)]
-#[path = "../_tests/plugin_credential_callbacks.rs"]
+#[path = "../_tests/host_services/plugin_credential_callbacks.rs"]
 mod credential_tests;
 
 #[cfg(test)]
-#[path = "../_tests/file_import_callbacks.rs"]
+#[path = "../_tests/host_services/file_import_callbacks.rs"]
 mod file_import_tests;
 
 #[cfg(test)]
-#[path = "../_tests/exchange_host_services.rs"]
+#[path = "../_tests/host_services/exchange_host_services.rs"]
 mod exchange_host_services;
 
 fn exchange_service_response<T: serde::Serialize>(
