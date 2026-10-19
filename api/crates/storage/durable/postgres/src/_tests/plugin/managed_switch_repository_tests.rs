@@ -441,3 +441,104 @@ async fn rejected_managed_activation_compare_restore_preserves_newer_selection()
     assert_eq!(retained.desired_state, PluginDesiredState::ActiveRequested);
     assert_eq!(retained.updated_at, newer.updated_at);
 }
+
+#[tokio::test]
+async fn system_authority_binding_targets_matches_domain_scope_without_managed_service() {
+    let store = store().await;
+    let actor = actor(&store).await;
+    for (index, metadata, contract) in [
+        (
+            0,
+            json!({"binding_targets":["system"],"authentication_providers":[{"auth_type":"fixture"}]}),
+            "1flowbase.extension-bus/v1",
+        ),
+        (
+            1,
+            json!({"managed_service":{"scope":"system"}}),
+            "1flowbase.extension-bus/v1",
+        ),
+        (
+            2,
+            json!({"binding_targets":["system","workspace"]}),
+            "1flowbase.extension-bus/v1",
+        ),
+        (
+            3,
+            json!({"binding_targets":["workspace"]}),
+            "1flowbase.extension-bus/v1",
+        ),
+        (4, json!({}), "1flowbase.extension-bus/v1"),
+        (
+            5,
+            json!({"binding_targets":"system"}),
+            "1flowbase.extension-bus/v1",
+        ),
+        (
+            6,
+            json!({"binding_targets":["system"]}),
+            "1flowbase.plugin/v1",
+        ),
+    ] {
+        let mut input = managed_input(actor, &format!("3.0.{index}"));
+        input.installation.metadata_json = metadata;
+        input.installation.contract_version = contract.into();
+        input.settings_templates.clear();
+        let installed = store.commit_plugin_installation(&input).await.unwrap();
+        let expected = domain::managed_installation_scope(&installed, domain::DEFAULT_SCOPE_ID)
+            == domain::SYSTEM_SCOPE_ID;
+        let scopes = store
+            .contribution_authority_workspaces(installed.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            scopes.contains(&domain::SYSTEM_SCOPE_ID),
+            expected,
+            "scope projection case {index}"
+        );
+        let lease = store
+            .lock_installation_contribution_authority(installed.id, domain::SYSTEM_SCOPE_ID)
+            .await;
+        assert_eq!(lease.is_ok(), expected, "authority lock case {index}");
+        if let Ok(lease) = lease {
+            lease.release().await.unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn system_binding_targets_are_included_in_candidate_switch_set() {
+    let store = store().await;
+    let actor = actor(&store).await;
+    let mut installations = Vec::new();
+    for version in ["4.0.0", "5.0.0"] {
+        let mut input = managed_input(actor, version);
+        input.installation.metadata_json = json!({"binding_targets":["system"]});
+        input.settings_templates.clear();
+        installations.push(store.commit_plugin_installation(&input).await.unwrap());
+    }
+    let current = installations[0].id;
+    let target = installations[1].id;
+    desired(&store, current, actor, PluginDesiredState::ActiveRequested)
+        .await
+        .unwrap();
+    store
+        .lock_installation_contribution_authority(target, domain::SYSTEM_SCOPE_ID)
+        .await
+        .unwrap()
+        .release()
+        .await
+        .unwrap();
+    let command = ManagedInstallationSwitch {
+        workspace_id: domain::SYSTEM_SCOPE_ID,
+        current_installation_id: current,
+        target_installation_id: target,
+        node_id: "test-node".into(),
+        installation_ids: vec![current, target],
+    };
+    let candidate = store
+        .lock_managed_installation_switch(&command)
+        .await
+        .unwrap();
+    candidate.release().await.unwrap();
+    assert_eq!(selected(&store).await, vec![current]);
+}

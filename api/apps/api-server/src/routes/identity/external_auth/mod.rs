@@ -16,7 +16,10 @@ use domain::{LoginEntryRecord, VerifiedExternalIdentity};
 use extension_contracts::{AuthenticationRequest, AuthenticationResponse};
 use interface::{PublicInput, PublicOutput};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
 use transaction::{BindingIntent, Transaction};
 use uuid::Uuid;
 
@@ -299,11 +302,83 @@ async fn begin(
     Ok((CookieJar::new().add(cookie), value))
 }
 
-struct VerifiedCallback {
+pub(super) struct VerifiedCallback {
     login_entry_id: Uuid,
     identity: VerifiedExternalIdentity,
     registration_eligible: bool,
     binding_actor: Option<domain::ActorContext>,
+    authority: CompletionAuthority,
+}
+
+/// The lease is Send; this one-shot Host holder also makes the canonical sealed
+/// facts Sync without exposing the authority lock to any managed projection.
+pub(super) struct CompletionAuthority(
+    Mutex<Option<Box<dyn control_plane::ports::ContributionAuthorityLease>>>,
+);
+impl CompletionAuthority {
+    fn new(lease: Box<dyn control_plane::ports::ContributionAuthorityLease>) -> Self {
+        Self(Mutex::new(Some(lease)))
+    }
+    fn take(self) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>, ApiError> {
+        self.0
+            .into_inner()
+            .map_err(|_| transaction::denied())?
+            .ok_or_else(transaction::denied)
+    }
+}
+
+#[derive(Default)]
+struct CallbackAdmissionState {
+    verified: Option<VerifiedCallback>,
+    cookie_name: Option<String>,
+}
+
+/// Host-only one-shot side port, analogous to ConsoleProtocolAdmission. The
+/// PublicPrincipal stays anonymous; it never fabricates a user for an unbound identity.
+#[derive(Clone, Default)]
+pub(super) struct CallbackAdmission(Arc<Mutex<CallbackAdmissionState>>);
+impl CallbackAdmission {
+    fn take(&self) -> Result<VerifiedCallback, ApiError> {
+        self.0
+            .lock()
+            .map_err(|_| transaction::denied())?
+            .verified
+            .take()
+            .ok_or_else(transaction::denied)
+    }
+    fn cookie_name(&self) -> Option<String> {
+        self.0.lock().ok()?.cookie_name.take()
+    }
+}
+
+/// Only the activated BuiltIn factory may consume the original OAuth carrier.
+/// Neither this credential nor its side port is serializable or hook-projectable.
+pub(crate) struct ExternalCallbackCredential {
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    raw_query: Option<String>,
+    admission: CallbackAdmission,
+}
+impl ExternalCallbackCredential {
+    pub(crate) async fn authenticate(self) -> Result<interface_runtime::PublicPrincipal, ApiError> {
+        let query = unique_query(self.raw_query.as_deref())?;
+        self.admission
+            .0
+            .lock()
+            .map_err(|_| transaction::denied())?
+            .cookie_name = query
+            .get("state")
+            .filter(|value| transaction::valid_token(value))
+            .map(|value| transaction::browser_cookie_name(value));
+        let verified = verify_callback(&self.state, &self.headers, &self.jar, &query).await?;
+        let mut admission = self.admission.0.lock().map_err(|_| transaction::denied())?;
+        if admission.verified.is_some() {
+            return Err(transaction::denied());
+        }
+        admission.verified = Some(verified);
+        Ok(interface_runtime::PublicPrincipal::new())
+    }
 }
 
 fn callback_code(query: &BTreeMap<String, String>) -> Result<&str, ApiError> {
@@ -486,11 +561,15 @@ async fn verify_callback(
     // external verifier is in flight. Recheck the original binding session too.
     frozen_context(state, &transaction).await?;
     let binding_actor = bound_actor(state, headers, transaction.binding.as_ref()).await?;
+    // Last live authority check happens after every worker call. Keep the same
+    // lock as grant/revoke until the Host business effect has completed.
+    let authority = CompletionAuthority::new(provider.authorize_completion(state, &entry).await?);
     Ok(VerifiedCallback {
         login_entry_id: entry.id,
         identity,
         registration_eligible,
         binding_actor,
+        authority,
     })
 }
 
@@ -504,29 +583,7 @@ pub async fn callback(
     jar: CookieJar,
     RawQuery(raw): RawQuery,
 ) -> Response {
-    let query = unique_query(raw.as_deref());
-    let cookie_name = query
-        .as_ref()
-        .ok()
-        .and_then(|query| query.get("state"))
-        .filter(|value| transaction::valid_token(value))
-        .map(|value| transaction::browser_cookie_name(value));
-    let result = async {
-        let query = query?;
-        let verified = verify_callback(&state, &headers, &jar, &query).await?;
-        interface::invoke_public(
-            &state,
-            interface::CALLBACK_BINDING,
-            PublicInput::Complete {
-                login_entry_id: verified.login_entry_id,
-                identity: verified.identity,
-                registration_eligible: verified.registration_eligible,
-                binding_actor: verified.binding_actor,
-            },
-        )
-        .await
-    }
-    .await;
+    let (result, cookie_name) = interface::invoke_callback(&state, headers, jar, raw).await;
     let mut cookies = CookieJar::new();
     if let Some(name) = cookie_name {
         cookies = cookies.remove(
@@ -562,3 +619,11 @@ pub async fn callback(
 #[cfg(test)]
 #[path = "_tests/protocol_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "_tests/authentication_tests.rs"]
+mod authentication_tests;
+
+#[cfg(test)]
+#[path = "_tests/authority_tests.rs"]
+mod authority_tests;

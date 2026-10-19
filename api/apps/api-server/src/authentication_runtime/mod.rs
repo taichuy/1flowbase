@@ -96,6 +96,38 @@ pub(crate) async fn provider(
 }
 
 impl AuthenticationProvider {
+    /// Final authority barrier after every verifier/eligibility worker call. The
+    /// Host holds this lease until the identity/session business effect finishes.
+    pub(crate) async fn authorize_completion(
+        &self,
+        state: &ApiState,
+        entry: &domain::LoginEntryRecord,
+    ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>, ApiError> {
+        let current = provider(state, &entry.auth_type).await?;
+        if current.installation_id != self.installation_id
+            || current.fingerprint != self.fingerprint
+            || current.descriptor.contribution_id != self.descriptor.contribution_id
+        {
+            return Err(Error::PermissionDenied("authentication_provider_changed").into());
+        }
+        let composition = state.provider_runtime.managed_composition()?;
+        let snapshot = composition
+            .snapshot(domain::SYSTEM_SCOPE_ID)
+            .await
+            .ok_or(Error::PluginUnavailable)?;
+        if fingerprint(&snapshot, &self.descriptor.contribution_id)? != self.fingerprint {
+            return Err(Error::PermissionDenied("authentication_provider_changed").into());
+        }
+        composition
+            .authorize_snapshot_binding(
+                &snapshot,
+                domain::SYSTEM_SCOPE_ID,
+                &self.descriptor.contribution_id,
+            )
+            .await
+            .map_err(|_| Error::PermissionDenied("authentication_provider_changed").into())
+    }
+
     pub(crate) async fn invoke(
         &self,
         state: &ApiState,

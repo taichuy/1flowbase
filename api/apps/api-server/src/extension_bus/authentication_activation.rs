@@ -388,6 +388,18 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
         )?,
         AuthenticationAdapterFactoryBinding::typed(
             activation(
+                crate::routes::external_auth::interface::CALLBACK_AUTH_PLUGIN,
+                InterfaceExtensionTier::BuiltIn,
+                crate::routes::external_auth::interface::CALLBACK_AUTH_ADAPTER,
+                crate::routes::external_auth::interface::CALLBACK_AUTH_ACTIVATION,
+                PrincipalProfile::Public,
+            )?,
+            |credential: crate::routes::external_auth::ExternalCallbackCredential| async move {
+                credential.authenticate().await.map_err(|error| error.0)
+            },
+        )?,
+        AuthenticationAdapterFactoryBinding::typed(
+            activation(
                 "api-server.runtime-model-authentication",
                 InterfaceExtensionTier::BuiltIn,
                 "api-server.runtime-user",

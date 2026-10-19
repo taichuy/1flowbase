@@ -5,7 +5,7 @@ use control_plane::{
     auth::{AuthKernel, CompleteExternalLoginCommand, LoginResult, SessionIssuer},
     ports::SessionStore,
 };
-use domain::{ActorContext, LoginEntryRecord, VerifiedExternalIdentity};
+use domain::LoginEntryRecord;
 use interface_runtime::{
     ActivatedAuthenticationAdapter, AuthenticationActivationIdentity,
     AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
@@ -28,6 +28,9 @@ use uuid::Uuid;
 pub(crate) const OWNER: &str = "api-server.external-auth";
 pub(crate) const START_BINDING: &str = "http.public.auth.external.start.v1";
 pub(crate) const CALLBACK_BINDING: &str = "http.public.auth.external.callback.v1";
+pub(crate) const CALLBACK_AUTH_PLUGIN: &str = "api-server.external-callback-authentication";
+pub(crate) const CALLBACK_AUTH_ADAPTER: &str = "api-server.external-callback";
+pub(crate) const CALLBACK_AUTH_ACTIVATION: &str = "api-server.external-callback.activation.v1";
 pub(crate) const AUTHORIZE_BINDING: &str = "http.console.identity.external-authorize.v1";
 pub(crate) const OPERATIONS: &[&str] = &[
     "public.auth.external.start",
@@ -80,15 +83,8 @@ pub(crate) fn bindings_metadata() -> &'static [BindingMetadata] {
 }
 
 pub(super) enum PublicInput {
-    Start {
-        login_entry_id: Uuid,
-    },
-    Complete {
-        login_entry_id: Uuid,
-        identity: VerifiedExternalIdentity,
-        registration_eligible: bool,
-        binding_actor: Option<ActorContext>,
-    },
+    Start { login_entry_id: Uuid },
+    Complete(super::VerifiedCallback),
 }
 pub(super) enum PublicOutput {
     Authorization(AuthorizeOutput),
@@ -147,12 +143,15 @@ impl Adapter {
                     authorization_url,
                 }))
             }
-            PublicInput::Complete {
-                login_entry_id,
-                identity,
-                registration_eligible,
-                binding_actor,
-            } => {
+            PublicInput::Complete(verified) => {
+                let super::VerifiedCallback {
+                    login_entry_id,
+                    identity,
+                    registration_eligible,
+                    binding_actor,
+                    authority,
+                } = verified;
+                let lease = authority.take()?;
                 let entry = self.entry(login_entry_id).await?;
                 if identity.connection_id() != entry.connection_id {
                     return Err(transaction::denied());
@@ -161,11 +160,11 @@ impl Adapter {
                     self.store.clone(),
                     SessionIssuer::new(Arc::clone(&self.sessions), self.session_ttl_days),
                 );
-                if let Some(actor) = binding_actor {
+                let output = if let Some(actor) = binding_actor {
                     kernel.bind_external_identity(&actor, identity).await?;
-                    Ok(PublicOutput::Bound)
+                    PublicOutput::Bound
                 } else {
-                    Ok(PublicOutput::Login(
+                    PublicOutput::Login(
                         kernel
                             .complete_external_login(CompleteExternalLoginCommand {
                                 login_entry_id,
@@ -173,8 +172,24 @@ impl Adapter {
                                 registration_eligible,
                             })
                             .await?,
-                    ))
+                    )
+                };
+                if lease.release().await.is_err() {
+                    // Business writes/session issuance already succeeded. This is a
+                    // release failure, never evidence that the business rolled back.
+                    tracing::error!(
+                        stage = "external_auth_authority_release",
+                        business_effect_completed = true,
+                        "external authentication authority release failed"
+                    );
+                    return Err(
+                        control_plane::errors::ControlPlaneError::UpstreamUnavailable(
+                            "external_auth_authority_release",
+                        )
+                        .into(),
+                    );
                 }
+                Ok(output)
             }
         }
     }
@@ -300,8 +315,11 @@ pub(crate) fn compile_registry(
         } else {
             InterfaceScope::System
         };
+        let callback = binding == CALLBACK_BINDING;
         let auth = if console {
             "api-server.console.require-session"
+        } else if callback {
+            CALLBACK_AUTH_ADAPTER
         } else {
             "api-server.public"
         };
@@ -312,11 +330,15 @@ pub(crate) fn compile_registry(
         };
         let plugin = if console {
             "api-server.console-authentication"
+        } else if callback {
+            CALLBACK_AUTH_PLUGIN
         } else {
             "api-server.public-authentication"
         };
         let activation = if console {
             "api-server.console.require-session.activation.v1"
+        } else if callback {
+            CALLBACK_AUTH_ACTIVATION
         } else {
             "api-server.public.activation.v1"
         };
@@ -441,6 +463,54 @@ pub(super) async fn invoke_public(
     .map_err(|failure| target_error(failure.into_error()))?;
     let _receipt = outcome.receipt().clone().projected();
     Ok(outcome.into_value())
+}
+
+pub(super) async fn invoke_callback(
+    state: &Arc<ApiState>,
+    headers: axum::http::HeaderMap,
+    jar: axum_extra::extract::cookie::CookieJar,
+    raw_query: Option<String>,
+) -> (Result<PublicOutput, ApiError>, Option<String>) {
+    let admission = super::CallbackAdmission::default();
+    let result = async {
+        let boot = state
+            .extension_boot_snapshot
+            .as_ref()
+            .ok_or_else(transaction::denied)?;
+        let snapshot = boot
+            .interface_registry()
+            .ok_or_else(transaction::denied)?
+            .snapshot();
+        let binding = BindingId::new(CALLBACK_BINDING).expect("static callback binding");
+        let authenticated = boot
+            .authenticate_invocation::<_, PublicPrincipal>(
+                Arc::clone(&snapshot),
+                &binding,
+                InterfaceProtocol::Http,
+                super::ExternalCallbackCredential {
+                    state: Arc::clone(state),
+                    headers,
+                    jar,
+                    raw_query,
+                    admission: admission.clone(),
+                },
+            )
+            .await?;
+        let verified = admission.take()?;
+        let outcome = InterfaceInvocationKernel::new(Arc::new(
+            super::super::public_residual_interface::PublicResidualAuthorization,
+        ))
+        .invoke::<PublicInput, PublicOutput, TargetError>(
+            snapshot,
+            authenticated.into_envelope(PublicInput::Complete(verified)),
+        )
+        .await
+        .map_err(|failure| target_error(failure.into_error()))?;
+        let _receipt = outcome.receipt().clone().projected();
+        Ok(outcome.into_value())
+    }
+    .await;
+    (result, admission.cookie_name())
 }
 
 pub(super) async fn invoke_authorize(

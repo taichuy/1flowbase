@@ -438,7 +438,8 @@ async fn lock_scope(
     .fetch_optional(&mut **transaction)
     .await?;
     if workspace_id == domain::SYSTEM_SCOPE_ID {
-        let system: bool = sqlx::query_scalar("select contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}' = 'system' from extension_installations where id=$1")
+        // Match domain::managed_installation_scope, including non-service system contributions.
+        let system: bool = sqlx::query_scalar("select contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) from extension_installations where id=$1")
             .bind(installation_id).fetch_one(&mut **transaction).await?;
         if !system {
             return Err(Error::PermissionDenied("managed_system_service_required").into());
@@ -592,7 +593,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             return Err(Error::Conflict("managed_candidate_artifact_unavailable").into());
         }
         let active_ids = if system_service {
-            sqlx::query_scalar::<_, Uuid>("select id from extension_installations where contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}' = 'system' and desired_state='active_requested'")
+            sqlx::query_scalar::<_, Uuid>("select id from extension_installations where contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) and desired_state='active_requested'")
                 .fetch_all(&mut *transaction).await?
         } else {
             sqlx::query_scalar::<_, Uuid>("select i.id from plugin_assignments a join extension_installations i on i.id=a.installation_id where a.workspace_id=$1 and i.contract_version='1flowbase.extension-bus/v1' and i.desired_state='active_requested'")
@@ -677,7 +678,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
     }
 
     async fn contribution_authority_workspaces(&self, installation_id: Uuid) -> Result<Vec<Uuid>> {
-        Ok(sqlx::query_scalar("select workspace_id from plugin_assignments where installation_id=$1 union select '00000000-0000-0000-0000-000000000000'::uuid from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1' and metadata_json #>> '{managed_service,scope}' = 'system' order by workspace_id")
+        Ok(sqlx::query_scalar("select workspace_id from plugin_assignments where installation_id=$1 union select '00000000-0000-0000-0000-000000000000'::uuid from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) order by workspace_id")
             .bind(installation_id).fetch_all(self.pool()).await?)
     }
     async fn lock_installation_contribution_authority(

@@ -669,6 +669,33 @@ impl ManagedExtensionComposition {
         Ok(())
     }
 
+    /// Validate live authority for a frozen contribution and retain the same
+    /// grant/revoke serialization lock through a subsequent Host-owned effect.
+    /// Unlike worker admission, callers must not release this lease before that
+    /// effect completes. No additional worker invocation may run under it.
+    pub(crate) async fn authorize_snapshot_binding(
+        &self,
+        snapshot: &Arc<ManagedWorkspaceSnapshot>,
+        workspace_id: Uuid,
+        contribution_id: &ContributionId,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        let _reference = snapshot.freeze_reference()?;
+        let binding = snapshot
+            .bindings
+            .get(contribution_id)
+            .context("managed contribution is absent from the frozen snapshot")?;
+        anyhow::ensure!(
+            binding.handle.identity().workspace_id().as_str() == workspace_id.to_string(),
+            "managed authority workspace mismatch"
+        );
+        let lease = self
+            .store
+            .lock_contribution_authority(binding.handle.identity().subject())
+            .await?;
+        self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
+        Ok(lease)
+    }
+
     #[cfg(test)]
     pub(crate) async fn execute(
         &self,
