@@ -1,64 +1,16 @@
-import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
-import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
-
-const {
-  attachConsoleAssistantRunWebSocket,
-  cancelConsoleFlowRun,
-  createConsoleAssistantConversation,
+import {
+  setupEmbeddedAssistantFixture,
+  renderSettled,
+  domEvents,
   getConsoleAssistantConversationMessages,
-  getConsoleAssistantLegacySnapshotMessages,
   getConsoleAssistantRunActivity,
-  getConsoleAssistantSettings,
-  listConsoleAssistantConversations,
   startConsoleAssistantRunWebSocket,
-  startConsoleAssistantRunStream,
-  subscribeConsoleAssistantConversationsWebSocket,
-  updateConsoleAssistantSettings
-} = vi.hoisted(() => ({
-  attachConsoleAssistantRunWebSocket: vi.fn(),
-  cancelConsoleFlowRun: vi.fn(),
-  createConsoleAssistantConversation: vi.fn(),
-  getConsoleAssistantConversationMessages: vi.fn(),
-  getConsoleAssistantLegacySnapshotMessages: vi.fn(),
-  getConsoleAssistantRunActivity: vi.fn(),
-  getConsoleAssistantSettings: vi.fn(),
-  listConsoleAssistantConversations: vi.fn(),
-  startConsoleAssistantRunWebSocket: vi.fn(),
-  startConsoleAssistantRunStream: vi.fn(),
-  subscribeConsoleAssistantConversationsWebSocket: vi.fn(),
-  updateConsoleAssistantSettings: vi.fn()
-}));
+  findReadyHistoryButton,
+  rerenderSettled
+} from './assistant-fixture';
+import { act, screen, within, waitFor } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 
-vi.mock('@1flowbase/api-client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@1flowbase/api-client')>();
-  return {
-    ...actual,
-    attachConsoleAssistantRunWebSocket,
-    cancelConsoleFlowRun,
-    createConsoleAssistantConversation,
-    getConsoleAssistantConversationMessages,
-    getConsoleAssistantLegacySnapshotMessages,
-    getConsoleAssistantRunActivity,
-    getConsoleAssistantSettings,
-    listConsoleAssistantConversations,
-    startConsoleAssistantRunWebSocket,
-    startConsoleAssistantRunStream,
-    subscribeConsoleAssistantConversationsWebSocket,
-    updateConsoleAssistantSettings
-  };
-});
-
-vi.mock('@monaco-editor/react', () => ({
-  default: ({ value }: { value: string }) => (
-    <pre data-testid="mock-json-editor">{value}</pre>
-  )
-}));
-
-vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
-  loadMonacoEditorModule: () => import('@monaco-editor/react')
-}));
-
-import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 import { AppProviders } from '../../../../app/AppProviders';
 import type { ConsoleFlowDebugStreamEvent } from '@1flowbase/api-client';
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
@@ -66,178 +18,12 @@ import { AssistantRunTimeline } from '../../components/embedded-assistant/Assist
 import * as runtimeApi from '../../api/runtime';
 import type { AgentFlowDebugMessage } from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
-import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-
-interface WindowDimensionSpy {
-  mockRestore(): void;
-  mockReturnValue(value: number): void;
-}
-
-const ASSISTANT_WINDOW_SIZE_STORAGE_KEY =
-  '1flowbase.embedded_assistant.window_size';
-
-async function findReadyHistoryButton() {
-  const button = await screen.findByRole('button', {
-    name: i18nText('appShell', 'auto.assistant_history')
-  });
-  // The toolbar exists before the asynchronous settings make history available.
-  await waitFor(() => expect(button).toBeEnabled());
-  return button;
-}
 
 describe('EmbeddedAgentAssistant', () => {
-  beforeAll(() => loadApplicationI18nResources());
-  let innerHeightSpy: WindowDimensionSpy | undefined;
-  let innerWidthSpy: WindowDimensionSpy | undefined;
-
-  beforeEach(() => {
-    window.localStorage.removeItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY);
-    innerHeightSpy = vi
-      .spyOn(window, 'innerHeight', 'get')
-      .mockReturnValue(900);
-    innerWidthSpy = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1280);
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class IntersectionObserver {
-        disconnect() {}
-        observe() {}
-        takeRecords() {
-          return [];
-        }
-        unobserve() {}
-      }
-    );
-    resetAuthStore();
-    useAuthStore.getState().setAuthenticated({
-      csrfToken: 'csrf-token',
-      actor: {
-        id: 'user-1',
-        account: 'root',
-        effective_display_role: 'root',
-        current_workspace_id: 'workspace-1'
-      },
-      me: {
-        id: 'user-1',
-        account: 'root',
-        name: 'Root',
-        nickname: 'Root',
-        email: 'root@example.com',
-        phone: null,
-        avatar_url: null,
-        introduction: '',
-        effective_display_role: 'root',
-        permissions: []
-      }
-    });
-    getConsoleAssistantSettings.mockReset();
-    getConsoleAssistantSettings.mockResolvedValue({
-      preference: {
-        application_id: 'flow-1',
-        mcp_instance_ids: [],
-        enabled_client_tools: ['get_client_context', 'refresh_client_view']
-      },
-      published_agent_flows: [
-        { application_id: 'flow-1', name: 'Support Flow' }
-      ],
-      enabled_mcp_instances: [],
-      page_reference_max_bytes: 65_536,
-      page_reference_max_count: 5,
-      page_reference_max_total_bytes: 65_536,
-      run_capabilities: {
-        model_selection_enabled: true,
-        reasoning_effort_enabled: true,
-        models: [
-          {
-            id: 'gpt-5.4',
-            name: 'GPT-5.4',
-            context_window: 100000,
-            reasoning_efforts: ['low', 'high'],
-            default_reasoning_effort: 'high'
-          }
-        ]
-      }
-    });
-    updateConsoleAssistantSettings.mockReset();
-    createConsoleAssistantConversation.mockReset();
-    createConsoleAssistantConversation.mockResolvedValue({
-      conversation_id: 'conversation-new',
-      application_id: 'flow-1',
-      created_at: '2026-08-07T00:00:00Z',
-      updated_at: '2026-08-07T00:00:00Z'
-    });
-    getConsoleAssistantConversationMessages.mockReset();
-    getConsoleAssistantConversationMessages.mockResolvedValue([]);
-    getConsoleAssistantLegacySnapshotMessages.mockReset();
-    getConsoleAssistantLegacySnapshotMessages.mockResolvedValue([
-      {
-        id: 'legacy-run:user',
-        flow_run_id: 'legacy-run',
-        role: 'user',
-        content: 'Legacy question',
-        created_at: '2026-08-06T00:00:00Z'
-      }
-    ]);
-    getConsoleAssistantRunActivity.mockReset();
-    getConsoleAssistantRunActivity.mockResolvedValue({
-      status: 'running',
-      started_at: '2026-08-16T00:00:00Z',
-      finished_at: null,
-      duration_ms: null,
-      items: [],
-      trace_events: [],
-      has_more: false,
-      next_sequence: null
-    });
-    listConsoleAssistantConversations.mockReset();
-    listConsoleAssistantConversations.mockResolvedValue({
-      items: [
-        {
-          conversation_id: 'conversation-1',
-          legacy_flow_run_id: null,
-          latest_flow_run_id: 'run-1',
-          latest_flow_run_status: 'succeeded',
-          title: 'First conversation',
-          created_at: '2026-08-07T00:00:00Z',
-          updated_at: '2026-08-07T00:00:00Z'
-        }
-      ],
-      total: 1,
-      page: 1,
-      page_size: 20
-    });
-    cancelConsoleFlowRun.mockReset();
-    cancelConsoleFlowRun.mockResolvedValue(undefined);
-    attachConsoleAssistantRunWebSocket.mockReset();
-    attachConsoleAssistantRunWebSocket.mockResolvedValue(undefined);
-    startConsoleAssistantRunWebSocket.mockReset();
-    startConsoleAssistantRunStream.mockReset();
-    subscribeConsoleAssistantConversationsWebSocket.mockReset();
-    subscribeConsoleAssistantConversationsWebSocket.mockImplementation(
-      async (applicationId, _csrfToken, handlers) => {
-        const controller = new AbortController();
-        handlers.getAbortController?.(controller);
-        handlers.onSnapshot(
-          await listConsoleAssistantConversations(applicationId, {
-            page: 1,
-            pageSize: 20
-          })
-        );
-      }
-    );
-  });
-
-  afterEach(() => {
-    window.localStorage.removeItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY);
-    innerHeightSpy?.mockRestore();
-    innerHeightSpy = undefined;
-    innerWidthSpy?.mockRestore();
-    innerWidthSpy = undefined;
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  });
+  setupEmbeddedAssistantFixture();
 
   test('AC-008 waits for the first activity instead of flashing an empty assistant card', async () => {
-    const { container } = render(
+    const { container } = await renderSettled(
       <AppProviders>
         <AssistantRunTimeline
           applicationId="flow-1"
@@ -318,7 +104,7 @@ describe('EmbeddedAgentAssistant', () => {
       activityEvents,
       presentation: 'answer' as const
     });
-    const { rerender } = render(
+    const { rerender } = await renderSettled(
       <AppProviders>
         <AssistantRunTimeline
           applicationId="flow-1"
@@ -329,37 +115,32 @@ describe('EmbeddedAgentAssistant', () => {
 
     expect(await screen.findByText('第一轮思考')).toBeInTheDocument();
 
-    rerender(
-      <AppProviders>
+    await rerenderSettled(rerender, <AppProviders>
         <AssistantRunTimeline
           applicationId="flow-1"
           message={message([firstReasoning, toolStarted])}
         />
-      </AppProviders>
-    );
+      </AppProviders>);
     await waitFor(() =>
       expect(screen.queryByText('第一轮思考')).not.toBeInTheDocument()
     );
 
-    rerender(
-      <AppProviders>
+    await rerenderSettled(rerender, <AppProviders>
         <AssistantRunTimeline
           applicationId="flow-1"
           message={message([firstReasoning, toolStarted, secondReasoning])}
         />
-      </AppProviders>
-    );
+      </AppProviders>);
     expect(await screen.findByText('第二轮思考')).toBeInTheDocument();
     const reasoningTitles = screen.getAllByText(
       i18nText('agentFlow', 'auto.think')
     );
-    fireEvent.click(reasoningTitles[1] as HTMLElement);
+    await domEvents.click(reasoningTitles[1] as HTMLElement);
     await waitFor(() =>
       expect(screen.queryByText('第二轮思考')).not.toBeInTheDocument()
     );
 
-    rerender(
-      <AppProviders>
+    await rerenderSettled(rerender, <AppProviders>
         <AssistantRunTimeline
           applicationId="flow-1"
           message={message([
@@ -369,8 +150,7 @@ describe('EmbeddedAgentAssistant', () => {
             secondReasoningDelta
           ])}
         />
-      </AppProviders>
-    );
+      </AppProviders>);
     expect(screen.queryByText('第二轮思考继续')).not.toBeInTheDocument();
   });
 
@@ -448,32 +228,30 @@ describe('EmbeddedAgentAssistant', () => {
       ],
       presentation: 'answer' as const
     };
-    const { rerender } = render(
+    const { rerender } = await renderSettled(
       <AppProviders>
         <AssistantRunTimeline applicationId="flow-1" message={runningMessage} />
       </AppProviders>
     );
     expect(await screen.findByText('先思考')).toBeInTheDocument();
 
-    rerender(
-      <AppProviders>
+    await rerenderSettled(rerender, <AppProviders>
         <AssistantRunTimeline
           applicationId="flow-1"
           message={{ ...runningMessage, status: 'completed' }}
         />
-      </AppProviders>
-    );
+      </AppProviders>);
     const duration = await screen.findByText(
       i18nText('appShell', 'auto.assistant_activity_duration_seconds', {
         value1: 2
       })
     );
-    fireEvent.click(duration);
+    await domEvents.click(duration);
     const thinkTitle = await screen.findByText(
       i18nText('agentFlow', 'auto.think')
     );
     expect(screen.queryByText('先思考')).not.toBeInTheDocument();
-    fireEvent.click(thinkTitle);
+    await domEvents.click(thinkTitle);
     const reasoning = await screen.findByText('先思考');
     const tool = screen.getByText('lookup');
     expect(reasoning.compareDocumentPosition(tool)).toBe(
@@ -539,7 +317,7 @@ describe('EmbeddedAgentAssistant', () => {
       next_sequence: null
     });
 
-    render(
+    await renderSettled(
       <AppProviders>
         <AssistantRunTimeline
           applicationId="flow-1"
@@ -567,7 +345,7 @@ describe('EmbeddedAgentAssistant', () => {
       screen.getByText('1flowbase_mcp_call (frontstage_block_tree_get_code)')
     ).toBeInTheDocument();
 
-    fireEvent.click(
+    await domEvents.click(
       screen.getByText('1flowbase_mcp_list (/frontstage/user_pages)')
     );
     expect(
@@ -753,12 +531,12 @@ describe('EmbeddedAgentAssistant', () => {
       }
     );
 
-    render(
+    await renderSettled(
       <AppProviders>
         <EmbeddedAgentAssistant />
       </AppProviders>
     );
-    fireEvent.click(
+    await domEvents.click(
       screen.getByRole('button', {
         name: i18nText('appShell', 'auto.assistant')
       })
@@ -771,8 +549,8 @@ describe('EmbeddedAgentAssistant', () => {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
     await waitFor(() => expect(sendButton).toBeEnabled());
-    fireEvent.change(composer, { target: { value: 'Inspect activity order' } });
-    fireEvent.click(sendButton);
+    await domEvents.change(composer, { target: { value: 'Inspect activity order' } });
+    await domEvents.click(sendButton);
 
     const reasoningTitles = await screen.findAllByText(
       i18nText('agentFlow', 'auto.think')
@@ -781,8 +559,8 @@ describe('EmbeddedAgentAssistant', () => {
     reasoningTitles.forEach((title) => {
       expect(title.closest('.ant-think')).not.toBeNull();
     });
-    fireEvent.click(reasoningTitles[0] as HTMLElement);
-    fireEvent.click(reasoningTitles[1] as HTMLElement);
+    await domEvents.click(reasoningTitles[0] as HTMLElement);
+    await domEvents.click(reasoningTitles[1] as HTMLElement);
     const firstReasoning = await screen.findByText('先检查配置');
     const firstTool = screen.getByText('1flowbase_mcp_list (/后台设置)');
     const firstOutput = screen.getByText('阶段结果一');
@@ -806,7 +584,7 @@ describe('EmbeddedAgentAssistant', () => {
     expect(secondTool.compareDocumentPosition(secondOutput)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
-    fireEvent.click(firstTool);
+    await domEvents.click(firstTool);
     const toolTimelineItem = firstTool.closest(
       '.embedded-agent-assistant-activity__timeline-item'
     );
@@ -832,11 +610,11 @@ describe('EmbeddedAgentAssistant', () => {
       '"count": 2'
     );
     expect(screen.queryByTestId('mock-json-editor')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: inputTitle }));
+    await domEvents.click(screen.getByRole('button', { name: inputTitle }));
     expect(await screen.findByTestId('mock-json-editor')).toHaveTextContent(
       '"path": "/后台设置"'
     );
-    fireEvent.click(screen.getByRole('button', { name: outputTitle }));
+    await domEvents.click(screen.getByRole('button', { name: outputTitle }));
     expect(await screen.findAllByTestId('mock-json-editor')).toHaveLength(2);
 
     await act(async () => {
@@ -852,7 +630,7 @@ describe('EmbeddedAgentAssistant', () => {
       expect(title.closest('.ant-think')).not.toBeNull();
     });
     expect(screen.queryByText('先检查配置')).not.toBeInTheDocument();
-    fireEvent.click(terminalReasoningTitles[0] as HTMLElement);
+    await domEvents.click(terminalReasoningTitles[0] as HTMLElement);
     const terminalFirstReasoning = await screen.findByText('先检查配置');
     const terminalFirstTool = screen.getByText(
       '1flowbase_mcp_list (/后台设置)'
@@ -871,7 +649,7 @@ describe('EmbeddedAgentAssistant', () => {
     const activityButtons = screen.getAllByRole('button', {
       name: i18nText('appShell', 'auto.assistant_activity')
     });
-    fireEvent.click(activityButtons.at(-1) as HTMLElement);
+    await domEvents.click(activityButtons.at(-1) as HTMLElement);
 
     const sidebar = await screen.findByTestId(
       'embedded-agent-assistant-history'
@@ -1043,28 +821,28 @@ describe('EmbeddedAgentAssistant', () => {
       next_sequence: null
     });
 
-    render(
+    await renderSettled(
       <AppProviders>
         <EmbeddedAgentAssistant />
       </AppProviders>
     );
-    fireEvent.click(
+    await domEvents.click(
       screen.getByRole('button', {
         name: i18nText('appShell', 'auto.assistant')
       })
     );
-    fireEvent.click(await findReadyHistoryButton());
-    fireEvent.click(await screen.findByText('First conversation'));
+    await domEvents.click(await findReadyHistoryButton());
+    await domEvents.click(await screen.findByText('First conversation'));
     expect(await screen.findByText('历史最终回答')).toBeInTheDocument();
     expect(screen.queryByText('历史思考')).not.toBeInTheDocument();
-    fireEvent.click(
+    await domEvents.click(
       await screen.findByText(
         i18nText('appShell', 'auto.assistant_activity_duration_seconds', {
           value1: 3
         })
       )
     );
-    fireEvent.click(
+    await domEvents.click(
       await screen.findByText(i18nText('agentFlow', 'auto.think'))
     );
     const historyReasoning = await screen.findByText('历史思考');
@@ -1075,7 +853,7 @@ describe('EmbeddedAgentAssistant', () => {
     const activityButtons = screen.getAllByRole('button', {
       name: i18nText('appShell', 'auto.assistant_activity')
     });
-    fireEvent.click(activityButtons.at(-1) as HTMLElement);
+    await domEvents.click(activityButtons.at(-1) as HTMLElement);
 
     const sidebar = await screen.findByTestId(
       'embedded-agent-assistant-history'
