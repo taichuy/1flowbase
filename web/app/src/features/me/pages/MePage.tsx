@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
 import { Result } from 'antd';
 
@@ -18,6 +18,8 @@ import { getMeSections, type MeSectionKey } from '../lib/me-sections';
 import './me-page.css';
 import { i18nText } from '../../../shared/i18n/text';
 
+const profileQueryKey = ['me', 'profile'] as const;
+
 function getErrorMessage(error: unknown): string | null {
   return error instanceof Error ? error.message : null;
 }
@@ -28,6 +30,7 @@ export function MePage({
   requestedSectionKey?: MeSectionKey;
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const actor = useAuthStore((state) => state.actor);
@@ -39,7 +42,7 @@ export function MePage({
   const activeSection = visibleSections.find((section) => section.key === requestedSectionKey);
 
   const profileQuery = useQuery({
-    queryKey: ['me', 'profile'],
+    queryKey: profileQueryKey,
     queryFn: fetchMyProfile,
     enabled: sessionStatus === 'authenticated' && me === null
   });
@@ -58,7 +61,9 @@ export function MePage({
 
       return updateMyProfile(input, csrfToken);
     },
-    onSuccess: (updatedProfile) => {
+    onSuccess: async (updatedProfile) => {
+      await queryClient.cancelQueries({ queryKey: profileQueryKey });
+      queryClient.setQueryData(profileQueryKey, updatedProfile);
       setMe(updatedProfile);
     }
   });

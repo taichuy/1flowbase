@@ -186,14 +186,16 @@ function collectNodeIdsToRemove(
 ) {
   const queue = [rootNodeId];
   const collectedIds: string[] = [];
+  const visited = new Set<string>();
 
   while (queue.length > 0) {
     const currentNodeId = queue.shift();
 
-    if (!currentNodeId || collectedIds.includes(currentNodeId)) {
+    if (!currentNodeId || visited.has(currentNodeId)) {
       continue;
     }
 
+    visited.add(currentNodeId);
     collectedIds.push(currentNodeId);
 
     for (const candidate of document.graph.nodes) {

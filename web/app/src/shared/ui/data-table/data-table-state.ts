@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 
 export const DEFAULT_MIN_COLUMN_WIDTH = 110;
@@ -166,33 +166,66 @@ export function usePersistedDataTableConfiguration<T extends object>({
   columns: Array<DataTableColumn<T>>;
   storageKey: string;
 }): DataTableConfiguration {
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => {
-    return readStoredState(storageKey, columns).visibleColumnKeys;
-  });
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(
-    () => {
-      return readStoredState(storageKey, columns).columnWidths;
-    }
+  const storedState = useMemo(
+    () => readStoredState(storageKey, columns),
+    [columns, storageKey]
+  );
+  const [draft, setDraft] = useState<{
+    storageKey: string;
+    state: DataTableState;
+  } | null>(null);
+  if (draft && draft.storageKey !== storageKey) setDraft(null);
+  const state =
+    draft?.storageKey === storageKey
+      ? normalizeDataTableState(columns, draft.state)
+      : storedState;
+
+  const setVisibleColumnKeys = useCallback<Dispatch<SetStateAction<string[]>>>(
+    (value) =>
+      setDraft((current) => {
+        const previous =
+          current?.storageKey === storageKey
+            ? normalizeDataTableState(columns, current.state)
+            : storedState;
+        return {
+          storageKey,
+          state: {
+            ...previous,
+            visibleColumnKeys:
+              typeof value === 'function'
+                ? value(previous.visibleColumnKeys)
+                : value
+          }
+        };
+      }),
+    [columns, storageKey, storedState]
+  );
+  const setColumnWidths = useCallback<
+    Dispatch<SetStateAction<Record<string, number>>>
+  >(
+    (value) =>
+      setDraft((current) => {
+        const previous =
+          current?.storageKey === storageKey
+            ? normalizeDataTableState(columns, current.state)
+            : storedState;
+        return {
+          storageKey,
+          state: {
+            ...previous,
+            columnWidths:
+              typeof value === 'function' ? value(previous.columnWidths) : value
+          }
+        };
+      }),
+    [columns, storageKey, storedState]
   );
 
   useEffect(() => {
-    const state = readStoredState(storageKey, columns);
+    // Reading another table never writes the previous table's draft into it.
+    if (!draft || draft.storageKey !== storageKey) return;
+    writeStoredState(storageKey, normalizeDataTableState(columns, draft.state));
+  }, [columns, draft, storageKey]);
 
-    setVisibleColumnKeys(state.visibleColumnKeys);
-    setColumnWidths(state.columnWidths);
-  }, [columns, storageKey]);
-
-  useEffect(() => {
-    writeStoredState(storageKey, {
-      visibleColumnKeys,
-      columnWidths
-    });
-  }, [columnWidths, storageKey, visibleColumnKeys]);
-
-  return {
-    visibleColumnKeys,
-    columnWidths,
-    setVisibleColumnKeys,
-    setColumnWidths
-  };
+  return { ...state, setVisibleColumnKeys, setColumnWidths };
 }

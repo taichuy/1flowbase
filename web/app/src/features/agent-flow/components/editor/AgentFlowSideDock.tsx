@@ -1,19 +1,37 @@
 import type {
   CSSProperties,
   ReactNode,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent
 } from 'react';
 
-interface AgentFlowSideDockProps {
+interface SideDockBaseProps {
   children: ReactNode;
   className?: string;
   'data-testid'?: string;
   isResizing?: boolean;
-  resizeLabel: string;
   style?: CSSProperties;
   width: number;
-  onResizeStart: (event: ReactMouseEvent<HTMLDivElement>) => void;
 }
+
+type AgentFlowSideDockProps = SideDockBaseProps & (
+  | {
+      resizable?: true;
+      resizeLabel: string;
+      minWidth: number;
+      maxWidth: number;
+      onResizeKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
+      onResizeStart: (event: ReactMouseEvent<HTMLDivElement>) => void;
+    }
+  | {
+      resizable: false;
+      resizeLabel?: never;
+      minWidth?: never;
+      maxWidth?: never;
+      onResizeKeyDown?: never;
+      onResizeStart?: never;
+    }
+);
 
 export function AgentFlowSideDock({
   children,
@@ -21,8 +39,12 @@ export function AgentFlowSideDock({
   'data-testid': dataTestId,
   isResizing = false,
   resizeLabel,
+  resizable = true,
   style,
   width,
+  minWidth,
+  maxWidth,
+  onResizeKeyDown,
   onResizeStart
 }: AgentFlowSideDockProps) {
   return (
@@ -32,13 +54,18 @@ export function AgentFlowSideDock({
       data-testid={dataTestId}
       style={{ ...style, width: `${width}px` }}
     >
-      <div
+      {resizable ? <div
         aria-label={resizeLabel}
         aria-orientation="vertical"
         className="agent-flow-editor__side-dock-resize-handle"
         onMouseDown={onResizeStart}
+        onKeyDown={onResizeKeyDown}
+        tabIndex={0}
+        aria-valuenow={width}
+        aria-valuemin={minWidth}
+        aria-valuemax={maxWidth}
         role="separator"
-      />
+      /> : null}
       {children}
     </div>
   );

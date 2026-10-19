@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
 import { patchUserPreferences } from '../../user-preferences/user-preferences';
 import {
-  getDefaultColumnWidths,
-  getDefaultVisibleKeys,
   normalizeDataTableState,
   type DataTableColumn,
   type DataTableConfiguration,
@@ -57,74 +56,97 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const me = useAuthStore((state) => state.me);
   const setMe = useAuthStore((state) => state.setMe);
-  const initialState = useMemo(
+  const owner = JSON.stringify([me?.id ?? null, preferenceKey]);
+  const storedState = useMemo(
     () => readDataTableStateFromMeta(me?.meta, preferenceKey, columns),
     [columns, me?.meta, preferenceKey]
   );
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(
-    () => initialState.visibleColumnKeys
+  const [draft, setDraft] = useState<{
+    owner: string;
+    state: DataTableState;
+  } | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  if (draft && draft.owner !== owner) setDraft(null);
+  const state =
+    draft?.owner === owner
+      ? normalizeDataTableState(columns, draft.state)
+      : storedState;
+
+  const setVisibleColumnKeys = useCallback<Dispatch<SetStateAction<string[]>>>(
+    (value) =>
+      setDraft((current) => {
+        const previous =
+          current?.owner === owner
+            ? normalizeDataTableState(columns, current.state)
+            : storedState;
+        return {
+          owner,
+          state: {
+            ...previous,
+            visibleColumnKeys:
+              typeof value === 'function'
+                ? value(previous.visibleColumnKeys)
+                : value
+          }
+        };
+      }),
+    [columns, owner, storedState]
   );
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(
-    () => initialState.columnWidths
+  const setColumnWidths = useCallback<
+    Dispatch<SetStateAction<Record<string, number>>>
+  >(
+    (value) =>
+      setDraft((current) => {
+        const previous =
+          current?.owner === owner
+            ? normalizeDataTableState(columns, current.state)
+            : storedState;
+        return {
+          owner,
+          state: {
+            ...previous,
+            columnWidths:
+              typeof value === 'function' ? value(previous.columnWidths) : value
+          }
+        };
+      }),
+    [columns, owner, storedState]
   );
-  const hydratingRef = useRef(true);
 
   useEffect(() => {
-    const state = readDataTableStateFromMeta(me?.meta, preferenceKey, columns);
-    hydratingRef.current = true;
-    setVisibleColumnKeys(state.visibleColumnKeys);
-    setColumnWidths(state.columnWidths);
-  }, [columns, me?.meta, preferenceKey]);
-
-  useEffect(() => {
-    if (hydratingRef.current) {
-      hydratingRef.current = false;
-      return;
-    }
-
-    if (!csrfToken) {
-      return;
-    }
-
-    const state = {
-      visibleColumnKeys:
-        visibleColumnKeys.length > 0
-          ? visibleColumnKeys
-          : getDefaultVisibleKeys(columns),
-      columnWidths:
-        Object.keys(columnWidths).length > 0
-          ? columnWidths
-          : getDefaultColumnWidths(columns)
-    };
+    // Only setters create a draft; server/meta hydration cannot schedule a PATCH.
+    if (!draft || draft.owner !== owner || !csrfToken) return;
+    const userId = me?.id;
+    const nextState = normalizeDataTableState(columns, draft.state);
+    let active = true;
     const timeout = window.setTimeout(() => {
-      void patchUserPreferences(
-        buildDataTableMetaPatch(preferenceKey, state),
-        csrfToken
-      )
-        .then((updatedMe) => {
+      // Preserve edit order when a later debounce expires during an earlier request.
+      saveQueue.current = saveQueue.current.then(async () => {
+        if (!active) return;
+        try {
+          const updatedMe = await patchUserPreferences(
+            buildDataTableMetaPatch(preferenceKey, nextState),
+            csrfToken
+          );
+          const currentAuth = useAuthStore.getState();
+          if (
+            !active ||
+            currentAuth.me?.id !== userId ||
+            currentAuth.csrfToken !== csrfToken
+          )
+            return;
           setMe(updatedMe);
-        })
-        .catch(() => {
-          // Preferences are non-critical UI state; keep the in-memory choice.
-        });
+          setDraft((current) => (current === draft ? null : current));
+        } catch {
+          // Preferences are non-critical UI state; retain the user's local edit.
+        }
+      });
     }, SAVE_DELAY_MS);
-
     return () => {
+      active = false;
       window.clearTimeout(timeout);
     };
-  }, [
-    columnWidths,
-    columns,
-    csrfToken,
-    preferenceKey,
-    setMe,
-    visibleColumnKeys
-  ]);
+  }, [columns, csrfToken, draft, me?.id, owner, preferenceKey, setMe]);
 
-  return {
-    visibleColumnKeys,
-    columnWidths,
-    setVisibleColumnKeys,
-    setColumnWidths
-  };
+  return { ...state, setVisibleColumnKeys, setColumnWidths };
 }

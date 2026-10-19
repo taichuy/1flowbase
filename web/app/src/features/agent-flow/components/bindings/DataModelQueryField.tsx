@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type {
   DataModelQueryBindingValue,
   DataModelQueryFilter,
@@ -67,10 +68,7 @@ function fieldOptions(
     }));
 }
 
-function operators(
-  fields: AgentFlowDataModelFieldOption[],
-  fieldCode: string
-) {
+function operators(fields: AgentFlowDataModelFieldOption[], fieldCode: string) {
   const field = fields.find((entry) => entry.code === fieldCode);
   const values =
     field && RANGE_TYPES.has(field.valueType)
@@ -137,10 +135,16 @@ function QueryValueInput({
   return (
     <Space.Compact block>
       <Select
-        aria-label={sourceAriaLabel ?? i18nText("agentFlow", "auto.source", { value1: ariaLabel })}
+        aria-label={
+          sourceAriaLabel ??
+          i18nText('agentFlow', 'auto.source', { value1: ariaLabel })
+        }
         options={[
-          { value: 'constant', label: i18nText("agentFlow", "auto.constant") },
-          { value: 'selector', label: i18nText("agentFlow", "auto.variable_alt") }
+          { value: 'constant', label: i18nText('agentFlow', 'auto.constant') },
+          {
+            value: 'selector',
+            label: i18nText('agentFlow', 'auto.variable_alt')
+          }
         ]}
         value={value.kind}
         onChange={(kind) =>
@@ -224,6 +228,24 @@ function DataModelQueryConditionsField({
   includePagination: boolean;
   onChange: (patch: Partial<DataModelQueryBindingValue>) => void;
 }) {
+  const filterKeys = useRef<string[]>([]);
+  const sortKeys = useRef<string[]>([]);
+  const nextKey = useRef(0);
+  for (const [keys, length] of [
+    [filterKeys.current, query.filters.length],
+    [sortKeys.current, query.sorts.length]
+  ] as const) {
+    while (keys.length < length) keys.push(`query-row-${nextKey.current++}`);
+    keys.length = length;
+  }
+  const filterRows = filterRows.map(({ filter, key }, index) => ({
+    filter,
+    key: filterKeys.current[index]!
+  }));
+  const sortRows = sortRows.map(({ sort, key }, index) => ({
+    sort,
+    key: sortKeys.current[index]!
+  }));
   const filterOptions = fieldOptions(fields, FILTER_TYPES);
   const sortOptions = fieldOptions(fields, SORT_TYPES);
   const expandOptions = fieldOptions(fields, EXPAND_TYPES);
@@ -232,9 +254,11 @@ function DataModelQueryConditionsField({
     <Flex aria-label={ariaLabel} vertical gap={12}>
       <Flex vertical gap={8}>
         {query.filters.map((filter, index) => (
-          <Space.Compact key={`filter-${index}`} block>
+          <Space.Compact key={key} block>
             <Select
-              aria-label={i18nText("agentFlow", "auto.filter_field", { value1: index + 1 })}
+              aria-label={i18nText('agentFlow', 'auto.filter_field', {
+                value1: index + 1
+              })}
               options={filterOptions}
               value={filter.field_code || undefined}
               onChange={(fieldCode) => {
@@ -261,7 +285,9 @@ function DataModelQueryConditionsField({
               }}
             />
             <Select
-              aria-label={i18nText("agentFlow", "auto.filter_operator", { value1: index + 1 })}
+              aria-label={i18nText('agentFlow', 'auto.filter_operator', {
+                value1: index + 1
+              })}
               options={operators(fields, filter.field_code)}
               value={filter.operator}
               onChange={(operator) =>
@@ -278,13 +304,21 @@ function DataModelQueryConditionsField({
               }
             />
             <QueryValueInput
-              ariaLabel={i18nText("agentFlow", "auto.filter_value", { value1: index + 1 })}
+              ariaLabel={i18nText('agentFlow', 'auto.filter_value', {
+                value1: index + 1
+              })}
               valueType={
                 fields.find((field) => field.code === filter.field_code)
                   ?.valueType
               }
-              sourceAriaLabel={i18nText("agentFlow", "auto.filter_value_source", { value1: index + 1 })}
-              selectorAriaLabel={i18nText("agentFlow", "auto.filter_variable", { value1: index + 1 })}
+              sourceAriaLabel={i18nText(
+                'agentFlow',
+                'auto.filter_value_source',
+                { value1: index + 1 }
+              )}
+              selectorAriaLabel={i18nText('agentFlow', 'auto.filter_variable', {
+                value1: index + 1
+              })}
               selectorOptions={selectorOptions}
               value={filter.value}
               onChange={(nextValue) =>
@@ -300,15 +334,17 @@ function DataModelQueryConditionsField({
             <Button
               danger
               type="text"
-              onClick={() =>
+              onClick={() => {
+                filterKeys.current.splice(index, 1);
                 onChange({
                   filters: query.filters.filter(
                     (_, entryIndex) => entryIndex !== index
                   )
-                })
-              }
+                });
+              }}
             >
-              {i18nText("agentFlow", "auto.delete")}</Button>
+              {i18nText('agentFlow', 'auto.delete')}
+            </Button>
           </Space.Compact>
         ))}
         <Button
@@ -318,13 +354,16 @@ function DataModelQueryConditionsField({
             onChange({ filters: [...query.filters, nextFilter(fields)] })
           }
         >
-          {i18nText("agentFlow", "auto.add_new_filter")}</Button>
+          {i18nText('agentFlow', 'auto.add_new_filter')}
+        </Button>
       </Flex>
       <Flex vertical gap={8}>
         {query.sorts.map((sort, index) => (
-          <Space.Compact key={`sort-${index}`} block>
+          <Space.Compact key={key} block>
             <Select
-              aria-label={i18nText("agentFlow", "auto.sorting_field", { value1: index + 1 })}
+              aria-label={i18nText('agentFlow', 'auto.sorting_field', {
+                value1: index + 1
+              })}
               options={sortOptions}
               value={sort.field_code || undefined}
               onChange={(fieldCode) =>
@@ -338,7 +377,9 @@ function DataModelQueryConditionsField({
               }
             />
             <Select
-              aria-label={i18nText("agentFlow", "auto.sort_direction", { value1: index + 1 })}
+              aria-label={i18nText('agentFlow', 'auto.sort_direction', {
+                value1: index + 1
+              })}
               options={[
                 { value: 'asc', label: 'asc' },
                 { value: 'desc', label: 'desc' }
@@ -357,26 +398,31 @@ function DataModelQueryConditionsField({
             <Button
               danger
               type="text"
-              onClick={() =>
+              onClick={() => {
+                sortKeys.current.splice(index, 1);
                 onChange({
                   sorts: query.sorts.filter(
                     (_, entryIndex) => entryIndex !== index
                   )
-                })
-              }
+                });
+              }}
             >
-              {i18nText("agentFlow", "auto.delete")}</Button>
+              {i18nText('agentFlow', 'auto.delete')}
+            </Button>
           </Space.Compact>
         ))}
         <Button
           type="dashed"
           disabled={sortOptions.length === 0}
-          onClick={() => onChange({ sorts: [...query.sorts, nextSort(fields)] })}
+          onClick={() =>
+            onChange({ sorts: [...query.sorts, nextSort(fields)] })
+          }
         >
-          {i18nText("agentFlow", "auto.add_new_sorting_rule")}</Button>
+          {i18nText('agentFlow', 'auto.add_new_sorting_rule')}
+        </Button>
       </Flex>
       <Select
-        aria-label={i18nText("agentFlow", "auto.expand_association")}
+        aria-label={i18nText('agentFlow', 'auto.expand_association')}
         mode="multiple"
         options={expandOptions}
         value={query.expand_relations}
@@ -387,14 +433,14 @@ function DataModelQueryConditionsField({
       {includePagination ? (
         <Space.Compact block>
           <QueryValueInput
-            ariaLabel={i18nText("agentFlow", "auto.page_number")}
+            ariaLabel={i18nText('agentFlow', 'auto.page_number')}
             numeric
             selectorOptions={selectorOptions}
             value={query.page}
             onChange={(page) => onChange({ page })}
           />
           <QueryValueInput
-            ariaLabel={i18nText("agentFlow", "auto.quantity_per_page")}
+            ariaLabel={i18nText('agentFlow', 'auto.quantity_per_page')}
             numeric
             selectorOptions={selectorOptions}
             value={query.page_size}
@@ -421,7 +467,9 @@ export function DataModelQueryField({
 
   if (!hasDataModelSelected) {
     return (
-      <Typography.Text type="secondary">{i18nText("agentFlow", "auto.select_data_model_first")}</Typography.Text>
+      <Typography.Text type="secondary">
+        {i18nText('agentFlow', 'auto.select_data_model_first')}
+      </Typography.Text>
     );
   }
 

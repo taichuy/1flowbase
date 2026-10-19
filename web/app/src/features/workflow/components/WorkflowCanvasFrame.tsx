@@ -520,9 +520,8 @@ export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasCo
         {environmentVariablesOpen ? (
           <AgentFlowSideDock
             className="agent-flow-editor__variables-dock"
-            resizeLabel="Adjust environment variables width"
+            resizable={false}
             width={ENVIRONMENT_DOCK_WIDTH}
-            onResizeStart={() => undefined}
           >
             <Suspense
               fallback={
@@ -546,12 +545,8 @@ export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasCo
         {historyOpen ? (
           <AgentFlowSideDock
             className="agent-flow-editor__history-dock"
-            resizeLabel={i18nText(
-              'agentFlow',
-              'auto.adjust_historical_version_width'
-            )}
+            resizable={false}
             width={HISTORY_DOCK_WIDTH}
-            onResizeStart={() => undefined}
           >
             <Suspense
               fallback={

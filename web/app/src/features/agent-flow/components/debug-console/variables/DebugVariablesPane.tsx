@@ -2,6 +2,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
 } from 'react';
 import {
@@ -17,6 +18,7 @@ import {
 
 import type { AgentFlowVariableGroup } from '../../../api/runtime';
 import { i18nText } from '../../../../../shared/i18n/text';
+import './debug-variables-pane.css';
 
 function formatValue(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -66,7 +68,8 @@ export function DebugVariablesPane({
   sidebarWidth,
   sidebarMinWidth,
   sidebarMaxWidth,
-  onSidebarResizeStart
+  onSidebarResizeStart,
+  onSidebarResizeKeyDown
 }: {
   groups: AgentFlowVariableGroup[];
   onSelectedChange?: (info: SelectedVariableInfo | null) => void;
@@ -76,6 +79,7 @@ export function DebugVariablesPane({
   sidebarMinWidth?: number;
   sidebarMaxWidth?: number;
   onSidebarResizeStart?: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onSidebarResizeKeyDown?: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
 }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedValueText, setSelectedValueText] = useState('');
@@ -178,7 +182,10 @@ export function DebugVariablesPane({
     return (
       <div className="agent-flow-editor__debug-console-pane">
         <Empty
-          description={i18nText("agentFlow", "auto.currently_variable_snapshot")}
+          description={i18nText(
+            'agentFlow',
+            'auto.currently_variable_snapshot'
+          )}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       </div>
@@ -221,7 +228,9 @@ export function DebugVariablesPane({
                     const selectionKey = `${groupIndex}:${itemIndex}:${item.key}`;
 
                     return (
-                      <div
+                      <button
+                        type="button"
+                        aria-pressed={selectedKey === selectionKey}
                         key={selectionKey}
                         className={`agent-flow-editor__debug-variables-item ${
                           selectedKey === selectionKey ? 'is-selected' : ''
@@ -244,7 +253,7 @@ export function DebugVariablesPane({
                             ) : null}
                           </span>
                         </Tooltip>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -254,10 +263,15 @@ export function DebugVariablesPane({
         />
       </div>
       <div
-        aria-label={i18nText("agentFlow", "auto.adjust_variable_list_width")}
+        aria-label={i18nText('agentFlow', 'auto.adjust_variable_list_width')}
         aria-orientation="vertical"
         className="agent-flow-editor__debug-variables-resize-handle"
         onMouseDown={onSidebarResizeStart}
+        onKeyDown={onSidebarResizeKeyDown}
+        tabIndex={0}
+        aria-valuenow={effectiveSidebarWidth}
+        aria-valuemin={sidebarMinWidth ?? MIN_SIDEBAR_WIDTH}
+        aria-valuemax={sidebarMaxWidth}
         role="separator"
       />
       <div className="agent-flow-editor__debug-variables-detail">
@@ -269,29 +283,37 @@ export function DebugVariablesPane({
                 size={8}
                 wrap
               >
-                <Tag color="warning">{i18nText("agentFlow", "auto.truncated")}</Tag>
+                <Tag color="warning">
+                  {i18nText('agentFlow', 'auto.truncated')}
+                </Tag>
                 <Button size="small" onClick={handleLoadFullValue}>
-                  {i18nText("agentFlow", "auto.load_full_value")}</Button>
+                  {i18nText('agentFlow', 'auto.load_full_value')}
+                </Button>
               </Space>
             ) : null}
             <Input.TextArea
               key={selectedItem.selectionKey}
               style={{ height: '100%' }}
-              aria-label={i18nText("agentFlow", "auto.variable_value_edit_box")}
+              aria-label={i18nText('agentFlow', 'auto.variable_value_edit_box')}
               className="agent-flow-editor__debug-variables-detail-value"
               disabled={selectedItem.isReadOnly || selectedItem.isTruncated}
               onBlur={handleVariableValueBlur}
               onChange={(event) => setSelectedValueText(event.target.value)}
               value={selectedValueText}
               placeholder={
-                selectedItem.isReadOnly ? i18nText("agentFlow", "auto.system_variables_edited") : undefined
+                selectedItem.isReadOnly
+                  ? i18nText('agentFlow', 'auto.system_variables_edited')
+                  : undefined
               }
             />
           </>
         ) : (
           <div className="agent-flow-editor__debug-variables-detail-empty">
             <Empty
-              description={i18nText("agentFlow", "auto.select_variable_left_view_details")}
+              description={i18nText(
+                'agentFlow',
+                'auto.select_variable_left_view_details'
+              )}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           </div>

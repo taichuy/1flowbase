@@ -143,6 +143,7 @@ export function createNextNodeId(
   const ids = Array.isArray(documentOrIds)
     ? documentOrIds
     : documentOrIds.graph.nodes.map((node) => node.id);
+  const existingIds = new Set(ids);
   const nodeType = isNodePickerOption(nodeTypeOrOption)
     ? getNodePickerOptionNodeType(nodeTypeOrOption)
     : nodeTypeOrOption;
@@ -154,7 +155,7 @@ export function createNextNodeId(
   const prefix = `node-${prefixSeed.replaceAll('_', '-')}`;
   let nextIndex = 1;
 
-  while (ids.includes(`${prefix}-${nextIndex}`)) {
+  while (existingIds.has(`${prefix}-${nextIndex}`)) {
     nextIndex += 1;
   }
 

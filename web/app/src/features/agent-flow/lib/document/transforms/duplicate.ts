@@ -13,14 +13,16 @@ function collectDuplicatedNodeIds(
 ) {
   const queue = [rootNodeId];
   const collectedIds: string[] = [];
+  const visited = new Set<string>();
 
   while (queue.length > 0) {
     const currentNodeId = queue.shift();
 
-    if (!currentNodeId || collectedIds.includes(currentNodeId)) {
+    if (!currentNodeId || visited.has(currentNodeId)) {
       continue;
     }
 
+    visited.add(currentNodeId);
     collectedIds.push(currentNodeId);
 
     for (const candidate of document.graph.nodes) {
@@ -33,31 +35,23 @@ function collectDuplicatedNodeIds(
   return collectedIds;
 }
 
-export function getDuplicatedNodeId(
-  existingIds: string[],
-  sourceNodeId: string
-) {
-  let nextId = `${sourceNodeId}-copy`;
+function availableCopyId(existingIds: ReadonlySet<string>, sourceId: string) {
+  let nextId = `${sourceId}-copy`;
   let index = 2;
 
-  while (existingIds.includes(nextId)) {
-    nextId = `${sourceNodeId}-copy-${index}`;
+  while (existingIds.has(nextId)) {
+    nextId = `${sourceId}-copy-${index}`;
     index += 1;
   }
 
   return nextId;
 }
 
-function getDuplicatedEdgeId(existingIds: string[], sourceEdgeId: string) {
-  let nextId = `${sourceEdgeId}-copy`;
-  let index = 2;
-
-  while (existingIds.includes(nextId)) {
-    nextId = `${sourceEdgeId}-copy-${index}`;
-    index += 1;
-  }
-
-  return nextId;
+export function getDuplicatedNodeId(
+  existingIds: string[],
+  sourceNodeId: string
+) {
+  return availableCopyId(new Set(existingIds), sourceNodeId);
 }
 
 function remapSelector(selector: string[], idMap: Map<string, string>) {
@@ -88,12 +82,16 @@ export function duplicateNodeSubgraph(
   }
 
   const sourceIds = getNodeIdsToDuplicate(document, sourceNode);
-  const existingNodeIds = document.graph.nodes.map((node) => node.id);
-  const idMap = new Map(
-    sourceIds.map((id) => [id, getDuplicatedNodeId(existingNodeIds, id)])
-  );
+  const sourceIdSet = new Set(sourceIds);
+  const existingNodeIds = new Set(document.graph.nodes.map((node) => node.id));
+  const idMap = new Map<string, string>();
+  for (const sourceId of sourceIds) {
+    const copiedId = availableCopyId(existingNodeIds, sourceId);
+    idMap.set(sourceId, copiedId);
+    existingNodeIds.add(copiedId);
+  }
   const duplicatedNodes = document.graph.nodes
-    .filter((node) => sourceIds.includes(node.id))
+    .filter((node) => sourceIdSet.has(node.id))
     .map((node) =>
       transformNodeSelectorReferences(
         {
@@ -111,22 +109,27 @@ export function duplicateNodeSubgraph(
         (selector) => remapSelector(selector, idMap)
       )
     );
-  const duplicatedEdgeIds = document.graph.edges.map((edge) => edge.id);
+  const duplicatedEdgeIds = new Set(
+    document.graph.edges.map((edge) => edge.id)
+  );
   const duplicatedEdges = document.graph.edges
     .filter(
-      (edge) =>
-        sourceIds.includes(edge.source) && sourceIds.includes(edge.target)
+      (edge) => sourceIdSet.has(edge.source) && sourceIdSet.has(edge.target)
     )
-    .map((edge) => ({
-      ...edge,
-      id: getDuplicatedEdgeId(duplicatedEdgeIds, edge.id),
-      source: idMap.get(edge.source)!,
-      target: idMap.get(edge.target)!,
-      containerId:
-        edge.containerId && idMap.has(edge.containerId)
-          ? idMap.get(edge.containerId)!
-          : edge.containerId
-    }));
+    .map((edge) => {
+      const copiedId = availableCopyId(duplicatedEdgeIds, edge.id);
+      duplicatedEdgeIds.add(copiedId);
+      return {
+        ...edge,
+        id: copiedId,
+        source: idMap.get(edge.source)!,
+        target: idMap.get(edge.target)!,
+        containerId:
+          edge.containerId && idMap.has(edge.containerId)
+            ? idMap.get(edge.containerId)!
+            : edge.containerId
+      };
+    });
 
   return {
     ...document,
