@@ -115,7 +115,18 @@ describe('HttpRequestKeyValuesField', () => {
 
     const keyEditor = screen.getByLabelText('Request Params-0-key');
 
-    await dispatch(() => keyEditor.focus());
+    await dispatch(() => {
+      keyEditor.focus();
+      // The append assertion requires the user's caret after the existing key.
+      const range = document.createRange();
+      range.selectNodeContents(keyEditor);
+      range.collapse(false);
+      const selection = window.getSelection();
+      if (!selection) throw new Error('expected editor DOM selection');
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
     expect(keyEditor).toHaveFocus();
 
     const insertKeyVariableButton = screen.getAllByRole('button', {

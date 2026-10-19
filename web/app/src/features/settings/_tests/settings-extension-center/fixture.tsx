@@ -396,12 +396,14 @@ export function setupExtensionCenterFixture() {
 
   afterEach(async () => {
     try {
+      // Mutation onError returns Antd's message thenable, which settles after
+      // the real toast closes; its default lifetime exceeds waitFor's 1 s.
       await waitFor(() => {
         for (const client of mountedClients) {
           expect(client.isFetching()).toBe(0);
           expect(client.isMutating()).toBe(0);
         }
-      });
+      }, { timeout: 5000 });
     } finally {
       cleanup();
       for (const client of mountedClients) client.clear();

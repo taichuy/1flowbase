@@ -41,7 +41,7 @@ vi.mock('../../../../shared/ui/fixed-height-modal/FixedHeightModal', () => ({
     ) : null
 }));
 
-export const applicationManagementApi = vi.hoisted(() => ({
+const applicationManagementApi = vi.hoisted(() => ({
   settingsApplicationManagementQueryPrefix: ['settings', 'applications'],
   settingsApplicationManagementQueryKey: vi.fn((query: unknown) => [
     'settings',
@@ -51,7 +51,7 @@ export const applicationManagementApi = vi.hoisted(() => ({
   fetchSettingsApplicationManagement: vi.fn()
 }));
 
-export const applicationsApi = vi.hoisted(() => ({
+const applicationsApi = vi.hoisted(() => ({
   applicationCatalogQueryKey: ['applications', 'catalog'],
   applicationDetailQueryKey: vi.fn((applicationId: string) => [
     'applications',
@@ -69,11 +69,11 @@ export const applicationsApi = vi.hoisted(() => ({
   importApplicationArchive: vi.fn()
 }));
 
-export const applicationArchiveDownload = vi.hoisted(() => ({
+const applicationArchiveDownload = vi.hoisted(() => ({
   downloadApplicationArchive: vi.fn()
 }));
 
-export const applicationsPublicApi = vi.hoisted(() => ({
+const applicationsPublicApi = vi.hoisted(() => ({
   applicationApiMappingQueryKey: vi.fn((applicationId: string) => [
     'applications',
     applicationId,
@@ -93,7 +93,7 @@ export const applicationsPublicApi = vi.hoisted(() => ({
   saveWorkflowScheduleTrigger: vi.fn()
 }));
 
-export const membersApi = vi.hoisted(() => ({
+const membersApi = vi.hoisted(() => ({
   settingsMembersQueryKey: ['settings', 'members'],
   fetchSettingsMembers: vi.fn()
 }));
@@ -389,4 +389,13 @@ export function setupApplicationManagementFixture() {
 
 }
 
-export { ApiClientError, useAuthStore, ApplicationManagementPanel };
+export {
+  ApiClientError,
+  useAuthStore,
+  ApplicationManagementPanel,
+  applicationManagementApi,
+  applicationsApi,
+  applicationArchiveDownload,
+  applicationsPublicApi,
+  membersApi
+};

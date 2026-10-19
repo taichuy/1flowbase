@@ -18,7 +18,7 @@ import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 import type { CSSProperties, ReactNode, ReactElement } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 
-vi.mock('../../../../../../shared/ui/fixed-height-modal/FixedHeightModal', () => ({
+vi.mock('../../../../../../../shared/ui/fixed-height-modal/FixedHeightModal', () => ({
   FixedHeightModal: ({
     children,
     className,

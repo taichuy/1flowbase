@@ -172,6 +172,9 @@ test('persists a new instance before metadata-driven QR, retains edits and polls
     target: { value: 'https://example.com/custom' }
   });
   await click(screen.getByRole('button', { name: '保存并扫码授权' }));
+  // beginOnMount deliberately schedules authorization at 0 ms after persistence.
+  // Advance only that startup task; the 5 s polling interval remains unelapsed.
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(screen.getByText('请扫码并在设备上确认授权。')).toBeInTheDocument();
   expect(
     document.querySelector('.notification-instance-drawer canvas')

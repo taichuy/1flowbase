@@ -1,6 +1,3 @@
-import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
-import { SettingsExtensionCenterSection } from '../pages/settings-page/SettingsExtensionCenterSection';
 import {
   setupExtensionCenterFixture,
   extensionsApi,
@@ -14,6 +11,9 @@ import {
   change,
   keyDown
 } from './settings-extension-center/fixture';
+import { screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, test } from 'vitest';
+import { SettingsExtensionCenterSection } from '../pages/settings-page/SettingsExtensionCenterSection';
 
 describe('SettingsExtensionCenterSection', () => {
   setupExtensionCenterFixture();

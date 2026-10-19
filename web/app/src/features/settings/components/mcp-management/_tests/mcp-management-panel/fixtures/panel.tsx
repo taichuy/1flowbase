@@ -39,7 +39,7 @@ vi.mock('../../../../../../../shared/ui/fixed-height-modal/FixedHeightModal', ()
     ) : null
 }));
 
-export const mcpManagementApi = vi.hoisted(() => ({
+const mcpManagementApi = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
   settingsOfficialMcpBundlesQueryKey: [
     'settings',
@@ -737,3 +737,5 @@ export function setupMcpManagementPanelFixture() {
   });
 
 }
+
+export { mcpManagementApi };

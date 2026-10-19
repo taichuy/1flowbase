@@ -1,8 +1,3 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
-import { Modal } from 'antd';
-import type { ReactNode } from 'react';
-import { ApiClientError } from '@1flowbase/api-client';
 import {
   setupExtensionCenterFixture,
   extensionsApi,
@@ -15,6 +10,11 @@ import {
   renderSettled,
   click
 } from './fixture';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
+import { Modal } from 'antd';
+import type { ReactNode } from 'react';
+import { ApiClientError } from '@1flowbase/api-client';
 
 describe('SettingsExtensionCenterSection', () => {
   setupExtensionCenterFixture();

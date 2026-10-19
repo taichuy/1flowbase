@@ -84,7 +84,11 @@ let innerHeightSpy: WindowDimensionSpy | undefined;
 let innerWidthSpy: WindowDimensionSpy | undefined;
 
 export function setupEmbeddedAssistantFixture() {
-  beforeAll(() => loadApplicationI18nResources());
+  beforeAll(async () => {
+    await loadApplicationI18nResources();
+    // These scenarios exercise the real preview after loading, not cold chunk timing.
+    await import('../../components/embedded-assistant/EmbeddedAgentAssistantPreview');
+  });
   beforeEach(() => {
     window.localStorage.removeItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY);
     innerHeightSpy = vi

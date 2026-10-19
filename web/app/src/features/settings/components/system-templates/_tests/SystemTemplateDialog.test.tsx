@@ -147,7 +147,7 @@ describe('portable template flow', () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Install template' })
+        screen.getByRole('button', { name: 'Confirm installation' })
       ).toBeEnabled()
     );
     unmount();
@@ -176,13 +176,13 @@ describe('portable template flow', () => {
       </App>
     );
     const { rerender, unmount } = render(wrap());
-    expect(
-      screen.getByRole('button', { name: 'Install template' })
-    ).toBeDisabled();
+    expect(screen.getByText('pending.json')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Install template' })).not.toBeInTheDocument();
+    expect(api.previewSystemTemplate).not.toHaveBeenCalled();
     rerender(wrap({ name: 'ready.json', body }));
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Install template' })
+        screen.getByRole('button', { name: 'Confirm installation' })
       ).toBeEnabled()
     );
     unmount();

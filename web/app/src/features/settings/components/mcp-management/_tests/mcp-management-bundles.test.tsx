@@ -1,6 +1,6 @@
+import { mcpManagementApi, renderPanel, setupMcpManagementPanelFixture } from './mcp-management-panel/fixtures/panel';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
-import { mcpManagementApi, renderPanel, setupMcpManagementPanelFixture } from './mcp-management-panel/fixtures/panel';
 
 describe('McpManagementPanel', () => {
   setupMcpManagementPanelFixture();

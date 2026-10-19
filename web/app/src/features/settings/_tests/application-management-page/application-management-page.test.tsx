@@ -1,6 +1,6 @@
+import { ApiClientError, AppProviders, ApplicationManagementPanel, applicationManagementApi, applicationsApi, applicationsPublicApi, membersApi, setupApplicationManagementFixture, useAuthStore } from './fixture';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
-import { ApiClientError, AppProviders, ApplicationManagementPanel, applicationManagementApi, applicationsApi, applicationsPublicApi, membersApi, setupApplicationManagementFixture, useAuthStore } from './fixture';
 
 describe('ApplicationManagementPanel', () => {
   setupApplicationManagementFixture();
