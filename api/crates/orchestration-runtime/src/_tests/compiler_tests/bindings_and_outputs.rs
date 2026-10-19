@@ -1085,7 +1085,7 @@ fn ac_006_compile_accepts_sql_node_and_preserves_templated_sql_binding() {
 }
 
 #[test]
-fn compile_normalizes_legacy_sql_config_into_templated_binding() {
+fn compile_rejects_retired_sql_config_even_when_current_binding_is_present() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);
     document["graph"]["nodes"][1] = json!({
@@ -1107,13 +1107,15 @@ fn compile_normalizes_legacy_sql_config_into_templated_binding() {
     });
     document["graph"]["edges"][0]["target"] = json!("node-sql");
 
-    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
-
-    assert!(plan.compile_issues.is_empty());
-    assert_eq!(
-        plan.nodes["node-sql"].bindings["sql"].raw_value,
-        "select {{node-start.query}}"
-    );
+    for bindings in [
+        json!({}),
+        json!({"sql":{"kind":"templated_text","value":"select 1"}}),
+    ] {
+        document["graph"]["nodes"][1]["bindings"] = bindings;
+        let error =
+            FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap_err();
+        assert!(error.to_string().contains("config.sql is unsupported"));
+    }
 }
 
 #[test]

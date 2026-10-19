@@ -431,6 +431,12 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         "formal upgrade original events differ"
     );
     let store = PgControlPlaneStore::new(pool.clone());
+    let unsupported: i64 = sqlx::query_scalar("select (select count(*) from client_trajectory_steps where flow_run_id=any($1) and not semantic_metadata_restored) + (select count(*) from client_trajectory_sections where flow_run_id=any($1) and body_kind='legacy')")
+        .bind(&input.runs).fetch_one(&pool).await?;
+    ensure!(
+        unsupported == 0,
+        "pre-0.5 client semantic replay is unsupported; select current-layout samples"
+    );
     *phase = "legacy_reader_baseline";
     let before_readers = fingerprints::readers(&store, &input.runs)
         .await
@@ -452,9 +458,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         } else if input.finite_manifest {
             moved.compact_directory_records > 0 && moved.raw_archive_parts_sealed > 0
         } else {
-            moved.client_semantic_records_processed > 0
-                && moved.native_snapshot_events > 0
-                && moved.raw_archive_parts > 0
+            moved.native_snapshot_events > 0 && moved.raw_archive_parts > 0
         },
         "sample mover did not transform each requested domain"
     );
@@ -505,8 +509,7 @@ async fn replay(input: &Input, phase: &mut &'static str) -> Result<Value> {
         .await
         .context("actual mover reentry")?;
     ensure!(
-        repeated.client_semantic_records_processed == 0
-            && repeated.native_snapshot_events == 0
+        repeated.native_snapshot_events == 0
             && repeated.raw_archive_parts == 0
             && repeated.raw_archive_parts_sealed == 0
             && repeated.compact_directory_records == 0,

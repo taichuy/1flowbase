@@ -4,7 +4,6 @@ use super::*;
 #[derive(Debug, Default, serde::Serialize)]
 pub struct RuntimeStorageCompactionReceipt {
     pub requested_runs: usize,
-    pub client_semantic_records_processed: u64,
     pub native_snapshot_events: u64,
     pub raw_archive_parts: u64,
     pub raw_archive_parts_sealed: u64,
@@ -32,18 +31,6 @@ impl PgControlPlaneStore {
                     .fetch_one(self.pool())
                     .await?;
             anyhow::ensure!(exists, "maintenance run unavailable: {flow}");
-            loop {
-                let moved = self
-                    .migrate_client_trajectory_semantic_history(
-                        std::slice::from_ref(flow),
-                        batch_size,
-                    )
-                    .await?;
-                receipt.client_semantic_records_processed += moved;
-                if moved == 0 {
-                    break;
-                }
-            }
             loop {
                 let moved = self
                     .compact_client_trajectory_directories(std::slice::from_ref(flow), batch_size)
