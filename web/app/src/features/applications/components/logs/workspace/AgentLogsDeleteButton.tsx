@@ -39,7 +39,7 @@ type Values = {
 };
 const active = (job: AgentLogsDeleteJob | null | undefined) =>
   job?.status === 'queued' || job?.status === 'running';
-export function AgentLogsDeleteButton({
+function useDeletionJobController({
   applicationId,
   onFinished
 }: {
@@ -210,6 +210,17 @@ export function AgentLogsDeleteButton({
         : 0
       : Math.floor((job.deleted_records / job.total_records) * 100)
     : 0;
+  return {
+    setAnchor, setOpen, csrfToken, t, open, job, stop, reset, pendingInput, start,
+    trackedId, scope, preview, observed, form, submit, date, processing, percent
+  };
+}
+
+export function AgentLogsDeleteButton(props: Parameters<typeof useDeletionJobController>[0]) {
+  const {
+    setAnchor, setOpen, csrfToken, t, open, job, stop, reset, pendingInput, start,
+    trackedId, scope, preview, observed, form, submit, date, processing, percent
+  } = useDeletionJobController(props);
   return (
     <>
       <Button

@@ -42,7 +42,7 @@ type Values = {
   enabled: boolean;
 };
 
-export function NetworkEgressRoutesPanel() {
+function useNetworkEgressRoutesController() {
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
@@ -168,6 +168,17 @@ export function NetworkEgressRoutesPanel() {
     [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
     form.setFieldValue('pool_member_ids', next);
   };
+  return {
+    open, routes, pools, models, modelName, proxyName, remove, route, setRoute, form,
+    submit, create, update, target, poolMembers, selectedPoolMemberIds, movePoolMember
+  };
+}
+
+export function NetworkEgressRoutesPanel() {
+  const {
+    open, routes, pools, models, modelName, proxyName, remove, route, setRoute, form,
+    submit, create, update, target, poolMembers, selectedPoolMemberIds, movePoolMember
+  } = useNetworkEgressRoutesController();
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>

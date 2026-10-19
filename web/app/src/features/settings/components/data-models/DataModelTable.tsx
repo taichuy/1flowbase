@@ -101,7 +101,7 @@ function getStatusTag(status: string) {
   }
 }
 
-export function DataModelTable({
+function useDataModelTableController({
   models,
   selectedSource,
   selectedModelId,
@@ -268,6 +268,21 @@ export function DataModelTable({
       }
     }
   ];
+  return {
+    selectedSource, canManage, setDrawerState, updateDefaultsMutation, useMobileList,
+    loading, columns, models, selectedModelId, onSelectModel, onEditModel,
+    setDeleteTarget, drawerState, compatibleTemplatesQuery, message, saving,
+    onCreateModel, onUpdateModel, deleteTarget, onDeleteModel
+  };
+}
+
+export function DataModelTable(props: Parameters<typeof useDataModelTableController>[0]) {
+  const {
+    selectedSource, canManage, setDrawerState, updateDefaultsMutation, useMobileList,
+    loading, columns, models, selectedModelId, onSelectModel, onEditModel,
+    setDeleteTarget, drawerState, compatibleTemplatesQuery, message, saving,
+    onCreateModel, onUpdateModel, deleteTarget, onDeleteModel
+  } = useDataModelTableController(props);
 
   return (
     <Flex vertical gap={16} className="data-model-panel__table-container">

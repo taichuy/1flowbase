@@ -109,7 +109,7 @@ interface WorkflowCanvasFrameProps {
   ) => Promise<ConsoleApplicationOrchestrationState>;
 }
 
-export function WorkflowCanvasFrame({
+function useWorkflowCanvasController({
   applicationId,
   applicationName,
   initialEnvironmentVariables,
@@ -373,6 +373,33 @@ export function WorkflowCanvasFrame({
       )
     });
   }
+  return {
+    applicationName, applicationId, autosaveIntervalMs, autosaveStatus, issueErrorCount,
+    isPublished, publishMutation, revertToDraftMutation, workingDocument, triggerContext,
+    navigate, setPanelState, historyOpen, setEnvironmentVariablesOpen, openHistory,
+    issuesOpen, draftSync, confirmRevertToDraft, activeContainerId, navigation,
+    issueCountByNodeId, nodePickerOptions, viewportSnapshotRef, viewportGetterRef,
+    selectedNodeId, nodeDetailLayout, isResizingNodeDetail, boundedNodeDetailWidth,
+    handleNodeDetailResizeKeyDown, handleNodeDetailResizeStart, nodeDetailTab,
+    environmentVariables, issues, detailActions, setNodeDetailTab,
+    environmentVariablesOpen, environmentVariablesMutation, versions,
+    userProtectionLimit, isRestoringVersion, versionMetadataMutation
+  };
+}
+
+export function WorkflowCanvasFrame(props: Parameters<typeof useWorkflowCanvasController>[0]) {
+  const {
+    applicationName, applicationId, autosaveIntervalMs, autosaveStatus, issueErrorCount,
+    isPublished, publishMutation, revertToDraftMutation, workingDocument, triggerContext,
+    navigate, setPanelState, historyOpen, setEnvironmentVariablesOpen, openHistory,
+    issuesOpen, draftSync, confirmRevertToDraft, activeContainerId, navigation,
+    issueCountByNodeId, nodePickerOptions, viewportSnapshotRef, viewportGetterRef,
+    selectedNodeId, nodeDetailLayout, isResizingNodeDetail, boundedNodeDetailWidth,
+    handleNodeDetailResizeKeyDown, handleNodeDetailResizeStart, nodeDetailTab,
+    environmentVariables, issues, detailActions, setNodeDetailTab,
+    environmentVariablesOpen, environmentVariablesMutation, versions,
+    userProtectionLimit, isRestoringVersion, versionMetadataMutation
+  } = useWorkflowCanvasController(props);
 
   return (
     <section

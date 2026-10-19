@@ -63,7 +63,7 @@ function getHealthStatusMeta(status: string) {
   }
 }
 
-export function FileManagementPanel({
+function useFileManagementController({
   isRoot,
   canViewTables,
   canCreateTables
@@ -537,6 +537,17 @@ export function FileManagementPanel({
         ]
       : [])
   ];
+  return {
+    managementTabs, showCreateOnlyTable, setTableDrawer, storageDrawer, setStorageDrawer,
+    refetchStorages, tableDrawer, storages, refetchTables, handleUpdateBinding
+  };
+}
+
+export function FileManagementPanel(props: Parameters<typeof useFileManagementController>[0]) {
+  const {
+    managementTabs, showCreateOnlyTable, setTableDrawer, storageDrawer, setStorageDrawer,
+    refetchStorages, tableDrawer, storages, refetchTables, handleUpdateBinding
+  } = useFileManagementController(props);
 
   return (
     <SettingsSectionSurface heightMode="fill">

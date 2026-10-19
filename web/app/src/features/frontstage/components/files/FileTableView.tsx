@@ -50,7 +50,7 @@ export interface FileTableViewProps {
 }
 
 /** Host owns authenticated multipart requests; Blocks only select a file table. */
-export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProps) {
+function useFileTableController({ fileTableCode, toolbarExtra }: FileTableViewProps) {
   const { message } = App.useApp();
   const { getPrefixCls } = useContext(ConfigProvider.ConfigContext);
   const uploadPrefixCls = getPrefixCls('upload');
@@ -312,6 +312,21 @@ export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProp
   };
 
   const error = tables.error ?? records.error;
+  return {
+    error, message, tables, table, columns, configuration, records, page, pageSize,
+    setPage, setPageSize, setSort, search, setSearch, csrfToken, setUploadOpen,
+    toolbarExtra, shareTarget, workspaceId, filename, setShareTarget, uploadOpen,
+    surface, uploading, setFileList, fileList, customRequest, uploadPrefixCls
+  };
+}
+
+export function FileTableView(props: Parameters<typeof useFileTableController>[0]) {
+  const {
+    error, message, tables, table, columns, configuration, records, page, pageSize,
+    setPage, setPageSize, setSort, search, setSearch, csrfToken, setUploadOpen,
+    toolbarExtra, shareTarget, workspaceId, filename, setShareTarget, uploadOpen,
+    surface, uploading, setFileList, fileList, customRequest, uploadPrefixCls
+  } = useFileTableController(props);
   return (
     <div className="file-table-view">
       {error ? <Alert showIcon type="error" title={error.message} /> : null}

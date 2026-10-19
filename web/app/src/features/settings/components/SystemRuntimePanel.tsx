@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -546,9 +547,9 @@ export function SystemRuntimePanel() {
       ),
     [processesQuery.data]
   );
-  const backendProcessIds = backendProcesses
-    .map((process) => process.pid)
-    .join(',');
+  const backendProcessTopology = JSON.stringify(
+    backendProcesses.map(({ pid, parent_pid }) => [pid, parent_pid])
+  );
   const backendTreeData = useMemo(
     () => buildBackendProcessTree(backendProcesses),
     [backendProcesses]
@@ -557,7 +558,7 @@ export function SystemRuntimePanel() {
   const [selectedProcessId, setSelectedProcessId] = useState<number | null>(
     null
   );
-  useEffect(() => {
+  const synchronizeProcessTree = useEffectEvent(() => {
     const keys = collectProcessTreeKeys(
       buildBackendProcessTree(backendProcesses)
     );
@@ -580,8 +581,10 @@ export function SystemRuntimePanel() {
         ) ?? backendProcesses[0];
       return root ? root.pid : null;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendProcessIds]);
+  });
+  useEffect(() => {
+    synchronizeProcessTree();
+  }, [backendProcessTopology]);
   const selectedProcess =
     selectedProcessId === null
       ? null

@@ -61,7 +61,7 @@ function apiAccessLabel(model: SettingsDataModel) {
     : i18nText('settings', 'auto.closed');
 }
 
-export function DataModelDetail({
+function useDataModelDetailController({
   model,
   allModels,
   canManage,
@@ -294,6 +294,21 @@ export function DataModelDetail({
       }
     ]
   ];
+  return {
+    summaryRows, canManage, setModelDrawerOpen, model, setFieldDrawerState, fieldColumns,
+    fieldDrawerState, allModels, fieldSaving, onCreateField, onUpdateField,
+    onDeleteField, relationFields, grants, grantsLoading, grantsSaving, onSaveGrant,
+    advisorFindings, advisorLoading, modelDrawerOpen, modelSaving, onUpdateModel
+  };
+}
+
+export function DataModelDetail(props: Parameters<typeof useDataModelDetailController>[0]) {
+  const {
+    summaryRows, canManage, setModelDrawerOpen, model, setFieldDrawerState, fieldColumns,
+    fieldDrawerState, allModels, fieldSaving, onCreateField, onUpdateField,
+    onDeleteField, relationFields, grants, grantsLoading, grantsSaving, onSaveGrant,
+    advisorFindings, advisorLoading, modelDrawerOpen, modelSaving, onUpdateModel
+  } = useDataModelDetailController(props);
 
   return (
     <section

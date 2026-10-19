@@ -176,7 +176,7 @@ function buildScalarOperationCopyText(
   return `${textMatch[1].toUpperCase()} ${textMatch[2]}`;
 }
 
-export function ApiDocsExplorer<TAuthenticationSnapshot = unknown>({
+function useApiDocsExplorerController<TAuthenticationSnapshot = unknown>({
   queryState,
   onQueryStateChange,
   catalogQueryKey,
@@ -728,6 +728,11 @@ export function ApiDocsExplorer<TAuthenticationSnapshot = unknown>({
       </>
     );
   }
+  return { toolbarPortalElement, catalogQuery, renderCategorySelector, content };
+}
+
+export function ApiDocsExplorer<TAuthenticationSnapshot = unknown>(props: ApiDocsExplorerProps<TAuthenticationSnapshot>) {
+  const { toolbarPortalElement, catalogQuery, renderCategorySelector, content } = useApiDocsExplorerController(props);
 
   return (
     <div

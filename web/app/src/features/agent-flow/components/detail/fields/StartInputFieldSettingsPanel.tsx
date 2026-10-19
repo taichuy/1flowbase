@@ -53,7 +53,7 @@ function normalizeOptions(options: string[] | undefined) {
   return nextOptions;
 }
 
-export function StartInputFieldSettingsPanel({
+function useStartInputSettingsController({
   mode,
   field,
   inputTypeContract,
@@ -109,6 +109,19 @@ export function StartInputFieldSettingsPanel({
         : undefined
     });
   }
+  return {
+    title, triggerRef, onClose, onSave, inputTypeContract, options, inputTypeOptions,
+    field, onChange, handleTypeChange, sourceOptions, sourceContract, optionKeys,
+    updateOption, removeOption, showDefaultValue
+  };
+}
+
+export function StartInputFieldSettingsPanel(props: Parameters<typeof useStartInputSettingsController>[0]) {
+  const {
+    title, triggerRef, onClose, onSave, inputTypeContract, options, inputTypeOptions,
+    field, onChange, handleTypeChange, sourceOptions, sourceContract, optionKeys,
+    updateOption, removeOption, showDefaultValue
+  } = useStartInputSettingsController(props);
 
   return (
     <FloatingSettingsPanel

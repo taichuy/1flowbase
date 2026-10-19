@@ -179,7 +179,7 @@ function validateParsedValue(valueType: string, value: unknown) {
   throw new Error('value');
 }
 
-export function ApplicationEnvironmentVariablesPanel({
+function useEnvironmentVariableDraftController({
   variables,
   loading = false,
   onClose,
@@ -282,6 +282,19 @@ export function ApplicationEnvironmentVariablesPanel({
     setDraftVariables(nextVariables);
     onSave(nextVariables);
   }
+  return {
+    onClose, openCreateModal, loading, draftVariables, openEditModal, deleteVariable,
+    modalTitle, modalOpen, setModalOpen, submitModal, form, existingNames,
+    handleValueTypeChange, valueError, selectedValueType, setValueError
+  };
+}
+
+export function ApplicationEnvironmentVariablesPanel(props: Parameters<typeof useEnvironmentVariableDraftController>[0]) {
+  const {
+    onClose, openCreateModal, loading, draftVariables, openEditModal, deleteVariable,
+    modalTitle, modalOpen, setModalOpen, submitModal, form, existingNames,
+    handleValueTypeChange, valueError, selectedValueType, setValueError
+  } = useEnvironmentVariableDraftController(props);
 
   return (
     <section
