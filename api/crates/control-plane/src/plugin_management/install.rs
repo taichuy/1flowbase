@@ -217,6 +217,7 @@ impl InstallationProjectionIdentity for domain::PluginInstallationRecord {
 }
 
 mod plugin_settings_templates;
+use plugin_settings_templates::prepare_installation_commit;
 mod projections;
 use projections::{
     build_frontend_block_sync_input, build_js_dependency_sync_input,
@@ -242,7 +243,7 @@ fn stable_sha256_json(value: &serde_json::Value) -> String {
     format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
-fn prepare_installation_commit(
+fn prepare_installation_commit_blocking(
     package_root: &Path,
     node_id: &str,
     mut installation: PreparedPluginInstallationInput,
@@ -538,7 +539,8 @@ where
             installation_input,
             &manifest,
             None,
-        )?;
+        )
+        .await?;
         let installation = super::managed_installation::publish_installation(
             lease,
             staged_installation,
@@ -997,7 +999,7 @@ where
                 source_metadata.signature_algorithm.as_deref(),
                 source_metadata.signing_key_id.as_deref(),
             )?;
-            let installation_input = (|| {
+            let installation_input = (async {
                 match package_kind {
                 RoutedPluginPackageKind::HostExtension => {
                     ensure_root_actor(&actor)?;
@@ -1041,7 +1043,7 @@ where
                         },
                         &manifest,
                         None,
-                    )
+                    ).await
                     ?;
                     Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
@@ -1104,7 +1106,7 @@ where
                         installation_input,
                         &manifest,
                         Some(package_catalog),
-                    )
+                    ).await
                     ?;
                     Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
@@ -1156,7 +1158,7 @@ where
                         },
                         &manifest,
                         None,
-                    )
+                    ).await
                     ?;
                     Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
@@ -1207,7 +1209,7 @@ where
                         },
                         &manifest,
                         None,
-                    )
+                    ).await
                     ?;
                     Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
@@ -1255,7 +1257,7 @@ where
                         },
                         &manifest,
                         None,
-                    )
+                    ).await
                     ?;
                     Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
@@ -1313,12 +1315,12 @@ where
                         installation_input,
                         &manifest,
                         None,
-                    )
+                    ).await
                     ?;
                     Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
                 }
-            })()?;
+            }).await?;
             let installation = super::managed_installation::publish_installation(
                 lease, staged_installation, staged_package, installation_input,
             ).await?;
