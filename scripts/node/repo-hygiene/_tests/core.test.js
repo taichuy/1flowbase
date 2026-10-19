@@ -101,6 +101,26 @@ test("scanSourceFile ignores debt words in protocol fields, module paths, and fi
   assert.equal(findings[0].line, 19);
 });
 
+test("scanSourceFile distinguishes protocol history from actionable maintenance markers", () => {
+  const findings = scanSourceFile({
+    relativePath: "api/crates/domain/src/protocol.rs",
+    content: [
+      "// Rejects obsolete requests; legacy ACKs do not prove delivery.",
+      "/// Compatibility preserves already stored user documents.",
+      "// A deprecated protocol field is a wire-format fact, not a removal instruction.",
+      "// FIXME: cleanup loses the completion owner on abort.",
+      "// HACK: replace this fallback with the canonical registry.",
+      "/// @deprecated use the canonical interface instead.",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(findings.map(({ rule, line }) => ({ rule, line })), [
+    { rule: "source-debt-marker", line: 4 },
+    { rule: "source-debt-marker", line: 5 },
+    { rule: "source-debt-marker", line: 6 },
+  ]);
+});
+
 test("scanSourceFile reports low-value test smells as advisory findings", () => {
   const findings = scanSourceFile({
     relativePath:

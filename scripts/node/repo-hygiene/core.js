@@ -42,7 +42,7 @@ const SKIPPED_DIRS = new Set([
 ]);
 const SKIPPED_FILES = new Set(["api/Cargo.lock", "web/pnpm-lock.yaml"]);
 const DEBT_MARKER_PATTERN =
-  /\b(TODO|FIXME|HACK|legacy|compat(?:ibility)?|deprecated|obsolete)\b/iu;
+  /\b(?:TODO|FIXME|HACK)\b|@deprecated\b/iu;
 const FIELD_CONTRACT_COMPAT_MARKER_TEXT = /@field-contract-compat\b/u;
 const BENIGN_MARKER_PATTERNS = [
   /\bdeprecated:\s*false\b/u,
@@ -538,7 +538,7 @@ function scanSourceFile({ relativePath, content }) {
           file: relativePath,
           line: lineNumber,
           message:
-            "source contains a legacy/deprecated/TODO-style marker that should stay visible in QA reports",
+            "source declares actionable TODO/FIXME/HACK debt or an explicit @deprecated API; review its owner and removal path",
           snippet: line,
         }),
       );
