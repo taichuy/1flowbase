@@ -104,6 +104,7 @@ beforeEach(async () => {
   api.replaceSettingsRoleDataPolicy.mockImplementation(
     async (_role: string, input: ReplaceSettingsRoleDataPolicyInput) => {
       serverPolicy = { ...serverPolicy, ...input };
+      return serverPolicy;
     }
   );
 });
@@ -144,6 +145,7 @@ test.each(sections)(
       async (_role: string, input: ReplaceSettingsRoleDataPolicyInput) => {
         await pending;
         serverPolicy = { ...serverPolicy, ...input };
+        return serverPolicy;
       }
     );
     const client = setup(section);
@@ -183,6 +185,7 @@ test.each(sections)(
       async (_role: string, input: ReplaceSettingsRoleDataPolicyInput) => {
         await pending;
         serverPolicy = { ...serverPolicy, ...input };
+        return serverPolicy;
       }
     );
     const client = setup(section);
@@ -218,6 +221,7 @@ test('retires submitted default fields while preserving a different field edited
     async (_role: string, input: ReplaceSettingsRoleDataPolicyInput) => {
       await pending;
       serverPolicy = { ...serverPolicy, ...input };
+      return serverPolicy;
     }
   );
   const client = setup('default-policy');
@@ -245,3 +249,153 @@ test('retires submitted default fields while preserving a different field edited
   expect(screen.getByRole('checkbox', { name: '新增 启用' })).toBeChecked();
   expect(screen.getByRole('checkbox', { name: '查看 启用' })).not.toBeChecked();
 });
+
+test.each(sections)(
+  '%s keeps saved values after refresh failure and resubmits them before recovery',
+  async (section) => {
+    const client = setup(section);
+    const create = await screen.findByRole('checkbox', {
+      name: createName(section)
+    });
+    await waitFor(() => expect(create).toBeEnabled());
+    const refreshError = new Error('saved policy refresh unavailable');
+    api.fetchSettingsRoleDataPolicy.mockRejectedValue(refreshError);
+
+    fireEvent.click(create);
+    fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
+    await finishSave(client);
+    const savedPolicy = structuredClone(serverPolicy);
+    expect(
+      client.getQueryState(settingsRoleDataPolicyQueryKey('member'))?.error
+    ).toBe(refreshError);
+    expect(
+      client.getQueryData(settingsRoleDataPolicyQueryKey('member'))
+    ).toEqual(savedPolicy);
+    expect(client.getMutationCache().getAll()[0]?.state.status).toBe('success');
+    expect(client.getMutationCache().getAll()[0]?.state.error).toBeNull();
+    expect(create).not.toBeChecked();
+
+    // Saving again must submit the acknowledged value, never the stale cache.
+    // The next GET can recover and supply the replacement server snapshot.
+    api.fetchSettingsRoleDataPolicy.mockImplementation(async () => serverPolicy);
+    fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
+    await waitFor(() =>
+      expect(api.replaceSettingsRoleDataPolicy).toHaveBeenCalledTimes(2)
+    );
+    await finishSave(client);
+    expect(api.replaceSettingsRoleDataPolicy.mock.calls[1]?.[1]).toEqual({
+      default_policy: savedPolicy.default_policy,
+      model_policies: savedPolicy.model_policies
+    });
+    expect(
+      client.getQueryData(settingsRoleDataPolicyQueryKey('member'))
+    ).toEqual(savedPolicy);
+    expect(
+      client.getQueryState(settingsRoleDataPolicyQueryKey('member'))?.status
+    ).toBe('success');
+    expect(create).not.toBeChecked();
+
+    // Once recovery confirms the snapshot, saved fields follow the server again.
+    await refresh(client, policyWithCreate(section, true));
+    expect(create).toBeChecked();
+  }
+);
+
+test.each(sections)(
+  '%s preserves a newer same-value revision across a failed refresh and recovery',
+  async (section) => {
+    let complete!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    api.replaceSettingsRoleDataPolicy.mockImplementationOnce(
+      async (_role: string, input: ReplaceSettingsRoleDataPolicyInput) => {
+        await pending;
+        serverPolicy = { ...serverPolicy, ...input };
+        return serverPolicy;
+      }
+    );
+    const client = setup(section);
+    const create = await screen.findByRole('checkbox', {
+      name: createName(section)
+    });
+    await waitFor(() => expect(create).toBeEnabled());
+    const refreshError = new Error('saved policy refresh unavailable');
+    api.fetchSettingsRoleDataPolicy.mockRejectedValue(refreshError);
+    fireEvent.click(create);
+    fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
+    await waitFor(() =>
+      expect(api.replaceSettingsRoleDataPolicy).toHaveBeenCalledTimes(1)
+    );
+    // A newer revision returning to the submitted false value is still a draft.
+    fireEvent.click(create);
+    fireEvent.click(create);
+    await act(async () => {
+      complete();
+      await pending;
+    });
+    await finishSave(client);
+    expect(
+      client.getQueryState(settingsRoleDataPolicyQueryKey('member'))?.error
+    ).toBe(refreshError);
+    expect(create).not.toBeChecked();
+
+    api.fetchSettingsRoleDataPolicy.mockImplementation(async () => serverPolicy);
+    await refresh(client, policyWithCreate(section, true));
+    expect(create).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
+    await waitFor(() =>
+      expect(api.replaceSettingsRoleDataPolicy).toHaveBeenCalledTimes(2)
+    );
+    await finishSave(client);
+    const submitted = api.replaceSettingsRoleDataPolicy.mock.calls[1]?.[1];
+    expect(submitted).toEqual({
+      default_policy: serverPolicy.default_policy,
+      model_policies: serverPolicy.model_policies
+    });
+    if (section === 'default-policy') {
+      expect(submitted.default_policy.can_create).toBe(false);
+    } else {
+      expect(
+        submitted.model_policies.find(
+          (policy: { data_model_id: string }) =>
+            policy.data_model_id === 'model-orders'
+        )?.can_create_override
+      ).toBe(false);
+    }
+    await refresh(client, policyWithCreate(section, true));
+    expect(create).toBeChecked();
+  }
+);
+
+test.each(sections)(
+  '%s renders the returned server snapshot instead of inferring it from the request',
+  async (section) => {
+    const client = setup(section);
+    const create = await screen.findByRole('checkbox', {
+      name: createName(section)
+    });
+    await waitFor(() => expect(create).toBeEnabled());
+    const savedPolicy = structuredClone(serverPolicy);
+    const submittedPolicy = policyWithCreate(section, false);
+    const refreshError = new Error('saved policy refresh unavailable');
+    api.fetchSettingsRoleDataPolicy.mockRejectedValue(refreshError);
+    // A server response is authoritative even if it differs from the request.
+    api.replaceSettingsRoleDataPolicy.mockResolvedValueOnce(savedPolicy);
+    fireEvent.click(create);
+    expect(create).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
+    await finishSave(client);
+    expect(api.replaceSettingsRoleDataPolicy.mock.calls[0]?.[1]).toEqual({
+      default_policy: submittedPolicy.default_policy,
+      model_policies: submittedPolicy.model_policies
+    });
+    expect(
+      client.getQueryState(settingsRoleDataPolicyQueryKey('member'))?.error
+    ).toBe(refreshError);
+    expect(
+      client.getQueryData(settingsRoleDataPolicyQueryKey('member'))
+    ).toEqual(savedPolicy);
+    expect(create).toBeChecked();
+  }
+);

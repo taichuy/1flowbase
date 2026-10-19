@@ -160,7 +160,9 @@ describe('RolePermissionPanel', () => {
     });
     rolesApi.updateSettingsRole.mockResolvedValue(undefined);
     rolesApi.fetchSettingsRoleDataPolicy.mockResolvedValue(defaultDataPolicy);
-    rolesApi.replaceSettingsRoleDataPolicy.mockResolvedValue(undefined);
+    rolesApi.replaceSettingsRoleDataPolicy.mockImplementation(
+      async (role_code, input) => ({ role_code, ...input })
+    );
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
       consolePolicyCatalog([])
     );

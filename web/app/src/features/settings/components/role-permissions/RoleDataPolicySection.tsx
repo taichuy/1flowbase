@@ -254,7 +254,13 @@ function RoleDataPolicyDraft({
       if (!csrfToken) throw new Error('missing csrf token');
       return replaceSettingsRoleDataPolicy(roleCode, submission.input, csrfToken);
     },
-    onSuccess: async (_result, submission) => {
+    onSuccess: async (savedPolicy, submission) => {
+      // Publish the server-confirmed snapshot before refetching. A failed GET
+      // must not expose the pre-save cache when submitted revisions retire.
+      queryClient.setQueryData(
+        settingsRoleDataPolicyQueryKey(roleCode),
+        savedPolicy
+      );
       await queryClient.invalidateQueries({
         queryKey: settingsRoleDataPolicyQueryKey(roleCode)
       });

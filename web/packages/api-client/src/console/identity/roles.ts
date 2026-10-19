@@ -387,8 +387,8 @@ export function replaceConsoleRoleDataPolicy(
   input: ReplaceConsoleRoleDataPolicyInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<void> {
-  return apiFetchVoid({
+): Promise<ConsoleRoleDataPolicy> {
+  return apiFetch<ConsoleRoleDataPolicy>({
     path: `/api/console/settings/roles/${roleCode}/data-policy`,
     method: 'PUT',
     body: input,

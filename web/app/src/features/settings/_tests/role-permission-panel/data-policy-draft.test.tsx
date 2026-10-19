@@ -15,7 +15,8 @@ import {
 } from '../../../../shared/i18n/app-i18n';
 import {
   settingsRoleDataPolicyQueryKey,
-  type SettingsRoleDataPolicy
+  type SettingsRoleDataPolicy,
+  type ReplaceSettingsRoleDataPolicyInput
 } from '../../api/identity-access/roles';
 import { settingsAllDataModelsQueryKey } from '../../api/data-models';
 import { authenticate, defaultDataModels, defaultDataPolicy } from './fixtures';
@@ -76,7 +77,12 @@ describe('role data policy draft ownership', () => {
     authenticate();
     api.fetchSettingsRoleDataPolicy.mockResolvedValue(defaultDataPolicy);
     api.fetchSettingsAllDataModels.mockResolvedValue(defaultDataModels());
-    api.replaceSettingsRoleDataPolicy.mockResolvedValue(undefined);
+    api.replaceSettingsRoleDataPolicy.mockImplementation(
+      async (roleCode: string, input: ReplaceSettingsRoleDataPolicyInput) => ({
+        role_code: roleCode,
+        ...input
+      })
+    );
   });
 
   test('blocks external submission during a delayed role switch and never sends the previous role draft', async () => {

@@ -178,5 +178,18 @@ describe('console roles client', () => {
       csrfToken: 'csrf-123',
       body: input
     });
+
+    const savedPolicy = { role_code: 'member', ...input };
+    vi.mocked(transport.apiFetch).mockResolvedValueOnce(savedPolicy);
+    await expect(
+      replaceConsoleRoleDataPolicy('member', input, 'csrf-123')
+    ).resolves.toBe(savedPolicy);
+    expect(transport.apiFetch).toHaveBeenLastCalledWith({
+      path: '/api/console/settings/roles/member/data-policy',
+      method: 'PUT',
+      csrfToken: 'csrf-123',
+      body: input,
+      baseUrl: undefined
+    });
   });
 });

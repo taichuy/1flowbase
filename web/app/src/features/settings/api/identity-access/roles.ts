@@ -136,8 +136,8 @@ export function replaceSettingsRoleDataPolicy(
   roleCode: string,
   input: ReplaceSettingsRoleDataPolicyInput,
   csrfToken: string
-): Promise<void> {
-  return replaceConsoleRoleDataPolicy(roleCode, input, csrfToken);
+): Promise<SettingsRoleDataPolicy> {
+  return replaceConsoleRoleDataPolicy(roleCode, input, csrfToken) as Promise<SettingsRoleDataPolicy>;
 }
 
 export function fetchSettingsRoleFrontstageRoutes(roleCode: string): Promise<SettingsRoleFrontstageRoutes> {
