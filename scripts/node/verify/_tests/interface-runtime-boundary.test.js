@@ -247,7 +247,14 @@ test('retired provider configuration is absent while observation uses the compil
   const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
   const http = read('api/apps/api-server/src/routes/settings/host_infrastructure.rs');
   const consoleInterface = read('api/apps/api-server/src/routes/console_interface.rs');
-  const contributions = read('api/apps/api-server/src/extension_bus/interface_contributions.rs');
+  const contributions = [
+    'api/apps/api-server/src/extension_bus/interface_contributions.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/provider_operations.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/network.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/plugins.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/mcp.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/system.rs',
+  ].map(read).join('\n');
   assert.doesNotMatch(boot + http + contributions, /invoke_providers_view|providers_view_query|interface_provider_config/u);
   assert.match(http, /get_host_infrastructure_memory_overview/u);
   assert.match(http, /console_interface::invoke/u);

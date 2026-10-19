@@ -1,0 +1,90 @@
+use super::*;
+
+pub(super) fn contributions(
+    state: &Arc<crate::app_state::ApiState>,
+) -> Result<Vec<InterfaceRegistryContribution>, RegistryCompilationError> {
+    Ok(vec![
+        InterfaceRegistryContribution::new(
+            "api-server.console-plugins",
+            &[
+                "plugins.catalog.view",
+                "plugins.families.view",
+                "plugins.official_catalog.view",
+                "plugins.install",
+                "plugins.install.upload",
+                "plugins.install.official",
+                "plugins.catalog_projection.refresh",
+                "plugins.artifact.refresh",
+                "plugins.artifact.install",
+                "plugins.families.upgrade",
+                "plugins.families.switch",
+                "plugins.families.delete",
+                "plugins.enable",
+                "plugins.assign",
+                "plugins.tasks.view",
+                "model_provider_plugins.families.view",
+                "model_provider_plugins.official_catalog.view",
+                "model_provider_plugins.install.official",
+                "model_provider_plugins.install.upload",
+                "model_provider_plugins.artifact.refresh",
+                "model_provider_plugins.artifact.install",
+                "model_provider_plugins.families.upgrade",
+                "model_provider_plugins.families.switch",
+                "model_provider_plugins.families.delete",
+                "model_provider_plugins.tasks.view",
+            ],
+            &["api-server.console-plugins"],
+            crate::routes::plugins::interface::compile_registry(
+                crate::routes::plugins::interface::PluginInterfaceDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    official_plugin_source: state.official_plugin_source.clone(),
+                    official_catalog_source: state.official_extension_catalog_source.clone(),
+                    cache_store: state.infrastructure.cache_store(),
+                    provider_install_root: state.provider_install_root.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                    bootstrap_workspace_id: state.bootstrap_workspace_id,
+                    allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-extension-center",
+            &[
+                "extension_center.installed.view",
+                "extension_center.installed.select",
+                "extension_center.installed.enable",
+                "extension_center.contribution_authorizations.grant",
+                "extension_center.contribution_authorizations.revoke",
+                "extension_center.contribution_authorizations.view",
+                "extension_center.managed_execution.view",
+                "extension_center.lifecycle_deliveries.resume",
+                "extension_center.managed_executions.retire",
+
+
+                "extension_center.installed.disable",
+                "extension_center.installed.delete",
+                "extension_center.catalog.view",
+                "extension_center.catalog.detail",
+                "extension_center.update_check",
+                "extension_center.install",
+                "extension_center.update",
+                "extension_center.install.upload",
+            ],
+            &["api-server.console-extension-center"],
+            crate::routes::plugins::extension_center::interface::compile_registry(
+                crate::routes::plugins::extension_center::ExtensionCenterDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    official_plugin_source: state.official_plugin_source.clone(),
+                    official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
+                    official_extension_catalog_source: state.official_extension_catalog_source.clone(),
+                    cache_store: state.infrastructure.cache_store(),
+                    provider_install_root: state.provider_install_root.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                    allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
+                },
+            )?,
+        ),
+    ])
+}

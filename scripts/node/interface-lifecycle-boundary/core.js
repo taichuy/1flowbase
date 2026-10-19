@@ -91,7 +91,14 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   ].map(relativePath => read(repoRoot, relativePath)).join('\n');
   const anthropic = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/anthropic.rs');
   const workflowExtension = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/ex.rs');
-  const contributions = read(repoRoot, 'api/apps/api-server/src/extension_bus/interface_contributions.rs');
+  const contributions = [
+    'api/apps/api-server/src/extension_bus/interface_contributions.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/provider_operations.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/network.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/plugins.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/mcp.rs',
+    'api/apps/api-server/src/extension_bus/interface_contributions/system.rs',
+  ].map(relativePath => read(repoRoot, relativePath)).join('\n');
   const publicAuth = read(repoRoot, 'api/apps/api-server/src/routes/identity/auth.rs');
   const publicSignIn = read(repoRoot, 'api/apps/api-server/src/routes/identity/sign_in_interface.rs');
   const native = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/native.rs');
