@@ -8,7 +8,7 @@ import type { AnchorProps } from 'antd';
 
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
 import { resolveNativeBlockScrollOwner } from '../../lib/native-modules/native-block-surface-context';
-import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-adapter/native-trusted-block-react-adapter';
 
 const anchorRender = vi.hoisted(() => vi.fn());
 vi.mock('antd', async (importOriginal) => {

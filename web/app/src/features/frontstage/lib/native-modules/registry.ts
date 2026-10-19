@@ -60,8 +60,8 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     { NativeBlockPopover, NativeBlockTooltip }
   ] = await Promise.all([
     loadAntDesignRootModule(),
-    import('./native-affix-runtime'),
-    import('./native-anchor-runtime'),
+    import('./affix-anchor/native-affix-runtime'),
+    import('./affix-anchor/native-anchor-runtime'),
     import('./native-dropdown-runtime'),
     import('./native-message-runtime'),
     import('./notification/facade'),

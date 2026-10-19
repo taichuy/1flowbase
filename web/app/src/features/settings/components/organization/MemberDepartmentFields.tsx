@@ -2,7 +2,7 @@ import { Button } from 'antd';
 import { useDepartmentOptions } from '../../hooks/organization/useDepartmentOptions';
 import { Form, Select, Typography } from 'antd';
 import type { FormInstance } from 'antd';
-import type { SettingsDepartment } from '../../api/departments';
+import type { SettingsDepartment } from '../../api/identity-access/departments';
 import { i18nText } from '../../../../shared/i18n/text';
 export function MemberDepartmentFields({
   form,

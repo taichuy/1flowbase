@@ -1,4 +1,4 @@
-import type { FrontstageBlockCatalogEntry } from '../api/block-catalog';
+import type { FrontstageBlockCatalogEntry } from '../../api/block-catalog';
 
 export const TRUSTED_FRONTEND_UI_MOUNT_PERMISSION =
   'frontend-block.ui-mount.trusted-host';

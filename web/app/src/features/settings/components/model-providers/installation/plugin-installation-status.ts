@@ -1,4 +1,4 @@
-import { i18nText } from '../../../../shared/i18n/text';
+import { i18nText } from '../../../../../shared/i18n/text';
 
 export function formatPluginAvailabilityStatus(status: string) {
   switch (status) {

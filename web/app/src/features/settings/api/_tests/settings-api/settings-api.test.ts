@@ -6,7 +6,7 @@ import {
 import { modelProviderOptionsContract } from './settings-api-test-support';
 
 test('D5-F02 does not expose a feature-level universal extension upload API', () => {
-  type SettingsExtensionsApi = typeof import('../../extensions');
+  type SettingsExtensionsApi = typeof import('../../extensions/extensions');
   // @ts-expect-error Universal upload is intentionally absent from the feature API.
   expectTypeOf<SettingsExtensionsApi['uploadSettingsExtension']>().toBeNever();
 });
@@ -100,11 +100,11 @@ import {
   resetSettingsMemberPassword,
   changeCurrentUserPassword,
   replaceSettingsMemberRoles
-} from '../../members';
+} from '../../identity-access/members';
 import {
   settingsPermissionsQueryKey,
   fetchSettingsPermissions
-} from '../../permissions';
+} from '../../identity-access/permissions';
 import {
   settingsRolesQueryKey,
   settingsRolePermissionsQueryKey,
@@ -114,7 +114,7 @@ import {
   deleteSettingsRole,
   fetchSettingsRolePermissions,
   replaceSettingsRolePermissions
-} from '../../roles';
+} from '../../identity-access/roles';
 import {
   settingsModelProviderCatalogQueryKey,
   settingsModelProviderInstancesQueryKey,
@@ -151,7 +151,7 @@ import {
   upgradeSettingsPluginFamilyLatest,
   switchSettingsPluginFamilyVersion,
   fetchSettingsPluginTask
-} from '../../plugins';
+} from '../../extensions/plugins';
 import {
   settingsFileStoragesQueryKey,
   settingsFileTablesQueryKey,

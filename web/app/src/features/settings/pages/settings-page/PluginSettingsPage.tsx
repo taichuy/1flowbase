@@ -15,7 +15,7 @@ import {
 } from '../../../../shared/code-block/native-react-source-preparation';
 import { resolveAppLocale } from '../../../../shared/i18n/locales';
 import { useAuthStore } from '../../../../state/auth-store';
-import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../../frontstage/lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../../frontstage/lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block/unavailable-context';
 import { createFrontstageNativeReactModuleRegistry } from '../../../frontstage/lib/native-modules/registry';
 import { pluginSettingsPageQueryOptions } from '../../api/ui-management';

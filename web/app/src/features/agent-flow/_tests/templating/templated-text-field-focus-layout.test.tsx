@@ -4,8 +4,8 @@ import path from 'node:path';
 import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
-import { TemplatedTextField } from '../components/bindings/TemplatedTextField';
-import type { FlowSelectorOption } from '../lib/selector-options';
+import { TemplatedTextField } from '../../components/bindings/TemplatedTextField';
+import type { FlowSelectorOption } from '../../lib/selector-options';
 
 const startQueryOption: FlowSelectorOption = {
   nodeId: 'node-start',

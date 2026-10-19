@@ -12,13 +12,13 @@ import {
   Typography
 } from 'antd';
 
-import { ScrollableSurface } from '../../../../shared/ui/scrollable-surface/ScrollableSurface';
+import { ScrollableSurface } from '../../../../../shared/ui/scrollable-surface/ScrollableSurface';
 import type {
   SettingsPluginCompatibilityOverride,
   SettingsOfficialPluginCatalogEntry,
   SettingsPluginFamilyEntry
-} from '../../api/plugins';
-import { i18nText } from '../../../../shared/i18n/text';
+} from '../../../api/extensions/plugins';
+import { i18nText } from '../../../../../shared/i18n/text';
 import { OfficialPluginInstallConfirmContent } from './OfficialPluginUpgradeConfirmation';
 import { confirmOfficialPluginUpgrade } from './official-plugin-upgrade-confirmation';
 

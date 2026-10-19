@@ -20,7 +20,7 @@ import {
   fetchSettingsPluginFamilies,
   settingsOfficialPluginsQueryKey,
   settingsPluginFamiliesQueryKey
-} from '../../../api/plugins';
+} from '../../../api/extensions/plugins';
 import {
   EMPTY_MODEL_PROVIDER_CATALOG,
   EMPTY_MODEL_PROVIDER_INSTANCES,

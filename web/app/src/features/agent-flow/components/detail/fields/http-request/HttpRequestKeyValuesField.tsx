@@ -6,9 +6,9 @@ import { Button } from 'antd';
 import type { FlowBinding, NamedBindingEntry } from '@1flowbase/flow-schema';
 import { useRef } from 'react';
 
-import type { FlowSelectorOption } from '../../../lib/selector-options';
+import type { FlowSelectorOption } from '../../../../lib/selector-options';
 import { HttpRequestTemplateInput } from './HttpRequestTemplateInput';
-import { i18nText } from '../../../../../shared/i18n/text';
+import { i18nText } from '../../../../../../shared/i18n/text';
 
 export type HttpRequestKeyValueEntry = Pick<
   NamedBindingEntry,

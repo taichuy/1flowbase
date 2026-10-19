@@ -8,7 +8,7 @@ import {
   settingsConsolePolicyCatalogQueryKey,
   type SettingsConsolePolicyCatalog,
   type SettingsConsolePolicyCatalogLocale
-} from '../../api/permissions';
+} from '../../api/identity-access/permissions';
 import { reorderItems } from './policy-order';
 
 export function useConsoleSettingsOrder({

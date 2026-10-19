@@ -53,10 +53,10 @@ const blockCatalogApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../../api/model-providers', () => modelProvidersApi);
-vi.mock('../../../../api/plugins', () => pluginsApi);
+vi.mock('../../../../api/extensions/plugins', () => pluginsApi);
 vi.mock('../../../../../frontstage/api/block-catalog', () => blockCatalogApi);
 vi.mock(
-  '../../../../components/model-providers/plugin-installation-status',
+  '../../../../components/model-providers/installation/plugin-installation-status',
   () => ({
     formatPluginAvailabilityStatus: vi.fn(() => ({ label: '可用' }))
   })

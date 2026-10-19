@@ -34,7 +34,7 @@ import type {
   FrontstageBlockPresentation
 } from '../../../lib/page-document';
 import type { FrontstageBlockPorts } from '../../../lib/page-signals/types';
-import { createFrontstageNativeReactModuleRegistry } from '../../../lib/native-trusted-block-runtime-factory';
+import { createFrontstageNativeReactModuleRegistry } from '../../../lib/native-adapter/native-trusted-block-runtime-factory';
 import type { PreparedFrontstageIsolatedContribution } from '../../../lib/isolated-frontend-block-contribution';
 
 const ISOLATED_FIXTURE_SOURCE = `globalThis.__oneflowbaseIsolatedBlock = {

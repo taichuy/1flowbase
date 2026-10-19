@@ -26,7 +26,7 @@ const frontstageInterfaceCapabilities = vi.hoisted(() => ({
   }))
 }));
 
-vi.mock('../api/auth-center', () => authCenterApi);
+vi.mock('../api/identity-access/auth-center', () => authCenterApi);
 vi.mock('../../frontstage/hooks/use-frontstage-interface-capabilities', () => ({
   useFrontstageInterfaceCapabilities:
     frontstageInterfaceCapabilities.useFrontstageInterfaceCapabilities

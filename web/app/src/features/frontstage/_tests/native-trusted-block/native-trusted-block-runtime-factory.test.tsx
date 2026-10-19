@@ -25,14 +25,14 @@ import dayjsPackageJson from 'dayjs/package.json';
 import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../../packages/ui/package.json';
 
-import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block/unavailable-context';
 import {
   createFrontstageNativeReactModuleRegistry,
   createFrontstageNativeTrustedBlockModuleMap,
   createFrontstageNativeTrustedBlockRuntimeFactory,
   getFrontstageNativeTrustedBlockRuntimeCompatibility
-} from '../../lib/native-trusted-block-runtime-factory';
+} from '../../lib/native-adapter/native-trusted-block-runtime-factory';
 import { ANTD_STYLE_EXPORTS } from '../../lib/native-modules/antd-style-runtime';
 import { ANT_DESIGN_COLORS_EXPORTS } from '../../lib/native-modules/ant-design-colors-runtime';
 
@@ -855,7 +855,7 @@ export default function Block() {
     const runtimeFactorySource = readFileSync(
       join(
         process.cwd(),
-        'src/features/frontstage/lib/native-trusted-block-runtime-factory.ts'
+        'src/features/frontstage/lib/native-adapter/native-trusted-block-runtime-factory.ts'
       ),
       'utf8'
     );

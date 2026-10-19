@@ -88,8 +88,8 @@ vi.mock('antd', async () => {
   };
 });
 
-import { TemplatedTextField } from '../components/bindings/TemplatedTextField';
-import type { FlowSelectorOption } from '../lib/selector-options';
+import { TemplatedTextField } from '../../components/bindings/TemplatedTextField';
+import type { FlowSelectorOption } from '../../lib/selector-options';
 
 const startQueryOption: FlowSelectorOption = {
   nodeId: 'node-start',

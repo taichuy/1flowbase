@@ -39,9 +39,9 @@ import {
   type NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime/browser';
 
-import { i18nText } from '../../../shared/i18n/text';
-import { createBlockI18n } from './runtime-i18n/translator';
-import { FrontstageRuntimeActivityContext } from './page-canvas/runtime-activity';
+import { i18nText } from '../../../../shared/i18n/text';
+import { createBlockI18n } from '../runtime-i18n/translator';
+import { FrontstageRuntimeActivityContext } from '../page-canvas/runtime-activity';
 
 import type {
   PreparedTrustedFrontendContribution,
@@ -50,18 +50,18 @@ import type {
 import {
   loadAntdStyleModule,
   type AntdStyleShadowProvider
-} from './native-modules/antd-style-runtime';
+} from '../native-modules/antd-style-runtime';
 import {
   NativeBlockSurfaceProvider,
   resolveNativeBlockScrollOwner
-} from './native-modules/native-block-surface-context';
-import { useNativeBlockMotionTheme } from './native-modules/native-motion-runtime';
-import { createNativeOverlayHost } from './native-modules/native-overlay-host';
-import { NativeBlockAntdEffectScope } from './native-modules/notification/NativeBlockAntdEffectScope';
+} from '../native-modules/native-block-surface-context';
+import { useNativeBlockMotionTheme } from '../native-modules/native-motion-runtime';
+import { createNativeOverlayHost } from '../native-modules/native-overlay-host';
+import { NativeBlockAntdEffectScope } from '../native-modules/notification/NativeBlockAntdEffectScope';
 import {
   createNativeBlockSurfaceRuntime,
   type NativeBlockSurfaceRuntime
-} from './native-modules/surface/native-block-surface-runtime';
+} from '../native-modules/surface/native-block-surface-runtime';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;

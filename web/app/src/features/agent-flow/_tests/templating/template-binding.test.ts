@@ -5,7 +5,7 @@ import {
   isTemplateSelectorToken,
   parseTemplateSelectorTokens,
   remapTemplateSelectorTokens
-} from '../lib/template-binding';
+} from '../../lib/template-binding';
 
 describe('template binding selectors', () => {
   test('supports nested selector paths in template tokens', () => {

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useMemo } from 'react';
 
-import { type SettingsExtensionApplicationAction } from '../../api/extensions';
+import { type SettingsExtensionApplicationAction } from '../../api/extensions/extensions';
 import type { McpBundleImportSource } from '../mcp-management/bundle/McpBundleImportFlow';
 import type { I18nCatalogActivationSource } from '../i18n-catalog/I18nCatalogActivationFlow';
 

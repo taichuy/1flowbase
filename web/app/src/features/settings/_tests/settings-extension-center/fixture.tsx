@@ -81,8 +81,8 @@ const mcpManagementApi = vi.hoisted(() => ({
 
 const routerApi = vi.hoisted(() => ({ navigate: vi.fn() }));
 
-vi.mock('../../api/extensions', () => extensionsApi);
-vi.mock('../../api/plugins', () => ({
+vi.mock('../../api/extensions/extensions', () => extensionsApi);
+vi.mock('../../api/extensions/plugins', () => ({
   switchSettingsPluginFamilyVersion:
     extensionsApi.switchSettingsPluginFamilyVersion
 }));

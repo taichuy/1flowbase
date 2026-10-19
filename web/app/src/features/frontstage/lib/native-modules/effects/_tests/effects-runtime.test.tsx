@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
-import { FrontstageNativeTrustedBlockPortalHost } from '../../../native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../../native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageNativeReactModuleRegistry } from '../../registry';
 import { StyleProvider } from '../cssinjs-runtime';
 import { HappyProvider } from '../happy-work-runtime';

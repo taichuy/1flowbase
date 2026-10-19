@@ -16,7 +16,7 @@ const api = vi.hoisted(() => ({
   settingsDepartmentsQueryKey: ['settings', 'departments'],
   settingsMemberRoleOptionsQueryKey: ['settings', 'members', 'role-options']
 }));
-vi.mock('../../../api/departments', () => api);
+vi.mock('../../../api/identity-access/departments', () => api);
 
 import { AppProviders } from '../../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';

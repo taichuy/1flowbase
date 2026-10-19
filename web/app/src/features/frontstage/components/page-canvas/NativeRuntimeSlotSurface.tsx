@@ -9,7 +9,7 @@ import type { FrontstageBlockRenderPlanItem } from '../../lib/page-canvas/render
 import type { FrontstageNativePreparationSnapshot } from '../../lib/page-canvas/native-runtime-preparation';
 import type { FrontstageSignalRuntimeCoordinator } from '../../lib/page-canvas/signal-runtime';
 import { frontstageNativeInstanceRenderKey, useFrontstageNativeBlockInstance } from '../../hooks/use-frontstage-native-block-instance';
-import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlockReactComponent } from '../../lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block/unavailable-context';
 import { createFrontstageNativeBlockContextCapabilities, type FrontstageNativeBlockContextHost } from '../../lib/page-canvas/native-block-context-host';
 import { i18nText } from '../../../../shared/i18n/text';

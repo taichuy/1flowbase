@@ -7,7 +7,7 @@ import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
 import type { AffixProps, ButtonProps } from 'antd';
 
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
-import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-adapter/native-trusted-block-react-adapter';
 
 describe('native block Affix runtime adapter', () => {
   afterEach(() => {

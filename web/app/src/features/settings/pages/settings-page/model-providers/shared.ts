@@ -5,7 +5,7 @@ import type {
   SettingsModelProviderCatalogEntry,
   SettingsModelProviderInstance
 } from '../../../api/model-providers';
-import type { SettingsPluginFamilyEntry } from '../../../api/plugins';
+import type { SettingsPluginFamilyEntry } from '../../../api/extensions/plugins';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 export type ModelProviderDrawerState =

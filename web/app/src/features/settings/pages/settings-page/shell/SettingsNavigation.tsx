@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 
-import type { SectionNavItem } from '../../../../shared/ui/section-page-layout/SectionPageLayout';
-import { SectionPageLayout } from '../../../../shared/ui/section-page-layout/SectionPageLayout';
-import { i18nText } from '../../../../shared/i18n/text';
+import type { SectionNavItem } from '../../../../../shared/ui/section-page-layout/SectionPageLayout';
+import { SectionPageLayout } from '../../../../../shared/ui/section-page-layout/SectionPageLayout';
+import { i18nText } from '../../../../../shared/i18n/text';
 
 export const SETTINGS_PAGE_TITLE = i18nText("settings", "auto.settings");
 export const SETTINGS_PAGE_DESCRIPTION =

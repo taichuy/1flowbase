@@ -1,4 +1,4 @@
-import type { DepartmentTreeItem } from '../../api/departments';
+import type { DepartmentTreeItem } from '../../api/identity-access/departments';
 export interface DepartmentTreeRow extends DepartmentTreeItem {
   children?: DepartmentTreeRow[];
 }

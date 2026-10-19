@@ -9,8 +9,8 @@ import { useState } from 'react';
 import { afterEach, afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import type { FlowBinding } from '@1flowbase/flow-schema';
-import { HttpRequestBodyField } from '../../components/detail/fields/HttpRequestBodyField';
-import { HttpRequestKeyValuesField } from '../../components/detail/fields/HttpRequestKeyValuesField';
+import { HttpRequestBodyField } from '../../components/detail/fields/http-request/HttpRequestBodyField';
+import { HttpRequestKeyValuesField } from '../../components/detail/fields/http-request/HttpRequestKeyValuesField';
 import type { FlowSelectorOption } from '../../lib/selector-options';
 
 const startQueryOption: FlowSelectorOption = {

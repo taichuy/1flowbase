@@ -3,10 +3,10 @@ import { App, Button, Modal, Input } from 'antd';
 import { useState } from 'react';
 import type { FlowBinding } from '@1flowbase/flow-schema';
 
-import { parseHttpRequestCurlCommand } from '../../../lib/http-request/curl';
-import type { HttpRequestBodyType } from '../../../lib/http-request/contract';
+import { parseHttpRequestCurlCommand } from '../../../../lib/http-request/curl';
+import type { HttpRequestBodyType } from '../../../../lib/http-request/contract';
 import { toNamedBinding } from './HttpRequestKeyValuesField';
-import { i18nText } from '../../../../../shared/i18n/text';
+import { i18nText } from '../../../../../../shared/i18n/text';
 
 function toTemplatedEntries(entries: Array<{ name: string; value: string }>) {
   return entries.map((entry) => ({

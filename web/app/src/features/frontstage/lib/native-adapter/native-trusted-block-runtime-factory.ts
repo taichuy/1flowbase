@@ -16,8 +16,8 @@ import type { FrontstageNativeTrustedBlockReactComponent } from './native-truste
 export {
   createFrontstageNativeReactModuleRegistry,
   getFrontstageNativeReactModuleRegistry
-} from './native-modules/registry';
-export { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from './native-modules/registry';
+} from '../native-modules/registry';
+export { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../native-modules/registry';
 
 export {
   FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION,

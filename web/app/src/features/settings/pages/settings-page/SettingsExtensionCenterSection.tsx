@@ -57,7 +57,7 @@ import {
   type SettingsExtensionCategory,
   type SettingsExtensionCenterCategory,
   type SettingsInstalledExtension
-} from '../../api/extensions';
+} from '../../api/extensions/extensions';
 import {
   activateSettingsInstalledI18nCatalog,
   previewSettingsInstalledI18nCatalog,

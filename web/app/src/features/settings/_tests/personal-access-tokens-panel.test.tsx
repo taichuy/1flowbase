@@ -20,7 +20,7 @@ const personalAccessTokensApi = vi.hoisted(() => ({
   revokeSettingsPersonalAccessToken: vi.fn()
 }));
 
-vi.mock('../api/personal-access-tokens', () => personalAccessTokensApi);
+vi.mock('../api/identity-access/personal-access-tokens', () => personalAccessTokensApi);
 
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';

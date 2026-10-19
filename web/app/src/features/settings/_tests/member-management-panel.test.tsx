@@ -31,8 +31,8 @@ const MEMBER_EDIT_PROFILE_TEST_TIMEOUT = 30_000;
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock
 }));
-vi.mock('../api/members', () => membersApi);
-vi.mock('../api/roles', () => rolesApi);
+vi.mock('../api/identity-access/members', () => membersApi);
+vi.mock('../api/identity-access/roles', () => rolesApi);
 const departmentsApi = vi.hoisted(() => ({
   settingsDepartmentsQueryKey: ['settings', 'departments'],
   settingsMemberRoleOptionsQueryKey: ['settings', 'members', 'role-options'],
@@ -41,7 +41,7 @@ const departmentsApi = vi.hoisted(() => ({
   updateSettingsDepartment: vi.fn(),
   replaceSettingsMemberDepartments: vi.fn()
 }));
-vi.mock('../api/departments', () => ({
+vi.mock('../api/identity-access/departments', () => ({
   ...departmentsApi,
   fetchSettingsMemberRoleOptions: rolesApi.fetchSettingsRoles
 }));

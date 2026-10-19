@@ -2,84 +2,84 @@ import { Suspense, lazy, type ReactNode } from 'react';
 
 import { useNavigate } from '@tanstack/react-router';
 
-import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
-import type { RolePermissionTab } from '../../components/RolePermissionPanel';
-import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
-import type { SettingsSectionKey } from '../../lib/settings-sections';
-import type { SettingsExtensionCenterCategory } from '../../api/extensions';
-import type { NetworkCenterPage } from '../network-center/NetworkCenterSection';
+import { LoadingState } from '../../../../../shared/ui/loading-state/LoadingState';
+import type { RolePermissionTab } from '../../../components/RolePermissionPanel';
+import { SettingsSectionSurface } from '../../../components/SettingsSectionSurface';
+import type { SettingsSectionKey } from '../../../lib/settings-sections';
+import type { SettingsExtensionCenterCategory } from '../../../api/extensions/extensions';
+import type { NetworkCenterPage } from '../../network-center/NetworkCenterSection';
 
 const NotificationsPage = lazy(() =>
-  import('../notifications/NotificationsPage').then((module) => ({
+  import('../../notifications/NotificationsPage').then((module) => ({
     default: module.NotificationsPage
   }))
 );
 
 const MemberSettingsTabs = lazy(() =>
-  import('./MemberSettingsTabs').then((module) => ({
+  import('../MemberSettingsTabs').then((module) => ({
     default: module.MemberSettingsTabs
   }))
 );
 const RolePermissionPanel = lazy(() =>
-  import('../../components/RolePermissionPanel').then((module) => ({
+  import('../../../components/RolePermissionPanel').then((module) => ({
     default: module.RolePermissionPanel
   }))
 );
 const SystemRuntimePanel = lazy(() =>
-  import('../../components/SystemRuntimePanel').then((module) => ({
+  import('../../../components/SystemRuntimePanel').then((module) => ({
     default: module.SystemRuntimePanel
   }))
 );
 const SettingsAuthCenterSection = lazy(() =>
-  import('./SettingsAuthCenterSection').then((module) => ({
+  import('../SettingsAuthCenterSection').then((module) => ({
     default: module.SettingsAuthCenterSection
   }))
 );
 const SettingsDataModelsSection = lazy(() =>
-  import('./SettingsDataModelsSection').then((module) => ({
+  import('../SettingsDataModelsSection').then((module) => ({
     default: module.SettingsDataModelsSection
   }))
 );
 const SettingsFilesSection = lazy(() =>
-  import('./SettingsFilesSection').then((module) => ({
+  import('../SettingsFilesSection').then((module) => ({
     default: module.SettingsFilesSection
   }))
 );
 
 const ApiDocsPanel = lazy(() =>
-  import('../../components/ApiDocsPanel').then((module) => ({
+  import('../../../components/ApiDocsPanel').then((module) => ({
     default: module.ApiDocsPanel
   }))
 );
 const PersonalAccessTokensPanel = lazy(() =>
-  import('../../components/PersonalAccessTokensPanel').then((module) => ({
+  import('../../../components/PersonalAccessTokensPanel').then((module) => ({
     default: module.PersonalAccessTokensPanel
   }))
 );
 const ModelProviderSettingsTabs = lazy(() =>
-  import('./ModelProviderSettingsTabs').then((module) => ({
+  import('../ModelProviderSettingsTabs').then((module) => ({
     default: module.ModelProviderSettingsTabs
   }))
 );
 const SettingsExtensionCenterSection = lazy(() =>
-  import('./SettingsExtensionCenterSection').then((module) => ({
+  import('../SettingsExtensionCenterSection').then((module) => ({
     default: module.SettingsExtensionCenterSection
   }))
 );
 const SettingsMcpManagementSection = lazy(() =>
-  import('./SettingsMcpManagementSection').then((module) => ({
+  import('../SettingsMcpManagementSection').then((module) => ({
     default: module.SettingsMcpManagementSection
   }))
 );
 const HostInfrastructureMemoryObservationPanel = lazy(() =>
-  import('../../components/host-infrastructure/HostInfrastructureMemoryObservationPanel').then(
+  import('../../../components/host-infrastructure/HostInfrastructureMemoryObservationPanel').then(
     (module) => ({
       default: module.HostInfrastructureMemoryObservationPanel
     })
   )
 );
 const ApplicationManagementPanel = lazy(() =>
-  import('../../components/application-management/ApplicationManagementPanel').then(
+  import('../../../components/application-management/ApplicationManagementPanel').then(
     (module) => ({
       default: module.ApplicationManagementPanel
     })
@@ -87,24 +87,24 @@ const ApplicationManagementPanel = lazy(() =>
 );
 
 const SystemBackupsPanel = lazy(() =>
-  import('../../components/system-backups/SystemBackupsPanel').then(
+  import('../../../components/system-backups/SystemBackupsPanel').then(
     (module) => ({
       default: module.SystemBackupsPanel
     })
   )
 );
 const I18nCatalogPage = lazy(() =>
-  import('../i18n-catalog/I18nCatalogPage').then((module) => ({
+  import('../../i18n-catalog/I18nCatalogPage').then((module) => ({
     default: module.I18nCatalogPage
   }))
 );
 const UiManagementPanel = lazy(() =>
-  import('../../components/ui-management/UiManagementPanel').then((module) => ({
+  import('../../../components/ui-management/UiManagementPanel').then((module) => ({
     default: module.UiManagementPanel
   }))
 );
 const NetworkCenterSection = lazy(() =>
-  import('../network-center/NetworkCenterSection').then((module) => ({
+  import('../../network-center/NetworkCenterSection').then((module) => ({
     default: module.NetworkCenterSection
   }))
 );

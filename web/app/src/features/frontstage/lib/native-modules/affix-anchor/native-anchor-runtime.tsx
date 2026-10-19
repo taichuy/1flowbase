@@ -17,7 +17,7 @@ import {
   attachNativeAnchorAffixLayer,
   type NativeAnchorAffixLayer
 } from './native-anchor-affix-layer';
-import { useNativeBlockSurface } from './native-block-surface-context';
+import { useNativeBlockSurface } from '../native-block-surface-context';
 
 interface ScopedAnchorLink {
   internalHref: string;

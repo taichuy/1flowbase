@@ -35,7 +35,7 @@ import {
   type SettingsMcpTemplateLibraryBundle,
   type SettingsMcpTemplateLibraryVersion
 } from '../../../api/mcp-management';
-import { settingsInstalledExtensionsQueryKey } from '../../../api/extensions';
+import { settingsInstalledExtensionsQueryKey } from '../../../api/extensions/extensions';
 import {
   McpBundleImportFlow,
   type McpBundleImportSource

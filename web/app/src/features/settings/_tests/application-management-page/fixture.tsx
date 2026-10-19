@@ -115,7 +115,7 @@ vi.mock('../../../applications/api/applications', async (importOriginal) => ({
   ...applicationsApi
 }));
 vi.mock('../../../applications/api/public-api', () => applicationsPublicApi);
-vi.mock('../../api/members', () => membersApi);
+vi.mock('../../api/identity-access/members', () => membersApi);
 vi.mock('../../../agent-flow/api/orchestration', () => orchestrationApi);
 vi.mock(
   '../../../applications/lib/template-download',

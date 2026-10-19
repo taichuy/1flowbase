@@ -7,7 +7,7 @@ import {
   discoverTrustedFrontendContribution,
   prepareTrustedFrontendContribution,
   TrustedFrontendContributionLifecycleError
-} from '../../lib/native-trusted-block-contribution-lifecycle';
+} from '../../lib/native-adapter/native-trusted-block-contribution-lifecycle';
 
 describe('trusted frontend contribution lifecycle', () => {
   test('D5-P2 exposes catalog discovery before preparing the exact graph-backed trusted UiMount binding', () => {
@@ -141,14 +141,14 @@ describe('trusted frontend contribution lifecycle', () => {
     const lifecycleSource = readFileSync(
       join(
         process.cwd(),
-        'src/features/frontstage/lib/native-trusted-block-contribution-lifecycle.ts'
+        'src/features/frontstage/lib/native-adapter/native-trusted-block-contribution-lifecycle.ts'
       ),
       'utf8'
     );
     const adapterSource = readFileSync(
       join(
         process.cwd(),
-        'src/features/frontstage/lib/native-trusted-block-react-adapter.tsx'
+        'src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx'
       ),
       'utf8'
     );

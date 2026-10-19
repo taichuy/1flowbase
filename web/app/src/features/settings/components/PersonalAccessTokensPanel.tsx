@@ -29,7 +29,7 @@ import {
   settingsPersonalAccessTokensQueryKey,
   type CreateSettingsPersonalAccessTokenInput,
   type SettingsPersonalAccessToken
-} from '../api/personal-access-tokens';
+} from '../api/identity-access/personal-access-tokens';
 import { i18nText } from '../../../shared/i18n/text';
 import {
   DataTable,

@@ -3,8 +3,8 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type {
   SettingsOfficialPluginCatalogEntry
-} from '../../../api/plugins';
-import { OfficialPluginInstallPanel } from '../OfficialPluginInstallPanel';
+} from '../../../api/extensions/plugins';
+import { OfficialPluginInstallPanel } from '../installation/OfficialPluginInstallPanel';
 
 type OfficialPluginInstallPanelProps = Parameters<
   typeof OfficialPluginInstallPanel

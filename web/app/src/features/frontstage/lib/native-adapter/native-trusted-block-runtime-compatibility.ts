@@ -1,7 +1,7 @@
 import antDesignColorsPackageJson from '@ant-design/colors/package.json';
 import antdPackageJson from 'antd/package.json';
 import antdStylePackageJson from 'antd-style/package.json';
-import appPackageJson from '../../../../package.json';
+import appPackageJson from '../../../../../package.json';
 import { ANT_DESIGN_ICONS_PACKAGE } from 'virtual:1flowbase-native-ant-design-icons-modules';
 import { DAYJS_PACKAGE } from 'virtual:1flowbase-native-dayjs-modules';
 import { DND_KIT_PACKAGES } from 'virtual:1flowbase-native-dnd-kit-modules';
@@ -11,7 +11,7 @@ import {
   NATIVE_TRUSTED_BLOCK_RUNTIME
 } from '@1flowbase/page-runtime';
 import reactPackageJson from 'react/package.json';
-import uiPackageJson from '../../../../../packages/ui/package.json';
+import uiPackageJson from '../../../../../../packages/ui/package.json';
 
 export const FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION =
   '1.6.0';

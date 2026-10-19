@@ -8,7 +8,7 @@ import { message as AntdMessage } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
-import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
+import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-adapter/native-trusted-block-react-adapter';
 
 type NativeMessageModule = {
   useMessage(): readonly [MessageInstance, ReactElement];

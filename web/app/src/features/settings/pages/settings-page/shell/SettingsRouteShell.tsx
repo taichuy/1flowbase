@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
-import { SectionPageLayout } from '../../../../shared/ui/section-page-layout/SectionPageLayout';
-import type { SettingsSectionNavItem } from '../../lib/settings-sections';
+import { SectionPageLayout } from '../../../../../shared/ui/section-page-layout/SectionPageLayout';
+import type { SettingsSectionNavItem } from '../../../lib/settings-sections';
 import { SettingsEmptyState } from './SettingsEmptyState';
 import {
   SETTINGS_PAGE_DESCRIPTION,

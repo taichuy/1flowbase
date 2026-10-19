@@ -1,5 +1,5 @@
-import type { SettingsConsolePolicyCatalog } from '../../api/permissions';
-import type { SettingsRoleConsolePolicy } from '../../api/roles';
+import type { SettingsConsolePolicyCatalog } from '../../api/identity-access/permissions';
+import type { SettingsRoleConsolePolicy } from '../../api/identity-access/roles';
 
 export type ConsolePolicyCatalogGroup = SettingsConsolePolicyCatalog['groups'][number];
 type ConsolePolicyCatalogOperation =

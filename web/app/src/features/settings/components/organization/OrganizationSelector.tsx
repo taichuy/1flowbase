@@ -13,7 +13,7 @@ import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import TeamOutlined from '@ant-design/icons/es/icons/TeamOutlined';
-import type { DepartmentTreeItem } from '../../api/departments';
+import type { DepartmentTreeItem } from '../../api/identity-access/departments';
 import { departmentTree, type DepartmentTreeRow } from './department-tree';
 import { i18nText } from '../../../../shared/i18n/text';
 import './organization-management.css';

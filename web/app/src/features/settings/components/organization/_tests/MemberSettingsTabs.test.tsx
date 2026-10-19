@@ -10,7 +10,7 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
   useRouterState: () => mocks.tab
 }));
-vi.mock('../../../api/departments', () => ({
+vi.mock('../../../api/identity-access/departments', () => ({
   fetchSettingsDepartmentAccess: mocks.access,
   settingsDepartmentAccessQueryKey: ['settings', 'departments', 'access']
 }));

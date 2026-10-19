@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
-import type { SettingsPluginFamilyEntry } from '../../../api/plugins';
+import type { SettingsPluginFamilyEntry } from '../../../api/extensions/plugins';
 import { ModelProviderCatalogPanel } from '../ModelProviderCatalogPanel';
 
 const installedFamily: SettingsPluginFamilyEntry = {

@@ -26,7 +26,7 @@ import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPa
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
 import { McpTemplateLibrary } from '../features/settings/components/mcp-management/bundle/McpTemplateLibrary';
-import { PluginUploadInstallModal } from '../features/settings/components/model-providers/PluginUploadInstallModal';
+import { PluginUploadInstallModal } from '../features/settings/components/model-providers/installation/PluginUploadInstallModal';
 import '../features/settings/components/model-providers/model-provider-panel.css';
 import type { UploadFile } from 'antd/es/upload/interface';
 import {

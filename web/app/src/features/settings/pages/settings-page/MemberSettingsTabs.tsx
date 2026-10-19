@@ -3,7 +3,7 @@ import { Alert, Button, Spin } from 'antd';
 import {
   fetchSettingsDepartmentAccess,
   settingsDepartmentAccessQueryKey
-} from '../../api/departments';
+} from '../../api/identity-access/departments';
 import { DepartmentManagementPanel } from '../../components/organization/DepartmentManagementPanel';
 import { Tabs } from 'antd';
 import { useNavigate, useRouterState } from '@tanstack/react-router';

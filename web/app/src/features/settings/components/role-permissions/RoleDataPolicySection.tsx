@@ -17,7 +17,7 @@ import {
   settingsRoleDataPolicyQueryKey,
   type SettingsRoleDataPolicyScope,
   type SettingsRoleDataPolicyOverrideScope
-} from '../../api/roles';
+} from '../../api/identity-access/roles';
 
 interface DefaultPolicyFormState {
   can_view: boolean;

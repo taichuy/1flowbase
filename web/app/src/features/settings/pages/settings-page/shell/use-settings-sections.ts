@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   type SettingsSectionNavItem,
   type SettingsSectionRegistryItem
-} from '../../lib/settings-sections';
+} from '../../../lib/settings-sections';
 
 export function useSettingsSections({
   requestedSectionKey,

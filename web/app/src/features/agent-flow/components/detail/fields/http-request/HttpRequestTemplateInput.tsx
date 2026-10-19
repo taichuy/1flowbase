@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 
-import type { FlowSelectorOption } from '../../../lib/selector-options';
-import { TemplatedTextField } from '../../bindings/TemplatedTextField';
-import { i18nText } from '../../../../../shared/i18n/text';
+import type { FlowSelectorOption } from '../../../../lib/selector-options';
+import { TemplatedTextField } from '../../../bindings/TemplatedTextField';
+import { i18nText } from '../../../../../../shared/i18n/text';
 
 interface HttpRequestTemplateInputProps {
   ariaLabel: string;

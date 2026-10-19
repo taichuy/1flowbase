@@ -16,11 +16,11 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent,
   type FrontstageNativeTrustedBlockReactComponentProps
-} from '../../lib/native-trusted-block-react-adapter';
+} from '../../lib/native-adapter/native-trusted-block-react-adapter';
 import {
   TrustedFrontendContributionHandle,
   type PreparedTrustedFrontendContribution
-} from '../../lib/native-trusted-block-contribution-lifecycle';
+} from '../../lib/native-adapter/native-trusted-block-contribution-lifecycle';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -233,7 +233,7 @@ describe('frontstage native trusted block declarative portal host', () => {
     const source = readFileSync(
       join(
         process.cwd(),
-        'src/features/frontstage/lib/native-trusted-block-react-adapter.tsx'
+        'src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx'
       ),
       'utf8'
     );

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { describe, expect, test, vi } from 'vitest';
 
-import { PluginUploadInstallModal } from '../PluginUploadInstallModal';
+import { PluginUploadInstallModal } from '../installation/PluginUploadInstallModal';
 
 describe('PluginUploadInstallModal', () => {
   test('keeps the controlled long package filename and upload error in the modal content', () => {

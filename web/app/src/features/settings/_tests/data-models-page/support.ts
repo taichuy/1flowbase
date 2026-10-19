@@ -246,12 +246,12 @@ const dataModelsApi = vi.hoisted(() => ({
   fetchSettingsDataModelOpenApiDocument: vi.fn()
 }));
 
-vi.mock('../../api/members', () => membersApi);
-vi.mock('../../api/roles', () => rolesApi);
-vi.mock('../../api/permissions', () => permissionsApi);
+vi.mock('../../api/identity-access/members', () => membersApi);
+vi.mock('../../api/identity-access/roles', () => rolesApi);
+vi.mock('../../api/identity-access/permissions', () => permissionsApi);
 vi.mock('../../api/api-docs', () => docsApi);
 vi.mock('../../api/model-providers', () => modelProvidersApi);
-vi.mock('../../api/plugins', () => pluginsApi);
+vi.mock('../../api/extensions/plugins', () => pluginsApi);
 vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../../api/file-management', () => fileManagementApi);
 vi.mock('../../api/host-infrastructure', () => hostInfrastructureApi);

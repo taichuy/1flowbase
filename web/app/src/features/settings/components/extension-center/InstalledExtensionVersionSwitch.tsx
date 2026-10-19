@@ -1,4 +1,4 @@
-import { switchSettingsPluginFamilyVersion } from '../../api/plugins';
+import { switchSettingsPluginFamilyVersion } from '../../api/extensions/plugins';
 import { useMutation } from '@tanstack/react-query';
 import { extensionOperationErrorText } from '../../lib/extension-operation-error';
 import { App, Button, Modal } from 'antd';
@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import {
   enableSettingsInstalledExtension,
   type SettingsInstalledExtension
-} from '../../api/extensions';
+} from '../../api/extensions/extensions';
 
 export function InstalledExtensionVersionSwitch({
   installation,

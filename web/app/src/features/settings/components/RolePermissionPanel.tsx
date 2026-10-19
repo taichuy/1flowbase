@@ -13,8 +13,8 @@ import TeamOutlined from '@ant-design/icons/es/icons/TeamOutlined';
 import SafetyCertificateOutlined from '@ant-design/icons/es/icons/SafetyCertificateOutlined';
 
 import { useAuthStore } from '../../../state/auth-store';
-import { fetchSettingsConsolePolicyCatalog, settingsConsolePolicyCatalogQueryKey, type SettingsConsolePolicyCatalogLocale } from '../api/permissions';
-import { createSettingsRole, deleteSettingsRole, fetchSettingsRoleConsolePolicy, fetchSettingsRoleFrontstageRoutes, fetchSettingsRoles, replaceSettingsRoleConsolePolicy, replaceSettingsRoleFrontstageRoutes, settingsRoleFrontstageRoutesQueryKey, settingsRoleConsolePolicyQueryKey, settingsRolesQueryKey, updateSettingsRole, type SettingsRole, type SettingsRoleConsolePolicy, type SettingsRoleFrontstageRoutes } from '../api/roles';
+import { fetchSettingsConsolePolicyCatalog, settingsConsolePolicyCatalogQueryKey, type SettingsConsolePolicyCatalogLocale } from '../api/identity-access/permissions';
+import { createSettingsRole, deleteSettingsRole, fetchSettingsRoleConsolePolicy, fetchSettingsRoleFrontstageRoutes, fetchSettingsRoles, replaceSettingsRoleConsolePolicy, replaceSettingsRoleFrontstageRoutes, settingsRoleFrontstageRoutesQueryKey, settingsRoleConsolePolicyQueryKey, settingsRolesQueryKey, updateSettingsRole, type SettingsRole, type SettingsRoleConsolePolicy, type SettingsRoleFrontstageRoutes } from '../api/identity-access/roles';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { ResizableDrawer } from '../../../shared/ui/resizable-drawer/ResizableDrawer';
 import { i18nText } from '../../../shared/i18n/text';

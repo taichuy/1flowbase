@@ -17,8 +17,8 @@ import type {
   FrontstageRuntimeObservationCacheTier,
   FrontstageRuntimeObservationContext
 } from './runtime-observation';
-import type { PreparedTrustedFrontendContribution } from '../native-trusted-block-contribution-lifecycle';
-import { discoverTrustedFrontendContribution } from '../native-trusted-block-contribution-lifecycle';
+import type { PreparedTrustedFrontendContribution } from '../native-adapter/native-trusted-block-contribution-lifecycle';
+import { discoverTrustedFrontendContribution } from '../native-adapter/native-trusted-block-contribution-lifecycle';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
 import type { FrontstagePageCanvasBlockCodeReadRequest } from './runtime-source';
 

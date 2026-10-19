@@ -63,7 +63,7 @@ import {
 import {
   fetchSettingsMembers,
   settingsMembersQueryKey
-} from '../../api/members';
+} from '../../api/identity-access/members';
 import {
   APPLICATION_MANAGEMENT_DEFAULT_SORT,
   pushApplicationManagementRouteState,

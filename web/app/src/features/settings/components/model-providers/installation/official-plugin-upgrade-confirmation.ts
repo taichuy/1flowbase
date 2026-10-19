@@ -2,12 +2,12 @@ import { createElement } from 'react';
 
 import { Modal } from 'antd';
 
-import { i18nText } from '../../../../shared/i18n/text';
+import { i18nText } from '../../../../../shared/i18n/text';
 import type {
   SettingsOfficialPluginCatalogEntry,
   SettingsPluginCompatibilityOverride,
   SettingsPluginFamilyEntry
-} from '../../api/plugins';
+} from '../../../api/extensions/plugins';
 import { OfficialPluginInstallConfirmContent } from './OfficialPluginUpgradeConfirmation';
 
 const BELOW_MINIMUM_HOST_VERSION = 'below_minimum_host_version';

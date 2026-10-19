@@ -1,10 +1,10 @@
 import { Alert, Typography } from 'antd';
 
-import { i18nText } from '../../../../shared/i18n/text';
+import { i18nText } from '../../../../../shared/i18n/text';
 import type {
   SettingsOfficialPluginCatalogEntry,
   SettingsPluginFamilyEntry
-} from '../../api/plugins';
+} from '../../../api/extensions/plugins';
 
 export function OfficialPluginInstallConfirmContent({
   entry,

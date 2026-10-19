@@ -21,7 +21,7 @@ import {
   createNativeAffixPortal,
   type NativeAffixLayer
 } from './native-affix-layer';
-import { useNativeBlockSurface } from './native-block-surface-context';
+import { useNativeBlockSurface } from '../native-block-surface-context';
 
 export const NativeBlockAffix = forwardRef<AffixRef, AffixProps>(
   function NativeBlockAffixComponent(

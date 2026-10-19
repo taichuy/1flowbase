@@ -18,9 +18,9 @@ import {
   settingsDepartmentsQueryKey,
   type DepartmentAccess,
   type SettingsDepartment
-} from '../../api/departments';
-export type { DepartmentAccess } from '../../api/departments';
-import { settingsMembersQueryKey } from '../../api/members';
+} from '../../api/identity-access/departments';
+export type { DepartmentAccess } from '../../api/identity-access/departments';
+import { settingsMembersQueryKey } from '../../api/identity-access/members';
 import { departmentTree, type DepartmentTreeRow } from './department-tree';
 import {
   DepartmentEditorDrawer,

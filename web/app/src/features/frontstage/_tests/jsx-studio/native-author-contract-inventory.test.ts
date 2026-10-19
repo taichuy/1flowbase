@@ -92,7 +92,7 @@ describe('Native React author contract inventory', () => {
     const renderer = readFileSync(
       resolve(
         repoRoot,
-        'web/app/src/features/frontstage/lib/native-trusted-block-react-adapter.tsx'
+        'web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx'
       ),
       'utf8'
     );

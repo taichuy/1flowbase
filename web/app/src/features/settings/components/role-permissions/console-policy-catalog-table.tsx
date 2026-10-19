@@ -1,6 +1,6 @@
 import { Button, Select, Space, Switch, Table, Typography } from 'antd';
-import type { SettingsConsolePolicyCatalog } from '../../api/permissions';
-import type { SettingsRole } from '../../api/roles';
+import type { SettingsConsolePolicyCatalog } from '../../api/identity-access/permissions';
+import type { SettingsRole } from '../../api/identity-access/roles';
 import { i18nText } from '../../../../shared/i18n/text';
 import { PolicyDragHandle, SortablePolicyRow, SortablePolicyTable } from './SortablePolicyTable';
 import { replaceConsolePolicyGroup, type ConsolePolicyCatalogGroup, type ConsolePolicyGroup } from './console-policy-draft';

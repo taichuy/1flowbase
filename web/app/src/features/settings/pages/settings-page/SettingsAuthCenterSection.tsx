@@ -41,7 +41,7 @@ import {
   updateSettingsAuthCenterLoginEntryConfig,
   updateSettingsAuthCenterLoginEntryPublicUiBlock,
   type SettingsAuthCenterOverview
-} from '../../api/auth-center';
+} from '../../api/identity-access/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { LoginEntryUiBlockStudio } from '../../components/auth-center/LoginEntryUiBlockStudio';
 

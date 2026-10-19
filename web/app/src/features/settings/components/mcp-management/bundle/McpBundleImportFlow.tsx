@@ -7,7 +7,7 @@ import {
   getSettingsInstalledMcpExtensionIntegrityChallenge,
   previewSettingsBuiltinMcpTemplate,
   previewSettingsInstalledMcpExtension
-} from '../../../api/extensions';
+} from '../../../api/extensions/extensions';
 import {
   importSettingsMcpBundle,
   importSettingsMcpTemplateLibraryBundle,

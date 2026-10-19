@@ -8,9 +8,9 @@ import {
   HTTP_REQUEST_BODY_TYPE_OPTIONS,
   isHttpRequestBodyType,
   type HttpRequestBodyType
-} from '../../../lib/http-request/contract';
-import type { FlowSelectorOption } from '../../../lib/selector-options';
-import { SelectorField } from '../../bindings/SelectorField';
+} from '../../../../lib/http-request/contract';
+import type { FlowSelectorOption } from '../../../../lib/selector-options';
+import { SelectorField } from '../../../bindings/SelectorField';
 import { HttpRequestTemplateInput } from './HttpRequestTemplateInput';
 import {
   HttpRequestKeyValuesField,
@@ -18,7 +18,7 @@ import {
   toNamedBinding,
   type HttpRequestKeyValueEntry
 } from './HttpRequestKeyValuesField';
-import { i18nText } from '../../../../../shared/i18n/text';
+import { i18nText } from '../../../../../../shared/i18n/text';
 
 type HttpRequestFormDataKind = 'text' | 'file';
 
