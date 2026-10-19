@@ -1379,6 +1379,8 @@ async fn root_2325_http_history_cursor_and_authorization() {
 #[path = "managed_removal_tests.rs"]
 mod managed_removal_tests;
 
+#[path = "managed_governance_tests/system_scope.rs"]
 mod system_scope;
 
+#[path = "managed_governance_tests/activation_permissions.rs"]
 mod activation_permissions;

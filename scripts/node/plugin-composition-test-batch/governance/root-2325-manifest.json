@@ -83,7 +83,7 @@
     },
     {
       "target": "api-server:lib",
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_governance_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_governance_tests.rs",
       "name": "_tests::extension_bus::managed_governance_tests::root_2325_http_history_cursor_and_authorization",
       "expected": 1,
       "ac": [

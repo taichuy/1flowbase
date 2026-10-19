@@ -134,7 +134,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_activation_tests::root_2007_ac_001_002_package_activation",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_activation_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_activation_tests.rs",
       "ac": [
         "AC-001",
         "AC-002"
@@ -154,7 +154,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_candidate_switch",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_candidate_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_candidate_tests.rs",
       "ac": [
         "AC-009"
       ],
@@ -174,7 +174,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_historical_authority",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_candidate_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_candidate_tests.rs",
       "ac": [
         "AC-009"
       ],
@@ -194,7 +194,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_event_authority_tests::root_2007_ac_005_event_authority_installed_publisher_and_subscribers",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_authority_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_authority_tests.rs",
       "ac": [
         "AC-005"
       ],
@@ -210,7 +210,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_event_authority_tests::root_2007_ac_005_event_authority_static_namespace_and_contract",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_authority_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_authority_tests.rs",
       "ac": [
         "AC-005"
       ],
@@ -226,7 +226,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_event_effect_tests::root_2007_ac_007_ack_loss_and_claim_fencing",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_effect_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_effect_tests.rs",
       "ac": [
         "AC-007"
       ],
@@ -242,7 +242,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_governance_tests::root_2007_ac_009_pause_revoke_retire",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_governance_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_governance_tests.rs",
       "ac": [
         "AC-009"
       ],
@@ -262,7 +262,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_resource_tests::root_2007_ac_010_lane_budgets_owned_transactions_shutdown",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_resource_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_resource_tests.rs",
       "ac": [
         "AC-010"
       ],
@@ -275,7 +275,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_snapshot_tests::root_2007_ac_008_snapshot_restart",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_snapshot_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_snapshot_tests.rs",
       "ac": [
         "AC-008"
       ],
@@ -833,7 +833,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_changed_reinstall_preserves_history",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",
       "ac": [
         "AC-001",
         "AC-008",
@@ -853,7 +853,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_identical_archive_restores_artifact",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",
       "ac": [
         "AC-001",
         "AC-008",
@@ -872,7 +872,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_upgrade_and_concurrent_identity",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",
       "ac": [
         "AC-001",
         "AC-002",

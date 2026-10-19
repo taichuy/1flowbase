@@ -14,10 +14,10 @@ const AUDIT: &str = "lyra.audit-log.recorded";
 pub(super) fn manifest(owner: &str) -> serde_json::Value {
     serde_yaml::from_str(match owner {
         "orion.shipments" => {
-            include_str!("../../../../../plugins/fixtures/orion.shipments/manifest.yaml")
+            include_str!("../../../../../../plugins/fixtures/orion.shipments/manifest.yaml")
         }
         "lyra.audit-log" => {
-            include_str!("../../../../../plugins/fixtures/lyra.audit-log/manifest.yaml")
+            include_str!("../../../../../../plugins/fixtures/lyra.audit-log/manifest.yaml")
         }
         _ => panic!("finite fixture"),
     })

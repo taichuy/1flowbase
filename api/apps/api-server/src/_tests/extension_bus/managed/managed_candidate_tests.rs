@@ -88,7 +88,7 @@ impl Fixture {
     async fn install(&self, name: &str, version: &str, handler: &str) -> (Uuid, PathBuf) {
         // Mutate the author document; PluginManifestV1 is a validated read model, not a serializer.
         let mut value: serde_json::Value = serde_yaml::from_str(include_str!(
-            "../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
+            "../../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
         ))
         .unwrap();
         let module = format!("acme.composition-{name}");

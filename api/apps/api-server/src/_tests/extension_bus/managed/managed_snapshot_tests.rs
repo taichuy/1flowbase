@@ -95,7 +95,7 @@ impl RuntimeFixture {
 fn mixed_package() -> Vec<u8> {
     let mut a = manifest("a");
     let original: serde_json::Value = serde_yaml::from_str(include_str!(
-        "../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
+        "../../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
     ))
     .unwrap();
     let original = &original["managed"];

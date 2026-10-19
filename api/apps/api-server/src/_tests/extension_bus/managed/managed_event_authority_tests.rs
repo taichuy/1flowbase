@@ -14,7 +14,7 @@ use uuid::Uuid;
 pub(super) fn manifest(name: &str) -> serde_json::Value {
     // Keep author YAML separate from the parser's non-serializable validated read model.
     let mut value: serde_json::Value = serde_yaml::from_str(include_str!(
-        "../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
+        "../../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
     ))
     .unwrap();
     let module = format!("acme.composition-{name}");

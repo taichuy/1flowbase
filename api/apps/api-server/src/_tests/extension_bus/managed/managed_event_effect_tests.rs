@@ -14,10 +14,10 @@ use uuid::Uuid;
 fn manifest_source(name: &str) -> &'static str {
     match name {
         "a" => {
-            include_str!("../../../../../plugins/fixtures/acme.composition-a/event-manifest.yaml")
+            include_str!("../../../../../../plugins/fixtures/acme.composition-a/event-manifest.yaml")
         }
-        "b" => include_str!("../../../../../plugins/fixtures/acme.composition-b/manifest.yaml"),
-        "c" => include_str!("../../../../../plugins/fixtures/acme.composition-c/manifest.yaml"),
+        "b" => include_str!("../../../../../../plugins/fixtures/acme.composition-b/manifest.yaml"),
+        "c" => include_str!("../../../../../../plugins/fixtures/acme.composition-c/manifest.yaml"),
         _ => panic!("finite composition fixture"),
     }
 }
