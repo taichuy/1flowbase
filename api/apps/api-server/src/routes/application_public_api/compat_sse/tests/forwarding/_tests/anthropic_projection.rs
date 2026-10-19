@@ -624,4 +624,3 @@ async fn anthropic_completed_stream_includes_usage_for_claude_code_cost_and_cont
     assert!(body.contains("event: message_delta"), "{body}");
     assert!(body.contains("\"output_tokens\":7"), "{body}");
 }
-

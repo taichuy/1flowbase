@@ -353,4 +353,3 @@ pub(super) async fn install_or_update_official_extension(
         managed_schema_receipt: None,
     }))
 }
-

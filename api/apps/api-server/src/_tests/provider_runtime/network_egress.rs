@@ -278,4 +278,3 @@ async fn root_1805_http_node_no_route_keeps_direct_behavior_without_host_lease()
     assert!(!observable.contains("host-private"));
     assert!(!observable.contains("egress-provider-secret"));
 }
-

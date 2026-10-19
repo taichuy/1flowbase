@@ -28,4 +28,3 @@ pub(super) fn runtime_internal_tool_output(
         }),
     })
 }
-

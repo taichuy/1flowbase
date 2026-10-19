@@ -268,4 +268,3 @@ fn physical_fault_successor_checks_native_cursor_without_rewriting_payload_or_bu
         2_000_000
     );
 }
-

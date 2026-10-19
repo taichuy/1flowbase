@@ -427,4 +427,3 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
         );
     }
 }
-
