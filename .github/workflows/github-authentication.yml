@@ -1,0 +1,90 @@
+name: GitHub authentication acceptance
+
+on:
+  push:
+    branches: [codex/github-auth-20261019]
+    paths:
+      - api/**
+      - .github/workflows/github-authentication.yml
+  pull_request:
+    paths:
+      - api/apps/api-server/src/authentication_runtime/**
+      - api/apps/api-server/src/routes/identity/external_auth/**
+      - api/apps/api-server/src/_tests/identity_routes/external_auth_trace.rs
+      - api/crates/storage/durable/postgres/migrations/*managed*authority*.sql
+      - .github/workflows/github-authentication.yml
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact frozen candidate SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-authentication-${{ inputs.candidate_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: github-auth-fixture-only
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      DATABASE_URL: postgres://postgres:github-auth-fixture-only@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:github-auth-fixture-only@127.0.0.1:5432/1flowbase
+      API_AUTH_PUBLIC_ORIGIN: https://auth-fixture.example
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: github-authentication-nodebug
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Verify candidate and prepare bounded evidence
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          mkdir -p tmp/test-governance/github-authentication/ci
+          git rev-parse HEAD > tmp/test-governance/github-authentication/ci/candidate-sha.txt
+          echo "CARGO_BUILD_JOBS=$(node scripts/node/testing/verify-runtime.js cargo-jobs)" >> "$GITHUB_ENV"
+      - name: Verify system contribution authority with real migrations
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib binding_targets 2>&1 | tee tmp/test-governance/github-authentication/ci/postgres.log
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/postgres.log
+      - name: Verify callback factory, browser transactions, revocation and safe projections
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --features tikv-jemallocator/stats external_auth 2>&1 | tee tmp/test-governance/github-authentication/ci/api-auth.log
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/api-auth.log
+      - name: Preserve candidate-bound evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: github-authentication-${{ inputs.candidate_sha || github.sha }}
+          path: tmp/test-governance/github-authentication/ci/
+          if-no-files-found: error
+          retention-days: 14
