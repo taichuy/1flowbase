@@ -1,8 +1,9 @@
+import { useCanvasDockLayout } from './canvas-frame/use-canvas-dock-layout';
+import { useCanvasNodePreview } from './canvas-frame/use-canvas-node-preview';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Button, Typography } from 'antd';
 import {
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -19,16 +20,8 @@ import { useEditorShortcuts } from '../../hooks/interactions/use-editor-shortcut
 import { useNodeDetailActions } from '../../hooks/interactions/use-node-detail-actions';
 import { useAgentFlowDebugSession } from '../../hooks/runtime/useAgentFlowDebugSession';
 import {
-  applicationRunNodeLastRunQueryKey,
-  buildNodeDebugPreviewPlan,
-  buildNodeDebugVariableConfirmationPlan,
   fetchRuntimeDebugArtifact,
-  fetchRuntimeDebugArtifacts,
-  nodeLastRunToFlowDebugRunDetail,
-  nodeLastRunQueryKey,
-  startNodeDebugPreview,
-  type NodeDebugPreviewPlan,
-  type NodeDebugPreviewVariableCache
+  fetchRuntimeDebugArtifacts
 } from '../../api/runtime';
 import { orchestrationQueryKey, updateVersion } from '../../api/orchestration';
 import {
@@ -42,20 +35,17 @@ import {
   fetchApplicationApiMapping,
   publishApplicationApiVersion
 } from '../../../applications/api/public-api';
-import {
-  environmentVariableNodeId,
-  type AgentFlowEnvironmentVariable
-} from '../../lib/variables/application-environment-variables';
+import { type AgentFlowEnvironmentVariable } from '../../lib/variables/application-environment-variables';
 import {
   listConversationVariables,
   replaceConversationVariables
 } from '../../lib/variables/conversation-variables';
-import { systemVariableNodeId } from '../../lib/variables/system-variables';
+
 import {
   fetchModelProviderOptions,
   modelProviderOptionsQueryKey
 } from '../../api/model-provider-options';
-import { clampNodeDetailWidth } from '../../lib/detail-panel-width';
+
 import {
   isVariableAggregatorCandidateTypeMismatchIssue,
   validateDocument
@@ -81,25 +71,15 @@ import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import { i18nText } from '../../../../shared/i18n/text';
 import { downloadApplicationArchive } from '../../../applications/lib/template-download';
 import {
-  CONVERSATION_LOG_DEFAULT_WIDTH,
-  DEBUG_CONSOLE_DEFAULT_WIDTH,
   DEBUG_CONSOLE_GAP,
-  ENVIRONMENT_VARIABLES_DOCK_WIDTH,
-  HISTORY_DOCK_WIDTH,
-  SYSTEM_VARIABLES_DOCK_WIDTH,
-  VARIABLE_CACHE_DEFAULT_HEIGHT,
-  VARIABLE_CACHE_DEFAULT_SIDEBAR_WIDTH,
   VARIABLE_CACHE_MIN_SIDEBAR_WIDTH
 } from './canvas-frame/layout';
-import { deriveCanvasFrameLayout } from './canvas-frame/derived-layout';
-import { createCanvasFrameResizeHandlers } from './canvas-frame/resize-handlers';
+
 import {
   countIssuesByNodeId,
   getDocumentWithLatestViewport
 } from './canvas-frame/document';
 import { type AgentFlowCanvasFrameProps } from './canvas-frame/types';
-
-type NodePreviewAction = 'run' | 'debug';
 
 const DraftAssistantPreview = lazy(() =>
   import('../assistant-plugin/DraftAssistantPreview').then((module) => ({
@@ -156,9 +136,6 @@ export function AgentFlowCanvasFrame({
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const actorUserId = useAuthStore(
-    (state) => state.actor?.id ?? state.me?.id ?? null
-  );
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
   const setWorkingDocument = useAgentFlowEditorStore(
@@ -197,56 +174,9 @@ export function AgentFlowCanvasFrame({
   const viewportGetterRef = useRef<
     (() => FlowAuthoringDocument['editor']['viewport']) | null
   >(null);
-  const runNodeFromCanvasRef = useRef<(nodeId: string) => void>(() => {});
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const stopNodeDetailResizeRef = useRef<(() => void) | null>(null);
-  const stopDebugConsoleResizeRef = useRef<(() => void) | null>(null);
-  const stopConversationLogResizeRef = useRef<(() => void) | null>(null);
-  const stopVariablesDockResizeRef = useRef<(() => void) | null>(null);
-  const stopHistoryDockResizeRef = useRef<(() => void) | null>(null);
-  const stopVariableCacheResizeRef = useRef<(() => void) | null>(null);
-  const stopVariableCacheSidebarResizeRef = useRef<(() => void) | null>(null);
-  const [bodyWidth, setBodyWidth] = useState(0);
-  const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
-  const [debugConsoleWidth, setDebugConsoleWidth] = useState(
-    DEBUG_CONSOLE_DEFAULT_WIDTH
-  );
-  const [nodeDetailTab, setNodeDetailTab] = useState<'config' | 'lastRun'>(
-    'config'
-  );
-  const [bodyHeight, setBodyHeight] = useState(0);
-  const [isResizingNodeDetail, setIsResizingNodeDetail] = useState(false);
-  const [isResizingDebugConsole, setIsResizingDebugConsole] = useState(false);
   const [conversationLogMessageId, setConversationLogMessageId] = useState<
     string | null
   >(null);
-  const [conversationLogWidth, setConversationLogWidth] = useState(
-    CONVERSATION_LOG_DEFAULT_WIDTH
-  );
-  const [isResizingConversationLog, setIsResizingConversationLog] =
-    useState(false);
-  const [isResizingVariablesDock, setIsResizingVariablesDock] = useState(false);
-  const [isResizingHistoryDock, setIsResizingHistoryDock] = useState(false);
-  const [pendingNodePreview, setPendingNodePreview] = useState<{
-    action: NodePreviewAction;
-    nodeId: string;
-    inputPayload: NodeDebugPreviewPlan['input_payload'];
-    fields: NodeDebugPreviewPlan['missing_fields'];
-  } | null>(null);
-  const [variableCacheOpen, setVariableCacheOpen] = useState(false);
-  const [systemVariablesOpen, setSystemVariablesOpen] = useState(false);
-  const [environmentVariablesOpen, setEnvironmentVariablesOpen] =
-    useState(false);
-  const [conversationVariablesOpen, setConversationVariablesOpen] =
-    useState(false);
-  const [systemVariablesDockWidth, setSystemVariablesDockWidth] = useState(
-    SYSTEM_VARIABLES_DOCK_WIDTH
-  );
-  const [environmentVariablesDockWidth, setEnvironmentVariablesDockWidth] =
-    useState(ENVIRONMENT_VARIABLES_DOCK_WIDTH);
-  const [conversationVariablesDockWidth, setConversationVariablesDockWidth] =
-    useState(ENVIRONMENT_VARIABLES_DOCK_WIDTH);
-  const [historyDockWidth, setHistoryDockWidth] = useState(HISTORY_DOCK_WIDTH);
   const environmentVariablesSourceRef = useRef(initialEnvironmentVariables);
   const [environmentVariables, setEnvironmentVariables] = useState<
     AgentFlowEnvironmentVariable[]
@@ -261,18 +191,6 @@ export function AgentFlowCanvasFrame({
   );
   const [selectedVariable, setSelectedVariable] =
     useState<SelectedVariableInfo | null>(null);
-  const [variableCacheHeight, setVariableCacheHeight] = useState(
-    VARIABLE_CACHE_DEFAULT_HEIGHT
-  );
-  const [isResizingVariableCache, setIsResizingVariableCache] = useState(false);
-  const [variableCacheSidebarWidth, setVariableCacheSidebarWidth] = useState(
-    VARIABLE_CACHE_DEFAULT_SIDEBAR_WIDTH
-  );
-  const [isResizingVariableCacheSidebar, setIsResizingVariableCacheSidebar] =
-    useState(false);
-  const handleCanvasRunNode = useCallback((nodeId: string) => {
-    runNodeFromCanvasRef.current(nodeId);
-  }, []);
   const handleViewportSnapshotChange = useCallback(
     (viewport: FlowAuthoringDocument['editor']['viewport']) => {
       viewportSnapshotRef.current = viewport;
@@ -394,6 +312,26 @@ export function AgentFlowCanvasFrame({
     document: workingDocument,
     environmentVariables
   });
+  const {
+    nodeDetailTab,
+    setNodeDetailTab,
+    pendingNodePreview,
+    setPendingNodePreview,
+    nodePreviewMutation,
+    handleCanvasRunNode,
+    handleSubmitNodePreviewVariables,
+    handleRunSelectedNode,
+    handleDebugSelectedNode
+  } = useCanvasNodePreview({
+    applicationId,
+    flowId: draftMeta.flowId,
+    selectedNodeId,
+    environmentVariables,
+    debugSession,
+    documentRef,
+    viewportGetterRef,
+    viewportSnapshotRef
+  });
   const conversationLogMessage = useMemo(
     () =>
       debugSession.messages.find(
@@ -406,6 +344,60 @@ export function AgentFlowCanvasFrame({
   if (conversationLogMessageId && !conversationLogMessage) {
     setConversationLogMessageId(null);
   }
+  const {
+    stopDebugConsoleResizeRef,
+    stopConversationLogResizeRef,
+    bodyRef,
+    bodyWidth,
+    debugConsoleOpen,
+    setDebugConsoleOpen,
+    isResizingNodeDetail,
+    isResizingDebugConsole,
+    isResizingConversationLog,
+    isResizingVariablesDock,
+    isResizingHistoryDock,
+    variableCacheOpen,
+    setVariableCacheOpen,
+    systemVariablesOpen,
+    setSystemVariablesOpen,
+    environmentVariablesOpen,
+    setEnvironmentVariablesOpen,
+    conversationVariablesOpen,
+    setConversationVariablesOpen,
+    isResizingVariableCache,
+    isResizingVariableCacheSidebar,
+    boundedConversationLogWidth,
+    boundedDebugConsoleWidth,
+    boundedHistoryDockWidth,
+    boundedNodeDetailWidth,
+    boundedVariableCacheHeight,
+    boundedVariableCacheSidebarWidth,
+    boundedVariablesDockWidth,
+    canvasFrameWidth,
+    conversationLogOpen,
+    detailContainerWidth,
+    nodeDetailLayout,
+    sideDockOccupiedWidth,
+    variableCacheCenterLeft,
+    variableCacheMaxHeight,
+    variableCacheRightOffset,
+    variableCacheSidebarMaxWidth,
+    variablesDockOpen,
+    handleConversationLogResizeStart,
+    handleDebugConsoleResizeStart,
+    handleHistoryDockResizeStart,
+    handleNodeDetailResizeStart,
+    handleVariableCacheResizeStart,
+    handleVariableCacheSidebarResizeStart,
+    handleVariablesDockResizeStart,
+    handleNodeDetailResizeKeyDown
+  } = useCanvasDockLayout({
+    selectedNodeId,
+    historyOpen,
+    nodeDetailWidth,
+    setPanelState,
+    conversationLogMessage
+  });
   const issues = useMemo(
     () =>
       validateDocument(
@@ -427,62 +419,6 @@ export function AgentFlowCanvasFrame({
   );
   const activeContainerId = activeContainerPath.at(-1) ?? null;
   const detailActions = useNodeDetailActions();
-  const nodePreviewMutation = useMutation({
-    mutationFn: async ({
-      nodeId,
-      inputPayload
-    }: {
-      action: NodePreviewAction;
-      nodeId: string;
-      inputPayload: Record<string, Record<string, unknown>>;
-    }) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      return startNodeDebugPreview(
-        applicationId,
-        nodeId,
-        {
-          input_payload: inputPayload,
-          document: getDocumentWithLatestViewport(
-            documentRef.current,
-            viewportGetterRef.current?.() ?? viewportSnapshotRef.current
-          ),
-          debug_session_id: debugSession.debugSessionId
-        },
-        csrfToken
-      );
-    },
-    onSuccess: async (lastRun, variables) => {
-      queryClient.setQueryData(
-        nodeLastRunQueryKey(applicationId, variables.nodeId),
-        lastRun
-      );
-      queryClient.setQueryData(
-        applicationRunNodeLastRunQueryKey(
-          applicationId,
-          lastRun.flow_run.id,
-          variables.nodeId
-        ),
-        lastRun
-      );
-      debugSession.rememberExternalRunDetail(
-        nodeLastRunToFlowDebugRunDetail(lastRun)
-      );
-      setNodeDetailTab('lastRun');
-      await queryClient.invalidateQueries({
-        queryKey: ['applications', applicationId, 'runtime']
-      });
-    },
-    onError(error) {
-      message.error(
-        error instanceof Error && error.message
-          ? error.message
-          : i18nText('agentFlow', 'auto.debug_run_failed')
-      );
-    }
-  });
   const issueCountByNodeId = useMemo(
     () => countIssuesByNodeId(issues),
     [issues]
@@ -508,196 +444,8 @@ export function AgentFlowCanvasFrame({
     viewportSnapshotRef.current = workingDocument.editor.viewport;
   }, [workingDocument.editor.viewport]);
 
-  useEffect(() => {
-    const element = bodyRef.current;
-
-    if (!element) {
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0];
-
-      if (!entry) {
-        return;
-      }
-
-      setBodyWidth(entry.contentRect.width);
-      setBodyHeight(entry.contentRect.height);
-    });
-
-    resizeObserver.observe(element);
-    const bodyRect = element.getBoundingClientRect();
-    setBodyWidth(bodyRect.width);
-    setBodyHeight(bodyRect.height);
-
-    return () => resizeObserver.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const stopNodeDetailResize = stopNodeDetailResizeRef;
-    const stopDebugConsoleResize = stopDebugConsoleResizeRef;
-    const stopConversationLogResize = stopConversationLogResizeRef;
-    const stopVariablesDockResize = stopVariablesDockResizeRef;
-    const stopHistoryDockResize = stopHistoryDockResizeRef;
-    const stopVariableCacheResize = stopVariableCacheResizeRef;
-    const stopVariableCacheSidebarResize = stopVariableCacheSidebarResizeRef;
-
-    return () => {
-      stopNodeDetailResize.current?.();
-      stopDebugConsoleResize.current?.();
-      stopConversationLogResize.current?.();
-      stopVariablesDockResize.current?.();
-      stopHistoryDockResize.current?.();
-      stopVariableCacheResize.current?.();
-      stopVariableCacheSidebarResize.current?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (selectedNodeId) {
-      return;
-    }
-
-    stopNodeDetailResizeRef.current?.();
-  }, [selectedNodeId]);
-
-  useEffect(() => {
-    if (conversationLogMessage) {
-      return;
-    }
-
-    stopConversationLogResizeRef.current?.();
-  }, [conversationLogMessage]);
-
-  useEffect(() => {
-    if (
-      systemVariablesOpen ||
-      environmentVariablesOpen ||
-      conversationVariablesOpen
-    ) {
-      return;
-    }
-
-    stopVariablesDockResizeRef.current?.();
-  }, [
-    conversationVariablesOpen,
-    environmentVariablesOpen,
-    systemVariablesOpen
-  ]);
-
-  useEffect(() => {
-    if (historyOpen) {
-      return;
-    }
-
-    stopHistoryDockResizeRef.current?.();
-  }, [historyOpen]);
-
-  useEffect(() => {
-    if (variableCacheOpen) {
-      return;
-    }
-
-    stopVariableCacheResizeRef.current?.();
-  }, [variableCacheOpen]);
-
-  useEffect(() => {
-    if (variableCacheOpen) {
-      return;
-    }
-
-    stopVariableCacheSidebarResizeRef.current?.();
-  }, [variableCacheOpen]);
-
   useEditorShortcuts();
 
-  const {
-    boundedConversationLogWidth,
-    boundedDebugConsoleWidth,
-    boundedHistoryDockWidth,
-    boundedNodeDetailWidth,
-    boundedVariableCacheHeight,
-    boundedVariableCacheSidebarWidth,
-    boundedVariablesDockWidth,
-    canvasFrameWidth,
-    conversationLogOpen,
-    detailContainerWidth,
-    nodeDetailLayout,
-    sideDockOccupiedWidth,
-    variableCacheCenterLeft,
-    variableCacheMaxHeight,
-    variableCacheRightOffset,
-    variableCacheSidebarMaxWidth,
-    variablesDockOpen
-  } = deriveCanvasFrameLayout({
-    bodyHeight,
-    bodyWidth,
-    conversationLogMessageOpen: conversationLogMessage !== null,
-    conversationLogWidth,
-    conversationVariablesDockWidth,
-    conversationVariablesOpen,
-    debugConsoleOpen,
-    debugConsoleWidth,
-    environmentVariablesDockWidth,
-    environmentVariablesOpen,
-    historyDockWidth,
-    historyOpen,
-    nodeDetailWidth,
-    selectedNodeId,
-    systemVariablesDockWidth,
-    systemVariablesOpen,
-    variableCacheHeight,
-    variableCacheSidebarWidth
-  });
-
-  const {
-    handleConversationLogResizeStart,
-    handleDebugConsoleResizeStart,
-    handleHistoryDockResizeStart,
-    handleNodeDetailResizeStart,
-    handleVariableCacheResizeStart,
-    handleVariableCacheSidebarResizeStart,
-    handleVariablesDockResizeStart
-  } = createCanvasFrameResizeHandlers({
-    boundedConversationLogWidth,
-    boundedDebugConsoleWidth,
-    boundedHistoryDockWidth,
-    boundedNodeDetailWidth,
-    boundedVariableCacheHeight,
-    boundedVariableCacheSidebarWidth,
-    boundedVariablesDockWidth,
-    canvasFrameWidth,
-    conversationVariablesOpen,
-    detailContainerWidth,
-    environmentVariablesOpen,
-    selectedNodeId,
-    variableCacheMaxHeight,
-    variableCacheSidebarMaxWidth,
-    setConversationLogWidth,
-    setConversationVariablesDockWidth,
-    setEnvironmentVariablesDockWidth,
-    setHistoryDockWidth,
-    setDebugConsoleWidth,
-    setIsResizingConversationLog,
-    setIsResizingDebugConsole,
-    setIsResizingHistoryDock,
-    setIsResizingNodeDetail,
-    setIsResizingVariableCache,
-    setIsResizingVariableCacheSidebar,
-    setIsResizingVariablesDock,
-    setPanelState,
-    setSystemVariablesDockWidth,
-    setVariableCacheHeight,
-    setVariableCacheSidebarWidth,
-    stopConversationLogResizeRef,
-    stopDebugConsoleResizeRef,
-    stopHistoryDockResizeRef,
-    stopNodeDetailResizeRef,
-    stopVariableCacheResizeRef,
-    stopVariableCacheSidebarResizeRef,
-    stopVariablesDockResizeRef
-  });
   function handleResetVariableCache() {
     debugSession.resetVariableCache();
     setSelectedVariable(null);
@@ -722,145 +470,6 @@ export function AgentFlowCanvasFrame({
         : current
     );
     debugSession.setVariableCacheValue(key, value);
-  }
-
-  function handleNodeDetailResizeKeyDown(
-    event: ReactKeyboardEvent<HTMLDivElement>
-  ) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
-      return;
-    }
-
-    event.preventDefault();
-    const direction = event.key === 'ArrowLeft' ? 1 : -1;
-    setPanelState({
-      nodeDetailWidth: clampNodeDetailWidth(
-        boundedNodeDetailWidth + direction * 24,
-        detailContainerWidth
-      )
-    });
-  }
-
-  function buildNodeDebugRuntimeVariableCache(): NodeDebugPreviewVariableCache {
-    const cache = debugSession.getNodePreviewVariableCache();
-    const environmentPayload = environmentVariables.reduce<
-      Record<string, unknown>
-    >((payload, variable) => {
-      payload[variable.name] = variable.value;
-      return payload;
-    }, {});
-    const systemPayload: Record<string, unknown> = {
-      conversation_id: debugSession.debugSessionId,
-      dialog_count: 0,
-      user_id: actorUserId ?? '',
-      application_id: applicationId,
-      workflow_id: draftMeta.flowId,
-      workflow_run_id: debugSession.activeRunId ?? '',
-      model_parameters: {}
-    };
-
-    return {
-      ...cache,
-      [environmentVariableNodeId]: {
-        ...environmentPayload,
-        ...(cache[environmentVariableNodeId] ?? {})
-      },
-      [systemVariableNodeId]: {
-        ...systemPayload,
-        ...(cache[systemVariableNodeId] ?? {})
-      }
-    };
-  }
-
-  function runNodePreview(
-    action: NodePreviewAction,
-    nodeId: string,
-    inputPayload: Record<string, Record<string, unknown>>
-  ) {
-    debugSession.rememberNodePreviewInputs(inputPayload);
-    nodePreviewMutation.mutate({ action, nodeId, inputPayload });
-  }
-
-  function handleRunNode(nodeId: string) {
-    const plan = buildNodeDebugPreviewPlan(
-      documentRef.current,
-      nodeId,
-      buildNodeDebugRuntimeVariableCache()
-    );
-
-    if (plan.missing_fields.length > 0) {
-      setPendingNodePreview({
-        action: 'run',
-        nodeId,
-        inputPayload: plan.input_payload,
-        fields: plan.missing_fields
-      });
-      return;
-    }
-
-    runNodePreview('run', nodeId, plan.input_payload);
-  }
-
-  useEffect(() => {
-    runNodeFromCanvasRef.current = handleRunNode;
-  });
-
-  function handleDebugNode(nodeId: string) {
-    const plan = buildNodeDebugVariableConfirmationPlan(
-      documentRef.current,
-      nodeId,
-      buildNodeDebugRuntimeVariableCache()
-    );
-
-    if (plan.fields.length > 0) {
-      setPendingNodePreview({
-        action: 'debug',
-        nodeId,
-        inputPayload: plan.input_payload,
-        fields: plan.fields
-      });
-      return;
-    }
-
-    runNodePreview('debug', nodeId, plan.input_payload);
-  }
-
-  function handleSubmitNodePreviewVariables(
-    inputPayload: Record<string, Record<string, unknown>>
-  ) {
-    if (!pendingNodePreview) {
-      return;
-    }
-
-    const mergedInputPayload = { ...pendingNodePreview.inputPayload };
-
-    for (const [nodeId, payload] of Object.entries(inputPayload)) {
-      mergedInputPayload[nodeId] = {
-        ...(mergedInputPayload[nodeId] ?? {}),
-        ...payload
-      };
-    }
-
-    const { action, nodeId } = pendingNodePreview;
-
-    setPendingNodePreview(null);
-    runNodePreview(action, nodeId, mergedInputPayload);
-  }
-
-  function handleRunSelectedNode() {
-    if (!selectedNodeId) {
-      return;
-    }
-
-    handleRunNode(selectedNodeId);
-  }
-
-  function handleDebugSelectedNode() {
-    if (!selectedNodeId) {
-      return;
-    }
-
-    handleDebugNode(selectedNodeId);
   }
 
   function openDebugConsole() {

@@ -1,3 +1,7 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '../../../../state/auth-store';
+import { useMcpToolEditor } from './McpToolsTab/use-mcp-tool-editor';
+import { useMcpToolsCatalog } from './McpToolsTab/use-mcp-tools-catalog';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
@@ -5,14 +9,13 @@ import LeftOutlined from '@ant-design/icons/es/icons/LeftOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+
 import {
   Button,
   Descriptions,
   Flex,
   Form,
   Input,
-  Modal,
   Popconfirm,
   Select,
   Segmented,
@@ -20,38 +23,23 @@ import {
   Steps,
   Tag,
   Tooltip,
-  Typography,
-  App
+  Typography
 } from 'antd';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  type SetStateAction
-} from 'react';
+import { useMemo } from 'react';
 import type {
   ConsoleMcpCatalog,
   ConsoleMcpInterfaceCapability,
   ConsoleMcpProxyInputMapping,
   ConsoleMcpProxyOutputMapping,
-  ConsoleMcpTool,
-  SaveConsoleMcpToolBody
+  ConsoleMcpTool
 } from '@1flowbase/api-client';
 
 import {
-  createSettingsMcpTool,
-  deleteSettingsMcpTool,
   executeSettingsMcpToolDebug,
   executeSettingsMcpProxyToolDebug,
-  exportSettingsMcpCatalog,
-  refreshSettingsMcpToolDescription,
-  settingsMcpCatalogQueryKey,
-  updateSettingsMcpTool
+  settingsMcpCatalogQueryKey
 } from '../../api/mcp-management';
-import { useAuthStore } from '../../../../state/auth-store';
+
 import {
   DataTable,
   DataTableColumnSettings,
@@ -73,46 +61,30 @@ import {
 } from './mcp-management-view-model';
 import {
   MCP_CALL_PARAMETERS,
-  buildInputMappingFromInterface,
-  inputMappingHasContent,
   normalizeInputMapping,
   withLegacyCallMappings
 } from './mcp-input-mapping-model';
 import { McpInputMappingEditor } from './McpInputMappingEditor';
 import { McpToolDebugPanel } from './McpToolDebugPanel';
 import { McpProxyMappingEditor } from './proxy/McpProxyMappingEditor';
-import { mcpProxyMappingIsValid } from './proxy/mcp-proxy-mapping-model';
+
 import { McpProxyToolDebugPanel } from './proxy/McpProxyToolDebugPanel';
-import { initialMcpToolsState, mcpToolsReducer } from './mcp-management-state';
-import {
-  downloadMcpExportPackage,
-  riskColor,
-  statusColor
-} from './mcp-management-utils';
+
+import { riskColor, statusColor } from './mcp-management-utils';
 import {
   TOOL_FORM_STEPS,
   emptyObjectSchema,
   interfaceOptionLabel,
-  schemaMappingHasContent,
   schemaRecord,
-  parseResponseFields,
-  toUpdateToolBody,
   toolSourceLabel,
-  toolTypeLabel,
-  type ToolFormValues
+  toolTypeLabel
 } from './McpToolsTab/tool-editor-model';
 import { SelectedInterfaceOperationTitle } from './McpToolsTab/SelectedInterfaceOperationTitle';
 import { McpToolReturnDefaultsFields } from './McpToolsTab/McpToolReturnDefaultsFields';
 import {
   MCP_TOOLS_PAGE_SIZE,
-  readMcpToolsRouteState,
-  writeMcpToolsRouteState,
   type McpToolsRouteState
 } from './McpToolsTab/route-state';
-
-function useCsrfToken() {
-  return useAuthStore((state) => state.csrfToken ?? '');
-}
 
 export function McpToolsTab({
   canManage,
@@ -123,96 +95,57 @@ export function McpToolsTab({
   catalog: ConsoleMcpCatalog;
   interfaceCapabilities: ConsoleMcpInterfaceCapability[];
 }) {
-  const { message } = App.useApp();
-  const csrfToken = useCsrfToken();
+  const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
-  const [form] = Form.useForm<ToolFormValues>();
-  const [toolsState, dispatchToolsState] = useReducer(
-    mcpToolsReducer,
-    initialMcpToolsState
-  );
-  const { modalOpen, editingTool, step, exportingCatalog } = toolsState;
-  const [routeState, setRouteState] = useState(readMcpToolsRouteState);
-  const [filterDraft, setFilterDraft] = useState(routeState);
-  const setModalOpen = useCallback(
-    (value: SetStateAction<boolean>) =>
-      dispatchToolsState({ type: 'setModalOpen', value }),
-    []
-  );
-  const setEditingTool = useCallback(
-    (value: SetStateAction<ConsoleMcpTool | null>) =>
-      dispatchToolsState({ type: 'setEditingTool', value }),
-    []
-  );
-  const setStep = useCallback(
-    (value: SetStateAction<string>) =>
-      dispatchToolsState({ type: 'setStep', value }),
-    []
-  );
-  const setExportingCatalog = useCallback(
-    (value: SetStateAction<boolean>) =>
-      dispatchToolsState({ type: 'setExportingCatalog', value }),
-    []
-  );
-  const updateRouteState = useCallback(
-    (nextState: McpToolsRouteState, mode: 'push' | 'replace' = 'push') => {
-      writeMcpToolsRouteState(nextState, mode);
-      setRouteState(nextState);
-    },
-    []
-  );
+  const editor = useMcpToolEditor(interfaceCapabilities);
+  const {
+    form,
+    modalOpen,
+    editingTool,
+    step,
+    exportingCatalog,
+    setModalOpen,
+    setEditingTool,
+    setStep,
+    setExportingCatalog,
+    autoGeneratedToolIdRef,
+    inputMappingValidRef,
+    outputMappingValidRef,
+    parameterSchemaValidRef,
+    resultSchemaValidRef,
+    schemaEditorRevision,
+    bumpSchemaEditorRevision,
+    callParametersVisible,
+    setCallParametersVisible,
+    setInputMappingValue,
+    setOutputMappingValue,
+    setParameterSchemaValue,
+    setResultSchemaValue,
+    setInputMappingValidity,
+    setOutputMappingValidity,
+    setParameterSchemaValidity,
+    setResultSchemaValidity,
+    saveToolMutation,
+    applyInterfaceToMapping,
+    toolStepIndex,
+    previousToolStep,
+    nextToolStep
+  } = editor;
+  const {
+    routeState,
+    filterDraft,
+    setFilterDraft,
+    updateRouteState,
+    refreshMutation,
+    deleteToolMutationRef,
+    refreshMutationRef,
+    handleExportCatalog,
+    filteredTools,
+    visibleTools,
+    applyFilters,
+    resetFilters
+  } = useMcpToolsCatalog(catalog, editor);
 
-  useEffect(() => {
-    const handlePopState = () => {
-      const nextState = readMcpToolsRouteState();
-      setRouteState(nextState);
-      setFilterDraft(nextState);
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-  const autoGeneratedToolIdRef = useRef('');
-  const inputMappingValidRef = useRef(true);
-  const outputMappingValidRef = useRef(true);
-  const parameterSchemaValidRef = useRef(true);
-  const resultSchemaValidRef = useRef(true);
-  const [schemaEditorRevision, bumpSchemaEditorRevision] = useReducer(
-    (value: number) => value + 1,
-    0
-  );
-  const [callParametersVisible, setCallParametersVisible] = useState(false);
-  const setInputMappingValue = useCallback(
-    (mapping: ToolFormValues['input_mapping']) =>
-      form.setFieldValue('input_mapping', mapping),
-    [form]
-  );
-  const setOutputMappingValue = useCallback(
-    (schema: ToolFormValues['output_mapping']) =>
-      form.setFieldValue('output_mapping', schema),
-    [form]
-  );
-  const setParameterSchemaValue = useCallback(
-    (schema: ToolFormValues['parameter_schema']) =>
-      form.setFieldValue('parameter_schema', schema),
-    [form]
-  );
-  const setResultSchemaValue = useCallback(
-    (schema: ToolFormValues['result_schema']) =>
-      form.setFieldValue('result_schema', schema),
-    [form]
-  );
-  const setInputMappingValidity = useCallback((valid: boolean) => {
-    inputMappingValidRef.current = valid;
-  }, []);
-  const setOutputMappingValidity = useCallback((valid: boolean) => {
-    outputMappingValidRef.current = valid;
-  }, []);
-  const setParameterSchemaValidity = useCallback((valid: boolean) => {
-    parameterSchemaValidRef.current = valid;
-  }, []);
-  const setResultSchemaValidity = useCallback((valid: boolean) => {
-    resultSchemaValidRef.current = valid;
-  }, []);
   const columns = useMemo<Array<DataTableColumn<ConsoleMcpTool>>>(
     () => [
       {
@@ -292,258 +225,6 @@ export function McpToolsTab({
     ],
     []
   );
-  const saveToolMutation = useMutation({
-    mutationFn: (values: ToolFormValues) => {
-      if (!parameterSchemaValidRef.current) {
-        throw new Error('parameter_schema JSON');
-      }
-      if (!resultSchemaValidRef.current) {
-        throw new Error('result_schema JSON');
-      }
-      if (!inputMappingValidRef.current) {
-        throw new Error(
-          i18nText('settingsMcpManagement', 'mcp_mapping_default_invalid')
-        );
-      }
-      if (!outputMappingValidRef.current) {
-        throw new Error('output_mapping JSON');
-      }
-      const common = {
-        tool_id: editingTool ? editingTool.tool_id : values.tool_id,
-        des_id: values.des_id,
-        name: values.name,
-        short_description: values.short_description,
-        full_description: values.full_description,
-        max_inline_chars: form.getFieldValue('max_inline_chars') ?? null,
-        response_fields: parseResponseFields(
-          form.getFieldValue('response_fields')
-        ),
-        status: values.status
-      };
-      let body: SaveConsoleMcpToolBody;
-      if (editingTool?.execution_target.kind === 'assistant_client') {
-        body = {
-          ...common,
-          execution_target: editingTool.execution_target,
-          parameter_schema: schemaRecord(
-            form.getFieldValue('parameter_schema')
-          ),
-          result_schema: schemaRecord(form.getFieldValue('result_schema')),
-          input_mapping: schemaRecord(form.getFieldValue('input_mapping')),
-          output_mapping: schemaRecord(form.getFieldValue('output_mapping')),
-          permission_code: editingTool.permission_code,
-          risk_level: form.getFieldValue('risk_level') as string
-        };
-      } else if (editingTool?.execution_target.kind === 'mcp_proxy') {
-        const inputMapping = form.getFieldValue(
-          'input_mapping'
-        ) as ConsoleMcpProxyInputMapping;
-        const outputMapping = form.getFieldValue(
-          'output_mapping'
-        ) as ConsoleMcpProxyOutputMapping;
-        if (
-          !mcpProxyMappingIsValid(inputMapping) ||
-          !mcpProxyMappingIsValid(outputMapping)
-        ) {
-          throw new Error(
-            i18nText('settingsMcpManagement', 'auto.proxy_path_invalid')
-          );
-        }
-        body = {
-          ...common,
-          execution_target: editingTool.execution_target,
-          parameter_schema: schemaRecord(
-            form.getFieldValue('parameter_schema')
-          ),
-          result_schema: schemaRecord(form.getFieldValue('result_schema')),
-          input_mapping: inputMapping,
-          output_mapping: outputMapping,
-          permission_code: editingTool.permission_code,
-          risk_level: form.getFieldValue('risk_level') as string
-        };
-      } else {
-        const selectedInterface = interfaceCapabilities.find(
-          (entry) => entry.interface_id === values.interface_id
-        );
-        if (!selectedInterface || !values.interface_id) {
-          throw new Error('operation is required');
-        }
-        body = {
-          ...common,
-          execution_target: {
-            kind: 'interface_wrapper',
-            interface_id: values.interface_id
-          },
-          parameter_schema: selectedInterface.parameter_schema,
-          result_schema: selectedInterface.result_schema,
-          input_mapping: normalizeInputMapping(
-            form.getFieldValue('input_mapping')
-          ),
-          output_mapping: schemaRecord(form.getFieldValue('output_mapping')),
-          permission_code: selectedInterface.permission_code,
-          risk_level: selectedInterface.risk_level
-        };
-      }
-      if (editingTool) {
-        return updateSettingsMcpTool(
-          editingTool.tool_id,
-          toUpdateToolBody(body),
-          csrfToken
-        );
-      }
-      return createSettingsMcpTool(body, csrfToken);
-    },
-    onSuccess: async () => {
-      message.success(i18nText('settings', 'auto.mcp_saved'));
-      setModalOpen(false);
-      setEditingTool(null);
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
-    },
-    onError: (error) => {
-      message.error(error instanceof Error ? error.message : String(error));
-    }
-  });
-  const deleteToolMutation = useMutation({
-    mutationFn: (toolId: string) => deleteSettingsMcpTool(toolId, csrfToken),
-    onSuccess: async () => {
-      message.success(i18nText('settings', 'auto.mcp_deleted'));
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
-    }
-  });
-  const refreshMutation = useMutation({
-    mutationFn: (toolId: string) =>
-      refreshSettingsMcpToolDescription(toolId, csrfToken),
-    onSuccess: async () => {
-      message.success(i18nText('settings', 'auto.mcp_des_id_refreshed'));
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
-    }
-  });
-  const deleteToolMutationRef = useRef(deleteToolMutation);
-  const refreshMutationRef = useRef(refreshMutation);
-
-  useEffect(() => {
-    deleteToolMutationRef.current = deleteToolMutation;
-    refreshMutationRef.current = refreshMutation;
-  }, [deleteToolMutation, refreshMutation]);
-
-  async function handleExportCatalog() {
-    setExportingCatalog(true);
-    try {
-      const exportPackage = await exportSettingsMcpCatalog();
-      downloadMcpExportPackage(exportPackage);
-      message.success(i18nText('settings', 'auto.mcp_export_ready'));
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setExportingCatalog(false);
-    }
-  }
-  function applyInterfaceToMapping(
-    field: 'input_mapping' | 'output_mapping',
-    entry: ConsoleMcpInterfaceCapability | undefined
-  ) {
-    if (!entry) {
-      return;
-    }
-
-    const nextMapping =
-      field === 'input_mapping'
-        ? buildInputMappingFromInterface(entry, form.getFieldValue(field))
-        : schemaRecord(entry.result_schema);
-    const currentHasContent =
-      field === 'input_mapping'
-        ? inputMappingHasContent(form.getFieldValue(field))
-        : schemaMappingHasContent(form.getFieldValue(field));
-    const applyMapping = () => {
-      form.setFieldValue(field, nextMapping);
-      if (field === 'input_mapping') {
-        inputMappingValidRef.current = true;
-        setCallParametersVisible(true);
-      } else {
-        outputMappingValidRef.current = true;
-      }
-      bumpSchemaEditorRevision();
-    };
-
-    if (!currentHasContent) {
-      applyMapping();
-      return;
-    }
-
-    Modal.confirm({
-      title: i18nText('settings', 'auto.mcp_mapping_overwrite_confirm_title'),
-      content: i18nText(
-        'settings',
-        'auto.mcp_mapping_overwrite_confirm_content'
-      ),
-      okText: i18nText('settings', 'auto.confirm'),
-      cancelText: i18nText('settings', 'auto.cancel'),
-      onOk: applyMapping
-    });
-  }
-  const filteredTools = catalog.tools.filter((tool) => {
-    const source = toolSourceLabel(tool);
-    const text =
-      `${tool.name} ${tool.tool_id} ${tool.operation} ${source}`.toLowerCase();
-    return (
-      (!routeState.keyword ||
-        text.includes(routeState.keyword.toLowerCase())) &&
-      (!routeState.execution_target_kind ||
-        tool.execution_target.kind === routeState.execution_target_kind) &&
-      (!routeState.interface_id ||
-        (tool.execution_target.kind === 'interface_wrapper' &&
-          tool.execution_target.interface_id === routeState.interface_id)) &&
-      (!routeState.risk_level || tool.risk_level === routeState.risk_level) &&
-      (!routeState.status || tool.status === routeState.status) &&
-      (routeState.des_id_required === undefined ||
-        tool.des_id_required === routeState.des_id_required)
-    );
-  });
-  const pageCount = Math.max(
-    1,
-    Math.ceil(filteredTools.length / MCP_TOOLS_PAGE_SIZE)
-  );
-  const visibleTools = filteredTools.slice(
-    (routeState.page - 1) * MCP_TOOLS_PAGE_SIZE,
-    routeState.page * MCP_TOOLS_PAGE_SIZE
-  );
-
-  useEffect(() => {
-    if (routeState.page <= pageCount) {
-      return;
-    }
-    const nextState = { ...routeState, page: pageCount };
-    updateRouteState(nextState, 'replace');
-  }, [pageCount, routeState, updateRouteState]);
-
-  const applyFilters = useCallback(() => {
-    const nextState: McpToolsRouteState = {
-      ...filterDraft,
-      page: 1,
-      keyword: filterDraft.keyword?.trim() || undefined
-    };
-    updateRouteState(nextState);
-    setFilterDraft(nextState);
-  }, [filterDraft, updateRouteState]);
-
-  const resetFilters = useCallback(() => {
-    const nextState: McpToolsRouteState = { page: 1 };
-    updateRouteState(nextState);
-    setFilterDraft(nextState);
-  }, [updateRouteState]);
-  const toolStepIndex = Math.max(
-    0,
-    TOOL_FORM_STEPS.findIndex((entry) => entry.value === step)
-  );
-  const previousToolStep = TOOL_FORM_STEPS[toolStepIndex - 1];
-  const nextToolStep = TOOL_FORM_STEPS[toolStepIndex + 1];
-
   const tableColumns = useMemo<Array<DataTableColumn<ConsoleMcpTool>>>(
     () => [
       ...columns,
