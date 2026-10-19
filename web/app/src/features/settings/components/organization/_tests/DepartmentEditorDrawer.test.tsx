@@ -71,7 +71,10 @@ async function chooseOrganization() {
       element.textContent === '组织'
     )
   );
+  const popup = root.closest<HTMLElement>('.ant-select-dropdown');
+  if (!popup) throw new Error('Parent selector popup is missing');
   await domEvents.click(root);
+  await waitFor(() => expect(popup).not.toBeVisible());
 }
 
 async function save() {
@@ -80,7 +83,6 @@ async function save() {
 
 describe('organization parent selector', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     vi.clearAllMocks();
     resetAuthStore();
     useAuthStore.setState({ csrfToken: 'csrf' });
@@ -102,16 +104,11 @@ describe('organization parent selector', () => {
   });
 
   afterEach(async () => {
-    try {
-      await act(async () => {
-        // Dispose this fixture's subscriptions and motion owners before draining.
-        for (const view of mountedViews) view.unmount();
-        mountedViews.clear();
-        await vi.runOnlyPendingTimersAsync();
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    await act(async () => {
+      // Dispose only this fixture's render roots and their motion subscriptions.
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
+    });
   });
 
   test('an empty organization tree displays and offers the organization root and submits null', async () => {
@@ -218,18 +215,7 @@ describe('organization parent selector', () => {
 async function dispatch<T>(event: () => T) {
   let result!: T;
   await act(async () => { result = event(); });
-  await settleTimers();
   return result;
-}
-
-async function settleTimers() {
-  // Effects can queue another animation frame when an act scope commits.
-  // The fixture clock advances only inside act, including those later frames.
-  while (vi.getTimerCount() > 0) {
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
-  }
 }
 
 // Explicit render owners for this fixture; other test roots remain RTL-owned.
@@ -241,7 +227,6 @@ async function renderSettled(...args: Parameters<typeof render>) {
     view = render(...args);
     mountedViews.add(view);
   });
-  await settleTimers();
   return view;
 }
 

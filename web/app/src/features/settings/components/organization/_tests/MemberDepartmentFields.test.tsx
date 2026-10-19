@@ -62,7 +62,6 @@ function Harness({
 }
 describe('member department invariants', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     fetchDepartments.mockImplementation(async ({ ids }: { ids?: string }) => ({
       items: departments
         .filter((item) => !ids || ids.split(',').includes(item.id))
@@ -72,16 +71,11 @@ describe('member department invariants', () => {
     }));
   });
   afterEach(async () => {
-    try {
-      await act(async () => {
-        // Dispose this fixture's subscriptions and motion owners before draining.
-        for (const view of mountedViews) view.unmount();
-        mountedViews.clear();
-        await vi.runOnlyPendingTimersAsync();
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    await act(async () => {
+      // Dispose only this fixture's render roots and their motion subscriptions.
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
+    });
   });
   test('retains and resolves existing selections absent from the first page', async () => {
     const submit = vi.fn();
@@ -108,12 +102,16 @@ describe('member department invariants', () => {
       </AppProviders>
     );
     await domEvents.mouseDown(screen.getByRole('combobox', { name: '主部门' }));
-    await domEvents.click(await screen.findByText((_, element) =>
-        Boolean(
-          element?.matches('.ant-select-item-option-content') &&
-          element.textContent === 'Support'
-        )
-      ));
+    const support = await screen.findByText((_, element) =>
+      Boolean(
+        element?.matches('.ant-select-item-option-content') &&
+        element.textContent === 'Support'
+      )
+    );
+    const popup = support.closest<HTMLElement>('.ant-select-dropdown');
+    if (!popup) throw new Error('Primary department selector popup is missing');
+    await domEvents.click(support);
+    await waitFor(() => expect(popup).not.toBeVisible());
     await domEvents.click(screen.getByText('Submit'));
     await waitFor(() =>
       expect(submit).toHaveBeenCalledWith({
@@ -163,18 +161,7 @@ describe('member department invariants', () => {
 async function dispatch<T>(event: () => T) {
   let result!: T;
   await act(async () => { result = event(); });
-  await settleTimers();
   return result;
-}
-
-async function settleTimers() {
-  // Effects can queue another animation frame when an act scope commits.
-  // The fixture clock advances only inside act, including those later frames.
-  while (vi.getTimerCount() > 0) {
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
-  }
 }
 
 // Explicit render owners for this fixture; other test roots remain RTL-owned.
@@ -186,7 +173,6 @@ async function renderSettled(...args: Parameters<typeof render>) {
     view = render(...args);
     mountedViews.add(view);
   });
-  await settleTimers();
   return view;
 }
 
