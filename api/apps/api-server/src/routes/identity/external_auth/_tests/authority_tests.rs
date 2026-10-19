@@ -269,18 +269,34 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
         admission.take().is_err(),
         "sealed factory result is single-use"
     );
+    let input = PublicInput::Complete(verified);
+    assert_eq!(
+        interface_runtime::ManagedInterfaceProjection::from_contract(&input)
+            .unwrap()
+            .value(),
+        &json!({}),
+        "verified identity and final authority lease stay opaque to ordinary hooks"
+    );
     let outcome = InterfaceInvocationKernel::new(Arc::new(
         super::super::public_residual_interface::PublicResidualAuthorization,
     ))
     .invoke::<PublicInput, PublicOutput, interface::TargetError>(
         registry,
-        authenticated.into_envelope(PublicInput::Complete(verified)),
+        authenticated.into_envelope(input),
     )
     .await
     .ok()
     .expect("bound identity must sign in with registration disabled");
     assert_eq!(outcome.receipt().invocation_id(), invocation_id);
-    let PublicOutput::Login(login) = outcome.into_value() else {
+    let output = outcome.into_value();
+    assert_eq!(
+        interface_runtime::ManagedInterfaceProjection::from_contract(&output)
+            .unwrap()
+            .value(),
+        &json!({}),
+        "issued session and actor facts stay opaque to ordinary hooks"
+    );
+    let PublicOutput::Login(login) = output else {
         panic!("expected actual session issuance");
     };
     assert_eq!(login.actor.user_id, root_id);

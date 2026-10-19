@@ -88,12 +88,117 @@ fn authorization_redirect_requires_https_and_host_state_pkce_callback() {
     }
 }
 
+fn projection<T: interface_runtime::InterfaceContract>(value: &T) -> serde_json::Value {
+    let projected = interface_runtime::ManagedInterfaceProjection::from_contract(value)
+        .expect("every external-auth contract must publish an explicit safe summary");
+    let contract = extension_contracts::ManagedProjectionContract {
+        contract_id: projected.contract().contract_id().into(),
+        contract_version: projected.contract().version().into(),
+        schema: projected.schema().clone(),
+    };
+    crate::extension_bus::FrozenManagedProjection::compile(contract)
+        .unwrap()
+        .validate_projection(&projected)
+        .unwrap();
+    projected.value().clone()
+}
+
 #[test]
-fn interface_contracts_have_no_credential_or_profile_projection() {
+fn external_auth_safe_projections_compile_without_exporting_credential_canaries() {
+    const SECRET: &str = "external_auth_private_canary_never_project";
+    let entry_id = Uuid::new_v4();
+    let output = || interface::AuthorizeOutput {
+        cookies: CookieJar::new().add(Cookie::new("private_session", SECRET)),
+        authorization_url: format!("https://provider.example/authorize?state={SECRET}"),
+    };
+    let public_input = projection(&interface::PublicInput::Start {
+        login_entry_id: entry_id,
+    });
+    let public_output = projection(&interface::PublicOutput::Authorization(output()));
+    let authorize_input = projection(&interface::AuthorizeInput(entry_id));
+    let authorize_output = projection(&output());
+    let target_error = projection(&interface::TargetError(anyhow::anyhow!(SECRET).into()));
+    assert_eq!(public_input, serde_json::json!({}));
+    assert_eq!(public_output, serde_json::json!({}));
+    assert_eq!(
+        authorize_input,
+        serde_json::json!({"login_entry_id":entry_id.to_string()})
+    );
+    assert_eq!(
+        authorize_output,
+        serde_json::json!({"authorization_url":{"byte_count":output().authorization_url.len()}})
+    );
+    assert_eq!(
+        target_error,
+        serde_json::json!({"kind":"ExternalAuthTargetError"})
+    );
+    for value in [
+        public_input,
+        public_output,
+        authorize_input,
+        authorize_output,
+        target_error,
+    ] {
+        let wire = value.to_string();
+        for private in [
+            SECRET,
+            "private_session",
+            "provider.example",
+            "state=",
+            "cookies",
+            "profile",
+            "identity",
+            "authority",
+        ] {
+            assert!(
+                !wire.contains(private),
+                "private field escaped safe projection: {private}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn external_auth_complete_boot_catalog_recognizes_all_safe_contracts() {
     use interface_runtime::InterfaceContract;
-    assert!(interface::PublicInput::managed_projection_schema().is_none());
-    assert!(interface::PublicOutput::managed_projection_schema().is_none());
-    assert!(interface::AuthorizeInput::managed_projection_schema().is_none());
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let boot = state.extension_boot_snapshot.as_ref().unwrap();
+    boot.publish_complete_catalog(&state)
+        .expect("complete managed catalog must accept every external-auth binding at startup");
+    let registry = boot.interface_registry().unwrap().snapshot();
+    for binding in [
+        interface::START_BINDING,
+        interface::CALLBACK_BINDING,
+        interface::AUTHORIZE_BINDING,
+    ] {
+        let plan = registry
+            .plan(&interface_runtime::BindingId::new(binding).unwrap())
+            .unwrap();
+        assert!(plan.has_managed_invocation_bridge());
+    }
+    for contract_id in [
+        interface::PublicInput::CONTRACT_ID,
+        interface::PublicOutput::CONTRACT_ID,
+        interface::AuthorizeInput::CONTRACT_ID,
+        interface::AuthorizeOutput::CONTRACT_ID,
+        interface::TargetError::CONTRACT_ID,
+    ] {
+        let descriptor = registry
+            .managed_contracts()
+            .find(|item| item.contract.contract_id() == contract_id)
+            .expect("startup catalog must retain the actual typed contract");
+        crate::extension_bus::FrozenManagedProjection::compile(
+            extension_contracts::ManagedProjectionContract {
+                contract_id: descriptor.contract.contract_id().into(),
+                contract_version: descriptor.contract.version().into(),
+                schema: descriptor
+                    .schema
+                    .clone()
+                    .expect("canonical startup requires every safe schema"),
+            },
+        )
+        .unwrap();
+    }
 }
 
 #[test]

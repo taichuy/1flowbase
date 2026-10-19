@@ -98,21 +98,79 @@ pub(super) struct AuthorizeOutput {
 }
 pub(super) struct TargetError(pub ApiError);
 
-// Deliberately no managed projection: sealed identity/profile and session capabilities
-// must never enter ordinary plugin hooks, receipts, or wire serialization.
-macro_rules! contract {
+// Public contracts publish only an empty closed summary. Their sealed identity,
+// profile, authority lease, session and authorization carrier remain Host-only.
+macro_rules! opaque_contract {
     ($type:ty, $id:literal) => {
         impl InterfaceContract for $type {
             const CONTRACT_ID: &'static str = $id;
             const CONTRACT_VERSION: &'static str = "1";
+            fn managed_projection_schema() -> Option<serde_json::Value> {
+                Some(crate::extension_bus::managed_projection::object_schema(&[]))
+            }
+            fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+                Some(crate::extension_bus::managed_projection::object_value(&[]))
+            }
         }
     };
 }
-contract!(PublicInput, "external-auth-public-input");
-contract!(PublicOutput, "external-auth-public-output");
-contract!(AuthorizeInput, "external-auth-authorize-input");
-contract!(AuthorizeOutput, "external-auth-authorize-output");
-contract!(TargetError, "external-auth-error");
+opaque_contract!(PublicInput, "external-auth-public-input");
+opaque_contract!(PublicOutput, "external-auth-public-output");
+
+impl InterfaceContract for AuthorizeInput {
+    const CONTRACT_ID: &'static str = "external-auth-authorize-input";
+    const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[("login_entry_id", mp::text_schema())]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "login_entry_id",
+            mp::text(&self.0.to_string())?,
+        )]))
+    }
+}
+impl InterfaceContract for AuthorizeOutput {
+    const CONTRACT_ID: &'static str = "external-auth-authorize-output";
+    const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "authorization_url",
+            mp::object_schema(&[("byte_count", mp::count_schema())]),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "authorization_url",
+            mp::object_value(&[(
+                "byte_count",
+                serde_json::json!(self.authorization_url.len()),
+            )]),
+        )]))
+    }
+}
+impl InterfaceContract for TargetError {
+    const CONTRACT_ID: &'static str = "external-auth-error";
+    const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        Some(crate::extension_bus::managed_projection::object_schema(&[
+            (
+                "kind",
+                crate::extension_bus::managed_projection::tag_schema("ExternalAuthTargetError"),
+            ),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        Some(crate::extension_bus::managed_projection::object_value(&[(
+            "kind",
+            serde_json::json!("ExternalAuthTargetError"),
+        )]))
+    }
+}
 
 #[derive(Clone)]
 struct Adapter {
