@@ -114,7 +114,7 @@ describe('NodeInspector code schema', () => {
     const inputVariableName = screen.getByLabelText(
       /输入变量-0-name|input variables-0-name/
     );
-    inputVariableName.focus();
+    await dispatch(() => inputVariableName.focus());
     await domEvents.change(inputVariableName, {
       target: { value: 'score_1' }
     });
@@ -125,7 +125,7 @@ describe('NodeInspector code schema', () => {
       target: { value: 'return { risk_score: inputs.score };' }
     });
     const outputVariableName = screen.getByLabelText('输出变量名 1');
-    outputVariableName.focus();
+    await dispatch(() => outputVariableName.focus());
     await domEvents.change(outputVariableName, {
       target: { value: 'risk_score' }
     });
@@ -206,7 +206,7 @@ describe('NodeInspector code schema', () => {
 
     await domEvents.click(screen.getByRole('button', { name: '添加 Schema 字段' }));
     const schemaFieldNameInput = screen.getByLabelText('Schema 字段名 3');
-    schemaFieldNameInput.focus();
+    await dispatch(() => schemaFieldNameInput.focus());
     await domEvents.change(schemaFieldNameInput, {
       target: { value: 'metadata' }
     });

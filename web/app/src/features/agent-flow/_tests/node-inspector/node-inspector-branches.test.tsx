@@ -265,7 +265,7 @@ describe('NodeInspector branches', () => {
     await selectOption('等于');
     const rightInput = await screen.findByLabelText('分支-if-0-right');
 
-    rightInput.focus();
+    await dispatch(() => rightInput.focus());
     await domEvents.change(rightInput, {
       target: { value: '5' }
     });

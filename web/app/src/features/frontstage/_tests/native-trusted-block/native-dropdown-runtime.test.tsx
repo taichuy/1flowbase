@@ -1,6 +1,7 @@
 import { cleanup,
   act,
   fireEvent,
+  getConfig,
   render,
   waitFor,
   within
@@ -27,7 +28,10 @@ describe('native block Dropdown runtime adapter', () => {
   });
 
   afterEach(async () => {
-    cleanup();
+    await act(async () => {
+      cleanup();
+      if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
+    });
     if (vi.isFakeTimers()) vi.useRealTimers();
     document.body.replaceChildren();
     showPopover.mockReset();
@@ -82,7 +86,7 @@ describe('native block Dropdown runtime adapter', () => {
       document.body.querySelector('[data-flowbase-native-overlay-layer]')
     ).toBeNull();
 
-    view.unmount();
+    await dispatch(() => view.unmount());
     expect(layer.isConnected).toBe(false);
   });
 
@@ -125,7 +129,7 @@ describe('native block Dropdown runtime adapter', () => {
     await queries.findByText('Profile');
     expect(showPopover).toHaveBeenCalledTimes(1);
 
-    view.rerender(
+    await dispatch(() => view.rerender(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:stable"
@@ -134,7 +138,7 @@ describe('native block Dropdown runtime adapter', () => {
         component={Block}
         ctx={createContext()}
       />
-    );
+    ));
 
     await waitFor(() => expect(hidePopover).toHaveBeenCalledTimes(1));
     const secondTrigger = queries.getByRole('button', { name: 'Open menu' });
@@ -225,7 +229,7 @@ describe('native block Dropdown runtime adapter', () => {
   test.each(['hover', 'click', 'keyboard'] as const)(
     'I1924-AC-002/004 keeps a cascading submenu inside the Block top-layer surface and reopens by %s',
     async (reopenBy) => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.useFakeTimers();
       const onOpenChange = vi.fn();
       const registry = createFrontstageNativeReactModuleRegistry();
       const antdModule = await registry.load('antd');
@@ -242,6 +246,7 @@ describe('native block Dropdown runtime adapter', () => {
             <ConfigProvider theme={{ token: { motion: false } }}>
               <Dropdown
                 trigger={['hover', 'click']}
+                mouseEnterDelay={0.1}
                 onOpenChange={onOpenChange}
                 menu={{
                   subMenuOpenDelay: 0,
@@ -266,17 +271,20 @@ describe('native block Dropdown runtime adapter', () => {
 
       const trigger = queries.getByRole('button', { name: 'Cascading menu' });
       await domEvents.pointerOver(trigger);
-      const submenuTitle = await queries.findByText('sub menu');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      const submenuTitle = await findDropdownText(queries, 'sub menu');
       await domEvents.mouseEnter(submenuTitle.closest('[role="menuitem"]') as HTMLElement);
-
-      const child = await queries.findByText('child menu item');
+      const child = await findDropdownText(queries, 'child menu item');
       const layer = shadowRoot.querySelector<HTMLElement>(
         '[data-flowbase-native-overlay-layer]'
       );
       expect(child.closest('[data-flowbase-native-overlay-layer]')).toBe(layer);
 
       await domEvents.click(child);
-      // Flush the pending default hover delay: closure must remain stable.
+      // Advance the authored hover delay and queued motion callbacks under act.
+      // Menu dismissal must still win over the old hover intent.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(200);
       });
@@ -295,6 +303,9 @@ describe('native block Dropdown runtime adapter', () => {
       );
       if (reopenBy === 'hover') {
         await domEvents.pointerOver(trigger);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(100);
+        });
       } else {
         if (reopenBy === 'keyboard') {
           await domEvents.keyDown(trigger, { key: 'Enter' });
@@ -343,7 +354,7 @@ describe('native block Dropdown runtime adapter', () => {
     );
     expect(layer).toHaveAttribute('data-flowbase-native-overlay-state', 'open');
 
-    view.rerender(
+    await dispatch(() => view.rerender(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
         renderEpoch="dropdown:controlled"
@@ -352,7 +363,7 @@ describe('native block Dropdown runtime adapter', () => {
         component={Block}
         ctx={createContext()}
       />
-    );
+    ));
 
     await waitFor(() =>
       expect(layer).toHaveAttribute(
@@ -441,7 +452,7 @@ describe('native block Dropdown runtime adapter', () => {
 
       containingBlockLeft = 150;
       containingBlockTop = 250;
-      window.dispatchEvent(new Event('scroll'));
+      await dispatch(() => window.dispatchEvent(new Event('scroll')));
 
       await waitFor(() => {
         expect(anchor.getBoundingClientRect()).toMatchObject({
@@ -529,6 +540,21 @@ function createContext(): BlockContextSeed {
     theme: { mode: 'light', tokens: {} },
     ui: {}
   };
+}
+
+async function findDropdownText(queries: ReturnType<typeof within>, text: string) {
+  const deadline = Date.now() + getConfig().asyncUtilTimeout;
+  // Drive only queued hover/motion work, stopping at the same bound as findBy.
+  while (
+    !queries.queryByText(text) &&
+    vi.getTimerCount() > 0 &&
+    Date.now() < deadline
+  ) {
+    await act(async () => {
+      await vi.advanceTimersToNextTimerAsync();
+    });
+  }
+  return queries.getByText(text);
 }
 
 async function dispatch<T>(event: () => T) {

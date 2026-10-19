@@ -13,6 +13,7 @@ vi.mock('@scalar/api-reference-react', () => ({
       {JSON.stringify(configuration)}
       <a
         className="endpoint"
+        href="#operation-create-chat-completion"
         onClick={() => {
           window.location.hash = 'operation-create-chat-completion';
         }}
@@ -223,23 +224,40 @@ describe('ApiDocsExplorer', () => {
   });
 
   test('keeps the operation search input focused while the filtered list reloads', async () => {
+    const filteredPage = {
+      ...operationsByCategory['application-native-api'],
+      operations: operationsByCategory['application-native-api'].operations.filter(
+        (operation) => operation.id === 'get_native_run'
+      ),
+      total: 1,
+      offset: 0,
+      limit: 20,
+      has_more: false,
+      next_offset: null
+    };
+    let completeSearch!: () => void;
+    const pendingSearch = new Promise<typeof filteredPage>((resolve) => {
+      completeSearch = () => resolve(filteredPage);
+    });
     const fetchCategoryOperations = vi.fn(
       (
         categoryId: string,
         request?: { offset?: number; limit?: number; q?: string | null }
       ) =>
-        Promise.resolve({
-          ...operationsByCategory[
-            categoryId as keyof typeof operationsByCategory
-          ],
-          total: operationsByCategory[
-            categoryId as keyof typeof operationsByCategory
-          ].operations.length,
-          offset: request?.offset ?? 0,
-          limit: request?.limit ?? 20,
-          has_more: false,
-          next_offset: null
-        })
+        request?.q === 's'
+          ? pendingSearch
+          : Promise.resolve({
+              ...operationsByCategory[
+                categoryId as keyof typeof operationsByCategory
+              ],
+              total: operationsByCategory[
+                categoryId as keyof typeof operationsByCategory
+              ].operations.length,
+              offset: request?.offset ?? 0,
+              limit: request?.limit ?? 20,
+              has_more: false,
+              next_offset: null
+            })
     );
 
     await renderSettled(
@@ -274,7 +292,7 @@ describe('ApiDocsExplorer', () => {
     const searchInput = await screen.findByRole('textbox', {
       name: '搜索接口'
     });
-    searchInput.focus();
+    await dispatch(() => searchInput.focus());
     await domEvents.change(searchInput, { target: { value: 's' } });
 
     expect(searchInput).toHaveFocus();
@@ -284,6 +302,23 @@ describe('ApiDocsExplorer', () => {
         { offset: 0, limit: 20, q: 's' }
       );
     });
+    expect(searchInput).toHaveFocus();
+
+    await act(async () => {
+      completeSearch();
+      await pendingSearch;
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /post \/api\/agent\/v1\/runs/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', {
+          name: /get \/api\/agent\/v1\/runs\/\{run_id\}/i
+        })
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('textbox', { name: '搜索接口' })).toBe(searchInput);
     expect(searchInput).toHaveFocus();
   });
 
@@ -404,6 +439,10 @@ describe('ApiDocsExplorer', () => {
     const scalarViewer = await screen.findByTestId('scalar-viewer');
     const operationLink = await within(scalarViewer).findByText(
       '/v1/chat/completions'
+    );
+    expect(operationLink.closest('a')).toHaveAttribute(
+      'href',
+      '#operation-create-chat-completion'
     );
     await domEvents.click(operationLink);
 
