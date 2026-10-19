@@ -82,15 +82,16 @@ use json_storage::{
 mod record_mappers;
 #[cfg(feature = "responses-history-migration")]
 mod responses_history_migration;
+#[path = "event_storage/sequencing.rs"]
 mod sequencing;
 
 use detail_queries::*;
 use record_mappers::*;
 use sequencing::*;
 
-include!("event_methods.rs");
-include!("delivery_methods.rs");
-include!("artifact_methods.rs");
+include!("event_storage/event_methods.rs");
+include!("event_storage/delivery_methods.rs");
+include!("context_storage/artifact_methods.rs");
 include!("application_run_log_methods.rs");
 include!("application_run_logs/client_log_associations.rs");
 include!("application_run_logs/assistant_conversation_methods.rs");
@@ -105,18 +106,18 @@ include!("application_run_trace_projection_methods.rs");
 include!("application_run_logs/trace_refresh_methods.rs");
 include!("application_run_monitoring_methods.rs");
 include!("application_run_logs/monitoring_usage.rs");
-include!("debug_variable_cache_methods.rs");
-include!("flow_run_methods.rs");
-include!("flow_run_callback_resume_attempt_methods.rs");
-include!("storage_foundation_methods.rs");
+include!("context_storage/debug_variable_cache_methods.rs");
+include!("flow_lifecycle/flow_run_methods.rs");
+include!("flow_lifecycle/flow_run_callback_resume_attempt_methods.rs");
+include!("context_storage/storage_foundation_methods.rs");
 include!("legacy_shadow_methods.rs");
-include!("waiting_state_methods.rs");
-include!("tool_callback_inbox_methods.rs");
-include!("resume_claim_methods.rs");
+include!("flow_lifecycle/waiting_state_methods.rs");
+include!("flow_lifecycle/tool_callback_inbox_methods.rs");
+include!("flow_lifecycle/resume_claim_methods.rs");
 include!("ledger_methods.rs");
 include!("read_methods.rs");
 include!("request_log_methods.rs");
-include!("side_effect_receipt_methods.rs");
+include!("context_storage/side_effect_receipt_methods.rs");
 
 #[path = "repository_ports/orchestration.rs"]
 mod orchestration_port;

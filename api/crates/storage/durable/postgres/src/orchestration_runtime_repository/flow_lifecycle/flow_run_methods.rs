@@ -1094,7 +1094,7 @@ impl PgControlPlaneStore {
             .await?;
         // Copy the synchronous billing result once. Request-log retention and async
         // delivery must not affect the task's recorded cost.
-        sqlx::query(include_str!("application_run_logs/cost_snapshot.sql"))
+        sqlx::query(include_str!("../application_run_logs/cost_snapshot.sql"))
             .bind(flow_run.id)
             .execute(&mut *tx)
             .await?;

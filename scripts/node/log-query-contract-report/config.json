@@ -452,7 +452,7 @@
         "functionName": "execute_inner"
       },
       "repository": {
-        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/artifact_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/context_storage/artifact_methods.rs",
         "functionName": "get_runtime_debug_artifact"
       },
       "extraSources": [
@@ -508,7 +508,7 @@
         "functionName": "get_runtime_debug_artifact"
       },
       "repository": {
-        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/artifact_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/context_storage/artifact_methods.rs",
         "functionName": "get_runtime_debug_artifact"
       },
       "contract": {

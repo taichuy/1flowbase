@@ -72,5 +72,5 @@ pub(super) async fn next_runtime_event_sequence(
 }
 
 #[cfg(test)]
-#[path = "_tests/sequencing.rs"]
+#[path = "../_tests/sequencing.rs"]
 mod tests;
