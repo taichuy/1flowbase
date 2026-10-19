@@ -33,7 +33,7 @@ export interface FrontstageNativeTrustedBlockRuntimeFactoryOptions {
   modules?: NativeTrustedBlockInjectedModuleMap;
 }
 
-export class FrontstageNativeTrustedBlockRuntimeError extends Error {
+class FrontstageNativeTrustedBlockRuntimeError extends Error {
   readonly kind: NativeTrustedBlockRunError['kind'];
   readonly errors: NativeTrustedBlockRunError['errors'];
 

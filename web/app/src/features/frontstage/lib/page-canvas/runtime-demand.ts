@@ -36,7 +36,7 @@ export function resolveFrontstageViewportDemandPriority({
   return withinEnterMargin ? 2 : 3;
 }
 
-export function resolveFrontstageRuntimeDemand(
+function resolveFrontstageRuntimeDemand(
   demands: FrontstageRuntimeDemandByBlockId | undefined,
   blockId: string,
   slotIndex: number

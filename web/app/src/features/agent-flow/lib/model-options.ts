@@ -1,5 +1,5 @@
 import type { AgentFlowModelProviderOptions } from '../api/model-provider-options';
-import { i18nText } from '../../../shared/i18n/text';
+
 import { formatTokenCount } from '../../../shared/i18n/format';
 
 type LocaleAwareOptions = Pick<
@@ -189,40 +189,6 @@ function localizeParameterForm(
       }))
     }))
   };
-}
-
-export function buildLlmModelMetadataSummary(model: LlmModelOption) {
-  return [
-    model.value,
-    model.effectiveContextWindow !== null
-      ? i18nText('agentFlow', 'auto.context', {
-          value1: formatLlmTokenCount(model.effectiveContextWindow)
-        })
-      : null,
-    model.maxOutputTokens !== null
-      ? i18nText('agentFlow', 'auto.output', {
-          value1: formatLlmTokenCount(model.maxOutputTokens)
-        })
-      : null
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
-
-export function formatModelTokenCount(value: number | null | undefined) {
-  if (value === null || value === undefined) {
-    return null;
-  }
-
-  if (value >= 1000000 && value % 1000000 === 0) {
-    return `${value / 1000000}M`;
-  }
-
-  if (value >= 1000 && value % 1000 === 0) {
-    return `${value / 1000}K`;
-  }
-
-  return String(value);
 }
 
 export function listLlmProviderOptions(

@@ -74,7 +74,7 @@ export function getNamedBindingExpression(
   return selector ? { kind: 'selector', selector } : null;
 }
 
-export function extractNamedBindingEntrySelectors(entry: NamedBindingEntry) {
+function extractNamedBindingEntrySelectors(entry: NamedBindingEntry) {
   const expression = getNamedBindingExpression(entry);
 
   if (!expression) {

@@ -56,7 +56,7 @@ export const MCP_CALL_PARAMETERS: McpInputInterfaceParameter[] = [
   }
 ];
 
-export const emptyInputMapping: McpInputMappingValue = {
+const emptyInputMapping: McpInputMappingValue = {
   interface_parameters: [],
   mappings: []
 };
@@ -156,7 +156,7 @@ export function normalizeInputMapping(value: unknown): McpInputMappingValue {
   };
 }
 
-export function buildInputMappingFromParameterDescriptors(
+function buildInputMappingFromParameterDescriptors(
   descriptors: ConsoleMcpParameterDescriptor[]
 ): McpInputMappingValue {
   const interfaceParameters = descriptors

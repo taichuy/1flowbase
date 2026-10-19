@@ -1,8 +1,5 @@
 import { vi } from 'vitest';
-import {
-  modelProviderCatalogContract,
-  modelProviderCatalogEntries
-} from '../../../../../test/model-provider-contract-fixtures';
+import { modelProviderCatalogContract } from '../../../../../test/model-provider-contract-fixtures';
 
 const modelProviderApiFixtures = vi.hoisted(() => ({
   mainInstance: {
@@ -437,4 +434,4 @@ vi.mock('@1flowbase/api-client', () => ({
   })
 }));
 
-export { modelProviderCatalogContract, modelProviderCatalogEntries };
+export { modelProviderCatalogContract };

@@ -2,7 +2,7 @@ import type { ConsoleUserMeta } from '@1flowbase/api-client';
 
 export type ProfileLocalePreference = 'zh_Hans' | 'en_US';
 
-export const LOCALE_PREFERENCE_STORAGE_KEY = '1flowbase.ui.locale_preference';
+const LOCALE_PREFERENCE_STORAGE_KEY = '1flowbase.ui.locale_preference';
 export const LOCALE_PREFERENCE_CHANGE_EVENT = '1flowbase:locale-preference-changed';
 
 const URL_LANGUAGE_TO_PROFILE_LOCALE = {
@@ -33,7 +33,7 @@ function normalizeUrlLanguage(value: string | null): keyof typeof URL_LANGUAGE_T
     : null;
 }
 
-export function readLocalePreferenceFromMeta(
+function readLocalePreferenceFromMeta(
   meta: ConsoleUserMeta | undefined
 ): ProfileLocalePreference | null {
   const ui = isRecord(meta?.ui) ? meta.ui : undefined;
@@ -41,18 +41,6 @@ export function readLocalePreferenceFromMeta(
   const preferredLocale = locale?.preferred_locale;
 
   return isProfileLocalePreference(preferredLocale) ? preferredLocale : null;
-}
-
-export function buildLocalePreferenceMetaPatch(
-  preferredLocale: ProfileLocalePreference
-): ConsoleUserMeta {
-  return {
-    ui: {
-      locale: {
-        preferred_locale: preferredLocale
-      }
-    }
-  };
 }
 
 export function mergeLocalePreferenceMeta(

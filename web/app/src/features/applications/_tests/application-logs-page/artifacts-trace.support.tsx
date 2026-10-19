@@ -251,7 +251,7 @@ export function runOverviewFromDetail(detail: ApplicationRunDetail) {
   };
 }
 
-export function traceRootNodeGroups(detail: ApplicationRunDetail) {
+function traceRootNodeGroups(detail: ApplicationRunDetail) {
   const nodeRuns = [
     ...detail.node_runs,
     ...(detail.stitched_trace ?? []).flatMap((trace) => trace.node_runs)
@@ -279,14 +279,14 @@ export function traceRootNodeGroups(detail: ApplicationRunDetail) {
   return groups;
 }
 
-export function traceNodeGroupId(nodeRuns: ApplicationRunDetail['node_runs']) {
+function traceNodeGroupId(nodeRuns: ApplicationRunDetail['node_runs']) {
   const firstNodeRun = nodeRuns[0]!;
   return nodeRuns.length > 1
     ? `node_run_group:${firstNodeRun.id}`
     : `node_run:${firstNodeRun.id}`;
 }
 
-export function mergeDebugPayloads(
+function mergeDebugPayloads(
   nodeRuns: ApplicationRunDetail['node_runs']
 ) {
   const merged: Record<string, unknown> = {};
@@ -340,11 +340,11 @@ export function mergeDebugPayloads(
   return merged;
 }
 
-export function payloadHasKeys(payload: Record<string, unknown>) {
+function payloadHasKeys(payload: Record<string, unknown>) {
   return Object.keys(payload).length > 0;
 }
 
-export function mergeNodeRunGroup(nodeRuns: ApplicationRunDetail['node_runs']) {
+function mergeNodeRunGroup(nodeRuns: ApplicationRunDetail['node_runs']) {
   const firstNodeRun = nodeRuns[0]!;
   const lastNodeRun = nodeRuns.at(-1) ?? firstNodeRun;
 
@@ -413,7 +413,7 @@ export function traceTreeFromDetail(detail: ApplicationRunDetail) {
   };
 }
 
-export function traceNodeRunGroupFromDetail(
+function traceNodeRunGroupFromDetail(
   detail: ApplicationRunDetail,
   traceNodeId: string
 ) {

@@ -276,7 +276,7 @@ export const styleBoundaryApplicationRunRecord = {
   updated_at: '2026-05-10T09:00:03Z'
 };
 
-export function expandDottedBundle(bundle: Record<string, string>) {
+function expandDottedBundle(bundle: Record<string, string>) {
   const expanded: Record<string, unknown> = {};
 
   for (const [dottedKey, value] of Object.entries(bundle)) {
@@ -301,7 +301,7 @@ export function expandDottedBundle(bundle: Record<string, string>) {
   return expanded;
 }
 
-export const styleBoundaryPluginI18nCatalog = Object.fromEntries(
+const styleBoundaryPluginI18nCatalog = Object.fromEntries(
   Object.entries(modelProviderCatalogContract.i18n_catalog).map(
     ([namespace, locales]) => [
       namespace,
