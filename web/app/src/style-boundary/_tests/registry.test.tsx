@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { AnyRouter } from '@tanstack/react-router';
 import { Grid } from 'antd';
@@ -34,6 +34,7 @@ import { getRuntimeScene, getSceneIdsForFiles } from '../registry';
 import type { StyleBoundaryRuntimeScene } from '../types';
 import { resetAuthStore } from '../../state/auth-store';
 
+const mountedViews = new Set<ReturnType<typeof render>>();
 const sceneClients = new Set<QueryClient>();
 let originalFetch: typeof globalThis.fetch;
 function ObserveSceneQueries() {
@@ -56,6 +57,7 @@ async function renderScene(
     view = reactFlow
       ? renderReactFlowScene(ui, { withProviders: false })
       : render(ui);
+    mountedViews.add(view);
   });
   return view;
 }
@@ -98,7 +100,8 @@ describe('style boundary registry', () => {
       await waitForSceneIdle();
     } finally {
       // Release router subscriptions, query observers and portals before global resets.
-      cleanup();
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
       for (const client of sceneClients) client.clear();
       sceneClients.clear();
       sceneRouters.clear();

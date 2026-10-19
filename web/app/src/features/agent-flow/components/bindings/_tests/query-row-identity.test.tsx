@@ -1,11 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { expect, it } from 'vitest';
 import type { DataModelQueryBindingValue } from '@1flowbase/flow-schema';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { DataModelQueryField } from '../DataModelQueryField';
 
-it('keeps the surviving query input instance when an earlier filter is removed', () => {
+it('keeps the surviving query input instance when an earlier filter is removed', async () => {
   function Query() {
     const [value, setValue] = useState<DataModelQueryBindingValue>({
       filters: ['first', 'second'].map((value) => ({
@@ -40,12 +40,16 @@ it('keeps the surviving query input instance when an earlier filter is removed',
   }
   render(<Query />);
   const second = screen.getByDisplayValue('second');
-  second.focus();
-  fireEvent.click(
-    screen.getAllByRole('button', {
-      name: i18nText('agentFlow', 'auto.delete')
-    })[0]
-  );
+  await act(async () => {
+    second.focus();
+  });
+  await act(async () => {
+    fireEvent.click(
+      screen.getAllByRole('button', {
+        name: i18nText('agentFlow', 'auto.delete')
+      })[0]
+    );
+  });
   expect(screen.queryByDisplayValue('first')).not.toBeInTheDocument();
   expect(screen.getByDisplayValue('second')).toBe(second);
   expect(second).toHaveFocus();

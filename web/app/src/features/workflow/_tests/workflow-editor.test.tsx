@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 import { createTestMemoryRouter } from '../../../test/renderers/create-test-memory-router';
 
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
-import { renderReactFlowScene } from '../../../test/renderers/render-react-flow-scene';
+import { renderReactFlowSceneSettled } from '../../../test/renderers/render-react-flow-scene';
 import { WorkflowEditorAssembly } from '../components/WorkflowEditorAssembly';
 import {
   createApplicationNodeCatalog,
@@ -14,11 +14,7 @@ import {
 
 async function renderWorkflowScene(ui: ReactElement) {
   const scene = await createTestMemoryRouter(ui);
-  let view!: ReturnType<typeof renderReactFlowScene>;
-  await act(async () => {
-    view = renderReactFlowScene(scene);
-  });
-  return view;
+  return renderReactFlowSceneSettled(scene);
 }
 
 function createWorkflowInitialState() {

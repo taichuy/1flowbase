@@ -1,7 +1,6 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -218,7 +217,8 @@ describe('ApplicationApiPage', () => {
         }
       });
     } finally {
-      cleanup();
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
       for (const client of mountedClients) client.clear();
       mountedClients.clear();
       await act(async () => {
@@ -548,6 +548,7 @@ async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
   await act(async () => {
     view = render(...args);
+    mountedViews.add(view);
   });
   return view;
 }
@@ -562,6 +563,7 @@ async function change(...args: Parameters<typeof fireEvent.change>) {
   });
 }
 
+const mountedViews = new Set<ReturnType<typeof render>>();
 const mountedClients = new Set<QueryClient>();
 let expectedPendingQueries = 0;
 function ObserveQueries() {

@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import 'node:fs';
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';

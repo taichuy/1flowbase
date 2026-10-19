@@ -2,7 +2,6 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -293,7 +292,8 @@ describe('ApplicationLogsPage - table field settings', () => {
     try {
       await waitForRequests();
     } finally {
-      cleanup();
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
       for (const client of mountedClients) client.clear();
       mountedClients.clear();
       await act(async () => {
@@ -582,6 +582,7 @@ async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
   await act(async () => {
     view = render(...args);
+    mountedViews.add(view);
   });
   return view;
 }
@@ -591,6 +592,7 @@ async function click(...args: Parameters<typeof fireEvent.click>) {
   });
 }
 
+const mountedViews = new Set<ReturnType<typeof render>>();
 const mountedClients = new Set<QueryClient>();
 function ObserveQueries() {
   mountedClients.add(useQueryClient());

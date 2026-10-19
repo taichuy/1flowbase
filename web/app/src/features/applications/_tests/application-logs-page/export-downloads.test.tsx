@@ -1,6 +1,6 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
 vi.mock('antd', async (importOriginal) => {
@@ -277,6 +277,7 @@ async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
   });
 }
 
+const mountedViews = new Set<ReturnType<typeof render>>();
 const mountedClients = new Set<QueryClient>();
 function ObserveQueries() {
   mountedClients.add(useQueryClient());
@@ -302,6 +303,7 @@ async function renderLogsPage() {
         </AntdApp>
       </AppProviders>
     );
+    mountedViews.add(view);
   });
   return view;
 }
@@ -495,7 +497,8 @@ describe('ApplicationLogsPage - run export downloads', () => {
     try {
       await waitForRequests();
     } finally {
-      cleanup();
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
       for (const client of mountedClients) client.clear();
       mountedClients.clear();
       await act(async () => {

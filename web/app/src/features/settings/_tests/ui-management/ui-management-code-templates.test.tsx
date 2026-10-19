@@ -4,7 +4,6 @@ import '../../../../test/fixtures/rc-util-unique-ids';
 import { App } from 'antd';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -192,6 +191,7 @@ async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
   });
 }
 
+const mountedViews = new Set<ReturnType<typeof render>>();
 const mountedClients = new Set<QueryClient>();
 function ObserveQueries() {
   mountedClients.add(useQueryClient());
@@ -217,6 +217,7 @@ async function renderPanel() {
         </App>
       </AppProviders>
     );
+    mountedViews.add(view);
   });
   return view;
 }
@@ -312,7 +313,8 @@ describe('UiManagementPanel code templates', () => {
     try {
       await waitForRequests();
     } finally {
-      cleanup();
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
       for (const client of mountedClients) client.clear();
       mountedClients.clear();
       await act(async () => {

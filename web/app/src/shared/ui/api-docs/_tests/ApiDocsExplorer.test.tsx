@@ -1,4 +1,4 @@
-import { act, cleanup,
+import { act,
   fireEvent,
   render,
   screen,
@@ -109,6 +109,8 @@ const operationsByCategory = {
   }
 };
 
+const mountedViews = new Set<ReturnType<typeof render>>();
+
 describe('ApiDocsExplorer', () => {
   beforeEach(async () => {
     window.history.replaceState(null, '', '/?language=zh-Hans');
@@ -116,7 +118,8 @@ describe('ApiDocsExplorer', () => {
   });
 
   afterEach(async () => {
-    cleanup();
+    for (const view of mountedViews) view.unmount();
+    mountedViews.clear();
     await act(async () => {
       window.history.replaceState(null, '', '/');
       await appI18n.changeLanguage('en_US');
@@ -461,7 +464,10 @@ async function dispatch<T>(event: () => T) {
 
 async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(...args); });
+  await act(async () => {
+    view = render(...args);
+    mountedViews.add(view);
+  });
   return view;
 }
 

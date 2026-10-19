@@ -24,18 +24,23 @@ import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/Frontstag
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
-const render = (ui: ReactElement) =>
-  testingRender(ui, {
-    wrapper: ({ children }) => (
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <App>{children}</App>
-      </QueryClientProvider>
-    )
+async function renderSettled(ui: ReactElement) {
+  let view!: ReturnType<typeof testingRender>;
+  await act(async () => {
+    view = testingRender(ui, {
+      wrapper: ({ children }) => (
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <App>{children}</App>
+        </QueryClientProvider>
+      )
+    });
   });
+  return view;
+}
 const templateApi = vi.hoisted(() => ({
   createSettingsUiTemplate: vi.fn(),
   settingsUiTemplatesQueryKey: ['settings', 'ui-management', 'templates']
@@ -1188,12 +1193,6 @@ async function dispatch<T>(event: () => T) {
   let result!: T;
   await act(async () => { result = event(); });
   return result;
-}
-
-async function renderSettled(...args: Parameters<typeof render>) {
-  let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(...args); });
-  return view;
 }
 
 const domEvents = {

@@ -1,7 +1,6 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -105,6 +104,7 @@ async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
   });
 }
 
+const mountedViews = new Set<ReturnType<typeof render>>();
 const mountedClients = new Set<QueryClient>();
 let expectedPendingMutations = 0;
 function ObserveQueries() {
@@ -133,6 +133,7 @@ async function renderPage() {
         </App>
       </AppProviders>
     );
+    mountedViews.add(view);
   });
   return view;
 }
@@ -319,7 +320,8 @@ describe('ApplicationListPage', () => {
     try {
       await waitForRequests();
     } finally {
-      cleanup();
+      for (const view of mountedViews) view.unmount();
+      mountedViews.clear();
       for (const client of mountedClients) client.clear();
       mountedClients.clear();
       await act(async () => {
