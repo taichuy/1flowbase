@@ -40,6 +40,8 @@ pub struct AuthCenterConfigFieldResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub step: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub precision: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_value: Option<Value>,
@@ -231,6 +233,7 @@ fn auth_center_config_schema(
             min: None,
             max: None,
             step: None,
+            precision: None,
             description: None,
             default_value: None,
         })

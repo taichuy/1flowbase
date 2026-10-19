@@ -63,7 +63,9 @@ vi.mock('@monaco-editor/react', async () => {
         onMount,
         editor: {
           getModel: () => ({
-            uri: { toString: () => pathRef.current ?? 'file:///auth-center/block.tsx' }
+            uri: {
+              toString: () => pathRef.current ?? 'file:///auth-center/block.tsx'
+            }
           })
         },
         monaco: {
@@ -133,7 +135,9 @@ function authenticate() {
 const baseOverview = {
   default_login_entry_id: 'auth-password-local',
   supported_auth_types: ['password-local'],
-      authentication_provider_templates: [{ auth_type: 'password-local', display_name: 'Password' }],
+  authentication_provider_templates: [
+    { auth_type: 'password-local', display_name: 'Password' }
+  ],
   login_entries: [
     {
       id: 'auth-password-local',
@@ -348,7 +352,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '新增' }));
     const dialog = await screen.findByRole('dialog', { name: '新建登录入口' });
-    expect(within(dialog).getByText('password-local')).toBeInTheDocument();
+    expect(within(dialog).getByText('Password')).toBeInTheDocument();
     expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('排序值')).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('名称'), {

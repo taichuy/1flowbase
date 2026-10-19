@@ -11,6 +11,7 @@ export interface ConsoleAuthCenterConfigField {
   min?: number;
   max?: number;
   step?: number;
+  precision?: number;
   description?: string;
   default_value?: string | number | boolean | null;
 }

@@ -12,7 +12,7 @@ vi.mock('react-i18next', () => ({
       values?.provider ? `Link ${values.provider}` : key
   })
 }));
-afterEach(() => vi.resetAllMocks());
+afterEach(() => vi.clearAllMocks());
 function renderPanel(csrf: string | null) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
