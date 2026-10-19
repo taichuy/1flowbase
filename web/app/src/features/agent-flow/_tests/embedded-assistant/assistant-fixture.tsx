@@ -58,6 +58,11 @@ vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
   loadMonacoEditorModule: () => import('@monaco-editor/react')
 }));
 
+// Collect the real lazy chunks as suite dependencies, after hoisted mock registration.
+import '../../components/embedded-assistant/EmbeddedAgentAssistantPreview';
+import '../../components/assistant-plugin/AssistantPanelPlugin';
+import '../../components/embedded-assistant/AssistantRunActivityPanel';
+
 import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 
 import { i18nText } from '../../../../shared/i18n/text';
@@ -85,13 +90,8 @@ let innerWidthSpy: WindowDimensionSpy | undefined;
 
 export function setupEmbeddedAssistantFixture() {
   beforeAll(async () => {
+    // Global setup normally completes this flight; keep the fixture's ready contract.
     await loadApplicationI18nResources();
-    // These scenarios exercise the real preview after loading, not cold chunk timing.
-    await Promise.all([
-      import('../../components/embedded-assistant/EmbeddedAgentAssistantPreview'),
-      import('../../components/assistant-plugin/AssistantPanelPlugin'),
-      import('../../components/embedded-assistant/AssistantRunActivityPanel')
-    ]);
   });
   beforeEach(() => {
     window.localStorage.removeItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY);
