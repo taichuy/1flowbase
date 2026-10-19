@@ -54,11 +54,12 @@ function getNextNodeTitleIndex(
   titlePrefix: string
 ): number {
   let maxIndex = 0;
+  const titlePattern = new RegExp(`^${titlePrefix}(\\d+)$`);
 
   const visit = (items: FrontStageTreeNode[]) => {
     for (const item of items) {
       if (item.kind === nodeType) {
-        const matched = item.title?.match(new RegExp(`^${titlePrefix}(\\d+)$`));
+        const matched = item.title?.match(titlePattern);
 
         if (matched) {
           const candidateIndex = Number.parseInt(matched[1], 10);
