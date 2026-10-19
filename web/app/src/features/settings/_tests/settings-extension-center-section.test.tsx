@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiClientError } from '@1flowbase/api-client';
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -9,7 +11,7 @@ import {
 } from '@testing-library/react';
 import { App, Modal } from 'antd';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const extensionsApi = vi.hoisted(() => ({
   settingsInstalledExtensionsQueryKey: vi.fn(
@@ -228,7 +230,7 @@ function authenticate() {
   });
 }
 
-function renderSection(
+async function renderSection(
   category:
     | 'installed'
     | 'agent-flow'
@@ -246,6 +248,7 @@ function renderSection(
       mutations: { retry: false }
     }
   });
+  mountedClients.add(client);
   const wrapper = ({ children }: { children: ReactNode }) => (
     <AppI18nProvider>
       <App>
@@ -255,14 +258,14 @@ function renderSection(
   );
 
   return {
-    ...render(
+    ...(await renderSettled(
       <SettingsExtensionCenterSection
         category={category}
         cursor={cursor}
         q={q}
       />,
       { wrapper }
-    ),
+    )),
     queryClient: client
   };
 }
@@ -272,7 +275,14 @@ function deferred<T>() {
   const promise = new Promise<T>((next) => {
     resolve = next;
   });
-  return { promise, resolve };
+  return {
+    promise,
+    resolve: async (value: T) => {
+      await act(async () => {
+        resolve(value);
+      });
+    }
+  };
 }
 
 describe('SettingsExtensionCenterSection', () => {
@@ -369,7 +379,7 @@ describe('SettingsExtensionCenterSection', () => {
       new Error('catalog unavailable')
     );
 
-    renderSection('runtime-extensions');
+    await renderSection('runtime-extensions');
 
     expect(
       await screen.findByText('在线扩展目录暂时无法加载')
@@ -398,7 +408,7 @@ describe('SettingsExtensionCenterSection', () => {
       total_entries: 1,
       entries: [catalogEntry]
     });
-    fireEvent.click(screen.getByRole('button', { name: '重新加载目录' }));
+    await click(screen.getByRole('button', { name: '重新加载目录' }));
 
     expect(await screen.findByText('OpenAI Provider')).toBeInTheDocument();
     expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledTimes(
@@ -407,7 +417,7 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('AC-005 loads installed inventory without a remote update check and checks only after the explicit action', async () => {
-    renderSection();
+    await renderSection();
 
     expect(await screen.findByText('openai')).toBeInTheDocument();
     expect(screen.getAllByRole('tab')).toHaveLength(10);
@@ -425,7 +435,7 @@ describe('SettingsExtensionCenterSection', () => {
     ).toBeInTheDocument();
     expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
     expect(extensionsApi.checkSettingsExtensionUpdates).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    await click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() => {
       expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledWith(
         {
@@ -447,7 +457,7 @@ describe('SettingsExtensionCenterSection', () => {
         .closest('[data-update-state]')
     ).toHaveAttribute('data-update-state', 'update_available');
 
-    fireEvent.click(screen.getByRole('tab', { name: 'runtime-extensions' }));
+    await click(screen.getByRole('tab', { name: 'runtime-extensions' }));
     expect(routerApi.navigate).toHaveBeenCalledWith({
       to: '/settings/extension-center/$category',
       params: { category: 'runtime-extensions' },
@@ -487,7 +497,7 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.checkSettingsExtensionUpdates.mockReturnValue(
       pendingCheck.promise
     );
-    renderSection('runtime-extensions');
+    await renderSection('runtime-extensions');
 
     const row = await screen.findByRole(
       'row',
@@ -526,7 +536,7 @@ describe('SettingsExtensionCenterSection', () => {
       'csrf-123'
     );
 
-    pendingCheck.resolve({
+    await pendingCheck.resolve({
       category: 'runtime-extensions',
       items: [
         {
@@ -551,7 +561,7 @@ describe('SettingsExtensionCenterSection', () => {
       new Error('catalog unavailable')
     );
 
-    renderSection('runtime-extensions');
+    await renderSection('runtime-extensions');
     const row = await screen.findByRole(
       'row',
       { name: /OpenAI Provider/ },
@@ -568,7 +578,7 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('catalog tabs do not recheck the local inventory when the online page changes', async () => {
-    const view = renderSection('runtime-extensions');
+    const view = await renderSection('runtime-extensions');
     await waitFor(() => {
       expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledTimes(
         1
@@ -612,14 +622,14 @@ describe('SettingsExtensionCenterSection', () => {
         message: 'release asset was not found'
       })
     );
-    renderSection('runtime-extensions');
+    await renderSection('runtime-extensions');
     const row = await screen.findByRole(
       'row',
       { name: /OpenAI Provider/ },
       { timeout: 5000 }
     );
 
-    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+    await click(within(row).getByRole('button', { name: '安装' }));
 
     expect(
       await screen.findByText('发布方尚未完成该版本发布，请稍后重试')
@@ -641,14 +651,14 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.installSettingsExtension.mockRejectedValue(
       new Error('unknown failure')
     );
-    renderSection('runtime-extensions');
+    await renderSection('runtime-extensions');
     const row = await screen.findByRole(
       'row',
       { name: /OpenAI Provider/ },
       { timeout: 5000 }
     );
 
-    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+    await click(within(row).getByRole('button', { name: '安装' }));
 
     expect(await screen.findByText('扩展操作失败')).toBeInTheDocument();
   });
@@ -667,7 +677,7 @@ describe('SettingsExtensionCenterSection', () => {
         entries: []
       })
     );
-    const view = renderSection('mcp');
+    const view = await renderSection('mcp');
 
     expect(
       await screen.findByRole('link', { name: '前往 MCP 管理' })
@@ -686,7 +696,7 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('Root-AC-003 manages executable plugin activation from the installed table', async () => {
-    renderSection('installed');
+    await renderSection('installed');
 
     const row = await screen.findByRole('row', { name: /openai/ });
     const activation = within(row).getByRole('switch', {
@@ -694,7 +704,7 @@ describe('SettingsExtensionCenterSection', () => {
     });
     expect(activation).toBeChecked();
 
-    fireEvent.click(activation);
+    await click(activation);
     await waitFor(() => {
       expect(
         extensionsApi.disableSettingsInstalledExtension
@@ -703,17 +713,17 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('AC-001 exposes direct uninstall for a runtime extension and hides legacy version deletion', async () => {
-    renderSection();
+    await renderSection();
 
     const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(within(row).getByRole('button', { name: '卸载' }));
+    await click(within(row).getByRole('button', { name: '卸载' }));
     await waitFor(() => {
       expect(
         extensionsApi.deleteSettingsInstalledExtension
       ).toHaveBeenCalledWith('extension-installation-1', 'csrf-123');
     });
 
-    fireEvent.click(within(row).getByRole('button', { name: '查看' }));
+    await click(within(row).getByRole('button', { name: '查看' }));
     const drawer = await screen.findByRole('dialog');
     expect(
       within(drawer).queryByRole('button', { name: '删除' })
@@ -724,16 +734,18 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.switchSettingsPluginFamilyVersion.mockResolvedValue(
       installedEntry
     );
-    renderSection();
+    await renderSection();
     const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(within(row).getByRole('button', { name: '查看' }));
+    await click(within(row).getByRole('button', { name: '查看' }));
     const drawer = await screen.findByRole('dialog');
     const buttons = within(drawer).getAllByRole('button', {
       name: '切换版本并重启插件'
     });
     expect(buttons[0]).toBeDisabled();
-    fireEvent.click(buttons[1]);
-    await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
+    await click(buttons[1]);
+    await act(async () => {
+      await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
+    });
     await waitFor(() =>
       expect(
         extensionsApi.switchSettingsPluginFamilyVersion
@@ -754,14 +766,16 @@ describe('SettingsExtensionCenterSection', () => {
         }
       ]
     });
-    renderSection();
+    await renderSection();
     const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(within(row).getByRole('button', { name: '查看' }));
+    await click(within(row).getByRole('button', { name: '查看' }));
     const drawer = await screen.findByRole('dialog');
-    fireEvent.click(
+    await click(
       within(drawer).getAllByRole('button', { name: '切换版本并重启插件' })[1]
     );
-    await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
+    await act(async () => {
+      await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
+    });
     await waitFor(() =>
       expect(
         extensionsApi.enableSettingsInstalledExtension
@@ -780,9 +794,9 @@ describe('SettingsExtensionCenterSection', () => {
         message: 'Plugin has in-progress operations'
       })
     );
-    renderSection();
+    await renderSection();
     const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(within(row).getByRole('switch'));
+    await click(within(row).getByRole('switch'));
     expect(
       await screen.findByText('Plugin has in-progress operations')
     ).toBeInTheDocument();
@@ -804,10 +818,10 @@ describe('SettingsExtensionCenterSection', () => {
         }
       ]
     });
-    renderSection('capability-plugins');
+    await renderSection('capability-plugins');
 
     const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(within(row).getByRole('button', { name: '卸载' }));
+    await click(within(row).getByRole('button', { name: '卸载' }));
     await waitFor(() => {
       expect(
         extensionsApi.deleteSettingsInstalledExtension
@@ -832,7 +846,7 @@ describe('SettingsExtensionCenterSection', () => {
       ...catalogEntry,
       installation_status: 'uninstalled'
     });
-    renderSection();
+    await renderSection();
 
     const row = await screen.findByRole('row', { name: /openai/ });
     expect(within(row).getByText('已卸载')).toBeInTheDocument();
@@ -843,10 +857,10 @@ describe('SettingsExtensionCenterSection', () => {
       within(row).queryByRole('button', { name: '同步最新版本' })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    await click(screen.getByRole('button', { name: '检查更新' }));
     expect(extensionsApi.checkSettingsExtensionUpdates).not.toHaveBeenCalled();
 
-    fireEvent.click(within(row).getByRole('button', { name: '重新安装' }));
+    await click(within(row).getByRole('button', { name: '重新安装' }));
     await waitFor(() => {
       expect(
         extensionsApi.fetchSettingsExtensionCatalogEntry
@@ -878,11 +892,11 @@ describe('SettingsExtensionCenterSection', () => {
         }
       ]
     });
-    renderSection();
+    await renderSection();
 
     const openaiRows = await screen.findAllByRole('row', { name: /openai/ });
     expect(openaiRows).toHaveLength(1);
-    fireEvent.click(
+    await click(
       within(openaiRows[0]).getByRole('button', { name: '查看' })
     );
     const drawer = await screen.findByRole('dialog');
@@ -896,9 +910,11 @@ describe('SettingsExtensionCenterSection', () => {
     });
     expect(deleteButtons[0]).toBeDisabled();
     expect(deleteButtons[1]).toBeEnabled();
-    fireEvent.click(deleteButtons[1]);
+    await click(deleteButtons[1]);
     const confirm = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-    await confirm?.onOk?.();
+    await act(async () => {
+      await confirm?.onOk?.();
+    });
     expect(extensionsApi.deleteSettingsInstalledExtension).toHaveBeenCalledWith(
       'extension-installation-0',
       'csrf-123'
@@ -926,7 +942,7 @@ describe('SettingsExtensionCenterSection', () => {
         }
       ]
     });
-    renderSection('agent-flow');
+    await renderSection('agent-flow');
     await screen.findByText('Fusion');
     const row = screen.getByRole('row', { name: /Fusion/ });
     expect(within(row).getByRole('button', { name: '安装' })).toBeEnabled();
@@ -936,15 +952,15 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('Root-AC-004 resolves and performs an installed-row update instead of switching tabs', async () => {
-    renderSection();
+    await renderSection();
     const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    await click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() =>
       expect(
         within(row).getByRole('button', { name: '同步最新版本' })
       ).toBeEnabled()
     );
-    fireEvent.click(within(row).getByRole('button', { name: '同步最新版本' }));
+    await click(within(row).getByRole('button', { name: '同步最新版本' }));
 
     await waitFor(() => {
       expect(
@@ -1027,13 +1043,13 @@ describe('SettingsExtensionCenterSection', () => {
       new Error('activation conflict')
     );
 
-    renderSection('i18n');
+    await renderSection('i18n');
     const row = await screen.findByRole(
       'row',
       { name: /Platform translations/ },
       { timeout: 5000 }
     );
-    fireEvent.click(within(row).getByRole('button', { name: '更新' }));
+    await click(within(row).getByRole('button', { name: '更新' }));
 
     const dialog = (await screen.findByText('更新多语言目录')).closest(
       '[role="dialog"]'
@@ -1048,7 +1064,7 @@ describe('SettingsExtensionCenterSection', () => {
       within(dialog).getByRole('button', { name: '安装并激活' })
     ).toBeInTheDocument();
 
-    fireEvent.click(
+    await click(
       within(dialog).getByRole('button', { name: '仅安装新版本' })
     );
     await waitFor(() => {
@@ -1064,11 +1080,11 @@ describe('SettingsExtensionCenterSection', () => {
     const refreshedRow = await screen.findByRole('row', {
       name: /Platform translations/
     });
-    fireEvent.click(within(refreshedRow).getByRole('button', { name: '更新' }));
+    await click(within(refreshedRow).getByRole('button', { name: '更新' }));
     const activateDialog = (await screen.findByText('更新多语言目录')).closest(
       '[role="dialog"]'
     ) as HTMLElement;
-    fireEvent.click(
+    await click(
       within(activateDialog).getByRole('button', { name: '安装并激活' })
     );
     await waitFor(() => {
@@ -1128,7 +1144,7 @@ describe('SettingsExtensionCenterSection', () => {
       ]
     });
 
-    renderSection();
+    await renderSection();
     const targetRow = await screen.findByRole('row', { name: /openai/ });
     const otherRow = await screen.findByRole('row', { name: /anthropic/ });
     const targetButton = within(targetRow).getByRole('button', {
@@ -1137,12 +1153,12 @@ describe('SettingsExtensionCenterSection', () => {
     const otherButton = within(otherRow).getByRole('button', {
       name: '同步最新版本'
     });
-    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    await click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() => {
       expect(targetButton).toBeEnabled();
       expect(otherButton).toBeEnabled();
     });
-    fireEvent.click(targetButton);
+    await click(targetButton);
 
     await waitFor(() => {
       expect(extensionsApi.installSettingsExtension).toHaveBeenCalled();
@@ -1151,7 +1167,7 @@ describe('SettingsExtensionCenterSection', () => {
       expect(otherButton).not.toHaveClass('ant-btn-loading');
     });
 
-    pendingUpdate.resolve(updateResult);
+    await pendingUpdate.resolve(updateResult);
     await waitFor(() => {
       expect(targetButton).not.toHaveClass('ant-btn-loading');
       expect(otherButton).toBeEnabled();
@@ -1181,13 +1197,13 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.getSettingsExtensionRiskChallenge.mockImplementation(
       (error: unknown) => (error === riskError ? challenge : null)
     );
-    renderSection('runtime-extensions');
+    await renderSection('runtime-extensions');
     const row = await screen.findByRole(
       'row',
       { name: /OpenAI Provider/ },
       { timeout: 5000 }
     );
-    fireEvent.click(within(row).getByRole('button', { name: '更新' }));
+    await click(within(row).getByRole('button', { name: '更新' }));
 
     await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(1));
     expect(
@@ -1197,12 +1213,14 @@ describe('SettingsExtensionCenterSection', () => {
       )
     ).toHaveClass('ant-btn-loading');
     const riskConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
-    render(riskConfirmation?.content as ReactNode);
+    await renderSettled(riskConfirmation?.content as ReactNode);
     expect(
       screen.getByText('签名与产物内容不一致，但仍可继续。')
     ).toBeInTheDocument();
     expect(screen.getByText('该警告不可由用户确认覆盖。')).toBeInTheDocument();
-    await riskConfirmation?.onOk?.();
+    await act(async () => {
+      await riskConfirmation?.onOk?.();
+    });
 
     await waitFor(() => {
       expect(extensionsApi.installSettingsExtension).toHaveBeenLastCalledWith(
@@ -1231,10 +1249,10 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.checkSettingsExtensionUpdates.mockRejectedValue(
       new Error('catalog unavailable')
     );
-    const view = renderSection();
+    const view = await renderSection();
 
     const row = await screen.findByRole('row', { name: /openai/ });
-    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    await click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() => {
       expect(
         within(row)
@@ -1243,7 +1261,7 @@ describe('SettingsExtensionCenterSection', () => {
       ).toHaveAttribute('data-update-state', 'unknown_error');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
+    await click(screen.getByRole('button', { name: '上传插件' }));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(document.querySelector('input[type="file"]')).not.toBeNull();
     view.unmount();
@@ -1273,7 +1291,7 @@ describe('SettingsExtensionCenterSection', () => {
         ]
       })
     );
-    const view = renderSection('capability-plugins');
+    const view = await renderSection('capability-plugins');
 
     for (const category of [
       'capability-plugins',
@@ -1335,7 +1353,7 @@ describe('SettingsExtensionCenterSection', () => {
       pendingInstall.promise
     );
 
-    renderSection('capability-plugins');
+    await renderSection('capability-plugins');
     const targetRow = await screen.findByRole(
       'row',
       { name: /Fusion/ },
@@ -1345,7 +1363,7 @@ describe('SettingsExtensionCenterSection', () => {
     const targetButton = within(targetRow).getByRole('button', {
       name: '安装'
     });
-    fireEvent.click(targetButton);
+    await click(targetButton);
 
     await waitFor(() => {
       const currentTargetButton = within(
@@ -1365,7 +1383,7 @@ describe('SettingsExtensionCenterSection', () => {
       expect(currentOtherButton).not.toHaveClass('ant-btn-loading');
     });
 
-    pendingInstall.resolve(installResult);
+    await pendingInstall.resolve(installResult);
     await waitFor(() => {
       const currentTargetButton = within(
         screen.getByRole('row', { name: /Fusion/ })
@@ -1379,14 +1397,14 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('D5-AC-006 restores cursor from route search and writes pagination to navigation', async () => {
-    renderSection('runtime-extensions', 'cursor-2', 'openai');
+    await renderSection('runtime-extensions', 'cursor-2', 'openai');
     await waitFor(() => {
       expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
         'runtime-extensions',
         { q: 'openai', slot_code: undefined, cursor: 'cursor-2' }
       );
     });
-    fireEvent.click(screen.getByRole('button', { name: '上一页' }));
+    await click(screen.getByRole('button', { name: '上一页' }));
     expect(routerApi.navigate).toHaveBeenCalledWith({
       to: '/settings/extension-center/$category',
       params: { category: 'runtime-extensions' },
@@ -1395,12 +1413,12 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('AC-003/AC-007 submits remote search, clears its cursor, and isolates the query key without a model-provider slot', async () => {
-    renderSection('runtime-extensions', 'cursor-2', 'postgres');
+    await renderSection('runtime-extensions', 'cursor-2', 'postgres');
 
     const search = await screen.findByRole('searchbox');
     expect(await screen.findByText('OpenAI Provider')).toBeInTheDocument();
-    fireEvent.change(search, { target: { value: '  analytics  ' } });
-    fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
+    await change(search, { target: { value: '  analytics  ' } });
+    await keyDown(search, { key: 'Enter', code: 'Enter' });
 
     expect(routerApi.navigate).toHaveBeenCalledWith({
       to: '/settings/extension-center/$category',
@@ -1418,7 +1436,7 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('AC-007 keeps installed inventory local and omits the remote search control', async () => {
-    renderSection('installed');
+    await renderSection('installed');
 
     expect(await screen.findByText('openai')).toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
@@ -1437,7 +1455,7 @@ describe('SettingsExtensionCenterSection', () => {
       total_entries: 0,
       entries: []
     });
-    renderSection('agent-flow');
+    await renderSection('agent-flow');
     expect(
       await screen.findByRole('link', { name: '前往 Agent Flow 模板管理' })
     ).toHaveAttribute('href', '/templates');
@@ -1559,9 +1577,9 @@ describe('SettingsExtensionCenterSection', () => {
         shared_tool_impacts: []
       }
     });
-    renderSection('installed');
+    await renderSection('installed');
     const row = await screen.findByRole('row', { name: /sample/ });
-    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+    await click(within(row).getByRole('button', { name: '应用到工作区' }));
     await waitFor(() => {
       expect(
         extensionsApi.previewSettingsInstalledMcpExtension
@@ -1571,7 +1589,7 @@ describe('SettingsExtensionCenterSection', () => {
       await screen.findByText('本地产物校验值与安装记录不一致。')
     ).toBeInTheDocument();
     expect(screen.getByText('tool.weather')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /导入/ }));
+    await click(screen.getByRole('button', { name: /导入/ }));
     await waitFor(() => {
       expect(
         extensionsApi.applySettingsInstalledMcpExtension
@@ -1647,11 +1665,11 @@ describe('SettingsExtensionCenterSection', () => {
       import_report: { ...review, status: 'already_applied' }
     });
 
-    renderSection('installed');
+    await renderSection('installed');
     const row = await screen.findByRole('row', { name: /present/ });
-    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+    await click(within(row).getByRole('button', { name: '应用到工作区' }));
     expect(await screen.findByText('tool.weather')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '确认导入并覆盖' }));
+    await click(screen.getByRole('button', { name: '确认导入并覆盖' }));
 
     await waitFor(() =>
       expect(
@@ -1718,16 +1736,16 @@ describe('SettingsExtensionCenterSection', () => {
       }
     });
 
-    renderSection('installed');
+    await renderSection('installed');
     const row = await screen.findByRole('row', { name: /conflict/ });
-    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+    await click(within(row).getByRole('button', { name: '应用到工作区' }));
 
     expect(
       await screen.findByText(
         '导入会按 instance_id 创建或原子覆盖实例；模板同步不会修改已导入实例。'
       )
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '确认导入并覆盖' }));
+    await click(screen.getByRole('button', { name: '确认导入并覆盖' }));
     await waitFor(() =>
       expect(
         extensionsApi.applySettingsInstalledMcpExtension
@@ -1766,9 +1784,9 @@ describe('SettingsExtensionCenterSection', () => {
       catalog_version: '2.0.1',
       revision: 5
     });
-    renderSection('installed');
+    await renderSection('installed');
     const row = await screen.findByRole('row', { name: /platform/ });
-    fireEvent.click(within(row).getByRole('button', { name: '激活' }));
+    await click(within(row).getByRole('button', { name: '激活' }));
     const activationTitle = await screen.findByText('激活多语言目录');
     const dialog = activationTitle.closest('[role="dialog"]');
     expect(dialog).not.toBeNull();
@@ -1779,7 +1797,7 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       await within(activationDialog).findByText('2.0.1')
     ).toBeInTheDocument();
-    fireEvent.click(
+    await click(
       within(activationDialog).getByRole('button', { name: /激\s*活/ })
     );
     await waitFor(() => {
@@ -1792,4 +1810,46 @@ describe('SettingsExtensionCenterSection', () => {
       );
     });
   });
+});
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+  });
+  return view;
+}
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function keyDown(...args: Parameters<typeof fireEvent.keyDown>) {
+  await act(async () => {
+    fireEvent.keyDown(...args);
+  });
+}
+
+const mountedClients = new Set<QueryClient>();
+afterEach(async () => {
+  try {
+    await waitFor(() => {
+      for (const client of mountedClients) {
+        expect(client.isFetching()).toBe(0);
+        expect(client.isMutating()).toBe(0);
+      }
+    });
+  } finally {
+    cleanup();
+    for (const client of mountedClients) client.clear();
+    mountedClients.clear();
+    await act(async () => {
+      resetAuthStore();
+    });
+  }
 });

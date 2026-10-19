@@ -1,6 +1,7 @@
 import '../../../../test/fixtures/rc-util-unique-ids';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -47,13 +48,16 @@ beforeEach(() => {
     }
   ]);
 });
-afterEach(() => {
-  resetAuthStore();
+afterEach(async () => {
+  cleanup();
+  await act(async () => {
+    resetAuthStore();
+  });
 });
 
 async function form() {
   const onCreate = vi.fn();
-  render(
+  await renderSettled(
     <DataModelFormDrawer
       open
       mode="create"
@@ -68,14 +72,14 @@ async function form() {
       onUpdate={vi.fn()}
     />
   );
-  fireEvent.mouseDown(
+  await mouseDown(
     screen.getByRole('combobox', { name: 'Data Model 模板' })
   );
-  fireEvent.click(await screen.findByText('文件表'));
-  fireEvent.change(screen.getByLabelText('标题'), {
+  await click(await screen.findByText('文件表'));
+  await change(screen.getByLabelText('标题'), {
     target: { value: '资料' }
   });
-  fireEvent.change(screen.getByLabelText('Code'), {
+  await change(screen.getByLabelText('Code'), {
     target: { value: 'documents' }
   });
   return onCreate;
@@ -84,7 +88,7 @@ async function form() {
 test('file template sends null for following the default storage', async () => {
   const onCreate = await form();
   expect(await screen.findByText('跟随默认存储')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  await click(screen.getByRole('button', { name: '创建' }));
   await waitFor(() =>
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -98,9 +102,9 @@ test('file template sends null for following the default storage', async () => {
 test('file template passes the selected storage ID without changing its field name', async () => {
   const onCreate = await form();
   await waitFor(() => expect(fetchSettingsFileStorages).toHaveBeenCalled());
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: '绑定存储' }));
-  fireEvent.click(await screen.findByText('归档存储 (archive)'));
-  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  await mouseDown(screen.getByRole('combobox', { name: '绑定存储' }));
+  await click(await screen.findByText('归档存储 (archive)'));
+  await click(screen.getByRole('button', { name: '创建' }));
   await waitFor(() =>
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -126,7 +130,7 @@ test('loading storage choices preserves title and code already entered by the us
   });
   expect(screen.getByLabelText('标题')).toHaveValue('资料');
   expect(screen.getByLabelText('Code')).toHaveValue('documents');
-  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  await click(screen.getByRole('button', { name: '创建' }));
   await waitFor(() =>
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -137,3 +141,26 @@ test('loading storage choices preserves title and code already entered by the us
     )
   );
 });
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+  });
+  return view;
+}
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function mouseDown(...args: Parameters<typeof fireEvent.mouseDown>) {
+  await act(async () => {
+    fireEvent.mouseDown(...args);
+  });
+}

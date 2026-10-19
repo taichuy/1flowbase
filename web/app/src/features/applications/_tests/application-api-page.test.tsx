@@ -1,4 +1,7 @@
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -120,13 +123,18 @@ const application: ApplicationDetail = {
   }
 };
 
-function renderWithProviders(ui: ReactNode) {
-  return render(<AppProviders>{ui}</AppProviders>);
+async function renderWithProviders(ui: ReactNode) {
+  return renderSettled(
+    <AppProviders>
+      <ObserveQueries />
+      {ui}
+    </AppProviders>
+  );
 }
 
 describe('ApplicationApiPage', () => {
   test('Agent Logs reuses the docs workspace and key dialog without publication', async () => {
-    renderWithProviders(
+    await renderWithProviders(
       <ApplicationApiPage
         application={{ ...application, application_type: 'agent_logs' }}
       />
@@ -144,7 +152,7 @@ describe('ApplicationApiPage', () => {
     await waitFor(() =>
       expect(publicApi.fetchApplicationApiKeys).toHaveBeenCalledWith('app-1')
     );
-    fireEvent.click(
+    await click(
       within(statusBar).getByRole('button', { name: 'API 密钥' })
     );
     await waitFor(() => expect(screen.getByRole('dialog')).toBeVisible());
@@ -154,7 +162,7 @@ describe('ApplicationApiPage', () => {
   });
 
   test('Agent Logs API availability follows the backend section', async () => {
-    renderWithProviders(
+    await renderWithProviders(
       <ApplicationApiPage
         application={{
           ...application,
@@ -177,6 +185,7 @@ describe('ApplicationApiPage', () => {
   });
 
   beforeEach(async () => {
+    expectedPendingQueries = 0;
     vi.clearAllMocks();
     vi.mocked(copy).mockResolvedValue(true);
     window.localStorage.clear();
@@ -201,16 +210,32 @@ describe('ApplicationApiPage', () => {
   });
 
   afterEach(async () => {
-    window.history.replaceState(null, '', '/');
-    await appI18n.changeLanguage('en_US');
+    try {
+      await waitFor(() => {
+        for (const client of mountedClients) {
+          expect(client.isFetching()).toBe(expectedPendingQueries);
+          expect(client.isMutating()).toBe(0);
+        }
+      });
+    } finally {
+      cleanup();
+      for (const client of mountedClients) client.clear();
+      mountedClients.clear();
+      await act(async () => {
+        resetAuthStore();
+        window.history.replaceState(null, '', '/');
+        await appI18n.changeLanguage('en_US');
+      });
+    }
   });
 
-  test('AC-1993-004 uses the shared loading state for the initial API status request', () => {
+  test('AC-1993-004 uses the shared loading state for the initial API status request', async () => {
+    expectedPendingQueries = 1;
     publicApi.fetchApplicationApiPublication.mockImplementation(
       () => new Promise(() => undefined)
     );
 
-    renderWithProviders(<ApplicationApiPage application={application} />);
+    await renderWithProviders(<ApplicationApiPage application={application} />);
 
     expect(
       screen.getByRole('status', {
@@ -220,7 +245,7 @@ describe('ApplicationApiPage', () => {
   });
 
   test('AC-005 draft state shows a single publish switch without a separate warning alert', async () => {
-    renderWithProviders(<ApplicationApiPage application={application} />);
+    await renderWithProviders(<ApplicationApiPage application={application} />);
 
     const statusCard = await screen.findByRole('region', {
       name: '公开 API 状态'
@@ -254,12 +279,12 @@ describe('ApplicationApiPage', () => {
       updated_at: '2026-05-09T00:00:00Z'
     });
 
-    renderWithProviders(<ApplicationApiPage application={application} />);
+    await renderWithProviders(<ApplicationApiPage application={application} />);
 
     const statusCard = await screen.findByRole('region', {
       name: '公开 API 状态'
     });
-    fireEvent.click(within(statusCard).getByRole('switch'));
+    await click(within(statusCard).getByRole('switch'));
 
     await waitFor(() => {
       expect(publicApi.publishApplicationApiVersion).toHaveBeenCalledWith(
@@ -282,7 +307,7 @@ describe('ApplicationApiPage', () => {
     });
     publicApi.unpublishApplicationApiVersion.mockResolvedValue(undefined);
 
-    renderWithProviders(<ApplicationApiPage application={application} />);
+    await renderWithProviders(<ApplicationApiPage application={application} />);
 
     const statusCard = await screen.findByRole('region', {
       name: '公开 API 状态'
@@ -290,10 +315,10 @@ describe('ApplicationApiPage', () => {
     const publishSwitch = within(statusCard).getByRole('switch');
     expect(publishSwitch).toBeChecked();
 
-    fireEvent.click(publishSwitch);
+    await click(publishSwitch);
 
     const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: '退回草稿' }));
+    await click(within(dialog).getByRole('button', { name: '退回草稿' }));
 
     await waitFor(() => {
       expect(publicApi.unpublishApplicationApiVersion).toHaveBeenCalledWith(
@@ -314,7 +339,7 @@ describe('ApplicationApiPage', () => {
       updated_at: '2026-05-09T00:00:00Z'
     });
 
-    renderWithProviders(<ApplicationApiPage application={application} />);
+    await renderWithProviders(<ApplicationApiPage application={application} />);
 
     const statusCard = await screen.findByRole('region', {
       name: '公开 API 状态'
@@ -351,7 +376,7 @@ describe('ApplicationApiPage', () => {
       updated_at: '2026-05-09T00:00:00Z'
     });
 
-    renderWithProviders(<ApplicationApiPage application={application} />);
+    await renderWithProviders(<ApplicationApiPage application={application} />);
 
     await screen.findByRole('region', {
       name: '公开 API 状态'
@@ -389,7 +414,7 @@ describe('ApplicationApiPage', () => {
       }
     ]);
 
-    renderWithProviders(<ApplicationApiPage application={application} />);
+    await renderWithProviders(<ApplicationApiPage application={application} />);
 
     const statusCard = await screen.findByRole('region', {
       name: '公开 API 状态'
@@ -407,7 +432,7 @@ describe('ApplicationApiPage', () => {
       within(statusCard).queryByText('Server key')
     ).not.toBeInTheDocument();
 
-    fireEvent.click(
+    await click(
       within(statusCard).getByRole('button', { name: 'API 密钥' })
     );
 
@@ -456,7 +481,7 @@ describe('ApplicationApiPage', () => {
       updated_at: '2026-05-09T00:00:00Z'
     });
 
-    renderWithProviders(
+    await renderWithProviders(
       <ApplicationApiKeysPanel
         applicationId="app-1"
         csrfToken="csrf-123"
@@ -464,12 +489,12 @@ describe('ApplicationApiPage', () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '创建 Key' }));
-    fireEvent.change(screen.getByLabelText('Key 名称'), {
+    await click(await screen.findByRole('button', { name: '创建 Key' }));
+    await change(screen.getByLabelText('Key 名称'), {
       target: { value: 'Server key' }
     });
     const createButtons = screen.getAllByRole('button', { name: /创\s*建/ });
-    fireEvent.click(createButtons[createButtons.length - 1]);
+    await click(createButtons[createButtons.length - 1]);
 
     expect(
       await screen.findByText(
@@ -488,7 +513,7 @@ describe('ApplicationApiPage', () => {
       screen.getByText('完整 token 只在创建后显示一次。')
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '复制' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '复制' }));
+    await click(screen.getByRole('button', { name: '复制' }));
     await waitFor(() => {
       expect(copy).toHaveBeenCalledWith(
         'sk-019e1a463b39-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCD'
@@ -505,7 +530,7 @@ describe('ApplicationApiPage', () => {
     const tokenDialog = screen.getByRole('dialog', {
       name: '保存这次创建的 API Key'
     });
-    fireEvent.click(
+    await click(
       within(tokenDialog).getByLabelText('关闭', { selector: 'button' })
     );
 
@@ -518,3 +543,28 @@ describe('ApplicationApiPage', () => {
     });
   });
 });
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+  });
+  return view;
+}
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+
+const mountedClients = new Set<QueryClient>();
+let expectedPendingQueries = 0;
+function ObserveQueries() {
+  mountedClients.add(useQueryClient());
+  return null;
+}

@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nextProvider } from 'react-i18next';
 import type { PropsWithChildren } from 'react';
@@ -25,7 +25,17 @@ beforeEach(async () => {
   });
   await appI18n.changeLanguage('zh_Hans');
 });
-afterEach(() => resetAuthStore());
+afterEach(async () => {
+  try {
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+  } finally {
+    cleanup();
+    client.clear();
+    await act(async () => {
+      resetAuthStore();
+    });
+  }
+});
 
 function wrapper({ children }: PropsWithChildren) {
   return (
@@ -38,7 +48,6 @@ let client: QueryClient;
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
-afterEach(() => client.clear());
 const catalog = (locale: string, Account: string) => ({
   locale,
   messages: { Account },
@@ -81,14 +90,16 @@ test('denied fetch becomes error and never uses another identity catalog', async
   });
   await waitFor(() => expect(result.current.status).toBe('ready'));
   fetchCatalog.mockRejectedValueOnce(new Error('Forbidden'));
-  act(() =>
+  await act(async () => {
     useAuthStore.setState({
       actor: { ...useAuthStore.getState().actor!, id: 'user-2' }
-    })
-  );
+    });
+  });
   expect(result.current.t('Account')).toBe('Account');
   await waitFor(() => expect(result.current.status).toBe('error'));
-  act(() => useAuthStore.getState().setAnonymous());
+  await act(async () => {
+    useAuthStore.getState().setAnonymous();
+  });
   expect(result.current.t('Account')).toBe('Account');
 });
 

@@ -1,5 +1,5 @@
-import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import type { ReactElement } from 'react';
 import { createTestMemoryRouter } from '../../../test/renderers/create-test-memory-router';
 
@@ -13,7 +13,12 @@ import {
 } from '../../agent-flow/_tests/fixtures/application-node-catalog';
 
 async function renderWorkflowScene(ui: ReactElement) {
-  return renderReactFlowScene(await createTestMemoryRouter(ui));
+  const scene = await createTestMemoryRouter(ui);
+  let view!: ReturnType<typeof renderReactFlowScene>;
+  await act(async () => {
+    view = renderReactFlowScene(scene);
+  });
+  return view;
 }
 
 function createWorkflowInitialState() {
@@ -123,7 +128,7 @@ describe('WorkflowEditor assembly', () => {
       />
     );
 
-    fireEvent.click(
+    await click(
       screen.getByRole('button', { name: '在 Workflow Start 后新增节点' })
     );
 
@@ -181,7 +186,7 @@ describe('WorkflowEditor assembly', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('Workflow Start'));
+    await click(screen.getByText('Workflow Start'));
 
     expect(await screen.findByTestId('node-detail-header')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '设置' })).toBeInTheDocument();
@@ -196,4 +201,14 @@ describe('WorkflowEditor assembly', () => {
       screen.queryByRole('button', { name: '调试此节点' })
     ).not.toBeInTheDocument();
   });
+});
+
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+
+afterEach(() => {
+  cleanup();
 });

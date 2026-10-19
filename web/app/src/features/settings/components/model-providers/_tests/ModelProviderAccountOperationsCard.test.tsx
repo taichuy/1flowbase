@@ -1,5 +1,5 @@
 import { Modal } from 'antd';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { modelProviderCatalogEntries } from '../../../../../test/model-provider-contract-fixtures';
@@ -12,6 +12,7 @@ const accountOperationCatalogEntry = {
 
 describe('ModelProviderAccountOperationsCard', () => {
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
@@ -53,7 +54,7 @@ describe('ModelProviderAccountOperationsCard', () => {
       .spyOn(Modal, 'confirm')
       .mockImplementation(() => ({ destroy: vi.fn() }) as never);
 
-    render(
+    await renderSettled(
       <ModelProviderAccountOperationsCard
         catalogEntry={accountOperationCatalogEntry}
         onRefreshUsage={usage}
@@ -62,23 +63,25 @@ describe('ModelProviderAccountOperationsCard', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /查\s*询|Query/ }));
+    await click(screen.getByRole('button', { name: /查\s*询|Query/ }));
     await screen.findByText('5h');
     expect(screen.getByText(/42%/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /查\s*询|Query/ }));
+    await click(screen.getByRole('button', { name: /查\s*询|Query/ }));
     await screen.findByText('provider request timed out');
     expect(screen.getByText(/42%/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /次\s*数|Credits/ }));
+    await click(screen.getByRole('button', { name: /次\s*数|Credits/ }));
     await screen.findByRole('button', { name: /次\s*数\s*2|Credits 2/ });
     expect(screen.getByRole('button', { name: /重\s*置|Reset/ })).toBeEnabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /重\s*置|Reset/ }));
+    await click(screen.getByRole('button', { name: /重\s*置|Reset/ }));
     const confirmOptions = confirm.mock.calls[0]?.[0] as {
       onOk?: () => Promise<void>;
     };
-    await confirmOptions.onOk?.();
+    await act(async () => {
+      await confirmOptions.onOk?.();
+    });
 
     await waitFor(() => expect(consume).toHaveBeenCalledTimes(1));
     expect(consume).toHaveBeenCalledWith({
@@ -86,5 +89,22 @@ describe('ModelProviderAccountOperationsCard', () => {
     });
     await waitFor(() => expect(usage).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(count).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(/7%/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /次\s*数\s*1|Credits 1/ })
+    ).toBeInTheDocument();
   });
 });
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+  });
+  return view;
+}
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}

@@ -1,5 +1,7 @@
 import type React from 'react';
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -89,7 +91,7 @@ function createSucceededDetail(): ConsoleApplicationRunDetail {
   };
 }
 
-function renderPanel(
+async function renderPanel(
   triggerContext = createTriggerContext(),
   onOpenTrace = vi.fn(),
   startRun: React.ComponentProps<
@@ -98,7 +100,7 @@ function renderPanel(
 ) {
   const document = createWorkflowDocument();
 
-  render(
+  await renderSettled(
     <WorkflowTestRunPanel
       applicationId="app-1"
       document={document}
@@ -108,7 +110,7 @@ function renderPanel(
     />
   );
 
-  fireEvent.click(screen.getByRole('button', { name: '测试运行' }));
+  await click(screen.getByRole('button', { name: '测试运行' }));
   return { document, onOpenTrace };
 }
 
@@ -126,14 +128,17 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  cleanup();
+  await act(async () => {
+    resetAuthStore();
+  });
   vi.restoreAllMocks();
-  resetAuthStore();
 });
 
 describe('WorkflowTestRunPanel', () => {
   test('AC-103 uses schedule input_payload as editable JSON default', async () => {
-    renderPanel(
+    await renderPanel(
       createTriggerContext({
         triggerType: 'schedule',
         schedule: {
@@ -158,7 +163,7 @@ describe('WorkflowTestRunPanel', () => {
   });
 
   test('AC-103 groups workflow start inputs by source', async () => {
-    renderPanel(
+    await renderPanel(
       createTriggerContext({
         triggerType: 'extension',
         mapping: null
@@ -175,18 +180,18 @@ describe('WorkflowTestRunPanel', () => {
   test('AC-102/104 submits node-keyed input and displays Workflow Result with trace action', async () => {
     const detail = createSucceededDetail();
     const startRun = vi.fn().mockResolvedValue(detail);
-    const { document, onOpenTrace } = renderPanel(
+    const { document, onOpenTrace } = await renderPanel(
       createTriggerContext(),
       vi.fn(),
       startRun
     );
 
-    fireEvent.change(await screen.findByLabelText('输入 payload'), {
+    await change(await screen.findByLabelText('输入 payload'), {
       target: {
         value: JSON.stringify({ customer_id: 'C-42', force: true })
       }
     });
-    fireEvent.submit(
+    await submit(
       screen.getByRole('form', { name: 'Workflow 测试运行表单' })
     );
 
@@ -215,7 +220,7 @@ describe('WorkflowTestRunPanel', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('run-1')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '查看执行 Trace' }));
+    await click(screen.getByRole('button', { name: '查看执行 Trace' }));
     expect(onOpenTrace).toHaveBeenCalledWith('run-1');
   });
 
@@ -223,12 +228,12 @@ describe('WorkflowTestRunPanel', () => {
     const startRun = vi
       .fn()
       .mockRejectedValue(new Error('Workflow input validation failed'));
-    renderPanel(createTriggerContext(), vi.fn(), startRun);
+    await renderPanel(createTriggerContext(), vi.fn(), startRun);
 
-    fireEvent.change(await screen.findByLabelText('输入 payload'), {
+    await change(await screen.findByLabelText('输入 payload'), {
       target: { value: JSON.stringify({ customer_id: 'C-42' }) }
     });
-    fireEvent.submit(
+    await submit(
       screen.getByRole('form', { name: 'Workflow 测试运行表单' })
     );
 
@@ -238,3 +243,26 @@ describe('WorkflowTestRunPanel', () => {
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
   });
 });
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+  });
+  return view;
+}
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+async function change(...args: Parameters<typeof fireEvent.change>) {
+  await act(async () => {
+    fireEvent.change(...args);
+  });
+}
+async function submit(...args: Parameters<typeof fireEvent.submit>) {
+  await act(async () => {
+    fireEvent.submit(...args);
+  });
+}

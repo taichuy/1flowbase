@@ -1,5 +1,8 @@
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { App as AntdApp } from 'antd';
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -286,16 +289,25 @@ describe('ApplicationLogsPage - table field settings', () => {
     });
   });
 
-  afterEach(() => {
-    resetAuthStore();
-    getBoundingClientRectSpy?.mockRestore();
-    getBoundingClientRectSpy = undefined;
-    innerHeightSpy?.mockRestore();
-    innerHeightSpy = undefined;
-    innerWidthSpy?.mockRestore();
-    innerWidthSpy = undefined;
-    dateNowSpy?.mockRestore();
-    dateNowSpy = undefined;
+  afterEach(async () => {
+    try {
+      await waitForRequests();
+    } finally {
+      cleanup();
+      for (const client of mountedClients) client.clear();
+      mountedClients.clear();
+      await act(async () => {
+        resetAuthStore();
+      });
+      getBoundingClientRectSpy?.mockRestore();
+      getBoundingClientRectSpy = undefined;
+      innerHeightSpy?.mockRestore();
+      innerHeightSpy = undefined;
+      innerWidthSpy?.mockRestore();
+      innerWidthSpy = undefined;
+      dateNowSpy?.mockRestore();
+      dateNowSpy = undefined;
+    }
   });
 
   test.each([
@@ -316,8 +328,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   );
 
   test('shows token breakdown columns from run summaries', async () => {
-    render(
+    await renderSettled(
       <AppProviders>
+        <ObserveQueries />
         <AntdApp>
           <ApplicationLogsPage applicationId="app-1" />
         </AntdApp>
@@ -426,8 +439,9 @@ describe('ApplicationLogsPage - table field settings', () => {
           }
         );
       });
-    const { unmount } = render(
+    const { unmount } = await renderSettled(
       <AppProviders>
+        <ObserveQueries />
         <AntdApp>
           <ApplicationLogsPage applicationId="app-1" />
         </AntdApp>
@@ -441,8 +455,8 @@ describe('ApplicationLogsPage - table field settings', () => {
       })
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'expand_id' }));
+    await click(screen.getByRole('button', { name: '字段配置' }));
+    await click(await screen.findByRole('checkbox', { name: 'expand_id' }));
 
     await waitFor(() => {
       const meta = useAuthStore.getState().me?.meta as
@@ -472,9 +486,11 @@ describe('ApplicationLogsPage - table field settings', () => {
       ).not.toContain('expand_id');
     });
 
+    await waitForRequests();
     unmount();
-    render(
+    await renderSettled(
       <AppProviders>
+        <ObserveQueries />
         <AntdApp>
           <ApplicationLogsPage applicationId="app-1" />
         </AntdApp>
@@ -492,8 +508,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   });
 
   test('places table field configuration with the filters', async () => {
-    render(
+    await renderSettled(
       <AppProviders>
+        <ObserveQueries />
         <AntdApp>
           <ApplicationLogsPage applicationId="app-1" />
         </AntdApp>
@@ -509,8 +526,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   });
 
   test('renders table field configuration with a counted popover trigger', async () => {
-    render(
+    await renderSettled(
       <AppProviders>
+        <ObserveQueries />
         <AntdApp>
           <ApplicationLogsPage applicationId="app-1" />
         </AntdApp>
@@ -531,8 +549,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   });
 
   test('opens table field configuration as a dropdown menu', async () => {
-    render(
+    await renderSettled(
       <AppProviders>
+        <ObserveQueries />
         <AntdApp>
           <ApplicationLogsPage applicationId="app-1" />
         </AntdApp>
@@ -541,7 +560,7 @@ describe('ApplicationLogsPage - table field settings', () => {
 
     expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
+    await click(screen.getByRole('button', { name: '字段配置' }));
 
     const fieldListbox = await screen.findByRole('dialog', {
       name: '自定义显示字段'
@@ -558,3 +577,30 @@ describe('ApplicationLogsPage - table field settings', () => {
     ).toBeInTheDocument();
   });
 });
+
+async function renderSettled(...args: Parameters<typeof render>) {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(...args);
+  });
+  return view;
+}
+async function click(...args: Parameters<typeof fireEvent.click>) {
+  await act(async () => {
+    fireEvent.click(...args);
+  });
+}
+
+const mountedClients = new Set<QueryClient>();
+function ObserveQueries() {
+  mountedClients.add(useQueryClient());
+  return null;
+}
+async function waitForRequests() {
+  await waitFor(() => {
+    for (const client of mountedClients) {
+      expect(client.isFetching()).toBe(0);
+      expect(client.isMutating()).toBe(0);
+    }
+  });
+}
