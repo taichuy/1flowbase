@@ -110,5 +110,5 @@ impl PluginCredentialRepository for PgPluginCredentialRepository {
 }
 
 #[cfg(test)]
-#[path = "_tests/plugin/plugin_credential_crypto_tests.rs"]
+#[path = "../_tests/plugin/plugin_credential_crypto_tests.rs"]
 mod tests;

@@ -267,5 +267,5 @@ pub(crate) async fn record_credit_notification_in_transaction(
 }
 
 #[cfg(test)]
-#[path = "_tests/notification_publication/mod.rs"]
+#[path = "../_tests/notification_publication/mod.rs"]
 mod tests;

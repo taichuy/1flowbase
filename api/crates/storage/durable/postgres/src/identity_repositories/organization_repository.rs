@@ -1,3 +1,4 @@
+#[path = "organization_repository/reads.rs"]
 mod reads;
 
 use crate::{

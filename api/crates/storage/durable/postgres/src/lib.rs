@@ -8,37 +8,53 @@ pub mod auth_repository;
 pub mod billing_repository;
 mod connection;
 pub mod data_source_repository;
+#[path = "extension_repositories/extension_installation_repository.rs"]
 pub mod extension_installation_repository;
 pub mod file_management_repository;
 pub mod flow_repository;
 pub mod frontend_block_catalog_repository;
 pub mod frontstage_block_repository;
 pub mod frontstage_repository;
+#[path = "extension_repositories/host_extension_migration_repository.rs"]
 pub mod host_extension_migration_repository;
 pub mod i18n_catalog_repository;
+#[path = "extension_repositories/js_dependency_repository.rs"]
 pub mod js_dependency_repository;
 pub mod lifecycle_outbox_repository;
 pub mod managed_schema_repository;
 pub mod mappers;
+#[path = "integration_repositories/mcp_management_repository.rs"]
 pub mod mcp_management_repository;
+#[path = "integration_repositories/mcp_result_receipt_repository.rs"]
 pub mod mcp_result_receipt_repository;
+#[path = "identity_repositories/member_repository.rs"]
 pub mod member_repository;
 pub mod model_definition_repository;
 pub mod model_provider_repository;
+#[path = "extension_repositories/native_plugin_target_repository.rs"]
 mod native_plugin_target_repository;
 pub mod native_sql;
+#[path = "integration_repositories/network_egress_repository.rs"]
 pub mod network_egress_repository;
+#[path = "extension_repositories/node_contribution_repository.rs"]
 pub mod node_contribution_repository;
 pub mod orchestration_runtime_repository;
 pub mod ordered_tree;
 pub mod physical_schema_repository;
+#[path = "extension_repositories/plugin_data_repository.rs"]
 pub mod plugin_data_repository;
+#[path = "extension_repositories/plugin_installation_commit_repository.rs"]
 mod plugin_installation_commit_repository;
+#[path = "extension_repositories/plugin_repository.rs"]
 pub mod plugin_repository;
+#[path = "extension_repositories/plugin_settings_template_repository.rs"]
 mod plugin_settings_template_repository;
+#[path = "extension_repositories/plugin_worker_repository.rs"]
 pub mod plugin_worker_repository;
+#[path = "integration_repositories/provider_protocol_capsule_store.rs"]
 mod provider_protocol_capsule_store;
 pub mod repositories;
+#[path = "identity_repositories/role_repository.rs"]
 pub mod role_repository;
 mod runtime;
 pub mod runtime_record_repository;
@@ -46,6 +62,7 @@ mod secret_crypto;
 pub mod system_backup;
 pub mod system_recovery;
 pub mod ui_management_repository;
+#[path = "identity_repositories/workspace_repository.rs"]
 pub mod workspace_repository;
 
 pub use connection::{
@@ -79,17 +96,23 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 #[cfg(test)]
 mod _tests;
 
+#[path = "extension_repositories/plugin_contribution_authority_repository.rs"]
 mod plugin_contribution_authority_repository;
 
 mod portable_template_repository;
 
+#[path = "integration_repositories/mcp_oauth_repository.rs"]
 mod mcp_oauth_repository;
 
+#[path = "identity_repositories/organization_repository.rs"]
 pub mod organization_repository;
 
+#[path = "extension_repositories/plugin_credential_repository.rs"]
 mod plugin_credential_repository;
 pub use plugin_credential_repository::PgPluginCredentialRepository;
 
+#[path = "integration_repositories/notification_repository.rs"]
 mod notification_repository;
 
+#[path = "integration_repositories/notification_publication.rs"]
 mod notification_publication;

@@ -31,10 +31,15 @@ use crate::{
     },
 };
 
+#[path = "role_repository/console_policy.rs"]
 mod console_policy;
+#[path = "role_repository/data_policy.rs"]
 mod data_policy;
+#[path = "role_repository/permission_sync.rs"]
 mod permission_sync;
+#[path = "role_repository/policy_migration.rs"]
 mod policy_migration;
+#[path = "role_repository/role_store.rs"]
 mod role_store;
 
 use console_policy::replace_role_console_policy_rows;

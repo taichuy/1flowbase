@@ -19,8 +19,11 @@ use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
 
+#[path = "mcp_management_repository/bundle_graph.rs"]
 mod bundle_graph;
+#[path = "mcp_management_repository/managed_bundle_graph.rs"]
 mod managed_bundle_graph;
+#[path = "mcp_management_repository/mappers.rs"]
 mod mappers;
 
 use mappers::*;
