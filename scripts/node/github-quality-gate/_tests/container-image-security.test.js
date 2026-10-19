@@ -73,7 +73,7 @@ test('runQualityGate records container image security warnings without publishin
     },
     spawnSyncImpl(command, args) {
       assert.equal(command, process.execPath);
-      assert.deepEqual(args, [path.join(repoRoot, 'scripts', 'node', 'cli', 'container-image-security.js')]);
+      assert.deepEqual(args, [path.join(repoRoot, 'scripts', 'node', 'cli', 'quality', 'container-image-security.js')]);
       writeContainerImageSecurityReport(repoRoot);
       return {
         status: 0,

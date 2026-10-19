@@ -147,13 +147,13 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'backend-consistency' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'verify-backend-consistency.js')],
+    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'quality', 'verify-backend-consistency.js')],
     cwd: repoRoot,
   });
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'backend-consistency-api' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'verify-backend-consistency.js'), 'api'],
+    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'quality', 'verify-backend-consistency.js'), 'api'],
     cwd: repoRoot,
   });
 
@@ -165,7 +165,7 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
 
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'container-images' }), {
     command: process.execPath,
-    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'container-image-security.js')],
+    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'quality', 'container-image-security.js')],
     cwd: repoRoot,
   });
 
