@@ -8,16 +8,45 @@ import {
   settingsConsoleNavigation,
   systemRuntimeApi
 } from './settings-sections.fixtures';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 describe('SettingsPage', () => {
   test('redirects /settings/docs to API key when docs is hidden', async () => {
-    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
-      settingsConsoleNavigation(['api-key-authentication'])
+    const navigation = settingsConsoleNavigation(['api-key-authentication']);
+    let resolveNavigation!: (value: typeof navigation) => void;
+    const pendingNavigation = new Promise<typeof navigation>((resolve) => {
+      resolveNavigation = resolve;
+    });
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockReturnValue(
+      pendingNavigation
     );
     authenticateWithPermissions(['user.view.all']);
 
-    renderApp('/settings/docs');
+    await act(async () => {
+      renderApp('/settings/docs');
+    });
+
+    const pendingContext = JSON.stringify({
+      pathname: window.location.pathname,
+      navigationCalls:
+        consoleNavigationApi.fetchSettingsConsoleNavigation.mock.calls.length,
+      main: document
+        .querySelector('.app-shell-content')
+        ?.outerHTML.slice(0, 2000)
+    });
+    expect(
+      consoleNavigationApi.fetchSettingsConsoleNavigation,
+      pendingContext
+    ).toHaveBeenCalled();
+    expect(
+      screen.queryByTestId('section-page-layout'),
+      pendingContext
+    ).toBeInTheDocument();
+    expect(window.location.pathname, pendingContext).toBe('/settings/docs');
+
+    await act(async () => {
+      resolveNavigation(navigation);
+    });
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/settings/api-key-authentication');
