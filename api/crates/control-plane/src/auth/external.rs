@@ -7,7 +7,13 @@ pub struct CompleteExternalLoginCommand {
     pub registration_eligible: bool,
 }
 
-impl<R: AuthRepository + ExternalRegistrationRepository, S: SessionStore> AuthKernel<R, S> {
+impl<
+        R: AuthRepository
+            + ExternalRegistrationRepository
+            + crate::ports::ExternalIdentityLifecycleRepository,
+        S: SessionStore,
+    > AuthKernel<R, S>
+{
     pub async fn complete_external_login(
         &self,
         command: CompleteExternalLoginCommand,
@@ -33,10 +39,19 @@ impl<R: AuthRepository + ExternalRegistrationRepository, S: SessionStore> AuthKe
         }
         let user = match self
             .repository
-            .find_user_for_verified_external_identity(&command.identity)
+            .find_external_identity_binding(&command.identity)
             .await?
         {
-            Some(user) => user,
+            Some(binding) if binding.state == "unlinked" => {
+                return Err(
+                    ControlPlaneError::PermissionDenied("external_identity_unlinked").into(),
+                );
+            }
+            Some(binding) => self
+                .repository
+                .find_user_by_id(binding.user_id)
+                .await?
+                .ok_or(ControlPlaneError::NotAuthenticated)?,
             None => {
                 let email = external_registration_email(
                     &entry,
@@ -51,7 +66,9 @@ impl<R: AuthRepository + ExternalRegistrationRepository, S: SessionStore> AuthKe
                     "member.external_registered",
                     serde_json::json!({
                         "connection_id": entry.connection_id,
+                        "authority_namespace": command.identity.authority_namespace(),
                         "subject_type": command.identity.subject_type(),
+                        "subject_value": command.identity.subject_value(),
                         "issuer": command.identity.issuer(), "realm": command.identity.realm(),
                     }),
                 );

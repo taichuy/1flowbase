@@ -562,3 +562,9 @@ async fn external_profile_account_collisions_are_atomic_and_invalid_hints_fall_b
     assert_eq!(user.nickname, user.account);
     assert!(user.name.is_empty() && user.avatar_url.is_none());
 }
+
+#[path = "external_identity_binding/lifecycle.rs"]
+mod lifecycle;
+
+#[path = "external_identity_binding/migration.rs"]
+mod migration;

@@ -1,3 +1,7 @@
+#[path = "auth_lifecycle.rs"]
+mod lifecycle;
+pub use lifecycle::*;
+
 use async_trait::async_trait;
 use domain::{
     ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticationConnectionRecord, DataModelScopeKind,

@@ -14,6 +14,10 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 mod external;
+mod methods;
+pub use methods::{
+    AuthenticationMethodsService, AuthenticationMethodsView, ExternalAuthenticationMethod,
+};
 pub mod public_ui;
 pub mod settings;
 pub use external::CompleteExternalLoginCommand;
@@ -801,7 +805,10 @@ where
         &self,
         actor: &ActorContext,
         identity: domain::VerifiedExternalIdentity,
-    ) -> Result<domain::UserAuthIdentity> {
+    ) -> Result<domain::UserAuthIdentity>
+    where
+        R: crate::ports::ExternalIdentityLifecycleRepository,
+    {
         let connection = self
             .repository
             .find_authentication_connection(identity.connection_id())
@@ -818,7 +825,9 @@ where
             "user.external_identity_bound",
             serde_json::json!({
                 "connection_id": identity.connection_id(),
+                "authority_namespace": identity.authority_namespace(),
                 "subject_type": identity.subject_type(),
+                "subject_value": identity.subject_value(),
                 "issuer": identity.issuer(),
                 "realm": identity.realm(),
             }),

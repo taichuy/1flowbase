@@ -204,6 +204,7 @@ pub struct ExternalIdentityClaim {
 /// boundary must recreate it through `TryFrom<ExternalIdentityClaim>` and its validation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VerifiedExternalIdentity {
+    authority_namespace: String,
     connection_id: Uuid,
     subject_type: String,
     subject_value: String,
@@ -214,6 +215,24 @@ pub struct VerifiedExternalIdentity {
 }
 
 impl VerifiedExternalIdentity {
+    /// Supplied by the trusted Host after resolving the provider installation.
+    /// Worker metadata is never an authority namespace.
+    pub fn with_authority_namespace(mut self, namespace: String) -> Result<Self, &'static str> {
+        if namespace.is_empty()
+            || namespace.len() > 512
+            || namespace.trim() != namespace
+            || namespace.chars().any(char::is_control)
+        {
+            return Err("external_identity_authority_invalid");
+        }
+        self.authority_namespace = namespace;
+        Ok(self)
+    }
+
+    pub fn authority_namespace(&self) -> &str {
+        &self.authority_namespace
+    }
+
     pub fn connection_id(&self) -> Uuid {
         self.connection_id
     }
@@ -259,6 +278,7 @@ impl TryFrom<ExternalIdentityClaim> for VerifiedExternalIdentity {
             return Err("external_identity_subject_missing");
         }
         Ok(Self {
+            authority_namespace: format!("connection:{}", claim.connection_id),
             connection_id: claim.connection_id,
             subject_type,
             subject_value,

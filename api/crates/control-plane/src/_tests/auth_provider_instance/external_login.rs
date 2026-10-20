@@ -135,3 +135,60 @@ async fn external_completion_rejects_connection_mismatch_and_disabled_entry_or_u
         .unwrap();
     assert!(error.to_string().contains("user_disabled"));
 }
+
+#[async_trait]
+impl control_plane::ports::ExternalIdentityLifecycleRepository for InstanceAwareAuthRepository {
+    async fn find_external_identity_binding(
+        &self,
+        identity: &VerifiedExternalIdentity,
+    ) -> Result<Option<control_plane::ports::ExternalIdentityBinding>> {
+        let user = self
+            .find_user_for_verified_external_identity(identity)
+            .await?;
+        Ok(
+            user.map(|user| control_plane::ports::ExternalIdentityBinding {
+                identity_id: Uuid::now_v7(),
+                user_id: user.id,
+                connection_id: identity.connection_id(),
+                authority_namespace: identity.authority_namespace().into(),
+                subject_type: identity.subject_type().into(),
+                subject_value: identity.subject_value().into(),
+                issuer: identity.issuer().map(str::to_owned),
+                realm: identity.realm().map(str::to_owned),
+                state: "bound".into(),
+                auth_type: "github".into(),
+                profile: identity.profile().clone(),
+                bound_at: time::OffsetDateTime::now_utc(),
+                unlinked_at: None,
+                entry_enabled: true,
+            }),
+        )
+    }
+    async fn authentication_methods_snapshot(
+        &self,
+        _: Uuid,
+    ) -> Result<control_plane::ports::AuthenticationMethodsSnapshot> {
+        anyhow::bail!("unused fixture operation")
+    }
+    async fn unlink_external_identity_atomic(
+        &self,
+        _: Uuid,
+        _: Uuid,
+        _: &[String],
+        _: control_plane::ports::PasswordAvailability<'_>,
+        _: &AuditLogRecord,
+    ) -> Result<()> {
+        anyhow::bail!("unused fixture operation")
+    }
+    async fn initialize_password_atomic(
+        &self,
+        _: Uuid,
+        _: Uuid,
+        _: &str,
+        _: &[String],
+        _: control_plane::ports::PasswordAvailability<'_>,
+        _: &AuditLogRecord,
+    ) -> Result<()> {
+        anyhow::bail!("unused fixture operation")
+    }
+}

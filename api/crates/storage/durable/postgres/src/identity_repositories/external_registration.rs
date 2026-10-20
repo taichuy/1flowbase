@@ -1,11 +1,11 @@
 //! Atomic external onboarding. Identity is the idempotency key; email never merges users.
+use crate::auth_repository::lifecycle::{identity_audit_payload, lock_canonical_identity};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{
     ports::{AuthRepository, CreateExternalRegisteredMemberInput, ExternalRegistrationRepository},
     ControlPlaneContractError as ControlPlaneError,
 };
-use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
@@ -18,15 +18,6 @@ impl ExternalRegistrationRepository for PgControlPlaneStore {
         input: &CreateExternalRegisteredMemberInput,
     ) -> Result<domain::UserRecord> {
         let identity = &input.identity;
-        let tuple = serde_json::to_vec(&(
-            identity.connection_id(),
-            identity.issuer(),
-            identity.realm(),
-            identity.subject_type(),
-            identity.subject_value(),
-        ))?;
-        let digest = Sha256::digest(&tuple);
-        let lock_key = i64::from_be_bytes(digest[..8].try_into().expect("SHA256 has eight bytes"));
         let workspace_id = primary_workspace_id(self.pool()).await?;
         if workspace_id == domain::SYSTEM_SCOPE_ID {
             return Err(ControlPlaneError::InvalidInput("default_member_role").into());
@@ -34,15 +25,17 @@ impl ExternalRegistrationRepository for PgControlPlaneStore {
         let mut tx = self.pool().begin().await?;
         // Serialize same-identity registrations before any user is inserted. Different
         // identities still rely on the users.email unique constraint, never email lookup.
-        sqlx::query("select pg_advisory_xact_lock($1)")
-            .bind(lock_key)
-            .execute(&mut *tx)
-            .await?;
-        let existing_user_id: Option<Uuid> = sqlx::query_scalar(
-            "select user_id from user_auth_identities where connection_id = $1 and issuer is not distinct from $2 and realm is not distinct from $3 and subject_type = $4 and subject_value = $5 and verified = true"
-        ).bind(identity.connection_id()).bind(identity.issuer()).bind(identity.realm()).bind(identity.subject_type()).bind(identity.subject_value())
-            .fetch_optional(&mut *tx).await?;
-        if let Some(user_id) = existing_user_id {
+        lock_canonical_identity(&mut tx, identity).await?;
+        let existing: Option<(Uuid, String)> = sqlx::query_as(
+            "select user_id,state from user_auth_identities where authority_namespace=$1 and coalesce(issuer,'')=$2 and coalesce(realm,'')=$3 and subject_type=$4 and subject_value=$5 and verified"
+        ).bind(identity.authority_namespace()).bind(identity.issuer().unwrap_or("")).bind(identity.realm().unwrap_or(""))
+            .bind(identity.subject_type()).bind(identity.subject_value()).fetch_optional(&mut *tx).await?;
+        if let Some((user_id, state)) = existing {
+            if state != "bound" {
+                return Err(
+                    ControlPlaneError::PermissionDenied("external_identity_unlinked").into(),
+                );
+            }
             tx.commit().await?;
             return self
                 .find_user_by_id(user_id)
@@ -60,8 +53,8 @@ impl ExternalRegistrationRepository for PgControlPlaneStore {
                 == Some("23505");
             tx.rollback().await?;
             if unique_conflict {
-                // An explicit binding may race outside the registration advisory lock.
-                // Return its identity owner only after all provisional user writes rolled back.
+                // A unique collision must leave no provisional onboarding writes.
+                // Only an active canonical identity can ever be returned as a login owner.
                 if let Some(user) = self
                     .find_user_for_verified_external_identity(identity)
                     .await?
@@ -116,13 +109,16 @@ async fn insert_external_member(
     sqlx::query("insert into user_role_bindings (id, user_id, role_id, scope_id, created_by, updated_by) values ($1, $2, $3, $4, null, null)")
         .bind(Uuid::now_v7()).bind(user_id).bind(default_role.0).bind(default_role.2).execute(&mut **tx).await?;
     let identity = &input.identity;
+    let identity_id = Uuid::now_v7();
     sqlx::query(
-        "insert into user_auth_identities (id, user_id, connection_id, subject_type, subject_value, issuer, realm, profile, verified, metadata, created_by, updated_by) values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, null, null)"
-    ).bind(Uuid::now_v7()).bind(user_id).bind(identity.connection_id()).bind(identity.subject_type()).bind(identity.subject_value())
-        .bind(identity.issuer()).bind(identity.realm()).bind(identity.profile()).bind(identity.metadata()).execute(&mut **tx).await?;
+        "insert into user_auth_identities (id, user_id, connection_id, subject_type, subject_value, issuer, realm, profile, verified, metadata, authority_namespace, created_by, updated_by) values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, null, null)"
+    ).bind(identity_id).bind(user_id).bind(identity.connection_id()).bind(identity.subject_type()).bind(identity.subject_value())
+        .bind(identity.issuer()).bind(identity.realm()).bind(identity.profile()).bind(identity.metadata()).bind(identity.authority_namespace()).execute(&mut **tx).await?;
     let audit = &input.audit;
+    let mut payload = identity_audit_payload(identity, user_id, None, "bound");
+    payload["identity_id"] = serde_json::json!(identity_id);
     sqlx::query(
         "insert into audit_logs (id, workspace_id, scope_id, actor_user_id, target_type, target_id, event_code, payload, created_by, updated_by, created_at, updated_at) values ($1, $2, $2, $3, $4, $5, $6, $7, $3, $3, $8, $8)"
-    ).bind(audit.id).bind(workspace_id).bind(audit.actor_user_id).bind(&audit.target_type).bind(user_id).bind(&audit.event_code).bind(&audit.payload).bind(audit.created_at).execute(&mut **tx).await?;
+    ).bind(audit.id).bind(workspace_id).bind(audit.actor_user_id).bind(&audit.target_type).bind(user_id).bind(&audit.event_code).bind(&payload).bind(audit.created_at).execute(&mut **tx).await?;
     Ok(())
 }

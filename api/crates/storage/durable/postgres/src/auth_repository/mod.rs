@@ -1,6 +1,7 @@
 mod bootstrap;
 mod effective_roles;
 pub(crate) mod identity_binding;
+pub(crate) mod lifecycle;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -480,15 +481,16 @@ impl AuthRepository for PgControlPlaneStore {
                    u.status, u.session_version
             from user_auth_identities identity
             join users u on u.id = identity.user_id
-            where identity.connection_id = $1
+            where identity.authority_namespace = $1
               and identity.issuer is not distinct from $2
               and identity.realm is not distinct from $3
               and identity.subject_type = $4
               and identity.subject_value = $5
               and identity.verified = true
+              and identity.state = 'bound'
             "#,
         )
-        .bind(identity.connection_id())
+        .bind(identity.authority_namespace())
         .bind(identity.issuer())
         .bind(identity.realm())
         .bind(identity.subject_type())
@@ -508,96 +510,7 @@ impl AuthRepository for PgControlPlaneStore {
         identity: &VerifiedExternalIdentity,
         audit: &AuditLogRecord,
     ) -> Result<UserAuthIdentity> {
-        let mut tx = self.pool().begin().await?;
-        let existing_user_id: Option<Uuid> = sqlx::query_scalar(
-            r#"
-            select user_id
-            from user_auth_identities
-            where connection_id = $1
-              and issuer is not distinct from $2
-              and realm is not distinct from $3
-              and subject_type = $4
-              and subject_value = $5
-            for update
-            "#,
-        )
-        .bind(identity.connection_id())
-        .bind(identity.issuer())
-        .bind(identity.realm())
-        .bind(identity.subject_type())
-        .bind(identity.subject_value())
-        .fetch_optional(&mut *tx)
-        .await?;
-        if existing_user_id.is_some_and(|existing| existing != user_id) {
-            return Err(ControlPlaneError::Conflict("external_identity_already_bound").into());
-        }
-
-        if existing_user_id.is_none() {
-            sqlx::query(
-                r#"
-                insert into user_auth_identities (
-                    id, user_id, connection_id, subject_type, subject_value,
-                    issuer, realm, profile, verified, metadata, created_by, updated_by
-                )
-                values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $10)
-                "#,
-            )
-            .bind(Uuid::now_v7())
-            .bind(user_id)
-            .bind(identity.connection_id())
-            .bind(identity.subject_type())
-            .bind(identity.subject_value())
-            .bind(identity.issuer())
-            .bind(identity.realm())
-            .bind(identity.profile())
-            .bind(identity.metadata())
-            .bind(audit.actor_user_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| -> anyhow::Error {
-                if error
-                    .as_database_error()
-                    .and_then(|database_error| database_error.code())
-                    .as_deref()
-                    == Some("23505")
-                {
-                    ControlPlaneError::Conflict("external_identity_already_bound").into()
-                } else {
-                    error.into()
-                }
-            })?;
-
-            sqlx::query(
-                r#"
-                insert into audit_logs (
-                    id, workspace_id, actor_user_id, target_type, target_id,
-                    event_code, payload, created_at
-                )
-                values ($1, $2, $3, $4, $5, $6, $7, $8)
-                "#,
-            )
-            .bind(audit.id)
-            .bind(audit.workspace_id)
-            .bind(audit.actor_user_id)
-            .bind(&audit.target_type)
-            .bind(audit.target_id)
-            .bind(&audit.event_code)
-            .bind(&audit.payload)
-            .bind(audit.created_at)
-            .execute(&mut *tx)
-            .await?;
-        }
-        tx.commit().await?;
-
-        Ok(UserAuthIdentity {
-            user_id,
-            connection_id: identity.connection_id(),
-            subject_type: identity.subject_type().to_string(),
-            subject_value: identity.subject_value().to_string(),
-            issuer: identity.issuer().map(str::to_string),
-            realm: identity.realm().map(str::to_string),
-            profile: identity.profile().clone(),
-        })
+        lifecycle::bind_identity(self, user_id, identity, audit).await
     }
 
     async fn default_scope_for_user(&self, user_id: Uuid) -> Result<ScopeContext> {
