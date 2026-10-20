@@ -577,7 +577,7 @@ describe('ModelProvidersPage - layout and style', () => {
         '../../components/model-providers/model-provider-panel.css'
       ),
       'utf8'
-    );
+    ).replace(/\s+/gu, ' ');
 
     expect(cssSource).toContain(
       '.fixed-height-modal__scroll-body.model-provider-panel__instances-modal'

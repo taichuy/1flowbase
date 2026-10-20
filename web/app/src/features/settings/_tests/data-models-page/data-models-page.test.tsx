@@ -6,6 +6,7 @@ import {
   contactsModel,
   createAppView,
   dataModelsApi,
+  findDataModelsNavigation,
   generalTemplateSystemFields,
   openContactsDataModelEditor,
   openDataModelEditorByTitle,
@@ -25,6 +26,11 @@ import { i18nText } from '../../../../shared/i18n/text';
 describe('Settings data models page', () => {
   test('hides selected data source implementation metadata in model management', async () => {
     render(createAppView('/settings/data-models?source=main'));
+
+    await findDataModelsNavigation();
+    await waitFor(() =>
+      expect(dataModelsApi.fetchSettingsDataModels).toHaveBeenCalledWith('main')
+    );
 
     expect(
       await screen.findByRole('heading', { name: '主数据源' })

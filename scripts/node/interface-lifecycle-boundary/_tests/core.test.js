@@ -117,6 +117,35 @@ test('registry compilation may extract services but its adapter cannot retain gl
   }
 });
 
+test('retained global state is rejected in tuple Ports and qualified Adapter fields', () => {
+  for (const declaration of [
+    'struct Port(Weak<crate::app_state::ApiState>);',
+    'struct AuthenticationPort { state: Arc<crate::app_state::ApiState> }',
+    'struct CallbackAdapter(Weak<ApiState>);',
+  ]) {
+    const root = fixture({ [sources[5]]: declaration });
+    try {
+      assert.ok(inspectInterfaceLifecycleBoundary(root).some(value => value.includes('public auth Interface adapter retains')));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('state names in comments and test-only adapters do not imply production retention', () => {
+  const root = fixture({
+    [sources[5]]: `// struct OldAdapter { state: Arc<ApiState> }
+      #[cfg(test)] struct FixturePort(Weak<ApiState>);
+      struct AuthenticationPort { store: MainDurableStore }
+      fn compile_registry(state: Arc<ApiState>) {}`,
+  });
+  try {
+    assert.deepEqual(inspectInterfaceLifecycleBoundary(root), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects a direct authentication owner outside the exact protocol/control allowlist', () => {
   const root = fixture({
     [sources[5]]: 'require_session(&state); struct PublicProvidersAdapter { store: MainDurableStore }',

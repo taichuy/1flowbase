@@ -798,6 +798,8 @@ mod tests {
             .merge(console_health_route_assembly())
             .merge(crate::routes::session::route_assembly())
             .merge(crate::routes::me::route_assembly())
+            .merge(crate::routes::external_auth::console_route_assembly())
+            .merge(crate::routes::me_authentication_methods::route_assembly())
             .merge(crate::routes::assistant::route_assembly())
             .merge(crate::routes::navigation::route_assembly())
             .merge(crate::routes::application_management::route_assembly())

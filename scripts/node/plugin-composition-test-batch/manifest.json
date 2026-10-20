@@ -242,7 +242,7 @@
       "target": "api-server:lib",
       "name": "_tests::extension_bus::managed_governance_tests::pause_revoke_retire::root_2007_ac_009_pause_revoke_retire",
       "expected": 1,
-      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_governance_tests.rs",
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_governance_tests/pause_revoke_retire.rs",
       "ac": [
         "AC-009"
       ],

@@ -174,6 +174,10 @@ PublicPrincipal 不伪造 Actor；UserPrincipal/ApplicationPrincipal 内的 Acto
 
 无法解析 Binding/activation、协议语法错误和认证 bootstrap 属于入口诊断边界，不捏造已解析业务计划。已有委托/WebSocket身份复用遵循原契约，不跳过应有委托裁决；不同消息仍有各自 Invocation identity。
 
+认证业务 Handler 不保留全局 `ApiState`。装配时，`authentication_runtime::AuthenticationRuntime` 提取 provider 所需的 store、node、安装根目录和密钥配置；它只通过私有方法访问 runtime 的 managed composition。`external_auth::ExternalAuthentication` 增加事务 cache 与 cookie 配置，个人认证方法 Port 另持有 session store；密码证明的读写和单次领取直接消费 `CacheStore`。原始回调凭据仍由宿主认证 factory 验证，业务写入仍经过既有 typed Handler 与 authority lease。
+
+runtime 的 composition 持有编译后的 Handler registry，因此 Handler 内的 runtime 引用保持 `Weak`，避免 `runtime → composition → registry → Handler → runtime` 强引用环。执行时在原有升级位置取得私有短期 lease，保持调用期间资源存活；缺少 composition 的错误仍在原来的使用时机返回，不在装配时静默替换。源码门禁检查具名与元组 Adapter / Port 的全局容器字段，允许 composition root 以 `ApiState` 参数提取依赖；该检查不替代认证、会话、撤销与密码证明行为测试。
+
 ### 同一 HTTP carrier 的受限变体
 
 Compact 的 unary 执行可以投影为 SSE；有效工具回调则可能继续原 streaming resume。协议格式不能直接决定业务执行模式。

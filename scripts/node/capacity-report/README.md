@@ -68,3 +68,54 @@ Live inspection reports clear error kinds:
 - `postgres_inspection_failed`
 
 When no inspection source is supplied, the report status is `skipped` for capacity metrics and the repository gate still writes the aggregate report.
+
+## Assessment And Aggregate Status
+
+`capacity-report/v1` keeps the existing table details, `growthRisk.findings` priorities,
+`summary.growthFindings`, `partitionCandidates`, and `indexRisks` counts. Growth
+`must_fix` / `later` means future topology readiness. An ordinary unpartitioned
+primary key or a missing recommended index is not evidence of a current schema
+or query defect. Planning details are retained in JSON and a separate Markdown
+section, rather than discarded to obtain a clean aggregate status.
+
+The additive `assessments` object separates the evidence:
+
+| Field | Status | Meaning |
+| --- | --- | --- |
+| `currentContracts` | `passed` / `warning` | Current schema hygiene, raw JSONB list-read and log query contract findings. |
+| `growthPlanning` | `planning` / `none` | Future routing, unique constraint, raw storage review and recommended index work; the original finding count and priorities remain available. |
+| `measuredCapacity` | `unverified` / `observed` / `warning` | Metric coverage and measured threshold observations; this is not a query plan or performance verdict. |
+
+`measuredCapacity` includes `coveredTables`, `totalTables`, `pressureTables`, and
+`observations`. Each observation retains its table, signal, measured value,
+threshold, source and collection time. A complete metric row includes finite
+table/index/total sizes, a row estimate, and a collection timestamp. No metrics,
+partial coverage, incomplete rows or inspection errors leave this assessment
+`unverified` (未验证), even if a measured subset already shows pressure. A complete
+snapshot without threshold pressure is `observed`, not capacity acceptance;
+statistics freshness, representative data distribution and query plans still
+need their own evidence.
+
+The aggregate `status` continues to use `passed`, `warning`, and `failed`:
+
+- `failed`: inspection failed, such as a connection or permission failure; exit code remains 1.
+- `warning`: a current contract violation, measured threshold pressure, or inspection diagnostic exists; exit code remains 0, as before.
+- `passed`: no current detectable contract violation, measured pressure or inspection error was found. This does **not** certify capacity. Planning alone does not promote this status to warning.
+
+For example, 219 tables with no metrics and 75 growth planning findings retain
+all 75 findings and their original candidate/index counts. Their current
+contracts may be `passed`, while measured capacity is explicitly `unverified`
+with coverage `0/219`. CLI and Markdown state this distinction. The legacy
+candidate/index flags combine planning and observed signals; use
+`assessments.measuredCapacity.observations` to identify measured pressure.
+
+Actual metric thresholds still produce warning observations independently of
+growth-table configuration. A large row estimate, total size or index/table
+ratio does not prove that partitioning or a new index is required. Physical
+partitioning, primary key semantics and index changes require a separate
+architecture/query-plan decision. Current raw/schema/log violations are never
+reclassified as growth planning.
+
+Source: [Database, Query, And Ephemeral Audit](../../../.agents/skills/qa-evaluation/references/audit/database-query-ephemeral.md),
+especially the legal planning negatives and unverified evidence boundary; see
+also [Growth Table Planning Report](../growth-table-report/README.md).

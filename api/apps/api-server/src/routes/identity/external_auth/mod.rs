@@ -247,8 +247,26 @@ fn authorization_url(
     Ok(url.to_string())
 }
 
+/// Resources for starting external authentication and issuing session-bound proofs.
+#[derive(Clone)]
+pub(crate) struct ExternalAuthentication {
+    pub(crate) runtime: crate::authentication_runtime::AuthenticationRuntime,
+    pub(crate) cache: Arc<dyn control_plane::ports::CacheStore>,
+    cookie_secure: bool,
+}
+
+impl ExternalAuthentication {
+    pub(crate) fn from_state(state: &ApiState) -> Self {
+        Self {
+            runtime: crate::authentication_runtime::AuthenticationRuntime::from_state(state),
+            cache: state.infrastructure.cache_store(),
+            cookie_secure: state.cookie_secure,
+        }
+    }
+}
+
 async fn begin(
-    state: &ApiState,
+    state: &ExternalAuthentication,
     entry: LoginEntryRecord,
     binding: Option<BindingIntent>,
 ) -> Result<(CookieJar, String), ApiError> {
@@ -256,15 +274,17 @@ async fn begin(
 }
 
 pub(crate) async fn begin_for_purpose(
-    state: &ApiState,
+    state: &ExternalAuthentication,
     entry: LoginEntryRecord,
     binding: Option<BindingIntent>,
     purpose: transaction::Purpose,
 ) -> Result<(CookieJar, String), ApiError> {
     validate_entry(&entry)?;
-    let provider = crate::authentication_runtime::provider(state, &entry.auth_type).await?;
+    let provider =
+        crate::authentication_runtime::provider(&state.runtime, &entry.auth_type).await?;
     let callback_url = crate::authentication_runtime::callback_url()?;
     let connection = state
+        .runtime
         .store
         .find_authentication_connection(entry.connection_id)
         .await?
@@ -295,7 +315,7 @@ pub(crate) async fn begin_for_purpose(
     };
     let response = provider
         .invoke(
-            state,
+            &state.runtime,
             &entry,
             AuthenticationRequest::Begin {
                 callback_url: callback_url.clone(),
@@ -311,12 +331,7 @@ pub(crate) async fn begin_for_purpose(
         return Err(transaction::denied());
     };
     let value = authorization_url(value, &oauth_state, &challenge, &callback_url)?;
-    transaction::store(
-        state.infrastructure.cache_store().as_ref(),
-        &oauth_state,
-        &transaction,
-    )
-    .await?;
+    transaction::store(state.cache.as_ref(), &oauth_state, &transaction).await?;
     let cookie = Cookie::build((transaction::browser_cookie_name(&oauth_state), browser))
         .http_only(true)
         .same_site(SameSite::Lax)
@@ -457,7 +472,11 @@ async fn frozen_context(
         .find_authentication_connection(entry.connection_id)
         .await?
         .ok_or_else(transaction::denied)?;
-    let provider = crate::authentication_runtime::provider(state, &entry.auth_type).await?;
+    let provider = crate::authentication_runtime::provider(
+        &crate::authentication_runtime::AuthenticationRuntime::from_state(state),
+        &entry.auth_type,
+    )
+    .await?;
     if entry.connection_id != transaction.connection_id
         || entry.auth_type != transaction.auth_type
         || provider.installation_id != transaction.installation_id
@@ -528,7 +547,7 @@ async fn verify_callback(
     let binding_actor = bound_actor(state, headers, transaction.binding.as_ref()).await?;
     let verified = provider
         .invoke(
-            state,
+            &crate::authentication_runtime::AuthenticationRuntime::from_state(state),
             &entry,
             AuthenticationRequest::Complete {
                 callback_url: transaction.callback_url.clone(),
@@ -587,7 +606,7 @@ async fn verify_callback(
     {
         match provider
             .invoke(
-                state,
+                &crate::authentication_runtime::AuthenticationRuntime::from_state(state),
                 &entry,
                 AuthenticationRequest::RegistrationEligibility {
                     profile: identity.profile().clone(),
@@ -612,7 +631,14 @@ async fn verify_callback(
     let binding_actor = bound_actor(state, headers, transaction.binding.as_ref()).await?;
     // Last live authority check happens after every worker call. Keep the same
     // lock as grant/revoke until the Host business effect has completed.
-    let authority = CompletionAuthority::new(provider.authorize_completion(state, &entry).await?);
+    let authority = CompletionAuthority::new(
+        provider
+            .authorize_completion(
+                &crate::authentication_runtime::AuthenticationRuntime::from_state(state),
+                &entry,
+            )
+            .await?,
+    );
     Ok(VerifiedCallback {
         login_entry_id: entry.id,
         identity,

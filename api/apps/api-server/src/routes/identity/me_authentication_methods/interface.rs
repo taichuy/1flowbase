@@ -5,7 +5,7 @@ use crate::routes::console_interface::{
     ConsoleInterfaceTargetError,
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
-use std::sync::Weak;
+
 pub(crate) const OWNER: &str = "api-server.me-authentication-methods";
 pub(crate) const OPERATIONS: &[&str] = &[
     "console.identity.authentication-methods.read",
@@ -68,7 +68,10 @@ macro_rules! private_contract {
 }
 private_contract!(Input, "personal-authentication-methods-input");
 private_contract!(Output, "personal-authentication-methods-output");
-struct Port(Weak<ApiState>);
+struct Port {
+    authentication: super::super::external_auth::ExternalAuthentication,
+    sessions: Arc<dyn control_plane::ports::SessionStore>,
+}
 impl ConsoleInterfacePort<Input, Output> for Port {
     fn execute<'a>(
         &'a self,
@@ -77,7 +80,12 @@ impl ConsoleInterfacePort<Input, Output> for Port {
     ) -> ConsoleInterfaceFuture<'a, Output> {
         Box::pin(async move {
             let result = async {
-                let state = self.0.upgrade().ok_or(Error::NotAuthenticated)?;
+                let _runtime = self
+                    .authentication
+                    .runtime
+                    .retain_runtime()
+                    .ok_or(Error::NotAuthenticated)?;
+                let state = &self.authentication;
                 let actor = principal.actor();
                 let session_id = principal
                     .authenticated_session()
@@ -85,24 +93,27 @@ impl ConsoleInterfacePort<Input, Output> for Port {
                     .expose_to_trusted_handler();
                 match input {
                     Input::Read => Ok(Output::Methods(
-                        read_methods(&state, actor, session_id).await?,
+                        read_methods(state, actor, session_id).await?,
                     )),
                     Input::AuthorizePassword(login_entry_id) => {
-                        let available = available(&state).await?;
-                        let view = AuthenticationMethodsService::new(state.store.clone())
+                        let available = available(state).await?;
+                        let view = AuthenticationMethodsService::new(state.runtime.store.clone())
                             .read(actor.user_id, &available.authorities)
                             .await?;
                         if view.password_configured {
                             return Err(Error::Conflict("password_already_configured").into());
                         }
                         let entry = state
+                            .runtime
                             .store
                             .find_login_entry(login_entry_id)
                             .await?
                             .ok_or(Error::NotFound("login_entry"))?;
-                        let provider =
-                            crate::authentication_runtime::provider(&state, &entry.auth_type)
-                                .await?;
+                        let provider = crate::authentication_runtime::provider(
+                            &state.runtime,
+                            &entry.auth_type,
+                        )
+                        .await?;
                         if !view.bindings.iter().any(|binding| {
                             binding.state == "bound"
                                 && binding.provider_available
@@ -115,7 +126,7 @@ impl ConsoleInterfacePort<Input, Output> for Port {
                         }
                         release(available.leases).await?;
                         let (cookies, url) = crate::routes::external_auth::begin_for_purpose(
-                            &state,
+                            state,
                             entry,
                             Some(BindingIntent {
                                 actor_id: actor.user_id,
@@ -127,28 +138,33 @@ impl ConsoleInterfacePort<Input, Output> for Port {
                         Ok(Output::Authorization(cookies, url))
                     }
                     Input::Unlink(identity_id) => {
-                        let available = available(&state).await?;
-                        AuthenticationMethodsService::new(state.store.clone())
+                        let available = available(state).await?;
+                        AuthenticationMethodsService::new(state.runtime.store.clone())
                             .unlink(actor, identity_id, &available.authorities)
                             .await?;
                         release(available.leases).await?;
                         Ok(Output::Complete)
                     }
                     Input::InitializePassword(new_password) => {
-                        let proof = proof::claim(&state, actor.user_id, session_id).await?;
+                        let proof =
+                            proof::claim(state.cache.as_ref(), actor.user_id, session_id).await?;
                         let entry = state
+                            .runtime
                             .store
                             .find_login_entry(proof.login_entry_id)
                             .await?
                             .ok_or(Error::NotFound("login_entry"))?;
                         let connection = state
+                            .runtime
                             .store
                             .find_authentication_connection(entry.connection_id)
                             .await?
                             .ok_or(Error::NotFound("authentication_connection"))?;
-                        let provider =
-                            crate::authentication_runtime::provider(&state, &entry.auth_type)
-                                .await?;
+                        let provider = crate::authentication_runtime::provider(
+                            &state.runtime,
+                            &entry.auth_type,
+                        )
+                        .await?;
                         if !entry.enabled
                             || provider.fingerprint != proof.provider_fingerprint
                             || provider.authority_namespace != proof.authority_namespace
@@ -166,8 +182,8 @@ impl ConsoleInterfacePort<Input, Output> for Port {
                             return Err(Error::InvalidInput("new_password").into());
                         }
                         let password_hash = super::super::me::hash_password(&new_password)?;
-                        let available = available(&state).await?;
-                        AuthenticationMethodsService::new(state.store.clone())
+                        let available = available(state).await?;
+                        AuthenticationMethodsService::new(state.runtime.store.clone())
                             .initialize_password(
                                 actor,
                                 proof.identity_id,
@@ -175,7 +191,7 @@ impl ConsoleInterfacePort<Input, Output> for Port {
                                 &available.authorities,
                             )
                             .await?;
-                        state.session_store.delete(session_id).await?;
+                        self.sessions.delete(session_id).await?;
                         release(available.leases).await?;
                         Ok(Output::Complete)
                     }
@@ -207,6 +223,9 @@ pub(crate) fn compile_registry(
         OWNER,
         "graph:personal-authentication-methods-v1",
         &declarations,
-        Arc::new(Port(Arc::downgrade(state))),
+        Arc::new(Port {
+            authentication: super::super::external_auth::ExternalAuthentication::from_state(state),
+            sessions: Arc::clone(&state.session_store),
+        }),
     )
 }

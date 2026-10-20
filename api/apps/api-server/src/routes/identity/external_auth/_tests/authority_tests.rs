@@ -352,9 +352,12 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
             grant.contribution_id == CONTRIBUTION && grant.permission == "authentication.verify"
         })
         .unwrap();
-    let provider_before = crate::authentication_runtime::provider(&state, &entry.auth_type)
-        .await
-        .unwrap();
+    let provider_before = crate::authentication_runtime::provider(
+        &crate::authentication_runtime::AuthenticationRuntime::from_state(&state),
+        &entry.auth_type,
+    )
+    .await
+    .unwrap();
     let (jar, url) = begin(&state, entry, None).await.unwrap();
     let cookie = jar
         .iter()
@@ -397,9 +400,12 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
     .expect("revocation must commit while old worker response is paused")
     .unwrap();
     assert!(!pending.is_finished());
-    let provider_after = crate::authentication_runtime::provider(&state, "external-fixture")
-        .await
-        .unwrap();
+    let provider_after = crate::authentication_runtime::provider(
+        &crate::authentication_runtime::AuthenticationRuntime::from_state(&state),
+        "external-fixture",
+    )
+    .await
+    .unwrap();
     assert_eq!(
         provider_before.fingerprint, provider_after.fingerprint,
         "revocation must leave the old frozen worker fingerprint unchanged"

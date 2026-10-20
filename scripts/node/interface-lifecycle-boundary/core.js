@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { maskRustText, maskTestOnlyItems, delimitedEnd } = require('../check-rust-backend/source.js');
 const { productionRustSources, bootRustSources } = require('../testing/contracts/rust-sources.js');
 
 const LEGACY_COMPATIBILITY_SYMBOLS = Object.freeze([
@@ -84,6 +85,18 @@ function inspectAuthenticationInvocationBoundary(relativePath, source) {
   return violations;
 }
 
+// Inspect retained fields, including tuple Port newtypes. Compiler parameters may
+// receive state to extract services; comments and test-only items are not fields.
+function retainsGlobalAdapterState(source) {
+  const code = maskTestOnlyItems(maskRustText(source));
+  for (const item of code.matchAll(/\bstruct\s+\w*(?:Adapter|Port)\b[^;{(]*([{(])/gu)) {
+    const start = item.index + item[0].length - 1;
+    const end = delimitedEnd(code, start);
+    if (end !== null && /\bApiState\b/u.test(code.slice(start + 1, end - 1))) return true;
+  }
+  return false;
+}
+
 function inspectInterfaceLifecycleBoundary(repoRoot) {
   const stream = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compat_sse.rs');
   const openai = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/openai.rs');
@@ -150,7 +163,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
     ['workflow extension', workflowExtension],
     ['MCP', mcp],
   ]) {
-    if (/struct\s+\w*Adapter\s*\{[^}]*\b(?:Weak\s*<\s*)?(?:Arc\s*<\s*)?ApiState\b/su.test(source)) {
+    if (retainsGlobalAdapterState(source)) {
       violations.push(`${name} Interface adapter retains the global ApiState container`);
     }
     const stateTypes = ['ApiState'];
@@ -171,7 +184,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   }
   for (const [relativePath, source] of rustSourcesUnder(repoRoot, 'api/apps/api-server/src/routes')) {
     violations.push(...inspectAuthenticationInvocationBoundary(relativePath, source));
-    if (/struct\s+\w*Adapter\s*\{[^}]*\b(?:Weak\s*<\s*)?(?:Arc\s*<\s*)?ApiState\b/su.test(source)) {
+    if (retainsGlobalAdapterState(source)) {
       violations.push(`${relativePath} Interface adapter retains the global ApiState container`);
     }
     const stateTypes = ['ApiState'];

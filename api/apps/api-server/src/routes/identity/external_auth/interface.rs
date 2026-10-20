@@ -21,7 +21,7 @@ use interface_runtime::{
     PublicPrincipal, RegistryCompilationError, RegistryCompiler, RouteIdentity, TargetReference,
     UserPrincipal,
 };
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
@@ -178,7 +178,7 @@ struct Adapter {
     store: MainDurableStore,
     sessions: Arc<dyn SessionStore>,
     session_ttl_days: i64,
-    state: Weak<ApiState>,
+    authentication: super::ExternalAuthentication,
 }
 
 impl Adapter {
@@ -195,8 +195,13 @@ impl Adapter {
         match input {
             PublicInput::Start { login_entry_id } => {
                 let entry = self.entry(login_entry_id).await?;
-                let state = self.state.upgrade().ok_or_else(transaction::denied)?;
-                let (cookies, authorization_url) = super::begin(&state, entry, None).await?;
+                let _runtime = self
+                    .authentication
+                    .runtime
+                    .retain_runtime()
+                    .ok_or_else(transaction::denied)?;
+                let (cookies, authorization_url) =
+                    super::begin(&self.authentication, entry, None).await?;
                 Ok(PublicOutput::Authorization(AuthorizeOutput {
                     cookies,
                     authorization_url,
@@ -223,9 +228,13 @@ impl Adapter {
                 );
                 let output = if let Some(actor) = binding_actor {
                     if purpose == super::transaction::Purpose::PasswordSetup {
-                        let state = self.state.upgrade().ok_or_else(transaction::denied)?;
+                        let _runtime = self
+                            .authentication
+                            .runtime
+                            .retain_runtime()
+                            .ok_or_else(transaction::denied)?;
                         crate::routes::me_authentication_methods::issue_password_proof(
-                            &state,
+                            &self.authentication,
                             &actor,
                             binding_session_hash.ok_or_else(transaction::denied)?,
                             login_entry_id,
@@ -294,8 +303,13 @@ impl Adapter {
             return Err(transaction::denied());
         }
         let entry = self.entry(input.0).await?;
-        let state = self.state.upgrade().ok_or_else(transaction::denied)?;
-        let (cookies, authorization_url) = super::begin(&state, entry, Some(binding)).await?;
+        let _runtime = self
+            .authentication
+            .runtime
+            .retain_runtime()
+            .ok_or_else(transaction::denied)?;
+        let (cookies, authorization_url) =
+            super::begin(&self.authentication, entry, Some(binding)).await?;
         Ok(AuthorizeOutput {
             cookies,
             authorization_url,
@@ -348,7 +362,7 @@ pub(crate) fn compile_registry(
         store: state.store.clone(),
         sessions: Arc::clone(&state.session_store),
         session_ttl_days: state.session_ttl_days,
-        state: Arc::downgrade(state),
+        authentication: super::ExternalAuthentication::from_state(state),
     });
     for declaration in bindings_metadata() {
         let BindingMetadata {

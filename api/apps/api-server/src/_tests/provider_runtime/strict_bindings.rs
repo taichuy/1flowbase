@@ -181,13 +181,21 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
         include_str!("../../provider_runtime/provider_port.rs"),
         "\n",
         include_str!("../../provider_runtime/capability_port.rs"),
+        "\n",
+        include_str!("../../provider_runtime/data_source_ports.rs"),
     );
     let transport_lifecycle = concat!(
         include_str!("../../provider_runtime/transport_session_lifecycle.rs"),
         "\n",
         include_str!("../../provider_runtime/transport_session_lifecycle/admission.rs"),
+        "\n",
+        include_str!("../../provider_runtime/transport_session_lifecycle/termination_dispatch.rs"),
     );
-    let boot = include_str!("../../lib.rs");
+    let boot = concat!(
+        include_str!("../../lib.rs"),
+        "\n",
+        include_str!("../../internal/startup_assembly.rs"),
+    );
 
     assert!(!consumer.to_ascii_lowercase().contains("openai"));
     assert!(!consumer.to_ascii_lowercase().contains("anthropic"));

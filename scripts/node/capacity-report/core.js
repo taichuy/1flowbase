@@ -744,18 +744,61 @@ function summarizeTables({
   };
 }
 
-function reportStatus({ summary, inspection }) {
+function assessCapacity({ tables, summary, thresholds }) {
+  const currentFindings = summary.schemaHygieneFindings + summary.logQueryFindings
+    + Math.max(summary.rawPayloadListRisks, summary.rawJsonbFindings);
+  const observations = tables.flatMap((table) => {
+    const { capacity } = table;
+    const signals = [
+      ['row-estimate-threshold', capacity.rowEstimate, thresholds.partitionCandidateRowEstimate],
+      ['total-size-threshold', capacity.totalSizeBytes, thresholds.partitionCandidateTotalSizeBytes],
+      ['index-to-table-size-ratio',
+        capacity.tableSizeBytes > 0 && capacity.indexSizeBytes !== null
+          ? capacity.indexSizeBytes / capacity.tableSizeBytes : null,
+        thresholds.indexToTableSizeRatio],
+    ];
+    return signals.filter(([, value, threshold]) => value !== null && value >= threshold)
+      .map(([kind, value, threshold]) => ({
+        table: table.name, kind, value, threshold,
+        source: capacity.source, collectedAt: capacity.collectedAt,
+      }));
+  });
+  const coveredTables = tables.filter(({ capacity }) => (
+    ['totalSizeBytes', 'tableSizeBytes', 'indexSizeBytes', 'rowEstimate']
+      .every((field) => Number.isFinite(capacity[field])) && Boolean(capacity.collectedAt)
+  )).length;
+  const completeMetrics = summary.tables > 0
+    && coveredTables === summary.tables && summary.inspectionErrors === 0;
+  return {
+    currentContracts: {
+      status: currentFindings > 0 ? 'warning' : 'passed',
+      findings: currentFindings,
+    },
+    growthPlanning: {
+      status: summary.growthFindings > 0
+        || tables.some((table) => ['must_fix', 'later'].includes(table.growthRisk.status))
+        ? 'planning' : 'none',
+      findings: summary.growthFindings,
+    },
+    measuredCapacity: {
+      status: !completeMetrics ? 'unverified' : observations.length > 0 ? 'warning' : 'observed',
+      coveredTables,
+      totalTables: summary.tables,
+      pressureTables: new Set(observations.map((observation) => observation.table)).size,
+      observations,
+    },
+  };
+}
+
+function reportStatus({ summary, inspection, assessments }) {
   if (inspection.status === 'failed') {
     return 'failed';
   }
+  // Growth priorities and legacy candidate/index flags describe future planning.
+  // A passed aggregate covers current detectable contracts, not capacity acceptance.
   if (
-    summary.partitionCandidates > 0
-    || summary.indexRisks > 0
-    || summary.rawPayloadListRisks > 0
-    || summary.schemaHygieneFindings > 0
-    || summary.growthFindings > 0
-    || summary.rawJsonbFindings > 0
-    || summary.logQueryFindings > 0
+    assessments.currentContracts.status === 'warning'
+    || assessments.measuredCapacity.observations.length > 0
     || summary.inspectionErrors > 0
   ) {
     return 'warning';
@@ -826,7 +869,8 @@ function collectCapacityReport({
     logQueryContractReport: reports.logQueryContractReport,
     inspection: effectiveInspection,
   });
-  const status = reportStatus({ summary, inspection: effectiveInspection });
+  const assessments = assessCapacity({ tables, summary, thresholds: effectiveConfig.thresholds });
+  const status = reportStatus({ summary, inspection: effectiveInspection, assessments });
 
   return {
     version: 'capacity-report/v1',
@@ -842,6 +886,7 @@ function collectCapacityReport({
       endpoints: reports.logQueryContractReport.summary?.endpoints || 0,
     },
     summary,
+    assessments,
     tables,
   };
 }
@@ -869,6 +914,7 @@ function formatMarkdownCell(value) {
 }
 
 function formatCapacityMarkdown(report) {
+  const measured = report.assessments?.measuredCapacity;
   const tableRows = report.tables.map((table) => (
     `| \`${table.name}\` | ${table.profile} | ${table.capacity.source} | `
       + `${formatNullable(table.capacity.totalSizeBytes)} | `
@@ -884,11 +930,19 @@ function formatCapacityMarkdown(report) {
       + `${field.userEditable ? 'yes' : 'no'} | ${formatMarkdownCell(field.historicalImpact)} | `
       + `${formatMarkdownCell(field.evidenceSource)} |`
   ));
-  const findingRows = report.tables.flatMap((table) => (
-    table.findings.map((finding) => (
+  const findingRows = (planning) => report.tables.flatMap((table) => (
+    table.findings.filter((finding) => (
+      (finding.source === 'growth-table-report') === planning
+    )).map((finding) => (
       `| \`${table.name}\` | ${finding.source} | \`${finding.rule}\` | `
         + `${finding.severity} | ${formatMarkdownCell(finding.message)} |`
     ))
+  ));
+  const currentFindingRows = findingRows(false);
+  const planningRows = findingRows(true);
+  const observationRows = (measured?.observations || []).map((observation) => (
+    `| \`${observation.table}\` | ${observation.kind} | ${observation.value} | `
+      + `${observation.threshold} | ${observation.source} | ${formatNullable(observation.collectedAt)} |`
   ));
   const inspectionErrorRows = (report.inspection.errors || []).map((error) => (
     `| ${error.kind} | ${formatMarkdownCell(error.tableName || '-')} | ${formatMarkdownCell(error.message)} |`
@@ -900,13 +954,17 @@ function formatCapacityMarkdown(report) {
     '## Summary',
     '',
     `- Status: ${report.status}`,
+    '- Aggregate passed covers current detectable contracts; it does not certify capacity.',
+    `- Current contracts: ${report.assessments?.currentContracts.status || 'unverified'}`,
+    `- Measured capacity: ${measured?.status || 'unverified'}${!measured || measured.status === 'unverified' ? ' (未验证)' : ''}`,
+    `- Complete metric coverage: ${measured?.coveredTables || 0}/${report.summary.tables}`,
     `- Tables: ${report.summary.tables}`,
     `- With capacity metrics: ${report.summary.withCapacityMetrics}`,
-    `- Partition candidates: ${report.summary.partitionCandidates}`,
-    `- Index risks: ${report.summary.indexRisks}`,
+    `- Partition candidates (planning / observed signals): ${report.summary.partitionCandidates}`,
+    `- Index risks (planning / observed signals): ${report.summary.indexRisks}`,
     `- Raw payload list risks: ${report.summary.rawPayloadListRisks}`,
     `- Schema hygiene findings: ${report.summary.schemaHygieneFindings}`,
-    `- Growth findings: ${report.summary.growthFindings}`,
+    `- Growth planning findings: ${report.summary.growthFindings}`,
     `- Raw JSONB findings: ${report.summary.rawJsonbFindings}`,
     `- Log query findings: ${report.summary.logQueryFindings}`,
     `- Inspection errors: ${report.summary.inspectionErrors}`,
@@ -920,6 +978,13 @@ function formatCapacityMarkdown(report) {
     inspectionErrorRows.length > 0 ? '| --- | --- | --- |' : null,
     ...inspectionErrorRows,
     '',
+    '## Measured capacity observations',
+    '',
+    'Threshold pressure is an observation, not proof that partitioning or a new index is required.',
+    observationRows.length === 0 ? 'No measured pressure observations; absent or partial metrics remain unverified.' : '| Table | Signal | Observed | Threshold | Source | Collected at |',
+    observationRows.length > 0 ? '| --- | --- | ---: | ---: | --- | --- |' : null,
+    ...observationRows,
+    '',
     '## Tables',
     '',
     '| Table | Profile | Capacity source | Total size bytes | Table size bytes | Index size bytes | Row estimate | Collected at | Flags |',
@@ -932,11 +997,18 @@ function formatCapacityMarkdown(report) {
     '| --- | --- | --- | --- | --- | --- | --- |',
     ...metadataRows,
     '',
-    '## Findings',
+    '## Current contract findings',
     '',
-    findingRows.length === 0 ? 'No table-level capacity findings.' : '| Table | Source | Rule | Severity | Message |',
-    findingRows.length > 0 ? '| --- | --- | --- | --- | --- |' : null,
-    ...findingRows,
+    currentFindingRows.length === 0 ? 'No table-level current contract findings.' : '| Table | Source | Rule | Severity | Message |',
+    currentFindingRows.length > 0 ? '| --- | --- | --- | --- | --- |' : null,
+    ...currentFindingRows,
+    '',
+    '## Growth planning details',
+    '',
+    'Original must_fix/later priorities describe future topology readiness, not current schema defects. All planning findings and counts are retained.',
+    planningRows.length === 0 ? 'No growth planning findings.' : '| Table | Source | Rule | Planning priority | Message |',
+    planningRows.length > 0 ? '| --- | --- | --- | --- | --- |' : null,
+    ...planningRows,
     '',
   ].filter((line) => line !== null).join('\n');
 }
@@ -1044,8 +1116,12 @@ async function main(argv = [], deps = {}) {
   writeStdout(
     `[1flowbase-capacity-report] ${result.report.status} `
       + `(tables ${result.report.summary.tables}, capacity_metrics ${result.report.summary.withCapacityMetrics}, `
+      + `measured_capacity ${result.report.assessments.measuredCapacity.status}`
+      + `${result.report.assessments.measuredCapacity.status === 'unverified' ? ' (未验证)' : ''}, `
+      + `growth_planning_findings ${result.report.summary.growthFindings}, `
       + `partition_candidates ${result.report.summary.partitionCandidates}, index_risks ${result.report.summary.indexRisks}, `
       + `raw_payload_list_risks ${result.report.summary.rawPayloadListRisks}). `
+      + 'Aggregate passed covers current detectable contracts, not capacity acceptance. '
       + `Reports: ${toRepoRelative(repoRoot, result.reportPath)}, ${toRepoRelative(repoRoot, result.markdownPath)}\n`
   );
 

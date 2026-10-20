@@ -157,12 +157,17 @@ struct AvailableMethods {
     authorities: Vec<String>,
     leases: Vec<Box<dyn control_plane::ports::ContributionAuthorityLease>>,
 }
-async fn available(state: &ApiState) -> Result<AvailableMethods, ApiError> {
-    let entries = state.store.list_login_entries().await?;
-    let providers = crate::authentication_runtime::active_providers(state).await?;
-    let (authorities, lease) =
-        crate::authentication_runtime::authorize_available_providers(state, &providers, &entries)
-            .await?;
+async fn available(
+    state: &super::external_auth::ExternalAuthentication,
+) -> Result<AvailableMethods, ApiError> {
+    let entries = state.runtime.store.list_login_entries().await?;
+    let providers = crate::authentication_runtime::active_providers(&state.runtime).await?;
+    let (authorities, lease) = crate::authentication_runtime::authorize_available_providers(
+        &state.runtime,
+        &providers,
+        &entries,
+    )
+    .await?;
     let leases = lease.into_iter().collect();
     Ok(AvailableMethods {
         providers,
@@ -200,12 +205,12 @@ fn time_text(value: time::OffsetDateTime) -> Result<String, ApiError> {
     Ok(value.format(&time::format_description::well_known::Rfc3339)?)
 }
 async fn read_methods(
-    state: &ApiState,
+    state: &super::external_auth::ExternalAuthentication,
     actor: &domain::ActorContext,
     session_id: &str,
 ) -> Result<AuthenticationMethodsResponse, ApiError> {
     let available = available(state).await?;
-    let methods = AuthenticationMethodsService::new(state.store.clone())
+    let methods = AuthenticationMethodsService::new(state.runtime.store.clone())
         .read(actor.user_id, &available.authorities)
         .await?;
     let mut groups = BTreeMap::<String, ProviderResponse>::new();
@@ -232,7 +237,7 @@ async fn read_methods(
             },
         );
     }
-    let installations = state.store.list_installations().await?;
+    let installations = state.runtime.store.list_installations().await?;
     for binding in methods.bindings {
         let name = installations
             .iter()
@@ -291,7 +296,7 @@ async fn read_methods(
             verification.extend(group.login_entries.clone());
         }
     }
-    let password_setup_verified = proof::read(state, actor.user_id, session_id)
+    let password_setup_verified = proof::read(state.cache.as_ref(), actor.user_id, session_id)
         .await?
         .is_some();
     release(available.leases).await?;
@@ -305,13 +310,14 @@ async fn read_methods(
 }
 
 pub(crate) async fn issue_password_proof(
-    state: &ApiState,
+    state: &super::external_auth::ExternalAuthentication,
     actor: &domain::ActorContext,
     session_hash: String,
     login_entry_id: Uuid,
     identity: &domain::VerifiedExternalIdentity,
 ) -> Result<(), ApiError> {
     let binding = state
+        .runtime
         .store
         .find_external_identity_binding(identity)
         .await?
@@ -320,18 +326,21 @@ pub(crate) async fn issue_password_proof(
         return Err(Error::PermissionDenied("password_setup_identity_required").into());
     }
     let entry = state
+        .runtime
         .store
         .find_login_entry(login_entry_id)
         .await?
         .ok_or(Error::NotFound("login_entry"))?;
     let connection = state
+        .runtime
         .store
         .find_authentication_connection(entry.connection_id)
         .await?
         .ok_or(Error::NotFound("authentication_connection"))?;
-    let provider = crate::authentication_runtime::provider(state, &entry.auth_type).await?;
+    let provider =
+        crate::authentication_runtime::provider(&state.runtime, &entry.auth_type).await?;
     proof::issue(
-        state,
+        state.cache.as_ref(),
         proof::PasswordSetupProof {
             actor_id: actor.user_id,
             session_hash,
