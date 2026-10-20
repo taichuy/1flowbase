@@ -408,7 +408,7 @@ describe('declarative authentication entry actions', () => {
     expect(button).toBeDisabled();
     // Back-forward cache restores the page and allows another intentional click.
     fireEvent(window, new Event('pageshow'));
-    expect(button).not.toBeDisabled();
+    expect(button).toBeEnabled();
     fireEvent.click(button);
     expect(externalRedirect).toHaveBeenCalledTimes(2);
   });
@@ -459,7 +459,7 @@ describe('declarative authentication entry actions', () => {
     const button = await screen.findByRole('button', { name: external.title });
     fireEvent.click(button);
     expect(screen.getByRole('alert')).toBeVisible();
-    expect(button).not.toBeDisabled();
+    expect(button).toBeEnabled();
     fireEvent.click(button);
     expect(externalRedirect).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
