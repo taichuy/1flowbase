@@ -38,7 +38,8 @@
       "introduction": "Bio",
       "name": "Legal name",
       "nickname": "Nickname",
-      "phone": "Phone"
+      "phone": "Phone",
+      "role": "Role"
     },
     "form": {
       "avatar_url": {

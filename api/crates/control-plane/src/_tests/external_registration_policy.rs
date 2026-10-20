@@ -56,14 +56,14 @@ fn external_registration_requires_verified_nonempty_valid_email() {
 
 #[test]
 fn external_registration_profile_hints_are_optional_bounded_and_not_provider_specific() {
-    let valid = serde_json::json!({"account":" GitHub-User ", "nickname":" 昵称 ",
+    let valid = serde_json::json!({"account":" GitHub-User ", "nickname":" 昵称 ", "name":" Explicit Name ",
         "avatar_url":"https://avatars.example.test/user"});
     assert_eq!(
         external_registration_account(&valid).as_deref(),
         Some("GitHub-User")
     );
     assert_eq!(
-        external_registration_nickname(&valid).as_deref(),
+        external_registration_text(&valid, "nickname").as_deref(),
         Some("昵称")
     );
     assert_eq!(
@@ -82,7 +82,8 @@ fn external_registration_profile_hints_are_optional_bounded_and_not_provider_spe
     }
     for nickname in ["", " ", "bad\nname", &"字".repeat(129)] {
         assert!(
-            external_registration_nickname(&serde_json::json!({"nickname":nickname})).is_none()
+            external_registration_text(&serde_json::json!({"nickname":nickname}), "nickname")
+                .is_none()
         );
     }
     for avatar in [
@@ -96,5 +97,23 @@ fn external_registration_profile_hints_are_optional_bounded_and_not_provider_spe
     }
     let raw = serde_json::json!({"login":"github-login","name":"GitHub Public Name"});
     assert!(external_registration_account(&raw).is_none());
-    assert!(external_registration_nickname(&raw).is_none());
+    assert!(external_registration_text(&raw, "nickname").is_none());
+}
+
+#[test]
+fn external_registration_name_requires_an_explicit_valid_provider_hint() {
+    assert_eq!(
+        external_registration_text(&serde_json::json!({"name":" Explicit Name "}), "name")
+            .as_deref(),
+        Some("Explicit Name")
+    );
+    for profile in [
+        serde_json::json!({"account":"login-only"}),
+        serde_json::json!({"name":""}),
+        serde_json::json!({"name":"  "}),
+        serde_json::json!({"name":"bad\nname"}),
+        serde_json::json!({"name":"字".repeat(129)}),
+    ] {
+        assert!(external_registration_text(&profile, "name").is_none());
+    }
 }

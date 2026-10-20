@@ -94,8 +94,8 @@ async fn insert_external_member(
         }
         let nickname = input.nickname.as_deref().unwrap_or(base_account);
         let inserted: Option<Uuid> = sqlx::query_scalar(
-            "insert into users (id, account, email, phone, password_hash, name, nickname, avatar_url, introduction, default_display_role, email_login_enabled, phone_login_enabled, status, session_version, created_by, updated_by) values ($1, $2, $3, null, '!external-identity-no-password', '', $4, $5, '', $6, false, false, 'active', 1, null, null) on conflict (account) do nothing returning id"
-        ).bind(user_id).bind(&account).bind(&input.email).bind(nickname).bind(&input.avatar_url).bind(&default_role.1)
+            "insert into users (id, account, email, phone, password_hash, name, nickname, avatar_url, introduction, default_display_role, email_login_enabled, phone_login_enabled, status, session_version, created_by, updated_by) values ($1, $2, $3, null, '!external-identity-no-password', $7, $4, $5, '', $6, false, false, 'active', 1, null, null) on conflict (account) do nothing returning id"
+        ).bind(user_id).bind(&account).bind(&input.email).bind(nickname).bind(&input.avatar_url).bind(&default_role.1).bind(input.name.as_deref().unwrap_or_default())
             .fetch_optional(&mut **tx).await?;
         if inserted.is_some() {
             break;

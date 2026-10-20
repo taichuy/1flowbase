@@ -173,12 +173,14 @@ export function ProfileForm({
               </Descriptions.Item>
               <Descriptions.Item
                 label={t('profile.fields.interface_language')}
-                span={2}
               >
                 {formatLocaleLabel(
                   resolveUserLocalePreference(me.preferred_locale, me.meta),
                   t
                 )}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('profile.fields.role')}>
+                {me.effective_display_role}
               </Descriptions.Item>
               <Descriptions.Item
                 label={t('profile.fields.introduction')}

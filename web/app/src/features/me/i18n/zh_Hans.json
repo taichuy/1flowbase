@@ -38,7 +38,8 @@
       "introduction": "个人介绍",
       "name": "真实姓名",
       "nickname": "昵称",
-      "phone": "手机号码"
+      "phone": "手机号码",
+      "role": "角色"
     },
     "form": {
       "avatar_url": {

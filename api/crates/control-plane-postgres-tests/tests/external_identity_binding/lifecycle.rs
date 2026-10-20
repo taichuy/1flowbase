@@ -224,6 +224,7 @@ async fn unlink_reserves_owner_blocks_signup_and_only_explicit_owner_binding_res
             identity: identity.clone(),
             email: "reserved@example.com".into(),
             account: None,
+            name: None,
             nickname: None,
             avatar_url: None,
             audit: domain::AuditLogRecord {

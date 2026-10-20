@@ -118,7 +118,8 @@ describe('MePage', () => {
       'section-page-layout--narrow'
     );
     expect(screen.queryByText('退出登录')).not.toBeInTheDocument();
-    expect(screen.getByText('member')).toBeInTheDocument();
+    expect(screen.getByText('角色')).toBeInTheDocument();
+    expect(screen.getAllByText('member')).toHaveLength(2);
     expect(screen.queryByText('系统权限')).not.toBeInTheDocument();
     expect(screen.queryByText('application.create.all')).not.toBeInTheDocument();
     expect(screen.queryByText('plugin_config.configure.all')).not.toBeInTheDocument();
@@ -201,6 +202,7 @@ describe('MePage', () => {
       screen.getByRole('button', { name: /Edit profile/ })
     ).toBeInTheDocument();
     expect(screen.getAllByText('Interface language').length).toBeGreaterThan(0);
+    expect(screen.getByText('Role')).toBeInTheDocument();
   });
 
   test('renders profile form copy in English when locale preference comes from me meta', async () => {

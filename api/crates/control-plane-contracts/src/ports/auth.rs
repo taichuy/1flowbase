@@ -311,6 +311,8 @@ pub struct CreateExternalRegisteredMemberInput {
     pub email: String,
     /// Validated onboarding hints. Storage resolves account collisions atomically.
     pub account: Option<String>,
+    /// Explicit provider-owned name hint. No account-derived default is applied.
+    pub name: Option<String>,
     pub nickname: Option<String>,
     pub avatar_url: Option<String>,
     pub audit: AuditLogRecord,
