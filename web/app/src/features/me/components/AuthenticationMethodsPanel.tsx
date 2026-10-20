@@ -6,28 +6,24 @@ import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import {
   authenticationMethodsQueryKey,
   authorizeMyExternalIdentity,
-  authorizeMyPasswordSetup,
   fetchMyAuthenticationMethods,
-  setMyFirstPassword,
   unlinkMyExternalIdentity,
   type ChangeMyPasswordInput
 } from '../api/me';
 import { ExternalProviderMethods } from './ExternalProviderMethods';
-import { PasswordAuthenticationMethod } from './PasswordAuthenticationMethod';
+import { ChangePasswordForm } from './ChangePasswordForm';
 
 export function AuthenticationMethodsPanel({
   csrfToken,
   changingPassword,
   changePasswordError,
   onChangePassword,
-  onSessionEnded,
   onSwitchAccount
 }: {
   csrfToken: string | null;
   changingPassword: boolean;
   changePasswordError: string | null;
   onChangePassword: (input: ChangeMyPasswordInput) => Promise<void>;
-  onSessionEnded: () => Promise<void>;
   onSwitchAccount: () => Promise<void>;
 }) {
   const { t } = useTranslation('me');
@@ -62,29 +58,9 @@ export function AuthenticationMethodsPanel({
       });
     }
   });
-  const verify = useMutation({
-    mutationFn: (login_entry_id: string) =>
-      authorizeMyPasswordSetup(login_entry_id, csrf()),
-    onSuccess: ({ authorization_url }) =>
-      window.location.assign(authorization_url)
-  });
-  const setup = useMutation({
-    mutationFn: (input: { new_password: string }) =>
-      setMyFirstPassword(input, csrf()),
-    onSuccess: onSessionEnded,
-    onError: () => {
-      void queryClient.invalidateQueries({
-        queryKey: authenticationMethodsQueryKey
-      });
-    }
-  });
   const switchAccount = useMutation({ mutationFn: onSwitchAccount });
   const pending =
-    authorize.isPending ||
-    unlink.isPending ||
-    verify.isPending ||
-    setup.isPending ||
-    switchAccount.isPending;
+    authorize.isPending || unlink.isPending || switchAccount.isPending;
   const errorMessages: Record<string, string> = {
     verification_failed: t('authentication.verification_failed'),
     provider_unavailable: t('authentication.provider_unavailable'),
@@ -93,21 +69,6 @@ export function AuthenticationMethodsPanel({
     session_expired: t('authentication.session_expired'),
     cancelled: t('authentication.authorization_cancelled')
   };
-  if (query.isPending) return <LoadingState />;
-  if (query.isError)
-    return (
-      <Alert
-        showIcon
-        type="error"
-        title={t('authentication.load_failed')}
-        action={
-          <Button onClick={() => void query.refetch()}>
-            {t('authentication.retry')}
-          </Button>
-        }
-      />
-    );
-  const methods = query.data;
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <Typography.Title level={3}>
@@ -161,11 +122,7 @@ export function AuthenticationMethodsPanel({
           title={t('authentication.binding_succeeded')}
         />
       ) : null}
-      {authorize.isError ||
-      unlink.isError ||
-      verify.isError ||
-      setup.isError ||
-      switchAccount.isError ? (
+      {authorize.isError || unlink.isError || switchAccount.isError ? (
         <Alert
           showIcon
           type="error"
@@ -179,22 +136,16 @@ export function AuthenticationMethodsPanel({
             key: 'password',
             label: t('authentication.password_tab'),
             children: (
-              <PasswordAuthenticationMethod
-                methods={methods}
-                disabled={!csrfToken || pending}
-                changing={changingPassword}
-                setting={setup.isPending}
-                authorizingEntryId={
-                  verify.isPending ? verify.variables : undefined
-                }
-                changeError={changePasswordError}
-                onChangePassword={onChangePassword}
-                onAuthorize={(id) => verify.mutate(id)}
-                onSetPassword={(input) => setup.mutate(input)}
+              <ChangePasswordForm
+                className="me-security-panel"
+                submitting={changingPassword}
+                disabled={!csrfToken}
+                errorMessage={changePasswordError}
+                onSubmit={onChangePassword}
               />
             )
           },
-          ...methods.providers.map((provider) => ({
+          ...(query.data?.providers ?? []).map((provider) => ({
             key: provider.auth_type,
             label: provider.display_name,
             children: (
@@ -214,6 +165,19 @@ export function AuthenticationMethodsPanel({
           }))
         ]}
       />
+      {query.isPending ? <LoadingState /> : null}
+      {query.isError ? (
+        <Alert
+          showIcon
+          type="error"
+          title={t('authentication.load_failed')}
+          action={
+            <Button onClick={() => void query.refetch()}>
+              {t('authentication.retry')}
+            </Button>
+          }
+        />
+      ) : null}
     </Space>
   );
 }

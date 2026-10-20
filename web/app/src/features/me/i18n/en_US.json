@@ -7,7 +7,7 @@
     "new_password": "new password",
     "new_password_required": "Please enter a new password.",
     "not_logged_in": "Not logged in",
-    "password": "Password",
+    "old_password": "Current password",
     "password_mismatch": "The new passwords entered twice are inconsistent.",
     "password_update_notice": "Updating your password will immediately clear your current session and you will need to log in again with your new password.",
     "profile": "personal information",
@@ -75,14 +75,6 @@
   },
   "authentication": {
     "password_tab": "Account password",
-    "password_configured": "A password is configured for this account.",
-    "password_unavailable": "Password sign-in is currently unavailable.",
-    "password_not_configured": "This account does not have a password yet.",
-    "password_verified": "Identity verified. You can now set your first password.",
-    "verify_password_setup": "Verify a linked external account before setting your first password.",
-    "no_verification_entry": "No linked sign-in method is available for verification. Contact your administrator.",
-    "verify_with": "Verify with {{entry}}",
-    "set_password": "Set password",
     "binding_description": "Each external identity belongs to one local account. Linking does not change permissions or transfer resources.",
     "provider_unavailable": "This sign-in provider is unavailable. Existing account links are retained.",
     "not_bound": "No external account is linked.",
@@ -97,7 +89,7 @@
     "unlink": "Unlink account",
     "unlink_confirm": "Unlink this external account?",
     "unlink_description": "It will no longer sign you in. Its identity stays reserved for this account and can be restored after verification.",
-    "last_login_method": "Keep at least one usable sign-in method. Set a password or link another available method before unlinking.",
+    "last_login_method": "Keep at least one usable sign-in method. Add another usable sign-in method before unlinking.",
     "unlink_unavailable": "This account link cannot currently be removed.",
     "restore_description": "Verify the same external account to restore its link. Unlinking does not let another local account claim it.",
     "identity_exists": "This external identity belongs to another local account. Switch to that account to manage its link, or cancel.",
@@ -109,7 +101,7 @@
     "session_expired": "Your session expired. Sign in again before continuing.",
     "authorization_cancelled": "Authorization was cancelled. Start again when ready.",
     "action_failed": "The operation did not complete. Refresh the sign-in methods and try again.",
-    "load_failed": "Unable to load sign-in methods.",
+    "load_failed": "Unable to load external sign-in methods.",
     "retry": "Try again"
   }
 }

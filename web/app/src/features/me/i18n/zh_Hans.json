@@ -7,7 +7,7 @@
     "new_password": "新密码",
     "new_password_required": "请输入新密码。",
     "not_logged_in": "未登录",
-    "password": "密码",
+    "old_password": "旧密码",
     "password_mismatch": "两次输入的新密码不一致。",
     "password_update_notice": "更新密码后会立即清除当前会话，你需要使用新密码重新登录。",
     "profile": "个人资料",
@@ -75,14 +75,6 @@
   },
   "authentication": {
     "password_tab": "账号密码",
-    "password_configured": "当前账号已设置密码。",
-    "password_unavailable": "账号密码登录当前不可用。",
-    "password_not_configured": "当前账号尚未设置密码。",
-    "password_verified": "身份已验证，可以设置首次密码。",
-    "verify_password_setup": "首次设置密码前，请先验证已绑定的外部账号。",
-    "no_verification_entry": "暂无可用于安全验证的已绑定登录方式，请联系管理员。",
-    "verify_with": "通过 {{entry}} 验证身份",
-    "set_password": "设置密码",
     "binding_description": "同一外部身份只能关联一个本地账号。绑定不会改变权限或转移资源。",
     "provider_unavailable": "该登录方式当前不可用，已有账号关联仍会保留。",
     "not_bound": "尚未绑定外部账号。",
@@ -97,7 +89,7 @@
     "unlink": "解除绑定",
     "unlink_confirm": "确认解除该外部账号绑定？",
     "unlink_description": "解绑后将无法用它登录。该外部身份仍归属当前账号，验证后可恢复绑定。",
-    "last_login_method": "必须保留至少一种可用登录方式。请先设置密码或绑定其他可用方式，再解除绑定。",
+    "last_login_method": "必须保留至少一种可用登录方式。请先添加其他可用登录方式，再解除绑定。",
     "unlink_unavailable": "当前无法解除该账号绑定。",
     "restore_description": "请验证原外部账号以恢复绑定。解绑不会允许其他本地账号占用该身份。",
     "identity_exists": "该外部身份已归属其他本地账号，请切换到对应账号管理绑定，或取消操作。",
@@ -109,7 +101,7 @@
     "session_expired": "当前会话已过期，请重新登录后继续。",
     "authorization_cancelled": "授权已取消，你可以重新发起。",
     "action_failed": "操作未完成，请刷新登录方式后重试。",
-    "load_failed": "无法加载登录方式。",
+    "load_failed": "无法加载外部认证方式。",
     "retry": "重试"
   }
 }

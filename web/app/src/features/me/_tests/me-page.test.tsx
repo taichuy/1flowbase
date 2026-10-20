@@ -230,7 +230,7 @@ describe('MePage', () => {
     expect(
       await screen.findByRole('heading', { name: '安全设置', level: 3 })
     ).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('密码'), {
+    fireEvent.change(screen.getByLabelText('旧密码'), {
       target: { value: 'old-password' }
     });
     fireEvent.change(screen.getByLabelText('新密码'), {

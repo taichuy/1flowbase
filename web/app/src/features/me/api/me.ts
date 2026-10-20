@@ -1,8 +1,6 @@
 import {
   authorizeConsoleExternalIdentity,
-  authorizeConsolePasswordSetup,
   fetchConsoleAuthenticationMethods,
-  setConsoleFirstPassword,
   unlinkConsoleExternalIdentity,
   changeConsolePassword,
   fetchConsoleMe,
@@ -63,18 +61,4 @@ export function unlinkMyExternalIdentity(
   csrfToken: string
 ) {
   return unlinkConsoleExternalIdentity(identity_id, csrfToken);
-}
-
-export function authorizeMyPasswordSetup(
-  login_entry_id: string,
-  csrfToken: string
-) {
-  return authorizeConsolePasswordSetup({ login_entry_id }, csrfToken);
-}
-
-export function setMyFirstPassword(
-  input: { new_password: string },
-  csrfToken: string
-) {
-  return setConsoleFirstPassword(input, csrfToken);
 }

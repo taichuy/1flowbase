@@ -157,7 +157,6 @@ export function MePage({
             onChangePassword={(input) =>
               changePasswordMutation.mutateAsync(input)
             }
-            onSessionEnded={endSession}
             onSwitchAccount={async () => {
               if (!csrfToken) throw new Error('missing csrf token');
               await signOut(csrfToken);

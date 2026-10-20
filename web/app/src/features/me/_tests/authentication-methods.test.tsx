@@ -8,19 +8,14 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   authorize: vi.fn(),
   unlink: vi.fn(),
-  verify: vi.fn(),
-  setup: vi.fn(),
   change: vi.fn(),
-  ended: vi.fn(),
   switchAccount: vi.fn()
 }));
 vi.mock('../api/me', () => ({
   authenticationMethodsQueryKey: ['me', 'authentication-methods'],
   fetchMyAuthenticationMethods: mocks.fetch,
   authorizeMyExternalIdentity: mocks.authorize,
-  unlinkMyExternalIdentity: mocks.unlink,
-  authorizeMyPasswordSetup: mocks.verify,
-  setMyFirstPassword: mocks.setup
+  unlinkMyExternalIdentity: mocks.unlink
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -79,7 +74,6 @@ function renderPanel(csrfToken: string | null = 'fixture-csrf') {
         changingPassword={false}
         changePasswordError={null}
         onChangePassword={mocks.change}
-        onSessionEnded={mocks.ended}
         onSwitchAccount={mocks.switchAccount}
       />
     </QueryClientProvider>
@@ -116,7 +110,6 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/me/security');
   mocks.fetch.mockResolvedValue(fixture());
   mocks.authorize.mockRejectedValue(new Error('fixture rejected'));
-  mocks.verify.mockRejectedValue(new Error('fixture rejected'));
 });
 afterEach(() => {
   window.getComputedStyle = browserComputedStyle;
@@ -128,7 +121,7 @@ test('password is the default and multiple entries produce one provider tab with
   expect(
     await screen.findByRole('tab', { name: 'authentication.password_tab' })
   ).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getAllByRole('tab')).toHaveLength(2);
+  await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
   await openGitHub();
   expect(screen.getByText('authentication.bound')).toBeVisible();
   expect(screen.getByText('fixture-login')).toBeVisible();
@@ -232,66 +225,76 @@ test('an unbound provider allows an explicit bind and no session disables author
   expect(mocks.authorize).not.toHaveBeenCalled();
 });
 
-test('a callback URL alone never unlocks first-password inputs and verification uses the selected entry', async () => {
-  window.history.replaceState(
-    {},
-    '',
-    '/me/security?auth_verified=true&security_tab=password'
-  );
+test.each([false, true])(
+  'password form stays local regardless of external setup proof (%s)',
+  async (verified) => {
+    const methods = fixture();
+    methods.password_setup_verified = verified;
+    mocks.fetch.mockResolvedValue(methods);
+    window.history.replaceState(
+      {},
+      '',
+      '/me/security?auth_verified=true&security_tab=password'
+    );
+    renderPanel();
+    expect(await screen.findByLabelText('auto.old_password')).toBeVisible();
+    expect(screen.getByLabelText('auto.new_password')).toBeVisible();
+    expect(screen.getByLabelText('auto.confirm_new_password')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /authentication.verify_with/ })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'authentication.set_password' })
+    ).not.toBeInTheDocument();
+  }
+);
+
+test('built-in password form is available while external discovery is pending', () => {
+  mocks.fetch.mockReturnValue(new Promise(() => {}));
   renderPanel();
-  fireEvent.click(
-    await screen.findByRole('button', {
-      name: 'authentication.verify_with GitHub production'
+  expect(screen.getByLabelText('auto.old_password')).toBeVisible();
+  expect(
+    screen.getByRole('button', { name: 'auto.update_password' })
+  ).toBeEnabled();
+  expect(screen.queryByRole('tab', { name: 'GitHub' })).not.toBeInTheDocument();
+});
+
+test('password change requires the old password and matching confirmation, then submits only old and new passwords', async () => {
+  mocks.change.mockResolvedValue(undefined);
+  renderPanel();
+  const oldPassword = await screen.findByLabelText('auto.old_password');
+  const newPassword = screen.getByLabelText('auto.new_password');
+  const confirmation = screen.getByLabelText('auto.confirm_new_password');
+  const submit = screen.getByRole('button', { name: 'auto.update_password' });
+  fireEvent.change(newPassword, { target: { value: 'fixture-new-password' } });
+  fireEvent.change(confirmation, { target: { value: 'fixture-new-password' } });
+  fireEvent.click(submit);
+  expect(
+    await screen.findByText('auto.current_password_required')
+  ).toBeVisible();
+  expect(mocks.change).not.toHaveBeenCalled();
+  fireEvent.change(oldPassword, { target: { value: 'fixture-old-password' } });
+  fireEvent.change(confirmation, { target: { value: 'fixture-mismatch' } });
+  fireEvent.click(submit);
+  expect(await screen.findByText('auto.password_mismatch')).toBeVisible();
+  expect(mocks.change).not.toHaveBeenCalled();
+  fireEvent.change(confirmation, { target: { value: 'fixture-new-password' } });
+  fireEvent.click(submit);
+  await waitFor(() =>
+    expect(mocks.change).toHaveBeenCalledExactlyOnceWith({
+      old_password: 'fixture-old-password',
+      new_password: 'fixture-new-password'
     })
   );
-  await waitFor(() =>
-    expect(mocks.verify).toHaveBeenCalledWith('github-entry', 'fixture-csrf')
-  );
-  expect(screen.queryByLabelText('auto.new_password')).not.toBeInTheDocument();
-  expect(mocks.setup).not.toHaveBeenCalled();
+  expect(mocks.authorize).not.toHaveBeenCalled();
 });
 
-test('no verification entry exposes guidance rather than an unverified password form', async () => {
-  const methods = fixture();
-  methods.password_verification_entries = [];
-  mocks.fetch.mockResolvedValue(methods);
-  renderPanel();
+test('password changes cannot be submitted without a console session', () => {
+  renderPanel(null);
+  expect(screen.getByLabelText('auto.old_password')).toBeDisabled();
   expect(
-    await screen.findByText('authentication.no_verification_entry')
-  ).toBeVisible();
-  expect(screen.queryByLabelText('auto.new_password')).not.toBeInTheDocument();
-});
-
-test('backend proof unlocks first-password confirmation and success ends the session', async () => {
-  const methods = fixture();
-  methods.password_setup_verified = true;
-  mocks.fetch.mockResolvedValue(methods);
-  mocks.setup.mockResolvedValue(undefined);
-  renderPanel();
-  const password = await screen.findByLabelText('auto.new_password');
-  expect(screen.queryByLabelText('auto.password')).not.toBeInTheDocument();
-  fireEvent.change(password, { target: { value: 'fixture-new-password' } });
-  fireEvent.change(screen.getByLabelText('auto.confirm_new_password'), {
-    target: { value: 'fixture-mismatch' }
-  });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'authentication.set_password' })
-  );
-  expect(await screen.findByText('auto.password_mismatch')).toBeVisible();
-  expect(mocks.setup).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText('auto.confirm_new_password'), {
-    target: { value: 'fixture-new-password' }
-  });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'authentication.set_password' })
-  );
-  await waitFor(() =>
-    expect(mocks.setup).toHaveBeenCalledWith(
-      { new_password: 'fixture-new-password' },
-      'fixture-csrf'
-    )
-  );
-  await waitFor(() => expect(mocks.ended).toHaveBeenCalledOnce());
+    screen.getByRole('button', { name: 'auto.update_password' })
+  ).toBeDisabled();
 });
 
 test('foreign-owner conflict offers explicit account switch and cancellation, with no migration action', async () => {
@@ -321,11 +324,15 @@ test('foreign-owner conflict offers explicit account switch and cancellation, wi
   expect(window.location.search).toBe('');
 });
 
-test('discovery failure is an error instead of empty or fabricated sign-in methods', async () => {
+test('external discovery failure preserves the built-in password form without fabricated provider tabs', async () => {
   mocks.fetch.mockRejectedValue(new Error('fixture offline'));
   renderPanel();
   expect(await screen.findByText('authentication.load_failed')).toBeVisible();
-  expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('tab', { name: 'authentication.password_tab' })
+  ).toBeVisible();
+  expect(screen.getByLabelText('auto.old_password')).toBeVisible();
+  expect(screen.queryByRole('tab', { name: 'GitHub' })).not.toBeInTheDocument();
   expect(
     screen.getByRole('button', { name: 'authentication.retry' })
   ).toBeEnabled();
