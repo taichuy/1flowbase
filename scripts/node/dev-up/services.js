@@ -118,7 +118,9 @@ function getServiceDefinitions(repoRoot) {
       bindHost: apiServerAddress.bindHost,
       probeHost: '127.0.0.1',
       port: apiServerAddress.port,
-      startupTimeoutMs: 30_000,
+      // Cold boot includes database bootstrap and plugin/catalog assembly before
+      // HTTP serving begins; a bound port alone does not mean the API is ready.
+      startupTimeoutMs: 120_000,
       readinessProbe: {
         path: '/health',
         expectedJson: {
