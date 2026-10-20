@@ -224,44 +224,217 @@ async fn application_runtime_routes_start_debug_run_persists_gateway_billing_aud
     );
     let payload: Value = serde_json::from_slice(&start_body).unwrap();
     let run_id = Uuid::parse_str(payload["data"]["flow_run"]["id"].as_str().unwrap()).unwrap();
-    let event_types = payload["data"]["events"]
+    let reservation_events = payload["data"]["events"]
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|event| event["event_type"].as_str())
+        .filter(|event| event["event_type"] == "gateway_billing_session_reserved")
         .collect::<Vec<_>>();
-    assert!(event_types.contains(&"gateway_billing_session_reserved"));
+    assert_eq!(reservation_events.len(), 1, "{payload:#}");
+    let reservation = &reservation_events[0]["payload"];
+    assert_eq!(reservation["billing_session"]["status"], "reserved");
+    assert_eq!(reservation["cost_ledger"]["cost_status"], "pending_usage");
+    assert_eq!(reservation["credit_ledger"]["transaction_type"], "reserve");
+    for field in ["billing_session", "cost_ledger", "credit_ledger"] {
+        Uuid::parse_str(reservation[field]["id"].as_str().unwrap()).unwrap();
+    }
 
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
-    let (billing_count,): (i64,) =
-        sqlx::query_as("select count(*) from billing_sessions where flow_run_id = $1")
-            .bind(run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    let (cost_count,): (i64,) =
-        sqlx::query_as("select count(*) from runtime_cost_ledger where flow_run_id = $1")
-            .bind(run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    let (reserved_credit_count,): (i64,) =
-        sqlx::query_as("select count(*) from runtime_credit_ledger where flow_run_id = $1 and transaction_type = 'reserve' and reason = 'gateway_billing_session_reserved'")
-            .bind(run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    let (audit_count,): (i64,) =
-        sqlx::query_as("select count(*) from runtime_audit_hashes where flow_run_id = $1")
-            .bind(run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    // The route returns the reservation snapshot while the real provider continues
+    // asynchronously. Inspect the complete run, not a timing-dependent ledger total.
+    wait_for_flow_run_status_in_database(&pool, run_id, "succeeded").await;
+    let evidence: Value = sqlx::query_scalar(
+        r#"select jsonb_build_object(
+            'sessions', (select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb)
+                from billing_sessions s where s.flow_run_id = $1),
+            'costs', (select coalesce(jsonb_agg(to_jsonb(c)), '[]'::jsonb)
+                from runtime_cost_ledger c where c.flow_run_id = $1),
+            'credits', (select coalesce(jsonb_agg(to_jsonb(c)), '[]'::jsonb)
+                from runtime_credit_ledger c where c.flow_run_id = $1),
+            'audits', (select coalesce(jsonb_agg(to_jsonb(a)), '[]'::jsonb)
+                from runtime_audit_hashes a where a.flow_run_id = $1),
+            'usage', (select coalesce(jsonb_agg(to_jsonb(u)), '[]'::jsonb)
+                from runtime_usage_ledger u where u.flow_run_id = $1),
+            'attempts', (select coalesce(jsonb_agg(to_jsonb(a)), '[]'::jsonb)
+                from model_failover_attempt_ledger a where a.flow_run_id = $1),
+            'nodes', (select coalesce(jsonb_agg(to_jsonb(n)), '[]'::jsonb)
+                from node_runs n where n.flow_run_id = $1)
+        )"#,
+    )
+    .bind(run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let diagnostics = format!("reservation={reservation:#}\ncompleted_run={evidence:#}");
+    let sessions = evidence["sessions"].as_array().unwrap();
+    let costs = evidence["costs"].as_array().unwrap();
+    let credits = evidence["credits"].as_array().unwrap();
+    let audits = evidence["audits"].as_array().unwrap();
+    let usage = evidence["usage"].as_array().unwrap();
+    let attempts = evidence["attempts"].as_array().unwrap();
 
-    assert_eq!(billing_count, 1);
-    assert_eq!(cost_count, 1);
-    assert_eq!(reserved_credit_count, 1);
-    assert_eq!(audit_count, 3);
+    // Keep exact gateway reservation obligations, including identity and hash links.
+    assert_eq!(sessions.len(), 1, "{diagnostics}");
+    let session = &sessions[0];
+    assert_eq!(
+        session["id"], reservation["billing_session"]["id"],
+        "{diagnostics}"
+    );
+    assert_eq!(
+        session["reserved_credit_ledger_id"], reservation["credit_ledger"]["id"],
+        "{diagnostics}"
+    );
+    assert_eq!(
+        session["idempotency_key"],
+        json!(format!("gateway:{run_id}:reserve")),
+        "{diagnostics}"
+    );
+    // Default-free root execution must not introduce a debit or another reservation.
+    assert_eq!(credits.len(), 1, "{diagnostics}");
+    let credit = &credits[0];
+    assert_eq!(
+        credit["id"], reservation["credit_ledger"]["id"],
+        "{diagnostics}"
+    );
+    assert_eq!(
+        credit["cost_ledger_id"], reservation["cost_ledger"]["id"],
+        "{diagnostics}"
+    );
+    assert_eq!(credit["transaction_type"], "reserve", "{diagnostics}");
+    assert_eq!(
+        credit["reason"], "gateway_billing_session_reserved",
+        "{diagnostics}"
+    );
+    assert_eq!(credit["amount"], json!(0), "{diagnostics}");
+    assert_eq!(credit["credit_unit"], "credit", "{diagnostics}");
+    assert_eq!(
+        credit["idempotency_key"], session["idempotency_key"],
+        "{diagnostics}"
+    );
+    assert!(
+        session["settled_credit_ledger_id"].is_null(),
+        "{diagnostics}"
+    );
+    assert!(
+        session["refund_credit_ledger_id"].is_null(),
+        "{diagnostics}"
+    );
+
+    let gateway_costs = costs
+        .iter()
+        .filter(|cost| cost["cost_source"] == "gateway_reservation")
+        .collect::<Vec<_>>();
+    assert_eq!(gateway_costs.len(), 1, "{diagnostics}");
+    let gateway_cost = gateway_costs[0];
+    assert_eq!(
+        gateway_cost["id"], reservation["cost_ledger"]["id"],
+        "{diagnostics}"
+    );
+    assert_eq!(
+        gateway_cost["cost_status"], "pending_usage",
+        "{diagnostics}"
+    );
+    assert_eq!(gateway_cost["raw_cost"], json!(0), "{diagnostics}");
+    assert_eq!(gateway_cost["normalized_cost"], json!(0), "{diagnostics}");
+    assert_eq!(
+        gateway_cost["settlement_currency"], "credit",
+        "{diagnostics}"
+    );
+    assert_eq!(
+        gateway_cost["gateway_route_id"], reservation["route_trace"]["route_id"],
+        "{diagnostics}"
+    );
+    assert_eq!(
+        session["route_id"], gateway_cost["gateway_route_id"],
+        "{diagnostics}"
+    );
+    assert_eq!(
+        gateway_cost["provider_instance_id"],
+        json!(provider_instance_id),
+        "{diagnostics}"
+    );
+    assert!(gateway_cost["usage_ledger_id"].is_null(), "{diagnostics}");
+    assert!(
+        gateway_cost["billing_session_id"].is_null(),
+        "{diagnostics}"
+    );
+    assert_eq!(audits.len(), 3, "{diagnostics}");
+    let mut audit_ids = audits
+        .iter()
+        .map(|row| row["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    let mut event_audit_ids = reservation["audit_hashes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| id.as_str().unwrap())
+        .collect::<Vec<_>>();
+    audit_ids.sort_unstable();
+    event_audit_ids.sort_unstable();
+    assert_eq!(audit_ids, event_audit_ids, "{diagnostics}");
+    for (table, id) in [
+        ("runtime_cost_ledger", &gateway_cost["id"]),
+        ("runtime_credit_ledger", &credit["id"]),
+        ("billing_sessions", &session["id"]),
+    ] {
+        assert_eq!(
+            audits
+                .iter()
+                .filter(|row| row["fact_table"] == table && &row["fact_id"] == id)
+                .count(),
+            1,
+            "{diagnostics}"
+        );
+    }
+
+    // Exactly one provider observation accounts for the second cost; duplicate
+    // invocation/writes and missing execution must all fail independently.
+    assert_eq!(costs.len(), 2, "{diagnostics}");
+    assert_eq!(usage.len(), 1, "{diagnostics}");
+    assert_eq!(attempts.len(), 1, "{diagnostics}");
+    let observation_costs = costs
+        .iter()
+        .filter(|cost| cost["cost_source"] == "local_token_pricing")
+        .collect::<Vec<_>>();
+    assert_eq!(observation_costs.len(), 1, "{diagnostics}");
+    let observation = observation_costs[0];
+    let usage = &usage[0];
+    let attempt = &attempts[0];
+    assert_ne!(observation["id"], gateway_cost["id"], "{diagnostics}");
+    assert_eq!(observation["cost_status"], "rated", "{diagnostics}");
+    assert_eq!(observation["settlement_currency"], "USD", "{diagnostics}");
+    assert!(observation["billing_session_id"].is_null(), "{diagnostics}");
+    assert_eq!(observation["usage_ledger_id"], usage["id"], "{diagnostics}");
+    for row in [observation, usage, attempt] {
+        assert_eq!(
+            row["provider_instance_id"],
+            json!(provider_instance_id),
+            "{diagnostics}"
+        );
+    }
+    assert_eq!(usage["model_id"], "fixture_chat", "{diagnostics}");
+    assert_eq!(usage["usage_status"], "recorded", "{diagnostics}");
+    assert_eq!(usage["input_tokens"], json!(5), "{diagnostics}");
+    assert_eq!(usage["output_tokens"], json!(7), "{diagnostics}");
+    assert_eq!(usage["total_tokens"], json!(12), "{diagnostics}");
+    assert_eq!(attempt["status"], "succeeded", "{diagnostics}");
+    assert_eq!(attempt["usage_ledger_id"], usage["id"], "{diagnostics}");
+    assert_eq!(
+        attempt["cost_ledger_id"], observation["id"],
+        "{diagnostics}"
+    );
+    assert_eq!(
+        attempt["node_run_id"], usage["node_run_id"],
+        "{diagnostics}"
+    );
+    let llm_nodes = evidence["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|node| node["node_id"] == "node-llm")
+        .collect::<Vec<_>>();
+    assert_eq!(llm_nodes.len(), 1, "{diagnostics}");
+    assert_eq!(usage["node_run_id"], llm_nodes[0]["id"], "{diagnostics}");
 }
 
 #[tokio::test]

@@ -22,27 +22,27 @@ describe('SettingsPage', () => {
     );
     authenticateWithPermissions(['user.view.all']);
 
-    await act(async () => {
-      renderApp('/settings/docs');
-    });
+    renderApp('/settings/docs');
 
-    const pendingContext = JSON.stringify({
-      pathname: window.location.pathname,
-      navigationCalls:
-        consoleNavigationApi.fetchSettingsConsoleNavigation.mock.calls.length,
-      main: document
-        .querySelector('.app-shell-content')
-        ?.outerHTML.slice(0, 2000)
+    await waitFor(() => {
+      const pendingContext = JSON.stringify({
+        pathname: window.location.pathname,
+        navigationCalls:
+          consoleNavigationApi.fetchSettingsConsoleNavigation.mock.calls.length,
+        main: document
+          .querySelector('.app-shell-content')
+          ?.outerHTML.slice(0, 2000)
+      });
+      expect(
+        consoleNavigationApi.fetchSettingsConsoleNavigation,
+        pendingContext
+      ).toHaveBeenCalled();
+      expect(
+        screen.getByTestId('section-page-layout'),
+        pendingContext
+      ).toBeInTheDocument();
+      expect(window.location.pathname, pendingContext).toBe('/settings/docs');
     });
-    expect(
-      consoleNavigationApi.fetchSettingsConsoleNavigation,
-      pendingContext
-    ).toHaveBeenCalled();
-    expect(
-      screen.queryByTestId('section-page-layout'),
-      pendingContext
-    ).toBeInTheDocument();
-    expect(window.location.pathname, pendingContext).toBe('/settings/docs');
 
     await act(async () => {
       resolveNavigation(navigation);
