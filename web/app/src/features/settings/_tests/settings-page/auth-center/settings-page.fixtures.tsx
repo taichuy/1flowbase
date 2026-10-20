@@ -1,9 +1,6 @@
 import { render } from '@testing-library/react';
 import { Grid } from 'antd';
-import { beforeEach, vi } from 'vitest';
-
-// Configuration tests use the real section; module loading precedes test hooks.
-import '../../../pages/settings-page/SettingsAuthCenterSection';
+import { beforeAll, beforeEach, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => ({
   chart: {
@@ -402,6 +399,16 @@ import {
   settingsSectionDefinitions,
   type SettingsSectionKey
 } from '../../../lib/settings-sections';
+
+// Warm the whole real lazy route chain before UI assertions start. Preloading
+// only the section leaves the shell and settings owner cold on the first render.
+beforeAll(async () => {
+  await Promise.all([
+    import('../../../../../app-shell/AppShellFrame'),
+    import('../../../pages/SettingsPage'),
+    import('../../../pages/settings-page/SettingsAuthCenterSection')
+  ]);
+});
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 

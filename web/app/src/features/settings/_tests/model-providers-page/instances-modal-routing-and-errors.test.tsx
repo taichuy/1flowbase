@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { beforeAll, describe, test, expect } from 'vitest';
 import {
   authenticateAsModelProviderManager,
   modelProvidersApi,
@@ -15,6 +15,15 @@ import {
   modelProviderCatalogEntries,
   primaryContractProviderModels
 } from '../../../../test/model-provider-contract-fixtures';
+
+// Transform the real lazy route owners before behavior assertions begin.
+beforeAll(async () => {
+  await Promise.all([
+    import('../../../../app-shell/AppShellFrame'),
+    import('../../pages/SettingsPage'),
+    import('../../pages/settings-page/ModelProviderSettingsTabs')
+  ]);
+});
 
 describe('ModelProvidersPage - instances modal', () => {
   test(

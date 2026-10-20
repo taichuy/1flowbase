@@ -26,6 +26,7 @@ const sources = [
   'api/apps/api-server/src/extension_bus/interface_contributions/plugins.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/mcp.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/system.rs',
+  'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch/execution.rs',
 ];
 
 function fixture(overrides = {}) {
@@ -56,6 +57,7 @@ function fixture(overrides = {}) {
     [sources[15]]: '',
     [sources[16]]: '',
     [sources[17]]: '',
+    [sources[18]]: '',
   };
   for (const source of sources) {
     const target = path.join(root, source);

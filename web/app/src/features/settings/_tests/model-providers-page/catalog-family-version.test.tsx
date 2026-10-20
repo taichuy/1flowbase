@@ -6,7 +6,7 @@ import {
   within
 } from '@testing-library/react';
 import { Grid } from 'antd';
-import { vi } from 'vitest';
+import { beforeAll, vi } from 'vitest';
 import {
   modelProviderCatalogEntries,
   primaryContractProviderModels
@@ -158,6 +158,15 @@ import {
   buildSettingsModelProviderInstances,
   buildSettingsModelProviderOptions
 } from '../model-provider-test-fixtures';
+// Transform the real lazy route owners before behavior assertions begin.
+beforeAll(async () => {
+  await Promise.all([
+    import('../../../../app-shell/AppShellFrame'),
+    import('../../pages/SettingsPage'),
+    import('../../pages/settings-page/ModelProviderSettingsTabs')
+  ]);
+});
+
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
 function authenticateWithPermissions(
@@ -529,9 +538,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
     expect(
       within(catalogRow).queryByText(/^检查时间：/)
     ).not.toBeInTheDocument();
-    fireEvent.click(
-      within(catalogRow).getByRole('button', { name: '卸载' })
-    );
+    fireEvent.click(within(catalogRow).getByRole('button', { name: '卸载' }));
     await waitFor(() => {
       expect(pluginsApi.deleteSettingsPluginFamily).toHaveBeenCalledWith(
         'openai_compatible',

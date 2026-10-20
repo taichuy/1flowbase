@@ -1,3 +1,4 @@
+import { styleBoundaryOrganizationMembers } from './settings/organization';
 import { getStyleBoundaryOriginalFetch } from './original-fetch';
 import {
   createStyleBoundaryJsonResponse,
@@ -38,6 +39,30 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (commonResponse) {
       return commonResponse;
+    }
+
+    if (
+      requestUrl.origin === window.location.origin &&
+      method.toUpperCase() === 'GET'
+    ) {
+      if (
+        requestUrl.pathname === '/api/console/settings/members' &&
+        !requestUrl.search
+      ) {
+        return createStyleBoundaryJsonResponse({
+          data: styleBoundaryOrganizationMembers,
+          meta: null
+        });
+      }
+      if (
+        requestUrl.pathname === '/api/console/mcp/bundles/export-defaults' &&
+        !requestUrl.search
+      ) {
+        return createStyleBoundaryJsonResponse({
+          data: { current_system_version: '0.2.6' },
+          meta: null
+        });
+      }
     }
 
     if (

@@ -186,6 +186,8 @@ Compact 的 unary 执行可以投影为 SSE；有效工具回调则可能继续�
 
 未知 Binding、其他入口或认证配置不匹配时拒绝；不重复认证、不重读当前可变 Registry、不回退为丢失 lineage 的 Envelope。认证失败仍使用入口候选计划记录拒绝。进入业务 Resolve 后不再切换 Binding/Plan。
 
+OpenAI Responses 的 `response_dispatch` 分开承接准备与执行：准备阶段完成认证、历史响应与 callback admission、翻译及 continuation claim，产出拥有完整冻结身份的 Start / Resume 数据；`response_dispatch/execution` 按 Generate、Compact、Resume 选择独立 future，保留各 binding、HTTP / SSE / typed events 投影及 recorder / completion / reservation 的原 owner。准备与执行的 future 均由非 async factory 构造，再由原任务等待；准备完成后释放其 future 和 poll 栈，避免 Compact 执行时叠加无关 resume / Generate 分支的 poll 帧。此边界不创建新任务，不重做认证，也不把冻结身份降为脱离原 carrier / snapshot 的 Principal。原 2 MiB 路由测试验证既有协议行为；该测试线程大小不是服务端业务容量上限。
+
 ### 两次冻结
 
 ```text

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
+import { NotificationSceneEventSource } from './notifications/data';
 import { NotificationBell } from '../../features/notifications/components/NotificationBell';
 import { NotificationLogs } from '../../features/settings/pages/notifications/NotificationLogs';
 import { NotificationsPage } from '../../features/settings/pages/notifications/NotificationsPage';
@@ -9,23 +10,6 @@ export function NotificationSettingsStyleBoundaryScene() {
 
 export function NotificationLogsStyleBoundaryScene() {
   return <NotificationLogs />;
-}
-
-// The style scene supplies a stable connected signal, while the actual inbox
-// consumes its HTTP snapshot and renders the production bell and drawer.
-class NotificationSceneEventSource extends EventTarget {
-  onopen: ((event: Event) => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
-  private closed = false;
-  constructor() {
-    super();
-    queueMicrotask(() => {
-      if (!this.closed) this.onopen?.(new Event('open'));
-    });
-  }
-  close() {
-    this.closed = true;
-  }
 }
 
 export function NotificationInboxStyleBoundaryScene({

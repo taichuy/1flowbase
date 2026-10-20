@@ -69,6 +69,8 @@ fn issue_1958_migrated_routes_have_no_production_compatibility_bypass() {
         "\n",
         include_str!("../../routes/application_public_api/openai/response_dispatch.rs"),
         "\n",
+        include_str!("../../routes/application_public_api/openai/response_dispatch/execution.rs"),
+        "\n",
         include_str!("../../routes/application_public_api/openai/response_projection.rs"),
     );
     let anthropic = include_str!("../../routes/application_public_api/anthropic.rs");
