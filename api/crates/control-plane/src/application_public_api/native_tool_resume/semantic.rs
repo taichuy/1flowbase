@@ -150,6 +150,9 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
                 ))
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
+    if super::is_independent_session_history(envelope, &run, &expected) {
+        return Ok(None);
+    }
     let ordered_input = if previous.is_none()
         && input.iter().any(|item| {
             matches!(

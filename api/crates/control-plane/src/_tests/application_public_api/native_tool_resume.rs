@@ -11,6 +11,8 @@ use uuid::Uuid;
 
 #[path = "native_tool_resume/reservation_lifecycle.rs"]
 mod reservation_lifecycle;
+#[path = "native_tool_resume/session_history.rs"]
+mod session_history;
 #[path = "native_tool_resume/standalone_notifications.rs"]
 mod standalone_notifications;
 

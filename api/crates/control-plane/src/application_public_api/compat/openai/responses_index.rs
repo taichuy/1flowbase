@@ -102,6 +102,7 @@ impl ResponsesRequestIndex {
 pub struct OpenAiResponsesEnvelope {
     transport: ProviderTransportPayload,
     index: ResponsesRequestIndex,
+    session_identity: Option<String>,
 }
 
 impl std::fmt::Debug for OpenAiResponsesEnvelope {
@@ -125,7 +126,22 @@ impl OpenAiResponsesEnvelope {
             OpenAiCompatError::invalid("request", "Responses request must be an object")
                 .with_report(TranslationReport::new(TranslationProtocol::OpenAiResponses))
         })?;
-        Ok(Self { transport, index })
+        Ok(Self {
+            transport,
+            index,
+            session_identity: None,
+        })
+    }
+
+    /// Attach the host's authenticated application/key-scoped session identity.
+    /// It is routing context only, never public JSON or callback authority.
+    pub fn with_session_identity(mut self, identity: String) -> Self {
+        self.session_identity = Some(identity);
+        self
+    }
+
+    pub(crate) fn session_identity(&self) -> Option<&str> {
+        self.session_identity.as_deref()
     }
 
     pub fn previous_response_id(&self) -> Option<&str> {
