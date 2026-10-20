@@ -25,7 +25,7 @@ type PageTreeFormDialog =
       kind: 'create';
       nodeKind: 'group' | 'page';
       parentId: string | null;
-      rank: string;
+      rank?: string;
       title: string;
       initialTitle: string;
       initialIcon: string;

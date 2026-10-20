@@ -26,10 +26,6 @@ import './navigation-drag.css';
 import '../features/frontstage/components/frontstage-add-action.css';
 import '../features/frontstage/pages/frontstage-page.css';
 
-function appendRank(nodes: FrontstagePageTreeNode[]): string {
-  return String((nodes.length + 1) * 1000).padStart(6, '0');
-}
-
 function randomSlug(): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const bytes = crypto.getRandomValues(new Uint8Array(7));
@@ -326,18 +322,15 @@ export function TopbarNavigationItemLabel({
 }
 
 export function TopbarNavigationDesigner({
-  workspaceId,
-  nodes
+  workspaceId
 }: {
   workspaceId: string;
-  nodes: FrontstagePageTreeNode[];
 }) {
   const [form] = Form.useForm<PageTreeFormValues>();
   const [dialog, setDialog] = useState<PageTreeFormDialog | null>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const mutations = useFrontstagePageTreeMutations(workspaceId);
-  const topbarNodes = nodes.filter((node) => node.placement === 'topbar');
 
   const promptCreate = (nodeKind: 'group' | 'page') => {
     const initialSlug = randomSlug();
@@ -345,7 +338,6 @@ export function TopbarNavigationDesigner({
       kind: 'create',
       nodeKind,
       parentId: null,
-      rank: appendRank(topbarNodes),
       title: nodeKind === 'group' ? '新增分组' : '新增页面',
       initialTitle: '',
       initialSlug,
@@ -366,7 +358,6 @@ export function TopbarNavigationDesigner({
         icon: values.icon ?? null,
         tooltip: values.tooltip ?? null,
         parentId: null,
-        rank: dialog.rank,
         placement: 'topbar' as const
       };
       if (dialog.nodeKind === 'group') {

@@ -45,6 +45,61 @@ fn map_frontstage_placement_error(error: sqlx::Error) -> anyhow::Error {
     error.into()
 }
 
+// The caller holds the same workspace order lock as relative page moves.
+async fn allocate_appended_page_rank(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    input: &CreateFrontstagePageInput,
+) -> Result<String> {
+    use crate::ordered_tree::rank::{between, rebalance, FractionalRank};
+
+    let mut siblings: Vec<(Uuid, String)> = sqlx::query_as(
+        r#"select id, rank from frontstage_pages
+           where workspace_id = $1 and parent_id is not distinct from $2 and placement = $3
+           order by id for update"#,
+    )
+    .bind(input.workspace_id)
+    .bind(input.parent_id)
+    .bind(input.placement.as_str())
+    .fetch_all(&mut **transaction)
+    .await?;
+    siblings.sort_by(|left, right| left.1.cmp(&right.1).then(left.0.cmp(&right.0)));
+    let tail = siblings
+        .last()
+        .map(|(_, rank)| FractionalRank::parse(rank.clone()));
+    let allocation = match tail {
+        None => Some(between(None, None)?),
+        Some(Ok(tail)) => Some(between(Some(&tail), None)?),
+        // Legacy ranks (e.g. "001000") need normalization before fractional allocation.
+        Some(Err(_)) => None,
+    };
+    if let Some(allocation) = allocation {
+        if !allocation.rebalance_recommended {
+            return Ok(allocation.rank.as_str().to_owned());
+        }
+    }
+    // Reuse move ordering's rebalance for legacy or long ranks, preserving sibling order.
+    let ranks = rebalance(siblings.len() + 1)?;
+    let (appended, existing) = ranks
+        .split_last()
+        .ok_or(ControlPlaneError::InvalidInput("rank"))?;
+    let ids = siblings.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+    let values = existing
+        .iter()
+        .map(|rank| rank.as_str())
+        .collect::<Vec<_>>();
+    sqlx::query(
+        r#"update frontstage_pages as page set rank = ordered.rank, updated_at = now()
+           from unnest($2::uuid[], $3::text[]) as ordered(id, rank)
+           where page.workspace_id = $1 and page.id = ordered.id"#,
+    )
+    .bind(input.workspace_id)
+    .bind(&ids)
+    .bind(&values)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(appended.as_str().to_owned())
+}
+
 async fn grant_new_frontstage_page_to_auto_grant_roles(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     workspace_id: Uuid,
@@ -509,6 +564,16 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         input: &CreateFrontstagePageInput,
     ) -> Result<domain::frontstage::FrontstagePageCreation> {
         let mut tx = self.pool().begin().await?;
+        // Include explicit-rank creates so concurrent moves/appends see committed siblings.
+        sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!("frontstage-page-order:{}", input.workspace_id))
+            .execute(&mut *tx)
+            .await?;
+        let rank = if input.rank.is_empty() {
+            allocate_appended_page_rank(&mut tx, input).await?
+        } else {
+            input.rank.clone()
+        };
         let row = sqlx::query(
             r#"
             insert into frontstage_pages (
@@ -553,7 +618,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(input.placement.as_str())
         .bind(input.content_presentation.as_str())
         .bind(&input.slug)
-        .bind(&input.rank)
+        .bind(&rank)
         .bind(input.actor_user_id)
         .fetch_one(&mut *tx)
         .await

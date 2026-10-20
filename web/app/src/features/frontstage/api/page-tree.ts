@@ -25,7 +25,7 @@ export interface CreateFrontstageNodeInput {
   icon?: string | null;
   tooltip?: string | null;
   parentId: string | null;
-  rank: string;
+  rank?: string;
   placement?: FrontstageNavigationPlacement;
   slug?: string | null;
 }

@@ -8,13 +8,23 @@ import {
 import { App } from 'antd';
 import { expect, test, vi } from 'vitest';
 
-import { TopbarNavigationItemLabel } from '../TopbarNavigationDesigner';
+import {
+  TopbarNavigationDesigner,
+  TopbarNavigationItemLabel
+} from '../TopbarNavigationDesigner';
 
+const createGroup = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const createPage = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const renameNode = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock(
   '../../features/frontstage/hooks/use-frontstage-page-tree-mutations',
   () => ({
-    useFrontstagePageTreeMutations: () => ({ isPending: false, renameNode })
+    useFrontstagePageTreeMutations: () => ({
+      isPending: false,
+      renameNode,
+      createGroup,
+      createPage
+    })
   })
 );
 
@@ -90,6 +100,38 @@ test.each(['page', 'group'] as const)(
         tooltip: '新描述'
       })
     );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+  }
+);
+
+test.each(['新增菜单', '新增页面'])(
+  '%s delegates append ordering to the backend',
+  async (action) => {
+    createGroup.mockClear();
+    createPage.mockClear();
+    render(
+      <App>
+        <TopbarNavigationDesigner workspaceId="workspace-1" />
+      </App>
+    );
+    fireEvent.click(screen.getByRole('button', { name: '添加菜单' }));
+    fireEvent.click(await screen.findByText(action));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: '名称' }), {
+      target: { value: '末尾栏目' }
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /确\s*定/ }));
+    const create = action === '新增菜单' ? createGroup : createPage;
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    const input = create.mock.calls[0][0];
+    expect(input).toMatchObject({
+      title: '末尾栏目',
+      parentId: null,
+      placement: 'topbar'
+    });
+    expect(input.rank).toBeUndefined();
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     );

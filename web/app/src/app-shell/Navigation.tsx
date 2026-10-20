@@ -486,20 +486,14 @@ export function Navigation({
           />
           {isDesignMode && workspaceId ? (
             <Suspense fallback={null}>
-              <TopbarNavigationDesigner
-                workspaceId={workspaceId}
-                nodes={frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES}
-              />
+              <TopbarNavigationDesigner workspaceId={workspaceId} />
             </Suspense>
           ) : null}
         </section>
       </Drawer>
       {isDesignMode && workspaceId ? (
         <Suspense fallback={null}>
-          <TopbarNavigationDesigner
-            workspaceId={workspaceId}
-            nodes={frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES}
-          />
+          <TopbarNavigationDesigner workspaceId={workspaceId} />
         </Suspense>
       ) : null}
       {isDesignMode && workspaceId && moveNodeId ? (

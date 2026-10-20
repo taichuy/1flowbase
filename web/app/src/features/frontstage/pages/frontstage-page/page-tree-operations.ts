@@ -7,7 +7,7 @@ type CreatePageTreeNodeInput = {
   icon?: string | null;
   tooltip?: string | null;
   parentId: string | null;
-  rank: string;
+  rank?: string;
 };
 
 type RenamePageTreeNodeInput = {
