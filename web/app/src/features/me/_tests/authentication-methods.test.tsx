@@ -103,9 +103,8 @@ beforeEach(() => {
       if (
         selectorError.name === 'SyntaxError' &&
         typeof selectorError.message === 'string' &&
-        selectorError.message.includes(
-          'rc-tabs-test-tab-1flowbase,,github-login'
-        ) &&
+        selectorError.message.includes('rc-tabs-test-') &&
+        selectorError.message.includes('1flowbase,,github-login') &&
         selectorError.message.includes(':focus-visible') &&
         element instanceof HTMLElement
       ) {
