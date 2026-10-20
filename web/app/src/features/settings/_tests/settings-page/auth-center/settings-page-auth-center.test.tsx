@@ -3,7 +3,7 @@ import {
   authCenterApi,
   authenticateWithPermissions,
   authenticatorConfigSchema,
-  renderApp
+  renderAuthCenterReady
 } from './settings-page.fixtures';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useAuthStore } from '../../../../../state/auth-store';
@@ -49,7 +49,7 @@ describe('SettingsPage', () => {
       ]
     });
 
-    renderApp('/settings/auth-center');
+    await renderAuthCenterReady();
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/settings/auth-center');
@@ -122,7 +122,7 @@ describe('SettingsPage', () => {
       ]
     });
 
-    renderApp('/settings/auth-center');
+    await renderAuthCenterReady();
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
@@ -224,7 +224,7 @@ describe('SettingsPage', () => {
       }
     });
 
-    renderApp('/settings/auth-center');
+    await renderAuthCenterReady();
 
     const editButton = await screen.findByRole('button', { name: '编辑' });
     fireEvent.click(editButton);
@@ -292,7 +292,7 @@ describe('SettingsPage', () => {
       new Error('permission denied')
     );
 
-    renderApp('/settings/auth-center');
+    await renderAuthCenterReady();
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
@@ -332,7 +332,7 @@ describe('SettingsPage', () => {
       ]
     });
 
-    renderApp('/settings/auth-center');
+    await renderAuthCenterReady();
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
@@ -376,7 +376,7 @@ describe('SettingsPage', () => {
       ]
     });
 
-    renderApp('/settings/auth-center');
+    await renderAuthCenterReady();
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
@@ -420,7 +420,7 @@ describe('SettingsPage', () => {
       ]
     });
 
-    renderApp('/settings/auth-center');
+    await renderAuthCenterReady();
 
     const editButton = await screen.findByRole('button', { name: '编辑' });
     fireEvent.click(editButton);

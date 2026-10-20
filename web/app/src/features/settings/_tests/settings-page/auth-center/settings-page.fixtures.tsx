@@ -1,6 +1,6 @@
-import { render } from '@testing-library/react';
+import { act, render, waitFor, within } from '@testing-library/react';
 import { Grid } from 'antd';
-import { beforeAll, beforeEach, vi } from 'vitest';
+import { beforeAll, beforeEach, expect, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => ({
   chart: {
@@ -481,6 +481,113 @@ function renderApp(pathname: string) {
   );
 }
 
+async function renderAuthCenterReady() {
+  const navigationBaseline =
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mock.calls.length;
+  const overviewBaseline =
+    authCenterApi.fetchSettingsAuthCenterOverview.mock.calls.length;
+  const navigation = settingsConsoleNavigation();
+  let resolveNavigation!: (value: typeof navigation) => void;
+  const pendingNavigation = new Promise<typeof navigation>((resolve) => {
+    resolveNavigation = resolve;
+  });
+  consoleNavigationApi.fetchSettingsConsoleNavigation.mockReturnValue(
+    pendingNavigation
+  );
+
+  const context = (phase: string) =>
+    JSON.stringify({
+      phase,
+      pathname: window.location.pathname,
+      navigationBaseline,
+      navigationCalls:
+        consoleNavigationApi.fetchSettingsConsoleNavigation.mock.calls.length,
+      overviewBaseline,
+      overviewCalls:
+        authCenterApi.fetchSettingsAuthCenterOverview.mock.calls.length,
+      overviewResultTypes:
+        authCenterApi.fetchSettingsAuthCenterOverview.mock.results
+          .slice(overviewBaseline, overviewBaseline + 3)
+          .map((result) => result.type),
+      main: document
+        .querySelector('.app-shell-content')
+        ?.outerHTML.slice(0, 2000)
+    });
+  const main = (phase: string) => {
+    const element = document.querySelector<HTMLElement>('.app-shell-content');
+    if (!element) throw new Error(context(phase));
+    return element;
+  };
+
+  const waitForPhase = (phase: string, assertion: () => void) =>
+    waitFor(assertion, {
+      onTimeout: (error) => new Error(context(phase), { cause: error })
+    });
+
+  const view = renderApp('/settings/auth-center');
+  await waitForPhase('navigation-pending', () => {
+    const pendingContext = context('navigation-pending');
+    expect(
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mock.calls.length,
+      pendingContext
+    ).toBeGreaterThan(navigationBaseline);
+    expect(
+      within(main('navigation-pending')).getByTestId('section-page-layout'),
+      pendingContext
+    ).toBeInTheDocument();
+    expect(window.location.pathname, pendingContext).toBe(
+      '/settings/auth-center'
+    );
+    expect(
+      authCenterApi.fetchSettingsAuthCenterOverview.mock.calls.length,
+      pendingContext
+    ).toBe(overviewBaseline);
+  });
+
+  await act(async () => {
+    resolveNavigation(navigation);
+  });
+
+  await waitForPhase('overview-requested', () => {
+    const requestedContext = context('overview-requested');
+    expect(
+      authCenterApi.fetchSettingsAuthCenterOverview.mock.calls.length,
+      requestedContext
+    ).toBeGreaterThan(overviewBaseline);
+    expect(
+      authCenterApi.fetchSettingsAuthCenterOverview.mock.results[
+        overviewBaseline
+      ]?.type,
+      requestedContext
+    ).toBe('return');
+  });
+  const overviewResult =
+    authCenterApi.fetchSettingsAuthCenterOverview.mock.results[
+      overviewBaseline
+    ];
+  if (overviewResult.type !== 'return') {
+    throw new Error(context('overview-result'));
+  }
+  // Observe the application's actual request; do not consume a queued mock response.
+  try {
+    await act(async () => {
+      await overviewResult.value;
+    });
+  } catch (error) {
+    throw new Error(context('overview-resolved'), { cause: error });
+  }
+
+  await waitForPhase('auth-table-ready', () => {
+    const tableContext = context('auth-table-ready');
+    const table = within(main('auth-table-ready')).getByRole('table');
+    expect(
+      table.closest('.settings-auth-center__table'),
+      tableContext
+    ).not.toBeNull();
+  });
+  return view;
+}
+
 beforeEach(() => {
   echartsMock.init.mockReturnValue(echartsMock.chart);
   resetAuthStore();
@@ -931,5 +1038,6 @@ export {
   consoleNavigationApi,
   docsApi,
   renderApp,
+  renderAuthCenterReady,
   settingsConsoleNavigation
 };
