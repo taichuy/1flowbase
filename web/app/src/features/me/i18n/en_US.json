@@ -28,8 +28,7 @@
       "title": "Edit personal information"
     },
     "empty": {
-      "introduction": "No bio",
-      "permissions": "No explicit permissions"
+      "introduction": "No bio"
     },
     "fields": {
       "account": "Account name",
@@ -39,7 +38,6 @@
       "introduction": "Bio",
       "name": "Legal name",
       "nickname": "Nickname",
-      "permissions": "System permissions",
       "phone": "Phone"
     },
     "form": {

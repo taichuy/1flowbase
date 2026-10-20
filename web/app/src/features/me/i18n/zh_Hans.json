@@ -28,8 +28,7 @@
       "title": "编辑个人信息"
     },
     "empty": {
-      "introduction": "暂无介绍",
-      "permissions": "暂无显式权限"
+      "introduction": "暂无介绍"
     },
     "fields": {
       "account": "账号名称",
@@ -39,7 +38,6 @@
       "introduction": "个人介绍",
       "name": "真实姓名",
       "nickname": "昵称",
-      "permissions": "系统权限",
       "phone": "手机号码"
     },
     "form": {

@@ -45,8 +45,7 @@
 }
 
 .me-profile-card__status,
-.me-profile-card__role,
-.me-profile-card__permission {
+.me-profile-card__role {
   margin: 0;
   border-radius: 999px;
 }
@@ -55,10 +54,6 @@
   background: #f0f7ff;
   border-color: #d6e4ff;
   color: #597ef7;
-}
-
-.me-profile-card__permissions {
-  row-gap: 8px;
 }
 
 .me-profile-card__divider {

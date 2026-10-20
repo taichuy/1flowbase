@@ -181,34 +181,6 @@ export function ProfileForm({
                 )}
               </Descriptions.Item>
               <Descriptions.Item
-                label={t('profile.fields.permissions')}
-                span={3}
-              >
-                {me.permissions.length > 0 ? (
-                  <Space
-                    className="me-profile-card__permissions"
-                    size={[4, 8]}
-                    wrap
-                  >
-                    {me.permissions.map((permission) => (
-                      <Tag
-                        key={permission}
-                        className="me-profile-card__permission"
-                      >
-                        {permission}
-                      </Tag>
-                    ))}
-                  </Space>
-                ) : (
-                  <Typography.Text
-                    className="me-profile-card__placeholder"
-                    type="secondary"
-                  >
-                    {t('profile.empty.permissions')}
-                  </Typography.Text>
-                )}
-              </Descriptions.Item>
-              <Descriptions.Item
                 label={t('profile.fields.introduction')}
                 span={3}
               >

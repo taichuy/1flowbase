@@ -54,7 +54,7 @@ function authenticate(
       preferred_locale: preferredLocale,
       meta,
       effective_display_role: 'member',
-      permissions: []
+      permissions: ['application.create.all', 'plugin_config.configure.all']
     }
   });
 }
@@ -118,6 +118,10 @@ describe('MePage', () => {
       'section-page-layout--narrow'
     );
     expect(screen.queryByText('退出登录')).not.toBeInTheDocument();
+    expect(screen.getByText('member')).toBeInTheDocument();
+    expect(screen.queryByText('系统权限')).not.toBeInTheDocument();
+    expect(screen.queryByText('application.create.all')).not.toBeInTheDocument();
+    expect(screen.queryByText('plugin_config.configure.all')).not.toBeInTheDocument();
   });
 
   test(
