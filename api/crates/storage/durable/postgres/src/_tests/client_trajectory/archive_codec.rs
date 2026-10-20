@@ -310,7 +310,10 @@ async fn raw_codec_receipt_restart_late_bind_retry_scope_and_mixed_part_pages() 
 
 #[tokio::test]
 async fn raw_codec_historical_migration_reentry_exact_wire_and_legacy_sql_reference_retained() {
-    let (pool, flow) = super::super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let (pool, flow) = super::super::provider_protocol_capsule_store_tests::seeded_flow_run_before(
+        Some(20261019210000),
+    )
+    .await;
     let store = PgControlPlaneStore::new(pool.clone());
     let request = Uuid::now_v7();
     bind_request(&store, flow, request).await;
@@ -561,14 +564,32 @@ async fn raw_codec_database_corruption_unknown_version_raw_length_checksum_and_t
     .await
     .unwrap();
     for (sql, expected) in [
-        ("update client_trajectory_archive_parts set codec_version=99 where part_id=$1", "unknown client archive codec version"),
-        ("update client_trajectory_archive_parts set raw_byte_length=raw_byte_length+1 where part_id=$1", "raw length mismatch"),
-        ("update client_trajectory_archive_parts set raw_checksum=decode(repeat('00',32),'hex') where part_id=$1", "checksum mismatch"),
-        ("update client_trajectory_archive_parts set bytes=substring(bytes from 1 for octet_length(bytes)-1) where part_id=$1", "truncated"),
-        ("update client_trajectory_archive_parts set frame_directory=substring(frame_directory from 1 for octet_length(frame_directory)-1) where part_id=$1", "checksum mismatch"),
+        (
+            "update client_trajectory_archive_parts set codec_version=99 where part_id=$1",
+            "unknown client archive codec version",
+        ),
+        (
+            "update client_trajectory_archive_parts set raw_byte_length=raw_byte_length+1 where part_id=$1",
+            "raw length mismatch",
+        ),
+        (
+            "update client_trajectory_archive_parts set raw_checksum=decode(repeat('00',32),'hex') where part_id=$1",
+            "checksum mismatch",
+        ),
+        (
+            "update client_trajectory_archive_parts set bytes=substring(bytes from 1 for octet_length(bytes)-1) where part_id=$1",
+            "truncated",
+        ),
+        (
+            "update client_trajectory_archive_parts set frame_directory=substring(frame_directory from 1 for octet_length(frame_directory)-1) where part_id=$1",
+            "checksum mismatch",
+        ),
     ] {
         sqlx::query(sql).bind(part).execute(&pool).await.unwrap();
-        let error = store.read_client_trajectory_archive(request, 0, 1).await.expect_err("damaged part was accepted");
+        let error = store
+            .read_client_trajectory_archive(request, 0, 1)
+            .await
+            .expect_err("damaged part was accepted");
         assert!(format!("{error:#}").contains(expected), "{error:#}");
         sqlx::query("update client_trajectory_archive_parts set codec_version=1,bytes=$2,frame_directory=$3,raw_byte_length=$4,raw_checksum=$5 where part_id=$1")
             .bind(part).bind(&original.0).bind(&original.1).bind(original.2).bind(&original.3).execute(&pool).await.unwrap();

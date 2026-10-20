@@ -123,6 +123,17 @@ pub(super) async fn dispatch_response_for_endpoint(
         }
     };
     let application_actor = compatibility_interface::application_actor(principal.principal());
+    let responses_envelope = if endpoint == OpenAiResponsesEndpoint::Responses
+        && (headers.contains_key("session-id") || headers.contains_key("thread-id"))
+    {
+        responses_envelope.with_session_identity(session_context::responses_session_identity(
+            principal.principal(),
+            &headers,
+            None,
+        )?)
+    } else {
+        responses_envelope
+    };
     let request_context = compact::responses_request_context(
         &headers,
         endpoint,

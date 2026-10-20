@@ -850,7 +850,7 @@
     },
     "client_trajectory_steps": {
       "kind": "bounded_projection",
-      "reason": "client trajectory steps are bounded event projections keyed by request and event identity with pagination indexes on flow runs",
+      "reason": "client trajectory steps are current repository-owned semantic directories with run-scoped identities and pagination indexes; pre-0.5 event-backed rows are retained but unsupported",
       "skip": [
         "managed-table-created-at",
         "managed-table-updated-at-or-append-only",
@@ -860,7 +860,7 @@
     },
     "client_trajectory_sections": {
       "kind": "bounded_projection",
-      "reason": "client trajectory sections are bounded event projections keyed by event_id and request with section-specific evidence ordering",
+      "reason": "client trajectory sections are current repository-owned content/timing directories with occurrence identities and run-scoped ordering; pre-0.5 event-backed rows are retained but unsupported",
       "skip": [
         "managed-table-id",
         "managed-table-created-at",

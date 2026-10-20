@@ -53,11 +53,11 @@ function NamedBindingsFocusHarness() {
 }
 
 describe('NodeInspector core', () => {
-  test('preserves legacy SQL text and writes the templated binding on edit', async () => {
+  test('reads only the current SQL binding and writes it on edit', async () => {
     const state = createInitialState();
     const sqlNode = createNodeDocument('sql', 'node-sql', 720, 240);
-    delete sqlNode.bindings.sql;
-    sqlNode.config.sql = 'select {{node-start.query}}';
+    sqlNode.bindings.sql = { kind: 'templated_text', value: 'select {{node-start.query}}' };
+    sqlNode.config.sql = 'retired SQL must not override the current binding';
     state.draft.document.graph.nodes.push(sqlNode);
     let latestDocument = state.draft.document;
 

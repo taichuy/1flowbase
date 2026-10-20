@@ -1213,9 +1213,7 @@ fn summarize_bundle_effects(
 }
 
 fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
-    if package.manifest.schema_version != domain::MCP_BUNDLE_SCHEMA_VERSION
-        && package.manifest.schema_version != "1flowbase.mcp.bundle/v1"
-    {
+    if package.manifest.schema_version != domain::MCP_BUNDLE_SCHEMA_VERSION {
         return Err(ControlPlaneError::InvalidInput("schema_version").into());
     }
     validate_identifier(&package.manifest.organization, "organization")?;

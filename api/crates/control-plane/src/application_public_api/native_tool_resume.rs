@@ -166,6 +166,9 @@ where
     if expected_ids != call_ids {
         return Err(ControlPlaneError::Conflict("native_tool_output_incomplete_round").into());
     }
+    if is_independent_session_history(envelope, &flow_run, &call_id_list) {
+        return Ok(None);
+    }
     // Fork/new-turn sampling replays completed tool history with fresh context and
     // configuration. It must not mutate or recover the historical callback receipt.
     // Pending rounds and explicit response cursors retain the resume checks below.
@@ -249,6 +252,65 @@ where
         return Err(ControlPlaneError::Conflict("native_tool_output_round_not_pending").into());
     }
     Ok(Some((callback, json!({"tool_results": tool_results}))))
+}
+
+/// A self-contained request in another authenticated session starts new sampling.
+/// It does not claim the old callback, even if the fork copied a pending round.
+/// Codex rebuilds prompt-only item IDs per thread; the predecessor digest belongs
+/// exclusively to the original session's recovery path and remains unchanged.
+fn is_independent_session_history(
+    envelope: &OpenAiResponsesEnvelope,
+    flow_run: &domain::FlowRunRecord,
+    owned_call_ids: &[String],
+) -> bool {
+    if envelope.previous_response_id().is_some() {
+        return false;
+    }
+    let identities = envelope.session_identity().zip(
+        flow_run
+            .input_payload
+            .pointer("/sys/provider_session_identity")
+            .and_then(Value::as_str),
+    );
+    if !identities.is_some_and(|(current, original)| {
+        !current.is_empty() && !original.is_empty() && current != original
+    }) {
+        return false;
+    }
+    let Some(input) = envelope.raw_body()["input"].as_array() else {
+        return false;
+    };
+    let positions = envelope.index().input().current_tool_output_positions();
+    let expected: BTreeSet<&str> = owned_call_ids.iter().map(String::as_str).collect();
+    if expected.is_empty()
+        || expected.len() != owned_call_ids.len()
+        || positions.len() != expected.len()
+    {
+        return false;
+    }
+    let supplied: BTreeSet<&str> = positions
+        .iter()
+        .filter_map(|position| {
+            let item = &input[*position];
+            item.get("output")?;
+            item.get("call_id").and_then(Value::as_str)
+        })
+        .collect();
+    if supplied != expected {
+        return false;
+    }
+    let mut remaining = expected;
+    for item in &input[..positions[0]] {
+        if matches!(
+            item.get("type").and_then(Value::as_str),
+            Some("function_call" | "custom_tool_call")
+        ) {
+            if let Some(id) = item.get("call_id").and_then(Value::as_str) {
+                remaining.remove(id);
+            }
+        }
+    }
+    remaining.is_empty()
 }
 
 #[cfg(test)]

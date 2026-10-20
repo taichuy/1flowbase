@@ -212,7 +212,7 @@ fn build_official_mcp_bundle() -> Vec<u8> {
         "name": "Runtime profile",
         "short_description": "Runtime profile",
         "full_description": "Read runtime profile",
-        "interface_id": "get_runtime_profile",
+        "execution_target": {"kind":"interface_wrapper", "interface_id":"get_runtime_profile"},
         "parameter_schema_snapshot": {},
         "result_schema_snapshot": {},
         "input_mapping": {},
@@ -223,7 +223,7 @@ fn build_official_mcp_bundle() -> Vec<u8> {
     }))
     .unwrap();
     let manifest = serde_json::to_vec(&json!({
-        "schema_version": "1flowbase.mcp.bundle/v1",
+        "schema_version": "1flowbase.mcp.bundle/v2",
         "organization": "taichuy",
         "bundle_id": "test_bundle",
         "bundle_version": "1.0.0",

@@ -9,6 +9,7 @@ mod archive_codec;
 mod block_sealing;
 mod compact_directory;
 mod dense_directory;
+mod format_cutoff;
 mod ownership;
 mod packed_directory;
 mod persistence;
@@ -166,7 +167,7 @@ async fn client_trajectory_scoped_pages_sections_originals_terminal_append_and_c
         },
     )
     .await;
-    let exact=" { \"city\": \"北京\", \"token\": \"user-token\", \"password\": \"user-password\", \"nul\": \"\\u0000\" } \n";
+    let exact = " { \"city\": \"北京\", \"token\": \"user-token\", \"password\": \"user-password\", \"nul\": \"\\u0000\" } \n";
     section(
         &store,
         flow,
@@ -882,7 +883,9 @@ async fn archive_binary_nul_unbound_scope_paging_late_frames_and_restart() {
 
 #[tokio::test]
 async fn formal_archive_migration_retains_legacy_cursor_and_lossless_nul() {
-    let (pool, flow) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let (pool, flow) =
+        super::provider_protocol_capsule_store_tests::seeded_flow_run_before(Some(20261019210000))
+            .await;
     let store = PgControlPlaneStore::new(pool.clone());
     let request = Uuid::now_v7();
     begin(&store, flow, None, request).await;
@@ -1000,7 +1003,9 @@ async fn formal_archive_migration_retains_legacy_cursor_and_lossless_nul() {
 #[tokio::test]
 async fn formal_release_migration_reconstructs_metadata_rejects_foreign_scope_and_retains_nul_exception(
 ) {
-    let (pool, flow) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let (pool, flow) =
+        super::provider_protocol_capsule_store_tests::seeded_flow_run_before(Some(20261019210000))
+            .await;
     let store = PgControlPlaneStore::new(pool.clone());
     let request = Uuid::now_v7();
     begin(&store, flow, None, request).await;

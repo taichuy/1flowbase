@@ -104,7 +104,7 @@ Runtime Worker 是 Dispatch 后的执行目标；Background Worker/Schedule 是�
 
 ### 保存格式兼容与退场
 
-SQL 节点当前字段为 `bindings.sql`。已有保存流程仍可能携带 `config.sql`，编译器与编辑器保留该旧格式读取，已有 compiler normalization 与 node-inspector 测试保护；它不是新增的后端输出字段别名。兼容截止检查更新为 2026-11-30，不能通过删除读取能力让旧流程失效。退场需先统一草稿/发布快照/导入模板的 canonical normalization，核对持久化旧格式 inventory 和读写消费者，再用历史保存流程回归证明字段迁移后行为完整，最后删除两端兼容入口与标记。
+SQL 节点唯一输入字段为 `bindings.sql`。`config.sql` 属于已退出支持的旧保存格式：编译器明确拒绝该字段，编辑器只显示和更新当前绑定，不自动迁移或回退读取。已有草稿、版本和模板若仍使用旧字段，需由内容维护方转换后重新提交；编译成功不得掩盖被忽略的 SQL。当前 templated SQL 的空白、表达式与执行语义保持不变。
 
 动态 i18n key 继续由 hygiene warning 暴露：BlockStudioWorkspace 的 section.labelKey、菜单 label_key 和网络健康后缀由配置/后端字段消费；保留资源与真实 renderer owner。不存在消费者的旧分组文案可删除，不能为消除 warning 改写仍使用的文案。
 
