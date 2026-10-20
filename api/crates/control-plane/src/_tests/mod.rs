@@ -9,6 +9,7 @@ mod bootstrap_tests;
 #[path = "extensions/capability_plugin_runtime_tests.rs"]
 mod capability_plugin_runtime_tests;
 mod data_source_service_tests;
+#[path = "host_infrastructure/ephemeral_inspection_contract_tests.rs"]
 mod ephemeral_inspection_contract_tests;
 mod external_agent_bridge_tests;
 mod file_management;

@@ -1,10 +1,10 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { productionRustSources } = require('../../testing/contracts/rust-sources.js');
 
 const root = path.resolve(__dirname, '../../../..');
-const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+const read = (relative) => productionRustSources(path.join(root, relative));
 
 test('PDM boundary keeps manifest as the single additive declaration', () => {
   const manifest = [

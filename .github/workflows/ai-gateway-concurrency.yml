@@ -129,6 +129,8 @@ jobs:
 
       - name: Run the single blocking AI Gateway quality command
         id: protocol_conformance
+        env:
+          API_AUTH_PUBLIC_ORIGIN: https://auth-fixture.example
         shell: bash
         run: >-
           node scripts/node/ai-gateway-concurrency/quality-gate/cli.js run

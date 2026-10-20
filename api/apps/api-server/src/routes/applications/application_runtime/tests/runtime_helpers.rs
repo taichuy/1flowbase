@@ -221,7 +221,7 @@ fn application_run_statistics_counts_indexed_llm_tool_callbacks() {
 
 #[test]
 fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
-    let reads = include_str!("../interface_runtime_reads.rs");
+    let reads = include_str!("../interface_runtime_reads/run_read_queries.rs");
     let payloads = include_str!("../interface_trace_payloads.rs");
     let trace_tree = application_runtime_method_source(reads, "trace_tree");
     let trace_children = application_runtime_method_source(reads, "trace_children");
@@ -270,7 +270,7 @@ fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
 #[test]
 fn run_conversation_messages_endpoint_reads_projection_without_full_detail_fallback() {
     let function_source = application_runtime_method_source(
-        include_str!("../interface_runtime_reads.rs"),
+        include_str!("../interface_runtime_reads/run_read_queries.rs"),
         "run_conversation_messages",
     );
 
@@ -315,7 +315,10 @@ fn trace_projection_status_read_never_rebuilds_or_reads_source() {
 fn d1_lightweight_endpoint_inventory_keeps_detail_export_and_archive_contract_boundaries() {
     let runtime_reads = include_str!("../interface_runtime_reads.rs");
     let trace_payloads = include_str!("../interface_trace_payloads.rs");
-    let overview_loader = application_runtime_method_source(runtime_reads, "run_overview");
+    let overview_loader = application_runtime_method_source(
+        include_str!("../interface_runtime_reads/run_read_queries.rs"),
+        "run_overview",
+    );
     assert!(overview_loader.contains("get_application_run_overview"));
     assert!(!overview_loader.contains("get_application_run_detail"));
 

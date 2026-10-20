@@ -1167,3 +1167,8 @@ test('every full or scoped SDK worker prebuild exports the real notification pro
   const runner = fs.readFileSync(path.join(repoRoot, 'scripts/node/plugin-composition-test-batch/runner.js'), 'utf8');
   assert.match(runner, /example: 'notification_worker', env: 'NOTIFICATION_WORKER_FIXTURE'/u);
 });
+
+test('full quality and protocol fixtures supply an explicit external authentication callback origin', () => {
+  assert.match(readQualityGateAction(), /export API_AUTH_PUBLIC_ORIGIN="\$\{API_AUTH_PUBLIC_ORIGIN:-https:\/\/auth-fixture\.example\}"/u);
+  assert.match(readAiGatewayConcurrencyWorkflow(), /id: protocol_conformance\s+env:\s+API_AUTH_PUBLIC_ORIGIN: https:\/\/auth-fixture\.example/u);
+});

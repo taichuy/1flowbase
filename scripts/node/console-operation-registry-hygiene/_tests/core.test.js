@@ -395,3 +395,28 @@ test('compiled checks run serial cargo targets and fail when a target fails or e
   ]);
   assert.equal(calls[0].options.cwd, path.join('/repo-root', 'api'));
 });
+
+
+test('source advisories follow private role controllers and startup assembly but exclude test fixtures', (t) => {
+  const repoRoot = createFixtureRepo();
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const roleRoot = 'web/app/src/features/settings/components/role-permissions';
+  const startupRoot = 'api/apps/api-server/src/internal';
+  writeText(repoRoot, `${roleRoot}/_tests/negative.ts`, 'const RESOURCE_MAP = {};');
+  writeText(repoRoot, `${startupRoot}/_tests/negative.rs`, '.route("/api/console/test", get(handler))');
+  const evaluate = () => evaluateConsoleOperationRegistryHygiene({
+    repoRoot,
+    inventory: collectConsoleOperationRegistryInventory({
+      repoRoot, compiledInventoryPath: 'tmp/current.json',
+      baselineInventoryPath: 'tmp/baseline.json', localeDir: 'web/locales',
+    }),
+    compiledChecks: passingCompiledChecks(),
+  });
+  assert.equal(evaluate().summary.warnings, 0);
+  writeText(repoRoot, `${roleRoot}/nested/useRolePermissionController.tsx`, 'const RESOURCE_MAP = {};');
+  writeText(repoRoot, `${startupRoot}/startup_assembly.rs`, '.route("/api/console/bypass", get(handler))');
+  const report = evaluate();
+  assert.ok(report.findings.some((finding) => finding.rule === 'frontend-role-permission-legacy-map'));
+  assert.ok(report.findings.some((finding) => finding.rule === 'console-route-outside-assembly'));
+  assert.equal(report.summary.errors, 0, 'source advisories do not replace compiled authorization evidence');
+});

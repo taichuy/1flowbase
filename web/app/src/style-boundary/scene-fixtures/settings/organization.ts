@@ -22,7 +22,7 @@ const departments: ConsoleDepartment[] = [
     member_count: 1
   }
 ];
-const members: ConsoleMember[] = [
+export const styleBoundaryOrganizationMembers: ConsoleMember[] = [
   {
     id: 'boundary-member-1',
     account: 'alex',
@@ -109,35 +109,34 @@ export function seedStyleBoundaryOrganizationFetch() {
         break;
       case '/api/console/settings/departments':
         data = {
-          items: departments
-            .flatMap((item) => {
-              const ids = url.searchParams.get('ids');
-              const prefix = url.searchParams.get('prefix');
-              const included = ids
-                ? ids.split(',').includes(item.id)
-                : prefix
-                  ? item.name.toLowerCase().startsWith(prefix.toLowerCase()) ||
-                    departments.some(
-                      (child) =>
-                        child.parent_id === item.id &&
-                        child.name
-                          .toLowerCase()
-                          .startsWith(prefix.toLowerCase())
-                    )
-                  : item.parent_id === url.searchParams.get('parent_id');
-              if (!included) return [];
-              return [{
-              ...item,
-              has_children: departments.some(
-                (child) => child.parent_id === item.id
-              ),
-              is_match:
-                !url.searchParams.get('prefix') ||
-                item.name
-                  .toLowerCase()
-                  .startsWith(url.searchParams.get('prefix')!.toLowerCase())
-              }];
-            }),
+          items: departments.flatMap((item) => {
+            const ids = url.searchParams.get('ids');
+            const prefix = url.searchParams.get('prefix');
+            const included = ids
+              ? ids.split(',').includes(item.id)
+              : prefix
+                ? item.name.toLowerCase().startsWith(prefix.toLowerCase()) ||
+                  departments.some(
+                    (child) =>
+                      child.parent_id === item.id &&
+                      child.name.toLowerCase().startsWith(prefix.toLowerCase())
+                  )
+                : item.parent_id === url.searchParams.get('parent_id');
+            if (!included) return [];
+            return [
+              {
+                ...item,
+                has_children: departments.some(
+                  (child) => child.parent_id === item.id
+                ),
+                is_match:
+                  !url.searchParams.get('prefix') ||
+                  item.name
+                    .toLowerCase()
+                    .startsWith(url.searchParams.get('prefix')!.toLowerCase())
+              }
+            ];
+          }),
           has_more: false,
           next_cursor: null
         };
@@ -149,7 +148,7 @@ export function seedStyleBoundaryOrganizationFetch() {
         ];
         break;
       case '/api/console/settings/members':
-        data = members;
+        data = styleBoundaryOrganizationMembers;
         break;
       default:
         return fallback(input, init);

@@ -4,9 +4,9 @@
     {
       "file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "5109f44daa360f867a5b97fb27924802bd9aff091eaa4a0fd66711df51f4e6be",
+      "sourceSha256": "59adedfc75bc5d3f38128b8c5b270f3bb2fddf96f86a67b8edc9ca23c99eb1b9",
       "reason": "This role expresses an asynchronous live region or custom adjustable separator/widget. The source below supplies the actual owner and keyboard contract; native output/hr/input would change that contract. This fixture intentionally includes a focusable custom role=slider widget alongside input/contenteditable/button to verify PageCanvas does not steal Enter/Space from inner interactive targets. It needs a complete slider ARIA value contract, while replacing it with input range would remove this custom-widget ownership case.",
-      "evidence": [{"file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx", "sha256": "5109f44daa360f867a5b97fb27924802bd9aff091eaa4a0fd66711df51f4e6be"}]
+      "evidence": [{"file": "web/app/src/features/frontstage/_tests/page-canvas/keyboard/canvas-keyboard-ownership.test.tsx", "sha256": "59adedfc75bc5d3f38128b8c5b270f3bb2fddf96f86a67b8edc9ca23c99eb1b9"}]
     }
   ]
 }

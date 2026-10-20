@@ -76,6 +76,8 @@ fn compatibility_routes_select_frozen_bindings_and_registered_invocation_helpers
         include_str!("../../routes/application_public_api/openai.rs"),
         "\n",
         include_str!("../../routes/application_public_api/openai/response_dispatch.rs"),
+        "\n",
+        include_str!("../../routes/application_public_api/openai/response_dispatch/execution.rs"),
     );
     let anthropic = include_str!("../../routes/application_public_api/anthropic.rs");
 

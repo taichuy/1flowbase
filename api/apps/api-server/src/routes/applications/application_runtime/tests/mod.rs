@@ -17,15 +17,17 @@ fn application_runtime_function_source<'a>(
 }
 
 fn application_runtime_method_source<'a>(source: &'a str, method_name: &str) -> &'a str {
-    let marker = format!("    async fn {method_name}(");
+    let marker = format!("async fn {method_name}(");
     let start = source
         .find(&marker)
         .unwrap_or_else(|| panic!("{marker} source exists"));
     let remaining_source = &source[start..];
-    let end = remaining_source[marker.len()..]
-        .find("\n    async fn ")
-        .map(|offset| marker.len() + offset)
-        .unwrap_or(remaining_source.len());
+    // rustfmt aligns an impl method's closing brace with its declaration. Stop at
+    // that brace so assertions cannot be satisfied by a neighboring method.
+    let end = remaining_source
+        .find("\n    }")
+        .map(|offset| offset + "\n    }".len())
+        .unwrap_or_else(|| panic!("{method_name} closing brace exists"));
 
     &remaining_source[..end]
 }

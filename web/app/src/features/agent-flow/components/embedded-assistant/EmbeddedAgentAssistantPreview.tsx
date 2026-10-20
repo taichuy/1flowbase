@@ -1,21 +1,25 @@
-import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
+import { AssistantConversationSubtitle } from './AssistantConversationSubtitle';
+import {
+  assistantConversationKey,
+  assistantConversationGroup,
+  upsertAssistantConversation,
+  assistantRunStatusIndicator
+} from './assistant-conversation-presentation';
+
 import {
   listConsoleAssistantConversations,
   subscribeConsoleAssistantConversationsWebSocket,
   updateConsoleAssistantSettings,
   type ConsoleAssistantConversationPage,
-  type ConsoleAssistantConversationSummary,
   type ConsoleAssistantPreference
 } from '@1flowbase/api-client';
-import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
+
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
-import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
-import ExclamationCircleOutlined from '@ant-design/icons/es/icons/ExclamationCircleOutlined';
-import LoadingOutlined from '@ant-design/icons/es/icons/LoadingOutlined';
+
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import WarningOutlined from '@ant-design/icons/es/icons/WarningOutlined';
 import Conversations from '@ant-design/x/es/conversations';
-import { Alert, App, Button, Checkbox, Form, Tooltip } from 'antd';
+import { Alert, Button, Checkbox, Form } from 'antd';
 import {
   lazy,
   Suspense,
@@ -37,7 +41,7 @@ import {
 } from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
-import { useClipboardCopy } from '../../../../shared/ui/clipboard/use-clipboard-copy';
+
 import { useAuthStore } from '../../../../state/auth-store';
 import {
   WindowWorkspaceWindow,
@@ -90,183 +94,6 @@ const ASSISTANT_CONVERSATION_MIN_WIDTH = 220;
 const ASSISTANT_HISTORY_RESIZE_WIDTH = 12;
 
 type AssistantHistoryExpansionSide = 'left' | 'right';
-
-function AssistantConversationSubtitle({
-  conversationId,
-  flowName
-}: {
-  conversationId: string | null;
-  flowName?: string;
-}) {
-  const { message } = App.useApp();
-  const { copied, copy } = useClipboardCopy();
-
-  async function copyConversationId() {
-    if (!conversationId) {
-      return;
-    }
-    try {
-      await copy(conversationId);
-      message.success(
-        i18nText('appShell', 'auto.assistant_conversation_id_copied')
-      );
-    } catch {
-      message.error(
-        i18nText('appShell', 'auto.assistant_copy_conversation_id_failed')
-      );
-    }
-  }
-
-  return (
-    <span className="embedded-agent-assistant-preview__subtitle">
-      {flowName ? (
-        <span className="embedded-agent-assistant-preview__flow-name">
-          {flowName}
-        </span>
-      ) : null}
-      {conversationId ? (
-        <span className="embedded-agent-assistant-preview__conversation-id">
-          <Tooltip title={conversationId}>
-            <span className="embedded-agent-assistant-preview__conversation-id-value">
-              {conversationId}
-            </span>
-          </Tooltip>
-          <Tooltip
-            title={i18nText('appShell', 'auto.assistant_copy_conversation_id')}
-          >
-            <Button
-              aria-label={i18nText(
-                'appShell',
-                'auto.assistant_copy_conversation_id'
-              )}
-              className="embedded-agent-assistant-preview__conversation-id-copy"
-              icon={copied ? <CheckOutlined /> : <CopyOutlined />}
-              size="small"
-              type="text"
-              onClick={() => void copyConversationId()}
-            />
-          </Tooltip>
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-function assistantConversationKey(item: {
-  conversation_id: string | null;
-  legacy_flow_run_id: string | null;
-}) {
-  return item.conversation_id
-    ? `conversation:${item.conversation_id}`
-    : `legacy:${item.legacy_flow_run_id}`;
-}
-
-const assistantConversationDateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric'
-});
-
-function assistantConversationGroup(updatedAt: string) {
-  const date = new Date(updatedAt);
-  return Number.isNaN(date.getTime())
-    ? i18nText('appShell', 'auto.assistant_history')
-    : assistantConversationDateFormatter.format(date);
-}
-
-function upsertAssistantConversation(
-  page: ConsoleAssistantConversationPage,
-  item: ConsoleAssistantConversationSummary,
-  eventType: 'conversation.created' | 'conversation.updated'
-): ConsoleAssistantConversationPage {
-  const itemKey = assistantConversationKey(item);
-  const exists = page.items.some(
-    (candidate) => assistantConversationKey(candidate) === itemKey
-  );
-  const items = [
-    item,
-    ...page.items.filter(
-      (candidate) => assistantConversationKey(candidate) !== itemKey
-    )
-  ].sort((left, right) => {
-    const updatedAtOrder = right.updated_at.localeCompare(left.updated_at);
-    return updatedAtOrder !== 0
-      ? updatedAtOrder
-      : assistantConversationKey(right).localeCompare(
-          assistantConversationKey(left)
-        );
-  });
-  return {
-    ...page,
-    items,
-    total:
-      !exists && eventType === 'conversation.created'
-        ? page.total + 1
-        : page.total
-  };
-}
-
-function assistantRunStatusIndicator(status: string | null) {
-  const commonProps = {
-    'data-assistant-run-status': status ?? undefined
-  };
-  if (['queued', 'running', 'waiting_callback'].includes(status ?? '')) {
-    const label = i18nText('appShell', 'auto.assistant_status_running');
-    return (
-      <Tooltip title={label}>
-        <span
-          {...commonProps}
-          aria-label={label}
-          className="embedded-agent-assistant-preview__history-item-status embedded-agent-assistant-preview__history-item-status--running"
-        >
-          <LoadingOutlined spin />
-        </span>
-      </Tooltip>
-    );
-  }
-  if (['waiting_human', 'paused'].includes(status ?? '')) {
-    const label = i18nText('appShell', 'auto.assistant_status_waiting');
-    return (
-      <Tooltip title={label}>
-        <span
-          {...commonProps}
-          aria-label={label}
-          className="embedded-agent-assistant-preview__history-item-status embedded-agent-assistant-preview__history-item-status--waiting"
-        >
-          <ClockCircleOutlined />
-        </span>
-      </Tooltip>
-    );
-  }
-  if (['failed', 'incomplete'].includes(status ?? '')) {
-    const label = i18nText('appShell', 'auto.assistant_status_failed');
-    return (
-      <Tooltip title={label}>
-        <span
-          {...commonProps}
-          aria-label={label}
-          className="embedded-agent-assistant-preview__history-item-status embedded-agent-assistant-preview__history-item-status--failed"
-        >
-          <ExclamationCircleOutlined />
-        </span>
-      </Tooltip>
-    );
-  }
-  if (status === 'cancelled') {
-    const label = i18nText('appShell', 'auto.assistant_status_cancelled');
-    return (
-      <Tooltip title={label}>
-        <span
-          {...commonProps}
-          aria-label={label}
-          className="embedded-agent-assistant-preview__history-item-status embedded-agent-assistant-preview__history-item-status--cancelled"
-        >
-          <CloseOutlined />
-        </span>
-      </Tooltip>
-    );
-  }
-  return null;
-}
 
 export function EmbeddedAgentAssistantPreview({
   open,

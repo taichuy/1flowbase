@@ -963,6 +963,19 @@
     }
   },
   "ownedTableContracts": {
+    "runtime_credit_ledger": {
+      "primaryKey": ["id"],
+      "foreignKeys": [
+        {
+          "columns": ["workspace_id"],
+          "table": "workspaces",
+          "references": ["id"],
+          "onDelete": "cascade"
+        }
+      ],
+      "indexes": [["workspace_id", "user_id", "created_at", "id"]],
+      "unconditionalIndexes": [["workspace_id", "created_at", "id"]]
+    },
     "model_provider_session_bindings": {
       "primaryKey": [
         "workspace_id",

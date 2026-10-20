@@ -5,6 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
+const { productionRustSources, bootRustSources } = require('../../testing/contracts/rust-sources.js');
+
 const repoRoot = path.resolve(__dirname, '../../../..');
 const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8');
 
@@ -25,11 +27,8 @@ test('Delivery 1919 keeps PluginData typed and free of implementation capabiliti
 test('Delivery 1919 keeps Host Service outside RuntimeBackend and storage outside Host', () => {
   const backend = read('api/crates/runtime-core/src/runtime_backend.rs');
   const hostCargo = read('api/crates/runtime-extension-host/Cargo.toml');
-  const host = [
-    'api/crates/runtime-extension-host/src/runtime_host.rs',
-    'api/crates/runtime-extension-host/src/runtime_host/data_source.rs',
-  ].map(read).join('\n');
-  const boot = read('api/apps/api-server/src/lib.rs');
+  const host = productionRustSources(path.join(repoRoot, 'api/crates/runtime-extension-host/src/runtime_host.rs'));
+  const boot = bootRustSources(repoRoot);
   assert.doesNotMatch(backend, /PluginDataPort/u);
   assert.doesNotMatch(hostCargo, /storage-durable|control-plane/u);
   assert.match(host, /plugin_data: Arc<dyn PluginDataPort>/u);
@@ -45,7 +44,7 @@ function assertPluginDataBoot(boot) {
 }
 
 test('PluginData boot gate rejects missing injection even with unrelated store clones', () => {
-  const boot = read('api/apps/api-server/src/lib.rs');
+  const boot = bootRustSources(repoRoot);
   assert.throws(() => assertPluginDataBoot(boot.replace(
     'ManagedPluginDataService::new',
     'MissingPluginDataPort::new',
@@ -63,19 +62,12 @@ test('Delivery 1919 SDK has a contract-only internal dependency graph', () => {
     cargo,
     /plugin-framework|runtime-extension-host|api-server|control-plane|storage-|runtime-core/u,
   );
-  const source = [
-    'api/crates/runtime-extension-sdk/src/lib.rs',
-    'api/crates/runtime-extension-sdk/src/plugin_data.rs',
-    'api/crates/runtime-extension-sdk/src/simulator.rs',
-  ].map(read).join('\n');
+  const source = productionRustSources(path.join(repoRoot, 'api/crates/runtime-extension-sdk/src'));
   assert.doesNotMatch(source, /PgPool|sqlx|PathBuf|RuntimeExtensionHost|ProviderHost|Registry/u);
 });
 
 test('Delivery 1919 preserves additive provider wire and trusted internal principal', () => {
-  const provider = [
-    'api/crates/runtime-extension-host/src/provider_host.rs',
-    'api/crates/runtime-extension-host/src/provider_host/prompt_operations.rs',
-  ].map(read).join('\n');
+  const provider = productionRustSources(path.join(repoRoot, 'api/crates/runtime-extension-host/src/provider_host.rs'));
   const stdio = [
     'api/crates/runtime-extension-host/src/stdio_runtime.rs',
     'api/crates/runtime-extension-host/src/_tests/stdio_runtime/tests.rs',

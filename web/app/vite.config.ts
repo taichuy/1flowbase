@@ -257,7 +257,18 @@ export default defineConfig(({ command, mode }) => {
       fs: {
         allow: [
           searchForWorkspaceRoot(process.cwd()),
-          fileURLToPath(new URL('../../scripts', import.meta.url))
+          fileURLToPath(new URL('../../scripts', import.meta.url)),
+          // Vite 8 checks both the file path and the full raw-import ID.
+          // Permit only this backend-owned public login block and its raw ID.
+          ...['', '?raw'].map(
+            (query) =>
+              fileURLToPath(
+                new URL(
+                  '../../api/crates/control-plane/src/auth/public_ui_blocks/password_local.tsx',
+                  import.meta.url
+                )
+              ) + query
+          )
         ]
       },
       proxy: {

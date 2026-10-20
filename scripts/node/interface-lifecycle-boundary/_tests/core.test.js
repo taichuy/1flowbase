@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { productionRustSources, bootRustSources } = require('../../testing/contracts/rust-sources.js');
 
 const { inspectInterfaceLifecycleBoundary } = require('../core');
 
@@ -25,6 +26,7 @@ const sources = [
   'api/apps/api-server/src/extension_bus/interface_contributions/plugins.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/mcp.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/system.rs',
+  'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch/execution.rs',
 ];
 
 function fixture(overrides = {}) {
@@ -55,6 +57,7 @@ function fixture(overrides = {}) {
     [sources[15]]: '',
     [sources[16]]: '',
     [sources[17]]: '',
+    [sources[18]]: '',
   };
   for (const source of sources) {
     const target = path.join(root, source);
@@ -116,6 +119,35 @@ test('registry compilation may extract services but its adapter cannot retain gl
   }
 });
 
+test('retained global state is rejected in tuple Ports and qualified Adapter fields', () => {
+  for (const declaration of [
+    'struct Port(Weak<crate::app_state::ApiState>);',
+    'struct AuthenticationPort { state: Arc<crate::app_state::ApiState> }',
+    'struct CallbackAdapter(Weak<ApiState>);',
+  ]) {
+    const root = fixture({ [sources[5]]: declaration });
+    try {
+      assert.ok(inspectInterfaceLifecycleBoundary(root).some(value => value.includes('public auth Interface adapter retains')));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('state names in comments and test-only adapters do not imply production retention', () => {
+  const root = fixture({
+    [sources[5]]: `// struct OldAdapter { state: Arc<ApiState> }
+      #[cfg(test)] struct FixturePort(Weak<ApiState>);
+      struct AuthenticationPort { store: MainDurableStore }
+      fn compile_registry(state: Arc<ApiState>) {}`,
+  });
+  try {
+    assert.deepEqual(inspectInterfaceLifecycleBoundary(root), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects a direct authentication owner outside the exact protocol/control allowlist', () => {
   const root = fixture({
     [sources[5]]: 'require_session(&state); struct PublicProvidersAdapter { store: MainDurableStore }',
@@ -135,7 +167,7 @@ test('rejects a Composition Root without complete catalog publication', () => {
 // Root AC-001: mutate the real production mount, not a synthetic catalog row.
 test('root_1998 rejects a bare production mount after inventory extraction', () => {
   const { inspectExternalRouteAssemblyBoundary } = require('../core');
-  const production = fs.readFileSync(path.resolve(__dirname, '../../../../api/apps/api-server/src/lib.rs'), 'utf8');
+  const production = bootRustSources(path.resolve(__dirname, '../../../..'));
   assert.deepEqual(inspectExternalRouteAssemblyBoundary(production), []);
   const mutated = production.replace(/router\s*\.into_router\(\)/u, 'router.into_router().merge(axum::Router::new().route("/rogue", axum::routing::get(rogue)))');
   assert.notEqual(mutated, production);
@@ -144,7 +176,7 @@ test('root_1998 rejects a bare production mount after inventory extraction', () 
 
 test('root_1998 rejects a bare mount at the final application root', () => {
   const { inspectExternalRouteAssemblyBoundary } = require('../core');
-  const production = fs.readFileSync(path.resolve(__dirname, '../../../../api/apps/api-server/src/lib.rs'), 'utf8');
+  const production = bootRustSources(path.resolve(__dirname, '../../../..'));
   const mutated = production.replace('.layer(cors_layer(config))', '.merge(rogue_router()).layer(cors_layer(config))');
   assert.notEqual(mutated, production);
   assert.ok(inspectExternalRouteAssemblyBoundary(mutated).some((value) => value.includes('bare external mount')));
@@ -154,7 +186,7 @@ test('root_1998 rejects a bare mount at the final application root', () => {
 test('root_1998 rejects direct authentication and discarded lineage in production source', () => {
   const { inspectAuthenticationInvocationBoundary } = require('../core');
   const file = 'api/apps/api-server/src/routes/application_public_api/native.rs';
-  const production = fs.readFileSync(path.resolve(__dirname, '../../../..', file), 'utf8');
+  const production = productionRustSources(path.resolve(__dirname, '../../../..', file));
   assert.deepEqual(inspectAuthenticationInvocationBoundary(file, production), []);
   const bypass = production.replace('.authenticate_invocation', '.authenticate');
   assert.notEqual(bypass, production);
@@ -171,7 +203,7 @@ test('accepts the current production principal stream ownership chain', () => {
 
 test('rejects client streams which bypass the typed kernel or discard the principal', () => {
   const productionRoot = path.resolve(__dirname, '../../../..');
-  const production = fs.readFileSync(path.join(productionRoot, sources[8]), 'utf8');
+  const production = productionRustSources(path.join(productionRoot, sources[8]));
   for (const [before, after] of [
     ['invoke_typed_stream_with_principal(Arc::clone(&state)', 'bypass_stream(Arc::clone(&state)'],
     ['invoke_typed_stream_with_principal_inner(state, binding_id, principal, input).await', 'bypass_stream(state, binding_id, principal, input).await'],
@@ -216,4 +248,28 @@ test('notification refresh authentication requires its exact Protocol Control ca
       fs.rmSync(root, { recursive: true, force: true });
     }
   }
+});
+
+test('private invocation and startup splits retain the same positive and negative ownership evidence', (t) => {
+  const root = fixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const [owner, child] of [
+    [sources[8], 'api/apps/api-server/src/routes/application_public_api/compatibility_interface/stream_dispatch.rs'],
+    [sources[10], 'api/apps/api-server/src/internal/startup_assembly.rs'],
+  ]) {
+    const original = fs.readFileSync(path.join(root, owner), 'utf8');
+    fs.mkdirSync(path.dirname(path.join(root, child)), { recursive: true });
+    fs.writeFileSync(path.join(root, child), original);
+    fs.writeFileSync(path.join(root, owner), '// implementation is in its private module\n');
+  }
+  assert.deepEqual(inspectInterfaceLifecycleBoundary(root), []);
+  const contribution = path.join(root,
+    'api/apps/api-server/src/extension_bus/interface_contributions/nested/owner.rs');
+  fs.mkdirSync(path.dirname(contribution), { recursive: true });
+  fs.writeFileSync(contribution, 'type CompileInterfaceRegistry = fn(Weak<crate::app_state::ApiState>);');
+  assert.ok(inspectInterfaceLifecycleBoundary(root).some((value) => value.includes('global-state compile callback')));
+  const startup = path.join(root, 'api/apps/api-server/src/internal/startup_assembly.rs');
+  fs.writeFileSync(startup, fs.readFileSync(startup, 'utf8')
+    .replace('router.into_router()', 'router.into_router().merge(rogue_router())'));
+  assert.ok(inspectInterfaceLifecycleBoundary(root).some((value) => value.includes('bare external mount')));
 });

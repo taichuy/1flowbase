@@ -104,7 +104,7 @@ describe('Navigation', () => {
       me: null
     });
     useFrontstageDesignModeStore.getState().setDesignMode(true);
-    await act(async () => { renderNavigation('/templates'); });
+    renderNavigation('/templates');
     await screen.findByRole('link', { name: '子系统' });
     expect(screen.queryByRole('button', { name: '添加菜单' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '打开导航' }));

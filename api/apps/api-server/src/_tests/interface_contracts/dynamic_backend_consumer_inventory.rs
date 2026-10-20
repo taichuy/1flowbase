@@ -181,6 +181,17 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "ui_management.components.delete"
                     | "ui_management.components.update"
                     | "ui_management.components.view"
+                    // 6bfd7af0a moved authoring from authenticated-only access to
+                    // explicit UI-management operations after this catalog release.
+                    | "frontstage.groups.create"
+                    | "frontstage.pages.create"
+                    | "frontstage.pages.delete"
+                    | "frontstage.pages.move"
+                    | "frontstage.pages.update"
+                    | "frontstage.tabs.create"
+                    | "frontstage.tabs.delete"
+                    | "frontstage.tabs.document.save"
+                    | "frontstage.tabs.update"
             )
         ) || interface
             .authorization_operation_id

@@ -40,21 +40,6 @@ impl OpenApi for ApiDoc {
         ] {
             document.merge(fragment);
         }
-        for binding in crate::routes::external_auth::interface::bindings_metadata() {
-            let path = document
-                .paths
-                .paths
-                .get_mut(binding.path)
-                .expect("external authentication API documentation is mounted");
-            let operation = match binding.method {
-                "GET" => path.get.as_mut(),
-                "POST" => path.post.as_mut(),
-                _ => None,
-            }
-            .expect("external authentication method is documented");
-            operation.summary = Some(binding.summary.into());
-            operation.description = Some(binding.description.into());
-        }
         document
     }
 }
@@ -412,6 +397,39 @@ mod workflow_operation_tests {
         assert_eq!(document.info.title, "1flowbase API");
         assert_eq!(document.info.version, "0.1.0");
         assert_eq!(inventory(document), expected);
+    }
+
+    #[test]
+    fn ac_006_external_auth_fragment_and_composition_keep_canonical_metadata() {
+        for document in [console::ConsoleOpenApi::openapi(), ApiDoc::openapi()] {
+            for binding in crate::routes::external_auth::interface::bindings_metadata() {
+                let path = document
+                    .paths
+                    .paths
+                    .get(binding.path)
+                    .expect("canonical external authentication path must be documented");
+                let operation = match binding.method {
+                    "GET" => path.get.as_ref(),
+                    "POST" => path.post.as_ref(),
+                    _ => None,
+                }
+                .expect("canonical external authentication method must be documented");
+                assert_eq!(
+                    operation.summary.as_deref(),
+                    Some(binding.summary),
+                    "{} {} summary",
+                    binding.method,
+                    binding.path
+                );
+                assert_eq!(
+                    operation.description.as_deref(),
+                    Some(binding.description),
+                    "{} {} description",
+                    binding.method,
+                    binding.path
+                );
+            }
+        }
     }
 
     #[test]

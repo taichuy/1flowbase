@@ -86,173 +86,8 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
     .with_network_egress(Arc::new(state.network_egress_http_clients()))
 }
 
-pub(crate) async fn public_mcp_runtime_invoker_for_actor(
-    state: &Arc<ApiState>,
-    actor: &control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-) -> Result<Arc<virtual_ui::ApiMcpRuntimeToolInvoker>, NativeApiError> {
-    Ok(Arc::new(
-        virtual_ui::ApiMcpRuntimeToolInvoker::new(
-            crate::runtime_internal_tool_invoker_factory(state, &actor.actor)
-                .await
-                .map_err(|error| service_error(error.0))?,
-            HeaderMap::new(),
-            actor.actor.clone(),
-            Vec::new(),
-        )
-        .await
-        .map_err(|error| service_error(error.0))?,
-    ))
-}
-
-pub(crate) struct NativeRuntimeInvokerFactoryDependencies {
-    pub(crate) runtime_dependencies: virtual_ui::RuntimeInternalToolInvokerDependencies,
-    pub(crate) interface_catalog:
-        crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
-    pub(crate) interface_registry:
-        Arc<dyn crate::routes::mcp_management::interface_catalog::McpInterfaceRegistrySnapshotPort>,
-    pub(crate) interface_dispatch: Arc<dyn virtual_ui::McpInterfaceDispatchPort>,
-}
-
-struct NativeRuntimeInvokerFactoryAdapter(NativeRuntimeInvokerFactoryDependencies);
-
-struct NoMcpRuntimeInternalTools;
-
-#[async_trait::async_trait]
-impl orchestration_runtime::execution_engine::RuntimeInternalToolInvoker
-    for NoMcpRuntimeInternalTools
-{
-    fn registrations_for_node(
-        &self,
-        _node: &orchestration_runtime::compiled_plan::CompiledNode,
-    ) -> Vec<orchestration_runtime::execution_engine::RuntimeInternalToolRegistration> {
-        Vec::new()
-    }
-
-    async fn invoke_runtime_internal_tool(
-        &self,
-        _node: &orchestration_runtime::compiled_plan::CompiledNode,
-        _registration: &orchestration_runtime::execution_engine::RuntimeInternalToolRegistration,
-        _arguments: Value,
-    ) -> anyhow::Result<orchestration_runtime::execution_engine::RuntimeInternalToolOutput> {
-        anyhow::bail!("published plan has no MCP runtime registrations")
-    }
-}
-
 // None means the compiled representation could not be inspected safely. In that
 // case the existing catalog path remains authoritative.
-fn compiled_plan_has_mcp_bindings(plan: &Value) -> Option<bool> {
-    let nodes = plan.get("nodes")?.as_object()?;
-    let mut found = false;
-    for node in nodes.values() {
-        let config = node.get("config")?.as_object()?;
-        match config.get("mcp_instance_ids") {
-            None | Some(Value::Null) => {}
-            Some(Value::Array(ids)) if ids.iter().all(Value::is_string) => {
-                found |= !ids.is_empty();
-            }
-            _ => return None,
-        }
-    }
-    Some(found)
-}
-
-async fn plan_has_mcp_bindings_for_run(
-    dependencies: &ApplicationNativeRunDependencies,
-    run: &NativeRunResult,
-) -> anyhow::Result<Option<bool>> {
-    let Some(flow_run) = dependencies
-        .store
-        .get_flow_run(run.application_id, run.id)
-        .await?
-    else {
-        return Ok(None);
-    };
-    let Some(compiled_plan_id) = flow_run.compiled_plan_id else {
-        return Ok(None);
-    };
-    let store = dependencies.store.clone();
-    let Some(plan) = dependencies
-        .published_plan_cache
-        .get_or_load(
-            compiled_plan_id,
-            Box::new(move || {
-                Box::pin(async move { store.get_compiled_plan(compiled_plan_id).await })
-            }),
-        )
-        .await?
-    else {
-        return Ok(None);
-    };
-    Ok(compiled_plan_has_mcp_bindings(&plan.plan))
-}
-
-pub(crate) async fn runtime_internal_tool_invoker_for_run(
-    dependencies: &ApplicationNativeRunDependencies,
-    actor: &control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    run: &NativeRunResult,
-) -> Result<
-    Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
-    NativeApiError,
-> {
-    match plan_has_mcp_bindings_for_run(dependencies, run).await {
-        Ok(Some(false)) => {
-            debug!(flow_run_id = %run.id, "published plan has no MCP bindings; skipping runtime MCP catalog");
-            Ok(Arc::new(NoMcpRuntimeInternalTools))
-        }
-        Ok(Some(true) | None) => dependencies.runtime_invoker_factory.for_actor(actor).await,
-        Err(error) => {
-            debug!(flow_run_id = %run.id, error = %error, "MCP plan inspection failed; building runtime MCP catalog");
-            dependencies.runtime_invoker_factory.for_actor(actor).await
-        }
-    }
-}
-
-impl NativeRuntimeInvokerFactory for NativeRuntimeInvokerFactoryAdapter {
-    fn for_actor<'a>(
-        &'a self,
-        actor: &'a control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    ) -> RuntimeInvokerFuture<'a> {
-        let actor = actor.clone();
-        Box::pin(async move {
-            let catalog_dependencies = self
-                .0
-                .interface_catalog
-                .with_interface_registry_snapshot(self.0.interface_registry.snapshot());
-            let interface_catalog =
-                crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with(
-                    &catalog_dependencies,
-                    &actor.actor,
-                )
-                .await
-                .map_err(|error| service_error(error.0))?;
-            let invoker = virtual_ui::ApiMcpRuntimeToolInvoker::new(
-                virtual_ui::RuntimeInternalToolInvokerFactory::new(
-                    self.0.runtime_dependencies.clone(),
-                    Arc::new(virtual_ui::McpInterfaceCatalogSnapshot::new(
-                        interface_catalog,
-                    )),
-                    Arc::clone(&self.0.interface_dispatch),
-                ),
-                HeaderMap::new(),
-                actor.actor.clone(),
-                // Public application runs select MCP only through compiled node bindings.
-                Vec::new(),
-            )
-            .await
-            .map_err(|error| service_error(error.0))?;
-            Ok(Arc::new(invoker)
-                as Arc<
-                    dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
-                >)
-        })
-    }
-}
-
-pub(crate) fn native_runtime_invoker_factory(
-    dependencies: NativeRuntimeInvokerFactoryDependencies,
-) -> Arc<dyn NativeRuntimeInvokerFactory> {
-    Arc::new(NativeRuntimeInvokerFactoryAdapter(dependencies))
-}
 
 #[derive(Clone)]
 pub(crate) struct ApplicationNativeRunDependencies {
@@ -992,168 +827,6 @@ pub async fn create_native_run(
         .into_response())
 }
 
-pub(crate) fn application_runtime_target(
-    state: &ApiState,
-    registry: &interface_runtime::CompiledInterfaceRegistry,
-    binding_id: &interface_runtime::BindingId,
-    application_id: Uuid,
-) -> interface_runtime::ExecutionTargetPin {
-    let plan = registry
-        .plan(binding_id)
-        .expect("published Native binding must own a plan");
-    interface_runtime::ExecutionTargetPin::Runtime {
-        handler: plan.definition().handler_reference().clone(),
-        target: plan.definition().target_reference().clone(),
-        plugin: interface_runtime::PluginIdentity::new("builtin.orchestration-runtime")
-            .expect("runtime plugin identity is valid"),
-        artifact: interface_runtime::ArtifactIdentity::new(format!(
-            "api-server:{}",
-            env!("CARGO_PKG_VERSION")
-        ))
-        .expect("runtime artifact identity is valid"),
-        runtime: interface_runtime::RuntimeTargetIdentity::new(format!(
-            "orchestration-runtime.local.application:{application_id}"
-        ))
-        .expect("runtime target identity is valid"),
-        runtime_generation: interface_runtime::RuntimeGeneration::new(
-            state
-                .extension_boot_snapshot
-                .as_ref()
-                .map(|snapshot| snapshot.fingerprint())
-                .unwrap_or("graph:unavailable"),
-        )
-        .expect("runtime generation identity is valid"),
-        worker_generation: interface_runtime::WorkerGeneration::new(format!(
-            "api-process:{}",
-            state.process_started_at.unix_timestamp_nanos()
-        ))
-        .expect("worker generation identity is valid"),
-    }
-}
-
-pub(crate) fn include_workflow_events(
-    request: &NativeRunRequest,
-) -> Result<sse::IncludeWorkflowEvents, NativeApiError> {
-    include_workflow_event_visibility(request.stream_options.include_workflow_events)
-}
-
-pub(crate) fn include_workflow_event_visibility(
-    visibility: control_plane::application_public_api::native::NativeWorkflowEventVisibility,
-) -> Result<sse::IncludeWorkflowEvents, NativeApiError> {
-    match visibility {
-        control_plane::application_public_api::native::NativeWorkflowEventVisibility::None => {
-            Ok(sse::IncludeWorkflowEvents::None)
-        }
-        control_plane::application_public_api::native::NativeWorkflowEventVisibility::Public => {
-            Ok(sse::IncludeWorkflowEvents::Public)
-        }
-        control_plane::application_public_api::native::NativeWorkflowEventVisibility::Debug => {
-            Err(NativeApiError::new(
-                StatusCode::FORBIDDEN,
-                "workflow_event_visibility_forbidden",
-                "debug workflow events require a browser session principal",
-            ))
-        }
-    }
-}
-
-async fn start_native_run_event_channel_for_actor_with_dependencies(
-    dependencies: ApplicationNativeRunDependencies,
-    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    run: NativeRunResult,
-    include_workflow_events: sse::IncludeWorkflowEvents,
-) -> Result<
-    mpsc::Receiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
-    NativeApiError,
-> {
-    let runtime_internal_tool_invoker =
-        runtime_internal_tool_invoker_for_run(&dependencies, &actor, &run).await?;
-    start_native_run_event_channel_with_dependencies(
-        dependencies,
-        runtime_internal_tool_invoker,
-        run,
-        include_workflow_events,
-    )
-    .await
-}
-
-async fn start_native_run_event_channel_with_dependencies(
-    dependencies: ApplicationNativeRunDependencies,
-    runtime_internal_tool_invoker: Arc<
-        dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
-    >,
-    run: NativeRunResult,
-    include_workflow_events: sse::IncludeWorkflowEvents,
-) -> Result<
-    mpsc::Receiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
-    NativeApiError,
-> {
-    dependencies
-        .runtime_event_stream
-        .open_run(
-            run.id,
-            control_plane::ports::RuntimeEventStreamPolicy::debug_default(),
-        )
-        .await
-        .map_err(service_error)?;
-
-    let (sender, receiver) = mpsc::channel(32);
-    tokio::spawn(sse::send_native_runtime_event_stream_with_dependencies(
-        native_run_sse_dependencies(&dependencies),
-        run.clone(),
-        include_workflow_events,
-        None,
-        None,
-        sender,
-    ));
-
-    let background_dependencies = dependencies.clone();
-    let background_run = run.clone();
-    tokio::spawn(async move {
-        let _execution_activity = background_dependencies.runtime_activity.start(
-            background_run.application_id,
-            ApplicationActivityKind::ApplicationExecution,
-        );
-        let runtime_service =
-            native_runtime_service(&background_dependencies, runtime_internal_tool_invoker)
-                .with_runtime_event_stream(background_dependencies.runtime_event_stream.clone());
-        if let Err(runtime_error) = scope_application_activity(
-            background_run.application_id,
-            runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
-                application_id: background_run.application_id,
-                flow_run_id: background_run.id,
-                provider_transport_slot: None,
-                transport_connection_scope: None,
-                observation_context: None,
-            }),
-        )
-        .await
-        {
-            if let Err(recovery_error) = recover_missing_stream_terminal_winner_with_dependencies(
-                &native_run_terminal_dependencies(&background_dependencies),
-                &background_run,
-            )
-            .await
-            {
-                error!(
-                    application_id = %background_run.application_id,
-                    flow_run_id = %background_run.id,
-                    error = %recovery_error,
-                    "failed to recover the durable winner after native streaming execution ended"
-                );
-            }
-            error!(
-                application_id = %background_run.application_id,
-                flow_run_id = %background_run.id,
-                error = %runtime_error,
-                "failed to execute native streaming published run"
-            );
-        }
-    });
-
-    Ok(receiver)
-}
-
 #[utoipa::path(
     get,
     path = "/api/agent/v1/runs/{run_id}",
@@ -1431,3 +1104,21 @@ pub async fn upload_native_file(
 
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(uploaded.0))))
 }
+
+#[path = "native/runtime_invoker.rs"]
+mod runtime_invoker;
+
+#[path = "native/native_streams.rs"]
+mod native_streams;
+
+#[cfg(test)]
+use runtime_invoker::compiled_plan_has_mcp_bindings;
+pub(crate) use runtime_invoker::native_runtime_invoker_factory;
+pub(crate) use runtime_invoker::public_mcp_runtime_invoker_for_actor;
+pub(crate) use runtime_invoker::runtime_internal_tool_invoker_for_run;
+pub(crate) use runtime_invoker::NativeRuntimeInvokerFactoryDependencies;
+
+pub(crate) use native_streams::application_runtime_target;
+pub(crate) use native_streams::include_workflow_event_visibility;
+pub(crate) use native_streams::include_workflow_events;
+use native_streams::*;

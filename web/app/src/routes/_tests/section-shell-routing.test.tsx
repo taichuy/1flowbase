@@ -475,6 +475,9 @@ describe('section shell routing', () => {
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockReset();
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([]);
     networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([]);
+    networkCenterApi.fetchSettingsNetworkEgressPluginFamilies.mockResolvedValue(
+      []
+    );
     networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog.mockResolvedValue({
       entries: [],
       registry_url: null

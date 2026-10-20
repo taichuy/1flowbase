@@ -1,11 +1,47 @@
 use super::*;
+use std::{future::Future, pin::Pin};
 
+mod execution;
+
+/// Finish admission before polling the selected execution variant. In particular,
+/// Compact does not retain the preparation or Generate/resume delivery poll frames.
 pub(super) async fn dispatch_response_for_endpoint(
     state: Arc<ApiState>,
     headers: HeaderMap,
     request: OpenAiResponseDispatchRequest,
     preauthenticated_principal: Option<interface_runtime::ApplicationPrincipal>,
 ) -> Result<OpenAiResponseDispatch, OpenAiRouteError> {
+    let prepared =
+        prepare_response_for_endpoint(state, headers, request, preauthenticated_principal).await?;
+    execution::execute(prepared).await
+}
+
+type ResponsePreparationFuture = Pin<
+    Box<dyn Future<Output = Result<execution::PreparedResponseDispatch, OpenAiRouteError>> + Send>,
+>;
+
+// Construct preparation outside the dispatcher poll frame. Once admission finishes,
+// both its future and its poll stack are gone before the selected execution begins.
+fn prepare_response_for_endpoint(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    request: OpenAiResponseDispatchRequest,
+    preauthenticated_principal: Option<interface_runtime::ApplicationPrincipal>,
+) -> ResponsePreparationFuture {
+    Box::pin(prepare_response(
+        state,
+        headers,
+        request,
+        preauthenticated_principal,
+    ))
+}
+
+async fn prepare_response(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    request: OpenAiResponseDispatchRequest,
+    preauthenticated_principal: Option<interface_runtime::ApplicationPrincipal>,
+) -> Result<execution::PreparedResponseDispatch, OpenAiRouteError> {
     let OpenAiResponseDispatchRequest {
         route_path,
         raw_query,
@@ -251,82 +287,23 @@ pub(super) async fn dispatch_response_for_endpoint(
                             return Err(error);
                         }
                     }
-                    if response_mode.as_deref() == Some("streaming") {
-                        let input = compatibility_interface::CompatibilityBlockingInput {
-                            command:
-                                compatibility_interface::CompatibilityInvocationCommand::Resume {
-                                    initial_run: plan.initial_run,
-                                    command: plan.command,
-                                    reservation: plan.reservation,
-                                },
-                        };
-                        return match delivery {
-                            OpenAiResponseDelivery::Http => {
-                                compatibility_interface::invoke_client_stream_with_principal(
-                                    state,
-                                    authentication_binding_id,
-                                    principal,
-                                    input,
-                                    recorder.clone(),
-                                    compat_sse::openai_responses_interface_projection_with_mode(
-                                        model,
-                                        previous_response_id,
-                                        projection_mode,
-                                    ),
-                                )
-                                .await
-                                .map(OpenAiResponseDispatch::Http)
-                                .map_err(Into::into)
-                            }
-                            OpenAiResponseDelivery::TypedEvents => {
-                                let runtime = compatibility_interface::invoke_typed_stream_with_principal(
-                                    state,
-                                    compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
-                                    principal,
-                                    input,
-                                )
-                                .await?;
-                                Ok(OpenAiResponseDispatch::TypedEvents(Box::new(
-                                    PreparedOpenAiResponseTurn {
-                                        model,
-                                        previous_response_id,
-                                        runtime,
-                                        projection_mode,
-                                    },
-                                )))
-                            }
-                        };
-                    }
-                    // Match blocking Generate: the typed turn owns background
-                    // execution, avoiding inline callback polling on the HTTP stack.
-                    let stream_binding_id = if route_path == "/responses" {
-                        compatibility_interface::OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID
-                    } else {
-                        compatibility_interface::OPENAI_RESPONSES_STREAM_BINDING_ID
-                    };
-                    let invocation = compatibility_interface::invoke_typed_stream_with_principal(
-                        state,
-                        stream_binding_id,
-                        principal,
-                        compatibility_interface::CompatibilityBlockingInput {
-                            command:
-                                compatibility_interface::CompatibilityInvocationCommand::Resume {
-                                    initial_run: plan.initial_run,
-                                    command: plan.command,
-                                    reservation: plan.reservation,
-                                },
+                    return Ok(execution::PreparedResponseDispatch::Resume(Box::new(
+                        execution::PreparedResumeResponse {
+                            context: execution::ResponseExecutionContext {
+                                state,
+                                principal,
+                                route_path,
+                                delivery,
+                                model,
+                                response_mode,
+                                previous_response_id,
+                                projection_mode,
+                                recorder,
+                            },
+                            authentication_binding_id,
+                            plan,
                         },
-                    )
-                    .await?;
-                    let response = collect_blocking_native_response(
-                        invocation,
-                        model,
-                        previous_response_id,
-                        recorder.as_ref(),
-                        projection_mode,
-                    )
-                    .await?;
-                    return Ok(OpenAiResponseDispatch::Http(Json(response).into_response()));
+                    )));
                 }
                 Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { recovery }) => {
                     inference_recovery = recovery.map(|grant| *grant);
@@ -460,207 +437,26 @@ pub(super) async fn dispatch_response_for_endpoint(
         }
         OpenAiResponsesEndpoint::Responses => compatibility_interface::OPENAI_RESPONSES_BINDING_ID,
     };
-    match operation {
-        AiNativeOperation::Generate(_) => {
-            if response_mode.as_deref() != Some("streaming") {
-                let stream_binding_id = if route_path == "/responses" {
-                    compatibility_interface::OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID
-                } else {
-                    compatibility_interface::OPENAI_RESPONSES_STREAM_BINDING_ID
-                };
-                let invocation = compatibility_interface::invoke_typed_stream_with_principal(
-                    state,
-                    stream_binding_id,
-                    principal,
-                    compatibility_interface::CompatibilityBlockingInput {
-                        command: compatibility_interface::CompatibilityInvocationCommand::Start {
-                            request,
-                            protocol: TranslationProtocol::OpenAiResponses,
-                            provider_transport: Some(
-                                compatibility_interface::CompatibilityProviderTransport {
-                                    operation,
-                                    payload: provider_transport_payload,
-                                },
-                            ),
-                        },
-                    },
-                )
-                .await?;
-                let response = collect_blocking_native_response(
-                    invocation,
-                    model,
-                    previous_response_id,
-                    recorder.as_ref(),
-                    projection_mode,
-                )
-                .await?;
-                info!(
-                    route,
-                    auth_source,
-                    response_mode = "blocking",
-                    translation_decision_count,
-                    "openai responses compatible request accepted"
-                );
-                return Ok(OpenAiResponseDispatch::Http(Json(response).into_response()));
-            }
-
-            if matches!(delivery, OpenAiResponseDelivery::Http) {
-                let stream_binding_id = if route_path == "/responses" {
-                    compatibility_interface::OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID
-                } else {
-                    compatibility_interface::OPENAI_RESPONSES_STREAM_BINDING_ID
-                };
-                let projection = compat_sse::openai_responses_interface_projection_with_mode(
-                    model,
-                    previous_response_id,
-                    projection_mode,
-                );
-                let response = compatibility_interface::invoke_client_stream_with_principal(
-                    state,
-                    stream_binding_id,
-                    principal,
-                    compatibility_interface::CompatibilityBlockingInput {
-                        command: compatibility_interface::CompatibilityInvocationCommand::Start {
-                            request,
-                            protocol: TranslationProtocol::OpenAiResponses,
-                            provider_transport: Some(
-                                compatibility_interface::CompatibilityProviderTransport {
-                                    operation,
-                                    payload: provider_transport_payload,
-                                },
-                            ),
-                        },
-                    },
-                    recorder.clone(),
-                    projection,
-                )
-                .await?;
-                return Ok(OpenAiResponseDispatch::Http(response));
-            }
-
-            let runtime = compatibility_interface::invoke_typed_stream_with_principal(
+    Ok(execution::PreparedResponseDispatch::Start(Box::new(
+        execution::PreparedStartResponse {
+            context: execution::ResponseExecutionContext {
                 state,
-                compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
                 principal,
-                compatibility_interface::CompatibilityBlockingInput {
-                    command: compatibility_interface::CompatibilityInvocationCommand::Start {
-                        request,
-                        protocol: TranslationProtocol::OpenAiResponses,
-                        provider_transport: Some(
-                            compatibility_interface::CompatibilityProviderTransport {
-                                operation,
-                                payload: provider_transport_payload,
-                            },
-                        ),
-                    },
-                },
-            )
-            .await?;
-            Ok(OpenAiResponseDispatch::TypedEvents(Box::new(
-                PreparedOpenAiResponseTurn {
-                    model,
-                    previous_response_id,
-                    runtime,
-                    projection_mode,
-                },
-            )))
-        }
-        AiNativeOperation::CountTokens => Err(openai_invalid_request(
-            "operation",
-            "count_tokens is not supported by the OpenAI Responses route",
-        )),
-        AiNativeOperation::Compact(remote_profile) => {
-            if matches!(delivery, OpenAiResponseDelivery::TypedEvents) {
-                return Err(openai_invalid_request(
-                    "operation",
-                    "Compact is a unary operation and cannot open a typed event turn",
-                ));
-            }
-            let profile = match remote_profile {
-                AiNativeCompactProfile::ResponsesCompact => {
-                    ProviderCompactProfile::ResponsesCompact
-                }
-                AiNativeCompactProfile::ResponsesCompactionV2 => {
-                    ProviderCompactProfile::ResponsesCompactionV2
-                }
-            };
-            let run = compatibility_interface::invoke_blocking_with_principal(
-                state,
-                blocking_binding_id,
-                principal,
-                compatibility_interface::CompatibilityBlockingInput {
-                    command: compatibility_interface::CompatibilityInvocationCommand::Start {
-                        request,
-                        protocol: TranslationProtocol::OpenAiResponses,
-                        provider_transport: Some(
-                            compatibility_interface::CompatibilityProviderTransport {
-                                operation,
-                                payload: provider_transport_payload,
-                            },
-                        ),
-                    },
-                },
-            )
-            .await?;
-            if let Some(recorder) = recorder.as_ref() {
-                recorder.bind_run(run.id, None);
-            }
-            let result = match run.operation_terminal.as_ref() {
-                Some(NativeOperationTerminal::Compact(receipt)) => receipt.result().clone(),
-                _ => return Err(native::blocking_run_projection_error(&run).into()),
-            };
-
-            info!(
-                route,
-                auth_source,
-                compaction_profile = profile.as_str(),
-                response_mode = response_mode.as_deref().unwrap_or("blocking"),
-                model = %model,
-                translation_decision_count,
-                "openai responses Compact request completed through a durable flow run"
-            );
-
-            match (profile, result) {
-                (
-                    ProviderCompactProfile::ResponsesCompact,
-                    ProviderCompactResult::ResponseItems { response_items, .. },
-                ) => {
-                    // The legacy Compact contract is exactly the provider's ResponseItem[]. It
-                    // is intentionally neither wrapped in a Response object nor projected as a
-                    // runtime SSE flow.
-                    Ok(OpenAiResponseDispatch::Http(
-                        Json(response_items).into_response(),
-                    ))
-                }
-                (
-                    ProviderCompactProfile::ResponsesCompactionV2,
-                    ProviderCompactResult::CompletedOpaqueCompactionItem {
-                        response_id,
-                        compaction_item,
-                        ..
-                    },
-                ) => {
-                    let response = compact::completed_v2_compaction_response(
-                        model,
-                        response_id,
-                        compaction_item,
-                    );
-                    if response_mode.as_deref() == Some("streaming") {
-                        let response = serde_json::to_value(response).map_err(|_| {
-                            OpenAiRouteError::Native(native::NativeApiError::new(
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                "openai_compact_response_serialization_failed",
-                                "could not serialize OpenAI Compact response",
-                            ))
-                        })?;
-                        return compat_sse::openai_compact_sse_response(response)
-                            .map(OpenAiResponseDispatch::Http)
-                            .map_err(Into::into);
-                    }
-                    Ok(OpenAiResponseDispatch::Http(Json(response).into_response()))
-                }
-                _ => Err(compact::unexpected_compact_result_error()),
-            }
-        }
-    }
+                route_path,
+                delivery,
+                model,
+                response_mode,
+                previous_response_id,
+                projection_mode,
+                recorder,
+            },
+            route,
+            auth_source,
+            translation_decision_count,
+            blocking_binding_id,
+            request,
+            operation,
+            provider_transport_payload,
+        },
+    )))
 }

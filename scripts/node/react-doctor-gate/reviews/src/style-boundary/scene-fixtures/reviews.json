@@ -4,9 +4,9 @@
     {
       "file": "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
       "rule": "react-doctor/no-multi-comp",
-      "sourceSha256": "459b85d6044ab94ec9e649527a6755894b8c5ed744a0fa7eb4997623e21d2c1f",
-      "reason": "The components are cohesive private provider/consumer or explicitly separate scene fixtures; no shared state/lifecycle defect is identified. Notification scene fixtures export two deliberately separate tiny notification scenarios consumed by the style-boundary scene registry. Keeping scene exports in the same fixture module does not share React state or create a production component ownership conflict.",
-      "evidence": [{"file": "web/app/src/style-boundary/_tests/registry.test.tsx", "sha256": "1497db3ab1775300d5f252fd2b32d1a5eb011f389d2c2cbbb31f22922cf50958"}]
+      "sourceSha256": "9e66420c5ba1e0fa5d0b7b849ce96c0486078f2129541b7f06c915f22398e79e",
+      "reason": "This fixture exports three deliberately separate scene entry points: notification settings, notification logs and notification inbox. The style registry consumes them independently; their React state is not shared merely by module colocation. NotificationSceneEventSource moved unchanged into notifications/data.ts and the inbox effect still owns observer cleanup and restoration of the prior EventSource constructor. The count diagnostic is not evidence of a production component ownership conflict.",
+      "evidence": [{"file": "web/app/src/style-boundary/_tests/registry.test.tsx", "sha256": "1497db3ab1775300d5f252fd2b32d1a5eb011f389d2c2cbbb31f22922cf50958"},{"file":"web/app/src/style-boundary/scene-fixtures/notifications/data.ts","sha256":"87b2982dc9f18c9864fe5631dc0ad168ea3ef4fcf503313ff9c6e9e8d648fa99"},{"file":"web/app/src/style-boundary/_tests/notification-fixtures.test.ts","sha256":"ad65fe55adfd17e597ab2ccc24b3cf94aa211a3f590af2f117fa9a7aede2192c"}]
     }
   ]
 }

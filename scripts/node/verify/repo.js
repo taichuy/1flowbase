@@ -54,12 +54,6 @@ function buildRepoCommands({ repoRoot, env = process.env, target = 'all' }) {
       cwd: repoRoot,
     },
     {
-      label: 'repo-growth-table-report',
-      command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'growth-table-report'],
-      cwd: repoRoot,
-    },
-    {
       label: 'repo-raw-jsonb-report',
       command: nodeBinary,
       args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'raw-jsonb-report'],

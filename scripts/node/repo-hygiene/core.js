@@ -78,7 +78,7 @@ const OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST = new Map([
     "Host-owned route resolution, proxy construction, and direct fallback boundary",
   ],
   [
-    "api/apps/api-server/src/catalog_sources/official_extension_catalog.rs",
+    "api/apps/api-server/src/catalog_sources/official_extension_catalog/artifact_download.rs",
     "GitHub official-source implementation already resolves Network Center routes",
   ],
   [

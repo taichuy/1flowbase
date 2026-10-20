@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { bootRustSources } from '../../testing/contracts/rust-sources.js';
 
 const root = path.resolve(import.meta.dirname, '../../../..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('production boot starts the durable lifecycle dispatcher', () => {
-  const api = read('api/apps/api-server/src/lib.rs');
+  const api = bootRustSources(root);
   assert.match(api, /LifecycleOutboxDispatcher::new/u);
   assert.match(api, /ApiLifecycleFactDelivery/u);
   assert.match(api, /ApiLifecycleDeliveryCompletion/u);
@@ -43,7 +44,7 @@ test('durable delivery invokes frozen typed subscribers before acknowledgement',
 });
 
 test('composition resolves active HostExtension entrypoint factories before registry binding', () => {
-  const api = read('api/apps/api-server/src/lib.rs');
+  const api = bootRustSources(root);
   const delivery = read('api/apps/api-server/src/host_extensions/lifecycle.rs');
   const activation = read(
     'api/apps/api-server/src/host_extensions/lifecycle_activation.rs'

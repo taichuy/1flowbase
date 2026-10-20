@@ -70,7 +70,7 @@ QA 输出必须区分事实、推断和建议：
 ```text
 容器扫描摘要：
 - scope/run/artifact:
-- 组件：web/api-server/plugin-runner
+- 组件：web/api-server
 - HIGH/CRITICAL:
 - fixed/unfixed:
 

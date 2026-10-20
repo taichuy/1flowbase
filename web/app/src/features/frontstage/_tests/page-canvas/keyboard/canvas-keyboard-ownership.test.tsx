@@ -1,4 +1,5 @@
-import { act,
+import {
+  act,
   fireEvent,
   render,
   screen,
@@ -114,7 +115,9 @@ describe('I2019 canvas keyboard ownership', () => {
         composed: true,
         cancelable: true
       });
-      await act(async () => { target.dispatchEvent(event); });
+      await act(async () => {
+        target.dispatchEvent(event);
+      });
       expect(event.defaultPrevented).toBe(false);
     }
     expect(select).not.toHaveBeenCalled();
@@ -198,7 +201,10 @@ describe('I2019 canvas keyboard ownership', () => {
       await dispatch(() => button.focus());
       await domEvents.click(button, { detail: 0, composed: true });
       const dialog = await queries.findByRole('dialog');
-      await waitFor(() => expect(dialog).toBeVisible());
+      await waitFor(() => {
+        invalidateJsdomShadowComputedStyleForDialog(dialog);
+        expect(dialog).toBeVisible();
+      });
       const field = await queries.findByRole('textbox', {
         name: 'dialog prompt'
       });
@@ -206,9 +212,16 @@ describe('I2019 canvas keyboard ownership', () => {
       expect(fireEvent.keyDown(field, { key: 'Enter', composed: true })).toBe(
         true
       );
-      await domEvents.keyDown(field, { key: 'Escape', keyCode: 27, composed: true });
+      await domEvents.keyDown(field, {
+        key: 'Escape',
+        keyCode: 27,
+        composed: true
+      });
       // An unconditional Modal retains its hidden DOM after closing.
-      await waitFor(() => expect(dialog).not.toBeVisible());
+      await waitFor(() => {
+        invalidateJsdomShadowComputedStyleForDialog(dialog);
+        expect(dialog).not.toBeVisible();
+      });
       await waitFor(() =>
         expect((button.getRootNode() as ShadowRoot).activeElement).toBe(button)
       );
@@ -258,6 +271,21 @@ describe('I2019 canvas keyboard ownership', () => {
     expect(select).not.toHaveBeenCalled();
   });
 });
+
+function invalidateJsdomShadowComputedStyleForDialog(dialog: HTMLElement) {
+  const root = dialog.getRootNode();
+  if (!(root instanceof ShadowRoot)) return;
+
+  // jsdom 26.1.0 caches computed styles without invalidating on Shadow DOM
+  // mutations. A light-DOM host mutation clears that cache; the real visibility
+  // matcher still reads the dialog's styles. Only write on an actual inline
+  // revision, so waitFor cannot trigger itself repeatedly via MutationObserver.
+  const revision = dialog.getAttribute('style') ?? '';
+  const attribute = 'data-jsdom-dialog-style-revision';
+  if (root.host.getAttribute(attribute) !== revision) {
+    root.host.setAttribute(attribute, revision);
+  }
+}
 
 function preparation(
   sourceSha256: string,
@@ -356,18 +384,25 @@ function pageContentWithBlocks(
 
 async function dispatch<T>(event: () => T) {
   let result!: T;
-  await act(async () => { result = event(); });
+  await act(async () => {
+    result = event();
+  });
   return result;
 }
 
 async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(...args); });
+  await act(async () => {
+    view = render(...args);
+  });
   return view;
 }
 
 const domEvents = {
-  keyDown: (...args: Parameters<typeof fireEvent.keyDown>) => dispatch(() => fireEvent.keyDown(...args)),
-  click: (...args: Parameters<typeof fireEvent.click>) => dispatch(() => fireEvent.click(...args)),
-  fire: (...args: Parameters<typeof fireEvent>) => dispatch(() => fireEvent(...args))
+  keyDown: (...args: Parameters<typeof fireEvent.keyDown>) =>
+    dispatch(() => fireEvent.keyDown(...args)),
+  click: (...args: Parameters<typeof fireEvent.click>) =>
+    dispatch(() => fireEvent.click(...args)),
+  fire: (...args: Parameters<typeof fireEvent>) =>
+    dispatch(() => fireEvent(...args))
 };

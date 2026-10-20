@@ -2,16 +2,42 @@ name: GitHub authentication acceptance
 
 on:
   push:
-    branches: [codex/github-auth-20261019, codex/auth-methods-20261020]
+    branches: [beta, main, latest]
     paths:
-      - api/**
+      - api/apps/api-server/src/authentication_runtime/**
+      - api/apps/api-server/src/extension_bus/authentication_activation*
+      - api/apps/api-server/src/routes/identity/**
+      - api/apps/api-server/src/_tests/identity_routes/**
+      - api/crates/extension-contracts/src/authentication*
+      - api/crates/extension-contracts/src/_tests/authentication*
+      - api/crates/control-plane/src/auth/**
+      - api/crates/control-plane/src/_tests/external_registration*
+      - api/crates/control-plane-contracts/src/ports/**
+      - api/crates/control-plane-postgres-tests/tests/external_identity_binding.rs
+      - api/crates/storage/durable/postgres/src/identity_repositories/**
+      - api/crates/storage/durable/postgres/src/extension_repositories/**
+      - api/crates/storage/durable/postgres/src/_tests/plugin/**
+      - api/crates/storage/durable/postgres/src/secret_crypto/**
+      - api/crates/storage/durable/postgres/migrations/*auth*.sql
+      - api/crates/storage/durable/postgres/migrations/*managed*authority*.sql
       - .github/workflows/github-authentication.yml
   pull_request:
     paths:
       - api/apps/api-server/src/authentication_runtime/**
-      - api/apps/api-server/src/routes/identity/external_auth/**
-      - api/apps/api-server/src/routes/identity/me_authentication_methods/**
-      - api/apps/api-server/src/_tests/identity_routes/external_auth_trace.rs
+      - api/apps/api-server/src/extension_bus/authentication_activation*
+      - api/apps/api-server/src/routes/identity/**
+      - api/apps/api-server/src/_tests/identity_routes/**
+      - api/crates/extension-contracts/src/authentication*
+      - api/crates/extension-contracts/src/_tests/authentication*
+      - api/crates/control-plane/src/auth/**
+      - api/crates/control-plane/src/_tests/external_registration*
+      - api/crates/control-plane-contracts/src/ports/**
+      - api/crates/control-plane-postgres-tests/tests/external_identity_binding.rs
+      - api/crates/storage/durable/postgres/src/identity_repositories/**
+      - api/crates/storage/durable/postgres/src/extension_repositories/**
+      - api/crates/storage/durable/postgres/src/_tests/plugin/**
+      - api/crates/storage/durable/postgres/src/secret_crypto/**
+      - api/crates/storage/durable/postgres/migrations/*auth*.sql
       - api/crates/storage/durable/postgres/migrations/*managed*authority*.sql
       - .github/workflows/github-authentication.yml
   workflow_dispatch:

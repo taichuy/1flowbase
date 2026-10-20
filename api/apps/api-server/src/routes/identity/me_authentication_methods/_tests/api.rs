@@ -30,9 +30,12 @@ impl Fixture {
     async fn new() -> Self {
         let (state, host, entry, root) =
             crate::routes::external_auth::authority_tests::installed_verifier_fixture().await;
-        let provider = crate::authentication_runtime::provider(&state, &entry.auth_type)
-            .await
-            .unwrap();
+        let provider = crate::authentication_runtime::provider(
+            &crate::authentication_runtime::AuthenticationRuntime::from_state(&state),
+            &entry.auth_type,
+        )
+        .await
+        .unwrap();
         let identity = domain::VerifiedExternalIdentity::try_from(domain::ExternalIdentityClaim {
             connection_id:entry.connection_id,subject_type:"provider-user-id".into(),subject_value:"42".into(),
             issuer:Some("https://provider.example".into()),realm:None,verified:true,
@@ -342,7 +345,7 @@ async fn authentication_methods_unlink_requires_csrf_preserves_last_method_and_r
         .fetch_one(fixture.state.store.pool()).await.unwrap();
     // Signup remains enabled. The real callback must retain the unlinked subject's owner.
     let (browser, url) = crate::routes::external_auth::begin_for_purpose(
-        &fixture.state,
+        &crate::routes::external_auth::ExternalAuthentication::from_state(&fixture.state),
         fixture.entry.clone(),
         None,
         Purpose::Bind,
@@ -462,7 +465,7 @@ async fn authentication_methods_stepup_rechecks_owned_bound_identity_and_does_no
         .await
         .unwrap();
     let error = issue_password_proof(
-        &fixture.state,
+        &crate::routes::external_auth::ExternalAuthentication::from_state(&fixture.state),
         &fixture.root,
         transaction::digest("root-session"),
         fixture.entry.id,
@@ -484,7 +487,7 @@ async fn authentication_methods_stepup_rechecks_owned_bound_identity_and_does_no
         .await
         .unwrap();
     let error = issue_password_proof(
-        &fixture.state,
+        &crate::routes::external_auth::ExternalAuthentication::from_state(&fixture.state),
         &fixture.actor,
         transaction::digest(&fixture.session.session_id),
         fixture.entry.id,
@@ -559,7 +562,7 @@ async fn authentication_methods_stepup_rechecks_owned_bound_identity_and_does_no
         "the only added identity was the explicit backup"
     );
     assert!(proof::read(
-        &fixture.state,
+        fixture.state.infrastructure.cache_store().as_ref(),
         fixture.actor.user_id,
         &fixture.session.session_id
     )
@@ -615,7 +618,7 @@ async fn authentication_methods_password_setup_rejects_stale_entry_connection_an
         .unwrap();
     fixture.verify_password().await;
     let mut stale = proof::read(
-        &fixture.state,
+        fixture.state.infrastructure.cache_store().as_ref(),
         fixture.actor.user_id,
         &fixture.session.session_id,
     )
@@ -623,7 +626,9 @@ async fn authentication_methods_password_setup_rejects_stale_entry_connection_an
     .unwrap()
     .unwrap();
     stale.provider_fingerprint = "previous-installed-provider-fingerprint".into();
-    proof::issue(&fixture.state, stale).await.unwrap();
+    proof::issue(fixture.state.infrastructure.cache_store().as_ref(), stale)
+        .await
+        .unwrap();
     let response = fixture.request("POST", &path, body(), true).await;
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert_eq!(
@@ -712,10 +717,13 @@ async fn authentication_methods_all_four_routes_publish_typed_plans_and_bounded_
 #[tokio::test]
 async fn authentication_methods_two_providers_share_one_live_authority_batch() {
     let (state, host, entry, _) = crate::routes::external_auth::authority_tests::installed_verifier_fixture_with_second_provider(true).await;
-    let methods = tokio::time::timeout(std::time::Duration::from_secs(5), available(&state))
-        .await
-        .expect("multiple providers must not wait for their own workspace authority lock")
-        .unwrap();
+    let methods = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        available(&crate::routes::external_auth::ExternalAuthentication::from_state(&state)),
+    )
+    .await
+    .expect("multiple providers must not wait for their own workspace authority lock")
+    .unwrap();
     assert_eq!(methods.providers.len(), 2);
     assert_eq!(methods.authorities.len(), 2);
     assert_eq!(methods.leases.len(), 1);
@@ -725,10 +733,13 @@ async fn authentication_methods_two_providers_share_one_live_authority_batch() {
         .execute(state.store.pool())
         .await
         .unwrap();
-    let methods = tokio::time::timeout(std::time::Duration::from_secs(5), available(&state))
-        .await
-        .unwrap()
-        .unwrap();
+    let methods = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        available(&crate::routes::external_auth::ExternalAuthentication::from_state(&state)),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(
         methods.authorities.len(),
         1,

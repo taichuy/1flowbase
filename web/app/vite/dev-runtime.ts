@@ -446,13 +446,19 @@ function oneFlowbaseDevRuntimePlugin({
       if (hmrProbeFile && fs.existsSync(hmrProbeFile))
         fs.unlinkSync(hmrProbeFile);
     },
-    resolveId(id) {
-      if (id === HMR_PROBE_ID) return RESOLVED_HMR_PROBE_ID;
-      return null;
+    resolveId: {
+      filter: { id: /^virtual:1flowbase-dev-hmr-probe$/u },
+      handler(id) {
+        if (id === HMR_PROBE_ID) return RESOLVED_HMR_PROBE_ID;
+        return null;
+      }
     },
-    load(id) {
-      if (id === RESOLVED_HMR_PROBE_ID) return hmrProbeSource(hmrProbeFile);
-      return null;
+    load: {
+      filter: { id: /^\x00virtual:1flowbase-dev-hmr-probe$/u },
+      handler(id) {
+        if (id === RESOLVED_HMR_PROBE_ID) return hmrProbeSource(hmrProbeFile);
+        return null;
+      }
     },
     transformIndexHtml() {
       if (command !== 'serve') return [];

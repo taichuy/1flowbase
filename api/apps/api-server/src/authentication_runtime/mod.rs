@@ -15,7 +15,53 @@ use extension_contracts::{
     AUTHENTICATION_POINT,
 };
 use runtime_core::runtime_backend::RuntimeExecutionPrincipal;
+use std::sync::{Arc, Weak};
+use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
+
+/// Provider admission and invocation resources. The runtime reference is weak:
+/// its composition owns compiled registries which retain authentication handlers.
+#[derive(Clone)]
+pub(crate) struct AuthenticationRuntime {
+    pub(crate) store: MainDurableStore,
+    runtime: Weak<crate::provider_runtime::ApiRuntimeServices>,
+    api_node_id: String,
+    provider_install_root: String,
+    provider_secret_master_key: String,
+}
+
+/// Keeps the runtime alive for one handler execution without exposing its services.
+pub(crate) struct AuthenticationRuntimeLease {
+    _runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+}
+
+impl AuthenticationRuntime {
+    pub(crate) fn from_state(state: &ApiState) -> Self {
+        Self {
+            store: state.store.clone(),
+            runtime: Arc::downgrade(&state.provider_runtime),
+            api_node_id: state.api_node_id.clone(),
+            provider_install_root: state.provider_install_root.clone(),
+            provider_secret_master_key: state.provider_secret_master_key.clone(),
+        }
+    }
+
+    pub(crate) fn retain_runtime(&self) -> Option<AuthenticationRuntimeLease> {
+        self.runtime
+            .upgrade()
+            .map(|runtime| AuthenticationRuntimeLease { _runtime: runtime })
+    }
+
+    fn composition(
+        &self,
+    ) -> Result<Arc<crate::extension_bus::ManagedExtensionComposition>, ApiError> {
+        self.runtime
+            .upgrade()
+            .ok_or(Error::PluginUnavailable)?
+            .managed_composition()
+            .map_err(Into::into)
+    }
+}
 
 pub(crate) struct AuthenticationProvider {
     pub descriptor: AuthenticationProviderDescriptor,
@@ -64,10 +110,10 @@ fn fingerprint(
 }
 
 pub(crate) async fn provider(
-    state: &ApiState,
+    state: &AuthenticationRuntime,
     auth_type: &str,
 ) -> Result<AuthenticationProvider, ApiError> {
-    let composition = state.provider_runtime.managed_composition()?;
+    let composition = state.composition()?;
     let snapshot = composition
         .snapshot(domain::SYSTEM_SCOPE_ID)
         .await
@@ -112,7 +158,7 @@ pub(crate) async fn provider(
 /// Resolve a single current graph and retain one live authority batch for all
 /// candidate providers. No worker invocation runs while this lease is held.
 pub(crate) async fn authorize_available_providers(
-    state: &ApiState,
+    state: &AuthenticationRuntime,
     providers: &[AuthenticationProvider],
     entries: &[domain::LoginEntryRecord],
 ) -> Result<
@@ -133,7 +179,7 @@ pub(crate) async fn authorize_available_providers(
     if candidates.is_empty() {
         return Ok((Vec::new(), None));
     }
-    let composition = state.provider_runtime.managed_composition()?;
+    let composition = state.composition()?;
     let snapshot = composition
         .snapshot(domain::SYSTEM_SCOPE_ID)
         .await
@@ -175,7 +221,7 @@ impl AuthenticationProvider {
     /// Host holds this lease until the identity/session business effect finishes.
     pub(crate) async fn authorize_completion(
         &self,
-        state: &ApiState,
+        state: &AuthenticationRuntime,
         entry: &domain::LoginEntryRecord,
     ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>, ApiError> {
         let current = provider(state, &entry.auth_type).await?;
@@ -185,7 +231,7 @@ impl AuthenticationProvider {
         {
             return Err(Error::PermissionDenied("authentication_provider_changed").into());
         }
-        let composition = state.provider_runtime.managed_composition()?;
+        let composition = state.composition()?;
         let snapshot = composition
             .snapshot(domain::SYSTEM_SCOPE_ID)
             .await
@@ -205,7 +251,7 @@ impl AuthenticationProvider {
 
     pub(crate) async fn invoke(
         &self,
-        state: &ApiState,
+        state: &AuthenticationRuntime,
         entry: &domain::LoginEntryRecord,
         request: AuthenticationRequest,
     ) -> Result<AuthenticationResponse, ApiError> {
@@ -218,7 +264,7 @@ impl AuthenticationProvider {
         {
             return Err(Error::PermissionDenied("authentication_provider_changed").into());
         }
-        let composition = state.provider_runtime.managed_composition()?;
+        let composition = state.composition()?;
         let snapshot = composition
             .snapshot(domain::SYSTEM_SCOPE_ID)
             .await
@@ -296,7 +342,7 @@ impl AuthenticationProvider {
 }
 
 pub(crate) async fn active_providers(
-    state: &ApiState,
+    state: &AuthenticationRuntime,
 ) -> Result<Vec<AuthenticationProvider>, ApiError> {
     let declarations = registration::active_declarations(
         &state.store,

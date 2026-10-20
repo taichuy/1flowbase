@@ -280,7 +280,13 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
 
     // Positive control: execute the actual BuiltIn factory, consume its sealed side
     // port exactly once, and preserve its attempt identity through business/session issuance.
-    let (jar, url) = begin(&state, entry.clone(), None).await.unwrap();
+    let (jar, url) = begin(
+        &ExternalAuthentication::from_state(&state),
+        entry.clone(),
+        None,
+    )
+    .await
+    .unwrap();
     let admission = CallbackAdmission::default();
     let authenticated = boot
         .authenticate_invocation::<_, PublicPrincipal>(
@@ -303,7 +309,7 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
         admission.take().is_err(),
         "sealed factory result is single-use"
     );
-    let input = PublicInput::Complete(verified);
+    let input = PublicInput::Complete(Box::new(verified));
     assert_eq!(
         interface_runtime::ManagedInterfaceProjection::from_contract(&input)
             .unwrap()
@@ -319,8 +325,7 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
         authenticated.into_envelope(input),
     )
     .await
-    .ok()
-    .expect("bound identity must sign in with registration disabled");
+    .unwrap_or_else(|_| panic!("bound identity must sign in with registration disabled"));
     assert_eq!(outcome.receipt().invocation_id(), invocation_id);
     let output = outcome.into_value();
     assert_eq!(
@@ -353,10 +358,15 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
             grant.contribution_id == CONTRIBUTION && grant.permission == "authentication.verify"
         })
         .unwrap();
-    let provider_before = crate::authentication_runtime::provider(&state, &entry.auth_type)
+    let provider_before = crate::authentication_runtime::provider(
+        &crate::authentication_runtime::AuthenticationRuntime::from_state(&state),
+        &entry.auth_type,
+    )
+    .await
+    .unwrap();
+    let (jar, url) = begin(&ExternalAuthentication::from_state(&state), entry, None)
         .await
         .unwrap();
-    let (jar, url) = begin(&state, entry, None).await.unwrap();
     let cookie = jar
         .iter()
         .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
@@ -398,9 +408,12 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
     .expect("revocation must commit while old worker response is paused")
     .unwrap();
     assert!(!pending.is_finished());
-    let provider_after = crate::authentication_runtime::provider(&state, "external-fixture")
-        .await
-        .unwrap();
+    let provider_after = crate::authentication_runtime::provider(
+        &crate::authentication_runtime::AuthenticationRuntime::from_state(&state),
+        "external-fixture",
+    )
+    .await
+    .unwrap();
     assert_eq!(
         provider_before.fingerprint, provider_after.fingerprint,
         "revocation must leave the old frozen worker fingerprint unchanged"

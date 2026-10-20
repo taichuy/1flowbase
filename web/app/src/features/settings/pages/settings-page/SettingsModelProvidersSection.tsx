@@ -29,6 +29,7 @@ import {
   type SettingsPluginFamilyEntry
 } from '../../api/extensions/plugins';
 import '../../components/model-providers/model-provider-panel.css';
+import '../../components/model-providers/model-provider-drawer.css';
 import {
   getErrorMessage,
   getPluginUploadErrorMessage,
@@ -863,8 +864,7 @@ export function SettingsModelProvidersSection({
           const nextPolicy = {
             model_id: modelId,
             distribution_rule: distributionRule,
-            distribution_rule_contract_version:
-              distributionRuleContractVersion,
+            distribution_rule_contract_version: distributionRuleContractVersion,
             distribution_rule_config: distributionRuleConfig,
             provider_instance_ids: providerInstanceIds,
             excluded_provider_instance_ids: excludedProviderInstanceIds

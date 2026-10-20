@@ -35,6 +35,10 @@ flowchart LR
 
 ## 维护边界
 
+职责拆分保持 crate 依赖方向、公共 facade、Canonical Interface 身份、事务与协议结果不变。生产行为按语义 owner 的私有子模块组织；测试按场景与共享 fixture 组织，保留 Cargo integration target 与门禁 selector 的非零执行证据。静态禁止规则递归检查 owner 子模块，不能只检查拆分前的单文件，也不能把私有模块数量或顺序当作架构契约。
+
+`api-server` 的启动、唯一 Runtime Host / Slot 注入与关闭装配放在 `internal/startup_assembly`，`lib` 保留宿主公共入口；运行时 Port、协议投影和存储 mapper 分别留在既有 owner 内部，不增加跨 crate 反向依赖。
+
 - 本文描述架构与不变量，不将某次 CI 通过写成所有接口、所有输入已验证。
 - 接口生命周期管理先提供统一契约；插件贡献开放再验证真实声明、加载、组合与执行。受控 plan 测试不能替代真实插件装配，合法空计划也不是缺陷。
 - 当前实现查源码，候选覆盖查对应 Issue/Assembly Receipt/测试报告；旧 receipt 保留执行版本，不改写为当前验收结果。
@@ -128,6 +132,8 @@ Repository contract 归 `control-plane-contracts`，PostgreSQL adapter 以 `(wor
 
 Schema 门禁对这些有限表使用具体字段/索引例外，并独立检查 owner 外键、非空 routing key、主键和查询索引；普通业务表的 scope/time/id 约束继续执行。正式 migration 不因门禁分类更新而改写。
 
+积分流水列表按认证 workspace 和 `(created_at, id)` 游标降序读取，`user_id` 是可选过滤条件。`runtime_credit_ledger` 同时保留 `(workspace_id, created_at, id)` 与 `(workspace_id, user_id, created_at, id)` 查询索引；用户列不能插入全 workspace 时间排序的索引前缀。`scope_id` 虽由 workspace 生成，也不作为实际 `workspace_id` 查询谓词的隐式索引替代。全 workspace 查询的 schema contract 要求无 partial predicate 的索引，不能用只覆盖部分用户的索引冒充覆盖全部流水。此结构检查证明过滤和排序形状有对应索引，不证明 PostgreSQL 实际计划、数据规模下的性能收益或写入成本。
+
 ### 源码入口
 
 - [external_route_assembly.rs](../../api/apps/api-server/src/console_contracts/external_route_assembly.rs)：挂载与 Inventory 同源构造。
@@ -168,6 +174,10 @@ PublicPrincipal 不伪造 Actor；UserPrincipal/ApplicationPrincipal 内的 Acto
 
 无法解析 Binding/activation、协议语法错误和认证 bootstrap 属于入口诊断边界，不捏造已解析业务计划。已有委托/WebSocket身份复用遵循原契约，不跳过应有委托裁决；不同消息仍有各自 Invocation identity。
 
+认证业务 Handler 不保留全局 `ApiState`。装配时，`authentication_runtime::AuthenticationRuntime` 提取 provider 所需的 store、node、安装根目录和密钥配置；它只通过私有方法访问 runtime 的 managed composition。`external_auth::ExternalAuthentication` 增加事务 cache 与 cookie 配置，个人认证方法 Port 另持有 session store；密码证明的读写和单次领取直接消费 `CacheStore`。原始回调凭据仍由宿主认证 factory 验证，业务写入仍经过既有 typed Handler 与 authority lease。
+
+runtime 的 composition 持有编译后的 Handler registry，因此 Handler 内的 runtime 引用保持 `Weak`，避免 `runtime → composition → registry → Handler → runtime` 强引用环。执行时在原有升级位置取得私有短期 lease，保持调用期间资源存活；缺少 composition 的错误仍在原来的使用时机返回，不在装配时静默替换。源码门禁检查具名与元组 Adapter / Port 的全局容器字段，允许 composition root 以 `ApiState` 参数提取依赖；该检查不替代认证、会话、撤销与密码证明行为测试。
+
 ### 同一 HTTP carrier 的受限变体
 
 Compact 的 unary 执行可以投影为 SSE；有效工具回调则可能继续原 streaming resume。协议格式不能直接决定业务执行模式。
@@ -175,6 +185,8 @@ Compact 的 unary 执行可以投影为 SSE；有效工具回调则可能继续�
 需要已认证上下文才能选择变体时，成功认证 attempt 只能在业务 Resolve 前被消费，并保持同一 snapshot、HTTP method/route、完整 authentication activation/adapter/policy、Principal profile 和 input contract。输出或执行模式可按已注册变体不同，但后续必须执行所选完整计划。
 
 未知 Binding、其他入口或认证配置不匹配时拒绝；不重复认证、不重读当前可变 Registry、不回退为丢失 lineage 的 Envelope。认证失败仍使用入口候选计划记录拒绝。进入业务 Resolve 后不再切换 Binding/Plan。
+
+OpenAI Responses 的 `response_dispatch` 分开承接准备与执行：准备阶段完成认证、历史响应与 callback admission、翻译及 continuation claim，产出拥有完整冻结身份的 Start / Resume 数据；`response_dispatch/execution` 按 Generate、Compact、Resume 选择独立 future，保留各 binding、HTTP / SSE / typed events 投影及 recorder / completion / reservation 的原 owner。准备与执行的 future 均由非 async factory 构造，再由原任务等待；准备完成后释放其 future 和 poll 栈，避免 Compact 执行时叠加无关 resume / Generate 分支的 poll 帧。此边界不创建新任务，不重做认证，也不把冻结身份降为脱离原 carrier / snapshot 的 Principal。原 2 MiB 路由测试验证既有协议行为；该测试线程大小不是服务端业务容量上限。
 
 ### 两次冻结
 
@@ -404,6 +416,8 @@ OpenAI / Anthropic 兼容流式 route 通过 `compatibility_interface::invoke_cl
 
 已有测试入口包括 [HTTP/MCP成对fixture](../../api/apps/api-server/src/_tests/interface_lifecycle_acceptance/create_pair.rs)、[流式收尾fixture](../../api/apps/api-server/src/routes/application_public_api/responses_websocket/tests/turn_finalization.rs)、[在线生命周期](../../scripts/node/ai-gateway-concurrency/responses-websocket-acceptance/lifecycle.js)和[在线错误矩阵](../../scripts/node/ai-gateway-concurrency/responses-websocket-acceptance/error-matrix.js)。这些路径用于定位测试，不表示本次文档整理重新执行了测试。
 
+
+治理脚本与源码断言复用 `scripts/node/testing/contracts/rust-sources.js` 读取生产 owner 及私有模块，排除测试夹具；设置注册检查覆盖 `settings_features/core_registrations.rs`，启动装配检查覆盖 `internal`，角色权限 advisory 覆盖 controller 所在私有目录。源码 advisory 与 compiled policy inventory 分开结算，不替代实际授权验收。
 
 ## AI Native 调用轨迹与协议诊断
 

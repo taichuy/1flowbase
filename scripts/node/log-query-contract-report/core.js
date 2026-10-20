@@ -1,5 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { productionRustSources } = require('../testing/contracts/rust-sources.js');
+const { maskRustText, delimitedEnd } = require('../check-rust-backend/source.js');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
 
@@ -31,7 +33,8 @@ function resolveSource(repoRoot, filePath) {
   return {
     file: normalizePath(filePath),
     exists: true,
-    text: fs.readFileSync(absolutePath, 'utf8'),
+    text: path.extname(absolutePath) === '.rs'
+      ? productionRustSources(absolutePath) : fs.readFileSync(absolutePath, 'utf8'),
   };
 }
 
@@ -41,7 +44,7 @@ function findFunctionMatch(source, functionName) {
   }
 
   const pattern = new RegExp(`\\b(?:pub\\s+)?(?:async\\s+)?fn\\s+${functionName}\\s*\\(`, 'u');
-  return pattern.exec(source.text);
+  return pattern.exec(maskRustText(source.text));
 }
 
 function functionContext(source, functionName) {
@@ -50,10 +53,19 @@ function functionContext(source, functionName) {
     return '';
   }
 
-  return source.text.slice(
-    Math.max(0, match.index - 1200),
-    Math.min(source.text.length, match.index + 9000)
-  );
+  // Match one Rust function token tree; neighboring functions cannot satisfy its contract.
+  const code = maskRustText(source.text);
+  const parameters = code.indexOf('(', match.index);
+  const parametersEnd = delimitedEnd(code, parameters);
+  if (parametersEnd === null) return '';
+  const body = code.indexOf('{', parametersEnd);
+  const declarationEnd = code.indexOf(';', parametersEnd);
+  if (declarationEnd >= 0 && (body < 0 || declarationEnd < body)) {
+    return source.text.slice(match.index, declarationEnd + 1);
+  }
+  if (body < 0) return '';
+  const end = delimitedEnd(code, body);
+  return end === null ? '' : source.text.slice(match.index, end);
 }
 
 function includeStringContext(repoRoot, sourceSpec, context) {
@@ -75,49 +87,35 @@ function regexMatches(text, pattern) {
   return new RegExp(pattern, 'u').test(text);
 }
 
-function evaluateDimension({ dimension, spec, context }) {
+function evaluateDimension({ dimension, spec, context, asOfDate }) {
   const patterns = spec.patterns || [];
   const matchedPatterns = patterns.filter((pattern) => regexMatches(context, pattern));
   const missingPatterns = patterns.filter((pattern) => !matchedPatterns.includes(pattern));
   const present = patterns.length > 0 && missingPatterns.length === 0;
   const exemption = spec.exemption || null;
 
+  const validExemption = exemption?.reason && (exemption.removeBy === 'not_required'
+    || (/^\d{4}-\d{2}-\d{2}$/u.test(exemption.removeBy || '')
+      && !Number.isNaN(Date.parse(exemption.removeBy))
+      && new Date(exemption.removeBy).toISOString().slice(0, 10) === exemption.removeBy
+      && exemption.removeBy >= asOfDate));
   if (present && !exemption) {
-    return {
-      dimension,
-      status: 'compliant',
-      description: spec.description || '',
-      matchedPatterns,
-      missingPatterns: [],
-      exemption: null,
-    };
+    return { dimension, status: 'compliant', description: spec.description || '',
+      matchedPatterns, missingPatterns: [], exemption: null };
   }
-
-  if (present && exemption) {
-    return {
-      dimension,
-      status: 'exempted',
-      description: spec.description || '',
-      matchedPatterns,
-      missingPatterns: [],
-      exemption,
-    };
-  }
-
-  if (exemption && exemption.reason && exemption.removeBy) {
-    return {
-      dimension,
-      status: 'exempted',
-      description: spec.description || '',
-      matchedPatterns,
-      missingPatterns,
-      exemption,
-    };
+  // A documented non-applicable dimension may be empty. Any specified evidence
+  // must still match; an exemption cannot hide a missing predicate or expired plan.
+  if (validExemption && (present || patterns.length === 0)) {
+    return { dimension, status: 'exempted', description: spec.description || '',
+      matchedPatterns, missingPatterns: [], exemption };
   }
 
   return {
     dimension,
     status: 'failed',
+    failureReason: exemption && !validExemption
+      ? `exemption must have a reason and an unexpired ISO date or not_required (removeBy=${exemption.removeBy || 'missing'})`
+      : null,
     description: spec.description || '',
     matchedPatterns,
     missingPatterns,
@@ -164,11 +162,11 @@ function endpointFinding(endpoint, dimension, message) {
   };
 }
 
-function evaluateEndpoint({ repoRoot, endpoint }) {
+function evaluateEndpoint({ repoRoot, endpoint, asOfDate }) {
   const context = endpointContext(repoRoot, endpoint);
   const dimensions = CONTRACT_DIMENSIONS.map((dimension) => {
     const spec = endpoint.contract?.[dimension] || {};
-    return evaluateDimension({ dimension, spec, context: context.text });
+    return evaluateDimension({ dimension, spec, context: context.text, asOfDate });
   });
   const findings = [];
 
@@ -194,7 +192,9 @@ function evaluateEndpoint({ repoRoot, endpoint }) {
       findings.push(endpointFinding(
         endpoint,
         dimension.dimension,
-        `${endpoint.id} is missing ${dimension.dimension} query contract evidence`
+        dimension.failureReason
+          ? `${endpoint.id} ${dimension.dimension}: ${dimension.failureReason}`
+          : `${endpoint.id} is missing ${dimension.dimension} query contract evidence`
       ));
     }
     if (dimension.status === 'exempted' && (!dimension.exemption?.reason || !dimension.exemption?.removeBy)) {
@@ -242,11 +242,13 @@ function buildSummary(endpoints) {
 function collectLogQueryContractReport({
   repoRoot = getRepoRoot(),
   config,
+  asOfDate = new Date().toISOString().slice(0, 10),
 } = {}) {
   const effectiveConfig = config || loadConfig(repoRoot);
   const endpoints = (effectiveConfig.endpoints || []).map((endpoint) => evaluateEndpoint({
     repoRoot,
     endpoint,
+    asOfDate,
   }));
   const summary = buildSummary(endpoints);
 

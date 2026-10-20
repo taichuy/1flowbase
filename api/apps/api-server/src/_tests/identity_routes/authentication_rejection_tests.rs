@@ -135,12 +135,21 @@ async fn root_1998_success_reuses_attempt_lineage_and_unknown_binding_is_ingress
             snapshot
                 .authentication(binding.binding_id())
                 .unwrap()
-                .principal_profile()
-                == PrincipalProfile::Public
+                .activation()
+                .as_str()
+                == "api-server.public.activation.v1"
         })
         .unwrap()
         .binding_id()
         .clone();
+    // External callbacks also establish Public principals, using a distinct credential type.
+    let activation = snapshot.authentication(&binding).unwrap();
+    assert_eq!(
+        activation.plugin().as_str(),
+        "api-server.public-authentication"
+    );
+    assert_eq!(activation.adapter().as_str(), "api-server.public");
+    assert_eq!(activation.principal_profile(), PrincipalProfile::Public);
     let authenticated = boot
         .authenticate_invocation::<_, PublicPrincipal>(
             snapshot.clone(),

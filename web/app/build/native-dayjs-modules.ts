@@ -43,25 +43,42 @@ export function nativeDayjsModulesPlugin({
     configResolved(config) {
       command = config.command;
     },
-    async resolveId(id, importer, options) {
-      if (id === NATIVE_DAYJS_MODULES_VIRTUAL_ID) return RESOLVED_VIRTUAL_ID;
-      const demandResolvedId = demandDomain.resolveId(id);
-      if (demandResolvedId) return demandResolvedId;
-      if (command !== 'serve') return null;
-      const devModuleSource = resolveDayjsDevModuleSource(inventory, id);
-      if (!devModuleSource) return null;
-      return this.resolve(devModuleSource, importer, {
-        ...options,
-        skipSelf: true
-      });
-    },
-    load(id) {
-      if (id === RESOLVED_VIRTUAL_ID) {
-        return command === 'serve'
-          ? generateNativeDayjsDevModules(inventory)
-          : renderNativeDayjsModules(inventory);
+    resolveId: {
+      filter: {
+        id: [
+          /^virtual:1flowbase-native-dayjs-modules$/u,
+          /^virtual:1flowbase-native-dayjs-leaf\//u,
+          /^dayjs(?:$|\/(?:plugin|locale)\/)/u
+        ]
+      },
+      async handler(id, importer, options) {
+        if (id === NATIVE_DAYJS_MODULES_VIRTUAL_ID) return RESOLVED_VIRTUAL_ID;
+        const demandResolvedId = demandDomain.resolveId(id);
+        if (demandResolvedId) return demandResolvedId;
+        if (command !== 'serve') return null;
+        const devModuleSource = resolveDayjsDevModuleSource(inventory, id);
+        if (!devModuleSource) return null;
+        return this.resolve(devModuleSource, importer, {
+          ...options,
+          skipSelf: true
+        });
       }
-      return demandDomain.load(id, command);
+    },
+    load: {
+      filter: {
+        id: [
+          /^\x00virtual:1flowbase-native-dayjs-modules$/u,
+          /^\x00virtual:1flowbase-native-dayjs-leaf\//u
+        ]
+      },
+      handler(id) {
+        if (id === RESOLVED_VIRTUAL_ID) {
+          return command === 'serve'
+            ? generateNativeDayjsDevModules(inventory)
+            : renderNativeDayjsModules(inventory);
+        }
+        return demandDomain.load(id, command);
+      }
     }
   };
 }

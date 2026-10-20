@@ -19,10 +19,11 @@ pub(crate) struct PasswordSetupProof {
 fn key(session_hash: &str) -> String {
     format!("authentication:password-setup:{session_hash}")
 }
-pub(crate) async fn issue(state: &ApiState, proof: PasswordSetupProof) -> Result<(), ApiError> {
-    state
-        .infrastructure
-        .cache_store()
+pub(crate) async fn issue(
+    cache: &dyn control_plane::ports::CacheStore,
+    proof: PasswordSetupProof,
+) -> Result<(), ApiError> {
+    cache
         .set_json(
             &key(&proof.session_hash),
             serde_json::to_value(&proof)?,
@@ -35,17 +36,12 @@ pub(crate) fn expires_at() -> i64 {
     time::OffsetDateTime::now_utc().unix_timestamp() + TTL
 }
 pub(super) async fn read(
-    state: &ApiState,
+    cache: &dyn control_plane::ports::CacheStore,
     actor_id: Uuid,
     session_id: &str,
 ) -> Result<Option<PasswordSetupProof>, ApiError> {
     let session_hash = transaction::digest(session_id);
-    let Some(value) = state
-        .infrastructure
-        .cache_store()
-        .get_json(&key(&session_hash))
-        .await?
-    else {
+    let Some(value) = cache.get_json(&key(&session_hash)).await? else {
         return Ok(None);
     };
     let proof: PasswordSetupProof = serde_json::from_value(value)?;
@@ -55,9 +51,7 @@ pub(super) async fn read(
     {
         return Ok(None);
     }
-    if state
-        .infrastructure
-        .cache_store()
+    if cache
         .get_json(&format!(
             "authentication:password-setup:claimed:{}",
             proof.nonce
@@ -70,16 +64,16 @@ pub(super) async fn read(
     Ok(Some(proof))
 }
 pub(super) async fn claim(
-    state: &ApiState,
+    cache: &dyn control_plane::ports::CacheStore,
     actor_id: Uuid,
     session_id: &str,
 ) -> Result<PasswordSetupProof, ApiError> {
-    let proof = read(state, actor_id, session_id)
+    let proof = read(cache, actor_id, session_id)
         .await?
-        .ok_or_else(|| Error::PermissionDenied("password_setup_verification_required"))?;
-    let claimed = state
-        .infrastructure
-        .cache_store()
+        .ok_or(Error::PermissionDenied(
+            "password_setup_verification_required",
+        ))?;
+    let claimed = cache
         .set_if_absent_json(
             &format!("authentication:password-setup:claimed:{}", proof.nonce),
             serde_json::json!(true),

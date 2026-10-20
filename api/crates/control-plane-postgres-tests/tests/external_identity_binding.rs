@@ -241,7 +241,10 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
     assert_eq!(user.email, "external@example.com");
     assert_eq!(user.account, "github-member");
     assert_eq!(user.nickname, "公开昵称");
-    assert_eq!(user.name, "github-member", "persist only the explicit provider hint");
+    assert_eq!(
+        user.name, "github-member",
+        "persist only the explicit provider hint"
+    );
     assert_eq!(
         user.avatar_url.as_deref(),
         Some("https://avatars.githubusercontent.com/u/42")
@@ -282,7 +285,11 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
     // Existing binding needs neither email nor registration eligibility, even after signup closes.
     entry.options = serde_json::json!({"extension_config":{"self_registration_enabled":false}});
     store.upsert_login_entry(&entry).await.unwrap();
-    let no_email = registration_identity(entry.connection_id, "42", serde_json::json!({"name":"Provider changed name"}));
+    let no_email = registration_identity(
+        entry.connection_id,
+        "42",
+        serde_json::json!({"name":"Provider changed name"}),
+    );
     let again = kernel
         .complete_external_login(CompleteExternalLoginCommand {
             login_entry_id: entry.id,
@@ -510,7 +517,10 @@ async fn external_profile_account_collisions_are_atomic_and_invalid_hints_fall_b
     assert_ne!(user.id, root.id);
     assert_eq!(user.account, format!("root_{}", user.id.simple()));
     assert_eq!(user.nickname, "root");
-    assert!(user.name.is_empty(), "Host must not default name from account");
+    assert!(
+        user.name.is_empty(),
+        "Host must not default name from account"
+    );
     assert!(!collision.actor.is_root);
     assert_eq!(collision.actor.effective_display_role, "member");
     assert!(user.name.is_empty() && user.avatar_url.is_none());

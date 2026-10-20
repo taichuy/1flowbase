@@ -42,18 +42,34 @@ export function nativeDndKitModulesPlugin({
     configResolved(config) {
       command = config.command;
     },
-    resolveId(id) {
-      return id === NATIVE_DND_KIT_MODULES_VIRTUAL_ID
-        ? RESOLVED_VIRTUAL_ID
-        : demandDomain.resolveId(id);
-    },
-    load(id) {
-      if (id === RESOLVED_VIRTUAL_ID) {
-        return command === 'serve'
-          ? generateNativeDndKitDevModules(inventory)
-          : renderNativeDndKitModules(inventory);
+    resolveId: {
+      filter: {
+        id: [
+          /^virtual:1flowbase-native-dnd-kit-modules$/u,
+          /^virtual:1flowbase-native-dnd-kit-leaf\//u
+        ]
+      },
+      handler(id) {
+        return id === NATIVE_DND_KIT_MODULES_VIRTUAL_ID
+          ? RESOLVED_VIRTUAL_ID
+          : demandDomain.resolveId(id);
       }
-      return demandDomain.load(id, command);
+    },
+    load: {
+      filter: {
+        id: [
+          /^\x00virtual:1flowbase-native-dnd-kit-modules$/u,
+          /^\x00virtual:1flowbase-native-dnd-kit-leaf\//u
+        ]
+      },
+      handler(id) {
+        if (id === RESOLVED_VIRTUAL_ID) {
+          return command === 'serve'
+            ? generateNativeDndKitDevModules(inventory)
+            : renderNativeDndKitModules(inventory);
+        }
+        return demandDomain.load(id, command);
+      }
     }
   };
 }

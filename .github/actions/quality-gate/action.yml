@@ -137,6 +137,8 @@ runs:
       run: |
         export API_DATABASE_URL="${API_DATABASE_URL:-postgres://postgres:1flowbase@127.0.0.1:${QUALITY_GATE_POSTGRES_PORT:-35432}/1flowbase}"
         export DATABASE_URL="${DATABASE_URL:-$API_DATABASE_URL}"
+        # Explicit fixture origin for external callback tests; production has no default.
+        export API_AUTH_PUBLIC_ORIGIN="${API_AUTH_PUBLIC_ORIGIN:-https://auth-fixture.example}"
         node scripts/node/cli/quality/github-quality-gate.js
     - id: quality-gate-postgres-cleanup
       if: ${{ always() && inputs.start_postgres == 'true' }}

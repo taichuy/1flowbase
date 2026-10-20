@@ -3,6 +3,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { getRepoRoot, resolveOutputDir } = require('../testing/warning-capture.js');
+const { scanProcessCalls } = require('./process-scanner.js');
 
 const REPORT_FILE = 'security-risk.json';
 const DEFAULT_BASE_REF = 'origin/main';
@@ -48,11 +49,6 @@ const RISK_PATTERNS = [
     severity: 'medium',
     kind: 'rust-network-call',
     pattern: /\b(?:reqwest|hyper|tokio_tungstenite|tungstenite)::/u,
-  },
-  {
-    severity: 'high',
-    kind: 'process-execution',
-    pattern: /\b(?:child_process|spawn|exec|execFile|Command::new)\b/u,
   },
   {
     severity: 'high',
@@ -135,39 +131,87 @@ function isAddedDiffLine(line) {
   return line.startsWith('+') && !line.startsWith('+++');
 }
 
-function scanDiffText(diffText) {
-  const findings = [];
-  let currentFile = '';
-
+function diffFiles(diffText) {
+  const files = [];
+  let current;
+  let newLine = 1;
   for (const line of diffText.split(/\r?\n/u)) {
-    if (line.startsWith('+++ b/')) {
-      currentFile = normalizePath(line.slice('+++ b/'.length));
+    if (line.startsWith('diff --git ')) current = null;
+    if (line.startsWith('+++ ')) {
+      current = line.startsWith('+++ b/') ? { file: normalizePath(line.slice(6)), rows: [] } : null;
+      if (current) files.push(current);
+      newLine = 1;
       continue;
     }
-
-    if (!isAddedDiffLine(line)) {
-      continue;
-    }
-
-    const content = line.slice(1);
-    for (const rule of RISK_PATTERNS) {
-      if (rule.appliesToFile && !rule.appliesToFile(currentFile)) {
-        continue;
-      }
-
-      if (rule.pattern.test(content)) {
-        findings.push({
-          severity: rule.severity,
-          kind: rule.kind,
-          file: currentFile,
-          source: 'added_diff_line',
-          reviewIntent: 'pattern-match-review',
-          sample: content.trim().slice(0, 180),
-        });
-      }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/u.exec(line);
+    if (hunk) { newLine = Number(hunk[1]); continue; }
+    if (!current) continue;
+    if (isAddedDiffLine(line) || line.startsWith(' ')) {
+      current.rows.push({ line: newLine++, content: line.slice(1), added: isAddedDiffLine(line) });
     }
   }
+  return files;
+}
 
+function processSource({ file, rows }, repoRoot) {
+  const reconstructed = [];
+  for (const row of rows) reconstructed[row.line - 1] = row.content;
+  let limitation = reconstructed.filter(() => true).length < reconstructed.length
+    ? 'Diff fragments omit source context; unchanged imports and lexical scopes may be unavailable.' : null;
+  if (repoRoot) {
+    try {
+      const source = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+      const lines = source.split(/\r?\n/u);
+      if (rows.every((row) => lines[row.line - 1] === row.content)) {
+        return { source, sourceContext: 'repository-file' };
+      }
+      limitation = 'Repository source does not match the diff new-side lines; scanning reconstructed fragments.';
+    } catch (error) {
+      if (error.code !== 'ENOENT') limitation = `Cannot read repository source: ${error.message}`;
+    }
+  }
+  return { source: Array.from(reconstructed, (line) => line || '').join('\n'), sourceContext: 'diff-fragment', limitation };
+}
+
+function scanDiffText(diffText, { repoRoot } = {}) {
+  const findings = [];
+  for (const changed of diffFiles(diffText)) {
+    const { file, rows } = changed;
+    const added = rows.filter((row) => row.added);
+    if (added.length === 0) continue;
+    const context = processSource(changed, repoRoot);
+    const process = scanProcessCalls(context.source, file);
+    const processByLine = new Map();
+    for (const call of [
+      ...process.calls.map((call) => ({ ...call, resolved: true })),
+      ...(process.unresolved || []).map((call) => ({ ...call, resolved: false })),
+    ]) {
+      const row = added.find((entry) => entry.line >= call.startLine && entry.line <= call.endLine);
+      if (!row) continue;
+      if (!processByLine.has(row.line)) processByLine.set(row.line, []);
+      processByLine.get(row.line).push(call);
+    }
+    for (const row of added) {
+      const base = { file, line: row.line, source: 'added_diff_line', sample: row.content.trim().slice(0, 180) };
+      for (const rule of RISK_PATTERNS) {
+        if (rule.appliesToFile && !rule.appliesToFile(file)) continue;
+        if (rule.pattern.test(row.content)) findings.push({
+          ...base, severity: rule.severity, kind: rule.kind, reviewIntent: 'pattern-match-review',
+        });
+      }
+      for (const call of processByLine.get(row.line) || []) findings.push({
+        ...base, severity: call.resolved ? 'high' : 'medium',
+        kind: call.resolved ? 'process-execution' : 'process-api-unresolved',
+        reviewIntent: call.resolved ? 'static-process-api-review' : 'unresolved-process-api-review',
+        api: call.api, sourceContext: context.sourceContext,
+      });
+    }
+    if (/\.(?:[cm]?[jt]sx?|rs)$/u.test(file) && (process.error || context.limitation)) findings.push({
+      severity: 'medium', kind: 'process-scan-incomplete', file, line: added[0].line,
+      source: 'added_diff_line', reviewIntent: 'incomplete-source-review', sourceContext: context.sourceContext,
+      sample: [process.error, context.limitation].filter(Boolean).join(' ').slice(0, 500),
+    });
+  }
   return findings;
 }
 
@@ -187,7 +231,7 @@ function scanChangedFiles(changedFiles) {
 function dedupeFindings(findings) {
   const seen = new Set();
   return findings.filter((finding) => {
-    const key = `${finding.severity}:${finding.kind}:${finding.file}:${finding.sample}`;
+    const key = `${finding.severity}:${finding.kind}:${finding.file}:${finding.line ?? ''}:${finding.api || ''}:${finding.sample}`;
     if (seen.has(key)) {
       return false;
     }
@@ -231,6 +275,7 @@ function buildReport({ changedFiles, findings, baseRef = DEFAULT_BASE_REF, env =
       diffRange: `${baseRef}...HEAD`,
       changedFilesSource: resolveScanSource(env, 'SECURITY_RISK_CHANGED_FILES', 'git diff --name-only'),
       diffSource: resolveScanSource(env, 'SECURITY_RISK_DIFF', 'git diff --unified=0'),
+      processScanLimitations: 'Static OS API review, not proof of exploitability or absence of execution. JavaScript uses import/require bindings; Rust uses single-file masked lexical process paths; unresolved Command imports remain advisory. Dynamic indirection, macros and omitted diff context are not fully resolved; parse/read failures are explicit advisory findings.',
       note: 'security-risk scans the full branch diff range. Findings may include branch-history noise that was introduced before the latest PR update; treat sensitive-file findings as review prompts, not CI blockers.',
     },
     summary: summarizeFindings(findings),
@@ -265,7 +310,7 @@ async function main(argv = [], deps = {}) {
   });
   const findings = dedupeFindings([
     ...scanChangedFiles(changedFiles),
-    ...scanDiffText(diffText),
+    ...scanDiffText(diffText, { repoRoot }),
   ]);
   const report = buildReport({ changedFiles, findings, baseRef, env });
   const reportPath = writeReport({ repoRoot, env, report });

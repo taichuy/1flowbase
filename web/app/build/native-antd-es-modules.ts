@@ -26,47 +26,67 @@ export function nativeAntDesignEsModulesPlugin(
   return {
     name: '1flowbase-native-antd-es-modules',
     enforce: 'pre',
-    transform(source, id) {
-      if (command === 'serve') return undefined;
-      if (!/\.[cm]?[jt]sx?$/u.test(id) || id.includes('/node_modules/')) {
+    transform: {
+      filter: {
+        id: { include: /\.[cm]?[jt]sx?$/u, exclude: /\/node_modules\//u },
+        code: /antd/u
+      },
+      handler(source, id) {
+        if (command === 'serve') return undefined;
+        if (!/\.[cm]?[jt]sx?$/u.test(id) || id.includes('/node_modules/')) {
+          return undefined;
+        }
+        const rewritten = rewriteProductAntDesignImports(source);
+        return rewritten === source
+          ? undefined
+          : { code: rewritten, map: null };
+      }
+    },
+    resolveId: {
+      filter: {
+        id: [
+          /^virtual:1flowbase-native-antd-es-modules$/u,
+          /^antd\/locale\/[A-Za-z0-9_]+(?:\.js)?$/u,
+          /^antd\/es\/[A-Za-z0-9_-]+(?:\/.*)?$/u
+        ]
+      },
+      async handler(id, importer) {
+        if (id === NATIVE_ANTD_ES_MODULES_VIRTUAL_ID) {
+          return RESOLVED_VIRTUAL_ID;
+        }
+        if (/^antd\/locale\/[A-Za-z0-9_]+(?:\.js)?$/u.test(id)) {
+          moduleSources ??= collectAntDesignEsModuleSources();
+          const locale = moduleSources.find(
+            ({ moduleSource }) => moduleSource === id
+          );
+          if (locale) {
+            return this.resolve(locale.loaderSource, importer, {
+              skipSelf: true
+            });
+          }
+        }
+        if (
+          isProductAntDesignSource(id) &&
+          !importer?.includes(NATIVE_ANTD_ES_MODULES_VIRTUAL_ID)
+        ) {
+          const resolved = await this.resolve(id, importer, { skipSelf: true });
+          if (!resolved) return undefined;
+          PRODUCT_ANTD_RESOLVED_CHUNKS.set(
+            resolved.id,
+            productAntDesignChunk(id)
+          );
+          return resolved.id;
+        }
         return undefined;
       }
-      const rewritten = rewriteProductAntDesignImports(source);
-      return rewritten === source ? undefined : { code: rewritten, map: null };
     },
-    async resolveId(id, importer) {
-      if (id === NATIVE_ANTD_ES_MODULES_VIRTUAL_ID) {
-        return RESOLVED_VIRTUAL_ID;
-      }
-      if (/^antd\/locale\/[A-Za-z0-9_]+(?:\.js)?$/u.test(id)) {
+    load: {
+      filter: { id: /^\x00virtual:1flowbase-native-antd-es-modules$/u },
+      handler(id) {
+        if (id !== RESOLVED_VIRTUAL_ID) return undefined;
         moduleSources ??= collectAntDesignEsModuleSources();
-        const locale = moduleSources.find(
-          ({ moduleSource }) => moduleSource === id
-        );
-        if (locale) {
-          return this.resolve(locale.loaderSource, importer, {
-            skipSelf: true
-          });
-        }
+        return renderNativeAntDesignEsModules(moduleSources);
       }
-      if (
-        isProductAntDesignSource(id) &&
-        !importer?.includes(NATIVE_ANTD_ES_MODULES_VIRTUAL_ID)
-      ) {
-        const resolved = await this.resolve(id, importer, { skipSelf: true });
-        if (!resolved) return undefined;
-        PRODUCT_ANTD_RESOLVED_CHUNKS.set(
-          resolved.id,
-          productAntDesignChunk(id)
-        );
-        return resolved.id;
-      }
-      return undefined;
-    },
-    load(id) {
-      if (id !== RESOLVED_VIRTUAL_ID) return undefined;
-      moduleSources ??= collectAntDesignEsModuleSources();
-      return renderNativeAntDesignEsModules(moduleSources);
     }
   };
 }

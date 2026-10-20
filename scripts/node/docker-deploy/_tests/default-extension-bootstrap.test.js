@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { bootRustSources } = require('../../testing/contracts/rust-sources.js');
 
 const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
 
@@ -11,6 +12,6 @@ test('AC-001 API image assembly does not download or bundle provider packages', 
 });
 
 test('AC-002 API startup has no default provider installation entry point', () => {
-  const startup = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/src/lib.rs'), 'utf8');
+  const startup = bootRustSources(repoRoot);
   assert.doesNotMatch(startup, /extension_bootstrap|bootstrap_locked_extensions/u);
 });

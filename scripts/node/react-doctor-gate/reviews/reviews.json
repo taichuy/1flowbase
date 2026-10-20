@@ -4,9 +4,30 @@
     {
       "file": "web/app/package.json",
       "rule": "deslop/unused-dependency",
-      "sourceSha256": "081407ca890da790cb4297403d3c26cfda0e30e8917ae354d4c5c56bb1031527",
+      "sourceSha256": "681780f7c6aa2b7bb2a5f162f38d0eb86bacc8b6e59023ecc5a1c5e9585674ee",
       "reason": "web/app/package.json:1（deslop/unused-dependency）：is-mobile 被 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 按字符串消费；verifyCriticalInteropCache 检查其 CommonJS 优化产物。scripts/node/dev-up/_tests/vite-config-text.test.js 也断言该直接依赖。删除会破坏开发态 interop 合同。",
-      "evidence": [{"file": "web/app/package.json", "sha256": "081407ca890da790cb4297403d3c26cfda0e30e8917ae354d4c5c56bb1031527"}, {"file": "web/app/src/app/_tests/vite-config.test.ts", "sha256": "702f614d33d8228e091cde34fed9426886cef9604bebed8781251b6598fb74c0"}, {"file": "web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-runtime-factory.test.tsx", "sha256": "9af4d6d58059f5c566bfbc5fcead4f20bdce67bb641a66cbcaedcbcaf6c86518"}, {"file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-runtime-compatibility.ts", "sha256": "c3f48b0c299b9a4ae0db04313db4bf747100ba6bb7da8175f4fdc4a63d6644df"}]
+      "evidence": [{"file":"web/app/package.json","sha256":"681780f7c6aa2b7bb2a5f162f38d0eb86bacc8b6e59023ecc5a1c5e9585674ee"}, {"file":"web/app/src/app/_tests/vite-config.test.ts","sha256":"702f614d33d8228e091cde34fed9426886cef9604bebed8781251b6598fb74c0"}, {"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-runtime-factory.test.tsx","sha256":"9af4d6d58059f5c566bfbc5fcead4f20bdce67bb641a66cbcaedcbcaf6c86518"}, {"file":"web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-runtime-compatibility.ts","sha256":"c3f48b0c299b9a4ae0db04313db4bf747100ba6bb7da8175f4fdc4a63d6644df"}]
+    },
+    {
+      "file": "web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.fixtures.tsx",
+      "rule": "react-doctor/only-export-components",
+      "sourceSha256": "14db30e86c5608e7f6974bf2b44d0fc5788f6e568d3a85de9f22a13cad95897b",
+      "reason": "This Vitest-only fixture defines stable local harness components together with the mock controls and custom helpers used by the adjacent scenario modules. It is not reachable through the production app graph or used as a Fast Refresh boundary. Testing Library utilities, production components and other imported runtime symbols are now imported directly by the scenario modules; the remaining mixed exports are locally owned harness/mock bindings whose identities must be shared by these assertions. Unused fixture exports and the two broad unused-vars suppressions were removed.",
+      "evidence": [{"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.fixtures.tsx","sha256":"14db30e86c5608e7f6974bf2b44d0fc5788f6e568d3a85de9f22a13cad95897b"}, {"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.test.tsx","sha256":"dce1b689ddce9d9154f9449d39e266cf7970caf564dc5e68733ade67a9433844"}, {"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-icons.test.tsx","sha256":"814d57de4f7eb8156378541e3399c713a5a2cff22e6b02e9320ad37852bca4f1"}, {"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-parameters.test.tsx","sha256":"12ebb01ebac08182ca972dcbb43f159a395ca53c743456341c2fbecb9997eefb"}, {"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-panel.test.tsx","sha256":"de9638d83f258b63e0bf3577cc5a7d5f7022c87e3ca9f7bd8ac6cc2992d33e6d"}]
+    },
+    {
+      "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx",
+      "rule": "react-doctor/only-export-components",
+      "sourceSha256": "5be0c1d339057282ec4f2a484abb7793a8aacd52cc00daea32d717922ba2d027",
+      "reason": "This Vitest-only fixture defines stable local harness components together with the mock controls and custom helpers used by the adjacent scenario modules. It is not reachable through the production app graph or used as a Fast Refresh boundary. Testing Library utilities, production components and other imported runtime symbols are now imported directly by the scenario modules; the remaining mixed exports are locally owned harness/mock bindings whose identities must be shared by these assertions. Unused fixture exports and the two broad unused-vars suppressions were removed.",
+      "evidence": [{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx","sha256":"5be0c1d339057282ec4f2a484abb7793a8aacd52cc00daea32d717922ba2d027"}, {"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls-catalog-creation.test.tsx","sha256":"ae9acc91d1b3ee5f8d090049d6c677a88a598a1b7bf460cd3ce34ce3fb4ea242"}, {"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.test.tsx","sha256":"5d2f019298f47680cb0b45233a63dca3ed3734afc1e8ec4009aced65fa969b29"}]
+    },
+    {
+      "file": "web/app/src/features/me/components/AuthenticationMethodsPanel.tsx",
+      "rule": "react-doctor/query-mutation-missing-invalidation",
+      "sourceSha256": "d57ab150ee89d01b743412791753783b46745c8a2d50e037b2f9f84645f783ec",
+      "reason": "authorize navigates the entire document to the returned authorization_url; the current account cache is not rendered after navigation. switchAccount delegates to the inline callback supplied by MePage, which logs out and invokes endSession: ['me'] queries are removed, the auth store becomes anonymous and navigation returns to sign-in. In contrast, unlink remains on this page and explicitly invalidates authenticationMethodsQueryKey on success and error. Authentication-methods tests retain CSRF-bound unlink/refresh and explicit account-switch assertions. The callback owner supplies the session/cache transition the local useMutation heuristic cannot see.",
+      "evidence": [{"file":"web/app/src/features/me/components/AuthenticationMethodsPanel.tsx","sha256":"d57ab150ee89d01b743412791753783b46745c8a2d50e037b2f9f84645f783ec"}, {"file":"web/app/src/features/me/pages/MePage.tsx","sha256":"9f47bb43c273b48800c867a7decc8c917464e6a03f18b40cd9b9054d98aa8a80"}, {"file":"web/app/src/features/me/_tests/authentication-methods.test.tsx","sha256":"9c6d6123ec5e3c23a07f9508f1a358affa992c031af08f92d4a8008706f9ccd1"}, {"file":"web/app/src/features/me/_tests/me-page.test.tsx","sha256":"d5e580c38bcec32d72b09a6cabb6347de1efe75348eb726f772cec957031fb54"}]
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { App as AntdApp } from 'antd';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -148,6 +149,18 @@ const runtimeApi = vi.hoisted(() => ({
 
 vi.mock('../../api/runtime', () => runtimeApi);
 
+const logDeletionApi = vi.hoisted(() => ({
+  getConsoleApplicationLogDeletionJob:
+    vi.fn<
+      typeof import('@1flowbase/api-client').getConsoleApplicationLogDeletionJob
+    >()
+}));
+
+vi.mock('@1flowbase/api-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@1flowbase/api-client')>()),
+  ...logDeletionApi
+}));
+
 import { AppProviders } from '../../../../app/AppProviders';
 import {
   appI18n,
@@ -212,6 +225,10 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
     dateNowSpy = vi
       .spyOn(Date, 'now')
       .mockReturnValue(new Date('2026-04-18T00:00:00Z').getTime());
+    logDeletionApi.getConsoleApplicationLogDeletionJob.mockReset();
+    logDeletionApi.getConsoleApplicationLogDeletionJob.mockResolvedValue({
+      job: null
+    });
     runtimeApi.fetchApplicationRuns.mockReset();
     runtimeApi.fetchApplicationConversationMessages.mockReset();
     runtimeApi.fetchApplicationRunConversationMessages.mockReset();
@@ -342,6 +359,29 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
   });
 
   test('sizes log filter selects from their longest option label', async () => {
+    const cssSource = await readFile(
+      path.resolve(
+        process.cwd(),
+        'src/shared/ui/autosize-select/autosize-select.css'
+      ),
+      'utf8'
+    );
+
+    type LatestDeletionJobResponse = Awaited<
+      ReturnType<typeof logDeletionApi.getConsoleApplicationLogDeletionJob>
+    >;
+    let resolveLatestDeletionJob!: (
+      response: LatestDeletionJobResponse
+    ) => void;
+    const latestDeletionJob = new Promise<LatestDeletionJobResponse>(
+      (resolve) => {
+        resolveLatestDeletionJob = resolve;
+      }
+    );
+    logDeletionApi.getConsoleApplicationLogDeletionJob.mockReturnValue(
+      latestDeletionJob
+    );
+
     render(
       <AppProviders>
         <AntdApp>
@@ -351,6 +391,20 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
     );
 
     expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
+
+    await waitFor(() => {
+      expect(
+        logDeletionApi.getConsoleApplicationLogDeletionJob
+      ).toHaveBeenCalledWith(
+        'app-1',
+        undefined,
+        expect.any(String),
+        expect.any(AbortSignal)
+      );
+    });
+    await act(async () => {
+      resolveLatestDeletionJob({ job: null });
+    });
 
     const expectedMeasuredLabels = [
       [
@@ -382,14 +436,6 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
         expect(measureItem).toBeInTheDocument();
       });
     });
-
-    const cssSource = await readFile(
-      path.resolve(
-        process.cwd(),
-        'src/shared/ui/autosize-select/autosize-select.css'
-      ),
-      'utf8'
-    );
 
     expect(cssSource).toContain('.autosize-select {');
     expect(cssSource).toContain('grid-template-columns: max-content;');

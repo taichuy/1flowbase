@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Grid } from 'antd';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const membersApi = vi.hoisted(() => ({
   settingsMembersQueryKey: ['settings', 'members'],
@@ -145,6 +145,15 @@ vi.mock('@scalar/api-reference-react', () => ({
 import { AppProviders } from '../../../app/AppProviders';
 import { AppRouterProvider } from '../../../app/router';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
+
+// Transform the real lazy route owners before behavior assertions begin.
+beforeAll(async () => {
+  await Promise.all([
+    import('../../../app-shell/AppShellFrame'),
+    import('../pages/SettingsPage'),
+    import('../pages/settings-page/SettingsFilesSection')
+  ]);
+});
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 

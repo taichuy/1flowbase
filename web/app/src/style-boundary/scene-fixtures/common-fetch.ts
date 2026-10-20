@@ -1,3 +1,8 @@
+import { getStyleBoundaryRuntimeResponse } from './runtime-snapshots';
+import {
+  seedStyleBoundaryNotificationEvents,
+  getStyleBoundaryNotificationResponse
+} from './notifications/data';
 import { settingsI18nCatalogTestNavigation } from '../../features/settings/pages/i18n-catalog/_tests/i18n-catalog-test-fixture';
 
 export function createStyleBoundaryJsonResponse(data: unknown, status = 200) {
@@ -15,7 +20,10 @@ export function getStyleBoundaryRequestUrl(input: RequestInfo | URL) {
       : String(input);
 }
 
-export function getStyleBoundaryMethod(input: RequestInfo | URL, init?: RequestInit) {
+export function getStyleBoundaryMethod(
+  input: RequestInfo | URL,
+  init?: RequestInit
+) {
   return init?.method ?? (input instanceof Request ? input.method : 'GET');
 }
 
@@ -29,6 +37,15 @@ export function getStyleBoundaryCommonResponse(
   requestUrl: URL,
   method: string
 ): Response | null {
+  const runtimeResponse = getStyleBoundaryRuntimeResponse(requestUrl, method);
+  if (runtimeResponse) return runtimeResponse;
+
+  const notificationResponse = getStyleBoundaryNotificationResponse(
+    requestUrl,
+    method
+  );
+  if (notificationResponse) return notificationResponse;
+
   if (
     method.toUpperCase() === 'GET' &&
     requestUrl.pathname === '/api/console/assistant/settings'
@@ -195,6 +212,7 @@ export function seedStyleBoundaryCommonFetch() {
     return;
   }
 
+  seedStyleBoundaryNotificationEvents();
   const fallbackFetch = globalThis.fetch.bind(globalThis);
 
   globalThis.fetch = async (input, init) => {
@@ -210,4 +228,3 @@ export function seedStyleBoundaryCommonFetch() {
     return fallbackFetch(input as RequestInfo, init);
   };
 }
-
