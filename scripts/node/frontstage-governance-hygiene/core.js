@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { productionRustSources } = require('../testing/contracts/rust-sources.js');
 
 const OUTPUT_ROOT = path.join('tmp', 'test-governance');
 const JSON_REPORT_FILE = 'frontstage-governance-hygiene.json';
@@ -373,7 +374,7 @@ function collectFrontstageGovernanceInventory({
     readRequiredFile(repoRoot, frontstageBlockTreeServicePath),
   ].join('\n');
   const repositorySource = readRequiredFile(repoRoot, frontstageRepositoryPath);
-  const backendSettingsRoutesSource = readRequiredFile(repoRoot, backendSettingsRoutesPath);
+  const backendSettingsRoutesSource = productionRustSources(path.join(repoRoot, backendSettingsRoutesPath));
   const frontendSettingsSectionsSource = readRequiredFile(repoRoot, frontendSettingsSectionsPath);
 
   return {
@@ -536,19 +537,19 @@ function evaluateSettingsRegistry({ inventory, findings }) {
   if (!inventory.backendSettingsRoutePaths) {
     findings.push(createFinding({
       rule: 'backend-settings-registry-unreadable',
-      sectionKey: 'SETTINGS_ROUTE_SPECS',
+      sectionKey: 'SettingsFeatureRegistration.console_surface',
       file: inventory.paths.backendSettingsRoutesPath,
-      message: 'unable to locate backend SETTINGS_ROUTE_SPECS for dynamic frontstage page check',
+      message: 'unable to locate backend SettingsFeatureRegistration.console_surface for dynamic frontstage page check',
     }));
   } else {
     for (const routePath of inventory.backendSettingsRoutePaths) {
       if (routePath.startsWith('/frontstage/pages/')) {
         findings.push(createFinding({
           rule: 'backend-settings-registry-dynamic-frontstage-page',
-          sectionKey: 'SETTINGS_ROUTE_SPECS',
+          sectionKey: 'SettingsFeatureRegistration.console_surface',
           file: inventory.paths.backendSettingsRoutesPath,
           message:
-            `dynamic frontstage page route "${routePath}" must not be registered in backend SETTINGS_ROUTE_SPECS`,
+            `dynamic frontstage page route "${routePath}" must not be registered in backend SettingsFeatureRegistration.console_surface`,
         }));
       }
     }

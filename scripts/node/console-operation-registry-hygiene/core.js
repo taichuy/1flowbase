@@ -2,6 +2,7 @@ const { INVENTORY_SCHEMA_VERSION, routeKey, routeDisplay, normalizeCompiledEvide
 const { DEFAULT_MAX_FINDINGS, renderMarkdown, writeReport } = require('./reports.js');
 const fs = require('node:fs');
 const path = require('node:path');
+const { productionRustSources } = require('../testing/contracts/rust-sources.js');
 
 const {
   DEFAULT_BASELINE_INVENTORY_PATH,
@@ -138,12 +139,23 @@ function collectSourceFiles(repoRoot, sourceFiles = SOURCE_SCAN_FILES) {
     const source = readOptionalTextFile(repoRoot, filePath);
     if (key === 'rolePermissionPanel' && filePath === DEFAULT_ROLE_PERMISSION_PANEL_FILE && source?.source) {
       const rolePermissionDirectory = path.join(path.dirname(filePath), 'role-permissions');
-      const relatedSources = [
-        'console-policy-draft.ts',
-        'console-policy-catalog-table.tsx',
-      ].map((name) => readOptionalTextFile(repoRoot, path.join(rolePermissionDirectory, name))?.source)
-        .filter(Boolean);
+      const absoluteDirectory = resolveRepoPath(repoRoot, rolePermissionDirectory);
+      const relatedSources = fs.existsSync(absoluteDirectory)
+        ? fs.readdirSync(absoluteDirectory, { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isFile() && /\.tsx?$/u.test(entry.name)
+            && !/\.(?:test|spec)\.tsx?$/u.test(entry.name)
+            && !/(?:^|[\\/])(?:_tests|__tests__|tests)(?:[\\/]|$)/u.test(entry.parentPath))
+          .map((entry) => path.join(entry.parentPath, entry.name)).sort()
+          .map((file) => fs.readFileSync(file, 'utf8'))
+        : [];
       return [key, { ...source, source: [source.source, ...relatedSources].join('\n') }];
+    }
+    if (key === 'routeHost' && filePath === DEFAULT_ROUTE_HOST_FILE && source?.source) {
+      const internal = path.join(path.dirname(filePath), 'internal');
+      const internalPath = resolveRepoPath(repoRoot, internal);
+      return [key, { ...source, source: [source.source,
+        fs.existsSync(internalPath) ? productionRustSources(internalPath) : '',
+      ].join('\n') }];
     }
     return [key, source];
   }));

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
-const { productionRustSources } = require('./support/rust-sources.js');
+const { productionRustSources } = require('../../testing/contracts/rust-sources.js');
 
 const root = path.resolve(__dirname, '../../../..');
 const read = (relative) => productionRustSources(path.join(root, relative));

@@ -409,6 +409,8 @@ OpenAI / Anthropic 兼容流式 route 通过 `compatibility_interface::invoke_cl
 已有测试入口包括 [HTTP/MCP成对fixture](../../api/apps/api-server/src/_tests/interface_lifecycle_acceptance/create_pair.rs)、[流式收尾fixture](../../api/apps/api-server/src/routes/application_public_api/responses_websocket/tests/turn_finalization.rs)、[在线生命周期](../../scripts/node/ai-gateway-concurrency/responses-websocket-acceptance/lifecycle.js)和[在线错误矩阵](../../scripts/node/ai-gateway-concurrency/responses-websocket-acceptance/error-matrix.js)。这些路径用于定位测试，不表示本次文档整理重新执行了测试。
 
 
+治理脚本与源码断言复用 `scripts/node/testing/contracts/rust-sources.js` 读取生产 owner 及私有模块，排除测试夹具；设置注册检查覆盖 `settings_features/core_registrations.rs`，启动装配检查覆盖 `internal`，角色权限 advisory 覆盖 controller 所在私有目录。源码 advisory 与 compiled policy inventory 分开结算，不替代实际授权验收。
+
 ## AI Native 调用轨迹与协议诊断
 
 映射协议层、AI Native 与供应商插件保持各自职责；日志采集不迁移执行或翻译职责。采集开关、完整性、语义/原始协议读取与历史来源的契约统一见 [AI Gateway 执行证据](ai-gateway-observation.md#ai-native-调用轨迹与协议诊断)。

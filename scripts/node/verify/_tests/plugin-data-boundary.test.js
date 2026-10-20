@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { productionRustSources, bootRustSources } = require('./support/rust-sources.js');
+const { productionRustSources, bootRustSources } = require('../../testing/contracts/rust-sources.js');
 
 const repoRoot = path.resolve(__dirname, '../../../..');
 const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8');

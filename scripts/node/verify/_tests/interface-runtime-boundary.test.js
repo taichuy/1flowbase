@@ -14,7 +14,7 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
-const { productionRustSources } = require('./support/rust-sources.js');
+const { productionRustSources } = require('../../testing/contracts/rust-sources.js');
 
 let metadata;
 function workspaceMetadata() {

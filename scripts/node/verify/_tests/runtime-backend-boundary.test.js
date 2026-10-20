@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { productionRustSources, bootRustSources } = require('./support/rust-sources.js');
+const { productionRustSources, bootRustSources } = require('../../testing/contracts/rust-sources.js');
 
 const repoRoot = path.resolve(__dirname, '../../../..');
 const forbidden = /PLUGIN_RUNNER|plugin-runner|plugin_runner|PluginRunner|PLUGIN_RUNTIME_URL|RUNTIME_SERVER_ADDR/u;

@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect } from 'vitest';
 import { mockViewportSize, runtimeApi } from './floating-windows.fixtures';
 import { App as AntdApp } from 'antd';
 import { AppProviders } from '../../../../../app/AppProviders';

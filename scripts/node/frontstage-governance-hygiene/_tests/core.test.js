@@ -305,3 +305,23 @@ test('frontstage governance main writes json and markdown reports under tmp/test
     /Does not cover:.*native-react-runtime-conformance/u
   );
 });
+
+
+test('settings registration scan follows private modules while excluding test-only violations', (t) => {
+  const repoRoot = createFixtureRepo({ healthy: true });
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const owner = 'api/crates/access-control/src/settings_features';
+  const original = fs.readFileSync(path.join(repoRoot, `${owner}.rs`), 'utf8');
+  writeFile(repoRoot, `${owner}.rs`, 'mod core_registrations;');
+  writeFile(repoRoot, `${owner}/core_registrations.rs`, original);
+  writeFile(repoRoot, `${owner}/_tests/negative.rs`,
+    'console_surface: SettingsFeatureConsoleSurface { path: "/frontstage/pages/test-only" }');
+  const evaluate = () => evaluateFrontstageGovernanceHygiene({
+    inventory: collectFrontstageGovernanceInventory({ repoRoot }),
+  });
+  assert.equal(evaluate().summary.errors, 0);
+  writeFile(repoRoot, `${owner}/nested/registration.rs`,
+    'console_surface: SettingsFeatureConsoleSurface { path: "/frontstage/pages/$pageId" }');
+  assert.ok(evaluate().findings.some((finding) =>
+    finding.rule === 'backend-settings-registry-dynamic-frontstage-page'));
+});
