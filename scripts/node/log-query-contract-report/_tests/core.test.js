@@ -156,17 +156,17 @@ test('collectLogQueryContractReport accepts explicit reasoned exemptions', () =>
     config: endpointConfig({
       scope: { patterns: ['application_id', 'where application_id = \\$1'] },
       time: {
-        patterns: ['created_at >= \\$2'],
+        patterns: [],
         exemption: {
           reason: 'Fixture endpoint is scoped to a pre-bounded test slice.',
-          removeBy: '2026-09-30',
+          removeBy: 'not_required',
         },
       },
       cursor: {
-        patterns: ['cursor'],
+        patterns: [],
         exemption: {
-          reason: 'Existing endpoint uses stable page/page_size while cursor migration is planned.',
-          removeBy: '2026-09-30',
+          reason: 'This bounded fixture isolates explicit non-applicability from cursor implementation.',
+          removeBy: 'not_required',
         },
       },
       limit: { patterns: ['limit \\$2'] },
@@ -256,7 +256,7 @@ test('writeLogQueryContractReports writes JSON and Markdown under tmp/test-gover
         patterns: ['order by created_at desc, id desc'],
         exemption: {
           reason: 'Stable offset page is accepted for this fixture.',
-          removeBy: '2026-09-30',
+          removeBy: 'not_required',
         },
       },
       limit: { patterns: ['clamp\\(1, 100\\)', 'limit \\$3'] },
@@ -364,4 +364,45 @@ test('default config covers issue-required log query families and passes current
 
   assert.equal(report.status, 'passed');
   assert.equal(report.summary.findings, 0);
+});
+
+test('private modules retain query evidence and neighboring functions cannot supply a missing predicate', (t) => {
+  const repoRoot = createRepoWithSource('mod queries;');
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const source = `
+    async fn list_logs() { visible_application(actor, application_id); }
+    async fn list_logs_page() { sqlx::query(r#"where application_id = $1 /* } */"#); }
+  `;
+  writeFile(repoRoot, 'api/src/logs/queries.rs', source);
+  const config = endpointConfig({
+    scope: { patterns: ['visible_application', 'where application_id = \\$1'] },
+    ...Object.fromEntries(['time', 'cursor', 'limit'].map((dimension) => [dimension, {
+      patterns: [], exemption: { reason: 'This fixture isolates scope ownership.', removeBy: 'not_required' },
+    }])),
+  });
+  assert.equal(collectLogQueryContractReport({ repoRoot, config }).status, 'passed');
+  writeFile(repoRoot, 'api/src/logs/queries.rs', source
+    .replace('where application_id = $1', 'where active = true')
+    + '\nfn unrelated_query() { "where application_id = $1"; }');
+  const result = collectLogQueryContractReport({ repoRoot, config });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.endpoints[0].dimensions[0].status, 'failed');
+});
+
+test('expired or unsupported exemptions cannot hide required query evidence', (t) => {
+  const repoRoot = createRepoWithSource('fn list_logs() {} fn list_logs_page() {}');
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const contract = Object.fromEntries(['scope', 'time', 'cursor', 'limit'].map((dimension) => [dimension, {
+    patterns: [], exemption: { reason: 'Isolate expiry semantics.', removeBy: 'not_required' },
+  }]));
+  const config = endpointConfig(contract);
+  for (const removeBy of ['2026-09-30', 'invalid-date']) {
+    contract.time.exemption.removeBy = removeBy;
+    const result = collectLogQueryContractReport({ repoRoot, config, asOfDate: '2026-10-20' });
+    assert.equal(result.endpoints[0].dimensions.find((item) => item.dimension === 'time').status, 'failed');
+  }
+  contract.time.exemption.removeBy = '2026-10-21';
+  assert.equal(collectLogQueryContractReport({ repoRoot, config, asOfDate: '2026-10-20' }).status, 'passed');
+  contract.time.patterns = ['required_time_predicate'];
+  assert.equal(collectLogQueryContractReport({ repoRoot, config, asOfDate: '2026-10-20' }).status, 'failed');
 });

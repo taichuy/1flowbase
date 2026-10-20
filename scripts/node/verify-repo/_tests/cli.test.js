@@ -44,12 +44,6 @@ test('buildCommands composes gate router, hygiene, schema and frontstage governa
       cwd: repoRoot,
     },
     {
-      label: 'repo-growth-table-report',
-      command: process.execPath,
-      args: [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'growth-table-report'],
-      cwd: repoRoot,
-    },
-    {
       label: 'repo-raw-jsonb-report',
       command: process.execPath,
       args: [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'raw-jsonb-report'],
@@ -129,7 +123,6 @@ test('buildCommands can select repository gate slices for parallel CI jobs', () 
       'repo-i18n-hygiene',
       'repo-schema-hygiene',
       'repo-frontstage-governance-hygiene',
-      'repo-growth-table-report',
       'repo-raw-jsonb-report',
       'repo-log-query-contract-report',
       'repo-capacity-report',
@@ -173,7 +166,7 @@ test('main runs repository full gate in order and captures advisory output', asy
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 17);
+  assert.equal(calls.length, 16);
   assert.deepEqual(
     calls.map((call) => call.args),
     [
@@ -185,7 +178,6 @@ test('main runs repository full gate in order and captures advisory output', asy
         path.join(repoRoot, 'scripts', 'node', 'tooling.js'),
         'frontstage-governance-hygiene',
       ],
-      [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'growth-table-report'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'raw-jsonb-report'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'log-query-contract-report'],
       [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'capacity-report'],
@@ -207,7 +199,7 @@ test('main runs repository full gate in order and captures advisory output', asy
   assert.match(warningLog, /warning: .*tooling\.js\/repo-hygiene advisory/u);
   assert.match(warningLog, /warning: .*tooling\.js\/i18n-hygiene advisory/u);
   assert.match(warningLog, /warning: .*tooling\.js\/schema-hygiene advisory/u);
-  assert.match(warningLog, /warning: .*tooling\.js\/growth-table-report advisory/u);
+  assert.doesNotMatch(warningLog, /tooling\.js\/growth-table-report/u);
   assert.match(warningLog, /warning: .*tooling\.js\/raw-jsonb-report advisory/u);
   assert.match(warningLog, /warning: .*tooling\.js\/log-query-contract-report advisory/u);
   assert.match(warningLog, /warning: .*tooling\.js\/capacity-report advisory/u);
@@ -281,7 +273,7 @@ test('main passes the inherited lock token through every repository gate command
   });
 
   assert.equal(status, 0);
-  assert.equal(calls.length, 17);
+  assert.equal(calls.length, 16);
   assert.equal(
     calls.every((call) => call.options.env.ONEFLOWBASE_VERIFY_LOCK_TOKEN === 'chain-token'),
     true

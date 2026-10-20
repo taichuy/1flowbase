@@ -42,6 +42,14 @@ function ownedTableFindings(table, contract, tables = [table]) {
       report('owned-table-lookup-index', `required owner lookup index (${columns.join(', ')}) is missing`);
     }
   }
+  // Workspace-wide keyset pages include every row. A partial index cannot
+  // satisfy this contract, even when its leading columns match the query.
+  for (const columns of contract.unconditionalIndexes || []) {
+    if (!indexes.some((index) => !index.predicate
+      && sameColumns(index.columns.slice(0, columns.length), columns))) {
+      report('owned-table-lookup-index', `required unfiltered lookup index (${columns.join(', ')}) is missing`);
+    }
+  }
   for (const required of contract.triggers || []) {
     const target = tables.find((candidate) => candidate.name === required.table);
     const present = (target?.triggers || []).some((trigger) => trigger.name === required.name

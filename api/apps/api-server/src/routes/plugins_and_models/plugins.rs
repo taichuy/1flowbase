@@ -1064,6 +1064,7 @@ mod time_response_tests;
 #[path = "plugins/response_mapping.rs"]
 mod response_mapping;
 
+#[cfg(test)]
 pub(crate) use response_mapping::runtime_slot_for_contract;
 pub(crate) use response_mapping::to_install_response;
 use response_mapping::*;

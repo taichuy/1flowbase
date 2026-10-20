@@ -1014,4 +1014,3 @@ pub(crate) use policy_projection::resolve_console_policy_catalog_display_with;
 pub(crate) use policy_projection::to_console_policy_catalog_response;
 pub(crate) use policy_projection::to_console_policy_group_input;
 pub(crate) use policy_projection::to_role_console_policy_response;
-use policy_projection::*;

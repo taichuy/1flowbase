@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { Grid } from 'antd';
-import { beforeEach, vi } from 'vitest';
+import { beforeAll, beforeEach, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => {
   const zrender = {
@@ -416,6 +416,15 @@ import {
   type SettingsSectionKey
 } from '../../lib/settings-sections';
 
+// These registry/section assertions exercise configuration, not cold module loading.
+// Before the split, earlier API-key tests warmed these same real modules.
+beforeAll(async () => {
+  await Promise.all([
+    import('../../pages/SettingsPage'),
+    import('../../components/PersonalAccessTokensPanel')
+  ]);
+});
+
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
 function settingsConsoleNavigation(
@@ -660,6 +669,11 @@ beforeEach(() => {
     created_at: '2026-04-18T21:00:00Z',
     updated_at: '2026-04-18T21:00:00Z',
     finished_at: '2026-04-18T21:00:00Z'
+  });
+  systemRuntimeApi.fetchSettingsSystemRuntimeProcesses.mockReset();
+  systemRuntimeApi.fetchSettingsSystemRuntimeProcesses.mockResolvedValue({
+    process_total: 0,
+    processes: []
   });
   systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockResolvedValue({
     provider_install_root: '/home/taichu/git/1flowbase/api/plugins',

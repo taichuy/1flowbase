@@ -22,7 +22,9 @@ function productionRustSources(root) {
 
 function bootRustSources(repoRoot) {
   const root = path.join(repoRoot, 'api/apps/api-server/src');
-  return productionRustSources(path.join(root, 'lib.rs')) + '\n' + productionRustSources(path.join(root, 'internal'));
+  const internal = path.join(root, 'internal');
+  return productionRustSources(path.join(root, 'lib.rs')) + '\n'
+    + (fs.existsSync(internal) ? productionRustSources(internal) : '');
 }
 
 module.exports = { productionRustSources, bootRustSources };

@@ -132,6 +132,8 @@ Repository contract 归 `control-plane-contracts`，PostgreSQL adapter 以 `(wor
 
 Schema 门禁对这些有限表使用具体字段/索引例外，并独立检查 owner 外键、非空 routing key、主键和查询索引；普通业务表的 scope/time/id 约束继续执行。正式 migration 不因门禁分类更新而改写。
 
+积分流水列表按认证 workspace 和 `(created_at, id)` 游标降序读取，`user_id` 是可选过滤条件。`runtime_credit_ledger` 同时保留 `(workspace_id, created_at, id)` 与 `(workspace_id, user_id, created_at, id)` 查询索引；用户列不能插入全 workspace 时间排序的索引前缀。`scope_id` 虽由 workspace 生成，也不作为实际 `workspace_id` 查询谓词的隐式索引替代。全 workspace 查询的 schema contract 要求无 partial predicate 的索引，不能用只覆盖部分用户的索引冒充覆盖全部流水。此结构检查证明过滤和排序形状有对应索引，不证明 PostgreSQL 实际计划、数据规模下的性能收益或写入成本。
+
 ### 源码入口
 
 - [external_route_assembly.rs](../../api/apps/api-server/src/console_contracts/external_route_assembly.rs)：挂载与 Inventory 同源构造。

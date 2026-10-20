@@ -124,3 +124,44 @@ test('send attempts retain workspace routing and terminal completion without pre
     assert.ok(invalid.findings.some((item) => item.rule === rule), column);
   }
 });
+
+
+test('credit ledger retains workspace-wide and user-filtered chronology indexes', () => {
+  const config = loadConfig(repoRoot);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const original = inventory.tables.find((table) => table.name === 'runtime_credit_ledger');
+  assert.ok(original);
+  const workspaceChronology = ['workspace_id', 'created_at', 'id'];
+  const userChronology = ['workspace_id', 'user_id', 'created_at', 'id'];
+  const matches = (index, columns) => columns.every((column, position) => index.columns[position] === column);
+  const evaluate = (table) => evaluateSchemaHygiene({
+    inventory: { ...inventory, tables: inventory.tables.map((candidate) => candidate.name === table.name ? table : candidate) },
+    config,
+  }).findings.filter((finding) => finding.table === table.name && finding.severity === 'error');
+
+  assert.deepEqual(evaluate(original), []);
+  assert.ok(original.indexes.some((index) => matches(index, workspaceChronology)
+    && index.source.endsWith('20261020030000_index_credit_ledger_workspace_chronology.sql')
+    && !index.predicate));
+  assert.ok(original.indexes.some((index) => matches(index, userChronology)));
+  // Existing per-user lookup contracts keep their previous predicate semantics.
+  assert.deepEqual(evaluate({ ...original, indexes: original.indexes.map((index) => matches(index, userChronology)
+    ? { ...index, predicate: 'user_id is not null' } : index) }), []);
+
+  // Removing either access path fails even while generic scope chronology and
+  // the other query's index remain available.
+  for (const columns of [workspaceChronology, userChronology]) {
+    const findings = evaluate({ ...original, indexes: original.indexes.filter((index) => !matches(index, columns)) });
+    assert.ok(findings.some((finding) => finding.rule === 'owned-table-lookup-index'), columns.join(','));
+  }
+  for (const patch of [
+    { columns: ['workspace_id', 'user_id', 'created_at', 'id'] },
+    { columns: ['scope_id', 'created_at', 'id'] },
+    { columns: ['workspace_id', 'id', 'created_at'] },
+    { predicate: 'user_id is not null' },
+  ]) {
+    const findings = evaluate({ ...original, indexes: original.indexes.map((index) => matches(index, workspaceChronology)
+      ? { ...index, ...patch } : index) });
+    assert.ok(findings.some((finding) => finding.rule === 'owned-table-lookup-index'), JSON.stringify(patch));
+  }
+});

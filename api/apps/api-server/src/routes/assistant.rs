@@ -1056,6 +1056,7 @@ mod tests;
 mod execution_lifecycle;
 
 pub(crate) use execution_lifecycle::abort_assistant_execution_in;
+#[cfg(test)]
+use execution_lifecycle::abort_registered_assistant_execution;
 pub(crate) use execution_lifecycle::execute_assistant_run;
 pub(super) use execution_lifecycle::launch_assistant_execution;
-use execution_lifecycle::*;
