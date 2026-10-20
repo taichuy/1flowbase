@@ -348,9 +348,16 @@ async fn application_runtime_routes_start_debug_run_persists_gateway_billing_aud
         session["route_id"], gateway_cost["gateway_route_id"],
         "{diagnostics}"
     );
+    // The reservation snapshots the model route at preflight; execution selects
+    // the provider instance later. Require explicit nulls, not missing fields.
     assert_eq!(
-        gateway_cost["provider_instance_id"],
-        json!(provider_instance_id),
+        gateway_cost.get("provider_instance_id"),
+        Some(&Value::Null),
+        "{diagnostics}"
+    );
+    assert_eq!(
+        reservation["route_trace"].get("provider_instance_id"),
+        Some(&Value::Null),
         "{diagnostics}"
     );
     assert!(gateway_cost["usage_ledger_id"].is_null(), "{diagnostics}");
