@@ -410,16 +410,21 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
 });
 
 import { ApplicationRuntimeBootstrap } from '../../../../app/ApplicationRuntimeBootstrap';
+import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import {
   settingsSectionDefinitions,
   type SettingsSectionKey
 } from '../../lib/settings-sections';
 
-// These registry/section assertions exercise configuration, not cold module loading.
-// Before the split, earlier API-key tests warmed these same real modules.
+// Prepare the real authenticated runtime, shell, and settings lazy chain before
+// timing registry/redirect assertions; importing only the leaf panels leaves the
+// bootstrap's runtime and translation-resource imports on the first test's clock.
 beforeAll(async () => {
   await Promise.all([
+    import('../../../../app/AuthenticatedAppRuntime'),
+    loadApplicationI18nResources(),
+    import('../../../../app-shell/AppShellFrame'),
     import('../../pages/SettingsPage'),
     import('../../components/PersonalAccessTokensPanel')
   ]);

@@ -257,7 +257,14 @@ export default defineConfig(({ command, mode }) => {
       fs: {
         allow: [
           searchForWorkspaceRoot(process.cwd()),
-          fileURLToPath(new URL('../../scripts', import.meta.url))
+          fileURLToPath(new URL('../../scripts', import.meta.url)),
+          // Style fixtures consume the backend-owned login block without a second copy.
+          fileURLToPath(
+            new URL(
+              '../../api/crates/control-plane/src/auth/public_ui_blocks/password_local.tsx',
+              import.meta.url
+            )
+          )
         ]
       },
       proxy: {
