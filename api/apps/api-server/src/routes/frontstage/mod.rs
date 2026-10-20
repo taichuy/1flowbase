@@ -509,6 +509,12 @@ fn frontstage_action_kernel(
                             "frontstage_capability_input",
                         )
                     })?;
+                if !input.actor.has_permission("frontstage.tabs.document.save") {
+                    return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                        "frontstage.tabs.document.save",
+                    )
+                    .into());
+                }
                 let body: SaveFrontstageTabDocumentBody = serde_json::from_value(input.params)
                     .map_err(|_| {
                         control_plane::errors::ControlPlaneError::InvalidInput(

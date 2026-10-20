@@ -103,7 +103,17 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         &root_cookie,
         &root_csrf,
         "frontstage_code_viewer",
-        &["frontstage.page.design"],
+        &[],
+    )
+    .await;
+    super::ui_management::set_ui_policy(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "frontstage_code_viewer",
+        true,
+        "full",
+        json!([]),
     )
     .await;
     replace_member_roles(
@@ -222,7 +232,17 @@ async fn ac_010_capability_dispatch_rejects_unknown_ids_and_rechecks_action_perm
         &root_cookie,
         &root_csrf,
         "frontstage_capability_designer",
-        &["frontstage.page.design"],
+        &[],
+    )
+    .await;
+    super::ui_management::set_ui_policy(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "frontstage_capability_designer",
+        true,
+        "full",
+        json!([]),
     )
     .await;
     replace_member_roles(

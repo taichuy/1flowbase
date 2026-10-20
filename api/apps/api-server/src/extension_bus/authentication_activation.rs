@@ -524,7 +524,13 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                     } else {
                         service
                     };
-                    let actor = service.authenticate(token, &credential.instance_id).await?;
+                    let mut actor = service.authenticate(token, &credential.instance_id).await?;
+                    crate::middleware::require_session::apply_ui_management_permission_to_actor(
+                        &credential.state,
+                        &mut actor.actor,
+                    )
+                    .await
+                    .map_err(|error| error.0)?;
                     return Ok(interface_runtime::UserPrincipal::new(
                         actor.actor,
                         interface_runtime::UserCredentialKind::UserApiKey {

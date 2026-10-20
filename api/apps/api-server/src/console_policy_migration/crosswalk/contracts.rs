@@ -46,17 +46,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "frontstage.blocks.view",
             "frontstage.components.view",
             "frontstage.data_capabilities.view",
-            "frontstage.groups.create",
-            "frontstage.pages.create",
-            "frontstage.pages.delete",
-            "frontstage.pages.move",
-            "frontstage.pages.update",
             "frontstage.pages.view",
             "frontstage.queries.dispatch",
-            "frontstage.tabs.create",
-            "frontstage.tabs.delete",
-            "frontstage.tabs.document.save",
-            "frontstage.tabs.update",
             "frontstage.tabs.view",
             "frontstage.ui_templates.view",
         ],
@@ -449,6 +440,15 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.ui-management",
         &[
+            "frontstage.groups.create",
+            "frontstage.pages.create",
+            "frontstage.pages.delete",
+            "frontstage.pages.move",
+            "frontstage.pages.update",
+            "frontstage.tabs.create",
+            "frontstage.tabs.delete",
+            "frontstage.tabs.document.save",
+            "frontstage.tabs.update",
             "ui_management.components.create",
             "ui_management.components.delete",
             "ui_management.components.list",
@@ -472,6 +472,17 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // UI configuration now requires an explicit UI-management grant. Legacy design grants
+    // do not open the new role-configurable menu operations.
+    "frontstage.groups.create",
+    "frontstage.pages.create",
+    "frontstage.pages.delete",
+    "frontstage.pages.move",
+    "frontstage.pages.update",
+    "frontstage.tabs.create",
+    "frontstage.tabs.delete",
+    "frontstage.tabs.document.save",
+    "frontstage.tabs.update",
     // Notification management is new authority; historic settings grants must not gain it.
     "notifications.instances.create",
     "notifications.instances.delete",
@@ -575,4 +586,4 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
 
 pub(super) const AUTHENTICATED_OPERATION_EVIDENCE: &str =
     "Authenticated console routes remain session-gated and never entered the role policy contract.";
-pub(super) const DEFAULT_DISABLED_EVIDENCE: &str = "These operations did not exist in baseline 107f90f78; inheriting any historic feature grant would expand authority.";
+pub(super) const DEFAULT_DISABLED_EVIDENCE: &str = "These operations introduce new role-configurable authority relative to baseline 107f90f78; inheriting a historic feature grant would expand authority.";

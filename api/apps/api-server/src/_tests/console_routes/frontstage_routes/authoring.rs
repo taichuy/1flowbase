@@ -68,7 +68,7 @@ async fn root_can_create_group_and_page_and_catalog_schema_validates_tree() {
 }
 
 #[tokio::test]
-async fn manager_can_create_group_and_page() {
+async fn member_without_ui_management_cannot_create_group_or_page() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     create_member(
@@ -84,11 +84,11 @@ async fn manager_can_create_group_and_page() {
 
     let (group_status, _) =
         create_group(&app, &cookie, &csrf, &workspace_id, Some("Group"), "a").await;
-    assert_eq!(group_status, StatusCode::CREATED);
+    assert_eq!(group_status, StatusCode::FORBIDDEN);
 
     let (page_status, _) =
         create_page(&app, &cookie, &csrf, &workspace_id, Some("Page"), None, "b").await;
-    assert_eq!(page_status, StatusCode::CREATED);
+    assert_eq!(page_status, StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

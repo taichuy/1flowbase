@@ -95,6 +95,23 @@ describe('Navigation', () => {
     frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([]);
   });
 
+  test('hides menu configuration when a persisted design-mode preference has no current permission', async () => {
+    await (await import('../design-mode-demand')).loadTopbarNavigationDesigner();
+    resetAuthStore();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: { id: 'viewer', account: 'viewer', effective_display_role: 'viewer', current_workspace_id: 'workspace-123' },
+      me: null
+    });
+    useFrontstageDesignModeStore.getState().setDesignMode(true);
+    await act(async () => { renderNavigation('/templates'); });
+    await screen.findByRole('link', { name: '子系统' });
+    expect(screen.queryByRole('button', { name: '添加菜单' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '打开导航' }));
+    const drawer = await screen.findByRole('dialog', { name: '1flowbase' });
+    expect(within(drawer).queryByRole('button', { name: '添加菜单' })).not.toBeInTheDocument();
+  });
+
   test('translates dynamic desktop and nested mobile labels on language changes', async () => {
     resetAuthStore();
     useAuthStore.getState().setAuthenticated({
@@ -328,6 +345,11 @@ describe('Navigation', () => {
       },
       me: null
     });
+    useAuthStore.getState().setMe({
+      id: 'actor-1', account: 'developer', name: 'Developer', nickname: 'Developer',
+      email: '', phone: null, avatar_url: null, introduction: '',
+      effective_display_role: 'developer', permissions: ['frontstage.page.design']
+    });
     useFrontstageDesignModeStore.getState().setDesignMode(true);
     frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([]);
 
@@ -351,6 +373,11 @@ describe('Navigation', () => {
         current_workspace_id: 'workspace-123'
       },
       me: null
+    });
+    useAuthStore.getState().setMe({
+      id: 'actor-1', account: 'developer', name: 'Developer', nickname: 'Developer',
+      email: '', phone: null, avatar_url: null, introduction: '',
+      effective_display_role: 'developer', permissions: ['frontstage.page.design']
     });
     useFrontstageDesignModeStore.getState().setDesignMode(true);
 
@@ -402,6 +429,11 @@ describe('Navigation', () => {
         current_workspace_id: 'workspace-123'
       },
       me: null
+    });
+    useAuthStore.getState().setMe({
+      id: 'actor-1', account: 'developer', name: 'Developer', nickname: 'Developer',
+      email: '', phone: null, avatar_url: null, introduction: '',
+      effective_display_role: 'developer', permissions: ['frontstage.page.design']
     });
     useFrontstageDesignModeStore.getState().setDesignMode(true);
     renderNavigation('/templates');

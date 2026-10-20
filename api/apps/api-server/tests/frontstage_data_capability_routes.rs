@@ -924,3 +924,6 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
     .await;
     assert_eq!(denied.0, StatusCode::FORBIDDEN, "{}", denied.1);
 }
+
+#[path = "_tests/ui_management_routes.rs"]
+mod ui_management_routes;

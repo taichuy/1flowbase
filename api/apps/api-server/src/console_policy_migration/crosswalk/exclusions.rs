@@ -71,7 +71,7 @@ pub(super) const LEGACY_NO_PROJECTIONS: &[LegacyNoProjectionSpec] = &[
     ),
     no_projection(
         "frontstage.page.design",
-        "Frontstage page design is a frontstage/runtime authorization contract, excluded from console policy.",
+        "The legacy Frontstage design grant is superseded by UI-management console policy and does not grant menu configuration operations.",
     ),
     no_projection(
         "ui_block.javascript.native",

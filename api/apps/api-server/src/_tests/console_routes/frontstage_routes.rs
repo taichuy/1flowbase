@@ -446,3 +446,6 @@ mod placement;
 mod presentation;
 #[path = "frontstage_routes/runtime_assembly.rs"]
 mod runtime_assembly;
+
+#[path = "frontstage_routes/ui_management.rs"]
+mod ui_management;

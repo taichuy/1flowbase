@@ -294,9 +294,14 @@ export function Navigation({
     (state) => state.actor?.current_workspace_id
   );
   const runtimeI18n = useBlockI18n(workspaceId ?? '', Boolean(workspaceId));
+  const canUseDesignMode = useAuthStore(
+    (state) =>
+      state.actor?.effective_display_role === 'root' ||
+      Boolean(state.me?.permissions.includes('frontstage.page.design'))
+  );
   const isDesignMode = useFrontstageDesignModeStore(
     (state) => state.isDesignMode
-  );
+  ) && canUseDesignMode;
   const selectedKey = getSelectedRouteId(pathname);
   const consoleNavigationQuery = useQuery({
     queryKey: [...settingsConsoleNavigationQueryKey, navigationScope],

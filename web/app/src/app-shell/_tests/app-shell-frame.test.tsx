@@ -265,6 +265,24 @@ describe('AppShellFrame', () => {
     expect(screen.getByLabelText('Exit design mode')).toBeChecked();
   });
 
+  test('hides UI without backend design access and exits design mode when access is revoked', async () => {
+    const me = { ...useAuthStore.getState().me!, effective_display_role: 'viewer', permissions: [] as string[] };
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-token',
+      actor: { id: 'user-1', account: 'viewer', effective_display_role: 'viewer', current_workspace_id: 'workspace-1' },
+      me
+    });
+    await renderShell('/');
+    expect(screen.queryByText('UI')).not.toBeInTheDocument();
+    await act(async () => { useAuthStore.getState().setMe({ ...me, permissions: ['frontstage.page.design'] }); });
+    expect(screen.getByLabelText('Enter design mode')).toBeInTheDocument();
+    await domEvents.click(screen.getByLabelText('Enter design mode'));
+    expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(true);
+    await act(async () => { useAuthStore.getState().setMe(me); });
+    expect(screen.queryByText('UI')).not.toBeInTheDocument();
+    expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(false);
+  });
+
   test('BGP-008 preloads design mode after the critical route grace window', async () => {
     await renderShell('/');
 
