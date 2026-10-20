@@ -304,7 +304,7 @@ fn bundle_zip_with_tool_name_and_binding(
         "name": tool_name,
         "short_description": "Read runtime profile",
         "full_description": "Read runtime profile from the target host.",
-        "interface_id": interface_id,
+        "execution_target": {"kind":"interface_wrapper", "interface_id":interface_id},
         "parameter_schema_snapshot": {"type": "object", "properties": {"stale": {"type": "string"}}},
         "result_schema_snapshot": {"type": "object"},
         "input_mapping": {},
@@ -351,7 +351,7 @@ fn bundle_zip_with_tool_name_and_binding(
     }
     let instance = serde_json::to_vec_pretty(&instance_document).unwrap();
     let manifest = serde_json::to_vec_pretty(&json!({
-        "schema_version": "1flowbase.mcp.bundle/v1",
+        "schema_version": "1flowbase.mcp.bundle/v2",
         "organization": "taichuy",
         "bundle_id": "route_test_bundle",
         "bundle_version": "1.0.0",

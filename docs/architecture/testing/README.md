@@ -54,16 +54,11 @@ Rust 文件按领域职责收纳物理子目录时，Cargo package identity、�
 
 ## 持久化与 wire 契约
 
-`@field-contract-compat` 只标记真实的旧输入到当前语义读取，逐项记录 source、alias、remove_by 和测试。未到期不能自动证明应保留，到期也不能直接删读取；退场需要迁移、存量证据和行为回归。以下四处兼容入口保留标记与既有期限：
+本次三类 0.5 前格式已经明确退出支持。MCP bundle 仅接受 `1flowbase.mcp.bundle/v2`，Tool 必须使用 `execution_target`，顶层 `interface_id` 拒绝反序列化；SQL 节点只使用 `bindings.sql`，编译器对仍含 `config.sql` 的文档明确报错，编辑器不读取旧字段。
 
-| 入口 | 保留输入与退出条件 |
-| --- | --- |
-| `domain/src/mcp_bundle.rs` | MCP v1 顶层 `interface_id` 转当前 `execution_target`，导入校验明确接受 v1；需先提供外部旧 zip / portable-template 的转换与退出方案，不能只看当前 v2 导出。 |
-| `orchestration-runtime/src/compiler/node_compilation.rs` | SQL 缺新绑定时从 `config.sql` 编译；需后端统一草稿、版本、发布及模板 normalization，核对持久化 inventory 并完成历史文档迁移回归。 |
-| `agent-flow/schema/agent-flow-field-renderers.tsx` | 旧 `config.sql` 可显示，编辑后写 `bindings.sql`；编译器仅在内存补绑定不等于保存格式迁移，退场需与后端同步。 |
-| `storage/durable/postgres/src/orchestration_runtime_repository/client_trajectory/semantic.rs` | 从旧 event 的 `fact.value` 恢复 section；维护迁移会保留含 NUL 的 `semantic_legacy_retained` 原文，旧格式 importer trigger 也仍能写 legacy 行。先无损转换 retained 数据、关闭或转换旧写入并验证全 scope inventory，再移除 reader。 |
+旧 client trajectory semantic event/section 不再由当前读取器恢复，旧 semantic-history mover 已删除。forward migration `20261019210000_retire_pre05_client_semantics.sql` 关闭旧 event 投影入口，并令旧 step/section 读取明确失败；原有历史行保留，不静默丢弃或改写。当前 content/timing、NUL 原文、cursor/high-water 与目录压缩继续由现有 owner 维护。历史 archive codec 迁移测试固定到截止前的正式 migration prefix；它们验证不可变历史迁移，不代表当前版本还接受旧 importer。回归分别覆盖当前格式成功与旧格式拒绝，不保留“旧输入仍可用”的过期断言。
 
-MCP v1 serde/上传 zip、SQL 编译与旧文本编辑、轨迹迁移后的原文/cursor/anchor 读取各有真实测试；它们证明所测边界，不证明用户持有旧数据的数量或部署迁移已经完成。历史 SQL 格式退场约束见 [请求架构与调用生命周期](../interface-lifecycle.md)。
+此决定只适用于上述 MCP、SQL 与 client semantic 三类入口；不据此删除其他版本化 codec、当前协议字段或原始归档功能。测试数据库使用隔离 schema；本任务未对实际部署数据库执行迁移或删除数据。
 
 `CompiledLlmRuntime` 的 `provider_instance_id / provider_instance_display_name / protocol / routing` 是当前 wire 字段，不是临时 serde alias。main 计划允许省略并用 default，实际身份在运行时解析；failover 计划仍冻结目标身份、显示名、协议与 queue policies。四处注释描述这一契约，不附虚构删除期限；字段与 serde 行为保留。[serde 边界测试](../../../api/crates/orchestration-runtime/src/_tests/compiled_plan_compatibility_tests.rs) 覆盖非空 failover、main 省略格式、旧缺 display name 及错误类型/必需字段拒绝，不能替代完整计划持久化恢复验收。
 

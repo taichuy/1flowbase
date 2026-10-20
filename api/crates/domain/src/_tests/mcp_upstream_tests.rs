@@ -164,23 +164,31 @@ fn issue_1246_ac_013_call_tool_mapping_preserves_content_and_error_semantics() {
 }
 
 #[test]
-fn issue_1246_ac_019_bundle_reads_v1_and_only_writes_tagged_target() {
-    let legacy = json!({
+fn bundle_requires_current_execution_target_and_roundtrips_it() {
+    let mut wire = json!({
         "tool_id":"weather","name":"Weather","short_description":"Weather",
         "full_description":"Weather","interface_id":"get_weather",
         "permission_code_snapshot":null,"risk_level_snapshot":"low","status":"enabled"
     });
-    let tool: crate::McpBundleTool = serde_json::from_value(legacy).unwrap();
+    assert!(serde_json::from_value::<crate::McpBundleTool>(wire.clone()).is_err());
+    wire["execution_target"] = json!({"kind":"interface_wrapper","interface_id":"get_weather"});
+    assert!(serde_json::from_value::<crate::McpBundleTool>(wire.clone()).is_err());
+    wire.as_object_mut().unwrap().remove("interface_id");
+    let tool: crate::McpBundleTool = serde_json::from_value(wire).unwrap();
     assert_eq!(
         tool.execution_target,
         McpToolExecutionTarget::InterfaceWrapper {
             interface_id: "get_weather".into()
         }
     );
-    let exported = serde_json::to_value(tool).unwrap();
+    let exported = serde_json::to_value(&tool).unwrap();
     assert_eq!(
         exported.pointer("/execution_target/kind"),
         Some(&json!("interface_wrapper"))
     );
     assert!(exported.get("interface_id").is_none());
+    assert_eq!(
+        serde_json::from_value::<crate::McpBundleTool>(exported).unwrap(),
+        tool
+    );
 }

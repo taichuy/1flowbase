@@ -3,13 +3,8 @@ use super::*;
 use sqlx::postgres::PgRow;
 
 pub(super) fn step_metadata(body: Value, restored: bool) -> Result<Value> {
-    if restored {
-        return Ok(body);
-    }
-    body.get("fact")
-        .and_then(|fact| fact.get("step"))
-        .cloned()
-        .ok_or_else(|| anyhow!("client legacy step metadata unavailable"))
+    anyhow::ensure!(restored, "client legacy step format is unsupported");
+    Ok(body)
 }
 
 fn contains_nul(value: &Value) -> bool {
@@ -195,7 +190,6 @@ async fn shared_overview_child(
     step_id: Uuid,
     section: &str,
     value: &Value,
-    historical: bool,
 ) -> Result<Option<(Uuid, Vec<String>)>> {
     let keys: &[&str] = match section {
         "parameters" => &["arguments", "input"],
@@ -221,11 +215,6 @@ async fn shared_overview_child(
     "#).bind(input.flow_run_id).bind(input.request_id).bind(step_id).fetch_all(&mut **tx).await?;
     for row in rows {
         let body: Value = row.get("body");
-        // Historical event SQL reconstruction cannot extract from an overview
-        // containing NUL elsewhere. Keep its ordinary section independently.
-        if historical && contains_nul(&body) {
-            continue;
-        }
         let path: Vec<String> = row.get("content_path");
         // Overviews are full immutable bodies, never another child locator.
         anyhow::ensure!(path.is_empty(), "client overview locator invalid");
@@ -242,8 +231,7 @@ pub(super) async fn write_section(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     input: &AppendClientTrajectoryInput,
     sequence: i64,
-    historical_id: Option<Uuid>,
-    locked_scope: Option<&FlowContentScope>,
+    flow_scope: &FlowContentScope,
 ) -> Result<Uuid> {
     let ClientTrajectoryFact::Section {
         step_id,
@@ -254,7 +242,7 @@ pub(super) async fn write_section(
         return Err(anyhow!("client trajectory section fact required"));
     };
     let step_id = *step_id;
-    let id = historical_id.unwrap_or_else(Uuid::now_v7);
+    let id = Uuid::now_v7();
     let (value_hash, value_byte_size) = value_identity(value)?;
     let value_digest = digest_bytes(&value_hash)?;
     let mut content_id = None;
@@ -262,27 +250,10 @@ pub(super) async fn write_section(
     let body_kind = if section == "timing" && *value == json!({"observed_at":input.observed_at}) {
         "timing"
     } else {
-        if let Some((id, path)) =
-            shared_overview_child(tx, input, step_id, section, value, historical_id.is_some())
-                .await?
-        {
+        if let Some((id, path)) = shared_overview_child(tx, input, step_id, section, value).await? {
             content_id = Some(id);
             content_path = path;
         } else {
-            let maintenance_scope;
-            let flow_scope = if let Some(scope) = locked_scope {
-                scope
-            } else {
-                // Historical maintenance locks an allowlist of runs, rather than
-                // receiving the normal fact writer's typed locked ownership.
-                maintenance_scope = sqlx::query_as::<_, FlowContentScope>(
-                    "select scope_id,application_id from flow_runs where id=$1",
-                )
-                .bind(input.flow_run_id)
-                .fetch_one(&mut **tx)
-                .await?;
-                &maintenance_scope
-            };
             let (id, _, _, created) = put_canonical_runtime_content_with_creation(
                 tx,
                 flow_scope.scope_id,
@@ -316,7 +287,7 @@ pub(super) async fn write_section(
             and client_trajectory_sections.step_id=excluded.step_id
             and client_trajectory_sections.section=excluded.section
             and client_trajectory_sections.event_sequence=excluded.event_sequence
-    "#).bind(id).bind(historical_id).bind(input.request_id).bind(step_id).bind(input.flow_run_id).bind(input.node_run_id)
+    "#).bind(id).bind(None::<Uuid>).bind(input.request_id).bind(step_id).bind(input.flow_run_id).bind(input.node_run_id)
         .bind(section).bind(sequence).bind(content_id).bind(&content_path).bind(body_kind).bind(observed_at).bind(originals)
         .bind(value_digest).bind(value_byte_size).execute(&mut **tx).await?;
     Ok(id)
@@ -325,10 +296,8 @@ pub(super) async fn write_section(
 const SECTION_ROWS: &str = r#"
     select p.event_sequence,p.body_kind,p.content_path,coalesce(p.value_hash,'sha256:'||encode(p.value_digest,'hex')) as value_hash,p.value_byte_size,
         runtime_original_json(to_jsonb(p.observed_at),p.raw_json_payloads,'observed_at') as observed_at,
-        case when p.body_kind='legacy' then runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) end as legacy_payload,
         case when p.body_kind='content' then runtime_original_json(c.content,c.raw_json_payloads,'content') end as body
     from client_trajectory_sections p join flow_runs f on f.id=p.flow_run_id
-    left join runtime_events e on e.id=p.event_id and e.flow_run_id=p.flow_run_id and p.body_kind='legacy'
     left join runtime_canonical_contents c on c.id=p.content_id and c.scope_id=f.scope_id and c.application_id=f.application_id
     where p.flow_run_id=$1 and p.request_id=$2 and p.step_id=$3 and p.section=$4 and p.event_sequence>$5
     order by p.event_sequence limit $6
@@ -358,14 +327,9 @@ pub(super) fn restore_section(row: &PgRow) -> Result<Value> {
     let body_kind: String = row.try_get("body_kind")?;
     let value = match body_kind.as_str() {
         "legacy" => {
-            // @field-contract-compat source=runtime_events.payload.fact.value alias=legacy_client_section remove_by=2026-10-31
-            // Remaining old events are actual historical anchors, read until verified migration.
-            let payload: Value = row.try_get("legacy_payload")?;
-            payload
-                .get("fact")
-                .and_then(|fact| fact.get("value"))
-                .ok_or_else(|| anyhow!("client legacy section value unavailable"))?
-                .clone()
+            return Err(anyhow!(
+                "legacy client trajectory section format is unsupported"
+            ))
         }
         "timing" => json!({"observed_at": row.try_get::<Value, _>("observed_at")?}),
         "content" => {
@@ -375,15 +339,13 @@ pub(super) fn restore_section(row: &PgRow) -> Result<Value> {
         }
         _ => return Err(anyhow!("client section body kind invalid")),
     };
-    if body_kind != "legacy" {
-        let expected_hash: String = row.try_get("value_hash")?;
-        let expected_size: i64 = row.try_get("value_byte_size")?;
-        let (hash, size) = value_identity(&value)?;
-        anyhow::ensure!(
-            hash == expected_hash && size == expected_size,
-            "client section value integrity mismatch"
-        );
-    }
+    let expected_hash: String = row.try_get("value_hash")?;
+    let expected_size: i64 = row.try_get("value_byte_size")?;
+    let (hash, size) = value_identity(&value)?;
+    anyhow::ensure!(
+        hash == expected_hash && size == expected_size,
+        "client section value integrity mismatch"
+    );
     Ok(value)
 }
 
@@ -549,178 +511,4 @@ impl PgControlPlaneStore {
         tx.commit().await?;
         Ok(count)
     }
-
-    /// One technical batch from an explicit run allowlist. Repeat until zero.
-    /// The returned count includes reviewed NUL rows retained in the old layout.
-    /// Integrity/scope failures roll back without modifying old anchors/bodies.
-    pub(crate) async fn migrate_client_trajectory_semantic_history(
-        &self,
-        run_ids: &[Uuid],
-        batch_size: i64,
-    ) -> Result<u64> {
-        anyhow::ensure!(
-            batch_size > 0,
-            "client semantic migration batch size invalid"
-        );
-        if run_ids.is_empty() {
-            return Ok(0);
-        }
-        let mut tx = self.pool().begin().await?;
-        // Match all append writers' flow lock order, including terminal observations.
-        let mut ordered_runs = run_ids.to_vec();
-        ordered_runs.sort_unstable();
-        ordered_runs.dedup();
-        for run in &ordered_runs {
-            let exists: Option<Uuid> =
-                sqlx::query_scalar("select id from flow_runs where id=$1 for no key update")
-                    .bind(run)
-                    .fetch_optional(&mut *tx)
-                    .await?;
-            anyhow::ensure!(
-                exists.is_some(),
-                "client semantic migration run unavailable"
-            );
-        }
-        let steps = sqlx::query(r#"
-            select s.id,s.request_id,s.flow_run_id,s.node_run_id,e.event_type,e.flow_run_id as event_flow_run_id,
-                e.node_run_id as event_node_run_id,runtime_original_json(e.payload,e.raw_json_payloads,'payload') as payload
-            from client_trajectory_steps s join runtime_events e on e.id=s.event_id
-            where s.flow_run_id=any($1) and not s.semantic_metadata_restored
-            order by s.flow_run_id,s.event_sequence,s.id limit $2
-        "#).bind(&ordered_runs).bind(batch_size).fetch_all(&mut *tx).await?;
-        let mut migrated = u64::try_from(steps.len())?;
-        for row in steps {
-            let payload: Value = row.try_get("payload")?;
-            let input: AppendClientTrajectoryInput = serde_json::from_value(payload.clone())?;
-            validate_legacy_scope(&row, &input)?;
-            let ClientTrajectoryFact::Step { step } = &input.fact else {
-                return Err(anyhow!("client historical step fact mismatch"));
-            };
-            anyhow::ensure!(
-                step.id == row.get::<Uuid, _>("id")
-                    && step.request_id == input.request_id
-                    && step.flow_run_id == Some(input.flow_run_id)
-                    && step.node_run_id == input.node_run_id,
-                "client historical step scope mismatch"
-            );
-            let (compact, layout) = compact_metadata(
-                payload["fact"]["step"].clone(),
-                step.id,
-                input.request_id,
-                input.flow_run_id,
-                input.node_run_id,
-                &json!(input.observed_at),
-            )?;
-            let (metadata, mut originals) = lossless_json_columns("metadata", &compact);
-            let (_, at_originals) = lossless_json_columns("observed_at", &json!(input.observed_at));
-            originals
-                .as_object_mut()
-                .expect("originals object")
-                .extend(at_originals.as_object().expect("originals object").clone());
-            sqlx::query("update client_trajectory_steps set metadata=$2,raw_json_payloads=$3,observed_at=($4::jsonb->>0),semantic_metadata_restored=true,metadata_compact=true,metadata_layout=$5 where id=$1")
-                .bind(step.id).bind(metadata).bind(originals).bind(lossless_text_parameter(&input.observed_at)).bind(layout)
-                .execute(&mut *tx).await?;
-            let restored: Value = sqlx::query_scalar("select client_trajectory_step_storage_body(id,flow_run_id) from client_trajectory_steps where id=$1")
-                .bind(step.id).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(
-                restored == payload["fact"]["step"],
-                "client historical step original mismatch"
-            );
-        }
-        let remaining = batch_size - i64::try_from(migrated)?;
-        let sections = sqlx::query(r#"
-            select p.id,p.event_id,p.request_id,p.step_id,p.section,p.event_sequence,p.flow_run_id,p.node_run_id,e.sequence as anchor_sequence,
-                e.event_type,e.flow_run_id as event_flow_run_id,e.node_run_id as event_node_run_id,
-                runtime_original_json(e.payload,e.raw_json_payloads,'payload') as payload
-            from client_trajectory_sections p join runtime_events e on e.id=p.event_id
-            where p.flow_run_id=any($1) and p.body_kind='legacy' and not p.semantic_legacy_retained and p.section<>'raw'
-            order by p.flow_run_id,p.event_sequence,p.id limit $2
-        "#).bind(&ordered_runs).bind(remaining).fetch_all(&mut *tx).await?;
-        migrated += u64::try_from(sections.len())?;
-        for row in sections {
-            let original: Value = row.try_get("payload")?;
-            let input: AppendClientTrajectoryInput = serde_json::from_value(original.clone())?;
-            validate_legacy_scope(&row, &input)?;
-            if contains_nul(&original) {
-                // Preserve unsupported historical originals and move past them.
-                // This marker only controls migration; the legacy reader remains.
-                sqlx::query("update client_trajectory_sections set semantic_legacy_retained=true where id=$1")
-                    .bind(row.get::<Uuid,_>("id")).execute(&mut *tx).await?;
-                continue;
-            }
-            let ClientTrajectoryFact::Section {
-                step_id,
-                section,
-                value,
-            } = &input.fact
-            else {
-                return Err(anyhow!("client historical section fact mismatch"));
-            };
-            anyhow::ensure!(
-                *step_id == row.get::<Uuid, _>("step_id")
-                    && *section == row.get::<String, _>("section"),
-                "client historical section identity mismatch"
-            );
-            let valid: bool = sqlx::query_scalar("select exists(select 1 from client_trajectory_steps where id=$1 and request_id=$2 and flow_run_id=$3)")
-                .bind(step_id).bind(input.request_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(valid, "client historical section step unavailable");
-            let id: Uuid = row.get("id");
-            anyhow::ensure!(
-                id == row.get::<Uuid, _>("event_id")
-                    && row.get::<i64, _>("event_sequence") == row.get::<i64, _>("anchor_sequence"),
-                "client historical section anchor mismatch"
-            );
-            write_section(&mut tx, &input, row.get("event_sequence"), Some(id), None).await?;
-            let restored = sqlx::query(SECTION_ROWS)
-                .bind(input.flow_run_id)
-                .bind(input.request_id)
-                .bind(step_id)
-                .bind(section)
-                .bind(row.get::<i64, _>("event_sequence") - 1)
-                .bind(1_i64)
-                .fetch_one(&mut *tx)
-                .await?;
-            anyhow::ensure!(
-                restore_section(&restored)? == *value,
-                "client historical section value mismatch"
-            );
-            let mut compact = original.clone();
-            compact["fact"]
-                .as_object_mut()
-                .ok_or_else(|| anyhow!("client historical fact unavailable"))?
-                .remove("value");
-            compact
-                .as_object_mut()
-                .ok_or_else(|| anyhow!("client historical payload unavailable"))?
-                .insert("_client_semantic_ref".into(), json!({"section_id":id}));
-            let (projection, originals) = lossless_json_columns("payload", &compact);
-            sqlx::query("update runtime_events set payload=$2,raw_json_payloads=$3 where id=$1")
-                .bind(id)
-                .bind(projection)
-                .bind(originals)
-                .execute(&mut *tx)
-                .await?;
-            let replayed: Value = sqlx::query_scalar("select client_trajectory_event_original_payload(payload,raw_json_payloads,flow_run_id) from runtime_events where id=$1")
-                .bind(id).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(
-                replayed == original,
-                "client historical event complete payload mismatch"
-            );
-        }
-        tx.commit().await?;
-        Ok(migrated)
-    }
-}
-
-fn validate_legacy_scope(row: &PgRow, input: &AppendClientTrajectoryInput) -> Result<()> {
-    anyhow::ensure!(
-        row.get::<String, _>("event_type") == "client_protocol_trajectory"
-            && input.request_id == row.get::<Uuid, _>("request_id")
-            && input.flow_run_id == row.get::<Uuid, _>("flow_run_id")
-            && input.flow_run_id == row.get::<Uuid, _>("event_flow_run_id")
-            && input.node_run_id == row.get::<Option<Uuid>, _>("node_run_id")
-            && input.node_run_id == row.get::<Option<Uuid>, _>("event_node_run_id"),
-        "client historical event scope mismatch"
-    );
-    Ok(())
 }
