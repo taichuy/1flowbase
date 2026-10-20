@@ -221,7 +221,7 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
         options: json!({"extension_config":{"self_registration_enabled":false}}),
     };
     state.store.create_login_entry(&entry).await.unwrap();
-    let identity = domain::ExternalIdentityClaim {
+    let identity: domain::VerifiedExternalIdentity = domain::ExternalIdentityClaim {
         connection_id: entry.connection_id,
         subject_type: "provider-user-id".into(),
         subject_value: "42".into(),
@@ -233,6 +233,14 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
     }
     .try_into()
     .unwrap();
+    let identity = identity
+        .with_authority_namespace(format!(
+            "managed:{}/{}:{}",
+            installed.installation.organization,
+            installed.installation.provider_code,
+            entry.auth_type
+        ))
+        .unwrap();
     AuthKernel::new(
         state.store.clone(),
         SessionIssuer::new(state.session_store.clone(), state.session_ttl_days),
@@ -402,4 +410,100 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
     host.stop().await.unwrap();
     std::fs::remove_file(barrier.with_extension("started")).unwrap();
     std::fs::remove_file(barrier.with_extension("release")).unwrap();
+}
+
+/// Shared real installed verifier fixture for the personal authentication API.
+/// Every repository, grant and worker call uses the production implementations.
+pub(crate) async fn installed_verifier_fixture() -> (
+    Arc<ApiState>,
+    Arc<runtime_extension_host::RuntimeExtensionHost>,
+    LoginEntryRecord,
+    domain::ActorContext,
+) {
+    crate::authentication_runtime::callback_url()
+        .expect("set API_AUTH_PUBLIC_ORIGIN for callback fixtures");
+    let (initial, database_url) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut owned = (*initial).clone();
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&database_url)
+        .await
+        .unwrap();
+    owned.store = storage_durable_postgres::MainDurableStore::new(pool);
+    let assembly = crate::extension_bus::assemble_extension_graph_input(
+        crate::api_workspace_root().unwrap(),
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        vec![],
+    )
+    .unwrap();
+    let host = Arc::new(
+        runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
+            time::OffsetDateTime::now_utc(),
+            Arc::new(ApiRuntimeArtifactResolver::new(
+                owned.store.clone(),
+                &owned.api_node_id,
+                &owned.provider_install_root,
+            )),
+        )
+        .unwrap(),
+    );
+    host.mark_ready().unwrap();
+    owned.provider_runtime = Arc::new(
+        ApiRuntimeServices::new_with_runtime_backend(
+            host.clone(),
+            Arc::new(assembly.compile_graph().unwrap()),
+        )
+        .unwrap()
+        .with_managed_composition(
+            owned.store.clone(),
+            owned.api_node_id.clone(),
+            assembly.module_descriptors().to_vec(),
+        ),
+    );
+    let state = Arc::new(owned);
+    let root_id: Uuid = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let actor = state
+        .store
+        .load_actor_context_for_user(root_id)
+        .await
+        .unwrap();
+    let management = PluginManagementService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.official_plugin_source.clone(),
+        &state.provider_install_root,
+    )
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
+    let installed = management
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: root_id,
+            file_name: "authentication-methods.1flowbasepkg".into(),
+            package_bytes: package(),
+        })
+        .await
+        .unwrap();
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: root_id,
+            installation_id: installed.installation.id,
+        })
+        .await
+        .unwrap();
+    let entry = LoginEntryRecord {
+        id: Uuid::now_v7(),
+        connection_id: Uuid::now_v7(),
+        auth_type: "external-fixture".into(),
+        title: "Controlled verifier".into(),
+        enabled: true,
+        is_builtin: false,
+        sort_order: 1,
+        public_ui_block: "external-fixture".into(),
+        options: json!({"extension_config":{"self_registration_enabled":true}}),
+    };
+    state.store.create_login_entry(&entry).await.unwrap();
+    (state, host, entry, actor)
 }

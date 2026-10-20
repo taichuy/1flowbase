@@ -6,7 +6,10 @@ use crate::{
     app_state::ApiState, error_response::ApiError, extension_bus::ManagedWorkspaceSnapshot,
 };
 use anyhow::Context;
-use control_plane::{errors::ControlPlaneError as Error, ports::AuthenticationSecretCodec};
+use control_plane::{
+    errors::ControlPlaneError as Error,
+    ports::{AuthenticationSecretCodec, PluginRepository},
+};
 use extension_contracts::{
     AuthenticationProviderDescriptor, AuthenticationRequest, AuthenticationResponse,
     AUTHENTICATION_POINT,
@@ -18,6 +21,7 @@ pub(crate) struct AuthenticationProvider {
     pub descriptor: AuthenticationProviderDescriptor,
     pub installation_id: Uuid,
     pub fingerprint: String,
+    pub authority_namespace: String,
 }
 
 pub(crate) fn callback_url() -> Result<String, ApiError> {
@@ -88,10 +92,20 @@ pub(crate) async fn provider(
         return Err(Error::PluginUnavailable.into());
     }
     let fingerprint = fingerprint(&snapshot, &descriptor.contribution_id)?;
+    let installation = state
+        .store
+        .get_installation(installation_id)
+        .await?
+        .ok_or(Error::PluginUnavailable)?;
+    let authority_namespace = format!(
+        "managed:{}/{}:{}",
+        installation.organization, installation.provider_code, descriptor.auth_type
+    );
     Ok(AuthenticationProvider {
         descriptor,
         installation_id,
         fingerprint,
+        authority_namespace,
     })
 }
 
@@ -192,4 +206,20 @@ impl AuthenticationProvider {
         serde_json::from_value(response)
             .map_err(|_| Error::PermissionDenied("external_authentication_response").into())
     }
+}
+
+pub(crate) async fn active_providers(
+    state: &ApiState,
+) -> Result<Vec<AuthenticationProvider>, ApiError> {
+    let declarations = registration::active_declarations(
+        &state.store,
+        &state.api_node_id,
+        &state.provider_install_root,
+    )
+    .await?;
+    let mut providers = Vec::new();
+    for (_, descriptor) in declarations {
+        providers.push(provider(state, &descriptor.auth_type).await?);
+    }
+    Ok(providers)
 }

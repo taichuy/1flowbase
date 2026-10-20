@@ -90,6 +90,7 @@ pub(super) enum PublicOutput {
     Authorization(AuthorizeOutput),
     Login(LoginResult),
     Bound,
+    PasswordVerified,
 }
 pub(super) struct AuthorizeInput(pub Uuid);
 pub(super) struct AuthorizeOutput {
@@ -208,6 +209,8 @@ impl Adapter {
                     registration_eligible,
                     binding_actor,
                     authority,
+                    purpose,
+                    binding_session_hash,
                 } = verified;
                 let lease = authority.take()?;
                 let entry = self.entry(login_entry_id).await?;
@@ -219,8 +222,21 @@ impl Adapter {
                     SessionIssuer::new(Arc::clone(&self.sessions), self.session_ttl_days),
                 );
                 let output = if let Some(actor) = binding_actor {
-                    kernel.bind_external_identity(&actor, identity).await?;
-                    PublicOutput::Bound
+                    if purpose == super::transaction::Purpose::PasswordSetup {
+                        let state = self.state.upgrade().ok_or_else(transaction::denied)?;
+                        crate::routes::me_authentication_methods::issue_password_proof(
+                            &state,
+                            &actor,
+                            binding_session_hash.ok_or_else(transaction::denied)?,
+                            login_entry_id,
+                            &identity,
+                        )
+                        .await?;
+                        PublicOutput::PasswordVerified
+                    } else {
+                        kernel.bind_external_identity(&actor, identity).await?;
+                        PublicOutput::Bound
+                    }
                 } else {
                     PublicOutput::Login(
                         kernel
@@ -528,7 +544,7 @@ pub(super) async fn invoke_callback(
     headers: axum::http::HeaderMap,
     jar: axum_extra::extract::cookie::CookieJar,
     raw_query: Option<String>,
-) -> (Result<PublicOutput, ApiError>, Option<String>) {
+) -> (Result<PublicOutput, ApiError>, Option<String>, bool) {
     let admission = super::CallbackAdmission::default();
     let result = async {
         let boot = state
@@ -568,7 +584,7 @@ pub(super) async fn invoke_callback(
         Ok(outcome.into_value())
     }
     .await;
-    (result, admission.cookie_name())
+    (result, admission.cookie_name(), admission.security_return())
 }
 
 pub(super) async fn invoke_authorize(

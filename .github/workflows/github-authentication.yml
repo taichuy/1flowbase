@@ -2,7 +2,7 @@ name: GitHub authentication acceptance
 
 on:
   push:
-    branches: [codex/github-auth-20261019]
+    branches: [codex/github-auth-20261019, codex/auth-methods-20261020]
     paths:
       - api/**
       - .github/workflows/github-authentication.yml
@@ -10,6 +10,7 @@ on:
     paths:
       - api/apps/api-server/src/authentication_runtime/**
       - api/apps/api-server/src/routes/identity/external_auth/**
+      - api/apps/api-server/src/routes/identity/me_authentication_methods/**
       - api/apps/api-server/src/_tests/identity_routes/external_auth_trace.rs
       - api/crates/storage/durable/postgres/migrations/*managed*authority*.sql
       - .github/workflows/github-authentication.yml
@@ -94,6 +95,11 @@ jobs:
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --features tikv-jemallocator/stats external_auth 2>&1 | tee tmp/test-governance/github-authentication/ci/api-auth.log
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/api-auth.log
+      - name: Verify personal methods and password verification boundaries
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --features tikv-jemallocator/stats me_authentication_methods 2>&1 | tee tmp/test-governance/github-authentication/ci/api-methods.log
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/api-methods.log
       - name: Preserve candidate-bound evidence
         if: always()
         uses: actions/upload-artifact@v6

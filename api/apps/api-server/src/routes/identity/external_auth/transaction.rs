@@ -12,9 +12,17 @@ use crate::error_response::ApiError;
 pub(super) const TTL_SECONDS: i64 = 600;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(super) struct BindingIntent {
+pub(crate) struct BindingIntent {
     pub actor_id: Uuid,
     pub session_hash: String,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Purpose {
+    #[default]
+    Bind,
+    PasswordSetup,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -32,15 +40,17 @@ pub(super) struct Transaction {
     pub code_verifier: String,
     pub expires_at_unix: i64,
     pub binding: Option<BindingIntent>,
+    #[serde(default)]
+    pub purpose: Purpose,
 }
 
-pub(super) fn random_token() -> String {
+pub(crate) fn random_token() -> String {
     let mut bytes = [0; 32];
     UnwrapErr(SysRng).fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-pub(super) fn digest(value: &str) -> String {
+pub(crate) fn digest(value: &str) -> String {
     control_plane::auth::hash_api_key_token(value)
 }
 

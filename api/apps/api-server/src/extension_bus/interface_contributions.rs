@@ -448,6 +448,12 @@ pub(crate) fn production_interface_contributions(
 
     let mut contributions = vec![
         InterfaceRegistryContribution::new(
+            "api-server.me-authentication-methods",
+            crate::routes::me_authentication_methods::interface::OPERATIONS,
+            &[crate::routes::me_authentication_methods::interface::OWNER],
+            crate::routes::me_authentication_methods::interface::compile_registry(state)?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.external-auth",
             crate::routes::external_auth::interface::OPERATIONS,
             &[crate::routes::external_auth::interface::OWNER],
