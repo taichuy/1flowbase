@@ -182,9 +182,9 @@ test('unlink requires confirmation, uses the identity and CSRF, and refreshes pe
   fireEvent.click(
     screen.getByRole('button', { name: 'authentication.unlink' })
   );
-  expect(
-    await screen.findByText('authentication.unlink_confirm')
-  ).toBeVisible();
+  await waitFor(() =>
+    expect(screen.getByText('authentication.unlink_confirm')).toBeVisible()
+  );
   expect(mocks.unlink).not.toHaveBeenCalled();
   const buttons = screen.getAllByRole('button', {
     name: 'authentication.unlink'
