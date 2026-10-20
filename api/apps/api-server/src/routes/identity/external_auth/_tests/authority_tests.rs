@@ -280,7 +280,13 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
 
     // Positive control: execute the actual BuiltIn factory, consume its sealed side
     // port exactly once, and preserve its attempt identity through business/session issuance.
-    let (jar, url) = begin(&state, entry.clone(), None).await.unwrap();
+    let (jar, url) = begin(
+        &ExternalAuthentication::from_state(&state),
+        entry.clone(),
+        None,
+    )
+    .await
+    .unwrap();
     let admission = CallbackAdmission::default();
     let authenticated = boot
         .authenticate_invocation::<_, PublicPrincipal>(
@@ -358,7 +364,9 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
     )
     .await
     .unwrap();
-    let (jar, url) = begin(&state, entry, None).await.unwrap();
+    let (jar, url) = begin(&ExternalAuthentication::from_state(&state), entry, None)
+        .await
+        .unwrap();
     let cookie = jar
         .iter()
         .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
