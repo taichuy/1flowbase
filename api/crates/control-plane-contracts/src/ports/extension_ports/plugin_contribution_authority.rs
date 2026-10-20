@@ -129,4 +129,14 @@ pub trait PluginContributionAuthorityRepository: Send + Sync {
         &self,
         subject: &ManagedContributionSubject,
     ) -> Result<Box<dyn ContributionAuthorityLease>>;
+    /// Read-only authority guard for authentication HTTP exchanges. Concurrent reads may
+    /// overlap; authority writers must wait until every guard is released or dropped.
+    /// Consumers only inspect facts and release this guard; they must not commit effects.
+    /// Stores without shared guards retain the existing exclusive safety boundary.
+    async fn lock_authentication_http_authority(
+        &self,
+        subject: &ManagedContributionSubject,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        self.lock_contribution_authority(subject).await
+    }
 }

@@ -81,6 +81,11 @@ jobs:
           set -euo pipefail
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib binding_targets 2>&1 | tee tmp/test-governance/github-authentication/ci/postgres.log
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/postgres.log
+      - name: Verify concurrent authentication HTTP authority guards
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib authentication_http_authority 2>&1 | tee tmp/test-governance/github-authentication/ci/http-authority.log
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/http-authority.log
       - name: Verify external onboarding and binding against PostgreSQL
         run: |
           set -euo pipefail

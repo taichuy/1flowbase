@@ -146,6 +146,7 @@ async fn http_request(
         .resolve_managed_plugin_request(workspace_id, installation_id, timeout)
         .await
         .map_err(|_| HostServiceError::new("http_egress_unavailable"))?;
+    let started = std::time::Instant::now();
     let result: anyhow::Result<HttpEgressResponse> = async {
         let mut builder = scope.http_client().request(method, &request.url);
         for (name, value) in &request.headers {
@@ -172,6 +173,30 @@ async fn http_request(
         })
     }
     .await;
+    // Authentication exchanges have no console caller. Record only Host-owned
+    // identifiers, status/timing and typed transport flags, never URLs or payloads.
+    if binding.caller.is_none() {
+        match &result {
+            Ok(response) => tracing::info!(
+                installation_id = %installation_id,
+                status = response.status,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "authentication HTTP exchange completed"
+            ),
+            Err(error) => {
+                let transport = error.downcast_ref::<reqwest::Error>();
+                tracing::warn!(
+                    installation_id = %installation_id,
+                    timeout = transport.is_some_and(reqwest::Error::is_timeout),
+                    connect = transport.is_some_and(reqwest::Error::is_connect),
+                    body = transport.is_some_and(reqwest::Error::is_body),
+                    decode = transport.is_some_and(reqwest::Error::is_decode),
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    "authentication HTTP exchange failed"
+                );
+            }
+        }
+    }
     scope
         .finish(result)
         .await

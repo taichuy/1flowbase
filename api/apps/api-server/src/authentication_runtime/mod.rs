@@ -248,6 +248,12 @@ impl AuthenticationProvider {
             "callback_url".into(),
             serde_json::Value::String(callback_url()?),
         );
+        let operation = match &request {
+            AuthenticationRequest::Begin { .. } => "begin",
+            AuthenticationRequest::Complete { .. } => "complete",
+            AuthenticationRequest::RegistrationEligibility { .. } => "registration_eligibility",
+        };
+        let started = std::time::Instant::now();
         let response = composition
             .execute_snapshot(
                 snapshot,
@@ -263,7 +269,27 @@ impl AuthenticationProvider {
                 serde_json::to_value(request)?,
             )
             .await
-            .map_err(|_| Error::PermissionDenied("external_authentication_failed"))?;
+            .map_err(|error| {
+                // Never log a managed provider's free-form message or diagnostics:
+                // these may contain OAuth codes, tokens or configured secrets.
+                let kind = error
+                    .downcast_ref::<plugin_framework::error::PluginFrameworkError>()
+                    .map(|error| error.kind());
+                tracing::warn!(
+                    installation_id = %self.installation_id,
+                    operation,
+                    error_kind = ?kind,
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    "external authentication provider invocation failed"
+                );
+                Error::PermissionDenied("external_authentication_failed")
+            })?;
+        tracing::info!(
+            installation_id = %self.installation_id,
+            operation,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "external authentication provider invocation completed"
+        );
         serde_json::from_value(response)
             .map_err(|_| Error::PermissionDenied("external_authentication_response").into())
     }

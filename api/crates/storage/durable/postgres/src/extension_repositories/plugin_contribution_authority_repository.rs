@@ -413,12 +413,40 @@ async fn lock_candidate_grant(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum AuthorityLockMode {
+    Exclusive,
+    AuthenticationHttpRead,
+}
+
 async fn lock_scope(
     transaction: &mut Transaction<'_, Postgres>,
     installation_id: Uuid,
     workspace_id: Uuid,
 ) -> Result<()> {
-    lock_managed_workspace(transaction, workspace_id).await?;
+    lock_scope_for(
+        transaction,
+        installation_id,
+        workspace_id,
+        AuthorityLockMode::Exclusive,
+    )
+    .await
+}
+
+async fn lock_scope_for(
+    transaction: &mut Transaction<'_, Postgres>,
+    installation_id: Uuid,
+    workspace_id: Uuid,
+    mode: AuthorityLockMode,
+) -> Result<()> {
+    match mode {
+        AuthorityLockMode::Exclusive => lock_managed_workspace(transaction, workspace_id).await?,
+        AuthorityLockMode::AuthenticationHttpRead => {
+            // Same key as every authority writer, but compatible with other HTTP reads.
+            sqlx::query("select pg_advisory_xact_lock_shared(hashtextextended('managed-workspace:' || $1::text, 0))")
+                .bind(workspace_id.to_string()).execute(&mut **transaction).await?;
+        }
+    }
     // Assignment and installation locks also prevent these ownership facts changing while
     // a host admission lease is held. Every authority writer takes locks in this order.
     let installation: Option<Uuid> = sqlx::query_scalar(
@@ -447,10 +475,24 @@ async fn lock_scope(
     } else if assignment.is_none() {
         return Err(Error::PermissionDenied("contribution_workspace_assignment_required").into());
     }
-    sqlx::query("insert into plugin_contribution_authorization_revisions (installation_id,workspace_id) values ($1,$2) on conflict do nothing")
-        .bind(installation_id).bind(workspace_id).execute(&mut **transaction).await?;
-    sqlx::query("select revision from plugin_contribution_authorization_revisions where installation_id=$1 and workspace_id=$2 for update")
-        .bind(installation_id).bind(workspace_id).fetch_one(&mut **transaction).await?;
+    match mode {
+        AuthorityLockMode::Exclusive => {
+            sqlx::query("insert into plugin_contribution_authorization_revisions (installation_id,workspace_id) values ($1,$2) on conflict do nothing")
+                .bind(installation_id).bind(workspace_id).execute(&mut **transaction).await?;
+            sqlx::query("select revision from plugin_contribution_authorization_revisions where installation_id=$1 and workspace_id=$2 for update")
+                .bind(installation_id).bind(workspace_id).fetch_one(&mut **transaction).await?;
+        }
+        AuthorityLockMode::AuthenticationHttpRead => {
+            // Activation prepares this row. Read guards never create or upgrade it.
+            let revision: Option<i64> = sqlx::query_scalar("select revision from plugin_contribution_authorization_revisions where installation_id=$1 and workspace_id=$2 for share")
+                .bind(installation_id).bind(workspace_id).fetch_optional(&mut **transaction).await?;
+            if revision.is_none() {
+                return Err(
+                    Error::PermissionDenied("authentication_authority_not_initialized").into(),
+                );
+            }
+        }
+    }
     Ok(())
 }
 
@@ -784,6 +826,36 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         append_audit(&mut transaction, audit_log, snapshot.revision).await?;
         transaction.commit().await?;
         Ok(snapshot)
+    }
+
+    async fn lock_authentication_http_authority(
+        &self,
+        subject: &ManagedContributionSubject,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        let installation_id = Uuid::parse_str(subject.installation_id().as_str())?;
+        let workspace_id = Uuid::parse_str(subject.workspace_id().as_str())?;
+        let mut transaction = self.pool().begin().await?;
+        lock_scope_for(
+            &mut transaction,
+            installation_id,
+            workspace_id,
+            AuthorityLockMode::AuthenticationHttpRead,
+        )
+        .await?;
+        let snapshot = snapshot(
+            &mut transaction,
+            installation_id,
+            workspace_id,
+            Some(subject.contribution_id().as_str()),
+        )
+        .await?;
+        let installation = locked_installation(&mut transaction, installation_id).await?;
+        Ok(Box::new(PgContributionAuthorityLease {
+            managed_operations: self.managed_operations.clone(),
+            transaction,
+            snapshots: vec![snapshot],
+            installations: [(installation_id, installation)].into_iter().collect(),
+        }))
     }
 
     async fn lock_contribution_authority(

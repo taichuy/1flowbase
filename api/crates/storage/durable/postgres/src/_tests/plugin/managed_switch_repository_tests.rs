@@ -542,3 +542,6 @@ async fn system_binding_targets_are_included_in_candidate_switch_set() {
     candidate.release().await.unwrap();
     assert_eq!(selected(&store).await, vec![current]);
 }
+
+#[path = "authentication_http_authority.rs"]
+mod authentication_http_authority;

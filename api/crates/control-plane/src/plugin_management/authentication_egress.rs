@@ -13,7 +13,7 @@ pub async fn authorize_authentication_egress(
     let installation_id =
         uuid::Uuid::parse_str(binding.subject.installation_id().as_str()).map_err(|_| denied())?;
     let lease = authority
-        .lock_contribution_authority(&binding.subject)
+        .lock_authentication_http_authority(&binding.subject)
         .await
         .map_err(|_| denied())?;
     let installation = lease.installation(installation_id).ok_or_else(denied)?;
