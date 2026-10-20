@@ -547,7 +547,7 @@ async fn external_profile_account_collisions_are_atomic_and_invalid_hints_fall_b
             "invalid",
             serde_json::json!({
                 "email":"invalid@example.com","email_verified":true,"account":"bad account",
-                "nickname":"bad\nnickname","avatar_url":"javascript:alert(1)","name":"Do Not Map",
+                "nickname":"bad\nnickname","avatar_url":"javascript:alert(1)","name":"bad\nname",
                 "login":"github-specific-key-is-not-host-policy"
             }),
         ))
