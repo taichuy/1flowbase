@@ -175,7 +175,7 @@ test('getServiceDefinitions uses repo default ports and explicit backend binarie
   assert.deepEqual(services.web.args, ['--filter', '@1flowbase/web', 'dev']);
   assert.deepEqual(services['api-server'].args, []);
   assert.equal(services['api-server'].buildBeforeStart, true);
-  assert.equal(services['api-server'].startupTimeoutMs, 120_000);
+  assert.equal(services['api-server'].startupTimeoutMs, null);
   assert.deepEqual(services.web.readinessProbe, {
     path: '/__1flowbase_dev_ready',
     expectedJson: {
@@ -393,12 +393,12 @@ test('dev-up seeds a new web env from existing worktree port configuration', () 
   );
 });
 
-test('AC-001 api-server runtime readiness has a bounded window separate from compilation', () => {
+test('AC-001 development services wait for readiness without a total time limit', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const services = getServiceDefinitions(repoRoot);
 
-  assert.equal(services.web.startupTimeoutMs, 60_000);
-  assert.equal(services['api-server'].startupTimeoutMs, 120_000);
+  assert.equal(services.web.startupTimeoutMs, null);
+  assert.equal(services['api-server'].startupTimeoutMs, null);
 });
 
 test('getServiceDefinitions leaves frontend pnpm startup interactive', () => {

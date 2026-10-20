@@ -1,36 +1,94 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { getServiceDefinitions } = require('../services.js');
-const { waitForServiceReadiness } = require('../process.js');
+const { probeHttpReadiness, waitForServiceReadiness } = require('../process.js');
 
 function backend(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-readiness-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   t.mock.timers.enable({ apis: ['Date'], now: 0 });
-  const service = getServiceDefinitions(root)['api-server'];
-  service.startupDeadline = Date.now() + service.startupTimeoutMs;
-  return service;
+  return getServiceDefinitions(root)['api-server'];
 }
 
-test('cold backend remains eligible for readiness after 30 seconds', async (t) => {
-  const service = backend(t);
-  const result = await waitForServiceReadiness(service, {
-    probeHttpReadinessImpl: async () => ({ ready: Date.now() >= 45_000 }),
+function liveProcess(t) {
+  return {
+    readPidRecordImpl: () => ({ pid: 42 }),
+    isProcessAliveImpl: () => true,
     sleepImpl: async (ms) => t.mock.timers.tick(ms),
+  };
+}
+
+test('a stalled HTTP probe still times out independently of unlimited startup', async (t) => {
+  const server = http.createServer(() => {});
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
   });
-  assert.equal(result.ready, true);
-  assert.equal(Date.now(), 45_000);
+  const result = await probeHttpReadiness({
+    probeHost: '127.0.0.1', port: server.address().port,
+    startupTimeoutMs: null,
+    readinessProbe: { path: '/health', timeoutMs: 30 },
+  });
+  assert.deepEqual(result, { ready: false, reason: 'HTTP GET /health timed out after 30ms' });
 });
 
-test('backend that never becomes healthy still exhausts its startup deadline', async (t) => {
+for (const key of ['api-server', 'web']) {
+  test(`${key} can become ready after ten minutes without being terminated`, async (t) => {
+    const service = backend(t);
+    const selected = key === 'web' ? getServiceDefinitions(service.repoRoot).web : service;
+    const result = await waitForServiceReadiness(selected, {
+      ...liveProcess(t),
+      probeHttpReadinessImpl: async () => ({ ready: Date.now() >= 600_000 }),
+    });
+    assert.equal(result.ready, true);
+    assert.equal(Date.now(), 600_000);
+  });
+}
+
+test('process exit replaces an earlier HTTP timeout and stops further probes', async (t) => {
   const service = backend(t);
+  let probes = 0;
   const result = await waitForServiceReadiness(service, {
+    ...liveProcess(t),
+    isProcessAliveImpl: () => probes === 0,
+    probeHttpReadinessImpl: async () => {
+      probes += 1;
+      return { ready: false, reason: 'HTTP timed out' };
+    },
+  });
+  assert.equal(probes, 1);
+  assert.deepEqual(result, { ready: false, reason: 'api-server process exited before readiness' });
+});
+
+test('cancelling an unready backend stops the readiness loop', async (t) => {
+  const service = backend(t);
+  const controller = new AbortController();
+  service.signal = controller.signal;
+  let probes = 0;
+  await assert.rejects(waitForServiceReadiness(service, {
+    ...liveProcess(t),
+    probeHttpReadinessImpl: async () => {
+      probes += 1;
+      controller.abort();
+      return { ready: false };
+    },
+  }), { name: 'AbortError' });
+  assert.equal(probes, 1);
+});
+
+test('an explicit finite startup deadline remains supported', async (t) => {
+  const service = backend(t);
+  service.startupTimeoutMs = 30_000;
+  service.startupDeadline = 30_000;
+  const result = await waitForServiceReadiness(service, {
+    ...liveProcess(t),
     probeHttpReadinessImpl: async () => ({ ready: false, reason: 'HTTP unavailable' }),
-    sleepImpl: async (ms) => t.mock.timers.tick(ms),
   });
   assert.deepEqual(result, { ready: false, reason: 'HTTP unavailable' });
-  assert.equal(Date.now(), 120_000);
+  assert.equal(Date.now(), 30_000);
 });

@@ -4,7 +4,6 @@ const path = require('node:path');
 const { parseEnvFile } = require('./env.js');
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
-const FRONTEND_COLD_STARTUP_TIMEOUT_MS = 60_000;
 const DEFAULT_WEB_PORT = 3100;
 const DEFAULT_API_SERVER_PORT = 7800;
 const DEFAULT_API_SERVER_ADDR = '0.0.0.0:7800';
@@ -90,7 +89,7 @@ function getServiceDefinitions(repoRoot) {
       bindHost: '0.0.0.0',
       probeHost: '127.0.0.1',
       port: webPort,
-      startupTimeoutMs: FRONTEND_COLD_STARTUP_TIMEOUT_MS,
+      startupTimeoutMs: null,
       readinessProbe: {
         path: '/__1flowbase_dev_ready',
         expectedJson: {
@@ -120,7 +119,7 @@ function getServiceDefinitions(repoRoot) {
       port: apiServerAddress.port,
       // Cold boot includes database bootstrap and plugin/catalog assembly before
       // HTTP serving begins; a bound port alone does not mean the API is ready.
-      startupTimeoutMs: 120_000,
+      startupTimeoutMs: null,
       readinessProbe: {
         path: '/health',
         expectedJson: {
@@ -138,7 +137,6 @@ function getServiceDefinitions(repoRoot) {
 
 module.exports = {
   DEFAULT_STARTUP_TIMEOUT_MS,
-  FRONTEND_COLD_STARTUP_TIMEOUT_MS,
   ensureRuntimeDirs,
   getRepoRoot,
   getRuntimePaths,

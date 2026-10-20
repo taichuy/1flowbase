@@ -280,12 +280,10 @@ async function waitForServiceReadiness(
     if (timeoutMs === null) {
       const pidRecord = readPidRecordImpl(service.pidFile);
       if (!pidRecord || !isProcessAliveImpl(pidRecord.pid)) {
-        return (
-          latestFailure || {
-            ready: false,
-            reason: `${service.label} process exited before readiness`,
-          }
-        );
+        return {
+          ready: false,
+          reason: `${service.label} process exited before readiness`,
+        };
       }
     }
     const readiness = await probeHttpReadinessImpl(service);
@@ -656,10 +654,11 @@ async function startService(
   service.signal?.throwIfAborted();
   const launch = service.buildBeforeStart ? await buildBackendImpl(service) : service;
   service.signal?.throwIfAborted();
-  logImpl(`${service.label}: starting runtime; timeout=${getStartupTimeoutMs(service) / 1000}s; log=${service.logFile}`);
   const startupTimeoutMs = getStartupTimeoutMs(service);
+  logImpl(`${service.label}: starting runtime; timeout=${startupTimeoutMs === null ? 'none' : `${startupTimeoutMs / 1000}s`}; log=${service.logFile}`);
   const runtimeStartedAt = Date.now();
   if (startupTimeoutMs !== null) service.startupDeadline = runtimeStartedAt + startupTimeoutMs;
+  else delete service.startupDeadline;
   const outputFd = fs.openSync(service.logFile, 'w');
   const child = spawnImpl(resolveCommandPathImpl(launch.command) || launch.command, launch.args, {
     cwd: service.cwd,

@@ -36,6 +36,21 @@ function launchFixture(s, overrides = {}) {
   };
 }
 
+test('unbounded runtime reports no timeout and clears a previous launch deadline', async (t) => {
+  const s = service(fixture(t));
+  s.startupTimeoutMs = null;
+  s.startupDeadline = 1;
+  const logs = [];
+  await startService(s, launchFixture(s, {
+    logImpl: (line) => logs.push(line),
+    waitForServicePortImpl: async (current) => {
+      assert.equal(current.startupDeadline, undefined);
+      return true;
+    },
+  }));
+  assert.ok(logs.some((line) => line.includes('starting runtime; timeout=none;')));
+});
+
 test('AC-001 healthy service reuse skips preparation, build and spawn', async (t) => {
   const s = service(fixture(t));
   const forbidden = () => assert.fail('reused service must not do startup work');
