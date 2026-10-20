@@ -35,6 +35,10 @@ flowchart LR
 
 ## 维护边界
 
+职责拆分保持 crate 依赖方向、公共 facade、Canonical Interface 身份、事务与协议结果不变。生产行为按语义 owner 的私有子模块组织；测试按场景与共享 fixture 组织，保留 Cargo integration target 与门禁 selector 的非零执行证据。静态禁止规则递归检查 owner 子模块，不能只检查拆分前的单文件，也不能把私有模块数量或顺序当作架构契约。
+
+`api-server` 的启动、唯一 Runtime Host / Slot 注入与关闭装配放在 `internal/startup_assembly`，`lib` 保留宿主公共入口；运行时 Port、协议投影和存储 mapper 分别留在既有 owner 内部，不增加跨 crate 反向依赖。
+
 - 本文描述架构与不变量，不将某次 CI 通过写成所有接口、所有输入已验证。
 - 接口生命周期管理先提供统一契约；插件贡献开放再验证真实声明、加载、组合与执行。受控 plan 测试不能替代真实插件装配，合法空计划也不是缺陷。
 - 当前实现查源码，候选覆盖查对应 Issue/Assembly Receipt/测试报告；旧 receipt 保留执行版本，不改写为当前验收结果。

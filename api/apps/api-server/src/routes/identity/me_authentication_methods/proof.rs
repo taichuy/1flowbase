@@ -76,7 +76,9 @@ pub(super) async fn claim(
 ) -> Result<PasswordSetupProof, ApiError> {
     let proof = read(state, actor_id, session_id)
         .await?
-        .ok_or_else(|| Error::PermissionDenied("password_setup_verification_required"))?;
+        .ok_or(Error::PermissionDenied(
+            "password_setup_verification_required",
+        ))?;
     let claimed = state
         .infrastructure
         .cache_store()

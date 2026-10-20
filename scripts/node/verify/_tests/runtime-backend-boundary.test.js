@@ -5,6 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
+const { productionRustSources, bootRustSources } = require('./support/rust-sources.js');
+
 const repoRoot = path.resolve(__dirname, '../../../..');
 const forbidden = /PLUGIN_RUNNER|plugin-runner|plugin_runner|PluginRunner|PLUGIN_RUNTIME_URL|RUNTIME_SERVER_ADDR/u;
 const ignoredDirectories = new Set([
@@ -53,15 +55,9 @@ test('Delivery 1898 keeps one Backend executable in the Cargo workspace', () => 
 });
 
 test('Delivery 1898 binds the production Backend Slot and hides concrete registries', () => {
-  const boot = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/src/lib.rs'), 'utf8');
-  const runtime = fs.readFileSync(
-    path.join(repoRoot, 'api/apps/api-server/src/provider_runtime/mod.rs'),
-    'utf8',
-  );
-  const host = [
-    'api/crates/runtime-extension-host/src/runtime_host.rs',
-    'api/crates/runtime-extension-host/src/runtime_host/data_source.rs',
-  ].map((relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8')).join('\n');
+  const boot = bootRustSources(repoRoot);
+  const runtime = productionRustSources(path.join(repoRoot, 'api/apps/api-server/src/provider_runtime'));
+  const host = productionRustSources(path.join(repoRoot, 'api/crates/runtime-extension-host/src/runtime_host.rs'));
   const contract = fs.readFileSync(
     path.join(repoRoot, 'api/crates/runtime-core/src/runtime_backend.rs'),
     'utf8',
@@ -77,11 +73,8 @@ test('Delivery 1898 binds the production Backend Slot and hides concrete registr
 });
 
 test('Delivery 1898 projects only the execution port into orchestration', () => {
-  const boot = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/src/lib.rs'), 'utf8');
-  const runtime = fs.readFileSync(
-    path.join(repoRoot, 'api/apps/api-server/src/provider_runtime/mod.rs'),
-    'utf8',
-  );
+  const boot = bootRustSources(repoRoot);
+  const runtime = productionRustSources(path.join(repoRoot, 'api/apps/api-server/src/provider_runtime'));
   const orchestration = fs.readFileSync(
     path.join(repoRoot, 'api/crates/orchestration-runtime/src/runtime_backend.rs'),
     'utf8',

@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
@@ -12,21 +13,7 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
-function productionRustSources(root) {
-  const sources = [];
-  const visit = (directory) => {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === '_tests' || entry.name === 'tests' || entry.name === 'target') continue;
-      const candidate = path.join(directory, entry.name);
-      if (entry.isDirectory()) visit(candidate);
-      else if (entry.isFile() && path.extname(entry.name) === '.rs') {
-        sources.push(fs.readFileSync(candidate, 'utf8'));
-      }
-    }
-  };
-  visit(root);
-  return sources.join('\n');
-}
+const { productionRustSources } = require('./support/rust-sources.js');
 
 function forbiddenSourceImports(source) {
   const forbidden = [
@@ -52,7 +39,18 @@ test('Delivery 1944 keeps interface-runtime dependency closed and AuthN adapter-
     .filter(Boolean)
     .sort();
 
-  assert.deepEqual(dependencies, ['base16ct', 'domain', 'serde_json', 'sha2', 'thiserror', 'tokio', 'uuid']);
+  // Only domain is an allowed internal Cargo edge; external utility dependencies
+  // and private module layout are implementation choices, not architecture APIs.
+  const internalNames = fs.readdirSync(path.join(repoRoot, 'api/crates'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => {
+      const manifest = path.join(repoRoot, 'api/crates', entry.name, 'Cargo.toml');
+      return fs.existsSync(manifest) ? [fs.readFileSync(manifest, 'utf8').match(/^name\s*=\s*"([^"]+)"/mu)?.[1]] : [];
+    }).filter(Boolean);
+  assert.deepEqual(dependencies.filter((name) => internalNames.includes(name)), ['domain']);
+  for (const infrastructure of ['axum', 'sqlx', 'reqwest', 'storage-durable', 'storage-durable-postgres', 'storage-ephemeral']) {
+    assert.equal(dependencies.includes(infrastructure), false, infrastructure);
+  }
   assert.deepEqual(forbiddenSourceImports(production), []);
   assert.deepEqual(forbiddenSourceImports('use axum::http::HeaderMap;'), ['axum::']);
   assert.doesNotMatch(production, /(?:Cookie|HeaderMap|Session|ApiKey)Credential/u);
@@ -60,7 +58,6 @@ test('Delivery 1944 keeps interface-runtime dependency closed and AuthN adapter-
 
 test('Delivery 1944 exposes the approved typed interface facade without infrastructure capabilities', () => {
   const facade = read('api/crates/interface-runtime/src/lib.rs');
-  const declaredModules = [...facade.matchAll(/^mod\s+([a-z_]+);$/gmu)].map((match) => match[1]);
   const publicModules = [...facade.matchAll(/^pub\s+mod\s+([a-z_]+);$/gmu)].map(
     (match) => match[1],
   );
@@ -103,21 +100,6 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
     'UserPrincipal',
   ].sort();
 
-  assert.deepEqual(declaredModules, [
-    'authentication',
-    'contribution',
-    'decision',
-    'extension',
-    'finalization',
-    'hook',
-    'identity',
-    'invocation',
-    'managed_projection',
-    'principal',
-    'registry',
-    'stream',
-    '_tests',
-  ]);
   assert.deepEqual(publicModules, []);
   for (const symbol of requiredSymbols) assert.ok(publicSymbols.includes(symbol), symbol);
   assert.doesNotMatch(facade, /serde_json|axum|sqlx|RegistryHandle|HttpHandler/u);
@@ -127,10 +109,7 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
 });
 
 test('Delivery 1944 routes cannot inject decision or hook plans and plugin decisions only see bounded facts', () => {
-  const kernel = [
-    'api/crates/interface-runtime/src/invocation.rs',
-    'api/crates/interface-runtime/src/invocation/kernel.rs',
-  ].map(read).join('\n');
+  const kernel = productionRustSources(path.join(runtimeRoot, 'src/invocation.rs'));
   const decision = read('api/crates/interface-runtime/src/decision.rs');
   const routes = [
     'api/apps/api-server/src/routes/identity/auth.rs',
@@ -223,10 +202,7 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
     'api/crates/storage/durable/postgres/migrations/20260828100000_create_lifecycle_outbox.sql',
   );
   const runtimeCargo = read('api/crates/interface-runtime/Cargo.toml');
-  const kernel = [
-    'api/crates/interface-runtime/src/invocation.rs',
-    'api/crates/interface-runtime/src/invocation/kernel.rs',
-  ].map(read).join('\n');
+  const kernel = productionRustSources(path.join(runtimeRoot, 'src/invocation.rs'));
 
   assert.match(boot, /compile_complete_console_snapshot/u);
   assert.match(read('api/apps/api-server/src/routes/console_interface.rs'), /\.invoke::<I, O, ConsoleInterfaceTargetError>/u);
@@ -261,4 +237,24 @@ test('retired provider configuration is absent while observation uses the compil
   assert.match(consoleInterface, /authenticate_invocation/u);
   assert.match(consoleInterface, /authenticated\.into_envelope/u);
   assert.match(boot, /compile_complete_console_snapshot/u);
+});
+
+
+test('production boundary follows private splits and excludes deliberate test fixtures', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'interface-boundary-'));
+  try {
+    fs.mkdirSync(path.join(root, 'invocation', 'nested'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'invocation', '_tests'));
+    fs.writeFileSync(path.join(root, 'invocation.rs'), 'mod nested;');
+    fs.writeFileSync(path.join(root, 'invocation', 'nested', 'adapter.rs'), 'use axum::http::HeaderMap;');
+    const source = () => productionRustSources(path.join(root, 'invocation.rs'));
+    assert.deepEqual(forbiddenSourceImports(source()), ['axum::']);
+    fs.writeFileSync(path.join(root, 'invocation', 'nested', 'adapter.rs'), 'use domain::ActorContext;');
+    fs.writeFileSync(path.join(root, 'invocation', '_tests', 'negative.rs'), 'use axum::http::HeaderMap;');
+    fs.writeFileSync(path.join(root, 'invocation', 'tests.rs'), 'use axum::http::HeaderMap;');
+    assert.deepEqual(forbiddenSourceImports(source()), []);
+    assert.match(source(), /domain::ActorContext/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

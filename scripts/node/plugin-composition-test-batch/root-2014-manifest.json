@@ -174,7 +174,7 @@
     },
     {
       "target": "api-server:lib",
-      "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_candidate_switch",
+      "name": "_tests::extension_bus::managed_candidate_tests::pause_revoke_retire::root_2007_ac_009_pause_revoke_retire_candidate_switch",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_candidate_tests.rs",
       "ac": [
@@ -195,7 +195,7 @@
     },
     {
       "target": "api-server:lib",
-      "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_historical_authority",
+      "name": "_tests::extension_bus::managed_candidate_tests::pause_revoke_retire::root_2007_ac_009_pause_revoke_retire_historical_authority",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_candidate_tests.rs",
       "ac": [
@@ -267,7 +267,7 @@
     },
     {
       "target": "api-server:lib",
-      "name": "_tests::extension_bus::managed_governance_tests::root_2007_ac_009_pause_revoke_retire",
+      "name": "_tests::extension_bus::managed_governance_tests::pause_revoke_retire::root_2007_ac_009_pause_revoke_retire",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_governance_tests.rs",
       "ac": [
@@ -1296,7 +1296,7 @@
     {
       "target": "storage-durable-postgres:lib",
       "source": "api/crates/storage/durable/postgres/src/_tests/extension_repositories/lifecycle_outbox_repository_tests.rs",
-      "name": "_tests::lifecycle_outbox_repository_tests::root_2014_generic_event_history_scope_is_verified_or_conservative",
+      "name": "_tests::lifecycle_outbox_repository_tests::governance_history::root_2014_generic_event_history_scope_is_verified_or_conservative",
       "expected": 1,
       "ac": [
         "AC-008"

@@ -19,10 +19,10 @@
     {
       "id": "json-model-provider-catalog",
       "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers.rs",
+      "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers/response_mapping.rs",
       "snippet": "i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),",
       "reason": "to_catalog_view_response converts catalog.i18n_catalog, whose exact type is BTreeMap<String, BTreeMap<String, serde_json::Value>>. It has string keys and already-representable JSON values, with no custom fallible serializer.",
-      "source_sha256": "2cdd18313cc16e9b5d93ac546d473e177d2ec30d12fedcf9e523b36a237f5762",
+      "source_sha256": "9527e27187226610364c7c29fcc332d67cbad103af22e0597f6e9029f04e4b77",
       "evidence": [
         {
           "file": "api/crates/control-plane/src/presentation_catalogs/i18n.rs",
@@ -31,23 +31,28 @@
         },
         {
           "file": "api/crates/control-plane/src/model_provider.rs",
-          "sha256": "9452d40ad96b0a5c5e16aea09641dcdba3c03993de7ef7e08008b153a9bafebe",
+          "sha256": "3fde5dc560f6e50b8bbb77c2b6d345f0068f9d327b1e5bcdb5b6bf2dd308d162",
           "reason": "ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
         },
         {
           "file": "api/crates/control-plane/src/model_provider/catalog.rs",
           "sha256": "8193e70b1fa3776a9d325904d2cce27e8e84d6211827cee4630883f83dc40824",
           "reason": "Catalog and options builders populate the typed catalog through the existing i18n merge helpers."
+        },
+        {
+          "file": "api/crates/control-plane/src/model_provider/instance_lifecycle.rs",
+          "sha256": "7430019aeab66287716ac3b9d893c23442e20a041e4f6655440c75c3f332520f",
+          "reason": "Private responsibility extraction from api/crates/control-plane/src/model_provider.rs preserves the reviewed behavior: create_instance, update_instance, resolve_preview_state, validate_instance. ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
         }
       ]
     },
     {
       "id": "json-model-provider-options",
       "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers.rs",
+      "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers/response_mapping.rs",
       "snippet": "i18n_catalog: serde_json::to_value(options.i18n_catalog).unwrap(),",
       "reason": "to_options_view_response converts options.i18n_catalog, whose exact type is BTreeMap<String, BTreeMap<String, serde_json::Value>>. It has string keys and already-representable JSON values, with no custom fallible serializer.",
-      "source_sha256": "2cdd18313cc16e9b5d93ac546d473e177d2ec30d12fedcf9e523b36a237f5762",
+      "source_sha256": "9527e27187226610364c7c29fcc332d67cbad103af22e0597f6e9029f04e4b77",
       "evidence": [
         {
           "file": "api/crates/control-plane/src/presentation_catalogs/i18n.rs",
@@ -56,13 +61,18 @@
         },
         {
           "file": "api/crates/control-plane/src/model_provider.rs",
-          "sha256": "9452d40ad96b0a5c5e16aea09641dcdba3c03993de7ef7e08008b153a9bafebe",
+          "sha256": "3fde5dc560f6e50b8bbb77c2b6d345f0068f9d327b1e5bcdb5b6bf2dd308d162",
           "reason": "ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
         },
         {
           "file": "api/crates/control-plane/src/model_provider/catalog.rs",
           "sha256": "8193e70b1fa3776a9d325904d2cce27e8e84d6211827cee4630883f83dc40824",
           "reason": "Catalog and options builders populate the typed catalog through the existing i18n merge helpers."
+        },
+        {
+          "file": "api/crates/control-plane/src/model_provider/instance_lifecycle.rs",
+          "sha256": "7430019aeab66287716ac3b9d893c23442e20a041e4f6655440c75c3f332520f",
+          "reason": "Private responsibility extraction from api/crates/control-plane/src/model_provider.rs preserves the reviewed behavior: create_instance, update_instance, resolve_preview_state, validate_instance. ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
         }
       ]
     },
@@ -81,7 +91,7 @@
         },
         {
           "file": "api/crates/storage/durable/postgres/src/secret_crypto/mod.rs",
-          "sha256": "a1c164915b0ab6d33fe613595ce38e4207a80fa7c9996fef04189bf792adfb1b",
+          "sha256": "54b747dbdfb554a398e27aa606acd4fba8bfca8b2f7f9bb5d922dc839b9771d1",
           "reason": "encrypt_secret_json returns algorithm/nonce/ciphertext envelope; plaintext requires the master-key decrypt path."
         },
         {
@@ -101,18 +111,23 @@
       "evidence": [
         {
           "file": "api/crates/storage/durable/postgres/src/model_provider_repository.rs",
-          "sha256": "18292bf082d33041e64275843d8b2c5a99300d6990adaac4b532460cb39e55f4",
+          "sha256": "4ea683ae187acd33353e1dcc3202f54f514176f00dfe34007b9da9b4ed4bbc56",
           "reason": "Secret upsert and rotation call encrypt_secret_json before SQL binding; decrypt is explicit on secret retrieval."
         },
         {
           "file": "api/crates/storage/durable/postgres/src/secret_crypto/mod.rs",
-          "sha256": "a1c164915b0ab6d33fe613595ce38e4207a80fa7c9996fef04189bf792adfb1b",
+          "sha256": "54b747dbdfb554a398e27aa606acd4fba8bfca8b2f7f9bb5d922dc839b9771d1",
           "reason": "Encryption returns an algorithm/nonce/ciphertext envelope, not serialized plaintext."
         },
         {
           "file": "api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs",
           "sha256": "9566aee1ecd35849ed790690f790291a6e94653bf83ef08908e4e1fe908d664f",
           "reason": "ModelProviderInstanceResponse is explicit and omits encrypted_secret_json; it does not serialize the secret persistence record."
+        },
+        {
+          "file": "api/crates/storage/durable/postgres/src/model_provider_repository/catalog_entries.rs",
+          "sha256": "04fbc35a55e3577aa4270b55b8cfeb6945d7728e2db4aceb4c79a173fe262608",
+          "reason": "Private responsibility extraction from api/crates/storage/durable/postgres/src/model_provider_repository.rs preserves the reviewed behavior: create_catalog_source, create_catalog_sync_run, upsert_catalog_entry, list_catalog_entries, list_catalog_entries_for_provider_instance. Secret upsert and rotation call encrypt_secret_json before SQL binding; decrypt is explicit on secret retrieval."
         }
       ]
     },
@@ -151,8 +166,13 @@
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "f65dc109bae04ca3cddc87341b2ebe129ba01395f0affc88a0af8d471a86e805",
+          "sha256": "bf7be8e2ef22ec9b004c096c5d9e954032c71a23ed87de70230930349aa2f168",
           "reason": "RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
+        },
+        {
+          "file": "api/crates/runtime-extension-host/src/runtime_host/capability_port.rs",
+          "sha256": "1f5b7c6ceca7ab21645786d293988096e33514c48e41cfaab46c0d27d34b8778",
+          "reason": "Private responsibility extraction from api/crates/runtime-extension-host/src/runtime_host.rs preserves the reviewed behavior: impl_item. RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
         }
       ]
     },
@@ -166,8 +186,13 @@
       "evidence": [
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "f65dc109bae04ca3cddc87341b2ebe129ba01395f0affc88a0af8d471a86e805",
+          "sha256": "bf7be8e2ef22ec9b004c096c5d9e954032c71a23ed87de70230930349aa2f168",
           "reason": "verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
+        },
+        {
+          "file": "api/crates/runtime-extension-host/src/runtime_host/capability_port.rs",
+          "sha256": "1f5b7c6ceca7ab21645786d293988096e33514c48e41cfaab46c0d27d34b8778",
+          "reason": "Private responsibility extraction from api/crates/runtime-extension-host/src/runtime_host.rs preserves the reviewed behavior: impl_item. verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
         }
       ]
     },
@@ -181,13 +206,23 @@
       "evidence": [
         {
           "file": "api/crates/control-plane/src/plugin_management/install.rs",
-          "sha256": "ba92e4d65888e5cc41a7c6b0e3bf815a3a841d6f9ea22e0c2037a75d827b5ce9",
+          "sha256": "934c6dceb9f98536645414f51a398332124144d9e5c00dbdd8415990242aeb69",
           "reason": "Seven install call sites await the async preparation wrapper; the private blocking body calls prepare_settings_templates and only constructs owned commit input before publish_installation."
         },
         {
           "file": "api/crates/control-plane/src/plugin_management/install/projections.rs",
           "sha256": "4ea4c985950fc7606978cbbbacf50e158da2158e746aebbc1f94056475e52217",
           "reason": "load_plugin_settings_templates reads immutable page sources as part of the same blocking preparation; no installation publication or API response happens in this helper."
+        },
+        {
+          "file": "api/crates/control-plane/src/plugin_management/install/installation_commit.rs",
+          "sha256": "9546fb367997505161ed7c190ce65340ee0aba94443d41427eeda2037eb564fc",
+          "reason": "Private responsibility extraction from api/crates/control-plane/src/plugin_management/install.rs preserves the reviewed behavior: install_plugin_with_metadata. Seven install call sites await the async preparation wrapper; the private blocking body calls prepare_settings_templates and only constructs owned commit input before publish_installation."
+        },
+        {
+          "file": "api/crates/control-plane/src/plugin_management/install/plugin_settings_templates.rs",
+          "sha256": "655b8d35e342fb6bede5815af3e377075b9930ce2b44ea4c0279155ca8af866b",
+          "reason": "prepare_installation_commit owns its inputs and awaits run_preparation; run_preparation awaits tokio::task::spawn_blocking around the private preparation body."
         }
       ]
     },

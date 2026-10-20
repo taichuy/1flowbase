@@ -76,7 +76,10 @@ impl<
                     .create_external_registered_member(&CreateExternalRegisteredMemberInput {
                         account: external_registration_account(command.identity.profile()),
                         name: external_registration_text(command.identity.profile(), "name"),
-                        nickname: external_registration_text(command.identity.profile(), "nickname"),
+                        nickname: external_registration_text(
+                            command.identity.profile(),
+                            "nickname",
+                        ),
                         avatar_url: external_registration_avatar(command.identity.profile()),
                         identity: command.identity,
                         email,
@@ -155,10 +158,8 @@ fn external_registration_account(profile: &serde_json::Value) -> Option<String> 
 
 fn external_registration_text(profile: &serde_json::Value, field: &str) -> Option<String> {
     let value = profile.get(field)?.as_str()?.trim();
-    (!value.is_empty()
-        && value.chars().count() <= 128
-        && !value.chars().any(char::is_control))
-    .then(|| value.to_owned())
+    (!value.is_empty() && value.chars().count() <= 128 && !value.chars().any(char::is_control))
+        .then(|| value.to_owned())
 }
 
 fn external_registration_avatar(profile: &serde_json::Value) -> Option<String> {

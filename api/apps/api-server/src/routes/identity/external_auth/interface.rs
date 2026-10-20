@@ -84,7 +84,7 @@ pub(crate) fn bindings_metadata() -> &'static [BindingMetadata] {
 
 pub(super) enum PublicInput {
     Start { login_entry_id: Uuid },
-    Complete(super::VerifiedCallback),
+    Complete(Box<super::VerifiedCallback>),
 }
 pub(super) enum PublicOutput {
     Authorization(AuthorizeOutput),
@@ -211,7 +211,7 @@ impl Adapter {
                     authority,
                     purpose,
                     binding_session_hash,
-                } = verified;
+                } = *verified;
                 let lease = authority.take()?;
                 let entry = self.entry(login_entry_id).await?;
                 if identity.connection_id() != entry.connection_id {
@@ -499,10 +499,10 @@ fn target_error(error: InterfaceInvocationError) -> ApiError {
         InterfaceInvocationError::TargetFailed(error) => error
             .into_source::<TargetError>()
             .map(|error| error.0)
-            .unwrap_or_else(|| transaction::denied()),
+            .unwrap_or_else(transaction::denied),
         InterfaceInvocationError::AuthorizationRejected(error) => error
             .into_source::<ApiError>()
-            .unwrap_or_else(|| transaction::denied()),
+            .unwrap_or_else(transaction::denied),
         _ => transaction::denied(),
     }
 }
@@ -576,7 +576,7 @@ pub(super) async fn invoke_callback(
         ))
         .invoke::<PublicInput, PublicOutput, TargetError>(
             snapshot,
-            authenticated.into_envelope(PublicInput::Complete(verified)),
+            authenticated.into_envelope(PublicInput::Complete(Box::new(verified))),
         )
         .await
         .map_err(|failure| target_error(failure.into_error()))?;

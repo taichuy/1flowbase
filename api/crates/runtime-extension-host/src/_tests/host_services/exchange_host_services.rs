@@ -122,9 +122,16 @@ async fn exchange_host_services_cancel_and_deadline_drop_active_http_work() {
             dropped: dropped.clone(),
         });
         let mut c = context();
-        let mut b = binding();
-        b.deadline_unix_ms = now_unix_ms() + if cancel { 5000 } else { 100 };
-        c.http_egress = Some((b, port));
+        let logs_binding = binding();
+        let http_binding = HttpEgressBinding {
+            subject: logs_binding.subject,
+            publisher_namespace: logs_binding.publisher_namespace,
+            plugin_code: logs_binding.plugin_code,
+            plugin_version: logs_binding.plugin_version,
+            caller: Some(logs_binding.caller),
+            deadline_unix_ms: now_unix_ms() + if cancel { 5000 } else { 100 },
+        };
+        c.http_egress = Some((http_binding, port));
         let task = tokio::spawn(execute_callback(
             MultiplexHostService::HttpEgressV1,
             serde_json::json!({"method":"GET","url":"https://example.com/","headers":{},"body_base64":null}),

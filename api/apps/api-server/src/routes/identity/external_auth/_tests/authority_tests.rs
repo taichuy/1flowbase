@@ -303,7 +303,7 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
         admission.take().is_err(),
         "sealed factory result is single-use"
     );
-    let input = PublicInput::Complete(verified);
+    let input = PublicInput::Complete(Box::new(verified));
     assert_eq!(
         interface_runtime::ManagedInterfaceProjection::from_contract(&input)
             .unwrap()
@@ -319,8 +319,7 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
         authenticated.into_envelope(input),
     )
     .await
-    .ok()
-    .expect("bound identity must sign in with registration disabled");
+    .unwrap_or_else(|_| panic!("bound identity must sign in with registration disabled"));
     assert_eq!(outcome.receipt().invocation_id(), invocation_id);
     let output = outcome.into_value();
     assert_eq!(

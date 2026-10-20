@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 419,
+  "projected_interface_count": 428,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -44,6 +44,18 @@
       "DELETE",
       "/api/console/applications/:id/orchestration/debug-variable-cache",
       "Delete debug variable cache entries"
+    ],
+    [
+      "frontstage.pages.delete",
+      "DELETE",
+      "/api/console/frontstage/pages/:page_id",
+      "Delete frontstage pages"
+    ],
+    [
+      "frontstage.tabs.delete",
+      "DELETE",
+      "/api/console/frontstage/pages/:page_id/tabs/:tab_reference",
+      "Delete frontstage tabs"
     ],
     [
       "mcp.bundle_library.releases.delete",
@@ -1306,6 +1318,18 @@
       "Update version"
     ],
     [
+      "frontstage.pages.update",
+      "PATCH",
+      "/api/console/frontstage/pages/:page_id",
+      "Update frontstage pages"
+    ],
+    [
+      "frontstage.tabs.update",
+      "PATCH",
+      "/api/console/frontstage/pages/:page_id/tabs/:tab_reference",
+      "Update frontstage tabs"
+    ],
+    [
       "network_egress_proxies.update",
       "PATCH",
       "/api/console/network-center/pools/proxies/:provider_id",
@@ -1568,6 +1592,30 @@
       "POST",
       "/api/console/data-sources/:data_source_id/secret/rotate",
       "Data sources secret rotate"
+    ],
+    [
+      "frontstage.pages.create",
+      "POST",
+      "/api/console/frontstage/pages",
+      "Create frontstage pages"
+    ],
+    [
+      "frontstage.groups.create",
+      "POST",
+      "/api/console/frontstage/pages/groups",
+      "Create frontstage groups"
+    ],
+    [
+      "frontstage.pages.move",
+      "POST",
+      "/api/console/frontstage/pages/:page_id/move",
+      "Move frontstage pages"
+    ],
+    [
+      "frontstage.tabs.create",
+      "POST",
+      "/api/console/frontstage/pages/:page_id/tabs",
+      "Create frontstage tabs"
     ],
     [
       "export_mcp_bundle",
@@ -2372,6 +2420,12 @@
       "PUT",
       "/api/console/applications/:application_id/workflow-schedule-trigger",
       "Replace workflow schedule trigger"
+    ],
+    [
+      "frontstage.tabs.document.save",
+      "PUT",
+      "/api/console/frontstage/pages/:page_id/tabs/:tab_id/document",
+      "Save frontstage tabs document"
     ],
     [
       "mcp.instances.update",

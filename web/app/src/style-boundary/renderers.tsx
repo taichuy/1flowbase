@@ -28,6 +28,7 @@ import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormD
 import { McpTemplateLibrary } from '../features/settings/components/mcp-management/bundle/McpTemplateLibrary';
 import { PluginUploadInstallModal } from '../features/settings/components/model-providers/installation/PluginUploadInstallModal';
 import '../features/settings/components/model-providers/model-provider-panel.css';
+import '../features/settings/components/model-providers/model-provider-drawer.css';
 import type { UploadFile } from 'antd/es/upload/interface';
 import {
   createStyleBoundaryFrontstagePageContent,

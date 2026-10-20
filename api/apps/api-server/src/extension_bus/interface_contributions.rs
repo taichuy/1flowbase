@@ -460,7 +460,9 @@ pub(crate) fn production_interface_contributions(
             crate::routes::external_auth::interface::compile_registry(state)?,
         ),
         InterfaceRegistryContribution::new(
-            "api-server.client-collectors", &["public.client-collectors.assets.read"], &["api-server.client-collectors"],
+            "api-server.client-collectors",
+            &["public.client-collectors.assets.read"],
+            &["api-server.client-collectors"],
             crate::routes::client_collectors::compile_registry(state)?,
         ),
         InterfaceRegistryContribution::new(
@@ -508,21 +510,46 @@ pub(crate) fn production_interface_contributions(
                 "console.identity.user-api-keys.revoke",
             ],
             &["api-server.console-identity"],
-            crate::routes::console_identity_interface::compile_registry(
-                console_identity,
-            )?,
+            crate::routes::console_identity_interface::compile_registry(console_identity)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-organization",
-            &["console.departments.access","departments.list","departments.create","departments.update","departments.delete","members.departments.replace"],
+            &[
+                "console.departments.access",
+                "departments.list",
+                "departments.create",
+                "departments.update",
+                "departments.delete",
+                "members.departments.replace",
+            ],
             &["api-server.console-organization"],
             crate::routes::organization::interface::compile_registry(console_organization)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-notifications",
-            &["notifications.channels.list","notifications.channels.read_all","notifications.messages.unread","notifications.types.list","notifications.instances.list","notifications.instances.get","notifications.instances.create","notifications.instances.update","notifications.instances.delete","notifications.instances.send","notifications.instances.authorization","notifications.logs.list","notifications.logs.get","notifications.messages.list","notifications.messages.unread_count","notifications.messages.read","notifications.messages.read_all"],
+            &[
+                "notifications.channels.list",
+                "notifications.channels.read_all",
+                "notifications.messages.unread",
+                "notifications.types.list",
+                "notifications.instances.list",
+                "notifications.instances.get",
+                "notifications.instances.create",
+                "notifications.instances.update",
+                "notifications.instances.delete",
+                "notifications.instances.send",
+                "notifications.instances.authorization",
+                "notifications.logs.list",
+                "notifications.logs.get",
+                "notifications.messages.list",
+                "notifications.messages.unread_count",
+                "notifications.messages.read",
+                "notifications.messages.read_all",
+            ],
             &["api-server.console-notifications"],
-            crate::routes::notifications::interface::compile_registry(state.notification_service.clone())?,
+            crate::routes::notifications::interface::compile_registry(
+                state.notification_service.clone(),
+            )?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-membership",
@@ -714,224 +741,9 @@ pub(crate) fn production_interface_contributions(
                 console_application_docs,
             )?,
         ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-runtime-reads",
-            &[
-                "applications.runtime.current-context.get",
-                "applications.runtime.records.query-fields",
-                "applications.runtime.records.query",
-                "applications.runtime.conversations.query",
-                "applications.runtime.conversation-trajectory.query",
-                "applications.runtime.conversation-trajectory.section",
-                "applications.runtime.record.trace-tree.get",
-                "applications.runtime.record.trace-tree.children.list",
-                "applications.runtime.record.client-trajectory.query",
-                "applications.runtime.record.get",
-                "applications.runtime.record.conversation.messages.list",
-                "applications.runtime.record.client-trajectory.list",
-                "applications.runtime.record.client-trajectory.section.get",
-                "applications.runtime.workflow-trajectory.list",
-                "applications.runtime.workflow-trajectory.body.get",
-                "applications.runtime.client-trajectory.list",
-                "applications.runtime.client-trajectory.section.get",
-                "applications.runtime.run.trajectory.list",
-                "applications.runtime.run.payload.get",
-                "applications.runtime.trajectory.list",
-                "applications.runtime.trajectory.body.get",
-                "applications.runtime.logs.list",
-                "applications.runtime.conversations.messages.list",
-                "applications.runtime.run-conversation.messages.list",
-                "applications.runtime.run.overview.get",
-                "applications.runtime.trace-tree.get",
-                "applications.runtime.trace-tree.children.get",
-                "applications.runtime.resume-timeline.get",
-                "applications.runtime.resume-timeline-summary.get",
-                "applications.runtime.run-node-last-run.get",
-                "applications.runtime.monitoring.report.get",
-                "applications.runtime.monitoring.activity.get",
-                "applications.runtime.debug-stream.get",
-                "applications.runtime.node-last-run.get",
-            ],
-            &["api-server.console-application-runtime-reads"],
-            crate::routes::application_runtime::interface_runtime_reads::compile_registry(
-                state.store.clone(),
-                state.infrastructure.cache_store(),
-                Arc::clone(&state.runtime_activity),
-                state.process_started_at,
-                Arc::clone(&state.file_storage_registry),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-runtime-debug-variables",
-            &[
-                "applications.runtime.debug-variables.snapshot.get",
-                "applications.runtime.debug-variables.cache.upsert",
-                "applications.runtime.debug-variables.cache.delete",
-            ],
-            &["api-server.console-application-runtime-debug-variables"],
-            crate::routes::application_runtime::interface_debug_variables::compile_registry(
-                state.store.clone(),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-host-infrastructure-memory-inspection",
-            &[
-                "host_infrastructure.memory.overview.get",
-                "host_infrastructure.memory.stats-overview.get",
-                "host_infrastructure.memory.entries.list",
-                "host_infrastructure.memory.stats.get",
-                "host_infrastructure.memory.entries.search",
-                "host_infrastructure.memory.tree.list",
-                "host_infrastructure.memory.entry.reveal",
-            ],
-            &["api-server.console-host-infrastructure-memory-inspection"],
-            crate::routes::host_infrastructure::interface_memory_inspection::compile_registry(
-                crate::routes::host_infrastructure::interface_memory_inspection::MemoryInspectionInterfaceDependencies {
-                    memory: crate::routes::host_infrastructure::memory_inspection_dependencies(state),
-                    audit_policy: Arc::new(
-                        crate::routes::host_infrastructure::interface_memory_inspection::MemoryAuditPolicyAdapter::new(
-                            state.store.clone(),
-                            Arc::clone(&state.console_operation_registry),
-                        ),
-                    ),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-host-infrastructure-cache-inspection",
-            &[
-                "host_infrastructure.cache.overview.get",
-                "host_infrastructure.cache.entries.list",
-                "host_infrastructure.cache.entry.reveal",
-                "host_infrastructure.cache.entry.clear",
-                "host_infrastructure.cache.domain.clear",
-            ],
-            &["api-server.console-host-infrastructure-cache-inspection"],
-            crate::routes::host_infrastructure::interface_cache_inspection::compile_registry(
-                crate::routes::host_infrastructure::interface_cache_inspection::CacheInspectionDependencies {
-                    cache: state.infrastructure.cache_store(),
-                    provider_code: state
-                        .infrastructure
-                        .default_provider("cache-store")
-                        .map(ToString::to_string),
-                    audit_policy: Arc::new(
-                        crate::routes::host_infrastructure::interface_cache_inspection::CacheAuditPolicyAdapter::new(
-                            state.store.clone(),
-                            Arc::clone(&state.console_operation_registry),
-                        ),
-                    ),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-runtime-debug-artifacts",
-            &[
-                "applications.runtime.debug-artifact.get",
-                "applications.runtime.debug-artifacts.resolve",
-                "applications.runtime.debug-snapshot.get",
-            ],
-            &["api-server.console-application-runtime-debug-artifacts"],
-            crate::routes::application_runtime::interface_debug_artifacts::compile_registry(
-                state.store.clone(),
-                state.file_storage_registry.clone(),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-runtime-debug-commands",
-            &[
-                "applications.runtime.debug-runs.create",
-                "applications.runtime.runs.resume",
-                "applications.runtime.runs.cancel",
-                "applications.runtime.callback-tasks.complete",
-                "applications.runtime.nodes.debug-runs.create",
-            ],
-            &["api-server.console-application-runtime-debug-commands"],
-            crate::routes::application_runtime::interface_debug_commands::compile_registry(
-                crate::routes::application_runtime::interface_debug_commands::dependencies(
-                    state.clone(),
-                ),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-runtime-debug-streams",
-            &[
-                "applications.runtime.debug-runs.stream.create",
-                "applications.runtime.debug-runs.stream.subscribe",
-            ],
-            &["api-server.console-application-runtime-debug-streams"],
-            crate::routes::application_runtime::interface_debug_commands::compile_stream_registry(
-                crate::routes::application_runtime::interface_debug_commands::dependencies(
-                    state.clone(),
-                ),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-runtime-trace-exports",
-            &[
-                "applications.runtime.trace-export.get",
-                "applications.runtime.trace-export.selected-runs",
-            ],
-            &["api-server.console-application-runtime-trace-exports"],
-            crate::routes::application_runtime::interface_trace_exports::compile_registry(
-                state.store.clone(),
-                state.file_storage_registry.clone(),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-runtime-trace-payloads",
-            &[
-                "applications.runtime.trace-node.content.get",
-                "applications.runtime.trace-node.detail.get",
-                "applications.runtime.trace-tool-callback.content.get",
-            ],
-            &["api-server.console-application-runtime-trace-payloads"],
-            crate::routes::application_runtime::interface_trace_payloads::compile_registry(
-                state.store.clone(),
-                state.file_storage_registry.clone(),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-log-deletion-jobs",
-            crate::routes::application_runtime::logs_delete::jobs::OPERATIONS,
-            &["api-server.console-application-log-deletion-jobs"],
-            crate::routes::application_runtime::logs_delete::jobs::compile_registry(state.store.clone())?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-log-deletion-preview",
-            &["applications.logs.delete.preview"],
-            &["api-server.console-application-log-deletion-preview"],
-            crate::routes::application_runtime::logs_delete::jobs::compile_preview_registry(state.store.clone())?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-log-exchange",
-            crate::routes::application_runtime::log_exchange::OPERATIONS,
-            &["api-server.console-application-log-exchange"],
-            crate::routes::application_runtime::log_exchange::compile_registry(state.clone())?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-logs-delete",
-            &["applications.logs.delete"],
-            &["api-server.console-application-logs-delete"],
-            crate::routes::application_runtime::logs_delete::compile_registry(state.store.clone())?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-runtime-archive",
-            &[
-                "applications.runtime.archive.run.export",
-                "applications.runtime.archive.runs.export",
-                "applications.runtime.archive.upload-sessions.create",
-                "applications.runtime.archive.upload-chunks.upsert",
-                "applications.runtime.archive.upload-sessions.complete",
-                "applications.runtime.archive.import-jobs.get",
-            ],
-            &["api-server.console-application-runtime-archive"],
-            crate::routes::application_runtime::archive::interface::compile_registry(
-                crate::routes::application_runtime::archive::interface::dependencies(
-                    state.store.clone(),
-                    state.file_storage_registry.clone(),
-                ),
-            )?,
-        ),
+    ];
+    contributions.extend(runtime_interfaces::contributions(state)?);
+    contributions.extend(vec![
         InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
             &[
@@ -1049,7 +861,12 @@ pub(crate) fn production_interface_contributions(
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-business-files",
-            &["files.upload", "files.import_remote", "files.content.download", "files.access_links.create"],
+            &[
+                "files.upload",
+                "files.import_remote",
+                "files.content.download",
+                "files.access_links.create",
+            ],
             &["api-server.console-business-files"],
             crate::routes::files::compile_registry(
                 state.store.clone(),
@@ -1123,14 +940,24 @@ pub(crate) fn production_interface_contributions(
                     state.provider_install_root.clone(),
                 ),
                 GraphFingerprint::new(
-                    state.extension_boot_snapshot.as_ref().ok_or_else(|| {
-                        RegistryCompilationError::ExtensionGraphFingerprintMismatch(
-                            InterfaceId::new("model_definitions.create").expect("static interface id"),
-                        )
-                    })?.graph().fingerprint().as_str(),
-                ).map_err(|_| RegistryCompilationError::ExtensionGraphFingerprintMismatch(
-                    InterfaceId::new("model_definitions.create").expect("static interface id"),
-                ))?,
+                    state
+                        .extension_boot_snapshot
+                        .as_ref()
+                        .ok_or_else(|| {
+                            RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                                InterfaceId::new("model_definitions.create")
+                                    .expect("static interface id"),
+                            )
+                        })?
+                        .graph()
+                        .fingerprint()
+                        .as_str(),
+                )
+                .map_err(|_| {
+                    RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                        InterfaceId::new("model_definitions.create").expect("static interface id"),
+                    )
+                })?,
             )?,
         ),
         InterfaceRegistryContribution::new(
@@ -1162,7 +989,7 @@ pub(crate) fn production_interface_contributions(
                 state.runtime_engine.clone(),
             )?,
         ),
-    ];
+    ]);
     contributions.extend(provider_operations::contributions(state)?);
     contributions.extend(vec![
         InterfaceRegistryContribution::new(
@@ -1189,180 +1016,10 @@ pub(crate) fn production_interface_contributions(
     contributions.extend(network::contributions(state)?);
     contributions.extend(plugins::contributions(state)?);
     contributions.extend(mcp::contributions(state)?);
-    contributions.extend(vec![
-        InterfaceRegistryContribution::new(
-            "api-server.console-mcp-debug",
-            &["mcp.debug.execute"],
-            &["api-server.console-mcp-debug"],
-            crate::routes::mcp_management::interface_debug::compile_registry(
-                crate::routes::mcp_management::interface_debug::port(
-                    crate::routes::mcp_management::interface_debug::McpDebugDependencies {
-                        store: state.store.clone(),
-                        catalog: crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
-                            store: state.store.clone(),
-                            openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                                store: state.store.clone(), console_operations: state.console_operation_registry.inventory().clone(), interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()), api_docs: Arc::clone(&state.api_docs), template_catalog: state.runtime_engine.template_catalog().clone(),
-                            },
-                        },
-                        dispatcher: Arc::clone(&console_frontstage_callable_dispatch),
-                    },
-                ),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-frontend-blocks",
-            &["frontend_blocks.view"],
-            &["api-server.console-frontend-blocks"],
-            crate::routes::frontend_block_catalog::compile_registry(
-                crate::routes::frontend_block_catalog::FrontendBlockDependencies {
-                    store: state.store.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                    graph: Arc::clone(
-                        state
-                            .extension_boot_snapshot
-                            .as_ref()
-                            .expect("production interface publication requires ExtensionBootSnapshot")
-                            .graph_arc(),
-                    ),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-js-dependencies",
-            &["js_dependencies.view"],
-            &["api-server.console-js-dependencies"],
-            crate::routes::js_dependencies::compile_registry(
-                state.store.clone(),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-node-contributions",
-            &["node_contributions.view"],
-            &["api-server.console-node-contributions"],
-            crate::routes::node_contributions::compile_registry(
-                state.store.clone(),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-frontstage-data-capabilities",
-            &["frontstage.data_capabilities.view"],
-            &["api-server.console-frontstage-data-capabilities"],
-            crate::routes::frontstage::data_capabilities::compile_catalog_registry(
-                state.runtime_engine.registry().clone(),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-frontstage-block-context-contract",
-            &["frontstage.block_context.view"],
-            &["api-server.console-frontstage-block-context-contract"],
-            crate::routes::frontstage::block_context_contract::compile_registry()?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-frontstage-components",
-            &["frontstage.components.view"],
-            &["api-server.console-frontstage-components"],
-            crate::routes::frontstage::components::compile_registry(
-                crate::routes::frontstage::components::FrontstageComponentsDependencies {
-                    store: state.store.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-frontstage-pages",
-            &[
-                "frontstage.pages.view", "frontstage.pages.create", "frontstage.groups.create",
-                "frontstage.pages.update", "frontstage.pages.move", "frontstage.pages.delete",
-                "frontstage.tabs.view", "frontstage.tabs.create", "frontstage.tabs.update",
-                "frontstage.tabs.delete", "frontstage.tabs.document.save",
-                "frontstage.ui_templates.view",
-                "frontstage.queries.dispatch", "frontstage.actions.dispatch",
-            ],
-            &["api-server.console-frontstage-pages"],
-            crate::routes::frontstage::interface_pages::compile_registry(
-                crate::routes::frontstage::interface_pages::FrontstagePagesDependencies {
-                    navigation_cache: control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
-                    store: state.store.clone(),
-                    bootstrap_workspace_id: state.bootstrap_workspace_id,
-                    api_node_id: state.api_node_id.clone(),
-                    runtime_engine: Arc::clone(&state.runtime_engine),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-frontstage-blocks",
-            &[
-                "frontstage.blocks.open", "frontstage.blocks.view", "frontstage.blocks.create",
-                "frontstage.blocks.search", "frontstage.blocks.update", "frontstage.blocks.delete",
-                "frontstage.blocks.move", "frontstage.blocks.code.view",
-                "frontstage.blocks.code.update", "frontstage.blocks.runtime.view",
-            ],
-            &["api-server.console-frontstage-blocks"],
-            crate::routes::frontstage::block_tree::interface::compile_registry(
-                crate::routes::frontstage::block_tree::interface::FrontstageBlocksDependencies {
-                    block_code_cache: control_plane::frontstage::BlockCodeCache(state.infrastructure.cache_store()),
-                    store: state.store.clone(),
-                    api_node_id: state.api_node_id.clone(),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-frontstage-callable-catalog",
-            &[
-                "frontstage.callable_interfaces.list",
-                "frontstage.callable_interfaces.view",
-            ],
-            &["api-server.console-frontstage-callable-catalog"],
-            crate::routes::frontstage::callable_interface_catalog::compile_registry(
-                crate::routes::frontstage::callable_interface_catalog::port(
-                    crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogDependencies {
-                        openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                            store: state.store.clone(),
-                            console_operations: state.console_operation_registry.inventory().clone(),
-                            interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
-                            api_docs: Arc::clone(&state.api_docs),
-                            template_catalog: state.runtime_engine.template_catalog().clone(),
-                        },
-                    },
-                ),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-frontstage-callable-dispatch",
-            &["frontstage.callable_interfaces.dispatch"],
-            &["api-server.console-frontstage-callable-dispatch"],
-            crate::routes::frontstage::callable_interface_dispatch::compile_registry(
-                crate::routes::frontstage::callable_interface_dispatch::port(
-                    crate::routes::frontstage::callable_interface_dispatch::FrontstageCallableDispatchDependencies {
-                        store: state.store.clone(),
-                        openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                            store: state.store.clone(),
-                            console_operations: state.console_operation_registry.inventory().clone(),
-                            interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
-                            api_docs: Arc::clone(&state.api_docs),
-                            template_catalog: state.runtime_engine.template_catalog().clone(),
-                        },
-                        dispatcher: Arc::clone(&console_frontstage_callable_dispatch),
-                    },
-                ),
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-runtime-i18n",
-            &["i18n.catalog.view"],
-            &["api-server.console-runtime-i18n"],
-            crate::routes::runtime_i18n_catalog::compile_registry(
-                state.store.clone(),
-                state.bootstrap_workspace_id,
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-application-management",
-            &[access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION],
-            &["api-server.console-application-management"],
-            crate::routes::application_management::compile_registry(state.store.clone())?,
-        ),
-    ]);
+    contributions.extend(console_tools::contributions(
+        state,
+        &console_frontstage_callable_dispatch,
+    )?);
     contributions.extend(system::contributions(
         state,
         &mcp_interface_catalog_dependencies,
@@ -1492,3 +1149,9 @@ impl InterfaceContributionCollector {
         self
     }
 }
+
+#[path = "interface_contributions/runtime_interfaces.rs"]
+mod runtime_interfaces;
+
+#[path = "interface_contributions/console_tools.rs"]
+mod console_tools;
