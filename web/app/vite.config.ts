@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
 import { nativeModuleDeclarationsPlugin } from './build/native-module-declarations';
+import { chunkProvenancePlugin } from './build/diagnostic-chunk-provenance';
 import {
   collectAntDesignEsModuleSources,
   nativeAntDesignEsModulesPlugin
@@ -140,8 +141,12 @@ export default defineConfig(({ command, mode }) => {
         ],
         projectRoot: appRoot
       }),
-      react()
+      react(),
+      chunkProvenancePlugin('main')
     ],
+    worker: {
+      plugins: () => [chunkProvenancePlugin('worker')]
+    },
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
       rolldownOptions: {
