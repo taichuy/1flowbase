@@ -94,3 +94,91 @@ export function changeConsolePassword(
     baseUrl
   });
 }
+
+export interface AuthenticationVerificationEntry {
+  id: string;
+  title: string;
+}
+
+export interface ConsoleExternalIdentityBinding {
+  identity_id: string;
+  state: 'bound' | 'unlinked';
+  subject_type: string;
+  subject_value: string;
+  issuer: string | null;
+  account: string | null;
+  nickname: string | null;
+  avatar_url: string | null;
+  profile_url: string | null;
+  bound_at: string;
+  unlinked_at: string | null;
+  provider_available: boolean;
+  can_unlink: boolean;
+  unlink_blocked_reason: string | null;
+}
+
+export interface ConsoleAuthenticationProvider {
+  auth_type: string;
+  display_name: string;
+  provider_available: boolean;
+  login_entries: AuthenticationVerificationEntry[];
+  bindings: ConsoleExternalIdentityBinding[];
+}
+
+export interface ConsoleAuthenticationMethods {
+  password_configured: boolean;
+  password_usable: boolean;
+  password_setup_verified: boolean;
+  password_verification_entries: AuthenticationVerificationEntry[];
+  providers: ConsoleAuthenticationProvider[];
+}
+
+export function fetchConsoleAuthenticationMethods(
+  baseUrl?: string
+): Promise<ConsoleAuthenticationMethods> {
+  return apiFetch({
+    path: '/api/console/me/authentication-methods',
+    baseUrl
+  });
+}
+
+export function unlinkConsoleExternalIdentity(
+  identity_id: string,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<void> {
+  return apiFetchVoid({
+    path: `/api/console/me/authentication-methods/external-identities/${encodeURIComponent(identity_id)}/unlink`,
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function authorizeConsolePasswordSetup(
+  input: { login_entry_id: string },
+  csrfToken: string,
+  baseUrl?: string
+): Promise<{ authorization_url: string }> {
+  return apiFetch({
+    path: '/api/console/me/authentication-methods/password/authorize',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function setConsoleFirstPassword(
+  input: { new_password: string },
+  csrfToken: string,
+  baseUrl?: string
+): Promise<void> {
+  return apiFetchVoid({
+    path: '/api/console/me/authentication-methods/password',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}

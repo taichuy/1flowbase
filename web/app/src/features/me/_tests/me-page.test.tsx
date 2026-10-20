@@ -2,10 +2,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Grid } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { updateMyProfile, changeMyPassword, fetchMyProfile } = vi.hoisted(() => ({
+const {
+  updateMyProfile,
+  changeMyPassword,
+  fetchMyProfile,
+  fetchMyAuthenticationMethods
+} = vi.hoisted(() => ({
   updateMyProfile: vi.fn(),
   changeMyPassword: vi.fn(),
-  fetchMyProfile: vi.fn()
+  fetchMyProfile: vi.fn(),
+  fetchMyAuthenticationMethods: vi.fn()
 }));
 
 const ME_PROFILE_FLOW_TEST_TIMEOUT = 15_000;
@@ -13,7 +19,9 @@ const ME_PROFILE_FLOW_TEST_TIMEOUT = 15_000;
 vi.mock('../api/me', () => ({
   updateMyProfile,
   changeMyPassword,
-  fetchMyProfile
+  fetchMyProfile,
+  fetchMyAuthenticationMethods,
+  authenticationMethodsQueryKey: ['me', 'authentication-methods']
 }));
 
 import { ApplicationRuntimeBootstrap } from '../../../app/ApplicationRuntimeBootstrap';
@@ -54,9 +62,7 @@ function authenticate(
 function renderApp(pathname: string) {
   window.history.pushState({}, '', pathname);
 
-  return render(
-    <ApplicationRuntimeBootstrap />
-  );
+  return render(<ApplicationRuntimeBootstrap />);
 }
 
 describe('MePage', () => {
@@ -75,28 +81,42 @@ describe('MePage', () => {
     updateMyProfile.mockReset();
     changeMyPassword.mockReset();
     fetchMyProfile.mockReset();
+    fetchMyAuthenticationMethods.mockResolvedValue({
+      password_configured: true,
+      password_usable: true,
+      password_setup_verified: false,
+      password_verification_entries: [],
+      providers: []
+    });
     authenticate();
   });
 
-  test(
-    'me page redirects /me to /me/profile',
-    async () => {
-      renderApp('/me');
+  test('me page redirects /me to /me/profile', async () => {
+    renderApp('/me');
 
-      await waitFor(() => {
+    await waitFor(
+      () => {
         expect(window.location.pathname).toBe('/me/profile');
-      }, { timeout: 10_000 });
-      expect(await screen.findByRole('heading', { name: '个人资料', level: 4 })).toBeInTheDocument();
-    },
-    15000
-  );
+      },
+      { timeout: 10_000 }
+    );
+    expect(
+      await screen.findByRole('heading', { name: '个人资料', level: 4 })
+    ).toBeInTheDocument();
+  }, 15000);
 
   test('does not render sign-out inside the /me sidebar', async () => {
     renderApp('/me/profile');
 
-    expect(await screen.findByRole('heading', { name: '个人资料', level: 4 })).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Section navigation' })).toBeInTheDocument();
-    expect(screen.getByTestId('section-page-layout')).toHaveClass('section-page-layout--narrow');
+    expect(
+      await screen.findByRole('heading', { name: '个人资料', level: 4 })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('navigation', { name: 'Section navigation' })
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('section-page-layout')).toHaveClass(
+      'section-page-layout--narrow'
+    );
     expect(screen.queryByText('退出登录')).not.toBeInTheDocument();
   });
 
@@ -119,7 +139,9 @@ describe('MePage', () => {
 
       renderApp('/me/profile');
 
-      expect(await screen.findByRole('heading', { name: '个人资料', level: 4 })).toBeInTheDocument();
+      expect(
+        await screen.findByRole('heading', { name: '个人资料', level: 4 })
+      ).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /编辑资料/ }));
 
       await waitFor(() => {
@@ -166,9 +188,14 @@ describe('MePage', () => {
     renderApp('/me/profile');
 
     expect(
-      await screen.findByRole('heading', { name: 'Personal information', level: 4 })
+      await screen.findByRole('heading', {
+        name: 'Personal information',
+        level: 4
+      })
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Edit profile/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Edit profile/ })
+    ).toBeInTheDocument();
     expect(screen.getAllByText('Interface language').length).toBeGreaterThan(0);
   });
 
@@ -185,9 +212,14 @@ describe('MePage', () => {
     renderApp('/me/profile');
 
     expect(
-      await screen.findByRole('heading', { name: 'Personal information', level: 4 })
+      await screen.findByRole('heading', {
+        name: 'Personal information',
+        level: 4
+      })
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Edit profile/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Edit profile/ })
+    ).toBeInTheDocument();
   });
 
   test('submits password change on /me/security and navigates to /sign-in after success', async () => {
@@ -195,7 +227,9 @@ describe('MePage', () => {
 
     renderApp('/me/security');
 
-    expect(await screen.findByRole('heading', { name: '安全设置', level: 3 })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '安全设置', level: 3 })
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('密码'), {
       target: { value: 'old-password' }
     });

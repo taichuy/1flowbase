@@ -25,7 +25,6 @@ export function ChangePasswordForm({
   return (
     <Space className={className} orientation="vertical" size="large">
       <div>
-        <Typography.Title level={3}>{i18nText("me", "auto.security_settings")}</Typography.Title>
         <Typography.Paragraph>
           {i18nText("me", "auto.password_update_notice")}</Typography.Paragraph>
       </div>

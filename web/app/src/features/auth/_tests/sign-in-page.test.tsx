@@ -464,4 +464,18 @@ describe('declarative authentication entry actions', () => {
     expect(externalRedirect).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+  test('an unlinked identity explains recovery in the original account and never retries OAuth automatically', async () => {
+    window.history.pushState({}, '', '/sign-in?auth_error=identity_unlinked');
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('该 GitHub 身份已解绑');
+    expect(alert).toHaveTextContent('原本站账号');
+    expect(alert).toHaveTextContent('恢复绑定');
+    expect(alert).toHaveTextContent('不会自动创建新账号');
+    expect(externalRedirect).not.toHaveBeenCalled();
+  });
 });

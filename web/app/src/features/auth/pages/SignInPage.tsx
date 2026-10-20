@@ -58,6 +58,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
     account_too_new: t('external_auth.account_too_new'),
     email_required: t('external_auth.email_required'),
     identity_exists: t('external_auth.identity_exists'),
+    identity_unlinked: t('external_auth.identity_unlinked'),
     registration_ineligible: t('external_auth.registration_ineligible'),
     cancelled: t('external_auth.cancelled'),
     invalid_state: t('external_auth.invalid_state'),

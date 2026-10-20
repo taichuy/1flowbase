@@ -8,9 +8,9 @@ import { useAuthStore } from '../../../state/auth-store';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { changeMyPassword, fetchMyProfile, updateMyProfile } from '../api/me';
-import { ChangePasswordForm } from '../components/ChangePasswordForm';
+import { signOut } from '../../auth/api/session';
 import { ProfileForm } from '../components/ProfileForm';
-import { ExternalIdentitiesPanel } from '../components/ExternalIdentitiesPanel';
+import { AuthenticationMethodsPanel } from '../components/AuthenticationMethodsPanel';
 import { getMeSections, type MeSectionKey } from '../lib/me-sections';
 import './me-page.css';
 import { i18nText } from '../../../shared/i18n/text';
@@ -67,6 +67,12 @@ export function MePage({
     }
   });
 
+  const endSession = async () => {
+    queryClient.removeQueries({ queryKey: ['me'] });
+    setAnonymous();
+    await navigate({ to: '/sign-in', search: { login_entry_id: undefined } });
+  };
+
   const changePasswordMutation = useMutation({
     mutationFn: async (input: Parameters<typeof changeMyPassword>[0]) => {
       if (!csrfToken) {
@@ -75,13 +81,7 @@ export function MePage({
 
       await changeMyPassword(input, csrfToken);
     },
-    onSuccess: async () => {
-      setAnonymous();
-      await navigate({
-        to: '/sign-in',
-        search: { login_entry_id: undefined }
-      });
-    }
+    onSuccess: endSession
   });
 
   const currentProfile = profileQuery.data ?? me;
@@ -150,13 +150,20 @@ export function MePage({
         </div>
       ) : (
         <div className="me-page">
-          <ChangePasswordForm
-            className="me-security-panel"
-            submitting={changePasswordMutation.isPending}
-            errorMessage={getErrorMessage(changePasswordMutation.error)}
-            onSubmit={(input) => changePasswordMutation.mutateAsync(input)}
+          <AuthenticationMethodsPanel
+            csrfToken={csrfToken}
+            changingPassword={changePasswordMutation.isPending}
+            changePasswordError={getErrorMessage(changePasswordMutation.error)}
+            onChangePassword={(input) =>
+              changePasswordMutation.mutateAsync(input)
+            }
+            onSessionEnded={endSession}
+            onSwitchAccount={async () => {
+              if (!csrfToken) throw new Error('missing csrf token');
+              await signOut(csrfToken);
+              await endSession();
+            }}
           />
-          <ExternalIdentitiesPanel csrfToken={csrfToken} />
         </div>
       )}
     </SectionPageLayout>

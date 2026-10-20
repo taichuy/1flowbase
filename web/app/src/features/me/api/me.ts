@@ -1,5 +1,9 @@
 import {
   authorizeConsoleExternalIdentity,
+  authorizeConsolePasswordSetup,
+  fetchConsoleAuthenticationMethods,
+  setConsoleFirstPassword,
+  unlinkConsoleExternalIdentity,
   changeConsolePassword,
   fetchConsoleMe,
   updateConsoleMe,
@@ -37,4 +41,40 @@ export function changeMyPassword(
   csrfToken: string
 ): Promise<void> {
   return changeConsolePassword(input, csrfToken);
+}
+
+export type {
+  ConsoleAuthenticationMethods,
+  ConsoleAuthenticationProvider,
+  ConsoleExternalIdentityBinding
+} from '@1flowbase/api-client';
+
+export const authenticationMethodsQueryKey = [
+  'me',
+  'authentication-methods'
+] as const;
+
+export function fetchMyAuthenticationMethods() {
+  return fetchConsoleAuthenticationMethods();
+}
+
+export function unlinkMyExternalIdentity(
+  identity_id: string,
+  csrfToken: string
+) {
+  return unlinkConsoleExternalIdentity(identity_id, csrfToken);
+}
+
+export function authorizeMyPasswordSetup(
+  login_entry_id: string,
+  csrfToken: string
+) {
+  return authorizeConsolePasswordSetup({ login_entry_id }, csrfToken);
+}
+
+export function setMyFirstPassword(
+  input: { new_password: string },
+  csrfToken: string
+) {
+  return setConsoleFirstPassword(input, csrfToken);
 }
