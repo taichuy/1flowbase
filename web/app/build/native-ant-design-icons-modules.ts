@@ -59,52 +59,69 @@ export function nativeAntDesignIconsModulesPlugin({
     configResolved(config) {
       command = config.command;
     },
-    async resolveId(id, importer) {
-      if (id === NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID) {
-        return RESOLVED_VIRTUAL_ID;
-      }
-      if (id === NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID) {
-        return RESOLVED_LOADERS_VIRTUAL_ID;
-      }
-      if (id.startsWith(NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX)) {
-        if (!leafModuleSources.has(id)) {
-          throw new Error(
-            '@ant-design/icons module is not installed or public: ' + id + '.'
-          );
+    resolveId: {
+      filter: {
+        id: [
+          /^virtual:1flowbase-native-ant-design-icons-(?:modules|loaders)$/u,
+          /^virtual:1flowbase-native-ant-design-icon-leaf\//u,
+          /^@ant-design\/icons\/es\/icons\/[A-Za-z][A-Za-z0-9]*$/u
+        ]
+      },
+      async handler(id, importer) {
+        if (id === NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID) {
+          return RESOLVED_VIRTUAL_ID;
         }
-        return `\0${id}`;
+        if (id === NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID) {
+          return RESOLVED_LOADERS_VIRTUAL_ID;
+        }
+        if (id.startsWith(NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX)) {
+          if (!leafModuleSources.has(id)) {
+            throw new Error(
+              '@ant-design/icons module is not installed or public: ' + id + '.'
+            );
+          }
+          return `\0${id}`;
+        }
+        const productIconName = productAntDesignIconName(id);
+        if (
+          productIconName &&
+          !importer?.includes(NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX)
+        ) {
+          const resolved = await this.resolve(id, importer, { skipSelf: true });
+          if (!resolved) return undefined;
+          PRODUCT_ANT_DESIGN_ICON_RESOLVED_IDS.add(resolved.id);
+          return resolved.id;
+        }
+        return undefined;
       }
-      const productIconName = productAntDesignIconName(id);
-      if (
-        productIconName &&
-        !importer?.includes(NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX)
-      ) {
-        const resolved = await this.resolve(id, importer, { skipSelf: true });
-        if (!resolved) return undefined;
-        PRODUCT_ANT_DESIGN_ICON_RESOLVED_IDS.add(resolved.id);
-        return resolved.id;
-      }
-      return undefined;
     },
-    load(id) {
-      if (id === RESOLVED_VIRTUAL_ID) {
-        return generateNativeAntDesignIconsModule(inventory);
-      }
-      if (id === RESOLVED_LOADERS_VIRTUAL_ID) {
-        return command === 'serve'
-          ? generateNativeAntDesignIconsDevLoadersModule(inventory)
-          : generateNativeAntDesignIconsLoadersModule(inventory);
-      }
-      if (id.startsWith(`\0${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}`)) {
-        const moduleSource = leafModuleSources.get(id.slice(1));
-        if (!moduleSource) {
-          throw new Error(
-            '@ant-design/icons module is not installed or public: ' + id + '.'
-          );
+    load: {
+      filter: {
+        id: [
+          /^\x00virtual:1flowbase-native-ant-design-icons-(?:modules|loaders)$/u,
+          /^\x00virtual:1flowbase-native-ant-design-icon-leaf\//u
+        ]
+      },
+      handler(id) {
+        if (id === RESOLVED_VIRTUAL_ID) {
+          return generateNativeAntDesignIconsModule(inventory);
         }
-        return `export { default } from ${JSON.stringify(moduleSource)};`;
+        if (id === RESOLVED_LOADERS_VIRTUAL_ID) {
+          return command === 'serve'
+            ? generateNativeAntDesignIconsDevLoadersModule(inventory)
+            : generateNativeAntDesignIconsLoadersModule(inventory);
+        }
+        if (id.startsWith(`\0${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}`)) {
+          const moduleSource = leafModuleSources.get(id.slice(1));
+          if (!moduleSource) {
+            throw new Error(
+              '@ant-design/icons module is not installed or public: ' + id + '.'
+            );
+          }
+          return `export { default } from ${JSON.stringify(moduleSource)};`;
+        }
+        return undefined;
       }
-      return undefined;
     }
   };
 }

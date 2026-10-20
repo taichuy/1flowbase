@@ -38,21 +38,27 @@ export function nativeModuleDeclarationsPlugin({
   return {
     name: '1flowbase-native-module-declarations',
     enforce: 'pre',
-    resolveId(id) {
-      return id === NATIVE_MODULE_DECLARATIONS_VIRTUAL_ID
-        ? RESOLVED_VIRTUAL_ID
-        : undefined;
-    },
-    load(id) {
-      if (id !== RESOLVED_VIRTUAL_ID) return undefined;
-      graph ??= collectNativeModuleDeclarationGraph({
-        moduleSources,
-        projectRoot
-      });
-      for (const watchedFile of graph.watchedFiles) {
-        this.addWatchFile(watchedFile);
+    resolveId: {
+      filter: { id: /^virtual:1flowbase-native-module-declarations$/u },
+      handler(id) {
+        return id === NATIVE_MODULE_DECLARATIONS_VIRTUAL_ID
+          ? RESOLVED_VIRTUAL_ID
+          : undefined;
       }
-      return `export default ${JSON.stringify(graph.extraLibs)};`;
+    },
+    load: {
+      filter: { id: /^\x00virtual:1flowbase-native-module-declarations$/u },
+      handler(id) {
+        if (id !== RESOLVED_VIRTUAL_ID) return undefined;
+        graph ??= collectNativeModuleDeclarationGraph({
+          moduleSources,
+          projectRoot
+        });
+        for (const watchedFile of graph.watchedFiles) {
+          this.addWatchFile(watchedFile);
+        }
+        return `export default ${JSON.stringify(graph.extraLibs)};`;
+      }
     },
     watchChange() {
       graph = undefined;

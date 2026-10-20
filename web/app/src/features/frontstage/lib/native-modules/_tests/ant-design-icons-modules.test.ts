@@ -18,7 +18,8 @@ describe('@ant-design/icons native module inventory', () => {
     const inventory = collectAntDesignIconModuleSources({
       projectRoot: process.cwd()
     });
-    const generatedModule = generateNativeAntDesignIconsLoadersModule(inventory);
+    const generatedModule =
+      generateNativeAntDesignIconsLoadersModule(inventory);
 
     expect(generatedModule).toContain(
       `import(${JSON.stringify(`${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}ClockCircleOutlined`)})`
@@ -33,10 +34,18 @@ describe('@ant-design/icons native module inventory', () => {
       projectRoot: process.cwd()
     });
     const plugin = nativeAntDesignIconsModulesPlugin({ inventory });
-    const resolveId = plugin.resolveId as (
+    const resolveHook = plugin.resolveId;
+    const loadHook = plugin.load;
+    if (!resolveHook || typeof resolveHook !== 'object') {
+      throw new Error('Expected a filtered resolveId hook');
+    }
+    if (!loadHook || typeof loadHook !== 'object') {
+      throw new Error('Expected a filtered load hook');
+    }
+    const resolveId = resolveHook.handler as (
       id: string
     ) => Promise<string | undefined>;
-    const load = plugin.load as (id: string) => string | undefined;
+    const load = loadHook.handler as (id: string) => string | undefined;
     const leafId = `${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}ClockCircleOutlined`;
     const resolvedLeafId = await resolveId(leafId);
 
@@ -53,9 +62,8 @@ describe('@ant-design/icons native module inventory', () => {
     const inventory = collectAntDesignIconModuleSources({
       projectRoot: process.cwd()
     });
-    const generatedModule = generateNativeAntDesignIconsDevLoadersModule(
-      inventory
-    );
+    const generatedModule =
+      generateNativeAntDesignIconsDevLoadersModule(inventory);
 
     expect(generatedModule).toContain('const leafModuleSources = new Set(');
     expect(generatedModule).toContain('/* @vite-ignore */');
@@ -67,7 +75,8 @@ describe('@ant-design/icons native module inventory', () => {
     const inventory = collectAntDesignIconModuleSources({
       projectRoot: process.cwd()
     });
-    const generatedModule = generateNativeAntDesignIconsLoadersModule(inventory);
+    const generatedModule =
+      generateNativeAntDesignIconsLoadersModule(inventory);
 
     expect(generatedModule).toContain('Object.keys(leafLoaders)');
     expect(generatedModule).toContain(
@@ -83,9 +92,7 @@ describe('@ant-design/icons native module inventory', () => {
     const generatedModule = generateNativeAntDesignIconsModule(inventory);
 
     expect(generatedModule).not.toContain('const leafLoaders');
-    expect(generatedModule).not.toContain(
-      "import { lazy } from 'react'"
-    );
+    expect(generatedModule).not.toContain("import { lazy } from 'react'");
     expect(generatedModule).toContain(
       `import(${JSON.stringify(NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID)})`
     );
@@ -149,10 +156,7 @@ describe('@ant-design/icons native module inventory', () => {
 
   test('I1945-AC-002 discovers newly installed public icon leaves after rebuild', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'flowbase-icons-'));
-    const packageRoot = join(
-      projectRoot,
-      'node_modules/@ant-design/icons'
-    );
+    const packageRoot = join(projectRoot, 'node_modules/@ant-design/icons');
     try {
       mkdirSync(join(packageRoot, 'es/icons'), { recursive: true });
       mkdirSync(join(packageRoot, 'lib/icons'), { recursive: true });
