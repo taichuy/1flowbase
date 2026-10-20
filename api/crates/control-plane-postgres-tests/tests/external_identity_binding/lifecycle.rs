@@ -27,7 +27,10 @@ async fn external_member(
     let identity = canonical(entry, subject, &format!("{subject}@example.com"));
     let result = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(
+            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            7,
+        ),
     )
     .complete_external_login(CompleteExternalLoginCommand {
         login_entry_id: entry.id,
@@ -58,7 +61,10 @@ async fn canonical_subject_crosses_connections_but_never_authorities() {
     let b = external_entry(&store).await;
     let kernel = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(
+            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            7,
+        ),
     );
     let actor = AuthRepository::load_actor_context_for_user(&store, root.id)
         .await
@@ -154,7 +160,10 @@ async fn unlink_reserves_owner_blocks_signup_and_only_explicit_owner_binding_res
     let entry = external_entry(&store).await;
     let kernel = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(
+            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            7,
+        ),
     );
     let actor = AuthRepository::load_actor_context_for_user(&store, root.id)
         .await
@@ -302,7 +311,10 @@ async fn parallel_unlinks_keep_one_live_method_and_ignore_sentinel_contact_and_i
         .unwrap();
     let kernel = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(
+            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            7,
+        ),
     );
     kernel
         .bind_external_identity(&actor, ib.clone())
@@ -382,7 +394,10 @@ async fn initial_password_requires_live_owned_binding_creates_account_and_authen
         .contains("password_initialization_identity_invalid"));
     let kernel = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(
+            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            7,
+        ),
     );
     let backup = canonical(&entry, "password-backup", "backup@example.com");
     kernel.bind_external_identity(&actor, backup).await.unwrap();
@@ -445,7 +460,10 @@ async fn initial_password_requires_live_owned_binding_creates_account_and_authen
     assert_eq!(local, vec![("account".into(), user.account.clone())]);
     let kernel = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(
+            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            7,
+        ),
     );
     let login = kernel
         .login(LoginCommand {

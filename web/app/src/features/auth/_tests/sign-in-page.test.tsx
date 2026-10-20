@@ -80,7 +80,6 @@ vi.mock('../components/BuiltinPasswordSignIn', () => ({
   BuiltinPasswordSignIn: () => <form aria-label="Escape password sign in" />
 }));
 
-import { appI18n } from '../../../shared/i18n/app-i18n';
 import { AppProviders } from '../../../app/AppProviders';
 import { useAuthStore } from '../../../state/auth-store';
 import { SignInPage } from '../pages/SignInPage';
@@ -466,8 +465,11 @@ describe('declarative authentication entry actions', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
   test('an unlinked identity explains recovery in the original account and never retries OAuth automatically', async () => {
-    await appI18n.changeLanguage('zh_Hans');
-    window.history.pushState({}, '', '/sign-in?auth_error=identity_unlinked');
+    window.history.pushState(
+      {},
+      '',
+      '/sign-in?auth_error=identity_unlinked&language=zh'
+    );
     render(
       <AppProviders>
         <SignInPage />

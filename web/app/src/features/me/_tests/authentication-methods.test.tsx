@@ -89,14 +89,35 @@ async function openGitHub() {
   fireEvent.click(await screen.findByRole('tab', { name: 'GitHub' }));
 }
 
+// jsdom/nwsapi cannot parse its synthesized :focus-visible selector for
+// rc-tabs IDs containing the real slash-bearing provider auth_type. These
+// functional fixtures do not assert layout; actual Chrome covers rendering.
+const browserComputedStyle = window.getComputedStyle;
 beforeEach(() => {
   Object.values(mocks).forEach((mock) => mock.mockReset());
+  window.getComputedStyle = (element, pseudoElement) => {
+    try {
+      return browserComputedStyle(element, pseudoElement);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'SyntaxError' &&
+        error.message.includes('rc-tabs-test-tab-1flowbase,,github-login') &&
+        error.message.includes(':focus-visible') &&
+        element instanceof HTMLElement
+      ) {
+        return element.style;
+      }
+      throw error;
+    }
+  };
   window.history.replaceState({}, '', '/me/security');
   mocks.fetch.mockResolvedValue(fixture());
   mocks.authorize.mockRejectedValue(new Error('fixture rejected'));
   mocks.verify.mockRejectedValue(new Error('fixture rejected'));
 });
 afterEach(() => {
+  window.getComputedStyle = browserComputedStyle;
   window.history.replaceState({}, '', '/');
 });
 
