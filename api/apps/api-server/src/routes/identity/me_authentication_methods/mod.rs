@@ -160,20 +160,10 @@ struct AvailableMethods {
 async fn available(state: &ApiState) -> Result<AvailableMethods, ApiError> {
     let entries = state.store.list_login_entries().await?;
     let providers = crate::authentication_runtime::active_providers(state).await?;
-    let mut authorities = Vec::new();
-    let mut leases = Vec::new();
-    for provider in &providers {
-        for entry in entries
-            .iter()
-            .filter(|entry| entry.enabled && entry.auth_type == provider.descriptor.auth_type)
-        {
-            if let Ok(lease) = provider.authorize_completion(state, entry).await {
-                authorities.push(provider.authority_namespace.clone());
-                leases.push(lease);
-                break;
-            }
-        }
-    }
+    let (authorities, lease) =
+        crate::authentication_runtime::authorize_available_providers(state, &providers, &entries)
+            .await?;
+    let leases = lease.into_iter().collect();
     Ok(AvailableMethods {
         providers,
         entries,

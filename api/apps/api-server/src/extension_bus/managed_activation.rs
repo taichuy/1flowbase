@@ -660,13 +660,63 @@ impl ManagedExtensionComposition {
         {
             bail!("managed installation is disabled or changed");
         }
+        let authority = lease
+            .snapshots()
+            .iter()
+            .find(|authority| {
+                authority.installation_id == installation.id
+                    && authority.workspace_id == workspace_id
+            })
+            .context("managed contribution authority scope missing")?;
         self.policy.effective_permissions(
             installation,
             workspace_id,
             &binding.descriptor,
-            lease.snapshot(),
+            authority,
         )?;
         Ok(())
+    }
+
+    /// Retain one batch transaction for providers sharing a workspace. Independent
+    /// leases would contend with our own workspace serialization lock.
+    pub(crate) async fn authorize_snapshot_bindings(
+        &self,
+        snapshot: &Arc<ManagedWorkspaceSnapshot>,
+        workspace_id: Uuid,
+        contribution_ids: &[ContributionId],
+    ) -> Result<(Box<dyn ContributionAuthorityLease>, Vec<ContributionId>)> {
+        let _reference = snapshot.freeze_reference()?;
+        let bindings = contribution_ids
+            .iter()
+            .map(|id| {
+                let binding = snapshot
+                    .bindings
+                    .get(id)
+                    .context("managed contribution absent from frozen snapshot")?;
+                anyhow::ensure!(
+                    binding.handle.identity().workspace_id().as_str() == workspace_id.to_string(),
+                    "managed authority workspace mismatch"
+                );
+                Ok(binding)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let scopes = bindings
+            .iter()
+            .map(|binding| (binding.installation.id, workspace_id))
+            .collect::<Vec<_>>();
+        let lease = self
+            .store
+            .lock_contribution_authority_batch(&scopes)
+            .await?;
+        let allowed = bindings
+            .into_iter()
+            .filter(|binding| {
+                self.validate_current_binding(binding, workspace_id, lease.as_ref())
+                    .is_ok()
+            })
+            .map(|binding| binding.descriptor.contribution_id.clone())
+            .collect();
+        Ok((lease, allowed))
     }
 
     /// Validate live authority for a frozen contribution and retain the same

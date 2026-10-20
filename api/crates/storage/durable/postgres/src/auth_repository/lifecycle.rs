@@ -152,7 +152,7 @@ impl ExternalIdentityLifecycleRepository for PgControlPlaneStore {
         identity: &VerifiedExternalIdentity,
     ) -> Result<Option<ExternalIdentityBinding>> {
         let query = format!("{BINDING_SELECT} where i.authority_namespace=$1 and coalesce(i.issuer,'')=$2 and coalesce(i.realm,'')=$3 and i.subject_type=$4 and i.subject_value=$5 and i.verified");
-        Ok(sqlx::query(&query)
+        Ok(sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(identity.authority_namespace())
             .bind(identity.issuer().unwrap_or(""))
             .bind(identity.realm().unwrap_or(""))
@@ -182,7 +182,7 @@ impl ExternalIdentityLifecycleRepository for PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
         let query = format!("{BINDING_SELECT} where i.user_id=$1 and i.connection_id<>$2 and i.verified order by i.bound_at,i.id");
-        let bindings = sqlx::query(&query)
+        let bindings = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(user_id)
             .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)
             .fetch_all(self.pool())
@@ -209,7 +209,7 @@ impl ExternalIdentityLifecycleRepository for PgControlPlaneStore {
         let mut tx = self.pool().begin().await?;
         lock_password_snapshot(&mut tx, user_id, password.expected_hash).await?;
         let query = format!("{BINDING_SELECT} where i.id=$1 and i.user_id=$2 and i.connection_id<>$3 and i.verified for update of i");
-        let target = sqlx::query(&query)
+        let target = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(identity_id)
             .bind(user_id)
             .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)
@@ -254,7 +254,7 @@ impl ExternalIdentityLifecycleRepository for PgControlPlaneStore {
             return Err(ControlPlaneError::Conflict("password_already_configured").into());
         }
         let query = format!("{BINDING_SELECT} where i.id=$1 and i.user_id=$2 and i.connection_id<>$3 and i.state='bound' and i.verified for update of i");
-        let proof = sqlx::query(&query)
+        let proof = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(verified_identity_id)
             .bind(user_id)
             .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)

@@ -61,7 +61,7 @@ function fixture(): ConsoleAuthenticationMethods {
             unlinked_at: null,
             provider_available: true,
             can_unlink: false,
-            unlink_blocked_reason: 'last_login_method'
+            unlink_blocked_reason: 'last_usable_authentication_method'
           }
         ]
       }
@@ -90,7 +90,7 @@ async function openGitHub() {
 }
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  Object.values(mocks).forEach((mock) => mock.mockReset());
   window.history.replaceState({}, '', '/me/security');
   mocks.fetch.mockResolvedValue(fixture());
   mocks.authorize.mockRejectedValue(new Error('fixture rejected'));

@@ -28,7 +28,7 @@ export function ExternalProviderMethods({
 }) {
   const { t } = useTranslation('me');
   const blockedReason = (reason: string | null) => {
-    if (reason === 'last_login_method')
+    if (reason === 'last_usable_authentication_method')
       return t('authentication.last_login_method');
     if (reason === 'provider_unavailable')
       return t('authentication.provider_unavailable');

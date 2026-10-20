@@ -109,6 +109,67 @@ pub(crate) async fn provider(
     })
 }
 
+/// Resolve a single current graph and retain one live authority batch for all
+/// candidate providers. No worker invocation runs while this lease is held.
+pub(crate) async fn authorize_available_providers(
+    state: &ApiState,
+    providers: &[AuthenticationProvider],
+    entries: &[domain::LoginEntryRecord],
+) -> Result<
+    (
+        Vec<String>,
+        Option<Box<dyn control_plane::ports::ContributionAuthorityLease>>,
+    ),
+    ApiError,
+> {
+    let candidates = providers
+        .iter()
+        .filter(|provider| {
+            entries
+                .iter()
+                .any(|entry| entry.enabled && entry.auth_type == provider.descriptor.auth_type)
+        })
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return Ok((Vec::new(), None));
+    }
+    let composition = state.provider_runtime.managed_composition()?;
+    let snapshot = composition
+        .snapshot(domain::SYSTEM_SCOPE_ID)
+        .await
+        .ok_or(Error::PluginUnavailable)?;
+    let candidates = candidates
+        .into_iter()
+        .filter(|provider| {
+            fingerprint(&snapshot, &provider.descriptor.contribution_id)
+                .is_ok_and(|value| value == provider.fingerprint)
+                && snapshot
+                    .bindings
+                    .get(&provider.descriptor.contribution_id)
+                    .is_some_and(|binding| {
+                        binding.handle.identity().installation_id().as_str()
+                            == provider.installation_id.to_string()
+                    })
+        })
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return Ok((Vec::new(), None));
+    }
+    let ids = candidates
+        .iter()
+        .map(|p| p.descriptor.contribution_id.clone())
+        .collect::<Vec<_>>();
+    let (lease, allowed) = composition
+        .authorize_snapshot_bindings(&snapshot, domain::SYSTEM_SCOPE_ID, &ids)
+        .await?;
+    let authorities = candidates
+        .into_iter()
+        .filter(|provider| allowed.contains(&provider.descriptor.contribution_id))
+        .map(|provider| provider.authority_namespace.clone())
+        .collect();
+    Ok((authorities, Some(lease)))
+}
+
 impl AuthenticationProvider {
     /// Final authority barrier after every verifier/eligibility worker call. The
     /// Host holds this lease until the identity/session business effect finishes.

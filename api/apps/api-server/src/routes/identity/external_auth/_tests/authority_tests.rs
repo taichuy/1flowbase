@@ -64,6 +64,9 @@ async fn authority_lock_available(pool: &sqlx::PgPool) -> anyhow::Result<bool> {
 }
 
 fn package() -> Vec<u8> {
+    package_with_second_provider(false)
+}
+fn package_with_second_provider(second_provider: bool) -> Vec<u8> {
     let mut manifest: Value = serde_yaml::from_str(include_str!(
         "../../../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
     ))
@@ -83,6 +86,29 @@ fn package() -> Vec<u8> {
         }]},
         "execution_bindings":[{"contribution_id":CONTRIBUTION,"execution_mode":"process_per_call","runtime":{"protocol":"stdio_json_multiplex_v1","entry":"bin/worker.py"},"handler":"authenticate","payload":{"kind":"authentication_provider","auth_type":"external-fixture"}}]
     });
+    if second_provider {
+        let mut descriptor = manifest["authentication_providers"][0].clone();
+        descriptor["auth_type"] = json!("external-second");
+        descriptor["display_name"] = json!("Second verifier");
+        descriptor["contribution_id"] = json!("acme.authentication-barrier.second");
+        manifest["authentication_providers"]
+            .as_array_mut()
+            .unwrap()
+            .push(descriptor);
+        let mut contribution = manifest["managed"]["module"]["contributions"][0].clone();
+        contribution["contribution_id"] = json!("acme.authentication-barrier.second");
+        manifest["managed"]["module"]["contributions"]
+            .as_array_mut()
+            .unwrap()
+            .push(contribution);
+        let mut binding = manifest["managed"]["execution_bindings"][0].clone();
+        binding["contribution_id"] = json!("acme.authentication-barrier.second");
+        binding["payload"]["auth_type"] = json!("external-second");
+        manifest["managed"]["execution_bindings"]
+            .as_array_mut()
+            .unwrap()
+            .push(binding);
+    }
     let manifest = serde_yaml::to_string(&manifest).unwrap();
     plugin_framework::parse_plugin_manifest(&manifest).unwrap();
     let mut archive = tar::Builder::new(flate2::write::GzEncoder::new(
@@ -420,6 +446,17 @@ pub(crate) async fn installed_verifier_fixture() -> (
     LoginEntryRecord,
     domain::ActorContext,
 ) {
+    installed_verifier_fixture_with_second_provider(false).await
+}
+
+pub(crate) async fn installed_verifier_fixture_with_second_provider(
+    second_provider: bool,
+) -> (
+    Arc<ApiState>,
+    Arc<runtime_extension_host::RuntimeExtensionHost>,
+    LoginEntryRecord,
+    domain::ActorContext,
+) {
     crate::authentication_runtime::callback_url()
         .expect("set API_AUTH_PUBLIC_ORIGIN for callback fixtures");
     let (initial, database_url) = crate::_tests::support::test_api_state_with_database_url().await;
@@ -482,7 +519,7 @@ pub(crate) async fn installed_verifier_fixture() -> (
         .install_uploaded_plugin(InstallUploadedPluginCommand {
             actor_user_id: root_id,
             file_name: "authentication-methods.1flowbasepkg".into(),
-            package_bytes: package(),
+            package_bytes: package_with_second_provider(second_provider),
         })
         .await
         .unwrap();
@@ -505,5 +542,13 @@ pub(crate) async fn installed_verifier_fixture() -> (
         options: json!({"extension_config":{"self_registration_enabled":true}}),
     };
     state.store.create_login_entry(&entry).await.unwrap();
+    if second_provider {
+        let mut second = entry.clone();
+        second.id = Uuid::now_v7();
+        second.connection_id = Uuid::now_v7();
+        second.auth_type = "external-second".into();
+        second.title = "Second verifier".into();
+        state.store.create_login_entry(&second).await.unwrap();
+    }
     (state, host, entry, actor)
 }

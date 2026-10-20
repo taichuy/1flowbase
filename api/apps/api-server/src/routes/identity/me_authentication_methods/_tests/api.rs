@@ -696,3 +696,32 @@ async fn authentication_methods_all_four_routes_publish_typed_plans_and_bounded_
         "Host credential/proof carrier remains opaque to hooks"
     );
 }
+
+#[tokio::test]
+async fn authentication_methods_two_providers_share_one_live_authority_batch() {
+    let (state, host, entry, _) = crate::routes::external_auth::authority_tests::installed_verifier_fixture_with_second_provider(true).await;
+    let methods = tokio::time::timeout(std::time::Duration::from_secs(5), available(&state))
+        .await
+        .expect("multiple providers must not wait for their own workspace authority lock")
+        .unwrap();
+    assert_eq!(methods.providers.len(), 2);
+    assert_eq!(methods.authorities.len(), 2);
+    assert_eq!(methods.leases.len(), 1);
+    release(methods.leases).await.unwrap();
+    sqlx::query("update login_entries set enabled=false where id=$1")
+        .bind(entry.id)
+        .execute(state.store.pool())
+        .await
+        .unwrap();
+    let methods = tokio::time::timeout(std::time::Duration::from_secs(5), available(&state))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        methods.authorities.len(),
+        1,
+        "disabled entries do not supply an alternative login method"
+    );
+    release(methods.leases).await.unwrap();
+    host.stop().await.unwrap();
+}

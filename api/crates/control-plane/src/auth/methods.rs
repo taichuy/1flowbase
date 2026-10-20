@@ -40,10 +40,7 @@ fn usable_password_hash(value: &str) -> bool {
         return false;
     };
     matches!(hash.algorithm.as_str(), "argon2id" | "argon2i" | "argon2d")
-        && hash
-            .salt
-            .as_ref()
-            .is_some_and(|salt| salt.as_str().len() >= 11)
+        && hash.salt.as_ref().is_some_and(|salt| salt.len() >= 8)
         && hash.hash.as_ref().is_some_and(|output| output.len() >= 4)
         && argon2::Params::try_from(&hash).is_ok()
         && hash
