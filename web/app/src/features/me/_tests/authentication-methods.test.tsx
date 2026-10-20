@@ -99,11 +99,14 @@ beforeEach(() => {
     try {
       return browserComputedStyle(element, pseudoElement);
     } catch (error) {
+      const selectorError = error as { name?: unknown; message?: unknown };
       if (
-        error instanceof Error &&
-        error.name === 'SyntaxError' &&
-        error.message.includes('rc-tabs-test-tab-1flowbase,,github-login') &&
-        error.message.includes(':focus-visible') &&
+        selectorError.name === 'SyntaxError' &&
+        typeof selectorError.message === 'string' &&
+        selectorError.message.includes(
+          'rc-tabs-test-tab-1flowbase,,github-login'
+        ) &&
+        selectorError.message.includes(':focus-visible') &&
         element instanceof HTMLElement
       ) {
         return element.style;
