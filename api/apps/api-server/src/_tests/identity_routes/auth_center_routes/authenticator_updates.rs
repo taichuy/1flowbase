@@ -137,6 +137,10 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
     assert_eq!(authenticator["config_values"]["title"], json!("OIDC Login"));
     assert_eq!(authenticator["config_values"]["enabled"], json!(true));
     assert_eq!(
+        authenticator["config_values"]["self_registration_enabled"],
+        json!(false)
+    );
+    assert_eq!(
         authenticator["public_ui_block"],
         json!("export default { main } satisfies BlockModule;")
     );
@@ -187,7 +191,8 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
         saved.options["extension_config"],
         json!({
             "issuer_url": "https://idp.example.com",
-            "allow_signup": true
+            "allow_signup": true,
+            "self_registration_enabled": false
         })
     );
 

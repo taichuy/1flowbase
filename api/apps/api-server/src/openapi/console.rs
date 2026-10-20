@@ -2,6 +2,7 @@ use utoipa::OpenApi;
 
 #[derive(OpenApi)]
 #[openapi(
+    modifiers(&CanonicalExternalAuthenticationMetadata),
     paths(
         crate::health,
         crate::console_health,
@@ -349,3 +350,26 @@ use utoipa::OpenApi;
     ))
 )]
 pub(super) struct ConsoleOpenApi;
+
+// Each fragment owns complete canonical operation metadata before composition.
+struct CanonicalExternalAuthenticationMetadata;
+
+impl utoipa::Modify for CanonicalExternalAuthenticationMetadata {
+    fn modify(&self, document: &mut utoipa::openapi::OpenApi) {
+        for binding in crate::routes::external_auth::interface::bindings_metadata() {
+            let path = document
+                .paths
+                .paths
+                .get_mut(binding.path)
+                .expect("external authentication API documentation is mounted");
+            let operation = match binding.method {
+                "GET" => path.get.as_mut(),
+                "POST" => path.post.as_mut(),
+                _ => None,
+            }
+            .expect("external authentication method is documented");
+            operation.summary = Some(binding.summary.into());
+            operation.description = Some(binding.description.into());
+        }
+    }
+}

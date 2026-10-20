@@ -1,3 +1,4 @@
+const { boundIssueBody, appendStepSummary } = require('./report-output.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -33,7 +34,6 @@ const SECURITY_RISK_REPORT_FILE = 'security-risk.json';
 const VALID_REPORT_TYPES = new Set(['ci', 'cd']);
 const PR_REPORT_MARKER = '<!-- 1flowbase-quality-gate-pr-report -->';
 const MAX_GATE_OUTPUT_BYTES = 64 * 1024 * 1024;
-const MAX_GITHUB_ISSUE_BODY_BYTES = 60 * 1024;
 const FAILURE_EXCERPT_MAX_LINES = 80;
 const ANSI_CONTROL_SEQUENCE_PATTERN = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)|[@-Z\\-_])/gu;
 
@@ -117,32 +117,7 @@ function buildIssueLabels({ reportType, status }) {
   ];
 }
 
-function boundIssueBody(markdown, maxBytes = MAX_GITHUB_ISSUE_BODY_BYTES) {
-  const body = String(markdown || '');
-  if (Buffer.byteLength(body, 'utf8') <= maxBytes) return body;
 
-  const suffix = [
-    '',
-    '---',
-    'Issue report truncated to GitHub’s body limit. Complete component logs and failure details remain in the workflow artifact.',
-    '',
-  ].join('\n');
-  const prefixBudget = maxBytes - Buffer.byteLength(suffix, 'utf8');
-  let low = 0;
-  let high = body.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if (Buffer.byteLength(body.slice(0, middle), 'utf8') <= prefixBudget) low = middle;
-    else high = middle - 1;
-  }
-  if (
-    low > 0
-    && low < body.length
-    && /[\uD800-\uDBFF]/u.test(body[low - 1])
-    && /[\uDC00-\uDFFF]/u.test(body[low])
-  ) low -= 1;
-  return `${body.slice(0, low).trimEnd()}${suffix}`;
-}
 
 function listFilesBySuffix(rootDir, suffix, excludedDirectories = new Set()) {
   if (!fs.existsSync(rootDir)) {
@@ -834,13 +809,7 @@ function writeActionOutputs(outputs, outputPath = process.env.GITHUB_OUTPUT) {
   fs.appendFileSync(outputPath, `${content}\n`, 'utf8');
 }
 
-function appendStepSummary(markdown, summaryPath = process.env.GITHUB_STEP_SUMMARY) {
-  if (!summaryPath) {
-    return;
-  }
 
-  fs.appendFileSync(summaryPath, `\n${markdown}\n`, 'utf8');
-}
 
 function buildPullRequestReportComment(markdown) {
   return `${PR_REPORT_MARKER}\n${markdown}`;
