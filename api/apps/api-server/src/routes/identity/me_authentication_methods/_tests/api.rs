@@ -290,7 +290,19 @@ async fn authentication_methods_unlink_requires_csrf_preserves_last_method_and_r
     let fixture = Fixture::new().await;
     let path = format!("{BASE}/external-identities/{}/unlink", fixture.identity_id);
     let denied = fixture.request("POST", &path, None, false).await;
-    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    // The shared CSRF boundary uses 401 for a missing token and 403 for a mismatch.
+    assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+    let mismatch = request(
+        &fixture.app,
+        "POST",
+        &path,
+        Some(&fixture.cookie),
+        Some("wrong-csrf-token"),
+        None,
+    )
+    .await;
+    assert_eq!(mismatch.status(), StatusCode::FORBIDDEN);
+    assert_eq!(payload(mismatch).await["code"], "csrf_mismatch");
     let last = fixture.request("POST", &path, None, true).await;
     assert_eq!(last.status(), StatusCode::CONFLICT);
     assert_eq!(
