@@ -951,4 +951,5 @@ fn ac_002_previous_response_id_is_accepted_for_route_context_resolution() {
 
 #[path = "_tests/chat_reasoning_content.rs"]
 mod chat_reasoning_content;
+#[path = "tests/continuation_identity.rs"]
 mod continuation_identity;

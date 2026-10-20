@@ -3,13 +3,11 @@ import {
   authenticateWithPermissions,
   consoleNavigationApi,
   docsApi,
-  fireEvent,
   renderApp,
-  resetAuthStore,
-  screen,
-  settingsConsoleNavigation,
-  waitFor
+  settingsConsoleNavigation
 } from './settings-page.fixtures';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { resetAuthStore } from '../../../../../state/auth-store';
 
 describe('SettingsPage', () => {
   test('uses backend settings registry order instead of permissions for /settings redirects', async () => {

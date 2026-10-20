@@ -1,15 +1,8 @@
 import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { useState } from 'react';
-import { beforeAll, expect, vi } from 'vitest';
+import { beforeAll, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
 import {
@@ -557,13 +550,8 @@ beforeEach(() => {
 });
 
 export {
-  AppProviders,
-  FrontStagePage,
   FrontStagePageHarness,
-  type NormalizedFrontstageBlockCatalogEntry,
   SLOW_FRONTSTAGE_TEST_TIMEOUT,
-  type SaveFrontstageTabDocumentInput,
-  act,
   activateDesignMode,
   authenticate,
   blockTreeApi,
@@ -571,16 +559,9 @@ export {
   createCatalogEntry,
   createPageContent,
   exitDesignMode,
-  expect,
-  fireEvent,
   hoverAddMenuAndFlush,
   mockFrontstageBlockCatalog,
   mockPageContentSaveState,
   pageContentSaveHook,
-  render,
-  renderPage,
-  screen,
-  vi,
-  waitFor,
-  within
+  renderPage
 };

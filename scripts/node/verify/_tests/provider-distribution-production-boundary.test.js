@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { productionRustSources } from './support/rust-sources.js';
 
 const root = path.resolve(import.meta.dirname, '../../../..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -10,10 +11,7 @@ test('production composition compiles and owns the effective distribution snapsh
   const registry = read(
     'api/apps/api-server/src/provider_runtime/distribution_registry.rs'
   );
-  const runtime = [
-    'api/apps/api-server/src/provider_runtime/mod.rs',
-    'api/apps/api-server/src/provider_runtime/provider_port.rs',
-  ].map(read).join('\n');
+  const runtime = productionRustSources(path.join(root, 'api/apps/api-server/src/provider_runtime'));
   assert.match(registry, /ProviderDistributionRuleRegistry::compile/u);
   assert.match(runtime, /provider_distribution_snapshot/u);
   assert.match(runtime, /with_runtime_package/u);

@@ -1,12 +1,5 @@
-import { App as AntdApp, Grid } from 'antd';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from '@testing-library/react';
+import { Grid } from 'antd';
+
 import { vi } from 'vitest';
 
 type ConversationMessagePageItem = {
@@ -200,18 +193,15 @@ vi.mock('../../../api/trajectory', async (importOriginal) => ({
 
 vi.mock('../../../api/runtime', () => runtimeApi);
 
-import { AppProviders } from '../../../../../app/AppProviders';
 import {
   appI18n,
   loadApplicationI18nResources
 } from '../../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../../state/auth-store';
-import { ApplicationLogsPage } from '../../../pages/ApplicationLogsPage';
 
 import {
   applicationRunsPage,
   conversationMessagesPage,
-  lastElement,
   sampleRunDetail,
   sampleRunOverview,
   sampleTraceNodeContent,
@@ -360,24 +350,11 @@ afterEach(() => {
   dateNowSpy = undefined;
 });
 
-export {
-  AntdApp,
-  AppProviders,
-  ApplicationLogsPage,
-  act,
-  applicationRunsPage,
-  conversationMessagesPage,
-  fireEvent,
-  innerHeightSpy,
-  innerWidthSpy,
-  lastElement,
-  render,
-  runtimeApi,
-  sampleRunDetail,
-  sampleRunOverview,
-  screen,
-  trajectoryApi,
-  vi,
-  waitFor,
-  within
-};
+export function mockViewportSize(width: number, height: number) {
+  innerWidthSpy = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(width);
+  innerHeightSpy = vi
+    .spyOn(window, 'innerHeight', 'get')
+    .mockReturnValue(height);
+}
+
+export { runtimeApi, trajectoryApi };

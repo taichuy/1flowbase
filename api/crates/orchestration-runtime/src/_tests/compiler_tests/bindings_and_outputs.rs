@@ -618,5 +618,6 @@ fn compile_workflow_recognizes_start_input_fields_for_selector_validation() {
     }));
 }
 
+#[path = "bindings_and_outputs/context_bindings.rs"]
 mod context_bindings;
 mod variable_aggregator;

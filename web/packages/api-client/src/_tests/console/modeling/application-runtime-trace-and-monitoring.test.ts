@@ -1,4 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
+import './application-runtime.fixtures';
 import {
   getConsoleApplicationConversationMessages,
   getConsoleApplicationRunConversationMessages,
@@ -16,7 +17,7 @@ import {
   getConsoleApplicationRuntimeActivity,
   getConsoleDebugVariableSnapshot,
   resolveConsoleRuntimeDebugArtifacts
-} from './application-runtime.fixtures';
+} from '../../../console/application-runtime';
 
 describe('console application runtime stream client', () => {
   test('resolves runtime debug artifacts in one request', async () => {

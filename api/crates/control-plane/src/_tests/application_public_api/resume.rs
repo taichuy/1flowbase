@@ -1006,4 +1006,5 @@ mod tests {
         );
     }
 }
+#[path = "resume/callback_resume.rs"]
 mod callback_resume;

@@ -1110,4 +1110,5 @@ impl FrontendBlockCatalogRepository for MemoryPluginManagementRepository {
 
 #[path = "repository/authentication.rs"]
 mod authentication;
+#[path = "repository/provider_repository.rs"]
 mod provider_repository;

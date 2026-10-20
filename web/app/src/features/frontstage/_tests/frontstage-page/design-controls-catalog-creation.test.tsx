@@ -1,11 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import {
-  AppProviders,
-  FrontStagePage,
   FrontStagePageHarness,
-  type NormalizedFrontstageBlockCatalogEntry,
   SLOW_FRONTSTAGE_TEST_TIMEOUT,
-  act,
   activateDesignMode,
   authenticate,
   blockTreeApi,
@@ -13,14 +9,20 @@ import {
   createCatalogEntry,
   createPageContent,
   exitDesignMode,
-  fireEvent,
   mockFrontstageBlockCatalog,
   mockPageContentSaveState,
-  pageContentSaveHook,
+  pageContentSaveHook
+} from './design-controls.fixtures';
+import { AppProviders } from '../../../../app/AppProviders';
+import { FrontStagePage } from '../../pages/FrontStagePage';
+import { type NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import {
+  act,
+  fireEvent,
   render,
   screen,
   waitFor
-} from './design-controls.fixtures';
+} from '@testing-library/react';
 
 describe('FrontStagePage - design controls', () => {
   test('shows real page tree operation states without local draft wording', () => {

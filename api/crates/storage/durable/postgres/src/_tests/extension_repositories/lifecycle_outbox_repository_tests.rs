@@ -1067,4 +1067,5 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
         "completed history remains unchanged"
     );
 }
+#[path = "lifecycle_outbox_repository_tests/governance_history.rs"]
 mod governance_history;

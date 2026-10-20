@@ -1006,4 +1006,5 @@ async fn ac_2153_version_switch_publishes_all_workspace_demand_and_retains_artif
         assert!(repository.get_installation(target).await.unwrap().is_some());
     }
 }
+#[path = "family/family_uninstall.rs"]
 mod family_uninstall;

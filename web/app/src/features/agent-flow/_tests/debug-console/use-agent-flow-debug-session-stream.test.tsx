@@ -1,20 +1,21 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
-  act,
   answerReasoningDelta,
   answerTextDelta,
-  applyDebugStreamEventToAssistantMessage,
-  applyDebugStreamEventToTrace,
-  collectLlmToolCallbacks,
-  createDefaultAgentFlowDocument,
   createQueryClient,
   createStreamRunDetail,
   createWrapper,
-  reconcileSnapshotTraceWithLiveEvents,
-  renderHook,
-  runtimeApi,
-  useAgentFlowDebugSession
+  runtimeApi
 } from './use-agent-flow-debug-session-stream.fixtures';
+import { act, renderHook } from '@testing-library/react';
+import {
+  applyDebugStreamEventToAssistantMessage,
+  applyDebugStreamEventToTrace,
+  reconcileSnapshotTraceWithLiveEvents
+} from '../../lib/debug-console/stream-events';
+import { collectLlmToolCallbacks } from '../../components/debug-console/conversation/llm-tool-callbacks';
+import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import { useAgentFlowDebugSession } from '../../hooks/runtime/useAgentFlowDebugSession';
 
 describe('useAgentFlowDebugSession streaming', () => {
   test('AC-004 retains a real-time tool lifecycle while its run snapshot is still behind', () => {

@@ -1,4 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
+import { sseResponse } from './application-runtime.fixtures';
 import {
   completeConsoleRunArchiveUploadSession,
   createConsoleApplicationRunsArchive,
@@ -10,11 +11,10 @@ import {
   getConsoleRuntimeDebugArtifact,
   getConsoleRuntimeDebugStream,
   normalizeConsoleRuntimeEvent,
-  sseResponse,
   startConsoleFlowDebugRunStream,
   subscribeConsoleFlowDebugRunStream,
   uploadConsoleRunArchiveChunk
-} from './application-runtime.fixtures';
+} from '../../../console/application-runtime';
 
 describe('console application runtime stream client', () => {
   test('AC-010 accepts canonical tool calls and rejects compatibility aliases', () => {

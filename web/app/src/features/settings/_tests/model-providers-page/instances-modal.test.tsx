@@ -1,23 +1,29 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
-  AppProviders,
-  ModelProviderInstancesModal,
-  SettingsModelProvidersSection,
   authenticateAsModelProviderManager,
-  buildMainInstanceSettings,
-  buildSettingsModelProviderInstances,
-  buildSettingsModelProviderOptions,
-  fireEvent,
-  modelProviderCatalogEntries,
   modelProvidersApi,
   openProviderInstancesModal,
-  openSourceManagementTab,
-  primaryContractProviderModels,
+  openSourceManagementTab
+} from './instances-modal.fixtures';
+import { AppProviders } from '../../../../app/AppProviders';
+import { ModelProviderInstancesModal } from '../../components/model-providers/ModelProviderInstancesModal';
+import { SettingsModelProvidersSection } from '../../pages/settings-page/SettingsModelProvidersSection';
+import {
+  buildMainInstanceSettings,
+  buildSettingsModelProviderInstances,
+  buildSettingsModelProviderOptions
+} from '../model-provider-test-fixtures';
+import {
+  fireEvent,
   render,
   screen,
   waitFor,
   within
-} from './instances-modal.fixtures';
+} from '@testing-library/react';
+import {
+  modelProviderCatalogEntries,
+  primaryContractProviderModels
+} from '../../../../test/model-provider-contract-fixtures';
 
 describe('ModelProvidersPage - instances modal', () => {
   test(

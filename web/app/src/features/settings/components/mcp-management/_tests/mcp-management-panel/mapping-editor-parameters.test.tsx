@@ -1,16 +1,13 @@
 import { describe, test, expect } from 'vitest';
 import {
   clickSegmentedOption,
-  fireEvent,
   interfaceCapabilities,
   mcpManagementApi,
   renderPanel,
-  screen,
   selectAntdOption,
-  setFullDescription,
-  waitFor,
-  within
+  setFullDescription
 } from './mapping-editor.fixtures';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 describe('McpManagementPanel', () => {
   test('adds all remaining mapping parameters from the mapping layer', async () => {

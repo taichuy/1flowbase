@@ -807,4 +807,5 @@ fn d2_ac_004_openai_blocking_terminal_status_matrix() {
         Err(OpenAiRouteError::RequiredAction)
     ));
 }
+#[path = "tests/blocking_projection.rs"]
 mod blocking_projection;

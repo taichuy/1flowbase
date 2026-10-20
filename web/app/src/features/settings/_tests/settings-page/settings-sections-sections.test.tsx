@@ -3,14 +3,12 @@ import {
   authenticateWithPermissions,
   consoleNavigationApi,
   dataModelsApi,
-  fireEvent,
   hostInfrastructureApi,
   renderApp,
-  screen,
   settingsConsoleNavigation,
-  systemRuntimeApi,
-  waitFor
+  systemRuntimeApi
 } from './settings-sections.fixtures';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 describe('SettingsPage', () => {
   test('redirects /settings/docs to API key when docs is hidden', async () => {

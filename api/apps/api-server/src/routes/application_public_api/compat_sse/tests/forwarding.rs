@@ -1051,4 +1051,5 @@ mod anthropic_projection;
 #[path = "forwarding/_tests/executor_support.rs"]
 mod executor_support;
 use executor_support::RejectAttachExecutor;
+#[path = "forwarding/openai_projection.rs"]
 mod openai_projection;

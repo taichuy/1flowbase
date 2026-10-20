@@ -1,4 +1,8 @@
 import {
+  collectBindingSelectors,
+  isRuntimeSelectorSource
+} from './validation/binding-selectors';
+import {
   buildNodeDependencyMap,
   validateAnswerPresentationReferences,
   validateTerminalTopology
@@ -10,7 +14,6 @@ import {
   type FlowAuthoringDocument
 } from '@1flowbase/flow-schema';
 import type {
-  FlowBinding,
   FlowConditionGroupDocument,
   FlowConditionRuleDocument,
   FlowEdgeDocument,
@@ -20,10 +23,7 @@ import type {
 
 import { evaluateSchemaRule } from '../../../shared/schema-ui/v1/runtime/rule-evaluator';
 import type { AgentFlowModelProviderOptions } from '../api/model-provider-options';
-import {
-  extractDataModelQuerySelectors,
-  getActiveNodeBindings
-} from './data-model-query-binding';
+import { getActiveNodeBindings } from './data-model-query-binding';
 import {
   createLlmToolSourceHandleId,
   getLlmToolInternalLlmNodePolicy,
@@ -37,15 +37,13 @@ import {
   nodeUsesErrorBranch
 } from './policy/node-error-policy';
 import { getBuiltinNodeRuntimeContract } from './node-definitions/contracts';
-import { extractNamedBindingSelectors } from './named-binding-expressions';
+
 import type { NodeDefinitionField } from './node-definitions';
 import { nodeDefinitions } from './node-definitions';
 import { outputTypeSupportsJsonSchema } from './output-contract/schema';
 import { isOutputVariableKeyAllowed } from './output-contract/variable-key';
 import { hasPluginContributionRef } from './plugin-node-definitions';
 import {
-  collectConditionSelectors,
-  collectIfElseBranchSelectors,
   getIfElseBranchesFromBindings,
   isConditionGroup,
   isConditionRule
@@ -54,17 +52,13 @@ import {
   isSelectorVisible,
   listVisibleSelectorOptions
 } from './selector-options';
-import { workflowTriggerVariableNodeId } from './variables/workflow-trigger-variables';
-import { parseTemplateSelectorTokens } from './template-binding';
-import {
-  environmentVariableNodeId,
-  type AgentFlowEnvironmentVariable
-} from './variables/application-environment-variables';
+
+import { type AgentFlowEnvironmentVariable } from './variables/application-environment-variables';
 import {
   conversationVariableNodeId,
   listConversationVariables
 } from './variables/conversation-variables';
-import { systemVariableNodeId } from './variables/system-variables';
+
 import { i18nText } from '../../../shared/i18n/text';
 import { validateCodeNamedBindings } from './validation/code-named-bindings';
 import { pushFieldIssue, type AgentFlowIssue } from './validation/issues';
@@ -302,38 +296,6 @@ function getAllowedPluginNodeOutputKeys(
   return new Set(allowed);
 }
 
-export function collectBindingSelectors(binding: FlowBinding): string[][] {
-  switch (binding.kind) {
-    case 'templated_text':
-      return parseTemplateSelectorTokens(binding.value);
-    case 'i18n_text':
-      return [];
-    case 'selector':
-      return [binding.value];
-    case 'selector_list':
-      return binding.value;
-    case 'variable_groups':
-      return binding.value.flatMap((group) => group.candidates);
-    case 'prompt_messages':
-      return binding.value.flatMap((message) =>
-        parseTemplateSelectorTokens(message.content.value)
-      );
-    case 'named_bindings':
-      return extractNamedBindingSelectors(binding.value);
-    case 'condition_group':
-      return collectConditionSelectors(binding.value);
-    case 'if_else_branches':
-      return collectIfElseBranchSelectors(binding.value.branches);
-    case 'state_write':
-      return binding.value.flatMap((entry) => [
-        ...(entry.source ? [entry.source] : []),
-        ...collectStateWriteValueSelectors(entry.value)
-      ]);
-    case 'data_model_query':
-      return extractDataModelQuerySelectors(binding.value);
-  }
-}
-
 function validateVariableAggregatorGroups(
   issues: AgentFlowIssue[],
   node: FlowNodeDocument,
@@ -460,24 +422,6 @@ function validateVariableAggregatorGroups(
   }
 }
 
-function collectStateWriteValueSelectors(
-  value: Extract<FlowBinding, { kind: 'state_write' }>['value'][number]['value']
-): string[][] {
-  if (!value) {
-    return [];
-  }
-
-  if (value.kind === 'selector') {
-    return [value.selector];
-  }
-
-  if (value.kind === 'templated_text') {
-    return parseTemplateSelectorTokens(value.value);
-  }
-
-  return [];
-}
-
 function collectVisibleInternalToolBranchNodeIds(
   startNodeId: string,
   nodeById: Map<string, FlowNodeDocument>,
@@ -588,15 +532,6 @@ function validateVisibleInternalLlmToolBranches(
       }
     }
   }
-}
-
-export function isRuntimeSelectorSource(source: string) {
-  return (
-    source === systemVariableNodeId ||
-    source === environmentVariableNodeId ||
-    source === conversationVariableNodeId ||
-    source === workflowTriggerVariableNodeId
-  );
 }
 
 function validateVariableAssignmentOperations(

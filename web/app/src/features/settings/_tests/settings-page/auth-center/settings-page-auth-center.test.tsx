@@ -3,13 +3,10 @@ import {
   authCenterApi,
   authenticateWithPermissions,
   authenticatorConfigSchema,
-  fireEvent,
-  renderApp,
-  screen,
-  useAuthStore,
-  waitFor,
-  within
+  renderApp
 } from './settings-page.fixtures';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { useAuthStore } from '../../../../../state/auth-store';
 
 describe('SettingsPage', () => {
   test('renders auth center actions and opens configuration drawer', async () => {

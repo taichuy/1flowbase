@@ -841,4 +841,5 @@ async fn http_request_node_projects_binary_response_file_descriptor_when_enabled
     );
     server.abort();
 }
+#[path = "http_request/response_budgets.rs"]
 mod response_budgets;

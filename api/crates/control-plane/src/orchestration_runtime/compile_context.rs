@@ -1075,4 +1075,3 @@ use routing_catalog::*;
 
 pub(super) use compile_issues::ensure_compiled_plan_runnable;
 pub(super) use compile_issues::ensure_compiled_plan_runnable_for_node;
-use compile_issues::*;

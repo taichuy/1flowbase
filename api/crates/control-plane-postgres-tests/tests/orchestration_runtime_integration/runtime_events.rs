@@ -758,4 +758,5 @@ async fn assistant_activity_sequence_orders_runtime_event_backfill_by_interval_s
     assert_eq!(page[1].event_type, "assistant_tool_call_started");
     assert_eq!(page[2].event_type, "flow_finished");
 }
+#[path = "runtime_events/callback_control.rs"]
 mod callback_control;

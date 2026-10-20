@@ -1,20 +1,21 @@
 import { describe, test, expect } from 'vitest';
+import { runtimeApi, trajectoryApi } from './floating-windows.fixtures';
+import { App as AntdApp } from 'antd';
+import { AppProviders } from '../../../../../app/AppProviders';
+import { ApplicationLogsPage } from '../../../pages/ApplicationLogsPage';
 import {
-  AntdApp,
-  AppProviders,
-  ApplicationLogsPage,
   act,
-  applicationRunsPage,
-  conversationMessagesPage,
   fireEvent,
-  lastElement,
   render,
-  runtimeApi,
   screen,
-  trajectoryApi,
   waitFor,
   within
-} from './floating-windows.fixtures';
+} from '@testing-library/react';
+import {
+  applicationRunsPage,
+  conversationMessagesPage,
+  lastElement
+} from './floating-windows.support';
 
 describe('ApplicationLogsPage - floating windows shell', () => {
   test('uses the task invocation count for both the summary and count column', async () => {

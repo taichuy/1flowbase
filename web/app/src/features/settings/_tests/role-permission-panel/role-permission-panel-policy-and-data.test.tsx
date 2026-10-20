@@ -1,21 +1,19 @@
 import { describe, test, expect } from 'vitest';
 import {
-  allRowScopeOptions,
-  appI18n,
-  consolePolicyCatalog,
-  fireEvent,
-  path,
   permissionsApi,
-  policyModeOptions,
   renderPanel,
-  rolesApi,
-  screen,
+  rolesApi
+} from './role-permission-panel.fixtures';
+import {
+  allRowScopeOptions,
+  consolePolicyCatalog,
+  policyModeOptions,
   selectDefaultPolicyScope,
   selectPolicyCombobox,
-  setPreferredLocale,
-  waitFor,
-  within
-} from './role-permission-panel.fixtures';
+  setPreferredLocale
+} from './fixtures';
+import { appI18n } from '../../../../shared/i18n/app-i18n';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 describe('RolePermissionPanel', () => {
   test('AC-004 renders a catalog group absent from stored policy as disabled and enables it as full', async () => {

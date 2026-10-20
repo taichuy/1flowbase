@@ -1,26 +1,24 @@
 import { describe, test, expect } from 'vitest';
 import {
-  AgentFlowEditorStoreProvider,
   DocumentObserver,
-  NodeConfigTab,
   SelectionSeed,
   clickModelOption,
-  createDefaultAgentFlowDocument,
   createInitialState,
   fetchModelProviderOptionsSpy,
-  fireEvent,
   mockElementRect,
-  modelProviderOptionsContract,
   openModelDropdown,
   openModelSettings,
   primaryProviderFirstModel,
   renderWithProviders,
-  screen,
   secondaryProviderFirstGroup,
   secondaryProviderFirstModel,
-  secondaryProviderOption,
-  waitFor
+  secondaryProviderOption
 } from './llm-model-provider-field.fixtures';
+import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
+import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { modelProviderOptionsContract } from '../../../../test/model-provider-contract-fixtures';
 
 describe('LlmModelField', () => {
   test('renders provider-level parameter controls inside the model dialog instead of the inspector body', async () => {

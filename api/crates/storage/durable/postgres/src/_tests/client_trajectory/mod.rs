@@ -747,4 +747,5 @@ async fn client_trajectory_full_request_value_budget_excludes_fixed_observation_
     };
     assert_eq!(&page.items[0].value, value);
 }
+#[path = "archive_migrations.rs"]
 mod archive_migrations;

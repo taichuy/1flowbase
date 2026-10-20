@@ -1,31 +1,30 @@
 import { describe, test, expect, vi } from 'vitest';
+import './data-models-page.fixtures';
+import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
 import {
-  DataModelFormDrawer,
   SLOW_SETTINGS_PAGE_TEST_TIMEOUT,
-  act,
   contactsModel,
   createAppView,
-  dataModelStatusHelp,
   dataModelsApi,
-  fireEvent,
   generalTemplateSystemFields,
-  i18nText,
   openContactsDataModelEditor,
   openDataModelEditorByTitle,
   orderedTreeTemplateSystemFields,
+  renderApp
+} from './support';
+import { dataModelStatusHelp } from '../../components/data-models/data-model-help-text';
+import {
+  fireEvent,
   render,
-  renderApp,
   screen,
   waitFor,
   within
-} from './data-models-page.fixtures';
+} from '@testing-library/react';
+import { i18nText } from '../../../../shared/i18n/text';
 
 describe('Settings data models page', () => {
   test('hides selected data source implementation metadata in model management', async () => {
-    // Await the real lazy route commits before starting the UI readiness query.
-    await act(async () => {
-      render(createAppView('/settings/data-models?source=main'));
-    });
+    render(createAppView('/settings/data-models?source=main'));
 
     expect(
       await screen.findByRole('heading', { name: '主数据源' })

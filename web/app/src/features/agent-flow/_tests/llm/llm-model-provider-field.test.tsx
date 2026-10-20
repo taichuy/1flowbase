@@ -1,15 +1,9 @@
 import { describe, test, expect } from 'vitest';
 import {
-  AgentFlowEditorStoreProvider,
   DocumentObserver,
-  NodeConfigTab,
   SelectionSeed,
   clickModelOption,
-  createDefaultAgentFlowDocument,
   createInitialState,
-  fireEvent,
-  listLlmProviderOptions,
-  modelProviderOptionsContract,
   openModelDropdown,
   openModelSettings,
   primaryProviderFirstGroup,
@@ -17,10 +11,14 @@ import {
   primaryProviderOption,
   primaryProviderSecondGroup,
   primaryProviderSecondModel,
-  renderWithProviders,
-  screen,
-  waitFor
+  renderWithProviders
 } from './llm-model-provider-field.fixtures';
+import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
+import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { listLlmProviderOptions } from '../../lib/model-options';
+import { modelProviderOptionsContract } from '../../../../test/model-provider-contract-fixtures';
 
 describe('LlmModelField', () => {
   test('maps provider-level parameter schema and effective model limits from provider options', () => {

@@ -1129,4 +1129,5 @@ async fn provider_runtime_compact_preserves_typed_provider_failure() {
 }
 
 mod network_egress;
+#[path = "strict_bindings.rs"]
 mod strict_bindings;

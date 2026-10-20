@@ -3,11 +3,9 @@ import {
   domEvents,
   mcpManagementApi,
   renderPanelWithMountedTool,
-  screen,
-  vditorMock,
-  waitFor,
-  within
+  vditorMock
 } from './client-and-tool-editor.fixtures';
+import { screen, waitFor, within } from '@testing-library/react';
 
 describe('McpManagementPanel', () => {
   test('AC-003 AC-004 renders persistent Agent CLI configuration commands with the current endpoint and API key', async () => {

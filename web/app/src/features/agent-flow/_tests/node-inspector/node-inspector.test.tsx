@@ -1,28 +1,26 @@
 import { describe, test, expect, vi } from 'vitest';
+import { domEvents } from './node-inspector.fixtures';
+import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import {
-  AgentFlowEditorStoreProvider,
   DocumentObserver,
   FocusIssueSeed,
-  NodeConfigTab,
-  NodeDetailPanel,
-  NodeInspector,
   SelectionSeed,
   createAgentFlowNodeSchemaAdapterSpy,
-  createDefaultAgentFlowDocument,
   createInitialState,
-  createNodeDocument,
-  domEvents,
   fetchModelProviderOptionsSpy,
   getLlmNodeConfig,
-  modelProviderOptionsContract,
   primaryProviderFirstModel,
   primaryProviderOption,
   renderWithProviders,
-  resolveAgentFlowNodeSchemaSpy,
-  screen,
-  waitFor,
-  within
-} from './node-inspector.fixtures';
+  resolveAgentFlowNodeSchemaSpy
+} from './support';
+import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
+import { NodeDetailPanel } from '../../components/detail/NodeDetailPanel';
+import { NodeInspector } from '../../components/inspector/NodeInspector';
+import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import { createNodeDocument } from '../../lib/document/node-factory';
+import { modelProviderOptionsContract } from '../../../../test/model-provider-contract-fixtures';
+import { screen, waitFor, within } from '@testing-library/react';
 
 describe('NodeInspector core', () => {
   test('reads only the current SQL binding and writes it on edit', async () => {

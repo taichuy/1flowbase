@@ -863,4 +863,5 @@ async fn explicit_settings_migration_rolls_back_when_legacy_cleanup_fails() {
             .unwrap();
     assert_eq!(new_definition_count, 0);
 }
+#[path = "settings_feature_grant_migration/settings_features.rs"]
 mod settings_features;

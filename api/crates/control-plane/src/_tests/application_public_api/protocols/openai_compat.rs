@@ -698,4 +698,5 @@ fn openai_responses_unknown_root_is_residual_without_duplicating_typed_roots() {
         assert!(!envelope.body.contains_key(typed), "{typed}");
     }
 }
+#[path = "openai_compat/field_receipts.rs"]
 mod field_receipts;

@@ -21,10 +21,7 @@ export function useModelProviderInstanceController({
   catalogEntry,
   instance,
   cachedModelCatalog,
-  pricingTargets,
   defaultIncludedInMain,
-  submitting,
-  onClose,
   onSubmit,
   onPreviewModels,
   onRevealSecret,
@@ -33,8 +30,6 @@ export function useModelProviderInstanceController({
   onDiscardDraft,
   onValidate,
   onRefreshUsage,
-  onCountResetCredits,
-  onConsumeResetCredit
 }: ModelProviderInstanceDrawerProps) {
   const [form] = Form.useForm<{
     display_name: string;

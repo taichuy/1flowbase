@@ -1096,6 +1096,7 @@ fn native_resumed_websocket_round_preserves_identity_and_tool_items() {
     );
 }
 
+#[path = "projector/selection_and_failures.rs"]
 mod selection_and_failures;
 #[path = "_tests/selection_transitions.rs"]
 mod selection_transitions;

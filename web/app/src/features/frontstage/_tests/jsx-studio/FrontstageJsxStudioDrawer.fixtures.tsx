@@ -1,27 +1,21 @@
 import {
   act,
   fireEvent,
-  render as testingRender,
-  screen,
-  waitFor,
-  within
+  render as testingRender
 } from '@testing-library/react';
 import { App } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, vi } from 'vitest';
 
 import type { ConsoleFrontstageComponent } from '@1flowbase/api-client';
-import {
-  LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC,
-  sha256Text
-} from '@1flowbase/page-runtime';
+import { sha256Text } from '@1flowbase/page-runtime';
 
 import {
   appI18n,
   loadApplicationI18nResources
 } from '../../../../shared/i18n/app-i18n';
-import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
+
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
@@ -438,25 +432,17 @@ const domEvents = {
 };
 
 export {
-  FrontstageJsxStudioDrawer,
-  LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC,
   antdAppMocks,
   block,
   blockCodeHook,
   blockTabsHook,
   catalogEntry,
   domEvents,
-  expect,
   interfaceCapabilitiesHook,
   monacoEditor,
   monacoHook,
   renderSettled,
-  screen,
   templateApi,
   templateAuth,
-  test,
-  uiTemplatesHook,
-  vi,
-  waitFor,
-  within
+  uiTemplatesHook
 };

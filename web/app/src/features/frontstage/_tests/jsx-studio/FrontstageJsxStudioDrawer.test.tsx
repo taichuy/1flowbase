@@ -1,6 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
-  FrontstageJsxStudioDrawer,
   antdAppMocks,
   block,
   blockCodeHook,
@@ -10,13 +9,12 @@ import {
   interfaceCapabilitiesHook,
   monacoEditor,
   renderSettled,
-  screen,
   templateApi,
   templateAuth,
-  uiTemplatesHook,
-  waitFor,
-  within
+  uiTemplatesHook
 } from './FrontstageJsxStudioDrawer.fixtures';
+import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
+import { screen, waitFor, within } from '@testing-library/react';
 
 describe('FrontstageJsxStudioDrawer', () => {
   test('AC-004/009 exposes block tree without the legacy child-container write rail', async () => {

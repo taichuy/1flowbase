@@ -1049,4 +1049,5 @@ async fn wait_for_database_connection(
 fn quote_identifier(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
+#[path = "system_recovery_stopped_server/recovery_flows.rs"]
 mod recovery_flows;

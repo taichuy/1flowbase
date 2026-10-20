@@ -978,5 +978,6 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
     );
 }
 
+#[path = "callback_tasks/callback_completion.rs"]
 mod callback_completion;
 mod event_projection;

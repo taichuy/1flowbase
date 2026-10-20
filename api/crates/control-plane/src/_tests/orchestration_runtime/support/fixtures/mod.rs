@@ -878,6 +878,7 @@ fn runtime_metadata_from_model_definition(
         ),
     }
 }
+#[path = "flow_documents.rs"]
 mod flow_documents;
 use flow_documents::{
     build_callback_flow_document, build_human_input_flow_document,

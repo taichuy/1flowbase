@@ -1,7 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import fs from 'node:fs';
-import path from 'node:path';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, vi } from 'vitest';
 
 const rolesApi = vi.hoisted(() => ({
   settingsRolesQueryKey: ['settings', 'roles'],
@@ -69,22 +66,13 @@ import {
 } from '../../../../shared/i18n/app-i18n';
 import {
   authenticate,
-  setPreferredLocale,
   renderRolePermissionPanel,
-  selectDefaultPolicyScope,
-  selectPolicyCombobox,
   defaultDataPolicy,
-  policyModeOptions,
-  allRowScopeOptions,
   consolePolicyCatalog,
   defaultDataModels
 } from './fixtures';
 
 let RolePermissionPanel: typeof import('../../components/RolePermissionPanel').RolePermissionPanel;
-import {
-  findReorderIndices,
-  reorderItems
-} from '../../components/role-permissions/policy-order';
 
 function renderPanel(canManageRoles = true) {
   return renderRolePermissionPanel(RolePermissionPanel, canManageRoles);
@@ -176,25 +164,4 @@ beforeEach(async () => {
   );
 });
 
-export {
-  allRowScopeOptions,
-  appI18n,
-  consolePolicyCatalog,
-  expect,
-  findReorderIndices,
-  fireEvent,
-  fs,
-  path,
-  permissionsApi,
-  policyModeOptions,
-  renderPanel,
-  reorderItems,
-  rolesApi,
-  screen,
-  selectDefaultPolicyScope,
-  selectPolicyCombobox,
-  setPreferredLocale,
-  test,
-  waitFor,
-  within
-};
+export { permissionsApi, renderPanel, rolesApi };

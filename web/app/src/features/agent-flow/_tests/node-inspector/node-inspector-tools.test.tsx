@@ -1,20 +1,18 @@
 import { describe, test, expect, vi } from 'vitest';
+import { domEvents } from './node-inspector.fixtures';
+import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import {
-  AgentFlowEditorStoreProvider,
   DocumentObserver,
-  NodeConfigTab,
   SelectionSeed,
-  createEdgeDocument,
   createInitialState,
-  createNodeDocument,
-  domEvents,
   getLlmNodeConfig,
-  readFileSync,
-  renderWithProviders,
-  screen,
-  waitFor,
-  within
-} from './node-inspector.fixtures';
+  renderWithProviders
+} from './support';
+import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
+import { createEdgeDocument } from '../../lib/document/edge-factory';
+import { createNodeDocument } from '../../lib/document/node-factory';
+import { readFileSync } from 'node:fs';
+import { screen, waitFor, within } from '@testing-library/react';
 
 describe('NodeInspector core', () => {
   test('edits LLM mounted tools through compact rows and a modal form', async () => {

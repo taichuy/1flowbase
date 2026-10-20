@@ -855,18 +855,14 @@ mod content_mapping;
 mod media_validation;
 
 pub(crate) use content_mapping::continuation_messages;
+#[cfg(test)]
 pub(super) use content_mapping::openai_content;
-pub(super) use content_mapping::openai_image_content_block;
 pub(super) use content_mapping::openai_message_content;
 pub(super) use content_mapping::parse_openai_tool_arguments;
 pub(super) use content_mapping::responses_input_message;
 pub(super) use content_mapping::responses_previous_history;
-pub(super) use content_mapping::OpenAiMappedContent;
 pub(super) use content_mapping::ResponsesInputMapping;
-pub(super) use content_mapping::ResponsesInputMessage;
 use content_mapping::*;
 
-pub(super) use media_validation::reject_unknown_openai_content_part_fields;
-pub(super) use media_validation::validate_openai_image_url_value;
 pub(super) use media_validation::validate_openai_supported_content_part;
 pub(super) use media_validation::validate_responses_content_parts;

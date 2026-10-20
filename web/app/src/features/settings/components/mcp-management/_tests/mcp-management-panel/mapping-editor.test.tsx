@@ -1,17 +1,14 @@
 import { describe, test, expect } from 'vitest';
 import {
   clickSegmentedOption,
-  fireEvent,
   interfaceCapabilities,
   mcpManagementApi,
   publishApplicationApiCapability,
   renderPanel,
-  screen,
   selectAntdOption,
-  setFullDescription,
-  waitFor,
-  within
+  setFullDescription
 } from './mapping-editor.fixtures';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 describe('McpManagementPanel', () => {
   test('uses nested interface descriptors for mapping and debug interface arguments', async () => {

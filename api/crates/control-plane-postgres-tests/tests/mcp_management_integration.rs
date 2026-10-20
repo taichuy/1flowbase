@@ -761,4 +761,5 @@ async fn mcp_bundle_graph_replace_is_atomic_and_preserves_credentials_and_other_
         "New name"
     );
 }
+#[path = "mcp_management_integration/workspace_management.rs"]
 mod workspace_management;

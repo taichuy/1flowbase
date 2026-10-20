@@ -1078,4 +1078,5 @@ async fn delivery_1560_d5_f01_integrity_warning_previews_and_requires_structured
         "bundle_runtime_profile"
     );
 }
+#[path = "mcp_bundle_routes/bundle_export.rs"]
 mod bundle_export;

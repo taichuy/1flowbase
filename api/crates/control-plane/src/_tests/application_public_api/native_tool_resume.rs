@@ -850,4 +850,5 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
             .is_err()
     );
 }
+#[path = "native_tool_resume/processing_receipts.rs"]
 mod processing_receipts;

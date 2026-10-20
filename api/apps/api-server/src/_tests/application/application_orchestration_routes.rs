@@ -485,4 +485,5 @@ async fn ac_002_ac_004_exports_selected_agent_flow_and_workflow_as_zip_archive()
     );
     assert!(workflow["workflow_trigger_config"].get("enabled").is_none());
 }
+#[path = "application_orchestration_routes/archive_import.rs"]
 mod archive_import;

@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { spawnSync } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '../../../..');
 const runtimeRoot = path.join(repoRoot, 'api/crates/interface-runtime');
@@ -15,41 +16,48 @@ function read(relativePath) {
 
 const { productionRustSources } = require('./support/rust-sources.js');
 
+let metadata;
+function workspaceMetadata() {
+  if (!metadata) {
+    const result = spawnSync('cargo', [
+      'metadata', '--no-deps', '--offline', '--locked', '--format-version=1',
+      '--manifest-path', path.join(repoRoot, 'api/Cargo.toml'),
+    ], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    assert.equal(result.status, 0, result.stderr || result.error?.message);
+    metadata = JSON.parse(result.stdout);
+  }
+  return metadata;
+}
+
+function forbiddenInternalDependencies(dependencies) {
+  // Cargo resolves workspace inheritance, target sections and renamed packages.
+  // Third-party vendor paths remain external utilities, not first-party owners.
+  const ownerRoots = ['api/crates', 'api/apps'].map((root) => path.join(repoRoot, root) + path.sep);
+  const owned = (file) => typeof file === 'string' && ownerRoots.some((root) => file.startsWith(root));
+  const firstParty = new Set(workspaceMetadata().packages
+    .filter((item) => owned(item.manifest_path)).map((item) => item.name));
+  return dependencies.filter((dependency) => dependency.kind !== 'dev'
+    && (firstParty.has(dependency.name) || owned(dependency.path))
+    && dependency.name !== 'domain');
+}
+
 function forbiddenSourceImports(source) {
   const forbidden = [
-    'api_server::',
-    'axum::',
-    'control_plane::',
-    'plugin_framework::',
-    'runtime_extension_host::',
-    'storage_durable::',
-    'storage_durable_postgres::',
-    'storage_ephemeral::',
+    'api_server::', 'axum::', 'sqlx::', 'reqwest::',
+    ...workspaceMetadata().packages.filter((item) => item.name !== 'domain'
+      && item.name !== 'interface-runtime').map((item) => `${item.name.replaceAll('-', '_')}::`),
   ];
-  return forbidden.filter((pattern) => source.includes(pattern));
+  return [...new Set(forbidden)].filter((pattern) => source.includes(pattern));
 }
 
 test('Delivery 1944 keeps interface-runtime dependency closed and AuthN adapter-owned', () => {
-  const cargo = read('api/crates/interface-runtime/Cargo.toml');
   const production = productionRustSources(path.join(runtimeRoot, 'src'));
-  const dependencies = cargo
-    .match(/\[dependencies\]([\s\S]*?)(?:\n\[|$)/u)[1]
-    .split('\n')
-    .map((line) => line.match(/^([a-zA-Z0-9_-]+)(?:\.workspace)?\s*=/u)?.[1])
-    .filter(Boolean)
-    .sort();
-
-  // Only domain is an allowed internal Cargo edge; external utility dependencies
-  // and private module layout are implementation choices, not architecture APIs.
-  const internalNames = fs.readdirSync(path.join(repoRoot, 'api/crates'), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .flatMap((entry) => {
-      const manifest = path.join(repoRoot, 'api/crates', entry.name, 'Cargo.toml');
-      return fs.existsSync(manifest) ? [fs.readFileSync(manifest, 'utf8').match(/^name\s*=\s*"([^"]+)"/mu)?.[1]] : [];
-    }).filter(Boolean);
-  assert.deepEqual(dependencies.filter((name) => internalNames.includes(name)), ['domain']);
-  for (const infrastructure of ['axum', 'sqlx', 'reqwest', 'storage-durable', 'storage-durable-postgres', 'storage-ephemeral']) {
-    assert.equal(dependencies.includes(infrastructure), false, infrastructure);
+  const runtime = workspaceMetadata().packages.find((item) => item.name === 'interface-runtime');
+  assert.ok(runtime, 'Cargo must inventory the actual interface-runtime package');
+  assert.deepEqual(forbiddenInternalDependencies(runtime.dependencies), []);
+  for (const infrastructure of ['axum', 'sqlx', 'reqwest']) {
+    assert.equal(runtime.dependencies.some((item) => item.kind !== 'dev'
+      && item.name === infrastructure), false, infrastructure);
   }
   assert.deepEqual(forbiddenSourceImports(production), []);
   assert.deepEqual(forbiddenSourceImports('use axum::http::HeaderMap;'), ['axum::']);
@@ -257,4 +265,17 @@ test('production boundary follows private splits and excludes deliberate test fi
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+
+test('Kernel dependency boundary rejects nested Storage packages and aliases but permits utility dependencies', () => {
+  const object = { name: 'storage-object', rename: 'artifacts', source: null, kind: null,
+    path: path.join(repoRoot, 'api/crates/storage/object') };
+  assert.deepEqual(forbiddenInternalDependencies([object]), [object]);
+  assert.deepEqual(forbiddenSourceImports('use storage_object::StorageObject;'), ['storage_object::']);
+  assert.deepEqual(forbiddenInternalDependencies([
+    { name: 'domain', rename: null, source: null, kind: null },
+    { name: 'serde', rename: 'wire', source: 'registry+https://github.com/rust-lang/crates.io-index', kind: null },
+    { name: 'utility', source: null, kind: null, path: path.join(repoRoot, 'api/vendor/utility') },
+  ]), []);
 });

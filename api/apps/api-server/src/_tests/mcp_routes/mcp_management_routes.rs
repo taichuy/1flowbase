@@ -842,4 +842,5 @@ async fn mcp_tool_create_requires_tool_id() {
 
 #[path = "mcp_management_routes/instance_discovery.rs"]
 mod instance_discovery;
+#[path = "mcp_management_routes/runtime_interfaces.rs"]
 mod runtime_interfaces;

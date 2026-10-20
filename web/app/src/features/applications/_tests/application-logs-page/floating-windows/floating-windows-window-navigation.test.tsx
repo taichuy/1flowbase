@@ -1,28 +1,25 @@
 import { describe, test, expect, vi } from 'vitest';
+import { mockViewportSize, runtimeApi } from './floating-windows.fixtures';
+import { App as AntdApp } from 'antd';
+import { AppProviders } from '../../../../../app/AppProviders';
+import { ApplicationLogsPage } from '../../../pages/ApplicationLogsPage';
 import {
-  AntdApp,
-  AppProviders,
-  ApplicationLogsPage,
   applicationRunsPage,
   conversationMessagesPage,
-  fireEvent,
-  innerHeightSpy,
-  innerWidthSpy,
-  render,
-  runtimeApi,
   sampleRunDetail,
-  sampleRunOverview,
+  sampleRunOverview
+} from './floating-windows.support';
+import {
+  fireEvent,
+  render,
   screen,
   waitFor,
   within
-} from './floating-windows.fixtures';
+} from '@testing-library/react';
 
 describe('ApplicationLogsPage - floating windows shell', () => {
   test('drags and resizes floating run detail window', async () => {
-    innerWidthSpy = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1280);
-    innerHeightSpy = vi
-      .spyOn(window, 'innerHeight', 'get')
-      .mockReturnValue(900);
+    mockViewportSize(1280, 900);
 
     render(
       <AppProviders>

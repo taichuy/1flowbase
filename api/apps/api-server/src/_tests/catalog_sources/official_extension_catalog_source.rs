@@ -1098,4 +1098,5 @@ mod client_collectors;
 
 #[path = "official_extension_catalog_source/artifact_transport.rs"]
 mod artifact_transport;
+#[path = "official_extension_catalog_source/catalog_search.rs"]
 mod catalog_search;

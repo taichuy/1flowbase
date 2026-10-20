@@ -929,6 +929,7 @@ mod current_context;
 #[path = "mcp_protocol_routes/return_controls.rs"]
 mod return_controls;
 
+#[path = "mcp_protocol_routes/call_projection.rs"]
 mod call_projection;
 #[path = "mcp_protocol_routes/discovery.rs"]
 mod discovery;

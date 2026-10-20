@@ -817,4 +817,5 @@ fn sse_json_event(body: &str, event_name: &str) -> Value {
     }
     panic!("OpenAI Compact SSE should contain {event_name}");
 }
+#[path = "compact/callback_compaction.rs"]
 mod callback_compaction;

@@ -975,5 +975,3 @@ impl ApplicationRepository for PgControlPlaneStore {
 }
 
 mod management_queries;
-
-use management_queries::*;

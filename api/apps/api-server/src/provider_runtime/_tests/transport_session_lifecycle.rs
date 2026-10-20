@@ -1026,6 +1026,7 @@ mod target_handoff;
 #[path = "transport_session_lifecycle/http_carrier.rs"]
 mod http_carrier;
 
+#[path = "transport_session_lifecycle/connection_scope.rs"]
 mod connection_scope;
 #[path = "transport_session_lifecycle/successors.rs"]
 mod successors;

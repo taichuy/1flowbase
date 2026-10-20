@@ -1,5 +1,3 @@
-import { i18nText } from '../../../../../../shared/i18n/text';
-/* eslint-disable @typescript-eslint/no-unused-vars -- shared MCP panel fixture inventory is intentionally broader than each scenario file. */
 import {
   act,
   fireEvent,
@@ -8,7 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { afterEach, beforeEach, expect, test, type Mock, vi } from 'vitest';
+import { afterEach, beforeEach, expect, type Mock, vi } from 'vitest';
 import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 
 const mcpManagementApi = vi.hoisted(() => ({
@@ -196,8 +194,6 @@ import {
   useAuthStore
 } from '../../../../../../state/auth-store';
 import { McpManagementPanel } from '../../McpManagementPanel';
-import { McpToolDebugPanel } from '../../McpToolDebugPanel';
-import { MarkdownIrEditor } from '../../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
 
 const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   {
@@ -274,85 +270,6 @@ function authenticate() {
     }
   });
 }
-
-const publishApplicationApiCapability: ConsoleMcpInterfaceCapability = {
-  ...interfaceCapabilities[0],
-  interface_id: 'publish_application_api',
-  method: 'POST',
-  path: '/api/console/applications/{application_id}/api-publications',
-  name: 'Publish application API',
-  short_description: 'Publish application API',
-  parameter_schema: {
-    type: 'object',
-    properties: {
-      application_id: { type: 'string' },
-      api_enabled: { type: 'boolean' },
-      mapping: {
-        type: 'object',
-        properties: {
-          input: {
-            type: 'object',
-            properties: {
-              query_target: { type: 'string' },
-              history_target: { type: 'string' }
-            },
-            required: ['query_target']
-          },
-          output: {
-            type: 'object',
-            properties: {
-              answer_selector: { type: 'string' }
-            }
-          }
-        },
-        required: ['input', 'output']
-      }
-    },
-    required: ['application_id', 'api_enabled', 'mapping']
-  },
-  parameter_descriptors: [
-    {
-      name: 'application_id',
-      field_type: 'string',
-      parameter_type: 'url' as const,
-      description: 'Application id',
-      required: true,
-      schema: { type: 'string' }
-    },
-    {
-      name: 'api_enabled',
-      field_type: 'boolean',
-      parameter_type: 'json_body' as const,
-      description: 'API enabled',
-      required: true,
-      schema: { type: 'boolean' }
-    },
-    {
-      name: 'mapping.input.query_target',
-      field_type: 'string',
-      parameter_type: 'json_body' as const,
-      description: 'Query target',
-      required: true,
-      schema: { type: 'string' }
-    },
-    {
-      name: 'mapping.input.history_target',
-      field_type: 'string',
-      parameter_type: 'json_body' as const,
-      description: 'History target',
-      required: false,
-      schema: { type: 'string' }
-    },
-    {
-      name: 'mapping.output.answer_selector',
-      field_type: 'string',
-      parameter_type: 'json_body' as const,
-      description: 'Answer selector',
-      required: false,
-      schema: { type: 'string' }
-    }
-  ]
-};
 
 async function renderPanel(
   capabilities: ConsoleMcpInterfaceCapability[] = interfaceCapabilities
@@ -541,15 +458,6 @@ async function clickSegmentedOption(root: HTMLElement, label: string) {
   });
 
   await domEvents.click(option);
-}
-
-async function expandTreeRootIfCollapsed(tree: HTMLElement) {
-  const rootItem = within(tree).getAllByRole('treeitem')[0];
-  if (rootItem?.getAttribute('aria-expanded') === 'false') {
-    const switcher = rootItem.querySelector('.ant-tree-switcher');
-    expect(switcher).toBeInstanceOf(HTMLElement);
-    await domEvents.click(switcher as HTMLElement);
-  }
 }
 
 function visibleTextEntries(root: HTMLElement, text: string) {
@@ -791,23 +699,14 @@ afterEach(() => {
 });
 
 export {
-  MarkdownIrEditor,
-  McpToolDebugPanel,
-  act,
   clickSegmentedOption,
   domEvents,
-  expect,
-  i18nText,
   mcpManagementApi,
   renderPanel,
   renderPanelWithMountedTool,
   renderSettled,
-  screen,
   selectAntdOption,
   setFullDescription,
-  test,
   vditorMock,
-  visibleTextEntries,
-  waitFor,
-  within
+  visibleTextEntries
 };

@@ -913,4 +913,5 @@ async fn model_definition_repository_updates_owner_scope_grant_for_workspace_mod
         ScopeDataModelPermissionProfile::Owner
     );
 }
+#[path = "model_definition_repository_tests/data_source_scopes.rs"]
 mod data_source_scopes;

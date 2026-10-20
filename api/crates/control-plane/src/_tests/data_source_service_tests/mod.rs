@@ -1164,6 +1164,7 @@ mod console_policy;
 mod crud_runtime;
 mod defaults_and_mapping;
 mod instance_validation;
+#[path = "runtime_port.rs"]
 mod runtime_port;
 mod runtime_redaction;
 mod secret_rotation;

@@ -986,4 +986,5 @@ impl RuntimeInternalToolInvoker for StubRuntimeInternalToolInvoker {
         })
     }
 }
+#[path = "human_and_tool_resume/internal_tools.rs"]
 mod internal_tools;

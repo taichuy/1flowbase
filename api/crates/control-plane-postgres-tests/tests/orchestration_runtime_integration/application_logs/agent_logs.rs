@@ -989,6 +989,7 @@ async fn enable_reception_fixture(store: &PgControlPlaneStore, scope: Uuid, appl
         .unwrap();
 }
 
+#[path = "agent_logs/application_cleanup.rs"]
 mod application_cleanup;
 #[path = "agent_logs/conversation_timeline.rs"]
 mod conversation_timeline;

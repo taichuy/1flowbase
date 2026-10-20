@@ -1,14 +1,8 @@
 window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
 
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor
-} from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, vi } from 'vitest';
 import {
   modelProviderOptionsProviders,
   modelProviderOptionsContract
@@ -17,7 +11,7 @@ import {
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { AppProviders } from '../../../../app/AppProviders';
 import * as modelProviderOptionsApi from '../../api/model-provider-options';
-import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
+
 // Resolve the real LLM schema's lazy field modules during suite collection.
 // Cold module transforms must complete before the inspector's readiness assertions.
 import '../../components/detail/fields/LlmModelField';
@@ -25,8 +19,7 @@ import '../../components/detail/fields/LlmMcpInstancesField';
 import '../../components/detail/fields/LlmToolRegistrationsField';
 import '../../components/detail/fields/LlmPromptMessagesField';
 import '../../components/detail/fields/LlmResponseFormatField';
-import { listLlmProviderOptions } from '../../lib/model-options';
-import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { selectWorkingDocument } from '../../store/editor/selectors';
 import { appI18n } from '../../../../shared/i18n/app-i18n';
@@ -151,20 +144,12 @@ beforeEach(async () => {
 });
 
 export {
-  AgentFlowEditorStoreProvider,
   DocumentObserver,
-  NodeConfigTab,
   SelectionSeed,
-  act,
   clickModelOption,
-  createDefaultAgentFlowDocument,
   createInitialState,
-  expect,
   fetchModelProviderOptionsSpy,
-  fireEvent,
-  listLlmProviderOptions,
   mockElementRect,
-  modelProviderOptionsContract,
   openModelDropdown,
   openModelSettings,
   primaryProviderFirstGroup,
@@ -173,11 +158,7 @@ export {
   primaryProviderSecondGroup,
   primaryProviderSecondModel,
   renderWithProviders,
-  screen,
   secondaryProviderFirstGroup,
   secondaryProviderFirstModel,
-  secondaryProviderOption,
-  test,
-  vi,
-  waitFor
+  secondaryProviderOption
 };

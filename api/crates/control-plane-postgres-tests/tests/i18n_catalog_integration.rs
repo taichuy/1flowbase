@@ -971,6 +971,7 @@ async fn management_store() -> ManagementFixture {
     }
 }
 
+#[path = "i18n_catalog_integration/management_mutations.rs"]
 mod management_mutations;
 #[path = "_tests/i18n_catalog/template_writes.rs"]
 mod template_writes;

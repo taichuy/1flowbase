@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { Grid } from 'antd';
 import { vi } from 'vitest';
 import {
@@ -159,8 +153,6 @@ import {
   buildSettingsModelProviderInstances,
   buildSettingsModelProviderOptions
 } from '../model-provider-test-fixtures';
-import { SettingsModelProvidersSection } from '../../pages/settings-page/SettingsModelProvidersSection';
-import { ModelProviderInstancesModal } from '../../components/model-providers/ModelProviderInstancesModal';
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
@@ -493,23 +485,9 @@ beforeEach(() => {
 });
 
 export {
-  AppProviders,
-  ModelProviderInstancesModal,
-  SettingsModelProvidersSection,
   authenticateAsModelProviderManager,
-  buildMainInstanceSettings,
-  buildSettingsModelProviderInstances,
-  buildSettingsModelProviderOptions,
-  fireEvent,
-  modelProviderCatalogEntries,
   modelProvidersApi,
   openProviderInstancesModal,
   openSourceManagementTab,
-  primaryContractProviderModels,
-  render,
-  renderApp,
-  screen,
-  vi,
-  waitFor,
-  within
+  renderApp
 };

@@ -2,15 +2,12 @@ import { describe, test, expect } from 'vitest';
 import {
   authenticateWithPermissions,
   departmentsApi,
-  fireEvent,
   membersApi,
   personalAccessTokensApi,
-  renderApp,
-  screen,
-  useAuthStore,
-  waitFor,
-  within
+  renderApp
 } from './settings-sections.fixtures';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { useAuthStore } from '../../../../state/auth-store';
 
 describe('SettingsPage', () => {
   test('renders API key for signed-in users without management permissions', async () => {

@@ -17,11 +17,9 @@ function tokens(command) {
 function missingPageCoverage(script, pageScript) {
   const args = tokens(script);
   const exclusions = args.flatMap((arg, index) => arg === '--exclude' ? [args[index + 1]] : []);
-  const patterns = exclusions.map((glob) => new RegExp(`^${glob.split('*')
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('[^/]*')}$`, 'u'));
   // Vitest positional filters are substrings, unlike --exclude globs.
   const pageFilters = tokens(pageScript).filter((arg) => arg.startsWith('src/'));
-  return testFiles.filter((file) => patterns.some((pattern) => pattern.test(file))
+  return testFiles.filter((file) => exclusions.some((glob) => path.posix.matchesGlob(file, glob))
     && !pageFilters.some((filter) => file.includes(filter)));
 }
 
@@ -39,4 +37,33 @@ test('inventory rejects quoted positional globs and omitted page directories', (
     assert.ok(missing.length > 0);
     assert.ok(missing.every((file) => file.startsWith(directory)));
   }
+});
+
+
+function unmatchedSelectors(script, pageScript, files = testFiles) {
+  const args = tokens(script);
+  const exclusions = args.flatMap((arg, index) => arg === '--exclude' ? [args[index + 1]] : []);
+  const pageFilters = tokens(pageScript).filter((arg) => arg.startsWith('src/'));
+  return [
+    ...exclusions.filter((glob) => !files.some((file) => path.posix.matchesGlob(file, glob))),
+    ...pageFilters.filter((filter) => !files.some((file) => file.includes(filter))),
+  ];
+}
+
+test('every frontend lane selector targets an existing test rather than borrowing adjacent execution evidence', () => {
+  for (const name of ['test', 'test:fast', 'test:coverage']) {
+    assert.deepEqual(unmatchedSelectors(scripts[name], scripts['test:page-regression']), [], name);
+  }
+});
+
+test('lane inventory rejects a removed test and accepts nested scenario globs', () => {
+  const files = ['src/pages/settings/roles/policy.test.tsx', 'src/pages/sign-in.test.tsx'];
+  assert.deepEqual(unmatchedSelectors(
+    "run --exclude 'src/pages/settings/**/*.test.tsx'",
+    'run src/pages/settings/ src/pages/sign-in.test.tsx', files,
+  ), []);
+  assert.deepEqual(unmatchedSelectors(
+    "run --exclude 'src/pages/settings/**/*.test.tsx' --exclude src/pages/retired.test.tsx",
+    'run src/pages/settings/ src/pages/moved.test.tsx', files,
+  ), ['src/pages/retired.test.tsx', 'src/pages/moved.test.tsx']);
 });

@@ -787,4 +787,5 @@ mod runtime_repository_status_tests;
 
 pub(super) use flow_ports::test_data_model_definition;
 pub(crate) use provider_runtime::InMemoryProviderRuntime;
+#[path = "provider_fixtures.rs"]
 mod provider_fixtures;

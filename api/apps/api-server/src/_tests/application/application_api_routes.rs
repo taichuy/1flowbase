@@ -750,4 +750,5 @@ mod log_reception;
 
 #[path = "application_api_routes/otlp_logs.rs"]
 mod otlp_logs;
+#[path = "application_api_routes/publication.rs"]
 mod publication;

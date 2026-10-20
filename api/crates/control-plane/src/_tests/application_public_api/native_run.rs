@@ -802,4 +802,5 @@ fn native_run_request_rejects_legacy_user_id_field() {
 
     assert!(serde_json::from_value::<NativeRunRequest>(payload).is_err());
 }
+#[path = "native_run/execution_and_receipts.rs"]
 mod execution_and_receipts;

@@ -895,4 +895,5 @@ async fn instance_export_includes_only_the_bound_tools_connection_dependencies()
     assert_eq!(bundle.connections.len(), 1);
     assert_eq!(bundle.connections[0].connection_id, selected_connection_id);
 }
+#[path = "mcp_bundle_tests/bundle_import.rs"]
 mod bundle_import;

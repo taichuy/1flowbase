@@ -1,25 +1,27 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
-  AppProviders,
   FrontStagePageHarness,
-  type SaveFrontstageTabDocumentInput,
-  act,
   activateDesignMode,
   authenticate,
   createBackendPage,
   createCatalogEntry,
   createPageContent,
   exitDesignMode,
-  fireEvent,
   hoverAddMenuAndFlush,
   mockFrontstageBlockCatalog,
   mockPageContentSaveState,
+  renderPage
+} from './design-controls.fixtures';
+import { AppProviders } from '../../../../app/AppProviders';
+import { type SaveFrontstageTabDocumentInput } from '../../api/page-content';
+import {
+  act,
+  fireEvent,
   render,
-  renderPage,
   screen,
   waitFor,
   within
-} from './design-controls.fixtures';
+} from '@testing-library/react';
 
 describe('FrontStagePage - design controls', () => {
   test('shows page context and design mode is unavailable without permission', () => {

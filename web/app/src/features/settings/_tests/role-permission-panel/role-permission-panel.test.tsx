@@ -1,21 +1,22 @@
 import { describe, test, expect } from 'vitest';
 import {
+  permissionsApi,
+  renderPanel,
+  rolesApi
+} from './role-permission-panel.fixtures';
+import {
   allRowScopeOptions,
   consolePolicyCatalog,
-  findReorderIndices,
-  fireEvent,
-  fs,
-  path,
-  permissionsApi,
   policyModeOptions,
-  renderPanel,
-  reorderItems,
-  rolesApi,
-  screen,
-  selectPolicyCombobox,
-  waitFor,
-  within
-} from './role-permission-panel.fixtures';
+  selectPolicyCombobox
+} from './fixtures';
+import {
+  findReorderIndices,
+  reorderItems
+} from '../../components/role-permissions/policy-order';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import fs from 'node:fs';
+import path from 'node:path';
 
 describe('RolePermissionPanel', () => {
   test('AC-008 stacks the role rail above policy content at 390px', async () => {

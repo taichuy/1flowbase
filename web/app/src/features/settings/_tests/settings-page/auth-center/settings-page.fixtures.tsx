@@ -1,12 +1,6 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { Grid } from 'antd';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, vi } from 'vitest';
 
 // Configuration tests use the real section; module loading precedes test hooks.
 import '../../../pages/settings-page/SettingsAuthCenterSection';
@@ -929,14 +923,6 @@ export {
   authenticatorConfigSchema,
   consoleNavigationApi,
   docsApi,
-  expect,
-  fireEvent,
   renderApp,
-  resetAuthStore,
-  screen,
-  settingsConsoleNavigation,
-  test,
-  useAuthStore,
-  waitFor,
-  within
+  settingsConsoleNavigation
 };

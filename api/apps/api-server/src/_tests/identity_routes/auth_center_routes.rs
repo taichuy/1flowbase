@@ -843,4 +843,5 @@ async fn console_auth_center_overview_requires_user_view_permission() {
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
+#[path = "auth_center_routes/authenticator_updates.rs"]
 mod authenticator_updates;

@@ -1,21 +1,20 @@
 import { describe, test, expect, vi } from 'vitest';
+import './embedded-agent-assistant.fixtures';
+import { AppProviders } from '../../../../app/AppProviders';
+import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
+import { act, screen, waitFor } from '@testing-library/react';
 import {
-  AppProviders,
-  EmbeddedAgentAssistant,
-  act,
   attachConsoleAssistantRunWebSocket,
   createConsoleAssistantConversation,
   domEvents,
   findReadyHistoryButton,
   getConsoleAssistantConversationMessages,
   getConsoleAssistantSettings,
-  i18nText,
   listConsoleAssistantConversations,
   renderSettled,
-  screen,
-  subscribeConsoleAssistantConversationsWebSocket,
-  waitFor
-} from './embedded-agent-assistant.fixtures';
+  subscribeConsoleAssistantConversationsWebSocket
+} from './assistant-fixture';
+import { i18nText } from '../../../../shared/i18n/text';
 
 describe('EmbeddedAgentAssistant', () => {
   test('AC-001 opens the Agent Flow Preview console instead of a hand-written drawer', async () => {

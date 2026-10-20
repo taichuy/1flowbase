@@ -822,4 +822,5 @@ fn d2_f1_anthropic_defined_container_receipts_remain_unique_on_nested_rejection(
         assert_eq!(decisions[0].kind, kind);
     }
 }
+#[path = "anthropic_compat/field_receipts.rs"]
 mod field_receipts;

@@ -971,6 +971,7 @@ pub(super) use support::UnusedTerminalWriter;
 #[path = "runtime_events/after_commit_lanes.rs"]
 mod after_commit_lanes;
 
+#[path = "runtime_events/live_provider_events.rs"]
 mod live_provider_events;
 #[path = "runtime_events/support.rs"]
 mod support;

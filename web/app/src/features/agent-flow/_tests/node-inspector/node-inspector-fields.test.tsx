@@ -1,26 +1,26 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
-  AgentFlowEditorStoreProvider,
-  DocumentObserver,
   NamedBindingsFocusHarness,
-  NodeConfigTab,
-  NodeInspector,
-  SLOW_NODE_INSPECTOR_TEST_TIMEOUT,
-  SelectionSeed,
-  TemplatedNamedBindingsField,
-  createInitialState,
-  createInitialStateWithCodeNode,
-  createInitialStateWithHttpRequestNode,
   dispatch,
   domEvents,
   nodeSchemaAdapterApi,
-  nodeSchemaRegistry,
-  renderWithProviders,
-  screen,
-  validateDocument,
-  waitFor,
-  within
+  nodeSchemaRegistry
 } from './node-inspector.fixtures';
+import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import {
+  DocumentObserver,
+  SLOW_NODE_INSPECTOR_TEST_TIMEOUT,
+  SelectionSeed,
+  createInitialState,
+  createInitialStateWithCodeNode,
+  createInitialStateWithHttpRequestNode,
+  renderWithProviders
+} from './support';
+import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
+import { NodeInspector } from '../../components/inspector/NodeInspector';
+import { TemplatedNamedBindingsField } from '../../components/bindings/TemplatedNamedBindingsField';
+import { screen, waitFor, within } from '@testing-library/react';
+import { validateDocument } from '../../lib/validate-document';
 
 describe('NodeInspector core', () => {
   test('collapses generated outputs by default and keeps output contract editing hidden', async () => {

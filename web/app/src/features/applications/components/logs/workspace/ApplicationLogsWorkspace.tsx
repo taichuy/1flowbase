@@ -68,7 +68,6 @@ export function ApplicationLogsWorkspace({
     activeFloatingWindow,
     setActiveFloatingWindow,
     archiveImportInputRef,
-    message,
     runs,
     selectRun,
     handleRectChange,

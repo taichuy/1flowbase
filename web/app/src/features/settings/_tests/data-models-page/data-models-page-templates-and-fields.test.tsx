@@ -1,19 +1,22 @@
 import { describe, test, expect, vi } from 'vitest';
+import './data-models-page.fixtures';
+import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
 import {
-  DataModelFormDrawer,
   SLOW_SETTINGS_PAGE_TEST_TIMEOUT,
-  type SettingsCompatibleDataModelTemplate,
-  act,
   dataModelsApi,
-  fireEvent,
   openContactsDataModelEditor,
   openDataModelEditorByTitle,
+  renderApp
+} from './support';
+import { type SettingsCompatibleDataModelTemplate } from '../../api/data-models';
+import {
+  act,
+  fireEvent,
   render,
-  renderApp,
   screen,
   waitFor,
   within
-} from './data-models-page.fixtures';
+} from '@testing-library/react';
 
 describe('Settings data models page', () => {
   test('AC-002 does not fall back when the compatible template catalog is empty', async () => {

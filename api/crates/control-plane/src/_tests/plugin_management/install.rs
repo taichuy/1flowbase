@@ -932,5 +932,6 @@ config_schema: []
     root
 }
 
+#[path = "install/contribution_catalogs.rs"]
 mod contribution_catalogs;
 mod official_catalog;

@@ -1,23 +1,20 @@
 import { describe, test, expect } from 'vitest';
 import {
-  MarkdownIrEditor,
-  McpToolDebugPanel,
-  act,
   clickSegmentedOption,
   domEvents,
-  i18nText,
   mcpManagementApi,
   renderPanel,
   renderPanelWithMountedTool,
   renderSettled,
-  screen,
   selectAntdOption,
   setFullDescription,
   vditorMock,
-  visibleTextEntries,
-  waitFor,
-  within
+  visibleTextEntries
 } from './client-and-tool-editor.fixtures';
+import { MarkdownIrEditor } from '../../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
+import { McpToolDebugPanel } from '../../McpToolDebugPanel';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { i18nText } from '../../../../../../shared/i18n/text';
 
 describe('McpManagementPanel', () => {
   test('AC-001 keeps the full-description Vditor outline closed by default', async () => {

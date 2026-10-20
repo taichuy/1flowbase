@@ -200,4 +200,4 @@ export function validateTerminalTopology(
 import {
   collectBindingSelectors,
   isRuntimeSelectorSource
-} from '../validate-document';
+} from './binding-selectors';

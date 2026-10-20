@@ -1,7 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
-  FrontstageJsxStudioDrawer,
-  LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC,
   block,
   blockCodeHook,
   blockTabsHook,
@@ -9,11 +7,11 @@ import {
   domEvents,
   monacoEditor,
   monacoHook,
-  renderSettled,
-  screen,
-  waitFor,
-  within
+  renderSettled
 } from './FrontstageJsxStudioDrawer.fixtures';
+import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
+import { LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC } from '@1flowbase/page-runtime';
+import { screen, waitFor, within } from '@testing-library/react';
 
 describe('FrontstageJsxStudioDrawer', () => {
   test('preserves JSX in Monaco because Page Runtime owns TSX compilation', async () => {

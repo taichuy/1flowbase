@@ -1,17 +1,14 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
-  AgentFlowEditorStoreProvider,
-  NodeConfigTab,
   SelectionSeed,
-  act,
   createInitialState,
-  fireEvent,
   mockElementRect,
   openModelSettings,
-  renderWithProviders,
-  screen,
-  waitFor
+  renderWithProviders
 } from './llm-model-provider-field.fixtures';
+import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 describe('LlmModelField', () => {
   test('renders the model settings inside the canvas body with minimum width and half-height', async () => {

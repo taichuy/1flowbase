@@ -530,5 +530,6 @@ async fn d1_ac_007_output_limit_has_an_incomplete_terminal_not_succeeded() {
     ));
 }
 
+#[path = "failures_and_parameters/model_parameters.rs"]
 mod model_parameters;
 mod protocol_context;

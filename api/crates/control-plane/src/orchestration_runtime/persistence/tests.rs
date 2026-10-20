@@ -869,6 +869,7 @@ fn provider_request_log_task_accepts_legacy_queue_payload_without_node_run_id_ac
     assert_eq!(restored.node_run_id, None);
 }
 
+#[path = "tests/callback_evidence.rs"]
 mod callback_evidence;
 #[path = "_tests/checkpoint_ownership.rs"]
 mod checkpoint_ownership;

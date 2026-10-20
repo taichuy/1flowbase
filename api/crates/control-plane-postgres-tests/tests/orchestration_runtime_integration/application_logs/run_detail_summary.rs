@@ -786,5 +786,6 @@ async fn attach_import_job_to_run(
     .unwrap();
 }
 
+#[path = "run_detail_summary/lightweight_summary.rs"]
 mod lightweight_summary;
 mod stitched_trace;

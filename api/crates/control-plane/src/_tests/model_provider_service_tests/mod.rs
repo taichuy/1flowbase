@@ -974,5 +974,6 @@ mod account_operations;
 mod auth;
 mod instance_lifecycle;
 mod model_options;
+#[path = "provider_repository.rs"]
 mod provider_repository;
 mod refresh_catalog;

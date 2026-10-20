@@ -857,4 +857,5 @@ fn status_record(
 
 #[path = "_tests/linked_agents.rs"]
 mod linked_agents;
+#[path = "tests/stitched_traces.rs"]
 mod stitched_traces;

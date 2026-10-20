@@ -322,4 +322,5 @@ mod system_scope;
 
 #[path = "managed_governance_tests/activation_permissions.rs"]
 mod activation_permissions;
+#[path = "managed_governance_tests/pause_revoke_retire.rs"]
 mod pause_revoke_retire;

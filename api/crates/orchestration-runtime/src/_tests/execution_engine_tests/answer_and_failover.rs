@@ -633,4 +633,5 @@ fn model_group_llm_runtime(
 mod session_affinity;
 
 mod retry_semantics;
+#[path = "answer_and_failover/routing_failover.rs"]
 mod routing_failover;

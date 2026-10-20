@@ -960,4 +960,5 @@ fn assert_model_error(error: anyhow::Error, expected: RuntimeModelError) {
     let actual = error.downcast_ref::<RuntimeModelError>().unwrap();
     assert_eq!(actual, &expected);
 }
+#[path = "runtime_engine_tests/external_source.rs"]
 mod external_source;

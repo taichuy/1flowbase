@@ -868,4 +868,5 @@ fn network_egress_commit_input_for_organization(
     input.frontend_blocks.plugin_id = plugin_id;
     input
 }
+#[path = "plugin_network_integration/network_egress.rs"]
 mod network_egress;

@@ -922,6 +922,7 @@ mod human_and_tool_resume;
 mod llm_context;
 mod llm_output;
 mod notification;
+#[path = "plan_fixtures.rs"]
 mod plan_fixtures;
 mod plugin_nodes;
 mod sql;

@@ -1,15 +1,14 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
-  act,
   answerTextDelta,
-  createDefaultAgentFlowDocument,
   createQueryClient,
   createStreamRunDetail,
   createWrapper,
-  renderHook,
-  runtimeApi,
-  useAgentFlowDebugSession
+  runtimeApi
 } from './use-agent-flow-debug-session-stream.fixtures';
+import { act, renderHook } from '@testing-library/react';
+import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+import { useAgentFlowDebugSession } from '../../hooks/runtime/useAgentFlowDebugSession';
 
 describe('useAgentFlowDebugSession streaming', () => {
   test('keeps stream error state when a pending text delta flush exists', async () => {

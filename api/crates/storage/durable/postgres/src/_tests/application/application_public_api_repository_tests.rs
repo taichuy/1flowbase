@@ -1032,4 +1032,5 @@ async fn application_public_api_js_dependency_snapshot_persists_on_publication_v
         "outbound_only"
     );
 }
+#[path = "application_public_api_repository_tests/publication_migrations.rs"]
 mod publication_migrations;

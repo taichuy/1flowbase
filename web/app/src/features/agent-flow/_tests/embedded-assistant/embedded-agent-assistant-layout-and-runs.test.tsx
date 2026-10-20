@@ -1,10 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
+import { runtimeApi } from './embedded-agent-assistant.fixtures';
 import {
   ASSISTANT_WINDOW_SIZE_STORAGE_KEY,
-  AppProviders,
-  AssistantRunTimeline,
-  EmbeddedAgentAssistant,
-  act,
   cancelConsoleFlowRun,
   createConsoleAssistantConversation,
   domEvents,
@@ -13,16 +10,17 @@ import {
   getConsoleAssistantLegacySnapshotMessages,
   getConsoleAssistantRunActivity,
   getConsoleAssistantSettings,
-  i18nText,
   innerWidthSpy,
   listConsoleAssistantConversations,
   renderSettled,
-  runtimeApi,
-  screen,
   startConsoleAssistantRunStream,
-  startConsoleAssistantRunWebSocket,
-  waitFor
-} from './embedded-agent-assistant.fixtures';
+  startConsoleAssistantRunWebSocket
+} from './assistant-fixture';
+import { AppProviders } from '../../../../app/AppProviders';
+import { AssistantRunTimeline } from '../../components/embedded-assistant/AssistantRunActivityPanel';
+import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
+import { act, screen, waitFor } from '@testing-library/react';
+import { i18nText } from '../../../../shared/i18n/text';
 
 describe('EmbeddedAgentAssistant', () => {
   test('resizes the history pane with focused arrow keys and persists the conversation width', async () => {
