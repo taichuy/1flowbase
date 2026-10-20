@@ -104,6 +104,10 @@
         {
           "file": "api/apps/api-server/src/routes/applications/application_runtime/application_monitoring.rs",
           "functionName": "monitoring_time_range_days"
+        },
+        {
+          "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
+          "functionName": "application_run_monitoring_overview"
         }
       ],
       "contract": {
@@ -127,7 +131,10 @@
         "cursor": {
           "description": "Monitoring is an aggregate report, not a list page.",
           "patterns": [
-            "with monitoring_logs as"
+            "\\bmonitoring_logs\\s+as\\s*\\(",
+            "application_run_monitoring_overview\\(",
+            "count\\(\\*\\)",
+            "from monitoring_logs"
           ],
           "exemption": {
             "reason": "The report aggregates one application inside a required time window. It does not expose a cross-run row list; ranked sublists are bounded by SQL top-N clauses.",

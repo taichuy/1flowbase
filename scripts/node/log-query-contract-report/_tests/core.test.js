@@ -88,7 +88,7 @@ function monitoringContract() {
         '(?:[A-Za-z_][A-Za-z0-9_]*\\.)?started_at\\s*>=\\s*\\$2',
       ],
     },
-    cursor: { patterns: ['with monitoring_logs as'] },
+    cursor: { patterns: ['\\bmonitoring_logs\\s+as\\s*\\('] },
     limit: { patterns: ['limit 10'] },
   };
 }
@@ -405,4 +405,18 @@ test('expired or unsupported exemptions cannot hide required query evidence', (t
   assert.equal(collectLogQueryContractReport({ repoRoot, config, asOfDate: '2026-10-20' }).status, 'passed');
   contract.time.patterns = ['required_time_predicate'];
   assert.equal(collectLogQueryContractReport({ repoRoot, config, asOfDate: '2026-10-20' }).status, 'failed');
+});
+
+test('monitoring CTE evidence survives preceding recursive tasks and rejects a missing aggregate projection', (t) => {
+  const sql = `with recursive roots as (select 1), monitoring_logs as (
+    select t.application_id, t.started_at from tasks t
+    where t.application_id = $1 and t.started_at >= $2
+  ) select * from monitoring_logs limit 10`;
+  const repoRoot = createMonitoringRepo(sql);
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const config = monitoringEndpointConfig(monitoringContract());
+  assert.equal(collectLogQueryContractReport({ repoRoot, config }).status, 'passed');
+  writeFile(repoRoot, 'api/src/queries/monitoring.sql', sql.replaceAll('monitoring_logs', 'unrelated_rows'));
+  const result = collectLogQueryContractReport({ repoRoot, config });
+  assert.equal(result.endpoints[0].dimensions.find((item) => item.dimension === 'cursor').status, 'failed');
 });

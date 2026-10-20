@@ -1067,7 +1067,6 @@ export function getBuiltinNodeRuntimeContract(
   return contract ? duplicateContract(contract) : null;
 }
 
-export type { BuiltinNodeRuntimeContractType };
 
 export {
   panelField,
