@@ -90,10 +90,27 @@ async fn insert_external_member(
     let default_role: (Uuid, String, Uuid) = sqlx::query_as(
         "select id, code, scope_id from roles where scope_kind = 'workspace' and workspace_id = $1 and scope_id = $1 and is_default_member_role = true and system_kind is null and code not in ('root', 'system') order by id limit 1 for share"
     ).bind(workspace_id).fetch_optional(&mut **tx).await?.ok_or(ControlPlaneError::NotFound("default_member_role"))?;
-    let account = format!("external_{}", user_id.simple());
-    sqlx::query(
-        "insert into users (id, account, email, phone, password_hash, name, nickname, avatar_url, introduction, default_display_role, email_login_enabled, phone_login_enabled, status, session_version, created_by, updated_by) values ($1, $2, $3, null, '!external-identity-no-password', $2, $2, null, '', $4, false, false, 'active', 1, null, null)"
-    ).bind(user_id).bind(&account).bind(&input.email).bind(&default_role.1).execute(&mut **tx).await?;
+    let fallback_account = format!("external_{}", user_id.simple());
+    let base_account = input.account.as_deref().unwrap_or(&fallback_account);
+    // ON CONFLICT only handles account allocation; email/identity conflicts still
+    // roll back the entire transaction. This also serializes concurrent equal hints.
+    let mut account = base_account.to_owned();
+    for attempt in 0..2 {
+        if attempt == 1 {
+            account = format!("{base_account}_{}", user_id.simple());
+        }
+        let nickname = input.nickname.as_deref().unwrap_or(base_account);
+        let inserted: Option<Uuid> = sqlx::query_scalar(
+            "insert into users (id, account, email, phone, password_hash, name, nickname, avatar_url, introduction, default_display_role, email_login_enabled, phone_login_enabled, status, session_version, created_by, updated_by) values ($1, $2, $3, null, '!external-identity-no-password', '', $4, $5, '', $6, false, false, 'active', 1, null, null) on conflict (account) do nothing returning id"
+        ).bind(user_id).bind(&account).bind(&input.email).bind(nickname).bind(&input.avatar_url).bind(&default_role.1)
+            .fetch_optional(&mut **tx).await?;
+        if inserted.is_some() {
+            break;
+        }
+        if attempt == 1 {
+            return Err(ControlPlaneError::Conflict("external_registration_account_exists").into());
+        }
+    }
     sqlx::query("insert into workspace_memberships (id, workspace_id, user_id, introduction, created_by, updated_by) values ($1, $2, $3, '', null, null)")
         .bind(Uuid::now_v7()).bind(workspace_id).bind(user_id).execute(&mut **tx).await?;
     sqlx::query("insert into user_role_bindings (id, user_id, role_id, scope_id, created_by, updated_by) values ($1, $2, $3, $4, null, null)")

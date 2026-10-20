@@ -305,6 +305,10 @@ pub struct CreateSelfRegisteredMemberInput {
 pub struct CreateExternalRegisteredMemberInput {
     pub identity: VerifiedExternalIdentity,
     pub email: String,
+    /// Validated onboarding hints. Storage resolves account collisions atomically.
+    pub account: Option<String>,
+    pub nickname: Option<String>,
+    pub avatar_url: Option<String>,
     pub audit: AuditLogRecord,
 }
 

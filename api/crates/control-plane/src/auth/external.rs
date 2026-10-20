@@ -57,6 +57,9 @@ impl<R: AuthRepository + ExternalRegistrationRepository, S: SessionStore> AuthKe
                 );
                 self.repository
                     .create_external_registered_member(&CreateExternalRegisteredMemberInput {
+                        account: external_registration_account(command.identity.profile()),
+                        nickname: external_registration_nickname(command.identity.profile()),
+                        avatar_url: external_registration_avatar(command.identity.profile()),
                         identity: command.identity,
                         email,
                         audit,
@@ -118,6 +121,39 @@ fn external_registration_email(
         return Err(ControlPlaneError::InvalidInput("external_registration_email_required").into());
     }
     Ok(email)
+}
+
+// Provider-specific keys (GitHub login/name, etc.) are normalized by the provider.
+// These optional hints only initialize a new user, never update a bound account.
+fn external_registration_account(profile: &serde_json::Value) -> Option<String> {
+    let account = profile.get("account")?.as_str()?.trim();
+    (!account.is_empty()
+        && account.len() <= 64
+        && account
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte)))
+    .then(|| account.to_owned())
+}
+
+fn external_registration_nickname(profile: &serde_json::Value) -> Option<String> {
+    let nickname = profile.get("nickname")?.as_str()?.trim();
+    (!nickname.is_empty()
+        && nickname.chars().count() <= 128
+        && !nickname.chars().any(char::is_control))
+    .then(|| nickname.to_owned())
+}
+
+fn external_registration_avatar(profile: &serde_json::Value) -> Option<String> {
+    let value = profile.get("avatar_url")?.as_str()?.trim();
+    if value.len() > 2048 || value.chars().any(char::is_control) {
+        return None;
+    }
+    let url = url::Url::parse(value).ok()?;
+    (url.scheme() == "https"
+        && url.host_str().is_some()
+        && url.username().is_empty()
+        && url.password().is_none())
+    .then(|| value.to_owned())
 }
 
 fn valid_external_email(email: &str) -> bool {

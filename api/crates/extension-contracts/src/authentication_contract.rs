@@ -114,6 +114,10 @@ pub enum AuthenticationResponse {
         subject_value: String,
         issuer: String,
         realm: Option<String>,
+        /// Optional normalized first-signup hints: account, nickname, avatar_url;
+        /// email/email_verified carry verified contact information. Provider-specific
+        /// fields may coexist but Host never infers a real/legal name from this data.
+        /// Hints never overwrite an existing user's local profile.
         profile: Value,
     },
     RegistrationEligibility {

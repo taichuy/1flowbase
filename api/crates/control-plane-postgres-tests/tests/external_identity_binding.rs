@@ -70,7 +70,7 @@ fn verified_identity(connection_id: Uuid) -> VerifiedExternalIdentity {
         subject_value: "CaseSensitiveSubject".to_string(),
         issuer: Some("https://issuer.example.test".to_string()),
         realm: Some("employees".to_string()),
-        profile: serde_json::json!({ "display_name": "Root" }),
+        profile: serde_json::json!({ "account": "replace-root", "nickname": "Replace Root", "avatar_url":"https://avatars.example.test/replace" }),
         verified: true,
         metadata: serde_json::json!({ "source": "test" }),
     })
@@ -119,6 +119,21 @@ async fn explicit_external_binding_is_audited_idempotent_and_conflict_safe() {
         .unwrap()
         .expect("bound identity must resolve");
     assert_eq!(resolved.id, user.id);
+    assert_eq!(
+        (
+            resolved.account,
+            resolved.name,
+            resolved.nickname,
+            resolved.avatar_url
+        ),
+        (
+            user.account.clone(),
+            user.name.clone(),
+            user.nickname.clone(),
+            user.avatar_url.clone()
+        )
+    );
+    assert_eq!(resolved.roles, user.roles);
     let identity_count: i64 =
         sqlx::query_scalar("select count(*) from user_auth_identities where connection_id = $1")
             .bind(connection_id)
@@ -200,7 +215,9 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
     let identity = registration_identity(
         entry.connection_id,
         "42",
-        serde_json::json!({"email":"External@Example.COM","email_verified":true}),
+        serde_json::json!({"email":"External@Example.COM","email_verified":true,
+            "account":"github-member","nickname":"公开昵称","name":"Not A Verified Real Name",
+            "avatar_url":"https://avatars.githubusercontent.com/u/42"}),
     );
     let kernel = AuthKernel::new(
         store.clone(),
@@ -222,7 +239,16 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
         .unwrap()
         .unwrap();
     assert_eq!(user.email, "external@example.com");
-    assert!(user.account.starts_with("external_"));
+    assert_eq!(user.account, "github-member");
+    assert_eq!(user.nickname, "公开昵称");
+    assert!(
+        user.name.is_empty(),
+        "provider public name must not become a legal name"
+    );
+    assert_eq!(
+        user.avatar_url.as_deref(),
+        Some("https://avatars.githubusercontent.com/u/42")
+    );
     assert!(!user.email_login_enabled && !user.phone_login_enabled);
     assert!(user.password_hash.starts_with('!'));
     assert!(user
@@ -254,6 +280,8 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
     .unwrap()
     .is_none());
 
+    sqlx::query("update users set nickname = 'Local Edit', name = 'Local Name', avatar_url = 'https://example.test/local' where id = $1")
+        .bind(user.id).execute(store.pool()).await.unwrap();
     // Existing binding needs neither email nor registration eligibility, even after signup closes.
     entry.options = serde_json::json!({"extension_config":{"self_registration_enabled":false}});
     store.upsert_login_entry(&entry).await.unwrap();
@@ -267,6 +295,17 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
         .await
         .unwrap();
     assert_eq!(again.actor.user_id, user.id);
+    let preserved = AuthRepository::find_user_by_id(&store, user.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(preserved.account, "github-member");
+    assert_eq!(preserved.nickname, "Local Edit");
+    assert_eq!(preserved.name, "Local Name");
+    assert_eq!(
+        preserved.avatar_url.as_deref(),
+        Some("https://example.test/local")
+    );
     entry.enabled = false;
     store.upsert_login_entry(&entry).await.unwrap();
     let error = kernel
@@ -423,6 +462,9 @@ async fn external_registration_rolls_back_user_membership_role_and_identity_when
         .create_external_registered_member(&CreateExternalRegisteredMemberInput {
             identity: identity.clone(),
             email: "rollback@example.com".into(),
+            account: Some("rollback".into()),
+            nickname: Some("Rollback".into()),
+            avatar_url: None,
             audit,
         })
         .await;
@@ -438,4 +480,85 @@ async fn external_registration_rolls_back_user_membership_role_and_identity_when
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn external_profile_account_collisions_are_atomic_and_invalid_hints_fall_back() {
+    let (store, _, root) = seed_store().await;
+    let entry = external_entry(&store).await;
+    let kernel = AuthKernel::new(
+        store.clone(),
+        SessionIssuer::new(MemorySessionStore::new("external-profile-collision"), 7),
+    );
+    let login = |subject: &str, profile| CompleteExternalLoginCommand {
+        login_entry_id: entry.id,
+        identity: registration_identity(entry.connection_id, subject, profile),
+        registration_eligible: true,
+    };
+    // Account equality never binds or grants the existing account's roles.
+    let collision = kernel
+        .complete_external_login(login(
+            "root-collision",
+            serde_json::json!({
+                "email":"root-collision@example.com","email_verified":true,"account":"root"
+            }),
+        ))
+        .await
+        .unwrap();
+    let user = AuthRepository::find_user_by_id(&store, collision.actor.user_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(user.id, root.id);
+    assert_eq!(user.account, format!("root_{}", user.id.simple()));
+    assert_eq!(user.nickname, "root");
+    assert!(!collision.actor.is_root);
+    assert_eq!(collision.actor.effective_display_role, "member");
+    assert!(user.name.is_empty() && user.avatar_url.is_none());
+
+    let (a,b) = tokio::join!(
+        kernel.complete_external_login(login("a", serde_json::json!({"email":"a@example.com","email_verified":true,"account":"same-login"}))),
+        kernel.complete_external_login(login("b", serde_json::json!({"email":"b@example.com","email_verified":true,"account":"same-login"})))
+    );
+    let a = a.unwrap();
+    let b = b.unwrap();
+    assert_ne!(a.actor.user_id, b.actor.user_id);
+    let accounts: Vec<String> = sqlx::query_scalar("select account from users where id = any($1)")
+        .bind(vec![a.actor.user_id, b.actor.user_id])
+        .fetch_all(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        accounts
+            .iter()
+            .filter(|s| s.as_str() == "same-login")
+            .count(),
+        1
+    );
+    assert_eq!(
+        accounts
+            .iter()
+            .filter(|s| s.starts_with("same-login_"))
+            .count(),
+        1
+    );
+
+    let invalid = kernel
+        .complete_external_login(login(
+            "invalid",
+            serde_json::json!({
+                "email":"invalid@example.com","email_verified":true,"account":"bad account",
+                "nickname":"bad\nnickname","avatar_url":"javascript:alert(1)","name":"Do Not Map",
+                "login":"github-specific-key-is-not-host-policy"
+            }),
+        ))
+        .await
+        .unwrap();
+    let user = AuthRepository::find_user_by_id(&store, invalid.actor.user_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(user.account, format!("external_{}", user.id.simple()));
+    assert_eq!(user.nickname, user.account);
+    assert!(user.name.is_empty() && user.avatar_url.is_none());
 }

@@ -53,3 +53,48 @@ fn external_registration_requires_verified_nonempty_valid_email() {
         "member+tag@example.com"
     );
 }
+
+#[test]
+fn external_registration_profile_hints_are_optional_bounded_and_not_provider_specific() {
+    let valid = serde_json::json!({"account":" GitHub-User ", "nickname":" 昵称 ",
+        "avatar_url":"https://avatars.example.test/user"});
+    assert_eq!(
+        external_registration_account(&valid).as_deref(),
+        Some("GitHub-User")
+    );
+    assert_eq!(
+        external_registration_nickname(&valid).as_deref(),
+        Some("昵称")
+    );
+    assert_eq!(
+        external_registration_avatar(&valid).as_deref(),
+        Some("https://avatars.example.test/user")
+    );
+    for account in [
+        "",
+        " ",
+        "/root",
+        "bad user",
+        "name@example.com",
+        &"a".repeat(65),
+    ] {
+        assert!(external_registration_account(&serde_json::json!({"account":account})).is_none());
+    }
+    for nickname in ["", " ", "bad\nname", &"字".repeat(129)] {
+        assert!(
+            external_registration_nickname(&serde_json::json!({"nickname":nickname})).is_none()
+        );
+    }
+    for avatar in [
+        "javascript:alert(1)",
+        "data:image/png;base64,AA",
+        "http://example.test/avatar",
+        "https://user:password@example.test/avatar",
+        "https://example.test/\navatar",
+    ] {
+        assert!(external_registration_avatar(&serde_json::json!({"avatar_url":avatar})).is_none());
+    }
+    let raw = serde_json::json!({"login":"github-login","name":"GitHub Public Name"});
+    assert!(external_registration_account(&raw).is_none());
+    assert!(external_registration_nickname(&raw).is_none());
+}
