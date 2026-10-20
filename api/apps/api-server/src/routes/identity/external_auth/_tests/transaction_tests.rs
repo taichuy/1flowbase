@@ -16,7 +16,7 @@ fn fixture(browser: &str) -> Transaction {
         code_verifier: random_token(),
         expires_at_unix: 1_000,
         binding: None,
-        purpose: transaction::Purpose::Bind,
+        purpose: Purpose::Bind,
     }
 }
 
