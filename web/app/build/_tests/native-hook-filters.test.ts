@@ -52,6 +52,7 @@ async function buildFixture(
       ...plugins,
       {
         name: 'native-filter-fixture',
+        enforce: 'pre',
         resolveId(id) {
           if (Object.hasOwn(sources, id)) return id;
         },
@@ -332,7 +333,12 @@ describe('native Vite hook dispatch filters', () => {
       '/native-filter-fixture/query.js?raw'
     ];
     const modules = Object.fromEntries([
-      ...included.map((id) => [id, 'export const value = "antd";']),
+      ...included.map((id) => [
+        id,
+        id.endsWith('.cjs')
+          ? 'module.exports = "antd";'
+          : 'export const value = "antd";'
+      ]),
       [excluded[0], 'export const value = "other";'],
       ...excluded.slice(1).map((id) => [id, 'export const value = "antd";'])
     ]);
