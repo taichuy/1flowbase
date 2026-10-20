@@ -410,11 +410,33 @@ describe('ApplicationLogsPage - table field settings', () => {
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
         const url = input instanceof Request ? input.url : String(input);
-        const method = init?.method ?? 'GET';
-        const meta =
-          url.includes('/api/console/me/meta') && method === 'PATCH'
-            ? hiddenColumnsMeta
-            : {};
+        const method =
+          init?.method ?? (input instanceof Request ? input.method : 'GET');
+        const pathname = new URL(url, window.location.href).pathname;
+        if (
+          method === 'GET' &&
+          pathname ===
+            '/api/console/applications/app-1/logs/deletion-jobs/latest'
+        ) {
+          return new Response(
+            JSON.stringify({ data: { job: null }, meta: null }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' }
+            }
+          );
+        }
+        if (
+          !(
+            (method === 'GET' && pathname === '/api/console/me') ||
+            (method === 'PATCH' && pathname === '/api/console/me/meta')
+          )
+        ) {
+          throw new Error(
+            `Unexpected table preferences fixture request: ${method} ${pathname}`
+          );
+        }
+        const meta = method === 'PATCH' ? hiddenColumnsMeta : {};
 
         return new Response(
           JSON.stringify({
