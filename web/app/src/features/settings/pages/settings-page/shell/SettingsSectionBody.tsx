@@ -9,6 +9,12 @@ import type { SettingsSectionKey } from '../../../lib/settings-sections';
 import type { SettingsExtensionCenterCategory } from '../../../api/extensions/extensions';
 import type { NetworkCenterPage } from '../../network-center/NetworkCenterSection';
 
+const SystemSettingsPanel = lazy(() =>
+  import('../../system-settings/SystemSettingsPanel').then((module) => ({
+    default: module.SystemSettingsPanel
+  }))
+);
+
 const NotificationsPage = lazy(() =>
   import('../../notifications/NotificationsPage').then((module) => ({
     default: module.NotificationsPage
@@ -99,9 +105,11 @@ const I18nCatalogPage = lazy(() =>
   }))
 );
 const UiManagementPanel = lazy(() =>
-  import('../../../components/ui-management/UiManagementPanel').then((module) => ({
-    default: module.UiManagementPanel
-  }))
+  import('../../../components/ui-management/UiManagementPanel').then(
+    (module) => ({
+      default: module.UiManagementPanel
+    })
+  )
 );
 const NetworkCenterSection = lazy(() =>
   import('../../network-center/NetworkCenterSection').then((module) => ({
@@ -151,6 +159,12 @@ export function SettingsSectionBody({
   const navigate = useNavigate();
 
   switch (sectionKey) {
+    case 'system':
+      return (
+        <SettingsSectionBoundary>
+          <SystemSettingsPanel />
+        </SettingsSectionBoundary>
+      );
     case 'notifications':
       return (
         <SettingsSectionBoundary>

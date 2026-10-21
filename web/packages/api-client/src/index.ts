@@ -36,6 +36,8 @@ export * from './console/administration/system';
 export * from './console/administration/ui-management';
 export * from './errors';
 export * from './public-auth';
+export * from './public/system-metadata';
+export * from './console/administration/system-branding';
 export * from './transport';
 export * from './webmcp';
 export * from './public/mcp-oauth';

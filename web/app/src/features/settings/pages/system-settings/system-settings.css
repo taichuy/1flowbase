@@ -1,0 +1,17 @@
+.system-settings {
+  max-width: 960px;
+}
+.system-settings__logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+.system-settings__error {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 991px) {
+  .system-settings {
+    padding: 0 16px 24px;
+  }
+}

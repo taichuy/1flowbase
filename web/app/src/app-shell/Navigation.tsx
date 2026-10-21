@@ -1,3 +1,4 @@
+import { useSystemMetadata } from '../shared/api/system-metadata';
 import {
   navigationQueryStaleTime,
   selectNavigationQueryScope
@@ -288,6 +289,7 @@ export function Navigation({
 }) {
   const navigationScope = useAuthStore(selectNavigationQueryScope);
   const { t } = useTranslation('appShell');
+  const { data: metadata } = useSystemMetadata();
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const [moveNodeId, setMoveNodeId] = useState<string | null>(null);
   const workspaceId = useAuthStore(
@@ -455,8 +457,8 @@ export function Navigation({
         placement="left"
         title={
           <span className="app-shell-mobile-navigation-brand">
-            <img alt="" aria-hidden="true" src="/icon.svg" />
-            <Typography.Text>1flowbase</Typography.Text>
+            <img alt="" aria-hidden="true" src={metadata?.logo_url} />
+            <Typography.Text>{metadata?.system_name}</Typography.Text>
           </span>
         }
         onClose={closeMobileNavigation}

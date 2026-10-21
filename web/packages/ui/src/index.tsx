@@ -7,12 +7,14 @@ const { Header, Content } = Layout;
 
 export interface AppShellProps extends PropsWithChildren {
   title: string;
+  logoUrl?: string;
   navigation?: ReactNode;
   actions?: ReactNode;
 }
 
 export function AppShell({
   title,
+  logoUrl = '/icon.svg',
   navigation,
   actions,
   children
@@ -28,7 +30,7 @@ export function AppShell({
           <div className="app-shell-brand">
             <img
               className="app-shell-logo"
-              src="/icon.svg"
+              src={logoUrl}
               alt=""
               aria-hidden="true"
             />

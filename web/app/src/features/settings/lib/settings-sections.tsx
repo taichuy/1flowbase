@@ -5,6 +5,7 @@ export type SettingsSectionKey =
   | 'docs'
   | 'api-key-authentication'
   | 'auth-center'
+  | 'system'
   | 'system-runtime'
   | 'memory-observation'
   | 'i18n'
@@ -59,6 +60,7 @@ const settingsSectionKeys = new Set<SettingsSectionKey>([
   'docs',
   'api-key-authentication',
   'auth-center',
+  'system',
   'system-runtime',
   'memory-observation',
   'i18n',
@@ -125,6 +127,7 @@ export function settingsSectionItemsFromConsoleNavigation(
 }
 
 export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
+  { key: 'system', label_key: 'system_settings.title', to: '/settings/system' },
   {
     key: 'notifications',
     label_key: 'auto.notifications',

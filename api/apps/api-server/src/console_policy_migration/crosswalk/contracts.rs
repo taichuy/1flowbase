@@ -6,6 +6,7 @@ use super::{
 // This is intentionally an immutable audit ledger rather than a policy-group expansion. A new
 // registry operation must be added here with its historic proof or default-disabled reason.
 pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
+    core_simple_settings("system.branding", &["system.branding.get", "system.branding.save"]),
     core_authenticated_other("core.authenticated", &["core.authenticated"]),
     core_authenticated_other(
         "core.authenticated",
@@ -472,6 +473,9 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Installation branding did not exist in the audited historic permission baseline.
+    "system.branding.get",
+    "system.branding.save",
     // UI configuration now requires an explicit UI-management grant. Legacy design grants
     // do not open the new role-configurable menu operations.
     "frontstage.groups.create",

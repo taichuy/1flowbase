@@ -1107,5 +1107,26 @@
   "files": {
     "image_preview_enabled": "启用图片预览",
     "original_image_preview_hint": "使用原图预览，下载入口独立，不生成缩略图。"
+  },
+  "system_settings": {
+    "title": "系统设置",
+    "description": "配置系统品牌与登录页展示内容，保存后应用到整个系统。",
+    "logo": "Logo",
+    "logo_help": "支持 PNG、JPG、SVG，文件不超过 512 KB，建议尺寸 200 × 200px。",
+    "logo_invalid": "请选择不超过 512 KB 的 PNG、JPG 或 SVG 图片。",
+    "logo_failed": "图片读取失败，请重新选择。",
+    "upload": "上传 Logo",
+    "system_name": "系统名称",
+    "system_name_help": "显示在顶部导航和移动端菜单。",
+    "name_required": "请输入系统名称",
+    "login_title": "登录页左侧标题",
+    "login_title_help": "显示在登录页左侧的大标题，留空则不显示文字。",
+    "system_description": "系统说明",
+    "filing_html": "备案 HTML",
+    "filing_help": "填写 HTML，在登录页 Powered by 1flowbase 下方原样展示；留空则不显示。",
+    "saved": "系统设置已保存",
+    "save_failed": "保存失败，请检查权限或稍后重试。",
+    "load_failed": "无法读取系统设置",
+    "retry": "重试"
   }
 }

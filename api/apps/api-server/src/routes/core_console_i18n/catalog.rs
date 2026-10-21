@@ -24,6 +24,8 @@ macro_rules! resource {
 /// deliberately contains no translated value: request projections resolve translations from the
 /// dynamic catalog and the resolver falls back to the English key.
 pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
+    settings_feature!("system_settings.title", "System settings"),
+    settings_feature!("console.policy_groups.settings.system.branding.description", "Manage installation-wide public branding"),
     settings_feature!("auto.notifications", "Notifications"),
     settings_feature!(
         "console.policy_groups.settings.system.notifications.description",

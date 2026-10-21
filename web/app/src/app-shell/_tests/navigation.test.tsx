@@ -1,3 +1,14 @@
+vi.mock('../../shared/api/system-metadata', () => ({
+  useSystemMetadata: () => ({
+    data: {
+      logo_url: '/icon.svg',
+      system_name: '1flowbase',
+      login_title: 'Welcome',
+      system_description: '',
+      filing_html: ''
+    }
+  })
+}));
 import {
   act,
   fireEvent,

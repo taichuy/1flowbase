@@ -646,6 +646,8 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("settings_feature.access.system.docs", "system.docs"),
     settings("user_api_keys.manage", "system.api-key-authentication"),
     settings("system.release_status.view", "system.system-runtime"),
+    settings("system.branding.get", "system.branding"),
+    settings("system.branding.save", "system.branding"),
     settings("system.runtime_profile.view", "system.system-runtime"),
     settings("system.runtime_processes.view", "system.system-runtime"),
     settings("system.runtime_process.terminate", "system.system-runtime"),

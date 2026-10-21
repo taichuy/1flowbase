@@ -171,3 +171,10 @@
   z-index: 20;
   background: color-mix(in srgb, var(--bg-surface, #ffffff) 45%, transparent);
 }
+
+.auth-sign-in-filing {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

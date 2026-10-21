@@ -3,6 +3,7 @@ pub mod application_management;
 pub mod auth_center;
 #[path = "identity_access/auth_center_interface.rs"]
 pub(crate) mod auth_center_interface;
+pub mod branding;
 pub mod billing;
 pub(crate) mod billing_interface;
 pub mod data_models;

@@ -42,12 +42,14 @@ import {
 } from '../lib/public-auth-loading';
 import { redirectToExternalLogin } from '../lib/external-login';
 import './sign-in-page.css';
+import { useSystemMetadata } from '../../../shared/api/system-metadata';
 
 interface SignInPageProps {
   loginEntryId?: string;
 }
 
 export function SignInPage({ loginEntryId }: SignInPageProps) {
+  const { data: metadata } = useSystemMetadata();
   const navigate = useNavigate();
   const { t } = useTranslation('auth');
   const externalError = new URLSearchParams(window.location.search).get(
@@ -191,7 +193,10 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
   return (
     <div className="auth-sign-in-page">
       <Suspense fallback={null}>
-        <HeroAnimation />
+        <HeroAnimation
+          login_title={metadata?.login_title}
+          system_description={metadata?.system_description}
+        />
       </Suspense>
       <div
         className="auth-sign-in-panel"
@@ -302,6 +307,12 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               {t('sign_in.footer')}
             </a>
           </span>
+          {metadata?.filing_html ? (
+            <div
+              className="auth-sign-in-filing"
+              dangerouslySetInnerHTML={{ __html: metadata.filing_html }}
+            />
+          ) : null}
         </div>
       </div>
       {isStarting ? (

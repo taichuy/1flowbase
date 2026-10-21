@@ -3,6 +3,13 @@ use super::*;
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
         SettingsFeatureRegistration {
+            feature_id: "system.branding".to_owned(),
+            owner: SettingsFeatureOwner { kind: SettingsFeatureOwnerKind::Core, owner_id: "boot-core".to_owned(), version: env!("CARGO_PKG_VERSION").to_owned() },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface { route_id: "settings.system".to_owned(), surface_key: "system".to_owned(), path: "/settings/system".to_owned(), label_key: "system_settings.title".to_owned(), description_key: "console.policy_groups.settings.system.branding.description".to_owned(), order: 2000 },
+            api_routes: settings_api_routes(&[("GET", "/api/console/settings/system"), ("PUT", "/api/console/settings/system")]),
+        },
+        SettingsFeatureRegistration {
             feature_id:SYSTEM_NOTIFICATIONS_SETTINGS_FEATURE_ID.to_owned(),
             owner:SettingsFeatureOwner{kind:SettingsFeatureOwnerKind::Core,owner_id:"boot-core".to_owned(),version:env!("CARGO_PKG_VERSION").to_owned()},
             lifecycle:SettingsFeatureLifecycle::Active,

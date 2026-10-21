@@ -318,6 +318,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
             plugin_upload_max_bytes,
         ))
         .merge(super::auth_center::route_assembly())
+        .merge(super::branding::route_assembly())
         .merge(super::system::route_assembly())
         .merge(super::system_backups::route_assembly())
         .merge(super::system_templates::route_assembly())
@@ -835,6 +836,7 @@ mod tests {
             .merge(crate::routes::plugins::route_assembly())
             .merge(crate::routes::auth_center::route_assembly())
             .merge(crate::routes::billing::route_assembly())
+            .merge(crate::routes::branding::route_assembly())
             .merge(crate::routes::system::route_assembly())
             .merge(crate::routes::system_backups::route_assembly())
             .merge(crate::routes::system_templates::route_assembly())

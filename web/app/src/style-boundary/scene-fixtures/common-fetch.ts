@@ -37,6 +37,24 @@ export function getStyleBoundaryCommonResponse(
   requestUrl: URL,
   method: string
 ): Response | null {
+  if (
+    method.toUpperCase() === 'GET' &&
+    ['/api/public/system-metadata', '/api/console/settings/system'].includes(
+      requestUrl.pathname
+    )
+  ) {
+    return createStyleBoundaryJsonResponse({
+      data: {
+        logo_url: '/icon.svg',
+        system_name: '1flowbase',
+        login_title: '1flowbase',
+        system_description: '对话即是壁垒，AI应用原生底座',
+        filing_html:
+          '<a href="https://beian.miit.gov.cn/">京ICP备12345678号-1</a>'
+      },
+      meta: null
+    });
+  }
   const runtimeResponse = getStyleBoundaryRuntimeResponse(requestUrl, method);
   if (runtimeResponse) return runtimeResponse;
 
@@ -81,6 +99,12 @@ export function getStyleBoundaryCommonResponse(
       data: {
         route_definitions: [
           {
+            route_id: 'settings.system',
+            surface_key: 'system',
+            path: '/settings/system',
+            surface_kind: 'system'
+          },
+          {
             route_id: 'embedded-apps',
             surface_key: 'embedded-apps',
             path: '/embedded-apps',
@@ -119,6 +143,14 @@ export function getStyleBoundaryCommonResponse(
           ...settingsI18nCatalogTestNavigation.route_definitions
         ],
         navigation_items: [
+          {
+            item_id: 'settings.system',
+            route_id: 'settings.system',
+            parent_item_id: 'settings',
+            label_key: 'system_settings.title',
+            navigation_slot: 'settings',
+            order: 1500
+          },
           {
             item_id: 'embedded-apps',
             route_id: 'embedded-apps',

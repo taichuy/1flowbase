@@ -23,6 +23,7 @@ const PRODUCT_DEFAULT_SETTINGS_FEATURE_ORDER: &[&str] = &[
     "system.system-runtime",
     "system.memory-observation",
     "system.i18n-catalog",
+    "system.branding",
 ];
 
 // AC-008: a fresh workspace receives the product order confirmed for #1613. The stable

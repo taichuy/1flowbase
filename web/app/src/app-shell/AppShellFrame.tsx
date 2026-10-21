@@ -1,3 +1,4 @@
+import { useSystemMetadata } from '../shared/api/system-metadata';
 import { NotificationBell } from '../features/notifications/components/NotificationBell';
 import { useLayoutEffect, type PropsWithChildren } from 'react';
 
@@ -53,6 +54,7 @@ function AppShellFrameContent({
   useRouterLinks = false
 }: PropsWithChildren<{ pathname?: string; useRouterLinks?: boolean }>) {
   const { t } = useTranslation('appShell');
+  const { data: metadata } = useSystemMetadata();
   const secondaryActions = getSecondaryChromeRoutes();
   const assistantClientTools = useAssistantClientTools();
 
@@ -64,7 +66,8 @@ function AppShellFrameContent({
 
   return (
     <AppShell
-      title="1flowbase"
+      title={metadata?.system_name ?? ''}
+      logoUrl={metadata?.logo_url}
       navigation={
         <Navigation pathname={pathname} useRouterLinks={useRouterLinks} />
       }

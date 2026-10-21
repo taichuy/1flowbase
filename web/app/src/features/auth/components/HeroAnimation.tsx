@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import { i18nText } from '../../../shared/i18n/text';
 
 interface Leaf {
   x: number;
@@ -38,7 +37,13 @@ interface Ripple {
   speed: number;
 }
 
-export function HeroAnimation() {
+export function HeroAnimation({
+  login_title,
+  system_description
+}: {
+  login_title?: string;
+  system_description?: string;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseRef = useRef({ x: -1000, y: -1000, vx: 0, vy: 0 });
@@ -461,9 +466,9 @@ export function HeroAnimation() {
           }}
         >
           <div className="hero-tagline" aria-label="brand name and slogan">
-            <div className="hero-text-line hero-title-line">1flowbase</div>
+            <div className="hero-text-line hero-title-line">{login_title}</div>
             <div className="hero-text-line hero-slogan-line">
-              {i18nText('auth', 'auto.product_tagline')}
+              {system_description}
             </div>
           </div>
         </div>

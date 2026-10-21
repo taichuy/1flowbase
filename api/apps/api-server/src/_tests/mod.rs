@@ -125,6 +125,8 @@ pub(crate) use application::{
     create_gated_provider_instance, create_marker_output_provider_instance,
     create_ready_provider_instance, ProviderInvocationGate,
 };
+#[path = "system_settings/system_branding_routes.rs"]
+mod system_branding_routes;
 #[path = "system_settings/system_routes.rs"]
 mod system_routes;
 #[path = "host_boot/workflow_schedule_worker.rs"]

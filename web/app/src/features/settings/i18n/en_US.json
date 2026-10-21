@@ -1107,5 +1107,26 @@
   "files": {
     "image_preview_enabled": "Enable image preview",
     "original_image_preview_hint": "Preview the original image. Downloads remain separate; no thumbnail is generated."
+  },
+  "system_settings": {
+    "title": "System settings",
+    "description": "Configure system branding and sign-in content. Saved changes apply across the system.",
+    "logo": "Logo",
+    "logo_help": "PNG, JPG or SVG, up to 512 KB. Recommended size: 200 × 200px.",
+    "logo_invalid": "Choose a PNG, JPG or SVG image smaller than 512 KB.",
+    "logo_failed": "Could not read the image. Please choose it again.",
+    "upload": "Upload logo",
+    "system_name": "System name",
+    "system_name_help": "Shown in the top navigation and mobile menu.",
+    "name_required": "Enter a system name",
+    "login_title": "Sign-in left title",
+    "login_title_help": "The large title on the left of the sign-in page. Leave blank to hide the text.",
+    "system_description": "System description",
+    "filing_html": "Registration HTML",
+    "filing_help": "HTML displayed as entered below Powered by 1flowbase on the sign-in page. Leave blank to hide.",
+    "saved": "System settings saved",
+    "save_failed": "Could not save. Check your permissions or try again later.",
+    "load_failed": "Could not load system settings",
+    "retry": "Retry"
   }
 }

@@ -1,3 +1,15 @@
+vi.mock('../../../shared/api/system-metadata', () => ({
+  useSystemMetadata: () => ({
+    data: {
+      logo_url: '/icon.svg',
+      system_name: 'Test system',
+      login_title: 'Configured welcome',
+      system_description: 'Configured description',
+      filing_html:
+        '<a href="https://beian.miit.gov.cn/" data-free="yes">备案号</a>'
+    }
+  })
+}));
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -412,13 +424,19 @@ describe('declarative authentication entry actions', () => {
     expect(screen.getByRole('button', { name: 'Password' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Password' })).toBeDisabled();
     expect(button.closest('.auth-sign-in-panel')).toHaveAttribute('inert');
-    expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass('auth-sign-in-loading-overlay');
+    expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass(
+      'auth-sign-in-loading-overlay'
+    );
     // Back-forward cache restores the page and allows another intentional click.
     fireEvent(window, new Event('pageshow'));
     const restoredButton = screen.getByRole('button', { name: external.title });
     expect(restoredButton).toBeEnabled();
-    expect(restoredButton.closest('.auth-sign-in-panel')).not.toHaveAttribute('inert');
-    expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
+    expect(restoredButton.closest('.auth-sign-in-panel')).not.toHaveAttribute(
+      'inert'
+    );
+    expect(
+      screen.queryByRole('status', { name: 'thinking' })
+    ).not.toBeInTheDocument();
     fireEvent.click(restoredButton);
     expect(externalRedirect).toHaveBeenCalledTimes(2);
   });
@@ -457,7 +475,9 @@ describe('declarative authentication entry actions', () => {
       expect(screen.getByRole('status', { name: 'thinking' })).toBeVisible();
       expect(button).toBeVisible();
       expect(button).toBeDisabled();
-      expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass('auth-sign-in-loading-overlay');
+      expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass(
+        'auth-sign-in-loading-overlay'
+      );
       if (mode === 'cancelled' || mode === 'failed')
         expect(screen.getByRole('alert')).toBeVisible();
     }
@@ -477,8 +497,12 @@ describe('declarative authentication entry actions', () => {
     expect(screen.getByRole('alert')).toBeVisible();
     const restoredButton = screen.getByRole('button', { name: external.title });
     expect(restoredButton).toBeEnabled();
-    expect(restoredButton.closest('.auth-sign-in-panel')).not.toHaveAttribute('inert');
-    expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
+    expect(restoredButton.closest('.auth-sign-in-panel')).not.toHaveAttribute(
+      'inert'
+    );
+    expect(
+      screen.queryByRole('status', { name: 'thinking' })
+    ).not.toBeInTheDocument();
     fireEvent.click(restoredButton);
     expect(externalRedirect).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -502,4 +526,20 @@ describe('declarative authentication entry actions', () => {
     expect(alert).toHaveTextContent('不会自动创建新账号');
     expect(externalRedirect).not.toHaveBeenCalled();
   });
+});
+
+test('renders raw registration HTML below the powered-by footer', async () => {
+  render(
+    <AppProviders>
+      <SignInPage />
+    </AppProviders>
+  );
+  expect(await screen.findByText('Configured welcome')).toBeVisible();
+  expect(screen.getByText('Configured description')).toBeVisible();
+  const link = await screen.findByRole('link', { name: '备案号' });
+  expect(link).toHaveAttribute('href', 'https://beian.miit.gov.cn/');
+  expect(link).toHaveAttribute('data-free', 'yes');
+  expect(
+    screen.getByText('Powered by 1flowbase').closest('span')?.nextElementSibling
+  ).toHaveTextContent('备案号');
 });

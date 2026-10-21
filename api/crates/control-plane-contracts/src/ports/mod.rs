@@ -39,6 +39,10 @@ pub mod responses_history_migration;
 pub mod runtime;
 #[cfg(feature = "responses-history-migration")]
 pub use responses_history_migration::*;
+#[path = "resource_ports/system_branding.rs"]
+pub mod system_branding;
+pub use system_branding::*;
+
 pub mod system_backup;
 pub mod ui_management;
 

@@ -1,3 +1,13 @@
+vi.mock('@1flowbase/api-client/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@1flowbase/api-client/auth')>()),
+  fetchPublicSystemMetadata: vi.fn().mockResolvedValue({
+    logo_url: '/custom-logo.svg',
+    system_name: 'Configured system',
+    login_title: 'Welcome',
+    system_description: 'Description',
+    filing_html: ''
+  })
+}));
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -443,4 +453,13 @@ afterEach(async () => {
     resetAuthStore();
     resetFrontstageDesignModeStore();
   });
+});
+
+test('system branding uses public metadata for the shell title and logo', async () => {
+  await renderShell('/');
+  expect(await screen.findByText('Configured system')).toBeVisible();
+  expect(document.querySelector('.app-shell-logo')).toHaveAttribute(
+    'src',
+    '/custom-logo.svg'
+  );
 });

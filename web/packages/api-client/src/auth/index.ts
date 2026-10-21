@@ -1,3 +1,7 @@
+export {
+  fetchPublicSystemMetadata,
+  type SystemMetadata
+} from '../public/system-metadata';
 export { ApiClientError } from '../errors';
 export {
   apiFetch,

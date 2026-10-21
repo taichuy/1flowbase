@@ -410,6 +410,7 @@ fn console_router_with_assembly(
             "/api/ex",
             routes::application_public_api::ex::route_assembly(),
         )
+        .merge(routes::branding::public_interface::route_assembly())
         .merge(routes::client_collectors::route_assembly())
         .merge(routes::files::public::route_assembly())
         .merge(routes::mcp_oauth::route_assembly())
