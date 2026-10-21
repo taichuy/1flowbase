@@ -74,7 +74,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
   const [startingEntryId, setStartingEntryId] = useState<string | null>(null);
   const [startFailed, setStartFailed] = useState(false);
   const startingRef = useRef(false);
-  const showLoading = loading || startingEntryId !== null;
+  const isStarting = startingEntryId !== null;
 
   useEffect(() => {
     const reset = () => {
@@ -195,6 +195,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
       </Suspense>
       <div
         className="auth-sign-in-panel"
+        inert={isStarting}
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -204,7 +205,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
         }}
       >
         <div className="auth-sign-in-content">
-          {externalError && startingEntryId === null ? (
+          {externalError ? (
             <Alert
               showIcon
               type="error"
@@ -217,13 +218,14 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
           {startFailed ? (
             <Alert showIcon type="error" title={t('external_auth.failed')} />
           ) : null}
-          {showLoading ? <LoadingState compact /> : null}
-          {!showLoading && selectedLoginEntry?.entry_action === 'external_login' ? (
+          {loading ? <LoadingState compact /> : null}
+          {!loading && selectedLoginEntry?.entry_action === 'external_login' ? (
             <div className="auth-sign-in-selector">
               {loginEntrySelector ? (
                 <button
                   className="auth-sign-in-selector-button"
                   type="button"
+                  disabled={isStarting}
                   onClick={requestLoginEntrySelector}
                 >
                   {t('external_auth.other_methods')}
@@ -232,19 +234,23 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               <button
                 className="auth-sign-in-selector-button"
                 type="button"
+                disabled={isStarting}
+                aria-busy={startingEntryId === selectedLoginEntry.id}
                 onClick={() => activateLoginEntry(selectedLoginEntry)}
               >
                 {selectedLoginEntry.title}
               </button>
             </div>
           ) : null}
-          {!showLoading && loginEntries.length > 1 && !selectedLoginEntry ? (
+          {!loading && loginEntries.length > 1 && !selectedLoginEntry ? (
             <div className="auth-sign-in-selector">
               {loginEntries.map((instance) => (
                 <button
                   key={instance.id}
                   className="auth-sign-in-selector-button"
                   type="button"
+                  disabled={isStarting}
+                  aria-busy={startingEntryId === instance.id}
                   onPointerEnter={() => {
                     if (instance.entry_action === 'render_ui')
                       prefetchPublicAuthEntry(instance.public_ui_block);
@@ -260,7 +266,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               ))}
             </div>
           ) : null}
-          {!showLoading &&
+          {!loading &&
           selectedLoginEntry?.entry_action === 'render_ui' &&
           selectedInstanceUsesLegacyContract ? (
             <BuiltinPasswordSignIn
@@ -269,7 +275,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               onAuthenticated={handleAuthenticated}
             />
           ) : null}
-          {!showLoading &&
+          {!loading &&
           selectedLoginEntry?.entry_action === 'render_ui' &&
           !selectedInstanceUsesLegacyContract ? (
             <Suspense fallback={<LoadingState compact />}>
@@ -281,7 +287,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               />
             </Suspense>
           ) : null}
-          {!showLoading && (discoveryFailed || loginEntries.length === 0) ? (
+          {!loading && (discoveryFailed || loginEntries.length === 0) ? (
             <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
           ) : null}
         </div>
@@ -298,6 +304,9 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
           </span>
         </div>
       </div>
+      {isStarting ? (
+        <LoadingState fullscreen className="auth-sign-in-loading-overlay" />
+      ) : null}
     </div>
   );
 }

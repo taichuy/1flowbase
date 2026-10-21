@@ -164,3 +164,10 @@
     box-shadow: none;
   }
 }
+
+.auth-sign-in-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--bg-surface, #ffffff) 45%, transparent);
+}

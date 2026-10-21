@@ -406,12 +406,18 @@ describe('declarative authentication entry actions', () => {
     expect(navigateSpy).not.toHaveBeenCalled();
     expect(renderedBlocks).not.toHaveBeenCalled();
     expect(screen.getByRole('status', { name: 'thinking' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: external.title })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Password' })).not.toBeInTheDocument();
+    expect(button).toBeVisible();
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('button', { name: 'Password' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Password' })).toBeDisabled();
+    expect(button.closest('.auth-sign-in-panel')).toHaveAttribute('inert');
+    expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass('auth-sign-in-loading-overlay');
     // Back-forward cache restores the page and allows another intentional click.
     fireEvent(window, new Event('pageshow'));
     const restoredButton = screen.getByRole('button', { name: external.title });
     expect(restoredButton).toBeEnabled();
+    expect(restoredButton.closest('.auth-sign-in-panel')).not.toHaveAttribute('inert');
     expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
     fireEvent.click(restoredButton);
     expect(externalRedirect).toHaveBeenCalledTimes(2);
@@ -449,8 +455,11 @@ describe('declarative authentication entry actions', () => {
       fireEvent.click(button);
       expect(externalRedirect).toHaveBeenCalledExactlyOnceWith(external.id);
       expect(screen.getByRole('status', { name: 'thinking' })).toBeVisible();
-      expect(screen.queryByRole('button', { name: external.title })).not.toBeInTheDocument();
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(button).toBeVisible();
+      expect(button).toBeDisabled();
+      expect(screen.getByRole('status', { name: 'thinking' })).toHaveClass('auth-sign-in-loading-overlay');
+      if (mode === 'cancelled' || mode === 'failed')
+        expect(screen.getByRole('alert')).toBeVisible();
     }
   );
 
@@ -468,6 +477,7 @@ describe('declarative authentication entry actions', () => {
     expect(screen.getByRole('alert')).toBeVisible();
     const restoredButton = screen.getByRole('button', { name: external.title });
     expect(restoredButton).toBeEnabled();
+    expect(restoredButton.closest('.auth-sign-in-panel')).not.toHaveAttribute('inert');
     expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
     fireEvent.click(restoredButton);
     expect(externalRedirect).toHaveBeenCalledTimes(2);
