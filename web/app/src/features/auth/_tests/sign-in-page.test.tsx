@@ -405,11 +405,15 @@ describe('declarative authentication entry actions', () => {
     expect(externalRedirect).toHaveBeenCalledExactlyOnceWith(external.id);
     expect(navigateSpy).not.toHaveBeenCalled();
     expect(renderedBlocks).not.toHaveBeenCalled();
-    expect(button).toBeDisabled();
+    expect(screen.getByRole('status', { name: 'thinking' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: external.title })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Password' })).not.toBeInTheDocument();
     // Back-forward cache restores the page and allows another intentional click.
     fireEvent(window, new Event('pageshow'));
-    expect(button).toBeEnabled();
-    fireEvent.click(button);
+    const restoredButton = screen.getByRole('button', { name: external.title });
+    expect(restoredButton).toBeEnabled();
+    expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
+    fireEvent.click(restoredButton);
     expect(externalRedirect).toHaveBeenCalledTimes(2);
   });
 
@@ -444,6 +448,9 @@ describe('declarative authentication entry actions', () => {
         expect(screen.getByRole('alert')).toBeVisible();
       fireEvent.click(button);
       expect(externalRedirect).toHaveBeenCalledExactlyOnceWith(external.id);
+      expect(screen.getByRole('status', { name: 'thinking' })).toBeVisible();
+      expect(screen.queryByRole('button', { name: external.title })).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     }
   );
 
@@ -459,10 +466,13 @@ describe('declarative authentication entry actions', () => {
     const button = await screen.findByRole('button', { name: external.title });
     fireEvent.click(button);
     expect(screen.getByRole('alert')).toBeVisible();
-    expect(button).toBeEnabled();
-    fireEvent.click(button);
+    const restoredButton = screen.getByRole('button', { name: external.title });
+    expect(restoredButton).toBeEnabled();
+    expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
+    fireEvent.click(restoredButton);
     expect(externalRedirect).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'thinking' })).toBeVisible();
   });
   test('an unlinked identity explains recovery in the original account and never retries OAuth automatically', async () => {
     window.history.pushState(

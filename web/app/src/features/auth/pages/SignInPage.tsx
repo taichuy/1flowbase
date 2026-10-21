@@ -74,6 +74,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
   const [startingEntryId, setStartingEntryId] = useState<string | null>(null);
   const [startFailed, setStartFailed] = useState(false);
   const startingRef = useRef(false);
+  const showLoading = loading || startingEntryId !== null;
 
   useEffect(() => {
     const reset = () => {
@@ -203,7 +204,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
         }}
       >
         <div className="auth-sign-in-content">
-          {externalError ? (
+          {externalError && startingEntryId === null ? (
             <Alert
               showIcon
               type="error"
@@ -216,14 +217,13 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
           {startFailed ? (
             <Alert showIcon type="error" title={t('external_auth.failed')} />
           ) : null}
-          {loading ? <LoadingState compact /> : null}
-          {!loading && selectedLoginEntry?.entry_action === 'external_login' ? (
+          {showLoading ? <LoadingState compact /> : null}
+          {!showLoading && selectedLoginEntry?.entry_action === 'external_login' ? (
             <div className="auth-sign-in-selector">
               {loginEntrySelector ? (
                 <button
                   className="auth-sign-in-selector-button"
                   type="button"
-                  disabled={startingEntryId !== null}
                   onClick={requestLoginEntrySelector}
                 >
                   {t('external_auth.other_methods')}
@@ -232,23 +232,19 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               <button
                 className="auth-sign-in-selector-button"
                 type="button"
-                disabled={startingEntryId !== null}
-                aria-busy={startingEntryId === selectedLoginEntry.id}
                 onClick={() => activateLoginEntry(selectedLoginEntry)}
               >
                 {selectedLoginEntry.title}
               </button>
             </div>
           ) : null}
-          {loginEntries.length > 1 && !selectedLoginEntry ? (
+          {!showLoading && loginEntries.length > 1 && !selectedLoginEntry ? (
             <div className="auth-sign-in-selector">
               {loginEntries.map((instance) => (
                 <button
                   key={instance.id}
                   className="auth-sign-in-selector-button"
                   type="button"
-                  disabled={startingEntryId !== null}
-                  aria-busy={startingEntryId === instance.id}
                   onPointerEnter={() => {
                     if (instance.entry_action === 'render_ui')
                       prefetchPublicAuthEntry(instance.public_ui_block);
@@ -264,7 +260,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               ))}
             </div>
           ) : null}
-          {!loading &&
+          {!showLoading &&
           selectedLoginEntry?.entry_action === 'render_ui' &&
           selectedInstanceUsesLegacyContract ? (
             <BuiltinPasswordSignIn
@@ -273,7 +269,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               onAuthenticated={handleAuthenticated}
             />
           ) : null}
-          {!loading &&
+          {!showLoading &&
           selectedLoginEntry?.entry_action === 'render_ui' &&
           !selectedInstanceUsesLegacyContract ? (
             <Suspense fallback={<LoadingState compact />}>
@@ -285,7 +281,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
               />
             </Suspense>
           ) : null}
-          {!loading && (discoveryFailed || loginEntries.length === 0) ? (
+          {!showLoading && (discoveryFailed || loginEntries.length === 0) ? (
             <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
           ) : null}
         </div>
