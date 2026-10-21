@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24-bookworm-slim AS builder
+FROM node:24.22.1-bookworm-slim AS builder
 
 WORKDIR /workspace
 
@@ -39,6 +39,9 @@ COPY scripts ./scripts
 RUN pnpm --dir web --filter @1flowbase/web build
 
 FROM nginx:alpine AS runtime-base
+
+# Require the eMudhra distrust update even when the base image is cached.
+RUN apk add --no-cache 'ca-certificates>=20261020-r0'
 
 COPY docker/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/web/nginx.conf /usr/local/share/1flowbase/nginx.conf

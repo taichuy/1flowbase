@@ -10,6 +10,7 @@ on:
       - "docker/web.Dockerfile"
       - "api/Cargo.lock"
       - "api/Cargo.toml"
+      - "web/.nvmrc"
       - "web/package.json"
       - "web/app/package.json"
       - "web/pnpm-lock.yaml"
@@ -176,7 +177,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
 
       - name: Verify Docker nginx configuration lifecycle
         run: |
@@ -290,6 +291,7 @@ jobs:
           context: .
           file: docker/web.Dockerfile
           target: runtime-prebuilt
+          pull: true
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -593,6 +595,7 @@ jobs:
           context: .
           file: docker/api-server.Dockerfile
           target: runtime-prebuilt
+          pull: true
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -803,7 +806,7 @@ jobs:
       - uses: actions/setup-node@v5
         if: steps.trivy_reports.outputs.has_reports == 'true'
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
       - uses: ./.github/actions/quality-gate
         if: steps.trivy_reports.outputs.has_reports == 'true'
         with:

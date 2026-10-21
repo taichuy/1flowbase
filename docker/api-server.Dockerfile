@@ -11,6 +11,7 @@ WORKDIR /workspace/api
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config \
+  && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge '20250419~deb12u2' \
   && rm -rf /var/lib/apt/lists/*
 
 COPY api/Cargo.toml api/Cargo.lock ./
@@ -32,7 +33,7 @@ ARG MODEL_PRICING_REPOSITORY=taichuy/1flowbase-official-plugins
 # Keep the v2 source snapshot immutable so Docker cache tracks pricing updates.
 ARG MODEL_PRICING_REF=df9f7f279b8d2369c52238e66abc6dc964db213a
 
-RUN apk add --no-cache ca-certificates git jq
+RUN apk add --no-cache 'ca-certificates>=20261020-r0' git jq
 
 COPY scripts/shell/package-model-pricing-bootstrap.sh /usr/local/bin/package-model-pricing-bootstrap
 
@@ -42,20 +43,20 @@ RUN chmod 0755 /usr/local/bin/package-model-pricing-bootstrap \
       "${MODEL_PRICING_REF}" \
       /model-pricing
 
-FROM node:24-alpine AS application-template-bootstrap
+FROM node:24.22.1-alpine AS application-template-bootstrap
 
 ARG APPLICATION_TEMPLATE_REPOSITORY=taichuy/1flowbase-official-plugins
 # Immutable application template snapshot; changing a package also bumps its release_version.
 ARG APPLICATION_TEMPLATE_REF=392faa3bfbc086e8cbfda70f6ec765dffdb02906
 
-RUN apk add --no-cache ca-certificates git curl
+RUN apk add --no-cache 'ca-certificates>=20261020-r0' git curl
 COPY scripts/shell/package-application-templates.sh /usr/local/bin/package-application-templates
 RUN sh /usr/local/bin/package-application-templates \
       "${APPLICATION_TEMPLATE_REPOSITORY}" \
       "${APPLICATION_TEMPLATE_REF}" \
       /application-templates
 
-FROM node:24-bookworm-slim AS runtime-base
+FROM node:24.22.1-bookworm-slim AS runtime-base
 
 ARG APP_UID=1000
 ARG APP_GID=1000
@@ -74,6 +75,7 @@ RUN apt-get update \
   && /usr/lib/postgresql/18/bin/pg_dump --version | grep -Eq 'PostgreSQL\) 18[.]' \
   && /usr/lib/postgresql/18/bin/pg_restore --version | grep -Eq 'PostgreSQL\) 18[.]' \
   && apt-get purge -y --auto-remove curl gnupg \
+  && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge '20250419~deb12u2' \
   && rm -rf /var/lib/apt/lists/* \
   && groupmod --gid "${APP_GID}" --new-name flowbase node \
   && usermod --uid "${APP_UID}" --gid "${APP_GID}" --login flowbase \

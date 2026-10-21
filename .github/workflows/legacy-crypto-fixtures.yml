@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
       - name: Extract immutable old source outside the product Cargo graph
         run: |

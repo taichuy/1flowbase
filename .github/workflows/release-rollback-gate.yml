@@ -48,7 +48,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
 
       - uses: docker/login-action@v4
         with:

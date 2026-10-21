@@ -80,7 +80,7 @@ jobs:
       - name: Setup Node.js 24
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable

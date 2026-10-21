@@ -124,7 +124,7 @@ jobs:
           ref: ${{ needs.route.outputs.candidate_sha }}
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
       - uses: actions/download-artifact@v6
         with:
           name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
@@ -241,7 +241,7 @@ jobs:
           package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
@@ -277,7 +277,7 @@ jobs:
           ref: ${{ needs.route.outputs.candidate_sha }}
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
       - uses: actions/download-artifact@v6
         with:
           name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}

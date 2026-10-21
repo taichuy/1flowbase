@@ -155,7 +155,7 @@ jobs:
           package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
@@ -310,7 +310,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v5
         with:
@@ -363,7 +363,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v5
         with:
@@ -400,7 +400,7 @@ jobs:
           package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
@@ -440,7 +440,7 @@ jobs:
           package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
@@ -488,7 +488,7 @@ jobs:
           package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
@@ -727,7 +727,7 @@ jobs:
           package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
@@ -942,7 +942,7 @@ jobs:
           merge-multiple: true
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
       - name: Merge and enforce sharded API coverage
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
@@ -982,7 +982,7 @@ jobs:
         run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: web/.nvmrc
       - name: Prepare Trivy report directory
         run: mkdir -p tmp/test-governance
       - name: Generate web HIGH Trivy warning report

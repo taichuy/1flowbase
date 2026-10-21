@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version-file: web/.nvmrc
 
       - name: Install multi-architecture registry copier
         run: |
