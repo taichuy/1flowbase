@@ -17,6 +17,7 @@ RUN apt-get update \
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/apps ./apps
 COPY api/crates ./crates
+COPY api/vendor ./vendor
 
 RUN --mount=type=cache,id=1flowbase-cargo-registry,sharing=locked,target=/usr/local/cargo/registry \
     --mount=type=cache,id=1flowbase-cargo-git,sharing=locked,target=/usr/local/cargo/git \

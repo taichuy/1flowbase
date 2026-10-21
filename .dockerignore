@@ -3,6 +3,20 @@
 .agents
 .claude
 .aionrs
+.memory
+**/.memory
+
+# Keep private environment files out of build contexts and intermediate layers.
+.env
+.env.*
+**/.env
+**/.env.*
+*.env
+**/*.env
+!**/.env.example
+!**/.env.*.example
+!**/*.env.example
+
 node_modules
 target
 dist

@@ -203,7 +203,7 @@ docker buildx version
 从仓库根目录手动构建：
 
 ```bash
-docker buildx build --load -f docker/api-server.Dockerfile -t ghcr.io/taichuy/1flowbase-api-server:local .
+docker buildx build --load --target runtime -f docker/api-server.Dockerfile -t ghcr.io/taichuy/1flowbase-api-server:local .
 docker buildx build --load -f docker/web.Dockerfile -t ghcr.io/taichuy/1flowbase-web:local .
 ```
 
