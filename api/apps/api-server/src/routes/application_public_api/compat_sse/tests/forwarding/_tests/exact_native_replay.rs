@@ -185,11 +185,24 @@ async fn a_later_claim_batch_releases_an_already_replayed_fact_without_acking_it
     seed_flow_run_for_compat_sse_test(&state, &run).await;
     let original = committed_delivery_payload("already-read");
     let first = seed_pending_committed_delivery(&state, &run, original.clone()).await;
-    sqlx::query("update runtime_events set delivery_status = 'uncertain' where id = $1")
-        .bind(first.id)
-        .execute(state.store.pool())
-        .await
-        .unwrap();
+    // Produce a valid uncertain delivery through the writer's real receipt
+    // owner, including the durable claim token, lease and uncertainty timestamp.
+    let (initial_live_sender, initial_live_events) = mpsc::unbounded_channel();
+    drop(initial_live_sender);
+    let (initial_sender, mut initial_receiver) = mpsc::channel(8);
+    let initial_forwarding = spawn_typed_stream(
+        &state,
+        &run,
+        Vec::new(),
+        initial_live_events,
+        initial_sender,
+    );
+    let (_, _, receipt) = initial_receiver.recv().await.unwrap().into_parts();
+    let mut receipt = receipt.expect("initial delivery owns a claim");
+    receipt.begin_write();
+    drop(receipt);
+    assert!(initial_receiver.recv().await.is_none());
+    initial_forwarding.await.unwrap();
     let (live_sender, live_events) = mpsc::unbounded_channel();
     let (sender, mut receiver) = mpsc::channel(8);
     let forwarding = spawn_typed_stream(&state, &run, Vec::new(), live_events, sender);
@@ -202,11 +215,15 @@ async fn a_later_claim_batch_releases_an_already_replayed_fact_without_acking_it
 
     // A later recovery can make the previously read fact claimable. The next
     // live wake-up then claims both rows; only its new fact should be emitted.
-    sqlx::query("update runtime_events set delivery_status = 'pending' where id = $1")
-        .bind(first.id)
-        .execute(state.store.pool())
-        .await
-        .unwrap();
+    sqlx::query(
+        "update runtime_events set delivery_status = 'pending', delivery_claim_token = null, \
+         delivery_lease_expires_at = null, delivery_acked_at = null, \
+         delivery_uncertain_at = null where id = $1",
+    )
+    .bind(first.id)
+    .execute(state.store.pool())
+    .await
+    .unwrap();
     let fresh = committed_delivery_payload("new-delivery");
     let second = seed_pending_committed_delivery(&state, &run, fresh.clone()).await;
     live_sender
