@@ -302,6 +302,7 @@ async fn switch_role_replaces_the_session_authorization_scope() {
             "system.system-runtime",
             "system.memory-observation",
             "system.i18n-catalog",
+            "system.branding",
         ]
     );
     group_ids.reverse();

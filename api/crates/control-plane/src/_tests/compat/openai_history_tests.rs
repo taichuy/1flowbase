@@ -1,4 +1,5 @@
 use super::*;
+use crate::_tests::validate_full_retry_input;
 
 fn seed() -> (Value, Vec<Value>) {
     let input = json!([{"role":"user","content":"do work"}]);

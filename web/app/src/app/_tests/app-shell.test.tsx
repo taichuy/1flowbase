@@ -5,6 +5,17 @@ import { render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+vi.mock('@1flowbase/api-client/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@1flowbase/api-client/auth')>()),
+  fetchPublicSystemMetadata: vi.fn().mockResolvedValue({
+    logo_url: '/icon.svg',
+    system_name: 'Configured system',
+    hide_login_tagline: false,
+    system_description: 'Description',
+    filing_html: ''
+  })
+}));
+
 vi.mock('@1flowbase/api-client', () => ({
   getNotificationUnreadCount: vi.fn().mockResolvedValue({ unread_count: 0 }),
   subscribeNotificationChanges: vi.fn(() => () => {}),
@@ -103,7 +114,7 @@ describe('App shell', () => {
     async () => {
       render(<App />);
 
-      expect(await screen.findByRole('heading', { name: '1flowbase' }, { timeout: 10_000 })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Configured system' }, { timeout: 10_000 })).toBeInTheDocument();
 
       const header = screen.getByRole('banner');
       const primaryNavigation = screen.getByRole('navigation', { name: 'Primary' });

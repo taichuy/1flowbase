@@ -13,6 +13,12 @@ const REPO_BACKEND_SHARDS_BY_TARGET = {
   test: BACKEND_CI_TEST_SHARDS,
   check: BACKEND_SHARDS,
 };
+// These exact ordinary suites execute in the full CI coverage owner instead.
+// Keep every explicit test scope available for manual diagnosis.
+const COVERAGE_OWNED_TEST_SHARDS = new Set([
+  'control-plane',
+  ...Array.from({ length: 4 }, (_, index) => `api-server-${index + 1}-of-4`),
+]);
 // Full acceptance already type-checks these packages with Clippy --all-targets.
 // Explicit check scopes remain available for the lighter PR lane and diagnosis.
 const REPO_BACKEND_COMPONENT_SCOPES = [
@@ -22,7 +28,9 @@ const REPO_BACKEND_COMPONENT_SCOPES = [
   'repo-backend-official-i18n-seed',
   'repo-backend-history-maintenance',
   ...REPO_BACKEND_SHARD_TARGETS.filter((target) => target !== 'check').flatMap((target) =>
-    REPO_BACKEND_SHARDS_BY_TARGET[target].map((shard) => `repo-backend-${target}-${shard.key}`)
+    REPO_BACKEND_SHARDS_BY_TARGET[target]
+      .filter((shard) => target !== 'test' || !COVERAGE_OWNED_TEST_SHARDS.has(shard.key))
+      .map((shard) => `repo-backend-${target}-${shard.key}`)
   ),
 ];
 const COVERAGE_BACKEND_COMPONENT_SCOPES = backendThresholds.map((entry) => `coverage-backend-${entry.key}`);
@@ -64,6 +72,7 @@ const VALID_SCOPES = new Set([
   'release-rollback',
   'provider-conformance',
   ...REPO_BACKEND_COMPONENT_SCOPES,
+  ...BACKEND_CI_TEST_SHARDS.map((shard) => `repo-backend-test-${shard.key}`),
   ...BACKEND_SHARDS.map((shard) => `repo-backend-check-${shard.key}`),
   ...COVERAGE_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_API_SERVER_SHARDED_SCOPES,

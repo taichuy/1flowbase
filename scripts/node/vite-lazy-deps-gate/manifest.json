@@ -139,6 +139,13 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
+      "specifier": "../../system-settings/SystemSettingsPanel",
+      "smokePaths": [
+        "/settings/system"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
       "specifier": "../MemberSettingsTabs",
       "smokePaths": [
         "/settings/members"

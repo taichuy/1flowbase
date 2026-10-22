@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 // Native projection progress also retains observed conflict keys; include it with execution data.
 // Organization trees and their member/role bindings are persisted member configuration.
 const GROUPS: &[(&str, &str, &str)] = &[
+    ("branding", "system_branding", ""),
     (
         "applications",
         "applications application_tags application_tag_bindings flows flow_drafts flow_versions flow_compiled_plans application_environment_variables application_api_mappings application_publication_versions workflow_schedule_triggers workflow_extension_triggers application_extension_sources application_js_dependency_selections",
@@ -245,6 +246,7 @@ pub(super) fn selected(
 
 fn label(feature: &str) -> &'static str {
     match feature {
+        "branding" => "system_settings.title",
         "applications" => "auto.application_management",
         "auth-center" => "auto.auth_center",
         "api-key-authentication" => "auto.api_key_authentication",

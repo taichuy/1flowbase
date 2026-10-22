@@ -64,7 +64,7 @@ grep -Fxq 'ManagedOOMSwap=kill' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'MemoryHigh=infinity' "$systemd_dir/dev.slice"
 grep -Fxq 'MemoryMax=infinity' "$systemd_dir/dev.slice"
 grep -Fxq 'MemorySwapMax=infinity' "$systemd_dir/dev.slice"
-grep -Fxq 'CPUQuota=1000%' "$systemd_dir/dev.slice"
+grep -Fxq 'CPUQuota=' "$systemd_dir/dev.slice"
 grep -Fxq 'MemoryHigh=infinity' "$systemd_dir/dev-frontend.slice"
 grep -Fxq 'MemoryMax=infinity' "$systemd_dir/dev-frontend.slice"
 grep -Fxq 'MemoryLow=2147483648' "$systemd_dir/session.slice.d/50-memory-protection.conf"
@@ -75,13 +75,14 @@ rust_max=$((12 * 1024 * 1024 * 1024))
 grep -Fxq "MemoryHigh=$rust_high" "$systemd_dir/dev-rust.slice"
 grep -Fxq "MemoryMax=$rust_max" "$systemd_dir/dev-rust.slice"
 grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/dev-rust.slice"
-grep -Fxq 'CPUQuota=' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'CPUQuota=1000%' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'IOWeight=10' "$systemd_dir/dev-rust.slice"
 grep -Fq 'default_cargo_job_limit=auto' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": "auto"' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": "auto"' "$repo_dir/.1flowbase.verify.local.json"
 test -x "$bin_dir/oneflowbase-resource-budget"
-grep -Fq "set-property --runtime dev-rust.slice MemoryHigh=$rust_high MemoryMax=$rust_max MemorySwapMax=1G CPUQuota= IOWeight=10" \
+grep -Fq 'set-property --runtime dev.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota=' "$systemctl_log"
+grep -Fq "set-property --runtime dev-rust.slice MemoryHigh=$rust_high MemoryMax=$rust_max MemorySwapMax=1G CPUQuota=1000% IOWeight=10" \
   "$systemctl_log"
 
 # Ordinary Cargo/pnpm commands must not enter the optional heavy-job queue.
@@ -130,7 +131,7 @@ set -e
 test "$budget_status" -eq 2
 grep -Fq 'ONEFLOWBASE_CARGO_JOB_LIMIT must be a positive integer' "$test_root/invalid-budget.log"
 
-# pnpm must enter the frontend child of the common development budget.
+# pnpm enters the unlimited frontend sibling, outside the Rust budget.
 cat >"$mock_bin/pnpm" <<'EOF'
 #!/bin/sh
 exit 0
@@ -182,12 +183,13 @@ test "$cancel_status" -eq 143
 grep -Fq -- '--no-block stop rust-cargo-' "$systemctl_log"
 
 # Installation resolves systemd quotas; wrappers recalculate for every call.
-for cpu_case in 1:1 2:2 3:2 4:2 8:4 20:10; do
+for cpu_case in 1:1 2:2 3:3 4:4 6:4 8:4 20:10; do
   cpus=${cpu_case%:*}
   jobs=${cpu_case#*:}
   env "${common_env[@]}" RESOURCE_LIMITS_TEST_CPUS="$cpus" \
     "$script_dir/apply-resource-limits.sh" "$script_dir/resource-limits.conf"
-  grep -Fxq "CPUQuota=${jobs}00%" "$systemd_dir/dev.slice"
+  grep -Fxq 'CPUQuota=' "$systemd_dir/dev.slice"
+  grep -Fxq "CPUQuota=${jobs}00%" "$systemd_dir/dev-rust.slice"
   grep -Fq '"cargoJobs": "auto"' "$repo_dir/.1flowbase.verify.local.json"
   env PATH="$mock_bin:$PATH" RESOURCE_LIMITS_TEST_CPUS="$cpus" \
     RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
@@ -197,8 +199,8 @@ for cpu_case in 1:1 2:2 3:2 4:2 8:4 20:10; do
   grep -Fq -- "build --jobs=$jobs" "$test_root/cpu-$cpus.log"
 done
 
-# Rust's memory floor may exceed half the machine but never consumes OS headroom.
-for memory_case in 4:1:3 8:2:6 12:2:8 16:2:8 24:2:12 32:2:16; do
+# Rust's memory floor may exceed half the machine, but never its effective capacity.
+for memory_case in 4:1:4 8:2:8 12:2:8 16:2:8 24:2:12 32:2:16; do
   IFS=: read -r capacity reserve budget <<<"$memory_case"
   env "${common_env[@]}" RESOURCE_LIMITS_TEST_MEMORY_GIB="$capacity" \
     "$script_dir/apply-resource-limits.sh" "$script_dir/resource-limits.conf"
@@ -207,7 +209,7 @@ for memory_case in 4:1:3 8:2:6 12:2:8 16:2:8 24:2:12 32:2:16; do
 done
 env "${common_env[@]}" RESOURCE_LIMITS_TEST_MEMORY_GIB=64 RESOURCE_LIMITS_TEST_CONSTRAINED_GIB=8 \
   "$script_dir/apply-resource-limits.sh" "$script_dir/resource-limits.conf"
-grep -Fxq 'MemoryMax=6442450944' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'MemoryMax=8589934592' "$systemd_dir/dev-rust.slice"
 
 # The same installed wrapper follows changed CPU availability without reinstall.
 env PATH="$mock_bin:$PATH" RESOURCE_LIMITS_TEST_CPUS=8 \
@@ -228,6 +230,7 @@ grep -Fq -- 'test -j2' "$test_root/lower.log"
 cat >"$test_root/fixed.conf" <<EOF
 source '$script_dir/resource-limits.conf'
 DEV_CPU_QUOTA=300%
+RUST_CPU_QUOTA=200%
 CARGO_MAX_JOBS=3
 PROJECT_CARGO_JOBS=2
 PROJECT_CARGO_TEST_THREADS=1
@@ -237,6 +240,7 @@ RUST_MEMORY_MAX=3G
 EOF
 env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" "$test_root/fixed.conf"
 grep -Fxq 'CPUQuota=300%' "$systemd_dir/dev.slice"
+grep -Fxq 'CPUQuota=200%' "$systemd_dir/dev-rust.slice"
 grep -Fq 'default_cargo_job_limit=3' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": 1' "$repo_dir/.1flowbase.verify.local.json"

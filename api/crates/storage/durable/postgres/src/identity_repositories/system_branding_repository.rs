@@ -22,7 +22,7 @@ impl SystemBrandingRepository for PgControlPlaneStore {
 
     async fn save_system_branding(&self, value: &SystemBranding) -> anyhow::Result<()> {
         sqlx::query("INSERT INTO system_branding (singleton, logo_url, system_name, hide_login_tagline, system_description, filing_html) VALUES (TRUE, $1, $2, $3, $4, $5) ON CONFLICT (singleton) DO UPDATE SET logo_url = EXCLUDED.logo_url, system_name = EXCLUDED.system_name, hide_login_tagline = EXCLUDED.hide_login_tagline, system_description = EXCLUDED.system_description, filing_html = EXCLUDED.filing_html")
-            .bind(&value.logo_url).bind(&value.system_name).bind(&value.hide_login_tagline)
+            .bind(&value.logo_url).bind(&value.system_name).bind(value.hide_login_tagline)
             .bind(&value.system_description).bind(&value.filing_html)
             .execute(self.pool()).await?;
         Ok(())

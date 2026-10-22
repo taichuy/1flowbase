@@ -7,6 +7,39 @@ const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
 const names = ['plugin_contribution_authorization_revisions',
   'plugin_contribution_authorizations', 'provider_protocol_capsules'];
 
+test('global branding keeps its singleton identity without exempting unrelated managed tables', () => {
+  const config = loadConfig(repoRoot);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({ inventory, config });
+  const branding = report.tables.find((table) => table.name === 'system_branding');
+  assert.ok(branding);
+  assert.deepEqual(branding.findings, []);
+  assert.deepEqual(branding.primaryKey.columns, ['singleton']);
+
+  const oldConfig = structuredClone(config);
+  delete oldConfig.exemptions.system_branding;
+  delete oldConfig.ownedTableContracts.system_branding;
+  const before = evaluateSchemaHygiene({ inventory, config: oldConfig });
+  assert.deepEqual(before.findings.filter(({ table }) => table !== 'system_branding'),
+    report.findings.filter(({ table }) => table !== 'system_branding'));
+  const expectedRules = config.exemptions.system_branding.skip.toSorted();
+  assert.deepEqual(before.findings.filter(({ table }) => table === 'system_branding')
+    .map(({ rule }) => rule).toSorted(), expectedRules);
+
+  const source = inventory.tables.find((table) => table.name === 'system_branding');
+  const unrelated = { ...structuredClone(source), name: 'unrelated_business_settings' };
+  const malformed = evaluateSchemaHygiene({
+    inventory: { ...inventory, tables: [...inventory.tables, unrelated] }, config,
+  });
+  assert.deepEqual(malformed.findings.filter(({ table }) => table === unrelated.name)
+    .map(({ rule }) => rule).toSorted(), expectedRules);
+  const brokenKey = evaluateSchemaHygiene({
+    inventory: { ...inventory, tables: inventory.tables.map((table) => table.name === source.name
+      ? { ...table, primaryKey: { ...table.primaryKey, columns: ['unrelated_id'] } } : table) }, config,
+  });
+  assert.ok(brokenKey.findings.some(({ table, rule }) => table === source.name && rule === 'owned-table-primary-key'));
+});
+
 // Exercise the actual migration projection, not a separate idealized schema.
 // Shared ownership.test.js also removes every declared PK, FK, owner column,
 // required lifecycle column and lookup index from these three contracts.

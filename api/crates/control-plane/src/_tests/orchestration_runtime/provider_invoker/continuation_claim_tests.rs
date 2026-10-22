@@ -331,9 +331,8 @@ fn issue_1743_continuation_route_requires_affinity_and_native_capability() {
 
 #[tokio::test]
 async fn warmup_evidence_crosses_flow_then_extends_through_three_tool_rounds() {
-    use crate::application_public_api::compat::openai::history::{
-        completed_history, validate_full_retry_input,
-    };
+    use crate::_tests::validate_full_retry_input;
+    use crate::application_public_api::compat::openai::history::completed_history;
     use crate::ports::{
         ProviderContinuationSlotId, ProviderTransportPayload, ProviderTransportStore,
     };

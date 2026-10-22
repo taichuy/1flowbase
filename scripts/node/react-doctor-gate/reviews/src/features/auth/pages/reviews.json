@@ -4,16 +4,23 @@
     {
       "file": "web/app/src/features/auth/pages/SignInPage.tsx",
       "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "2018f14fce9e706573a2655ef915f3b9fae26dcb2ef32f1769e44bc0a5ec1958",
+      "sourceSha256": "447e7d69f8a4c8113278d975bc3a03429fbaf944ea1603fbef975fc7f12c8c84",
       "reason": "Login entry discovery completes asynchronously. The effect first checks loading/discoveryFailed/loginEntryId, then verifies the requested id against the enabled loginEntries before requesting the selector. A local click handler cannot cover a disabled, removed or invalid entry supplied by the initial URL or a later discovery response. sign-in-page tests retain valid URL restoration, invalid-entry chooser fallback and discovery error handling.",
-      "evidence": [{"file":"scripts/node/dev-up/_tests/vite-config-text.test.js","sha256":"c3eb165ba5c7644691211e59da2203a10df8b411da34133a289aef4406fb11a1"}, {"file":"web/app/src/app/public-router.tsx","sha256":"bc8da8526a2d8a5f70ddda15024c0496b43924b43efe07842905173aefa040f9"}, {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"333fa4fdd1c8f8088ffcd96a1430c18aac41dea93d55e1026026082060b76c2f"}, {"file":"web/app/src/features/auth/pages/SignInPage.tsx","sha256":"2018f14fce9e706573a2655ef915f3b9fae26dcb2ef32f1769e44bc0a5ec1958"}]
+      "evidence": [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"}, {"file":"web/app/src/features/auth/lib/external-login.ts","sha256":"b674ebd3d3143b224b8f9a08baa6d219c10bde5173c0fc97ba389bdbaac9f1f4"}, {"file":"web/app/src/features/auth/api/session.ts","sha256":"b463ccfdefa7727d4f6a1ee72e6bf7a2253e534ae560695fb58cbccb8d63193d"}]
     },
     {
       "file": "web/app/src/features/auth/pages/SignInPage.tsx",
       "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "2018f14fce9e706573a2655ef915f3b9fae26dcb2ef32f1769e44bc0a5ec1958",
+      "sourceSha256": "447e7d69f8a4c8113278d975bc3a03429fbaf944ea1603fbef975fc7f12c8c84",
       "reason": "The five state axes are the discovered loginEntries, discovery loading/failure and the separately initiated external-entry start id/failure. Discovery resolves asynchronously, while activateLoginEntry and the pageshow listener own external navigation and retry reset. startingRef prevents duplicate starts. A reducer would change representation without repairing a missing transition; sign-in tests cover chooser URL restoration, one-click external start, navigation failure/retry and discovery failures.",
-      "evidence": [{"file":"web/app/src/features/auth/pages/SignInPage.tsx","sha256":"2018f14fce9e706573a2655ef915f3b9fae26dcb2ef32f1769e44bc0a5ec1958"}, {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"333fa4fdd1c8f8088ffcd96a1430c18aac41dea93d55e1026026082060b76c2f"}]
+      "evidence": [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"}, {"file":"web/app/src/features/auth/lib/external-login.ts","sha256":"b674ebd3d3143b224b8f9a08baa6d219c10bde5173c0fc97ba389bdbaac9f1f4"}, {"file":"web/app/src/features/auth/api/session.ts","sha256":"b463ccfdefa7727d4f6a1ee72e6bf7a2253e534ae560695fb58cbccb8d63193d"}]
+    },
+    {
+      "file": "web/app/src/features/auth/pages/SignInPage.tsx",
+      "rule": "react-doctor/no-danger",
+      "sourceSha256": "447e7d69f8a4c8113278d975bc3a03429fbaf944ea1603fbef975fc7f12c8c84",
+      "reason": "filing_html 是拥有 system.branding.save operation 的管理者编写的站点 HTML，既定契约要求原样保存和展示；它不是普通访客、登录输入或聊天消息。后端 branding route 经认证 Kernel 和独立写 operation 授权，route 测试覆盖只读授权不能 PUT、完整授权可写及 public 原文读取；前端测试保留 HTML 元素和属性。这里显式信任具备站点 HTML 发布权限的管理者，dangerouslySetInnerHTML 是该功能的实现。若写权限边界或内容来源改变必须重新审查；不声称任意不可信 HTML 可安全展示。",
+      "evidence": [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"}, {"file":"api/apps/api-server/src/routes/settings/branding/mod.rs","sha256":"2c8c8b49c246d0d02dae1ddda700615f5762f8385c6527036d6c6e1602f994b0"}, {"file":"api/apps/api-server/src/_tests/system_settings/system_branding_routes.rs","sha256":"ae565962d01ca072f99a09456fc086f2d403f0b3acc6aea1c44f9ff0e7f44ac7"}]
     }
   ]
 }

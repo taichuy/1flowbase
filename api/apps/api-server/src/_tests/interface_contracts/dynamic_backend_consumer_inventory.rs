@@ -108,6 +108,8 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
             interface.authorization_operation_id.as_deref(),
             Some(
                 "notifications.instances.list"
+                    | "system.branding.get"
+                    | "system.branding.save"
                     | "notifications.instances.get"
                     | "notifications.instances.create"
                     | "notifications.instances.update"
@@ -242,9 +244,11 @@ fn console_display_inventory_matches_key_only_fixture() {
     let static_references =
         crate::routes::core_console_i18n::core_console_static_reference_inventory();
     assert!(!static_references.is_empty());
-    assert!(static_references
-        .iter()
-        .all(|reference| { reference.starts_with("auto.") || reference.starts_with("console.") }));
+    assert!(static_references.iter().all(|reference| {
+        reference.starts_with("auto.")
+            || reference.starts_with("console.")
+            || *reference == "system_settings.title"
+    }));
     assert!(static_references
         .iter()
         .all(|reference| !compiled.contains(*reference)));

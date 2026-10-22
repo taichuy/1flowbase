@@ -1,3 +1,4 @@
+mod branding;
 mod fixes;
 mod native_storage;
 mod notification_compaction;

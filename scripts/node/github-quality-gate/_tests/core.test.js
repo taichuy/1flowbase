@@ -973,7 +973,8 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
   assert.match(createdIssues[0].body, /\| `repo-tooling` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `repo-frontend` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `repo-backend-static` \| passed \| 0 \|/u);
-  assert.match(createdIssues[0].body, /\| `repo-backend-test-api-server-1-of-4` \| passed \| 0 \|/u);
+  assert.doesNotMatch(createdIssues[0].body, /\| `repo-backend-test-api-server-1-of-4` \|/u);
+  assert.match(createdIssues[0].body, /\| `repo-backend-test-storage-postgres-1-of-4` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `coverage-frontend` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /\| `coverage-backend-api-server-merge` \| passed \| 0 \|/u);
   assert.match(createdIssues[0].body, /## Security Risk/u);

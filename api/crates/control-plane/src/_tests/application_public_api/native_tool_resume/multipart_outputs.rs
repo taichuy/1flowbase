@@ -1,11 +1,10 @@
 use super::*;
+use crate::_tests::validate_full_retry_input;
 use crate::application_public_api::callback_resume::{
     ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
     PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
 };
-use crate::application_public_api::compat::openai::history::{
-    prove_full_context_input, validate_full_retry_input,
-};
+use crate::application_public_api::compat::openai::history::prove_full_context_input;
 use crate::ports::ToolCallbackResultInput;
 
 fn append_notifications(body: &mut Value) {

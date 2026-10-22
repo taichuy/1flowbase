@@ -15,7 +15,7 @@ function getLocalCpuBudget(availableParallelism = getAvailableParallelism()) {
   if (!Number.isInteger(availableParallelism) || availableParallelism < 1) {
     throw new Error('availableParallelism must be a positive integer');
   }
-  return Math.min(availableParallelism, Math.max(2, Math.floor(availableParallelism / 2)));
+  return Math.min(availableParallelism, Math.max(4, Math.floor(availableParallelism / 2)));
 }
 
 function getLocalMemoryBudget({
@@ -32,11 +32,11 @@ function getLocalMemoryBudget({
   ) / MIB) * MIB;
   if (capacityBytes < MIB) throw new Error('Effective memory capacity must be at least 1 MiB');
 
-  // Local policy: preserve desktop/service headroom even below the Rust target.
-  // MemoryHigh starts reclaim before the hard cap; these are limits, not reservations.
+  // Local policy: the 8 GiB floor takes precedence over half capacity.
+  // Session MemoryLow is a reclaim preference, not a deduction from this budget.
   const reserveBytes = Math.floor(Math.min(2 * GIB, capacityBytes / 4) / MIB) * MIB;
   const maxBytes = Math.floor(Math.min(
-    capacityBytes - reserveBytes,
+    capacityBytes,
     Math.max(8 * GIB, capacityBytes / 2),
   ) / MIB) * MIB;
   const highBytes = Math.max(MIB, Math.floor(maxBytes * 0.9 / MIB) * MIB);

@@ -53,14 +53,14 @@ mod plugin_settings_template_repository;
 pub mod plugin_worker_repository;
 #[path = "integration_repositories/provider_protocol_capsule_store.rs"]
 mod provider_protocol_capsule_store;
-#[path = "identity_repositories/system_branding_repository.rs"]
-mod system_branding_repository;
 pub mod repositories;
 #[path = "identity_repositories/role_repository.rs"]
 pub mod role_repository;
 mod runtime;
 pub mod runtime_record_repository;
 mod secret_crypto;
+#[path = "identity_repositories/system_branding_repository.rs"]
+mod system_branding_repository;
 pub use secret_crypto::AuthenticationSecretCipher;
 pub mod system_backup;
 pub mod system_recovery;
