@@ -53,9 +53,11 @@ async fn system_branding_public_read_and_persistence_keep_html_verbatim() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(defaults["data"]["system_name"], "1flowbase");
+    assert_eq!(defaults["data"]["hide_login_tagline"], false);
+    assert!(defaults["data"].get("login_title").is_none());
     assert_eq!(defaults["data"].as_object().unwrap().len(), 5);
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let value = json!({"logo_url":"data:image/svg+xml;base64,PHN2Zy8+", "system_name":"新系统", "login_title":"欢迎来到平台", "system_description":"系统介绍", "filing_html":"<style>.filing {color:red}</style>\n<a class=filing href='https://beian.miit.gov.cn/' data-any='yes'>备案号</a>"});
+    let value = json!({"logo_url":"data:image/svg+xml;base64,PHN2Zy8+", "system_name":"新系统", "hide_login_tagline":true, "system_description":"系统介绍", "filing_html":"<style>.filing {color:red}</style>\n<a class=filing href='https://beian.miit.gov.cn/' data-any='yes'>备案号</a>"});
     let (status, saved) = request(
         &app,
         "PUT",
@@ -109,6 +111,29 @@ async fn system_branding_public_read_and_persistence_keep_html_verbatim() {
     )
     .await;
     assert_eq!(unchanged["data"], value);
+    let mut visible = value.clone();
+    visible["hide_login_tagline"] = json!(false);
+    let (status, _) = request(
+        &app,
+        "PUT",
+        "/api/console/settings/system",
+        &cookie,
+        &csrf,
+        visible,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, public) = request(
+        &app,
+        "GET",
+        "/api/public/system-metadata",
+        "",
+        "",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(public["data"]["hide_login_tagline"], false);
+
     let (status, _) = request(&app, "PUT", "/api/console/settings/system", "", "", value).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }

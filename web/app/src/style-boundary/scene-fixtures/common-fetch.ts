@@ -47,7 +47,7 @@ export function getStyleBoundaryCommonResponse(
       data: {
         logo_url: '/icon.svg',
         system_name: '1flowbase',
-        login_title: '1flowbase',
+        hide_login_tagline: false,
         system_description: '对话即是壁垒，AI应用原生底座',
         filing_html:
           '<a href="https://beian.miit.gov.cn/">京ICP备12345678号-1</a>'

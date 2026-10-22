@@ -38,10 +38,10 @@ interface Ripple {
 }
 
 export function HeroAnimation({
-  login_title,
+  hide_login_tagline,
   system_description
 }: {
-  login_title?: string;
+  hide_login_tagline?: boolean;
   system_description?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -454,24 +454,26 @@ export function HeroAnimation({
           }}
         />
 
-        <div
-          className="hero-text-block"
-          style={{
-            zIndex: 1,
-            textAlign: 'center',
-            padding: `0 clamp(12px, 6vw, 80px)`,
-            width: '100%',
-            marginTop: '-15vh',
-            pointerEvents: 'none'
-          }}
-        >
-          <div className="hero-tagline" aria-label="brand name and slogan">
-            <div className="hero-text-line hero-title-line">{login_title}</div>
-            <div className="hero-text-line hero-slogan-line">
-              {system_description}
+        {!hide_login_tagline ? (
+          <div
+            className="hero-text-block"
+            style={{
+              zIndex: 1,
+              textAlign: 'center',
+              padding: `0 clamp(12px, 6vw, 80px)`,
+              width: '100%',
+              marginTop: '-15vh',
+              pointerEvents: 'none'
+            }}
+          >
+            <div className="hero-tagline" aria-label="brand name and slogan">
+              <div className="hero-text-line hero-title-line">1flowbase</div>
+              <div className="hero-text-line hero-slogan-line">
+                {system_description}
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
 
         <style>
           {`

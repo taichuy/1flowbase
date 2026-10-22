@@ -194,7 +194,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
     <div className="auth-sign-in-page">
       <Suspense fallback={null}>
         <HeroAnimation
-          login_title={metadata?.login_title}
+          hide_login_tagline={metadata?.hide_login_tagline}
           system_description={metadata?.system_description}
         />
       </Suspense>

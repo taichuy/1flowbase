@@ -8,6 +8,7 @@ import {
   Form,
   Input,
   Space,
+  Switch,
   Typography,
   Upload
 } from 'antd';
@@ -66,7 +67,7 @@ export function SystemSettingsPanel() {
     );
 
   return (
-    <SettingsSectionSurface>
+    <SettingsSectionSurface heightMode="fill">
       <div className="system-settings">
         <Typography.Title level={4}>
           {t('auto.basic_information')}
@@ -138,11 +139,12 @@ export function SystemSettingsPanel() {
             <Input maxLength={100} />
           </Form.Item>
           <Form.Item
-            name="login_title"
-            label={t('system_settings.login_title')}
-            extra={t('system_settings.login_title_help')}
+            name="hide_login_tagline"
+            label={t('system_settings.hide_login_tagline')}
+            extra={t('system_settings.hide_login_tagline_help')}
+            valuePropName="checked"
           >
-            <Input maxLength={200} />
+            <Switch aria-label={t('system_settings.hide_login_tagline')} />
           </Form.Item>
           <Form.Item
             name="system_description"

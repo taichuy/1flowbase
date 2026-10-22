@@ -3,7 +3,7 @@ vi.mock('../../shared/api/system-metadata', () => ({
     data: {
       logo_url: '/icon.svg',
       system_name: '1flowbase',
-      login_title: 'Welcome',
+      hide_login_tagline: false,
       system_description: '',
       filing_html: ''
     }

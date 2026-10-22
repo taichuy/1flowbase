@@ -17,7 +17,7 @@ import { systemMetadataQueryKey } from '../../../../../shared/api/system-metadat
 const initial = {
   logo_url: '/icon.svg',
   system_name: '1flowbase',
-  login_title: '欢迎',
+  hide_login_tagline: false,
   system_description: '介绍',
   filing_html: ''
 };
@@ -51,6 +51,8 @@ test('saves the entire form, preserves HTML and publishes updated public metadat
   fireEvent.change(screen.getByLabelText('系统名称'), {
     target: { value: '新系统' }
   });
+  expect(screen.queryByLabelText('登录页左侧标题')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('switch', { name: '关闭登录左侧标语' }));
   const html =
     '<style>a{color:red}</style><a href="https://example.com" data-x="free">备案</a>';
   fireEvent.change(screen.getByLabelText('备案 HTML'), {
@@ -59,7 +61,12 @@ test('saves the entire form, preserves HTML and publishes updated public metadat
   fireEvent.click(screen.getByRole('button', { name: '保 存' }));
   await waitFor(() =>
     expect(saveSettings).toHaveBeenCalledWith(
-      { ...initial, system_name: '新系统', filing_html: html },
+      {
+        ...initial,
+        system_name: '新系统',
+        hide_login_tagline: true,
+        filing_html: html
+      },
       'csrf-test'
     )
   );
@@ -71,6 +78,9 @@ test('saves the entire form, preserves HTML and publishes updated public metadat
   });
   fireEvent.click(screen.getByRole('button', { name: '重 置' }));
   expect(screen.getByLabelText('系统名称')).toHaveValue('新系统');
+  expect(
+    screen.getByRole('switch', { name: '关闭登录左侧标语' })
+  ).toBeChecked();
 });
 test('reset restores persisted values and a blank system name does not save', async () => {
   render(

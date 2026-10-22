@@ -2778,7 +2778,7 @@
     "title": "System Settings Desktop Page",
     "viewport": {
       "width": 1440,
-      "height": 900
+      "height": 600
     },
     "impactFiles": [
       "web/app/src/features/settings/pages/system-settings/SystemSettingsPanel.tsx",
@@ -2805,6 +2805,16 @@
           {
             "property": "object-fit",
             "expected": "contain"
+          }
+        ]
+      },
+      {
+        "id": "system-settings-scroll",
+        "selector": ".settings-section-surface__body",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
           }
         ]
       }

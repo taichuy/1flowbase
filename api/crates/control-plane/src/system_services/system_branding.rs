@@ -18,8 +18,7 @@ impl<R: SystemBrandingRepository> SystemBrandingService<R> {
         if value.system_name.trim().is_empty() || value.system_name.chars().count() > 100 {
             return Err(ControlPlaneContractError::InvalidInput("invalid_system_name").into());
         }
-        if value.login_title.chars().count() > 200 || value.system_description.chars().count() > 500
-        {
+        if value.system_description.chars().count() > 500 {
             return Err(
                 ControlPlaneContractError::InvalidInput("invalid_system_description").into(),
             );

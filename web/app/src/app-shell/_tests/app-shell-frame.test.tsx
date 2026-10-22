@@ -3,7 +3,7 @@ vi.mock('@1flowbase/api-client/auth', async (importOriginal) => ({
   fetchPublicSystemMetadata: vi.fn().mockResolvedValue({
     logo_url: '/custom-logo.svg',
     system_name: 'Configured system',
-    login_title: 'Welcome',
+    hide_login_tagline: false,
     system_description: 'Description',
     filing_html: ''
   })

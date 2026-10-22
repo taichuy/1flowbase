@@ -1119,14 +1119,14 @@
     "system_name": "系统名称",
     "system_name_help": "显示在顶部导航和移动端菜单。",
     "name_required": "请输入系统名称",
-    "login_title": "登录页左侧标题",
-    "login_title_help": "显示在登录页左侧的大标题，留空则不显示文字。",
     "system_description": "系统说明",
     "filing_html": "备案 HTML",
     "filing_help": "填写 HTML，在登录页 Powered by 1flowbase 下方原样展示；留空则不显示。",
     "saved": "系统设置已保存",
     "save_failed": "保存失败，请检查权限或稍后重试。",
     "load_failed": "无法读取系统设置",
-    "retry": "重试"
+    "retry": "重试",
+    "hide_login_tagline": "关闭登录左侧标语",
+    "hide_login_tagline_help": "开启后，隐藏登录页左侧的标题与说明区域。"
   }
 }

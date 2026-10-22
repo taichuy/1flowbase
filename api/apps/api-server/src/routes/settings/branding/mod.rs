@@ -114,7 +114,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 }
 
 /// Read installation-wide system branding.
-/// Returns the persisted logo URL, system name, login title, description and filing HTML.
+/// Returns the persisted logo URL, system name, login tagline visibility, description and filing HTML.
 #[utoipa::path(get, path = "/api/console/settings/system", responses((status = 200, body = serde_json::Value)))]
 pub async fn get_system_settings(
     State(state): State<Arc<ApiState>>,

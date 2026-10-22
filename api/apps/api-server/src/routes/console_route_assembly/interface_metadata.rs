@@ -513,7 +513,7 @@ pub(super) fn compile_console_interface_metadata(
             "extension_center.managed_execution.view" => "Read exact retained and current execution targets, frozen reference counts and durable delivery status for the installed extension in the current workspace.".to_string(),
             "extension_center.lifecycle_deliveries.resume" => "Resume one paused delivery only when its full frozen target, original executable and current contribution authorization remain valid.".to_string(),
             "extension_center.managed_executions.retire" => "Reject retirement while the target is current or retains frozen invocations, future publications, admitted work or unfinished durable deliveries; preserve every delivery record.".to_string(),
-            "system.branding.get" => "Read installation-wide logo, system name, login title, description and filing HTML.".to_owned(),
+            "system.branding.get" => "Read installation-wide logo, system name, login tagline visibility, description and filing HTML.".to_owned(),
             "system.branding.save" => "Replace installation-wide public branding. Store administrator-authored filing HTML verbatim.".to_owned(),
             _ => format!("{summary} in the system backend."),
         };

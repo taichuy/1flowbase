@@ -3,7 +3,7 @@ import { apiFetch } from '../transport';
 export interface SystemMetadata {
   logo_url: string;
   system_name: string;
-  login_title: string;
+  hide_login_tagline: boolean;
   system_description: string;
   filing_html: string;
 }

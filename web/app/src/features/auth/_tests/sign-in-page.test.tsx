@@ -1,14 +1,15 @@
+const { systemMetadata } = vi.hoisted(() => ({
+  systemMetadata: {
+    logo_url: '/icon.svg',
+    system_name: 'Test system',
+    hide_login_tagline: false,
+    system_description: 'Configured description',
+    filing_html:
+      '<a href="https://beian.miit.gov.cn/" data-free="yes">备案号</a>'
+  }
+}));
 vi.mock('../../../shared/api/system-metadata', () => ({
-  useSystemMetadata: () => ({
-    data: {
-      logo_url: '/icon.svg',
-      system_name: 'Test system',
-      login_title: 'Configured welcome',
-      system_description: 'Configured description',
-      filing_html:
-        '<a href="https://beian.miit.gov.cn/" data-free="yes">备案号</a>'
-    }
-  })
+  useSystemMetadata: () => ({ data: systemMetadata })
 }));
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -534,7 +535,7 @@ test('renders raw registration HTML below the powered-by footer', async () => {
       <SignInPage />
     </AppProviders>
   );
-  expect(await screen.findByText('Configured welcome')).toBeVisible();
+  expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
   expect(screen.getByText('Configured description')).toBeVisible();
   const link = await screen.findByRole('link', { name: '备案号' });
   expect(link).toHaveAttribute('href', 'https://beian.miit.gov.cn/');
@@ -542,4 +543,34 @@ test('renders raw registration HTML below the powered-by footer', async () => {
   expect(
     screen.getByText('Powered by 1flowbase').closest('span')?.nextElementSibling
   ).toHaveTextContent('备案号');
+});
+
+test('the hide switch removes the fixed login tagline while keeping sign-in and filing available', async () => {
+  const view = render(
+    <AppProviders>
+      <SignInPage />
+    </AppProviders>
+  );
+  expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
+  systemMetadata.hide_login_tagline = true;
+  try {
+    view.rerender(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
+    expect(document.querySelector('.hero-text-block')).not.toBeInTheDocument();
+    expect(document.querySelector('.auth-sign-in-panel')).toBeInTheDocument();
+    expect(screen.getByText('Powered by 1flowbase')).toBeVisible();
+    expect(screen.getByRole('link', { name: '备案号' })).toBeVisible();
+    systemMetadata.hide_login_tagline = false;
+    view.rerender(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
+    expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
+  } finally {
+    systemMetadata.hide_login_tagline = false;
+  }
 });
