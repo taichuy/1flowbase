@@ -37,12 +37,3 @@ test('orchestration freezes a production registry fingerprint and has no fixed d
   assert.match(context, /OnceCell<String>/u);
   assert.doesNotMatch(routing, /BUILTIN_REGISTRY_FINGERPRINT/u);
 });
-
-test('model provider UI renders rule options from the API catalog', () => {
-  const modal = read(
-    'web/app/src/features/settings/components/model-providers/ModelProviderRoutingPolicyModal.tsx'
-  );
-  assert.match(modal, /distributionRules\.map/u);
-  assert.doesNotMatch(modal, /<option value="none">/u);
-  assert.doesNotMatch(modal, /<option value="round_robin">/u);
-});

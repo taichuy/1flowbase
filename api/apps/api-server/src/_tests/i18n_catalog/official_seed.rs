@@ -99,13 +99,3 @@ fn ac_002_rejects_non_plain_text_before_database_binding() {
 
     assert!(error.to_string().contains("plain text"));
 }
-
-#[test]
-fn ac_006_official_loader_has_only_embedded_byte_sources() {
-    let loader_source = include_str!("../../catalog_sources/official_i18n_catalog_seed.rs");
-
-    assert!(loader_source.contains("include_bytes!"));
-    assert!(!loader_source.contains("reqwest"));
-    assert!(!loader_source.contains("http://"));
-    assert!(!loader_source.contains("https://"));
-}

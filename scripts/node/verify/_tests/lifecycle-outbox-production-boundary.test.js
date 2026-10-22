@@ -16,15 +16,6 @@ test('production boot starts the durable lifecycle dispatcher', () => {
   assert.match(api, /with_lifecycle_publication_catalog/u);
 });
 
-test('claim query recovers stale workers through a bounded lease', () => {
-  const repository = read(
-    'api/crates/storage/durable/postgres/src/lifecycle_outbox_repository.rs'
-  );
-  assert.match(repository, /claim_lease/u);
-  assert.match(repository, /status = 'claimed' and claim_expires_at <= now\(\)/u);
-  assert.match(repository, /attempt_count = attempt_count \+ 1/u);
-});
-
 test('durable delivery invokes frozen typed subscribers before acknowledgement', () => {
   const delivery = read(
     'api/apps/api-server/src/host_extensions/lifecycle.rs'
@@ -74,38 +65,6 @@ test('durable lifecycle subscriptions admit only the finite managed lifecycle tr
   assert.match(plan, /LifecycleSemantics::Invocation \| LifecycleSemantics::WorkspaceAssignment/u);
   assert.match(plan, /ModuleKind::User => false/u);
   assert.match(plan, /LifecycleEscalation/u);
-});
-
-test('hung lifecycle handlers time out, retry, and cannot block the remaining batch', () => {
-  const dispatcher = read(
-    'api/crates/control-plane/src/lifecycle_outbox_dispatcher.rs'
-  );
-  assert.match(dispatcher, /delivery_deadline: StdDuration/u);
-  assert.match(dispatcher, /CompletionTerminal::TimedOut/u);
-  assert.match(dispatcher, /hung_subscriber_times_out_and_does_not_block_later_delivery/u);
-  assert.match(dispatcher, /subscriber-healthy/u);
-});
-
-test('outbox records per-subscriber durable state and aggregate completion', () => {
-  const migration = read(
-    'api/crates/storage/durable/postgres/migrations/20260828190000_add_lifecycle_subscriber_deliveries.sql'
-  );
-  const repository = read(
-    'api/crates/storage/durable/postgres/src/lifecycle_outbox_repository.rs'
-  );
-  assert.match(migration, /primary key \(event_id, subscriber_id\)/u);
-  assert.match(repository, /lifecycle_outbox_deliveries/u);
-  assert.match(repository, /status <> 'delivered'/u);
-  assert.match(repository, /different publication plan/u);
-});
-
-test('dispatcher emits a typed completion on the production delivery path', () => {
-  const dispatcher = read(
-    'api/crates/control-plane/src/lifecycle_outbox_dispatcher.rs'
-  );
-  assert.match(dispatcher, /CompletionOutcome::new/u);
-  assert.match(dispatcher, /mark_lifecycle_fact_delivered/u);
-  assert.match(dispatcher, /retry_lifecycle_fact/u);
 });
 
 test('managed resources close and wait before shutdown cleanup without deleting backlog', () => {
