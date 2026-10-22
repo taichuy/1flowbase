@@ -32,6 +32,7 @@ struct TypedForwarding<'a> {
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     last_forwarded_sequence: i64,
     emitted_answer_delta: bool,
+    forwarded_committed_events: Vec<(String, Value)>,
 }
 
 async fn forward_subscribed_typed_events(
@@ -58,6 +59,7 @@ async fn forward_subscribed_typed_events(
         ignored_waiting_callback_task_id,
         last_forwarded_sequence: from_sequence.unwrap_or(0),
         emitted_answer_delta: false,
+        forwarded_committed_events: Vec::new(),
     };
     let mut delivery_claims = match terminal_dependencies
         .claim_runtime_event_deliveries(initial_run.id)
@@ -73,19 +75,13 @@ async fn forward_subscribed_typed_events(
             Vec::new()
         }
     };
-    let mut delivered_claim_events = Vec::new();
     if !durable_round_replay.is_empty() {
         forwarding.last_forwarded_sequence = -1;
     }
     for event in durable_round_replay {
         if is_public_terminal_runtime_event(&event.event_type)
             && !delivery_claims.is_empty()
-            && forward_pending_delivery_claims(
-                &mut forwarding,
-                &mut delivery_claims,
-                &mut delivered_claim_events,
-            )
-            .await
+            && forward_pending_delivery_claims(&mut forwarding, &mut delivery_claims).await
         {
             release_delivery_claims(settler, delivery_claims);
             return;
@@ -93,16 +89,8 @@ async fn forward_subscribed_typed_events(
         let matching_claim = delivery_claims
             .iter()
             .position(|delivery| runtime_delivery_matches_envelope(delivery, &event));
-        if is_committed_tool_delivery(&event) && matching_claim.is_none() {
-            forwarding.last_forwarded_sequence = event.sequence;
-            continue;
-        }
         let receipt = matching_claim.map(|index| {
             let delivery = delivery_claims.remove(index);
-            delivered_claim_events.push((
-                delivery.event.event_type.clone(),
-                delivery.event.payload.clone(),
-            ));
             settler.receipt(delivery)
         });
         if forward_ordered_typed_events(&mut forwarding, vec![(event, receipt)]).await {
@@ -115,32 +103,15 @@ async fn forward_subscribed_typed_events(
     for event in subscription.replay {
         if is_public_terminal_runtime_event(&event.event_type)
             && !delivery_claims.is_empty()
-            && forward_pending_delivery_claims(
-                &mut forwarding,
-                &mut delivery_claims,
-                &mut delivered_claim_events,
-            )
-            .await
+            && forward_pending_delivery_claims(&mut forwarding, &mut delivery_claims).await
         {
             return;
         }
         let matching_claim = delivery_claims
             .iter()
             .position(|delivery| runtime_delivery_matches_envelope(delivery, &event));
-        if is_committed_tool_delivery(&event) && matching_claim.is_none() {
-            // A committed tool event is projected only by the owner of its
-            // durable delivery claim. An already-ACKed replay must not execute
-            // the client tool a second time.
-            forwarding.last_forwarded_sequence =
-                forwarding.last_forwarded_sequence.max(event.sequence);
-            continue;
-        }
         let receipt = matching_claim.map(|index| {
             let delivery = delivery_claims.remove(index);
-            delivered_claim_events.push((
-                delivery.event.event_type.clone(),
-                delivery.event.payload.clone(),
-            ));
             settler.receipt(delivery)
         });
         if forward_ordered_typed_events(&mut forwarding, vec![(event, receipt)]).await {
@@ -148,20 +119,18 @@ async fn forward_subscribed_typed_events(
             return;
         }
     }
-    if forward_pending_delivery_claims(
-        &mut forwarding,
-        &mut delivery_claims,
-        &mut delivered_claim_events,
-    )
-    .await
-    {
+    if forward_pending_delivery_claims(&mut forwarding, &mut delivery_claims).await {
         return;
     }
 
     while let Some(event) = subscription.live_events.recv().await {
-        if delivered_claim_events.iter().any(|(event_type, payload)| {
-            event_type == &event.event_type && payload == &event.payload
-        }) {
+        if forwarding
+            .forwarded_committed_events
+            .iter()
+            .any(|(event_type, payload)| {
+                event_type == &event.event_type && payload == &event.payload
+            })
+        {
             forwarding.last_forwarded_sequence =
                 forwarding.last_forwarded_sequence.max(event.sequence);
             continue;
@@ -178,27 +147,27 @@ async fn forward_subscribed_typed_events(
                         error = %error,
                         "failed to claim live Responses tool delivery"
                     );
-                    continue;
+                    Vec::new()
                 }
             };
             if !claims
                 .iter()
                 .any(|delivery| runtime_delivery_matches_envelope(delivery, &event))
             {
+                // Durable attachment suffixes also arrive on this lane. A
+                // subscriber reads the exact fact even when no delivery claim
+                // is available; only the claim owner can settle its delivery.
                 release_delivery_claims(settler, claims);
+                if forward_ordered_typed_events(&mut forwarding, vec![(event, None)]).await {
+                    return;
+                }
                 continue;
             }
             // A live notification wakes the durable batch owner. Releasing its siblings
             // and claiming again races the asynchronous settler and can lose notifications.
             forwarding.last_forwarded_sequence =
                 forwarding.last_forwarded_sequence.max(event.sequence);
-            if forward_pending_delivery_claims(
-                &mut forwarding,
-                &mut claims,
-                &mut delivered_claim_events,
-            )
-            .await
-            {
+            if forward_pending_delivery_claims(&mut forwarding, &mut claims).await {
                 return;
             }
             continue;
@@ -236,7 +205,6 @@ fn release_delivery_claims(
 async fn forward_pending_delivery_claims(
     forwarding: &mut TypedForwarding<'_>,
     deliveries: &mut Vec<RuntimeEventDeliveryClaim>,
-    delivered_claim_events: &mut Vec<(String, Value)>,
 ) -> bool {
     // UPDATE ... RETURNING does not inherit the candidate query's ORDER BY.
     deliveries.sort_by_key(|delivery| (delivery.event.sequence, delivery.event.id));
@@ -244,10 +212,19 @@ async fn forward_pending_delivery_claims(
         let delivery = deliveries.remove(0);
         let envelope = durable_record_to_runtime_event_envelope(delivery.event.clone());
         let run = Arc::clone(forwarding.initial_run);
-        delivered_claim_events.push((
-            delivery.event.event_type.clone(),
-            delivery.event.payload.clone(),
-        ));
+        if forwarding
+            .forwarded_committed_events
+            .iter()
+            .any(|(event_type, payload)| {
+                event_type == &envelope.event_type && payload == &envelope.payload
+            })
+        {
+            forwarding.settler.release(delivery);
+            continue;
+        }
+        forwarding
+            .forwarded_committed_events
+            .push((envelope.event_type.clone(), envelope.payload.clone()));
         let receipt = forwarding.settler.receipt(delivery);
         if forwarding
             .sender
@@ -285,6 +262,23 @@ async fn forward_ordered_typed_events(
             }
             continue;
         };
+        if is_committed_tool_delivery(&event) {
+            if forwarding
+                .forwarded_committed_events
+                .iter()
+                .any(|(event_type, payload)| {
+                    event_type == &event.event_type && payload == &event.payload
+                })
+            {
+                // This response already owns the fact. Dropping an unused
+                // receipt releases its claim rather than inventing an ACK.
+                drop(receipt);
+                continue;
+            }
+            forwarding
+                .forwarded_committed_events
+                .push((event.event_type.clone(), event.payload.clone()));
+        }
         let terminal = is_public_terminal_runtime_event(&event.event_type);
         let run = if terminal {
             let mut run = match load_durable_native_run_for_terminal_projection_with_dependencies(

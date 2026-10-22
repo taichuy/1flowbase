@@ -275,7 +275,7 @@ async fn typed_responses_stream_claims_orders_deduplicates_and_acks_projected_to
 }
 
 #[tokio::test]
-async fn durable_round_replay_keeps_exact_native_item_and_does_not_replay_acked_tool() {
+async fn durable_round_replay_keeps_exact_native_item_without_reclaiming_acked_tool() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let mut run = native_run();
     run.metadata["response_round_id"] = json!(Uuid::now_v7());
@@ -303,7 +303,7 @@ async fn durable_round_replay_keeps_exact_native_item_and_does_not_replay_acked_
         ),
         committed_delivery_envelope(run.id, 102, tool),
     ];
-    for expected_tool_count in [1, 0] {
+    for expected_receipt_count in [1, 0] {
         let (live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
         drop(live_sender);
         let (sender, mut receiver) = mpsc::channel(8);
@@ -331,7 +331,7 @@ async fn durable_round_replay_keeps_exact_native_item_and_does_not_replay_acked_
             projected.extend(mapper.runtime_event_to_sse(&snapshot, envelope));
         }
         forwarding.await.unwrap();
-        assert_eq!(tool_count, expected_tool_count);
+        assert_eq!(tool_count, expected_receipt_count);
         let response = axum::response::sse::Sse::new(tokio_stream::iter(projected)).into_response();
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
@@ -339,7 +339,7 @@ async fn durable_round_replay_keeps_exact_native_item_and_does_not_replay_acked_
         let body = String::from_utf8(body.to_vec()).unwrap();
         assert!(body.contains("rs_provider_original"), "{body}");
         assert!(body.contains("opaque-provider-bytes"), "{body}");
-        assert_eq!(body.contains("call-replay-once"), expected_tool_count == 1);
+        assert!(body.contains("call-replay-once"), "{body}");
     }
     assert_eq!(delivery_statuses(&state, &[record.id]).await, vec!["acked"]);
 }
@@ -1053,3 +1053,6 @@ mod executor_support;
 use executor_support::RejectAttachExecutor;
 #[path = "forwarding/openai_projection.rs"]
 mod openai_projection;
+
+#[path = "forwarding/_tests/exact_native_replay.rs"]
+mod exact_native_replay;
