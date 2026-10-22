@@ -228,22 +228,6 @@ pub(super) fn validate_anthropic_message(
         }
         error.with_report(report.clone())
     })?;
-    anthropic_text_content(content).map_err(|error| {
-        if report
-            .decisions
-            .iter()
-            .all(|decision| decision.source_path != content_path)
-        {
-            report.record(
-                &content_path,
-                None,
-                TranslationDecisionKind::Rejected,
-                Some("Anthropic message content cannot be translated"),
-                TranslationSafeRepresentation::Present,
-            );
-        }
-        error.with_report(report.clone())
-    })?;
     report.record(
         &content_path,
         Some("$.query,$.history"),

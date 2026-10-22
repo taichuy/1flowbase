@@ -163,6 +163,111 @@ fn d2_ac_001_anthropic_invalid_message_shapes_have_field_receipts() {
         assert_eq!(decisions.len(), 1, "{source_path} needs one decision");
         assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
     }
+
+    let sentinel = "ANTHROPIC-INVALID-CONTENT-MUST-NOT-REACH-RECEIPT";
+    let content_cases = [
+        (
+            json!({"type": "server_tool_use", "name": "computer", "input": sentinel}),
+            "unsupported_feature",
+            "messages content block server_tool_use is not supported by this endpoint",
+            TranslationDecisionKind::Unsupported,
+            "server-managed tool content has no current canonical owner",
+        ),
+        (
+            json!({"type": "computer_use", "input": sentinel}),
+            "unsupported_feature",
+            "messages content block computer_use is not supported by this endpoint",
+            TranslationDecisionKind::Unsupported,
+            "server-managed tool content has no current canonical owner",
+        ),
+        (
+            json!({"type": sentinel, "text": sentinel}),
+            "invalid_request",
+            "unknown Anthropic content block type",
+            TranslationDecisionKind::Rejected,
+            "unknown Anthropic content block type",
+        ),
+        (
+            json!({"type": "tool_use", "name": "computer", "input": false, sentinel: sentinel}),
+            "unsupported_feature",
+            "computer_use is not supported by this endpoint",
+            TranslationDecisionKind::Unsupported,
+            "computer tool use has no current Native owner",
+        ),
+    ];
+
+    for (block, error_type, message, kind, reason) in content_cases {
+        for trailing_blocks in [vec![], vec![json!(false), json!({"type": "computer_use"})]] {
+            let mut content = vec![block.clone()];
+            content.extend(trailing_blocks);
+            let error = translate_messages_request(json!({
+                "model": "claude-compatible",
+                "messages": [{"role": "user", "content": content}]
+            }))
+            .expect_err("the first invalid content block must determine the translation error");
+
+            assert_eq!(error.error_type, error_type);
+            assert_eq!(error.message, message);
+            assert_eq!(
+                serde_json::to_value(&error.report).expect("receipt should serialize"),
+                json!({
+                    "protocol": "anthropic_messages",
+                    "decisions": [
+                        {
+                            "source_path": "$.model",
+                            "target_path": "$.model",
+                            "kind": "normalized",
+                            "effective_value": "present"
+                        },
+                        {
+                            "source_path": "$.system",
+                            "target_path": "$.system",
+                            "kind": "defaulted",
+                            "reason": "no system prompt",
+                            "effective_value": "defaulted"
+                        },
+                        {
+                            "source_path": "$.messages[0]",
+                            "target_path": "$.query,$.history",
+                            "kind": "normalized",
+                            "effective_value": "redacted"
+                        },
+                        {
+                            "source_path": "$.messages[0].role",
+                            "target_path": "$.query,$.history",
+                            "kind": "normalized",
+                            "effective_value": "present"
+                        },
+                        {
+                            "source_path": "$.messages[0].content[0]",
+                            "target_path": "$.query,$.history",
+                            "kind": "normalized",
+                            "effective_value": "redacted"
+                        },
+                        {
+                            "source_path": "$.messages[0].content[0].type",
+                            "kind": kind,
+                            "reason": reason,
+                            "effective_value": "present"
+                        },
+                        {
+                            "source_path": "$.messages[0].content",
+                            "kind": "rejected",
+                            "reason": "Anthropic message content contains invalid blocks",
+                            "effective_value": "present"
+                        },
+                        {
+                            "source_path": "$.messages",
+                            "kind": "rejected",
+                            "reason": "Anthropic messages contain an invalid message",
+                            "effective_value": "present"
+                        }
+                    ]
+                }),
+                "content rejection receipts must stay ordered and redacted"
+            );
+        }
+    }
 }
 
 #[test]
