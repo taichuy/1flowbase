@@ -9,6 +9,8 @@ use control_plane_contracts::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[path = "native_tool_resume/multipart_outputs.rs"]
+mod multipart_outputs;
 #[path = "native_tool_resume/reservation_lifecycle.rs"]
 mod reservation_lifecycle;
 #[path = "native_tool_resume/session_history.rs"]

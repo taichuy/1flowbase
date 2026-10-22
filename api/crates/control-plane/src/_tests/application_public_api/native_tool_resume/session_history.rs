@@ -76,7 +76,12 @@ fn fork_request(mut full: Value) -> OpenAiResponsesEnvelope {
 #[tokio::test]
 async fn native_new_session_history_does_not_resume_parent_before_assistant_response() {
     for (completed, custom) in [(false, false), (true, false), (false, true), (true, true)] {
-        let (repository, actor, callback, full) = parent_round(false, custom).await;
+        let (repository, actor, callback, mut full) = parent_round(false, custom).await;
+        if custom {
+            full["input"].as_array_mut().unwrap().push(json!({
+                "type":"custom_tool_call_output","call_id":"custom","output":"Additional notification"
+            }));
+        }
         if completed {
             repository.complete_callback_task_for_test(callback.id);
         }

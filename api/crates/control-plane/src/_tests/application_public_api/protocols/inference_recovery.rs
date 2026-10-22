@@ -129,9 +129,18 @@ async fn fixture_with_configuration(failure: Option<Value>, tools: Option<Value>
 }
 
 async fn fixture_with_protocol_context(
+    failure: Option<Value>,
+    tools: Option<Value>,
+    protocol_context: Option<ProtocolContextEnvelope>,
+) -> Fixture {
+    fixture_with_outputs(failure, tools, protocol_context, false).await
+}
+
+async fn fixture_with_outputs(
     mut failure: Option<Value>,
     tools: Option<Value>,
     protocol_context: Option<ProtocolContextEnvelope>,
+    multipart: bool,
 ) -> Fixture {
     let actor = Uuid::from_u128(0x11111111111111111111111111111111);
     let harness = ApplicationPublicApiTestHarness::new();
@@ -202,12 +211,16 @@ async fn fixture_with_protocol_context(
         .await
         .unwrap();
     let original = json!({"model":"fixture", "input":[{"role":"user","content":"work"}]});
-    let output = vec![
+    let mut output = vec![
         json!({"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"opaque-reasoning"}),
         json!({"type":"compaction","encrypted_content":"opaque-compaction"}),
         json!({"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"working"}],"phase":"commentary"}),
         json!({"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec","arguments":"{}"}),
     ];
+    if multipart {
+        output[3] =
+            json!({"type":"custom_tool_call","call_id":"call_1","name":"exec","input":"notify(1)"});
+    }
     let history = completed_history(&original, None, &output)
         .unwrap()
         .unwrap();
@@ -231,6 +244,15 @@ async fn fixture_with_protocol_context(
         .as_array_mut()
         .unwrap()
         .push(json!({"type":"function_call_output","call_id":"call_1","output":"done"}));
+    if multipart {
+        *body["input"].as_array_mut().unwrap().last_mut().unwrap() = json!({
+            "type":"custom_tool_call_output","call_id":"call_1","output":"done"
+        });
+        body["input"].as_array_mut().unwrap().extend([
+            json!({"type":"custom_tool_call_output","call_id":"call_1","output":"notify one"}),
+            json!({"type":"custom_tool_call_output","call_id":"call_1","output":"notify two"}),
+        ]);
+    }
     if let Some(tools) = tools {
         body["tools"] = tools;
         if let Some(error) = failure.as_mut() {
@@ -243,6 +265,11 @@ async fn fixture_with_protocol_context(
                 json!(failed_request.configuration_digest().unwrap());
         }
     }
+    let results =
+        crate::application_public_api::compat::openai::responses_index::native_tool_results(
+            body["input"].as_array().unwrap()[5..].iter(),
+        )
+        .unwrap();
     let command = ResumePublishedCallbackCommand {
         responses_continuation: None,
         transport_connection_scope: None,
@@ -255,7 +282,7 @@ async fn fixture_with_protocol_context(
             callback_task_id: callback.id,
         },
         source: PublishedCallbackResumeSource::OpenAiResponses,
-        response_payload: json!({"tool_results":[{"tool_call_id":"call_1","content":"done"}]}),
+        response_payload: json!({"tool_results":results}),
         response_mode: Some("blocking".into()),
     };
     let consumer = SettlingConsumer {
@@ -1049,4 +1076,37 @@ async fn failed_recovery_successor_allows_new_full_and_incremental_responses() {
         "admission does not reexecute tools or start a concurrent run"
     );
     f.assert_receipt_unchanged();
+}
+
+#[tokio::test]
+async fn multipart_receipt_supports_recovery_and_delta_reissue_without_reconsumption() {
+    let f = fixture_with_outputs(Some(transport_failure()), None, None, true).await;
+    assert!(matches!(
+        f.prepare(&f.command).await.unwrap(),
+        PreparedPublishedCallbackResume::RecoverInference { .. }
+    ));
+    f.assert_receipt_unchanged();
+    let f = fixture_with_outputs(Some(terminal_transport_failure()), None, None, true).await;
+    for delta in [false, true] {
+        let mut command = f.command.clone();
+        let mut body = command.native_transport.take().unwrap().into_wire_body();
+        if delta {
+            body["previous_response_id"] = json!(format!("resp_{}", f.flow_run_id));
+            body["input"] = json!(body["input"].as_array().unwrap()[5..]);
+        }
+        command.native_transport =
+            Some(ProviderTransportPayload::openai_responses(body.clone()).unwrap());
+        assert!(matches!(
+            f.prepare(&command).await.unwrap(),
+            PreparedPublishedCallbackResume::StartNewTurnFromHistory
+        ));
+        body["input"].as_array_mut().unwrap().last_mut().unwrap()["output"] =
+            json!("tampered notification");
+        command.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+        assert!(
+            f.prepare(&command).await.is_err(),
+            "changed wire must not reuse the accepted multipart receipt"
+        );
+        f.assert_receipt_unchanged();
+    }
 }

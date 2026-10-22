@@ -161,9 +161,9 @@ pub(crate) fn prove_full_context_input<'a>(
         actual.append(item)?;
     }
     ensure!(actual.digest == expected.digest, "native_history_mismatch");
-    let mut remaining: BTreeSet<&str> = owned_call_ids.iter().map(String::as_str).collect();
+    let expected_ids: BTreeSet<&str> = owned_call_ids.iter().map(String::as_str).collect();
     ensure!(
-        remaining.len() == owned_call_ids.len() && !remaining.is_empty(),
+        expected_ids.len() == owned_call_ids.len() && !expected_ids.is_empty(),
         "native_history_tool_outputs_invalid"
     );
     let mut proof = FullContextInput {
@@ -181,7 +181,7 @@ pub(crate) fn prove_full_context_input<'a>(
                     .and_then(Value::as_str)
                     .ok_or_else(|| anyhow::anyhow!("native_history_tool_outputs_invalid"))?;
                 ensure!(
-                    remaining.remove(call_id) && item.get("output").is_some(),
+                    expected_ids.contains(call_id) && item.get("output").is_some(),
                     "native_history_tool_outputs_invalid"
                 );
                 proof.tool_outputs.push(item);
@@ -193,7 +193,12 @@ pub(crate) fn prove_full_context_input<'a>(
             _ => proof.context.push(item),
         }
     }
-    ensure!(remaining.is_empty(), "native_history_tool_outputs_invalid");
+    let results = super::responses_index::native_tool_results(proof.tool_outputs.iter().copied())
+        .map_err(|_| anyhow::anyhow!("native_history_tool_outputs_invalid"))?;
+    ensure!(
+        results.len() == expected_ids.len(),
+        "native_history_tool_outputs_invalid"
+    );
     Ok(proof)
 }
 

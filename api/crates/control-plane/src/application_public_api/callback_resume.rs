@@ -404,13 +404,21 @@ where
         )
         .await?;
         let input = &transport.wire_body()["input"];
-        let call_count = command.response_payload["tool_results"]
-            .as_array()
-            .map_or(0, Vec::len);
+        let output_count = input.as_array().map_or(0, |items| {
+            items
+                .iter()
+                .filter(|item| {
+                    matches!(
+                        item["type"].as_str(),
+                        Some("function_call_output" | "custom_tool_call_output")
+                    ) && !super::compat::openai::is_standalone_function_output(item)
+                })
+                .count()
+        });
         if transport.wire_body().get("previous_response_id").is_none()
             && input
                 .as_array()
-                .is_some_and(|items| items.len() > call_count)
+                .is_some_and(|items| items.len() > output_count)
         {
             if let Err(error) =
                 inference_recovery::validate_context(&context.flow_run, &evidence, command)

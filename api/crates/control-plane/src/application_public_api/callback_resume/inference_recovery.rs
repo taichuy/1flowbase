@@ -220,17 +220,10 @@ pub(super) fn is_full_context_continuation(
     if proof.context.is_empty() {
         return Ok(false);
     }
-    let accepted = command.response_payload["tool_results"].as_array();
-    let outputs_match = accepted.is_some_and(|results| {
-        results.len() == ids.len()
-            && proof.tool_outputs.iter().all(|output| {
-                results.iter().any(|result| {
-                    result["tool_call_id"] == output["call_id"]
-                        && result.get("content") == output.get("output")
-                })
-            })
-    });
-    if !outputs_match {
+    let projected = super::super::compat::openai::responses_index::native_tool_results(
+        proof.tool_outputs.iter().copied(),
+    )?;
+    if command.response_payload["tool_results"].as_array() != Some(&projected) {
         return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
     }
     // Full continuations may refresh tools/options, but may not change the model
@@ -308,43 +301,26 @@ pub(super) fn validate_reissue_context(
         let outputs = body["input"].as_array().ok_or(ControlPlaneError::Conflict(
             "native_recovery_tool_output_mismatch",
         ))?;
-        let accepted = command.response_payload["tool_results"].as_array().ok_or(
-            ControlPlaneError::Conflict("native_recovery_tool_output_mismatch"),
-        )?;
-        let mut remaining: std::collections::BTreeSet<_> =
-            callback_call_ids(callback)?.into_iter().collect();
-        if remaining.is_empty()
-            || outputs.len() != remaining.len()
-            || accepted.len() != remaining.len()
-        {
-            return Err(ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into());
-        }
-        for output in outputs {
-            if !matches!(
+        if outputs.iter().any(|output| {
+            !matches!(
                 output["type"].as_str(),
                 Some("function_call_output" | "custom_tool_call_output")
-            ) {
-                return Err(
-                    ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into(),
-                );
-            }
-            let id = output["call_id"]
-                .as_str()
-                .ok_or(ControlPlaneError::Conflict(
-                    "native_recovery_tool_output_mismatch",
-                ))?;
-            if !remaining.remove(id)
-                || !accepted.iter().any(|result| {
-                    result["tool_call_id"].as_str() == Some(id)
-                        && result.get("content") == output.get("output")
-                })
-            {
-                return Err(
-                    ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into(),
-                );
-            }
+            )
+        }) {
+            return Err(ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into());
         }
-        if !remaining.is_empty() {
+        let projected = super::super::compat::openai::responses_index::native_tool_results(outputs)
+            .map_err(|_| ControlPlaneError::Conflict("native_recovery_tool_output_mismatch"))?;
+        let expected: std::collections::BTreeSet<_> =
+            callback_call_ids(callback)?.into_iter().collect();
+        let supplied: std::collections::BTreeSet<_> = projected
+            .iter()
+            .filter_map(|result| result["tool_call_id"].as_str().map(str::to_owned))
+            .collect();
+        if expected.is_empty()
+            || supplied != expected
+            || command.response_payload["tool_results"].as_array() != Some(&projected)
+        {
             return Err(ControlPlaneError::Conflict("native_recovery_tool_output_mismatch").into());
         }
     } else {
@@ -399,7 +375,7 @@ pub(super) fn validate_context(
     // configuration identity, while their retry budgets remain independent.
     validate_configuration(flow, metadata, transport)?;
     let ids = callback_call_ids(callback)?;
-    super::super::compat::openai::history::validate_full_retry_input(
+    let proof = super::super::compat::openai::history::prove_full_context_input(
         &transport.wire_body()["input"],
         &metadata["history"],
         &ids,
@@ -417,5 +393,15 @@ pub(super) fn validate_context(
             _ => "native_recovery_history_invalid",
         })
     })?;
+    if !proof.context.is_empty() {
+        return Err(reject("native_recovery_history_item_count_mismatch"));
+    }
+    let projected = super::super::compat::openai::responses_index::native_tool_results(
+        proof.tool_outputs.iter().copied(),
+    )
+    .map_err(|_| reject("native_recovery_tool_output_mismatch"))?;
+    if command.response_payload["tool_results"].as_array() != Some(&projected) {
+        return Err(reject("native_recovery_tool_output_mismatch"));
+    }
     Ok(())
 }
