@@ -39,4 +39,6 @@ Gateway 的兼容协议、Native HTTP（含文件输入）与 WebSocket 不使�
 
 Chat 入口先完整校验消息，再按原消息顺序生成翻译回执与 Native 内容。每条消息只构造一次内容投影；最后一条 user 的已构造内容用于 query，媒体历史沿用同一投影。assistant 的 reasoning 块位于可见内容之前，已有媒体块由当前 owner 移动到最终历史对象，避免通过 JSON 反查后再次复制。校验阶段与投影阶段分别拥有错误优先级和内容转换职责。
 
+Anthropic 消息的结构与支持范围由内容块校验器判定；校验成功后，query / history 映射器才构造所需文本，校验阶段不再生成随后丢弃的文本副本。错误优先级与有序翻译回执保持不变。未知字段的匿名路径只表达父路径和字段数量，不读取或排序字段名；根字段处理中按名称决定保留或丢弃的排序仍保留，以维持匿名序号与处理结果的对应关系。
+
 助手持久历史由 `control-plane` 的 `run_service/conversation_history` 投影：在已有 `AssistantConversationNativeMessage` 上保留完整且未重复的工具调用，再通过现有 `into_value()` 交接 JSON。工具调用原文和扩展字段保持不变；真实结果完成对应 pending 调用，孤立或重复结果按既有规则丢弃，未完成调用在原有边界补充中断结果，不重新执行工具。持久化、身份及查询权限继续归原 owner。

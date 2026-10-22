@@ -676,71 +676,94 @@ fn d2_ac_003_native_unknown_model_parameter_keys_are_redacted_from_receipts() {
         "D2-NATIVE-UNKNOWN-KEY-ALPHA-MUST-NOT-REACH-RECEIPT",
         "D2-NATIVE-UNKNOWN-KEY-BETA-MUST-NOT-REACH-RECEIPT",
     ];
-    let mut unknown_model_parameter = serde_json::Map::new();
-    for sentinel in sentinels.iter().rev() {
-        unknown_model_parameter.insert((*sentinel).to_string(), json!("ignored"));
-    }
-    let model_error = translate_native_run_request(json!({
-        "query": "hello",
-        "execution": {"model_parameters": unknown_model_parameter}
-    }))
-    .expect_err("an unknown model-parameter key must fail at the Native adapter");
-
-    let mut unknown_reasoning_parameter = serde_json::Map::new();
-    for sentinel in sentinels.iter().rev() {
-        unknown_reasoning_parameter.insert((*sentinel).to_string(), json!("ignored"));
-    }
-    let reasoning_error = translate_native_run_request(json!({
-        "query": "hello",
-        "execution": {
-            "model_parameters": {"reasoning": unknown_reasoning_parameter}
+    let mut serialized_reports = Vec::new();
+    for ordered_sentinels in [[sentinels[1], sentinels[0]], sentinels] {
+        let mut unknown_model_parameter = serde_json::Map::new();
+        for sentinel in ordered_sentinels {
+            unknown_model_parameter.insert(sentinel.to_string(), json!("ignored"));
         }
-    }))
-    .expect_err("an unknown reasoning key must fail at the Native adapter");
+        let model_error = translate_native_run_request(json!({
+            "query": "hello",
+            "execution": {"model_parameters": unknown_model_parameter}
+        }))
+        .expect_err("an unknown model-parameter key must fail at the Native adapter");
 
-    for (error, source_path_prefix, source_paths) in [
-        (
-            model_error,
-            "$.execution.model_parameters.<unknown>",
-            [
-                "$.execution.model_parameters.<unknown>[0]",
-                "$.execution.model_parameters.<unknown>[1]",
-            ],
-        ),
-        (
-            reasoning_error,
-            "$.execution.model_parameters.reasoning.<unknown>",
-            [
-                "$.execution.model_parameters.reasoning.<unknown>[0]",
-                "$.execution.model_parameters.reasoning.<unknown>[1]",
-            ],
-        ),
-    ] {
-        assert_eq!(error.code, "invalid_model_parameters");
-        let unknown_decisions = error
+        let mut unknown_reasoning_parameter = serde_json::Map::new();
+        for sentinel in ordered_sentinels {
+            unknown_reasoning_parameter.insert(sentinel.to_string(), json!("ignored"));
+        }
+        let reasoning_error = translate_native_run_request(json!({
+            "query": "hello",
+            "execution": {
+                "model_parameters": {"reasoning": unknown_reasoning_parameter}
+            }
+        }))
+        .expect_err("an unknown reasoning key must fail at the Native adapter");
+
+        for (error, source_path_prefix, source_paths) in [
+            (
+                model_error,
+                "$.execution.model_parameters.<unknown>",
+                [
+                    "$.execution.model_parameters.<unknown>[0]",
+                    "$.execution.model_parameters.<unknown>[1]",
+                ],
+            ),
+            (
+                reasoning_error,
+                "$.execution.model_parameters.reasoning.<unknown>",
+                [
+                    "$.execution.model_parameters.reasoning.<unknown>[0]",
+                    "$.execution.model_parameters.reasoning.<unknown>[1]",
+                ],
+            ),
+        ] {
+            assert_eq!(error.code, "invalid_model_parameters");
+            let unknown_decisions = error
+                .report
+                .decisions
+                .iter()
+                .filter(|decision| decision.source_path.starts_with(source_path_prefix))
+                .collect::<Vec<_>>();
+            assert_eq!(unknown_decisions.len(), 2);
+            assert_eq!(
+                unknown_decisions
+                    .iter()
+                    .map(|decision| decision.source_path.as_str())
+                    .collect::<Vec<_>>(),
+                source_paths
+            );
+            assert!(unknown_decisions
+                .iter()
+                .all(|decision| decision.kind == TranslationDecisionKind::Rejected));
+            let serialized =
+                serde_json::to_string(&error.report).expect("receipt should serialize");
+            assert!(
+                sentinels
+                    .iter()
+                    .all(|sentinel| !serialized.contains(sentinel)),
+                "an unknown request key must not become receipt content"
+            );
+            serialized_reports.push(serialized);
+        }
+    }
+    assert_eq!(
+        serialized_reports[..2],
+        serialized_reports[2..],
+        "field insertion order must not change the complete serialized receipts"
+    );
+
+    for model_parameters in [json!({}), json!({"reasoning": {}})] {
+        let translated = translate_native_run_request(json!({
+            "query": "hello",
+            "execution": {"model_parameters": model_parameters}
+        }))
+        .expect("empty parameter objects remain valid");
+        assert!(translated
             .report
             .decisions
             .iter()
-            .filter(|decision| decision.source_path.starts_with(source_path_prefix))
-            .collect::<Vec<_>>();
-        assert_eq!(unknown_decisions.len(), 2);
-        assert_eq!(
-            unknown_decisions
-                .iter()
-                .map(|decision| decision.source_path.as_str())
-                .collect::<Vec<_>>(),
-            source_paths
-        );
-        assert!(unknown_decisions
-            .iter()
-            .all(|decision| decision.kind == TranslationDecisionKind::Rejected));
-        let serialized = serde_json::to_string(&error.report).expect("receipt should serialize");
-        assert!(
-            sentinels
-                .iter()
-                .all(|sentinel| !serialized.contains(sentinel)),
-            "an unknown request key must not become receipt content"
-        );
+            .all(|decision| !decision.source_path.contains(".<unknown>")));
     }
 }
 

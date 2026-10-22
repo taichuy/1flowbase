@@ -149,8 +149,8 @@ impl TranslationReport {
     }
 
     /// Preserve the fact that each unexpected wire key was present while never
-    /// retaining the key itself in a non-durable receipt. Sorting makes the
-    /// anonymous ordinal stable regardless of JSON insertion order.
+    /// retaining the key itself in a non-durable receipt. Anonymous paths
+    /// depend only on the number of fields, not their names or insertion order.
     pub(crate) fn record_anonymous_unknown_fields<'a>(
         &mut self,
         parent_path: &str,
@@ -177,10 +177,8 @@ pub(crate) fn anonymous_unknown_source_paths<'a>(
     parent_path: &str,
     fields: impl IntoIterator<Item = &'a String>,
 ) -> Vec<String> {
-    let mut fields = fields.into_iter().map(String::as_str).collect::<Vec<_>>();
-    fields.sort_unstable();
     fields
-        .iter()
+        .into_iter()
         .enumerate()
         .map(|(index, _)| format!("{parent_path}.<unknown>[{index}]"))
         .collect()
