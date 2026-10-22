@@ -135,6 +135,11 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
       'api-server',
       { filter: 'ui_management_routes' }
     ),
+    {
+      ...baseCommand,
+      label: 'backend-coverage-control-plane-doc-tests',
+      args: ['test', '--package', 'control-plane', '--doc', '--', `--test-threads=${cargoTestThreads}`],
+    },
   ];
 }
 

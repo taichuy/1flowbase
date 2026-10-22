@@ -68,6 +68,7 @@ test('four shard inventories must be an exact disjoint union of the full invento
     shardInventories: [inventory(['a']), inventory(['b']), inventory(['c']), inventory(['d'])],
   }), {
     fullCount: 4,
+    ignoredCount: 0,
     shardCount: 4,
   });
 
@@ -163,6 +164,8 @@ test('shard orchestration fails closed when nextest execution fails', () => {
     shardCount: 4,
     cargoTestThreads: 2,
     env: { QUALITY_GATE_TARGET_SHA: 'abc' },
+    writeStdout() {},
+    writeStderr() {},
     spawnSyncImpl(_command, _args, options) {
       call += 1;
       if (call === 1) {
@@ -216,7 +219,10 @@ test('enforced merge gathers all profiles and writes standalone coverage evidenc
   fs.mkdirSync(path.join(repoRoot, 'api'), { recursive: true });
   for (let index = 1; index <= 4; index += 1) {
     fs.writeFileSync(path.join(shardRoot, `inventory-${index}.json`), JSON.stringify(inventory([String(index)])));
-    fs.writeFileSync(path.join(shardRoot, `metadata-${index}.json`), JSON.stringify({ sha: 'frozen-sha' }));
+    fs.writeFileSync(path.join(shardRoot, `metadata-${index}.json`), JSON.stringify({
+      sha: 'frozen-sha', package: 'api-server', partition: `hash:${index}/4`,
+      testCount: 1, ignoredCount: 0, exitCode: 0, passedCount: 1, failedCount: 0, profileCount: 1,
+    }));
     fs.writeFileSync(path.join(shardRoot, `shard-${index}-1.profraw`), `profile-${index}`);
   }
   const summary = {
@@ -254,6 +260,7 @@ test('enforced merge gathers all profiles and writes standalone coverage evidenc
   ));
   assert.equal(evidence.sha, 'frozen-sha');
   assert.equal(evidence.inventory.fullCount, 4);
+  assert.equal(evidence.shards.length, 4);
   assert.equal(evidence.coverage.lineCoveragePercent, 100);
   assert.equal(evidence.comparison, undefined);
   assert.deepEqual(JSON.parse(fs.readFileSync(

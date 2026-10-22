@@ -90,6 +90,30 @@ test('full CI checks types through Clippy while the lighter PR lane retains carg
   }
 });
 
+test('full CI coverage owns ordinary API and control-plane tests while manual scopes remain available', () => {
+  const { DEFAULT_AGGREGATE_SCOPES, buildGateCommand } = require('../commands.js');
+  const workflow = readQualityGateWorkflow();
+  const backendJob = workflow.slice(workflow.indexOf('  repo-backend-gate:'), workflow.indexOf('  backend-consistency-gate:'));
+  const aggregateScopes = workflow.match(/INPUT_EXPECTED_SCOPES: '([^']+)'/u)[1].split(',');
+  assert.deepEqual(aggregateScopes, DEFAULT_AGGREGATE_SCOPES);
+  const removedShards = ['control-plane', ...Array.from({ length: 4 }, (_, index) => `api-server-${index + 1}-of-4`)];
+  for (const shard of removedShards) {
+    const scope = `repo-backend-test-${shard}`;
+    assert.ok(!backendJob.includes(`- ${scope}\n`));
+    assert.ok(!DEFAULT_AGGREGATE_SCOPES.includes(scope));
+    assert.ok(workflow.slice(0, workflow.indexOf('\npermissions:')).includes(`- ${scope}\n`));
+    assert.deepEqual(buildGateCommand({ repoRoot, scope }).args.slice(-2), ['test', shard]);
+  }
+  for (let index = 1; index <= 4; index += 1) {
+    assert.ok(DEFAULT_AGGREGATE_SCOPES.includes(`repo-backend-test-storage-postgres-${index}-of-4`));
+  }
+  for (const scope of ['coverage-backend-control-plane', 'coverage-backend-api-server-merge',
+    'repo-backend-image-llm-vision', 'repo-backend-official-i18n-seed', 'repo-backend-history-maintenance',
+    'backend-consistency-control-runtime', 'backend-consistency-storage', 'backend-consistency-api']) {
+    assert.ok(DEFAULT_AGGREGATE_SCOPES.includes(scope));
+  }
+});
+
 test('complete tooling lane prepares and requires the real Docker recovery fixture', () => {
   for (const workflow of [readQualityGateWorkflow(), readVerifyWorkflow()]) {
     const tooling = workflow.slice(workflow.indexOf('  repo-tooling-gate:'), workflow.indexOf('  repo-frontend-gate:'));
