@@ -9,7 +9,7 @@ use super::plugins::{
 use super::*;
 use axum::response::Response;
 use control_plane::ports::{FileManagementRepository, SessionStore};
-use postgres_test_support::{PostgresTestPhase, PostgresTestSchema, record_phase_duration};
+use postgres_test_support::{record_phase_duration, PostgresTestPhase, PostgresTestSchema};
 use std::{
     io::Write,
     time::{Duration, Instant},
